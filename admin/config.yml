@@ -6,8 +6,7 @@
 # ──────────────────────────────────────────────────────────────────
 
 backend:
-  name: github
-  repo: sapphireclinicseast/sapphire-clinics-east
+  name: git-gateway
   branch: main
 
 # Where uploaded images will be stored
