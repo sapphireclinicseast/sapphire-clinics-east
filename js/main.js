@@ -455,24 +455,25 @@ document.addEventListener('keydown', e => {
    NEWS & UPDATES — CMS-driven content
 ══════════════════════════════════════════════════════════════════ */
 
-/* Load all three news sections from generated JSON files (parallel) */
-async function loadNewsSection() {
+/* Load all three news sections from generated JSON files */
+function loadNewsSection() {
   const sections = ['blog', 'events', 'announcements'];
-  await Promise.all(sections.map(async section => {
-    try {
-      // 10-second timeout so loading never gets stuck
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 10000);
-      const res = await fetch(`content/${section}-index.json?v=${Date.now()}`,
-        { signal: controller.signal });
-      clearTimeout(timer);
-      if (!res.ok) throw new Error('not found');
-      const posts = await res.json();
-      renderNewsPosts(section, posts);
-    } catch (_) {
-      renderNewsEmpty(section);
-    }
-  }));
+
+  // Show "no posts yet" immediately — tabs are always clickable from the start
+  sections.forEach(s => renderNewsEmpty(s));
+
+  // Fetch content in the background and update each tab if posts exist
+  sections.forEach(section => {
+    fetch('content/' + section + '-index.json?nc=' + Date.now())
+      .then(function(res) {
+        if (!res.ok) return null;
+        return res.json();
+      })
+      .then(function(posts) {
+        if (posts && posts.length > 0) renderNewsPosts(section, posts);
+      })
+      .catch(function() { /* stays as empty state */ });
+  });
 }
 
 /* Render post cards for a given section */
