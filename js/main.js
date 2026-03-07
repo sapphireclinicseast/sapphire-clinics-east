@@ -455,19 +455,24 @@ document.addEventListener('keydown', e => {
    NEWS & UPDATES — CMS-driven content
 ══════════════════════════════════════════════════════════════════ */
 
-/* Load all three news sections from generated JSON files */
+/* Load all three news sections from generated JSON files (parallel) */
 async function loadNewsSection() {
   const sections = ['blog', 'events', 'announcements'];
-  for (const section of sections) {
+  await Promise.all(sections.map(async section => {
     try {
-      const res = await fetch(`content/${section}-index.json?v=${Date.now()}`);
-      if (!res.ok) throw new Error('empty');
+      // 10-second timeout so loading never gets stuck
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch(`content/${section}-index.json?v=${Date.now()}`,
+        { signal: controller.signal });
+      clearTimeout(timer);
+      if (!res.ok) throw new Error('not found');
       const posts = await res.json();
       renderNewsPosts(section, posts);
     } catch (_) {
       renderNewsEmpty(section);
     }
-  }
+  }));
 }
 
 /* Render post cards for a given section */
