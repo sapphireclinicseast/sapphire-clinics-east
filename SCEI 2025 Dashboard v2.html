@@ -1,0 +1,1707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SCEI 2025 Accomplishment Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+:root {
+  --teal-950: #042f2e;
+  --teal-900: #134e4a;
+  --teal-800: #115e59;
+  --teal-700: #0f766e;
+  --teal-600: #0d9488;
+  --teal-500: #14b8a6;
+  --teal-400: #2dd4bf;
+  --teal-300: #5eead4;
+  --teal-200: #99f6e4;
+  --teal-100: #ccfbf1;
+  --teal-50:  #f0fdfa;
+  --slate-900: #0f172a;
+  --slate-800: #1e293b;
+  --slate-700: #334155;
+  --slate-600: #475569;
+  --slate-500: #64748b;
+  --slate-400: #94a3b8;
+  --slate-300: #cbd5e1;
+  --slate-200: #e2e8f0;
+  --slate-100: #f1f5f9;
+  --slate-50:  #f8fafc;
+  --white: #ffffff;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1);
+  --radius: 16px;
+  --radius-sm: 10px;
+  --radius-xs: 6px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--slate-50);
+  color: var(--slate-700);
+  line-height: 1.6;
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,h2,h3,h4,h5,h6 { font-family: 'DM Sans', 'Inter', sans-serif; color: var(--slate-900); }
+
+/* SCROLL REVEAL */
+.reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1); }
+.reveal.visible { opacity: 1; transform: translateY(0); }
+.reveal:nth-child(2) { transition-delay: 0.08s; }
+.reveal:nth-child(3) { transition-delay: 0.16s; }
+.reveal:nth-child(4) { transition-delay: 0.24s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1; transform: none; transition: none; }
+  .kpi-num { transition: none !important; }
+  html { scroll-behavior: auto; }
+}
+
+/* HEADER */
+.site-header {
+  background: linear-gradient(135deg, var(--teal-950) 0%, var(--teal-800) 40%, var(--teal-700) 100%);
+  color: var(--white);
+  padding: 56px 48px 48px;
+  position: relative;
+  overflow: hidden;
+}
+.site-header::before {
+  content: '';
+  position: absolute; top: -120px; right: -80px;
+  width: 400px; height: 400px;
+  background: radial-gradient(circle, rgba(45,212,191,0.15) 0%, transparent 70%);
+  border-radius: 50%;
+}
+.site-header::after {
+  content: '';
+  position: absolute; bottom: -100px; left: 15%;
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, rgba(20,184,166,0.1) 0%, transparent 70%);
+  border-radius: 50%;
+}
+.header-inner { max-width: 1200px; margin: 0 auto; position: relative; z-index: 1; }
+.header-org { margin-bottom: 20px; }
+.org-name {
+  font-family: 'DM Sans', sans-serif;
+  font-size: clamp(14px, 2vw, 18px);
+  font-weight: 700;
+  letter-spacing: 3.5px;
+  text-transform: uppercase;
+  opacity: 0.92;
+}
+.org-sub {
+  font-size: 11px;
+  letter-spacing: 2.5px;
+  opacity: 0.5;
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+.header-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(45,212,191,0.12);
+  border: 1px solid rgba(45,212,191,0.3);
+  color: var(--teal-300);
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  padding: 6px 16px; border-radius: 100px;
+  margin-bottom: 16px;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.header-title {
+  font-family: 'DM Sans', sans-serif;
+  font-size: clamp(28px, 4vw, 44px);
+  font-weight: 800;
+  letter-spacing: -1px;
+  line-height: 1.1;
+  margin-bottom: 8px;
+}
+.header-period {
+  font-size: 13px; opacity: 0.6;
+  margin-bottom: 32px;
+  font-weight: 400;
+}
+.header-stats {
+  display: flex; gap: 0; flex-wrap: wrap;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 14px;
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  overflow: hidden;
+}
+.header-stat {
+  text-align: center;
+  padding: 20px 28px;
+  flex: 1; min-width: 140px;
+  border-right: 1px solid rgba(255,255,255,0.08);
+}
+.header-stat:last-child { border-right: none; }
+.header-stat .num {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 28px; font-weight: 800;
+  color: var(--teal-300);
+  line-height: 1;
+}
+.header-stat .lbl {
+  font-size: 10px; opacity: 0.55;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-top: 6px; font-weight: 500;
+}
+
+/* SIDEBAR */
+.sidebar {
+  position: fixed; top: 0; left: 0;
+  width: 240px; height: 100vh;
+  background: var(--teal-950);
+  color: var(--white);
+  z-index: 200;
+  display: flex; flex-direction: column;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.15) transparent;
+}
+.sidebar::-webkit-scrollbar { width: 4px; }
+.sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+.sidebar-brand {
+  padding: 28px 22px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.sidebar-brand .brand-name {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px; font-weight: 700;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  opacity: 0.95; line-height: 1.3;
+}
+.sidebar-brand .brand-sub {
+  font-size: 10px; letter-spacing: 1.5px;
+  text-transform: uppercase; opacity: 0.4;
+  margin-top: 4px;
+}
+.sidebar-nav { padding: 12px 10px; flex: 1; }
+.nav-btn {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%;
+  background: none; border: none;
+  padding: 10px 14px;
+  font-size: 12.5px; font-weight: 500;
+  font-family: 'Inter', sans-serif;
+  color: rgba(255,255,255,0.5);
+  cursor: pointer; white-space: nowrap;
+  border-radius: 8px;
+  transition: all 0.2s;
+  text-align: left;
+  margin-bottom: 2px;
+}
+.nav-btn i { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.6; }
+.nav-btn:hover { color: rgba(255,255,255,0.85); background: rgba(255,255,255,0.08); }
+.nav-btn:focus-visible { outline: 2px solid var(--teal-400); outline-offset: -2px; border-radius: 8px; }
+.nav-btn.active {
+  color: var(--white);
+  background: rgba(255,255,255,0.1);
+  font-weight: 600;
+}
+.nav-btn.active i { opacity: 1; }
+.sidebar-footer {
+  padding: 16px 22px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  font-size: 10px; opacity: 0.35;
+  letter-spacing: 0.5px;
+}
+
+/* MOBILE SIDEBAR TOGGLE */
+.sidebar-toggle {
+  display: none;
+  position: fixed; top: 16px; left: 16px;
+  z-index: 300;
+  width: 44px; height: 44px;
+  background: var(--teal-900);
+  color: var(--white);
+  border: none; border-radius: 12px;
+  cursor: pointer;
+  align-items: center; justify-content: center;
+  box-shadow: var(--shadow-lg);
+}
+.sidebar-toggle i { width: 20px; height: 20px; }
+.sidebar-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 150;
+}
+
+/* LAYOUT */
+.page-wrapper { margin-left: 240px; }
+
+/* MAIN */
+.main { max-width: 1200px; margin: 0 auto; padding: 40px 32px 80px; }
+
+/* SECTIONS */
+.section { display: none; }
+.section.active { display: block; }
+
+/* CARDS */
+.card {
+  background: var(--white);
+  border-radius: var(--radius);
+  border: 1px solid var(--slate-200);
+  padding: 28px;
+  transition: box-shadow 0.3s, transform 0.3s;
+}
+.card:hover { box-shadow: var(--shadow-lg); }
+
+.glass-card {
+  background: rgba(255,255,255,0.7);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.5);
+  border-radius: var(--radius);
+  padding: 28px;
+  box-shadow: var(--shadow);
+}
+
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 20px; margin-top: 20px; }
+.grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-top: 20px; }
+.grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 20px; }
+
+/* KPI CARDS */
+.kpi-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  border: 1px solid var(--slate-200);
+  padding: 24px 20px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.3s cubic-bezier(0.16,1,0.3,1), box-shadow 0.3s;
+  cursor: default;
+}
+.kpi-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--teal-500), var(--teal-400));
+}
+.kpi-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-xl); }
+.kpi-card .kpi-icon {
+  width: 44px; height: 44px;
+  background: var(--teal-50);
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 12px;
+  color: var(--teal-600);
+}
+.kpi-card .kpi-icon i { width: 22px; height: 22px; }
+.kpi-card .kpi-num {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 32px; font-weight: 800;
+  color: var(--teal-700);
+  line-height: 1; margin-bottom: 6px;
+}
+.kpi-card .kpi-lbl {
+  font-size: 11px; color: var(--slate-500);
+  text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600;
+}
+.kpi-card.accent::before { background: linear-gradient(90deg, var(--teal-400), var(--teal-300)); }
+
+/* SECTION HEADING */
+.section-heading {
+  display: flex; align-items: center; gap: 14px;
+  margin-bottom: 24px;
+}
+.section-heading h2 {
+  font-size: 22px; font-weight: 700;
+  letter-spacing: -0.3px;
+}
+.section-heading .tag {
+  background: var(--teal-50); color: var(--teal-700);
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 1.2px; text-transform: uppercase;
+  padding: 5px 12px; border-radius: 100px;
+  border: 1px solid var(--teal-200);
+}
+
+/* CEO CARD */
+.ceo-card {
+  background: linear-gradient(135deg, var(--teal-50) 0%, var(--white) 100%);
+  border-left: 4px solid var(--teal-500);
+}
+.ceo-quote {
+  font-size: 15px; color: var(--slate-700);
+  font-style: italic; line-height: 1.85; margin-bottom: 20px;
+}
+.ceo-sig { display: flex; align-items: center; gap: 16px; }
+.ceo-avatar {
+  width: 52px; height: 52px;
+  background: linear-gradient(135deg, var(--teal-700), var(--teal-500));
+  border-radius: 14px; display: flex; align-items: center; justify-content: center;
+  color: var(--white); font-weight: 700; font-size: 16px;
+  font-family: 'DM Sans', sans-serif;
+}
+.ceo-sig-name { font-weight: 700; color: var(--teal-900); font-size: 14px; }
+.ceo-sig-title { font-size: 12px; color: var(--slate-500); }
+
+.esg-pills { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+.esg-pill {
+  padding: 6px 14px; border-radius: 100px;
+  font-size: 12px; font-weight: 600;
+  display: flex; align-items: center; gap: 6px;
+}
+.esg-pill.people { background: var(--teal-50); color: var(--teal-700); border: 1px solid var(--teal-200); }
+.esg-pill.profit { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+.esg-pill.planet { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+
+/* MV CARDS */
+.mv-card {
+  background: linear-gradient(135deg, var(--teal-900), var(--teal-700));
+  color: var(--white); border-radius: var(--radius); padding: 32px;
+  border: none; position: relative; overflow: hidden;
+}
+.mv-card::after {
+  content: '';
+  position: absolute; top: -50px; right: -50px;
+  width: 160px; height: 160px;
+  background: radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%);
+  border-radius: 50%;
+}
+.mv-card h3 {
+  font-size: 11px; letter-spacing: 2.5px; text-transform: uppercase;
+  opacity: 0.6; margin-bottom: 12px; color: var(--white);
+  display: flex; align-items: center; gap: 8px;
+}
+.mv-card h3 i { width: 16px; height: 16px; opacity: 0.7; }
+.mv-card p { font-size: 15px; line-height: 1.75; opacity: 0.92; }
+.mv-card.bright { background: linear-gradient(135deg, var(--teal-700), var(--teal-500)); }
+
+/* CHART */
+.chart-wrap { position: relative; height: 280px; margin-top: 12px; }
+
+/* TIMELINE */
+.timeline { position: relative; padding-left: 28px; }
+.timeline::before {
+  content: ''; position: absolute; left: 8px; top: 4px; bottom: 4px;
+  width: 2px;
+  background: linear-gradient(180deg, var(--teal-400), var(--teal-200), transparent);
+  border-radius: 2px;
+}
+.tl-item { position: relative; margin-bottom: 24px; }
+.tl-item:last-child { margin-bottom: 0; }
+.tl-dot {
+  position: absolute; left: -24px; top: 5px;
+  width: 12px; height: 12px;
+  background: var(--white);
+  border: 2.5px solid var(--teal-500);
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgba(20,184,166,0.15);
+}
+.tl-date {
+  font-size: 11px; font-weight: 700; color: var(--teal-600);
+  text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 3px;
+}
+.tl-title { font-size: 14px; font-weight: 700; color: var(--slate-800); margin-bottom: 4px; }
+.tl-desc { font-size: 13px; color: var(--slate-600); line-height: 1.65; }
+
+/* BADGES */
+.badge-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.badge {
+  padding: 5px 12px; border-radius: 100px;
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 0.2px;
+}
+.badge.teal { background: var(--teal-50); color: var(--teal-700); border: 1px solid var(--teal-200); }
+.badge.dark { background: var(--teal-900); color: var(--white); }
+.badge.bright { background: var(--teal-100); color: var(--teal-800); }
+.badge.outline { background: var(--white); color: var(--teal-700); border: 1px solid var(--teal-300); }
+
+/* STAFF BRANCH */
+.staff-branch {
+  background: var(--white); border-radius: var(--radius);
+  border: 1px solid var(--slate-200); overflow: hidden;
+}
+.branch-header {
+  background: linear-gradient(90deg, var(--teal-900), var(--teal-700));
+  color: var(--white); padding: 16px 24px;
+  font-weight: 700; font-size: 14px;
+  font-family: 'DM Sans', sans-serif;
+  display: flex; align-items: center; gap: 10px;
+}
+.branch-header i { width: 18px; height: 18px; opacity: 0.8; }
+.branch-header.bright { background: linear-gradient(90deg, var(--teal-700), var(--teal-500)); }
+.branch-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1px; background: var(--slate-100);
+}
+.branch-cell { background: var(--white); padding: 16px 18px; }
+.branch-cell .bc-num {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 26px; font-weight: 800; color: var(--teal-600);
+}
+.branch-cell .bc-role { font-size: 12px; color: var(--slate-500); line-height: 1.4; }
+
+/* AWARD */
+.award-card {
+  background: var(--white);
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius); padding: 24px;
+  transition: transform 0.3s, box-shadow 0.3s;
+}
+.award-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
+.award-icon {
+  width: 48px; height: 48px;
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 14px;
+  color: #92400e;
+}
+.award-icon i { width: 24px; height: 24px; }
+.award-name { font-size: 14px; font-weight: 700; color: var(--slate-800); margin-bottom: 4px; }
+.award-who { font-size: 13px; color: var(--teal-600); font-weight: 600; margin-bottom: 8px; }
+.award-desc { font-size: 13px; color: var(--slate-600); line-height: 1.65; }
+
+/* PROGRESS */
+.progress-item { margin-bottom: 18px; }
+.progress-label {
+  display: flex; justify-content: space-between;
+  font-size: 12px; font-weight: 600; color: var(--slate-700);
+  margin-bottom: 6px;
+}
+.progress-track { height: 8px; background: var(--slate-100); border-radius: 100px; overflow: hidden; }
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--teal-600), var(--teal-400));
+  border-radius: 100px;
+  transition: width 1.4s cubic-bezier(0.16,1,0.3,1);
+}
+
+/* LEADER */
+.leader-card {
+  background: var(--white); border-radius: var(--radius);
+  border: 1px solid var(--slate-200);
+  padding: 28px;
+  transition: transform 0.3s, box-shadow 0.3s;
+}
+.leader-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-xl); }
+.leader-avatar {
+  width: 60px; height: 60px;
+  background: linear-gradient(135deg, var(--teal-800), var(--teal-500));
+  border-radius: 16px; display: flex; align-items: center; justify-content: center;
+  color: var(--white); font-size: 18px; font-weight: 700; margin-bottom: 14px;
+  font-family: 'DM Sans', sans-serif;
+}
+.leader-name { font-size: 15px; font-weight: 700; }
+.leader-creds { font-size: 12px; color: var(--teal-600); font-weight: 600; margin-bottom: 2px; }
+.leader-role { font-size: 12px; color: var(--teal-500); font-weight: 600; margin-bottom: 12px; }
+.leader-bio { font-size: 12px; color: var(--slate-600); line-height: 1.7; }
+
+/* INFO BOX */
+.info-box {
+  background: var(--teal-50); border-left: 3px solid var(--teal-400);
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+  padding: 14px 16px; margin-top: 12px;
+}
+.info-box p { font-size: 13px; color: var(--slate-700); line-height: 1.65; }
+
+/* CONTACT */
+.contact-card {
+  background: linear-gradient(135deg, var(--teal-900), var(--teal-700));
+  color: var(--white); border-radius: var(--radius); padding: 32px;
+  border: none; position: relative; overflow: hidden;
+}
+.contact-card::after {
+  content: '';
+  position: absolute; bottom: -60px; right: -60px;
+  width: 200px; height: 200px;
+  background: radial-gradient(circle, rgba(255,255,255,0.06) 0%, transparent 70%);
+  border-radius: 50%;
+}
+.contact-card.bright { background: linear-gradient(135deg, var(--teal-700), var(--teal-500)); }
+.contact-card h3 {
+  font-size: 18px; font-weight: 700; margin-bottom: 6px;
+  color: var(--white); display: flex; align-items: center; gap: 10px;
+}
+.contact-card h3 i { width: 20px; height: 20px; }
+.contact-card p { opacity: 0.7; font-size: 13px; margin-bottom: 18px; }
+.contact-detail {
+  display: flex; align-items: flex-start; gap: 10px;
+  margin-bottom: 10px; font-size: 13px;
+}
+.contact-detail .icon { flex-shrink: 0; margin-top: 2px; opacity: 0.7; }
+.contact-detail .icon i { width: 16px; height: 16px; }
+
+/* CLOSING QUOTE */
+.closing-quote {
+  background: linear-gradient(135deg, var(--teal-900), var(--teal-700));
+  color: var(--white); border-radius: var(--radius); padding: 48px;
+  text-align: center; margin-top: 28px;
+  position: relative; overflow: hidden;
+}
+.closing-quote::before {
+  content: '';
+  position: absolute; top: -80px; left: 50%;
+  width: 400px; height: 400px;
+  background: radial-gradient(circle, rgba(45,212,191,0.1) 0%, transparent 70%);
+  border-radius: 50%;
+  transform: translateX(-50%);
+}
+.closing-quote blockquote {
+  font-family: 'DM Sans', sans-serif;
+  font-size: clamp(16px, 2.2vw, 22px);
+  font-style: italic; line-height: 1.7;
+  margin-bottom: 16px; opacity: 0.95;
+  position: relative;
+}
+.closing-quote cite { font-size: 13px; opacity: 0.55; font-style: normal; font-weight: 500; }
+.closing-tagline {
+  margin-top: 24px; font-size: 12px; opacity: 0.7;
+  font-weight: 700; letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+/* VERDANA BANNER */
+.verdana-banner {
+  background: linear-gradient(135deg, var(--teal-900), var(--teal-600));
+  color: var(--white); border-radius: var(--radius); padding: 32px;
+  display: flex; align-items: center; gap: 24px;
+  position: relative; overflow: hidden;
+}
+.verdana-banner::after {
+  content: '';
+  position: absolute; top: -60px; right: -40px;
+  width: 200px; height: 200px;
+  background: radial-gradient(circle, rgba(255,255,255,0.06) 0%, transparent 70%);
+  border-radius: 50%;
+}
+.verdana-icon {
+  width: 64px; height: 64px; flex-shrink: 0;
+  background: rgba(255,255,255,0.1);
+  border-radius: 16px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--teal-300);
+}
+.verdana-icon i { width: 28px; height: 28px; }
+.verdana-banner h3 { font-size: 20px; font-weight: 700; margin-bottom: 6px; color: var(--white); }
+.verdana-banner p { font-size: 13px; opacity: 0.8; line-height: 1.7; }
+
+/* SATISFACTION RING */
+.satisfaction-ring { width: 130px; height: 130px; margin: 0 auto 12px; position: relative; }
+.sat-score {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 26px; font-weight: 800; color: var(--teal-700); line-height: 1.1;
+}
+.sat-score span { font-size: 11px; font-weight: 600; color: var(--slate-400); }
+
+/* PURPOSE CARD */
+.purpose-card { border-top: 3px solid var(--teal-500); }
+.purpose-card h4 { color: var(--teal-700); font-size: 14px; margin-bottom: 8px; }
+.purpose-icon {
+  width: 44px; height: 44px;
+  background: var(--teal-50);
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 14px;
+  color: var(--teal-600);
+}
+.purpose-icon i { width: 22px; height: 22px; }
+
+/* DEPT TAG */
+.dept-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--teal-50); color: var(--teal-700);
+  font-size: 10px; font-weight: 700; letter-spacing: 1px;
+  padding: 4px 12px; border-radius: 100px; margin-bottom: 10px;
+  text-transform: uppercase; border: 1px solid var(--teal-200);
+}
+.dept-tag.gh { background: var(--teal-600); color: var(--white); border-color: var(--teal-600); }
+
+.sub-h {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px; font-weight: 700; color: var(--teal-700);
+  margin-bottom: 12px;
+  display: flex; align-items: center; gap: 8px;
+}
+.sub-h i { width: 18px; height: 18px; }
+
+.teal-hr { border: none; border-top: 1px solid var(--slate-200); margin: 18px 0; }
+.section-intro { font-size: 14px; color: var(--slate-600); margin-bottom: 24px; line-height: 1.75; }
+
+/* RESPONSIVE */
+@media (max-width: 900px) {
+  .sidebar { transform: translateX(-100%); transition: transform 0.3s cubic-bezier(0.16,1,0.3,1); }
+  .sidebar.open { transform: translateX(0); }
+  .sidebar-toggle { display: flex; }
+  .sidebar-overlay.open { display: block; }
+  .page-wrapper { margin-left: 0; }
+  .site-header { padding: 32px 20px 28px; padding-top: 72px; }
+  .header-stats { flex-direction: column; }
+  .header-stat { border-right: none; border-bottom: 1px solid rgba(255,255,255,0.08); padding: 14px 20px; }
+  .header-stat:last-child { border-bottom: none; }
+  .main { padding: 24px 16px 48px; }
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .card { padding: 20px; }
+  .closing-quote { padding: 28px 20px; }
+  .verdana-banner { flex-direction: column; text-align: center; }
+}
+@media (max-width: 480px) {
+  .grid-4 { grid-template-columns: repeat(2, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar { transition: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-brand">
+    <div class="brand-name">Sapphire Clinics<br>East, Inc.</div>
+    <div class="brand-sub">2025 Annual Report</div>
+  </div>
+  <nav class="sidebar-nav">
+    <button class="nav-btn active" onclick="showSection('overview',this)"><i data-lucide="layout-dashboard"></i> Overview</button>
+    <button class="nav-btn" onclick="showSection('whoweare',this)"><i data-lucide="info"></i> Who We Are</button>
+    <button class="nav-btn" onclick="showSection('people',this)"><i data-lucide="users"></i> Our People</button>
+    <button class="nav-btn" onclick="showSection('accreditations',this)"><i data-lucide="badge-check"></i> Accreditations</button>
+    <button class="nav-btn" onclick="showSection('staff',this)"><i data-lucide="heart-handshake"></i> Staff Programs</button>
+    <button class="nav-btn" onclick="showSection('greenhills',this)"><i data-lucide="building"></i> Greenhills Branch</button>
+    <button class="nav-btn" onclick="showSection('verdana',this)"><i data-lucide="leaf"></i> Verdana</button>
+    <button class="nav-btn" onclick="showSection('marketing',this)"><i data-lucide="megaphone"></i> Visibility</button>
+    <button class="nav-btn" onclick="showSection('governance',this)"><i data-lucide="shield"></i> Governance</button>
+    <button class="nav-btn" onclick="showSection('leadership',this)"><i data-lucide="crown"></i> Leadership</button>
+    <button class="nav-btn" onclick="showSection('boarddecisions',this)"><i data-lucide="gavel"></i> Board Decisions</button>
+    <button class="nav-btn" onclick="showSection('contact',this)"><i data-lucide="phone"></i> Contact</button>
+  </nav>
+  <div class="sidebar-footer">SCEI &middot; Sandbox Clinic</div>
+</aside>
+
+<!-- MOBILE TOGGLE -->
+<button class="sidebar-toggle" id="sidebarToggle" aria-label="Open navigation">
+  <i data-lucide="menu"></i>
+</button>
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+<div class="page-wrapper">
+
+<!-- HEADER -->
+<header class="site-header">
+  <div class="header-inner">
+    <div class="header-org">
+      <div class="org-name">Sapphire Clinics East, Inc.</div>
+      <div class="org-sub">SCEI &middot; Sandbox Clinic</div>
+    </div>
+    <div class="header-badge">2025 Annual Report &middot; January &ndash; December</div>
+    <h1 class="header-title">Accomplishment Report</h1>
+    <p class="header-period">Reporting Period: January to December 2025</p>
+    <div class="header-stats">
+      <div class="header-stat"><div class="num" data-count="400">0</div><div class="lbl">Families Served</div></div>
+      <div class="header-stat"><div class="num" data-count="14800">0</div><div class="lbl">Sessions Conducted</div></div>
+      <div class="header-stat"><div class="num" data-count="4.58" data-decimal="true">0</div><div class="lbl">Satisfaction Score</div></div>
+      <div class="header-stat"><div class="num" data-count="15">0</div><div class="lbl">HMO Partners</div></div>
+      <div class="header-stat"><div class="num" data-count="2">0</div><div class="lbl">Branches</div></div>
+    </div>
+  </div>
+</header>
+
+<div class="main">
+
+<!-- OVERVIEW -->
+<section id="overview" class="section active">
+
+  <div class="section-heading reveal"><h2>Year at a Glance</h2><span class="tag">2025 Overview</span></div>
+
+  <div class="grid-4 reveal">
+    <div class="kpi-card"><div class="kpi-icon"><i data-lucide="users"></i></div><div class="kpi-num">400+</div><div class="kpi-lbl">Patients &amp; Families</div></div>
+    <div class="kpi-card accent"><div class="kpi-icon"><i data-lucide="calendar-check"></i></div><div class="kpi-num">14,800+</div><div class="kpi-lbl">Sessions Conducted</div></div>
+    <div class="kpi-card"><div class="kpi-icon"><i data-lucide="star"></i></div><div class="kpi-num">4.58</div><div class="kpi-lbl">Satisfaction Score /5</div></div>
+    <div class="kpi-card accent"><div class="kpi-icon"><i data-lucide="handshake"></i></div><div class="kpi-num">15</div><div class="kpi-lbl">HMO Partners</div></div>
+    <div class="kpi-card"><div class="kpi-icon"><i data-lucide="building-2"></i></div><div class="kpi-num">2</div><div class="kpi-lbl">Active Branches</div></div>
+    <div class="kpi-card accent"><div class="kpi-icon"><i data-lucide="graduation-cap"></i></div><div class="kpi-num">3</div><div class="kpi-lbl">CHED Accreditations</div></div>
+    <div class="kpi-card"><div class="kpi-icon"><i data-lucide="heart-handshake"></i></div><div class="kpi-num">5+</div><div class="kpi-lbl">Community MOUs</div></div>
+    <div class="kpi-card accent"><div class="kpi-icon"><i data-lucide="leaf"></i></div><div class="kpi-num">Q4</div><div class="kpi-lbl">Verdana Launch</div></div>
+  </div>
+
+  <!-- CEO Message -->
+  <div style="margin-top:32px" class="reveal">
+    <div class="section-heading"><h2>Opening Message</h2></div>
+    <div class="card ceo-card">
+      <p class="ceo-quote">"The year 2025 marked a pivotal phase for Sapphire Clinics East, Inc. as the organization transitioned from its formative years into a period of consolidation, measured expansion, and long-term value creation&hellip; with a clear focus on sustainability anchored on the ESG framework of <strong>People, Profit and Planet</strong>."</p>
+      <div class="esg-pills">
+        <span class="esg-pill people"><i data-lucide="users" style="width:14px;height:14px"></i> People</span>
+        <span class="esg-pill profit"><i data-lucide="trending-up" style="width:14px;height:14px"></i> Profit</span>
+        <span class="esg-pill planet"><i data-lucide="leaf" style="width:14px;height:14px"></i> Planet</span>
+      </div>
+      <hr class="teal-hr">
+      <div class="ceo-sig">
+        <div class="ceo-avatar">HJ</div>
+        <div>
+          <div class="ceo-sig-name">Hannah P. Jara, MBA, MPH, PTRP</div>
+          <div class="ceo-sig-title">CEO &amp; President &middot; Sapphire Clinics East Inc.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ESG Pillars -->
+  <div class="grid-3 reveal" style="margin-top:24px">
+    <div class="card" style="border-top:3px solid var(--teal-600)">
+      <div class="purpose-icon"><i data-lucide="users"></i></div>
+      <h3 class="sub-h">People</h3>
+      <p style="font-size:13px;line-height:1.75">Aligned clinical objectives with national healthcare priorities. Welcomed PhilHealth expansion of pediatric rehabilitation coverage. Supported indigent patients through Guarantee Letters and forged community MOUs.</p>
+    </div>
+    <div class="card" style="border-top:3px solid var(--teal-500)">
+      <div class="purpose-icon" style="background:#fef3c7;color:#92400e"><i data-lucide="trending-up"></i></div>
+      <h3 class="sub-h" style="color:var(--teal-600)">Profit</h3>
+      <p style="font-size:13px;line-height:1.75">Strategic expansion with Sandbox Clinic Greenhills. Strengthened operational discipline, standardized processes, and built financial systems to support scale &mdash; while building long-term shareholder value.</p>
+    </div>
+    <div class="card" style="border-top:3px solid var(--teal-400)">
+      <div class="purpose-icon" style="background:#ecfdf5;color:#065f46"><i data-lucide="leaf"></i></div>
+      <h3 class="sub-h" style="color:var(--teal-500)">Planet</h3>
+      <p style="font-size:13px;line-height:1.75">Responsible stewardship of resources, efficient use of therapy materials, responsible procurement, and thoughtful scaling of services &mdash; ensuring long-term viability without compromising quality.</p>
+    </div>
+  </div>
+
+  <!-- Timeline -->
+  <div style="margin-top:36px" class="reveal">
+    <div class="section-heading"><h2>Key Milestones Timeline</h2></div>
+    <div class="card">
+      <div class="timeline">
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">Jan 31, 2025</div><div class="tl-title">Therapy Cubicle Renovation</div><div class="tl-desc">Sandbox Clinic East renovated therapy cubicles to improve therapist workspace, privacy, and workflow.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">Feb 15, 2025</div><div class="tl-title">Annual Shareholder Meeting</div><div class="tl-desc">Management presented 2024 results and outlined strategic priorities for 2025.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">Mar 9, 2025</div><div class="tl-title">CORS Certifications</div><div class="tl-desc">Two Physical Therapists sponsored for CUER, CLER, and CSR specialist certifications.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">Mar 15, 2025</div><div class="tl-title">Special Board Meeting</div><div class="tl-desc">Evaluation of Greenhills expansion and Verdana Rehab Solutions development.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">Mar 17&ndash;19, 2025</div><div class="tl-title">Strategic Alignment Workshop</div><div class="tl-desc">Multi-branch workshop to harmonize processes and reinforce shared organizational direction.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">Mar 27, 2025</div><div class="tl-title">Greenhills Pre-Construction Meeting</div><div class="tl-desc">Formal coordination with Ortigas Land for GH Tower Offices construction.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">Apr 1, 2025</div><div class="tl-title">Verdana Inventory Inspection</div><div class="tl-desc">Sample inventory inspection as part of Verdana's product development and QA process.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">Jul 1, 2025</div><div class="tl-title">Greenhills Unit Turnover</div><div class="tl-desc">Successful unit handover at GH Tower Offices marking transition to active construction.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">Aug 3, 2025</div><div class="tl-title">Biannual Board Meeting + Site Visit</div><div class="tl-desc">Board assessed Greenhills construction progress directly on-site.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">Aug 7, 2025</div><div class="tl-title">PhilGEPS Registration</div><div class="tl-desc">SCEI completed Philippine Government Electronic Procurement System registration.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">Aug 29, 2025</div><div class="tl-title">Verdana IPO Registration</div><div class="tl-desc">IPO registration for Verdana brand and product protection.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">Oct 18, 2025</div><div class="tl-title">Sandbox Greenhills Grand Opening</div><div class="tl-desc">New branch officially opened at Level 8, GH Tower Offices, Greenhills, San Juan City.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">Nov 18&ndash;19, 2025</div><div class="tl-title">CHED Accreditation Visits</div><div class="tl-desc">PT (Nov 18) and OT (Nov 19) CHED accreditation evaluations successfully completed.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">Dec 2, 2025</div><div class="tl-title">PRC Psychological Clinic Permit</div><div class="tl-desc">Sandbox Clinic East officially received Permit to Operate as a Psychological Clinic.</div></div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- WHO WE ARE -->
+<section id="whoweare" class="section">
+
+  <div class="section-heading reveal"><h2>Who We Are</h2><span class="tag">Identity</span></div>
+
+  <div class="grid-2 reveal">
+    <div class="mv-card">
+      <h3><i data-lucide="target"></i> Mission</h3>
+      <p>To become the <strong>leading rehabilitation institution in the Philippines</strong>, delivering accessible, excellent, and evidence-based rehabilitation services.</p>
+    </div>
+    <div class="mv-card bright">
+      <h3><i data-lucide="eye"></i> Vision</h3>
+      <p>To <strong>optimize the quality of life</strong> through accessible, excellent, and evidence-based rehabilitation services for every patient we serve.</p>
+    </div>
+  </div>
+
+  <div style="margin-top:28px" class="reveal">
+    <div class="section-heading"><h2>Our Purpose</h2></div>
+    <div class="grid-3">
+      <div class="card purpose-card">
+        <div class="purpose-icon"><i data-lucide="heart-pulse"></i></div>
+        <h4 class="sub-h">Clinical Excellence</h4>
+        <p style="font-size:13px;line-height:1.75">Provide the highest quality of Physical Therapy, Occupational Therapy, Speech Therapy, and all allied health services to our patients.</p>
+      </div>
+      <div class="card purpose-card">
+        <div class="purpose-icon"><i data-lucide="graduation-cap"></i></div>
+        <h4 class="sub-h">Professional Development</h4>
+        <p style="font-size:13px;line-height:1.75">Center for professional excellence, growth, and inter-professional collaboration &mdash; a leading training institution for aspiring therapists.</p>
+      </div>
+      <div class="card purpose-card">
+        <div class="purpose-icon"><i data-lucide="globe"></i></div>
+        <h4 class="sub-h">Community Impact</h4>
+        <p style="font-size:13px;line-height:1.75">Help the community by providing accessible, high-quality healthcare &mdash; creating happy, productive, and healthy people and shaping the future generation.</p>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:28px" class="reveal">
+    <div class="section-heading"><h2>Sustainability Initiatives</h2></div>
+    <div class="grid-2">
+      <div class="card">
+        <h4 class="sub-h"><i data-lucide="accessibility"></i> Access to Care for Indigent Clients</h4>
+        <p style="font-size:13px;line-height:1.75">SCEI supports indigent and underserved patients through Guarantee Letters issued by government agencies, allowing eligible patients to receive rehabilitation services free of charge at the point of care.</p>
+      </div>
+      <div class="card">
+        <h4 class="sub-h"><i data-lucide="handshake"></i> Government &amp; Community Partnerships</h4>
+        <p style="font-size:13px;line-height:1.75">Formal MOUs with LGUs including Cainta LGU, Siena College Taytay, BOMBA Pilipinas, and Abba's Orchard to strengthen community-based care and early intervention services.</p>
+        <div class="badge-row">
+          <span class="badge teal">Cainta LGU</span>
+          <span class="badge teal">Siena College Taytay</span>
+          <span class="badge teal">BOMBA Pilipinas</span>
+          <span class="badge teal">Abba's Orchard</span>
+        </div>
+      </div>
+      <div class="card">
+        <h4 class="sub-h"><i data-lucide="shield-check"></i> Data Privacy &amp; Security</h4>
+        <p style="font-size:13px;line-height:1.75">Formally registered with the National Privacy Commission (NPC). Standardized 24/7 CCTV coverage and formalized patient consent forms for ethical surveillance. Full compliance with the Data Privacy Act of 2012.</p>
+      </div>
+      <div class="card">
+        <h4 class="sub-h"><i data-lucide="book-open"></i> Internship &amp; Training Programs</h4>
+        <p style="font-size:13px;line-height:1.75">Accommodated PT and SLP interns from UST. Undergoing CHED accreditation with completed site visits by PT and OT regulatory representatives.</p>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- PEOPLE -->
+<section id="people" class="section">
+
+  <div class="section-heading reveal"><h2>Sandbox Is the People</h2><span class="tag">Our Team</span></div>
+
+  <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:20px" class="reveal">
+    <div class="staff-branch">
+      <div class="branch-header"><i data-lucide="building-2"></i> Sandbox Clinic East</div>
+      <div class="branch-grid">
+        <div class="branch-cell"><div class="bc-num">3</div><div class="bc-role">Developmental Pediatricians</div></div>
+        <div class="branch-cell"><div class="bc-num">12</div><div class="bc-role">Psychiatrists &amp; Psychologists</div></div>
+        <div class="branch-cell"><div class="bc-num">3</div><div class="bc-role">Rehabilitation Medicine Doctors</div></div>
+        <div class="branch-cell"><div class="bc-num">4</div><div class="bc-role">Board-Certified Physical Therapists</div></div>
+        <div class="branch-cell"><div class="bc-num">19</div><div class="bc-role">Board-Certified Occupational Therapists</div></div>
+        <div class="branch-cell"><div class="bc-num">5</div><div class="bc-role">Board-Certified Speech Language Pathologists</div></div>
+        <div class="branch-cell"><div class="bc-num">4</div><div class="bc-role">Board-Certified SPED Teachers</div></div>
+        <div class="branch-cell"><div class="bc-num">3</div><div class="bc-role">Administrative Staff</div></div>
+      </div>
+    </div>
+    <div class="staff-branch">
+      <div class="branch-header bright"><i data-lucide="sparkles"></i> Sandbox Clinic Greenhills</div>
+      <div class="branch-grid">
+        <div class="branch-cell"><div class="bc-num">3</div><div class="bc-role">Developmental Pediatricians</div></div>
+        <div class="branch-cell"><div class="bc-num">11</div><div class="bc-role">Psychiatrists &amp; Psychologists</div></div>
+        <div class="branch-cell"><div class="bc-num">1</div><div class="bc-role">Board-Certified Physical Therapist</div></div>
+        <div class="branch-cell"><div class="bc-num">3</div><div class="bc-role">Board-Certified Occupational Therapists</div></div>
+        <div class="branch-cell"><div class="bc-num">3</div><div class="bc-role">Board-Certified Speech Language Pathologists</div></div>
+        <div class="branch-cell"><div class="bc-num">2</div><div class="bc-role">Board-Certified SPED Teachers</div></div>
+        <div class="branch-cell"><div class="bc-num">5</div><div class="bc-role">Administrative Staff</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2 reveal" style="margin-top:24px">
+    <div class="card">
+      <h3 class="sub-h"><i data-lucide="pie-chart"></i> Staff by Specialty &mdash; Clinic East</h3>
+      <div class="chart-wrap"><canvas id="eastChart"></canvas></div>
+    </div>
+    <div class="card">
+      <h3 class="sub-h"><i data-lucide="pie-chart"></i> Staff by Specialty &mdash; Greenhills</h3>
+      <div class="chart-wrap"><canvas id="ghChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="grid-3 reveal" style="margin-top:24px">
+    <div class="card" style="text-align:center">
+      <div class="satisfaction-ring">
+        <canvas id="satChart" width="130" height="130"></canvas>
+        <div class="sat-score">4.58<span>/5</span></div>
+      </div>
+      <div style="font-size:11px;color:var(--slate-500);font-weight:700;text-transform:uppercase;letter-spacing:1px">Avg Satisfaction Score</div>
+      <div style="font-size:12px;color:var(--slate-600);margin-top:4px">Across all departments</div>
+    </div>
+    <div class="kpi-card" style="padding:28px">
+      <div class="kpi-icon"><i data-lucide="users"></i></div>
+      <div class="kpi-num">400+</div>
+      <div class="kpi-lbl">Patients &amp; Families Served</div>
+    </div>
+    <div class="kpi-card accent" style="padding:28px">
+      <div class="kpi-icon"><i data-lucide="calendar-check"></i></div>
+      <div class="kpi-num">14,800+</div>
+      <div class="kpi-lbl">Sessions Across Branches</div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ACCREDITATIONS -->
+<section id="accreditations" class="section">
+
+  <div class="section-heading reveal"><h2>Accreditations</h2><span class="tag">2025</span></div>
+
+  <div class="card reveal" style="margin-bottom:20px">
+    <h3 class="sub-h"><i data-lucide="hospital"></i> HMO Accreditation Growth</h3>
+    <p style="font-size:13px;color:var(--slate-600);margin-bottom:20px;line-height:1.75">In 2025, Sandbox Clinic East added Intellicare, Avega, and iCare &mdash; bringing the total to <strong>15 accredited HMOs</strong>. This broadened patient access, strengthened institutional payor partnerships, and enhanced care affordability.</p>
+    <div class="progress-item">
+      <div class="progress-label"><span>Total HMO Partners</span><span style="color:var(--teal-600)">15</span></div>
+      <div class="progress-track"><div class="progress-fill" style="width:100%"></div></div>
+    </div>
+    <div class="progress-item">
+      <div class="progress-label"><span>New Partners Added in 2025</span><span style="color:var(--teal-600)">3 of 15</span></div>
+      <div class="progress-track"><div class="progress-fill" style="width:20%"></div></div>
+    </div>
+    <div class="badge-row">
+      <span class="badge dark">Intellicare &bull; New</span>
+      <span class="badge dark">Avega &bull; New</span>
+      <span class="badge dark">iCare &bull; New</span>
+      <span class="badge outline">+ 12 Existing Partners</span>
+    </div>
+  </div>
+
+  <div class="grid-2 reveal">
+    <div class="card">
+      <h3 class="sub-h"><i data-lucide="graduation-cap"></i> CHED Accreditation Visits</h3>
+      <div class="timeline">
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">November 18, 2025</div><div class="tl-title">Physical Therapy Program</div><div class="tl-desc">Visit by Cheryl R. Peralta, DPH, PTRP and Dr. Annalyn P. Diaz. Clinic readiness for student training confirmed.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">November 19, 2025</div><div class="tl-title">Occupational Therapy Program</div><div class="tl-desc">Inspection by PRC NCR, CHED-NCR, and Professional Regulatory Board representatives. Academic and clinical standards validated.</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3 class="sub-h"><i data-lucide="landmark"></i> PRC Permits &amp; Registrations</h3>
+      <div class="timeline">
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">December 2, 2025</div><div class="tl-title">Permit to Operate &mdash; Psychological Clinic</div><div class="tl-desc">Issued by PRC &ndash; NCR Office. Enables formal delivery of licensed psychological services within the multidisciplinary model.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">August 7, 2025</div><div class="tl-title">PhilGEPS Registration</div><div class="tl-desc">Enables SCEI to participate in government bidding, expanding capacity to engage with public healthcare institutions.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:28px" class="reveal">
+    <div class="section-heading"><h2>Awards &amp; Recognition</h2></div>
+    <div class="grid-3">
+      <div class="award-card">
+        <div class="award-icon"><i data-lucide="award"></i></div>
+        <div class="award-name">Charlotte Floro Award of Merit</div>
+        <div class="award-who">Dr. Ivan Gomez</div>
+        <div class="award-desc">Recognized for outstanding contributions to academic excellence, professional education, and research in rehabilitation and allied health.</div>
+      </div>
+      <div class="award-card">
+        <div class="award-icon"><i data-lucide="medal"></i></div>
+        <div class="award-name">PARM Oral Diplomate Examination</div>
+        <div class="award-who">Dr. Francis Laxamana &amp; Dr. Glenn Desquitado</div>
+        <div class="award-desc">Both successfully passed Phase 2 of the Philippine Academy of Rehabilitation Medicine examination, affirming advanced clinical competence.</div>
+      </div>
+      <div class="award-card">
+        <div class="award-icon"><i data-lucide="trophy"></i></div>
+        <div class="award-name">Katuwang sa Paglilingkod Award</div>
+        <div class="award-who">Sandbox Clinic (Institutional)</div>
+        <div class="award-desc">Awarded by the Philippine Association of Speech Pathologists (PASP) on July 13, 2025, recognizing meaningful partnership and advocacy.</div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- STAFF PROGRAMS -->
+<section id="staff" class="section">
+
+  <div class="section-heading reveal"><h2>Staff Growth, Engagement &amp; Appreciation</h2><span class="tag">2025</span></div>
+
+  <div class="grid-2 reveal">
+    <div class="card">
+      <h3 class="sub-h"><i data-lucide="wrench"></i> Workplace Improvements</h3>
+      <div class="timeline">
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">January 31, 2025</div><div class="tl-title">Therapy Cubicle Renovation</div><div class="tl-desc">Renovated cubicles to improve therapist efficiency, privacy, and workflow &mdash; directly supporting quality of patient care.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">February 14, 2025</div><div class="tl-title">Valentine's Day Appreciation</div><div class="tl-desc">Flowers distributed to all therapists, reinforcing a culture of gratitude and employee recognition.</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3 class="sub-h"><i data-lucide="book-open"></i> Professional Training Sponsored</h3>
+      <div class="timeline">
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">March 9, 2025</div><div class="tl-title">CORS Certifications (CUER, CLER, CSR)</div><div class="tl-desc">Sponsored 2 Physical Therapists as Clinical Orthopaedic Rehabilitation Specialists.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">March 16, 2025</div><div class="tl-title">Aquatherapy Training</div><div class="tl-desc">Free two-day training for all interested therapists, fully clinic-sponsored. Expanded competencies in aquatic rehabilitation.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">May 23&ndash;24, 2025</div><div class="tl-title">Social Thinking Conference</div><div class="tl-desc">Secured major discounted rates for Sandbox-affiliated staff. Internationally recognized training on social cognition and behavior support.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">September 21, 2025</div><div class="tl-title">"Handwriting Matters" In-House Session</div><div class="tl-desc">Facilitated by Ivan Neil Gomez, PhD. Evidence-based techniques for pediatric and school-based therapy.</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3 class="sub-h"><i data-lucide="party-popper"></i> Team Engagement &amp; Celebrations</h3>
+      <div class="timeline">
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">March 23&ndash;24, 2025</div><div class="tl-title">Team Building at Casa La Vie</div><div class="tl-desc">Free overnight activity in Binangonan, Rizal. Focused on teamwork, communication, and staff morale &mdash; fully sponsored.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">December 7, 2025</div><div class="tl-title">Christmas Party &mdash; Sandbox East</div><div class="tl-desc">Annual celebration with mobile bar, games, and raffle of household appliances for staff.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">December 2025</div><div class="tl-title">Christmas Lunch &mdash; Sandbox Greenhills</div><div class="tl-desc">Team gathering to celebrate the holiday season and reinforce belonging and recognition.</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3 class="sub-h"><i data-lucide="heart"></i> Patient-Centered Care Activities</h3>
+      <div class="timeline">
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">October 10, 2025</div><div class="tl-title">Mental Health &amp; Resilience Talk</div><div class="tl-desc">World Mental Health Day talk by Dr. Lim. Promoted emotional resilience and psychological awareness for patients and families.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">October 2025</div><div class="tl-title">Halloween Costume Week</div><div class="tl-desc">Fun engagement activity with awards for Best in Costume. Reduced patient anxiety and made therapy enjoyable for pediatric patients.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">November 10, 2025</div><div class="tl-title">Free Ice Cream Day</div><div class="tl-desc">Complimentary ice cream for all patients and staff to brighten the clinic experience and foster community.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Department Highlights -->
+  <div style="margin-top:28px" class="reveal">
+    <div class="section-heading"><h2>Department Highlights</h2></div>
+    <div class="grid-3">
+      <div class="card">
+        <span class="dept-tag">PT &mdash; East</span>
+        <div class="purpose-icon"><i data-lucide="bone"></i></div>
+        <p style="font-size:13px;line-height:1.75">93% patient retention rate. CHED accreditation met with minimal revisions. PT Manual at 80% completion. KPI system implemented. Strong UST partnership &mdash; hosted visitors from Thailand in early 2026.</p>
+        <div class="badge-row"><span class="badge teal">93% Retention</span><span class="badge bright">CHED Compliant</span></div>
+      </div>
+      <div class="card">
+        <span class="dept-tag">OT &mdash; East</span>
+        <div class="purpose-icon"><i data-lucide="puzzle"></i></div>
+        <p style="font-size:13px;line-height:1.75">Group therapy programs for self-regulation, sensory processing, and adaptive life skills. UST pre-internship partnership. Mentorship Program: 3 completed engagements. CHED accreditation achieved.</p>
+        <div class="badge-row"><span class="badge teal">Group Therapy</span><span class="badge bright">CHED Accredited</span></div>
+      </div>
+      <div class="card">
+        <span class="dept-tag">SLP &mdash; East</span>
+        <div class="purpose-icon"><i data-lucide="mic"></i></div>
+        <p style="font-size:13px;line-height:1.75">Updated documentation templates. Comprehensive SLP asset inventory. Listed in PASP directory. Launched internship program with first cohort of UST 4th-year SLP interns.</p>
+        <div class="badge-row"><span class="badge teal">PASP Listed</span><span class="badge bright">Interns Launched</span></div>
+      </div>
+      <div class="card">
+        <span class="dept-tag">Psychology &mdash; East</span>
+        <div class="purpose-icon"><i data-lucide="brain"></i></div>
+        <p style="font-size:13px;line-height:1.75">Refined client procedures. New standardized forms (Psychological Assessment Informed Consent). Streamlined assessment workflow. Three feedback sessions held. Increased client recommendations.</p>
+        <div class="badge-row"><span class="badge teal">Streamlined Ops</span><span class="badge bright">Improved Compliance</span></div>
+      </div>
+      <div class="card">
+        <span class="dept-tag gh">OT &mdash; Greenhills</span>
+        <div class="purpose-icon"><i data-lucide="puzzle"></i></div>
+        <p style="font-size:13px;line-height:1.75">Therapeutic materials selection and inventory system established. Mentorship manual completed. 6 OT consultants engaged. Admin orientation programs completed. Performance monitoring planned for 2026.</p>
+        <div class="badge-row"><span class="badge dark">6 OT Consultants</span><span class="badge outline">New Branch</span></div>
+      </div>
+      <div class="card">
+        <span class="dept-tag gh">SLP &mdash; Greenhills</span>
+        <div class="purpose-icon"><i data-lucide="mic"></i></div>
+        <p style="font-size:13px;line-height:1.75">Grew from 1 to 5 SLPs by year-end. Mentorship program in development. PASP accreditation underway. Member participated in 2025 12th Asia Pacific International Conference on Speech, Language, and Hearing.</p>
+        <div class="badge-row"><span class="badge dark">1&rarr;5 SLPs</span><span class="badge outline">Asia-Pacific Conference</span></div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- GREENHILLS -->
+<section id="greenhills" class="section">
+
+  <div class="section-heading reveal"><h2>Sandbox Clinic Greenhills</h2><span class="tag">New Branch</span></div>
+
+  <div class="card reveal" style="background:linear-gradient(135deg,var(--teal-50),var(--white));border-top:3px solid var(--teal-500);margin-bottom:24px">
+    <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+      <div class="purpose-icon" style="width:56px;height:56px"><i data-lucide="construction" style="width:28px;height:28px"></i></div>
+      <div>
+        <h3 style="font-size:18px;font-weight:700;color:var(--slate-800)">New Branch &mdash; Level 8, GH Tower Offices</h3>
+        <p style="font-size:13px;color:var(--slate-500);margin-top:4px">Greenhills, San Juan City &middot; Grand Opening: October 18, 2025</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card reveal" style="margin-bottom:24px">
+    <h3 class="sub-h"><i data-lucide="bar-chart-3"></i> Construction Progress Tracker</h3>
+    <div class="progress-item"><div class="progress-label"><span>March 27 &mdash; Pre-construction Meeting</span><span>Start</span></div><div class="progress-track"><div class="progress-fill" style="width:2%"></div></div></div>
+    <div class="progress-item"><div class="progress-label"><span>July 1 &mdash; Unit Turnover by Ortigas Land</span><span>Active Build</span></div><div class="progress-track"><div class="progress-fill" style="width:15%"></div></div></div>
+    <div class="progress-item"><div class="progress-label"><span>August 23 &mdash; Interior Works Progress</span><span>60%</span></div><div class="progress-track"><div class="progress-fill" style="width:60%"></div></div></div>
+    <div class="progress-item"><div class="progress-label"><span>September 22 &mdash; Final Phase</span><span>86%</span></div><div class="progress-track"><div class="progress-fill" style="width:86%"></div></div></div>
+    <div class="progress-item"><div class="progress-label"><span style="color:var(--teal-600);font-weight:700">October 18 &mdash; Grand Opening</span><span style="color:var(--teal-600)">100%</span></div><div class="progress-track"><div class="progress-fill" style="width:100%;background:linear-gradient(90deg,var(--teal-800),var(--teal-400))"></div></div></div>
+  </div>
+
+  <div class="grid-2 reveal">
+    <div class="card">
+      <h3 class="sub-h"><i data-lucide="calendar"></i> Construction Timeline</h3>
+      <div class="timeline">
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">March 27, 2025</div><div class="tl-title">Pre-Construction Meeting</div><div class="tl-desc">Coordination with Ortigas Land. Design parameters and building guidelines for GH Tower Offices aligned.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">July 1, 2025</div><div class="tl-title">Unit Turnover</div><div class="tl-desc">Successful handover of GH Tower unit. Transition from planning to active construction begins.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">August 23, 2025</div><div class="tl-title">60% Completion</div><div class="tl-desc">Structural, mechanical, and spatial elements in place. Interior works progressing steadily.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">September 22, 2025</div><div class="tl-title">86% Completion</div><div class="tl-desc">Readiness for final finishes, equipment installation, and operational preparations.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">October 18, 2025</div><div class="tl-title">Grand Opening</div><div class="tl-desc">Purpose-built multidisciplinary healthcare facility officially opened to the public.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">October 27, 2025</div><div class="tl-title">Fully Operational</div><div class="tl-desc">Branch fully operational as a functioning healthcare facility welcoming patients.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">November 2025</div><div class="tl-title">Patient Sessions Commence</div><div class="tl-desc">Initial intake focused on service quality, workflow stability, and staff readiness.</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3 class="sub-h"><i data-lucide="map-pin"></i> Branch Information</h3>
+      <div class="info-box"><p><strong>Address:</strong> Level 8, GH Tower Offices, Greenhills, San Juan City</p></div>
+      <div class="info-box" style="margin-top:8px"><p><strong>Phone:</strong> 0917 770 1686 &nbsp;|&nbsp; (02) 8529 1590</p></div>
+      <div class="info-box" style="margin-top:8px"><p><strong>Email:</strong> greenhills.sandboxclinic@gmail.com</p></div>
+      <div class="info-box" style="margin-top:8px"><p><strong>Social:</strong> @sandboxclinicgh</p></div>
+      <div style="margin-top:20px">
+        <h4 class="sub-h" style="font-size:13px"><i data-lucide="users" style="width:16px;height:16px"></i> Staff Composition at Opening</h4>
+        <div class="badge-row">
+          <span class="badge teal">3 Dev Peds</span><span class="badge teal">11 Psych</span><span class="badge teal">1 PT</span>
+          <span class="badge teal">3 OTs</span><span class="badge teal">3 SLPs</span><span class="badge teal">2 SPED</span><span class="badge teal">5 Admin</span>
+        </div>
+      </div>
+      <div style="margin-top:20px">
+        <h4 class="sub-h" style="font-size:13px"><i data-lucide="calendar-clock" style="width:16px;height:16px"></i> 2026 Outlook</h4>
+        <p style="font-size:13px;color:var(--slate-600);line-height:1.75">Patient volume expected to steadily increase by Q1 2026. Structured performance monitoring, continuing education, wellness initiatives, and targeted marketing planned.</p>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- VERDANA -->
+<section id="verdana" class="section">
+
+  <div class="section-heading reveal"><h2>Verdana Rehab Solutions</h2><span class="tag">Innovation Arm</span></div>
+
+  <div class="verdana-banner reveal">
+    <div class="verdana-icon"><i data-lucide="leaf"></i></div>
+    <div style="position:relative;z-index:1">
+      <h3>Verdana Rehab Solutions</h3>
+      <p>Formally conceptualized in Q1 2025 &mdash; the products and innovation arm of the Sandbox ecosystem. Therapist-led, research-informed, and clinically validated rehabilitation products for the Philippine market.</p>
+      <div class="badge-row" style="margin-top:12px">
+        <span class="badge" style="background:rgba(255,255,255,0.12);color:white;border:1px solid rgba(255,255,255,0.25)">Launched Q4 2025</span>
+        <span class="badge" style="background:rgba(255,255,255,0.12);color:white;border:1px solid rgba(255,255,255,0.25)">IPO Registered</span>
+        <span class="badge" style="background:rgba(255,255,255,0.12);color:white;border:1px solid rgba(255,255,255,0.25)">PhilGEPS Registered</span>
+        <span class="badge" style="background:rgba(255,255,255,0.12);color:white;border:1px solid rgba(255,255,255,0.25)">Website Live</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2 reveal" style="margin-top:24px">
+    <div class="card">
+      <h3 class="sub-h"><i data-lucide="calendar"></i> Verdana Development Timeline</h3>
+      <div class="timeline">
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">Q1 2025</div><div class="tl-title">Conceptualized &amp; Established</div><div class="tl-desc">Formal founding and initial framework development as the products arm of the Sandbox ecosystem.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">April 1, 2025</div><div class="tl-title">Sample Inventory Inspection</div><div class="tl-desc">Formal inspection ensuring design, functionality, and safety standards meet clinical and professional requirements.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">Q2&ndash;Q3 2025</div><div class="tl-title">Backend Systems &amp; Planning</div><div class="tl-desc">Product development workflows, QA measures, regulatory registrations, and operational systems structured. In-clinic product testing with actual patients conducted.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">August 7, 2025</div><div class="tl-title">PhilGEPS Registration</div><div class="tl-desc">Enables participation in government bidding for rehabilitation products and services.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">August 29, 2025</div><div class="tl-title">IPO Registration</div><div class="tl-desc">Intellectual Property Office registration protecting the Verdana brand identity and products.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">Q4 2025</div><div class="tl-title">Official Commercial Launch</div><div class="tl-desc">Website launched at www.verdanarehab.com. Participated in Meralco Liwanag Park Bazaar &mdash; first public retail presence.</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3 class="sub-h"><i data-lucide="flask-conical"></i> Product Development Approach</h3>
+      <div class="info-box"><p><strong>Clinician-Led:</strong> Consulted with multiple board-certified healthcare professionals across rehabilitation disciplines to curate product offerings.</p></div>
+      <div class="info-box" style="margin-top:8px"><p><strong>Evidence-Based:</strong> Each product aligned with evidence-based practice, clinical relevance, and therapeutic effectiveness.</p></div>
+      <div class="info-box" style="margin-top:8px"><p><strong>Patient-Tested:</strong> In-clinic product testing with actual patients &mdash; therapists assessed usability, safety, and therapeutic value in real-world settings.</p></div>
+      <h3 class="sub-h" style="margin-top:20px"><i data-lucide="globe"></i> Digital Presence</h3>
+      <div class="info-box"><p><strong>Website:</strong> www.verdanarehab.com &mdash; centralized hub for product information, brand messaging, and professional engagement nationwide.</p></div>
+      <h3 class="sub-h" style="margin-top:16px"><i data-lucide="store"></i> First Market Appearance</h3>
+      <div class="info-box"><p><strong>December 2025:</strong> Participated in the Meralco Liwanag Park Bazaar &mdash; Verdana's first public retail presence, establishing brand visibility with consumers.</p></div>
+    </div>
+  </div>
+
+</section>
+
+<!-- MARKETING -->
+<section id="marketing" class="section">
+
+  <div class="section-heading reveal"><h2>Marketing &amp; Brand Visibility</h2><span class="tag">2025 Reach</span></div>
+
+  <div class="grid-2 reveal">
+    <div class="card">
+      <h3 class="sub-h"><i data-lucide="trophy"></i> Professional Sponsorships</h3>
+      <div class="timeline">
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">September 4, 2025</div><div class="tl-title">PSDBP Silver Anniversary Convention</div><div class="tl-desc">Major Sponsor of Philippine Society for Developmental and Behavioral Pediatrics "Woven in Silver" biennial convention.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">November 15, 2025</div><div class="tl-title">Theracon 2025</div><div class="tl-desc">Sponsor at Henry Sy Hall, UP Manila &mdash; theme: "Advancing Transformative Practices Towards Sustainable and Inclusive Development."</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">November 23&ndash;24, 2025</div><div class="tl-title">PAOT 60th Founding Anniversary</div><div class="tl-desc">Official sponsor of the Philippine Academy of Occupational Therapists anniversary at Bahay ng Alumni, UP Diliman.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">July 13, 2025</div><div class="tl-title">PASP Katuwang sa Paglilingkod Award</div><div class="tl-desc">Honored by Philippine Association of Speech Pathologists for meaningful partnership and advocacy in the profession.</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3 class="sub-h"><i data-lucide="monitor"></i> Media &amp; Public Outreach</h3>
+      <div class="timeline">
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">February 18, 2025</div><div class="tl-title">Net25 Kada Umaga TV Guesting</div><div class="tl-desc">Psychologist Mr. Vincent Tajor shared evidence-based mental health perspectives on opposite-sex friendship boundaries to a national audience.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">2025</div><div class="tl-title">Rappler Feature Article</div><div class="tl-desc">"Playground centers for your kids: Why they matter and where to find them" &mdash; highlighted Sandbox Clinic's therapeutic play approach.</div></div>
+      </div>
+      <h3 class="sub-h" style="margin-top:20px"><i data-lucide="school"></i> Academic &amp; Institutional Engagement</h3>
+      <div class="timeline">
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">February 6, 2025</div><div class="tl-title">UST CoR Thanksgiving Mass &amp; Dinner</div><div class="tl-desc">Participated in UST College of Rehabilitation Sciences celebration of shared milestones and professional collaboration.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">April 10, 2025</div><div class="tl-title">UST Book Launch &mdash; OT in the Philippines</div><div class="tl-desc">Reinforced support for knowledge dissemination, professional development, and evidence-based practice.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:24px" class="reveal">
+    <div class="section-heading"><h2>Organizations Engaged in 2025</h2></div>
+    <div class="badge-row">
+      <span class="badge dark">PSDBP</span><span class="badge dark">PASP</span><span class="badge dark">PAOT</span>
+      <span class="badge dark">Theracon 2025</span><span class="badge teal">UST CoR</span>
+      <span class="badge teal">Net25 (National TV)</span><span class="badge teal">Rappler</span>
+      <span class="badge outline">Siena College Taytay</span><span class="badge outline">Cainta LGU</span>
+      <span class="badge outline">BOMBA Pilipinas</span><span class="badge outline">Abba's Orchard</span>
+      <span class="badge bright">PhilHealth</span>
+    </div>
+  </div>
+
+</section>
+
+<!-- GOVERNANCE -->
+<section id="governance" class="section">
+
+  <div class="section-heading reveal"><h2>Governance &amp; Systems</h2><span class="tag">2025</span></div>
+
+  <div class="grid-2 reveal">
+    <div class="card">
+      <h3 class="sub-h"><i data-lucide="clipboard-list"></i> Board &amp; Shareholder Meetings</h3>
+      <div class="timeline">
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">February 15, 2025</div><div class="tl-title">Annual Shareholder Meeting</div><div class="tl-desc">2024 operational and financial results presented. Strategic priorities for 2025 outlined with full transparency.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">March 15, 2025</div><div class="tl-title">Special Board Meeting</div><div class="tl-desc">Convened at JC Palabay Enterprises. Focused evaluation of Greenhills expansion and Verdana development. Resource allocation reviewed.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">August 3, 2025</div><div class="tl-title">Biannual Board Meeting + Site Visit</div><div class="tl-desc">Board directly assessed Greenhills construction progress on-site, reinforcing effective oversight and accountability.</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3 class="sub-h"><i data-lucide="settings"></i> Internal Systems Strengthening</h3>
+      <div class="timeline">
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">June 22, 2025</div><div class="tl-title">Clinical Internship Alignment</div><div class="tl-desc">Aligned internship programs across Sandbox BGC, Sandbox Prime, and Sandbox East &mdash; uniform training standards and supervision structures established.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">June 30, 2025</div><div class="tl-title">Dashlabs On-Site Feedback Session</div><div class="tl-desc">Session with Mr. Marco Ramirez reviewed workflows, system integrations, and operational touchpoints. Improved data handling and reporting.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">August 25, 2025</div><div class="tl-title">Accounting Data Reconciliation</div><div class="tl-desc">Comprehensive cleaning and reconciliation of accounting data, ensuring accuracy and alignment with financial reporting standards.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:28px" class="reveal">
+    <div class="section-heading"><h2>Cross-Branch Integration</h2></div>
+    <div class="card">
+      <p class="section-intro" style="margin-bottom:16px">SCEI undertook focused initiatives in 2025 to strengthen alignment across its expanding network, ensuring consistency in strategy, operations, and clinical standards.</p>
+      <div class="grid-3" style="margin-top:0">
+        <div style="padding:20px;background:var(--teal-50);border-radius:var(--radius-sm);text-align:center;border:1px solid var(--teal-200)">
+          <div style="margin-bottom:8px;color:var(--teal-600);display:flex;justify-content:center"><i data-lucide="building-2"></i></div>
+          <div style="font-size:13px;font-weight:700;color:var(--teal-700)">Sandbox East</div>
+          <div style="font-size:11px;color:var(--slate-500)">Flagship Branch</div>
+        </div>
+        <div style="padding:20px;background:var(--teal-50);border-radius:var(--radius-sm);text-align:center;border:1px solid var(--teal-200)">
+          <div style="margin-bottom:8px;color:var(--teal-600);display:flex;justify-content:center"><i data-lucide="building-2"></i></div>
+          <div style="font-size:13px;font-weight:700;color:var(--teal-700)">Sandbox BGC</div>
+          <div style="font-size:11px;color:var(--slate-500)">Partner Branch</div>
+        </div>
+        <div style="padding:20px;background:var(--teal-50);border-radius:var(--radius-sm);text-align:center;border:1px solid var(--teal-200)">
+          <div style="margin-bottom:8px;color:var(--teal-600);display:flex;justify-content:center"><i data-lucide="building-2"></i></div>
+          <div style="font-size:13px;font-weight:700;color:var(--teal-700)">Sandbox Prime</div>
+          <div style="font-size:11px;color:var(--slate-500)">Partner Branch</div>
+        </div>
+      </div>
+      <div class="info-box" style="margin-top:16px"><p><strong>March 17&ndash;19:</strong> Strategic Alignment Workshop &mdash; cross-branch collaboration to harmonize processes and clarify strategic priorities.</p></div>
+      <div class="info-box" style="margin-top:8px"><p><strong>June 22:</strong> Clinical Internship Alignment &mdash; standardized training, supervision structures, and learning objectives across all Sandbox branches.</p></div>
+    </div>
+  </div>
+
+  <div style="margin-top:28px" class="reveal">
+    <div class="section-heading"><h2>2026 Strategic Priorities</h2></div>
+    <div class="grid-2">
+      <div class="card" style="border-left:4px solid var(--teal-600)">
+        <h4 class="sub-h"><i data-lucide="target"></i> Stability &amp; Optimization</h4>
+        <p style="font-size:13px;line-height:1.75">Primary focus on stability and optimization of existing branches &mdash; ensuring consistent standards of care, strong governance, and workforce sustainability across the entire Sandbox Clinic network.</p>
+      </div>
+      <div class="card" style="border-left:4px solid var(--teal-500)">
+        <h4 class="sub-h"><i data-lucide="leaf"></i> Verdana Expansion</h4>
+        <p style="font-size:13px;line-height:1.75">Continue expanding Verdana as a platform for therapist-led product development, research-informed solutions, and scalable innovations that complement clinical services and extend SCEI's impact beyond the clinic.</p>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- LEADERSHIP -->
+<section id="leadership" class="section">
+
+  <div class="section-heading reveal"><h2>Board of Directors</h2><span class="tag">Leadership</span></div>
+  <p class="section-intro reveal">Sapphire Clinics East Inc. is guided by a five-member Board of Directors voted in from its shareholder base &mdash; professionals with backgrounds in healthcare, finance, legal practice, and business leadership.</p>
+
+  <div class="grid-3 reveal">
+    <div class="leader-card">
+      <div class="leader-avatar">HJ</div>
+      <div class="leader-name">Hannah Jara</div>
+      <div class="leader-creds">MBA, MPH, PTRP</div>
+      <div class="leader-role">CEO &amp; President</div>
+      <div class="leader-bio">Advanced degrees from UP Manila and ESADE Business School. OIC-Deputy Team Leader for World Bank DOH Philippines COVID-19 Emergency Response Project. Senior Manager at Catalyst Review Solutions. Science Research Specialist, NIH UPM. Board topnotcher, February 2017.</div>
+    </div>
+    <div class="leader-card">
+      <div class="leader-avatar" style="background:linear-gradient(135deg,var(--teal-600),var(--teal-400))">AM</div>
+      <div class="leader-name">Adrian Paolo Mina</div>
+      <div class="leader-creds">JD, PTRP</div>
+      <div class="leader-role">Corporate Secretary &amp; Treasurer</div>
+      <div class="leader-bio">Graduate of De La Salle University Ta&ntilde;ada-Diokno College of Law and UST. VP for Corporate Strategy at Sandbox BGC. CEO of Sandbox Clark and Sandbox Prime. Co-founder of Catalyst Review Solutions. Board Director &amp; Treasurer, Milord Realty Corporation.</div>
+    </div>
+    <div class="leader-card">
+      <div class="leader-avatar" style="background:linear-gradient(135deg,#0d4a6b,#1a8aaa)">JM</div>
+      <div class="leader-name">June Nicca Medina</div>
+      <div class="leader-creds">PTRP</div>
+      <div class="leader-role">Board Member</div>
+      <div class="leader-bio">President and CEO of Sandbox BGC. Treasurer of Sandbox Clark. MBA candidate at De La Salle University. BS Physical Therapy from DLSHSI. Co-founder and CEO of Catalyst Review Solutions. Former PT at St. Luke's Medical Center.</div>
+    </div>
+    <div class="leader-card">
+      <div class="leader-avatar" style="background:linear-gradient(135deg,#0f2a5a,#2a5aaa)">AG</div>
+      <div class="leader-name">Ariel Carlo Gonzales</div>
+      <div class="leader-creds">MBA</div>
+      <div class="leader-role">Board Member</div>
+      <div class="leader-bio">MBA from Asian Institute of Management; Ateneo de Manila with exchange at Universit&eacute; Catholique de Lyon. CFO and Head of Treasury for LICA Group of Companies. Project Development Officer for DOTC. Brings deep financial acumen and project management expertise.</div>
+    </div>
+    <div class="leader-card">
+      <div class="leader-avatar" style="background:linear-gradient(135deg,#0a3a2a,#1a7a5a)">AL</div>
+      <div class="leader-name">Anna Kaye Lim</div>
+      <div class="leader-creds">MBA</div>
+      <div class="leader-role">Board Member</div>
+      <div class="leader-bio">MBA from Asian Institute of Management; BS Management Engineering from Ateneo de Manila. Formerly AVP for Finance and Sales at H.T. Mining Resources. Senior finance roles at Fareast Property Development. Co-founder of Fish and Things.</div>
+    </div>
+  </div>
+
+  <!-- Operational Team -->
+  <div style="margin-top:36px" class="reveal">
+    <div class="section-heading"><h2>Operational Leadership</h2></div>
+    <div class="grid-2">
+      <div class="card">
+        <div class="sub-h">Jan De Asis</div>
+        <div style="font-size:12px;color:var(--slate-500);margin-bottom:12px">Clinic Manager &middot; Sandbox Clinic East</div>
+        <p style="font-size:13px;color:var(--slate-600);line-height:1.75;font-style:italic">"Being involved from the beginning gave me valuable opportunities and challenges, particularly in establishing clear and efficient processes. One of my key contributions was helping develop and improve accounting and administrative procedures to ensure more organized and effective clinic operations."</p>
+      </div>
+      <div class="card">
+        <div class="sub-h" style="font-size:12px;margin-bottom:8px">Department Heads &mdash; Sandbox Clinic East</div>
+        <div style="font-size:13px;color:var(--slate-600);line-height:2.2">
+          <span style="color:var(--teal-700);font-weight:700">Janine Patricia Sadiz, PTRP</span> &mdash; Head, Physical Therapy<br>
+          <span style="color:var(--teal-700);font-weight:700">Agatha Escobar, OTRP, MMHoA</span> &mdash; Head, Occupational Therapy<br>
+          <span style="color:var(--teal-700);font-weight:700">Francesca Pauline Santos, RSLP</span> &mdash; Head, Speech-Language Pathology<br>
+          <span style="color:var(--teal-700);font-weight:700">Frednick Luis Asistio, MSc, RPsy, RPm</span> &mdash; Head, Psychology
+        </div>
+        <hr class="teal-hr">
+        <div class="sub-h" style="font-size:12px;margin-bottom:8px">Department Heads &mdash; Sandbox Clinic Greenhills</div>
+        <div style="font-size:13px;color:var(--slate-600);line-height:2.2">
+          <span style="color:var(--teal-600);font-weight:700">Eunice De La Fuente, OTRP, MMHoA</span> &mdash; Head, Occupational Therapy<br>
+          <span style="color:var(--teal-600);font-weight:700">Sheena Therese Daya, RSLP</span> &mdash; Head, Speech-Language Pathology
+        </div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- BOARD DECISIONS -->
+<section id="boarddecisions" class="section">
+
+  <div class="section-heading reveal"><h2>Board Decisions</h2><span class="tag">Governance</span></div>
+  <p class="section-intro reveal">Key decisions and resolutions made by the Board of Directors and management of Sapphire Clinics East, Inc., spanning the 2025 reporting year and extending into Q1 2026 updates.</p>
+
+  <div class="section-heading reveal" style="margin-top:8px"><h2>2025 Board Decisions</h2></div>
+
+  <div class="grid-2 reveal">
+    <div class="card">
+      <h3 class="sub-h"><i data-lucide="clipboard-list"></i> Strategic Planning &amp; Expansion</h3>
+      <div class="timeline">
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">March 15, 2025 &mdash; Special Board Meeting</div><div class="tl-title">Approval of Greenhills Branch Expansion</div><div class="tl-desc">Board approved the development and buildout of Sandbox Clinic Greenhills at Level 8, GH Tower Offices, Greenhills, San Juan City. Resource allocation and project timelines formally endorsed.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">March 15, 2025 &mdash; Special Board Meeting</div><div class="tl-title">Approval of Verdana Rehab Solutions as Innovation Arm</div><div class="tl-desc">Board approved the formal establishment of Verdana Rehab Solutions as a distinct products and innovation arm of the Sandbox ecosystem, with a phased commercial launch target set for Q4 2025.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">March 17&ndash;19, 2025</div><div class="tl-title">Strategic Alignment Workshop</div><div class="tl-desc">Multi-branch strategic alignment conducted across Sandbox BGC, Sandbox Prime, and Sandbox East to harmonize operational processes, clarify organizational priorities, and reinforce consistent governance standards.</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3 class="sub-h"><i data-lucide="landmark"></i> Governance &amp; Regulatory Compliance</h3>
+      <div class="timeline">
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">February 15, 2025 &mdash; Annual Shareholder Meeting</div><div class="tl-title">Presentation of 2024 Results &amp; 2025 Strategic Priorities</div><div class="tl-desc">Management formally presented 2024 operational and financial results to shareholders, with transparent disclosure of performance metrics and strategic direction for 2025.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">August 3, 2025 &mdash; Biannual Board Meeting</div><div class="tl-title">Midyear Governance Review &amp; Site Inspection</div><div class="tl-desc">Board conducted a midyear review of all strategic initiatives and performed an on-site inspection of Sandbox Greenhills construction to directly validate project progress and alignment with approved plans.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">August 7, 2025</div><div class="tl-title">PhilGEPS Registration Approved</div><div class="tl-desc">SCEI completed registration with the Philippine Government Electronic Procurement System, enabling participation in government bidding for rehabilitation products and services.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">June 22, 2025</div><div class="tl-title">Cross-Branch Clinical Internship Standardization</div><div class="tl-desc">Resolution to align internship programs, supervision structures, and clinical training standards uniformly across all Sandbox branches.</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3 class="sub-h"><i data-lucide="briefcase"></i> Financial &amp; Operational Decisions</h3>
+      <div class="timeline">
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">August 25, 2025</div><div class="tl-title">Accounting Data Reconciliation &amp; Internal Controls</div><div class="tl-desc">Comprehensive cleaning and reconciliation of corporate accounting data approved and completed, strengthening internal controls, financial transparency, and readiness for audit and reporting.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">2025</div><div class="tl-title">HMO Accreditation Expansion</div><div class="tl-desc">Board endorsed the expansion of HMO accreditations, adding Intellicare, Avega, and iCare &mdash; bringing the total to 15 accredited health maintenance organizations to broaden patient access.</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3 class="sub-h"><i data-lucide="hospital"></i> Clinical &amp; Regulatory Milestones Endorsed</h3>
+      <div class="timeline">
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">November 18&ndash;19, 2025</div><div class="tl-title">CHED Accreditation &mdash; PT &amp; OT Programs</div><div class="tl-desc">Management supported CHED accreditation visits for both Physical Therapy and Occupational Therapy programs, advancing the clinic's standing as an accredited training institution for allied health education.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">December 2, 2025</div><div class="tl-title">PRC Permit to Operate &mdash; Psychological Clinic</div><div class="tl-desc">Formal receipt of the PRC Permit to Operate as a Psychological Clinic for Sandbox Clinic East, enabling the formal delivery of licensed psychological services within the multidisciplinary care model.</div></div>
+        <div class="tl-item"><div class="tl-dot"></div><div class="tl-date">2025</div><div class="tl-title">Child Safe Clinic Policy Upgrades</div><div class="tl-desc">Standardized 24/7 CCTV coverage across all corporate branches and formalized patient and guardian consent forms for ethical surveillance &mdash; approved as policy across the Sandbox network.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Q1 2026 divider -->
+  <div style="margin-top:40px; display:flex; align-items:center; gap:16px;" class="reveal">
+    <div style="flex:1; height:2px; background:linear-gradient(90deg, var(--teal-500), var(--teal-200));"></div>
+    <div style="background:var(--teal-900); color:var(--white); font-size:11px; font-weight:700; letter-spacing:2px; text-transform:uppercase; padding:8px 24px; border-radius:100px; white-space:nowrap;">Q1 2026 Updates</div>
+    <div style="flex:1; height:2px; background:linear-gradient(270deg, var(--teal-500), var(--teal-200));"></div>
+  </div>
+
+  <div class="section-heading reveal" style="margin-top:24px"><h2>Q1 2026 &mdash; Board Updates &amp; Resolutions</h2></div>
+
+  <div class="grid-3 reveal" style="margin-bottom:4px">
+    <div class="card" style="border-left:4px solid var(--teal-900)">
+      <div class="purpose-icon" style="background:#fef3c7;color:#92400e"><i data-lucide="credit-card"></i></div>
+      <h4 class="sub-h">Corporate Bondholder &amp; Preferred Shareholder Payouts</h4>
+      <p style="font-size:13px; line-height:1.75; color:var(--slate-600)">A timely payout schedule for corporate bondholders and preferred shareholders has been approved and is scheduled to commence in 2026, reflecting the corporation's commitment to honoring its financial obligations and building investor confidence.</p>
+      <div class="badge-row"><span class="badge dark">Financial Obligation</span><span class="badge teal">Commencing 2026</span></div>
+    </div>
+    <div class="card" style="border-left:4px solid var(--teal-700)">
+      <div class="purpose-icon"><i data-lucide="refresh-cw"></i></div>
+      <h4 class="sub-h">Buyback of 40,000 Shares</h4>
+      <p style="font-size:13px; line-height:1.75; color:var(--slate-600)">The Board approved the buyback of 40,000 shares previously held by a resigned employee, in accordance with the corporation's share redemption policies and subscription agreement terms.</p>
+      <div class="badge-row"><span class="badge dark">40,000 Shares</span><span class="badge teal">Resigned Employee</span></div>
+    </div>
+    <div class="card" style="border-left:4px solid var(--teal-600)">
+      <div class="purpose-icon"><i data-lucide="file-text"></i></div>
+      <h4 class="sub-h">Distribution of Revised Subscription Agreements &amp; Stock Certificates</h4>
+      <p style="font-size:13px; line-height:1.75; color:var(--slate-600)">Hard copies of revised subscription agreements and corresponding stock certificates are to be distributed to all relevant shareholders, ensuring updated and properly documented equity records across the corporation.</p>
+      <div class="badge-row"><span class="badge teal">Hard Copies</span><span class="badge outline">Shareholder Records</span></div>
+    </div>
+    <div class="card" style="border-left:4px solid var(--teal-500)">
+      <div class="purpose-icon" style="background:#ecfdf5;color:#065f46"><i data-lucide="trending-up"></i></div>
+      <h4 class="sub-h">Increase in Clinical Supervisor Intern Session Rate</h4>
+      <p style="font-size:13px; line-height:1.75; color:var(--slate-600)">The Board approved an increase in the Clinical Supervisor intern session rate from <strong>PHP 250.00 to PHP 400.00 per session</strong>, recognizing the added responsibility and expertise of supervising clinical professionals.</p>
+      <div class="badge-row">
+        <span class="badge" style="background:#fef2f2;color:#991b1b;border:1px solid #fecaca;">PHP 250 &rarr; PHP 400/session</span>
+        <span class="badge teal">+60% Increase</span>
+      </div>
+    </div>
+    <div class="card" style="border-left:4px solid var(--teal-500)">
+      <div class="purpose-icon"><i data-lucide="search"></i></div>
+      <h4 class="sub-h">Study: Conversion of Common Shares to Preferred Shares</h4>
+      <p style="font-size:13px; line-height:1.75; color:var(--slate-600)">The Board is actively studying the potential conversion of common shares to preferred shares, subject to cash availability. This initiative aims to optimize the corporation's equity structure and provide enhanced returns to qualifying shareholders.</p>
+      <div class="badge-row"><span class="badge dark">Under Study</span><span class="badge teal">Subject to Cash Availability</span></div>
+    </div>
+    <div class="card" style="border-left:4px solid var(--teal-600)">
+      <div class="purpose-icon"><i data-lucide="hospital"></i></div>
+      <h4 class="sub-h">Conditional Approval &mdash; Enhanced HMO Coverage for Staff</h4>
+      <p style="font-size:13px; line-height:1.75; color:var(--slate-600)">Conditional approval has been granted for enhanced HMO coverage for staff, subject to achieving <strong>at least 25% space utilization by mid-year 2026</strong>. This milestone-linked benefit reinforces management's commitment to staff welfare while aligning incentives with operational growth.</p>
+      <div class="badge-row">
+        <span class="badge" style="background:#fefce8;color:#854d0e;border:1px solid #fde68a;">Conditional Approval</span>
+        <span class="badge teal">25% Space Utilization Target</span>
+      </div>
+    </div>
+    <div class="card" style="border-left:4px solid var(--teal-900); grid-column: 1 / -1;">
+      <div class="purpose-icon"><i data-lucide="landmark"></i></div>
+      <h4 class="sub-h">Establishment of Annual Townhall Meetings</h4>
+      <p style="font-size:13px; line-height:1.75; color:var(--slate-600)">The Board resolved to institutionalize annual townhall meetings across the Sandbox Clinic network, creating a structured and transparent forum for staff at all levels to raise operational concerns, provide feedback, and engage directly with leadership. This initiative underscores the corporation's commitment to open communication, staff empowerment, and a collaborative workplace culture.</p>
+      <div class="badge-row"><span class="badge dark">Annual Frequency</span><span class="badge teal">All Branches</span><span class="badge outline">Staff Forum</span></div>
+    </div>
+  </div>
+
+  <!-- Summary snapshot -->
+  <div style="margin-top:28px" class="reveal">
+    <div class="card" style="background:linear-gradient(135deg,var(--teal-900),var(--teal-700)); color:var(--white); border:none; position:relative; overflow:hidden;">
+      <div style="position:absolute; top:-80px; right:-40px; width:250px; height:250px; background:radial-gradient(circle, rgba(45,212,191,0.1) 0%, transparent 70%); border-radius:50%;"></div>
+      <h3 style="font-size:16px; font-weight:700; margin-bottom:20px; opacity:0.9; letter-spacing:0.3px; position:relative; z-index:1;">Q1 2026 Resolutions &mdash; Quick Reference</h3>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); gap:12px; position:relative; z-index:1;">
+        <div style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:16px; backdrop-filter:blur(8px);">
+          <div style="margin-bottom:8px; color:var(--teal-300); display:flex;"><i data-lucide="credit-card" style="width:18px;height:18px"></i></div>
+          <div style="font-size:12px; font-weight:700;">Bondholder &amp; Preferred Shareholder Payouts</div>
+          <div style="font-size:11px; opacity:0.6; margin-top:4px;">Schedule commencing 2026</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:16px; backdrop-filter:blur(8px);">
+          <div style="margin-bottom:8px; color:var(--teal-300); display:flex;"><i data-lucide="refresh-cw" style="width:18px;height:18px"></i></div>
+          <div style="font-size:12px; font-weight:700;">Share Buyback</div>
+          <div style="font-size:11px; opacity:0.6; margin-top:4px;">40,000 shares from resigned employee</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:16px; backdrop-filter:blur(8px);">
+          <div style="margin-bottom:8px; color:var(--teal-300); display:flex;"><i data-lucide="file-text" style="width:18px;height:18px"></i></div>
+          <div style="font-size:12px; font-weight:700;">Revised Agreements &amp; Certificates</div>
+          <div style="font-size:11px; opacity:0.6; margin-top:4px;">Hard copy distribution to shareholders</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:16px; backdrop-filter:blur(8px);">
+          <div style="margin-bottom:8px; color:var(--teal-300); display:flex;"><i data-lucide="trending-up" style="width:18px;height:18px"></i></div>
+          <div style="font-size:12px; font-weight:700;">Supervisor Rate Increase</div>
+          <div style="font-size:11px; opacity:0.6; margin-top:4px;">PHP 250 &rarr; PHP 400 per session</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:16px; backdrop-filter:blur(8px);">
+          <div style="margin-bottom:8px; color:var(--teal-300); display:flex;"><i data-lucide="search" style="width:18px;height:18px"></i></div>
+          <div style="font-size:12px; font-weight:700;">Common &rarr; Preferred Share Conversion</div>
+          <div style="font-size:11px; opacity:0.6; margin-top:4px;">Under study, subject to cash availability</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:16px; backdrop-filter:blur(8px);">
+          <div style="margin-bottom:8px; color:var(--teal-300); display:flex;"><i data-lucide="hospital" style="width:18px;height:18px"></i></div>
+          <div style="font-size:12px; font-weight:700;">Enhanced HMO Coverage for Staff</div>
+          <div style="font-size:11px; opacity:0.6; margin-top:4px;">Conditional: 25% space utilization by mid-2026</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:16px; backdrop-filter:blur(8px);">
+          <div style="margin-bottom:8px; color:var(--teal-300); display:flex;"><i data-lucide="landmark" style="width:18px;height:18px"></i></div>
+          <div style="font-size:12px; font-weight:700;">Annual Townhall Meetings</div>
+          <div style="font-size:11px; opacity:0.6; margin-top:4px;">Institutionalized staff forum, all branches</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- CONTACT -->
+<section id="contact" class="section">
+
+  <div class="section-heading reveal"><h2>Contact &amp; Branches</h2><span class="tag">Get in Touch</span></div>
+
+  <div class="grid-2 reveal">
+    <div class="contact-card">
+      <h3><i data-lucide="building-2"></i> Sandbox Clinic East</h3>
+      <p>4th Floor Robinsons Metro East, Pasig City</p>
+      <div class="contact-detail"><span class="icon"><i data-lucide="phone" style="width:16px;height:16px"></i></span><div>0917 118 9289 &nbsp;|&nbsp; 0917 873 8885 &nbsp;|&nbsp; (02) 5310 4991</div></div>
+      <div class="contact-detail"><span class="icon"><i data-lucide="mail" style="width:16px;height:16px"></i></span><div>east.sandboxclinic@gmail.com</div></div>
+      <div class="contact-detail"><span class="icon"><i data-lucide="instagram" style="width:16px;height:16px"></i></span><div>@sandboxcliniceast</div></div>
+      <div class="contact-detail"><span class="icon"><i data-lucide="globe" style="width:16px;height:16px"></i></span><div>sandboxclinicph.com</div></div>
+    </div>
+    <div class="contact-card bright">
+      <h3><i data-lucide="sparkles"></i> Sandbox Clinic Greenhills</h3>
+      <p>Level 8, GH Tower Offices, Greenhills, San Juan City</p>
+      <div class="contact-detail"><span class="icon"><i data-lucide="phone" style="width:16px;height:16px"></i></span><div>0917 770 1686 &nbsp;|&nbsp; (02) 8529 1590</div></div>
+      <div class="contact-detail"><span class="icon"><i data-lucide="mail" style="width:16px;height:16px"></i></span><div>greenhills.sandboxclinic@gmail.com</div></div>
+      <div class="contact-detail"><span class="icon"><i data-lucide="instagram" style="width:16px;height:16px"></i></span><div>@sandboxclinicgh</div></div>
+      <div class="contact-detail"><span class="icon"><i data-lucide="globe" style="width:16px;height:16px"></i></span><div>sandboxclinicph.com</div></div>
+    </div>
+  </div>
+
+  <div class="closing-quote reveal">
+    <blockquote>"Patients don't care about your policies. They care about how you treat them."</blockquote>
+    <cite>&mdash; Barbara Balik</cite>
+    <div class="closing-tagline">Choose Health. &nbsp; Choose Function. &nbsp; Choose Ability. &nbsp; Choose Sandbox Clinic.</div>
+  </div>
+
+</section>
+
+</div><!-- /main -->
+</div><!-- /page-wrapper -->
+
+<script>
+// INIT LUCIDE ICONS
+document.addEventListener('DOMContentLoaded', () => {
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+});
+
+// SIDEBAR TOGGLE (mobile)
+const sidebar = document.getElementById('sidebar');
+const sidebarToggle = document.getElementById('sidebarToggle');
+const sidebarOverlay = document.getElementById('sidebarOverlay');
+function openSidebar() { sidebar.classList.add('open'); sidebarOverlay.classList.add('open'); }
+function closeSidebar() { sidebar.classList.remove('open'); sidebarOverlay.classList.remove('open'); }
+sidebarToggle.addEventListener('click', openSidebar);
+sidebarOverlay.addEventListener('click', closeSidebar);
+
+// NAVIGATION
+function showSection(id, btn) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  btn.classList.add('active');
+  closeSidebar();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  setTimeout(() => {
+    animateBars();
+    observeReveals();
+  }, 80);
+  if (id === 'people') renderPeopleCharts();
+}
+
+// SCROLL REVEAL via IntersectionObserver
+function observeReveals() {
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (prefersReduced) {
+    document.querySelectorAll('.reveal').forEach(el => el.classList.add('visible'));
+    return;
+  }
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
+  document.querySelectorAll('.reveal:not(.visible)').forEach(el => observer.observe(el));
+}
+document.addEventListener('DOMContentLoaded', observeReveals);
+
+// COUNT-UP ANIMATION for header stats
+function animateCountUp() {
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  document.querySelectorAll('.header-stat .num[data-count]').forEach(el => {
+    const target = parseFloat(el.dataset.count);
+    const isDecimal = el.dataset.decimal === 'true';
+    if (prefersReduced) {
+      el.textContent = isDecimal ? target.toFixed(2) : (target >= 1000 ? target.toLocaleString() + '+' : target.toString());
+      return;
+    }
+    const duration = 2000;
+    const start = performance.now();
+    function update(now) {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 4);
+      const current = eased * target;
+      if (isDecimal) {
+        el.textContent = current.toFixed(2);
+      } else if (target >= 1000) {
+        el.textContent = Math.round(current).toLocaleString() + '+';
+      } else {
+        el.textContent = Math.round(current).toString();
+      }
+      if (progress < 1) requestAnimationFrame(update);
+    }
+    requestAnimationFrame(update);
+  });
+}
+document.addEventListener('DOMContentLoaded', () => setTimeout(animateCountUp, 400));
+
+// PROGRESS BARS
+function animateBars() {
+  document.querySelectorAll('.progress-fill').forEach(bar => {
+    const w = bar.style.width;
+    bar.style.width = '0';
+    setTimeout(() => { bar.style.width = w; }, 80);
+  });
+}
+setTimeout(animateBars, 500);
+
+// CHARTS
+let chartsRendered = false;
+function renderPeopleCharts() {
+  if (chartsRendered) return;
+  chartsRendered = true;
+
+  const palette = [
+    '#042f2e','#115e59','#0f766e','#0d9488',
+    '#14b8a6','#2dd4bf','#5eead4','#99f6e4'
+  ];
+
+  Chart.defaults.font.family = "'Inter', sans-serif";
+
+  new Chart(document.getElementById('eastChart'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Dev Peds (3)','Psych (12)','Rehab Med (3)','PT (4)','OT (19)','SLP (5)','SPED (4)','Admin (3)'],
+      datasets: [{ data: [3,12,3,4,19,5,4,3], backgroundColor: palette, borderWidth: 2, borderColor: '#fff', hoverOffset: 8 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      cutout: '55%',
+      plugins: {
+        legend: { position: 'right', labels: { font: { size: 11 }, padding: 10, color: '#334155', usePointStyle: true, pointStyleWidth: 8 } }
+      }
+    }
+  });
+
+  new Chart(document.getElementById('ghChart'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Dev Peds (3)','Psych (11)','PT (1)','OT (3)','SLP (3)','SPED (2)','Admin (5)'],
+      datasets: [{ data: [3,11,1,3,3,2,5], backgroundColor: ['#0f766e','#0d9488','#042f2e','#115e59','#14b8a6','#2dd4bf','#5eead4'], borderWidth: 2, borderColor: '#fff', hoverOffset: 8 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      cutout: '55%',
+      plugins: {
+        legend: { position: 'right', labels: { font: { size: 11 }, padding: 10, color: '#334155', usePointStyle: true, pointStyleWidth: 8 } }
+      }
+    }
+  });
+
+  new Chart(document.getElementById('satChart'), {
+    type: 'doughnut',
+    data: {
+      datasets: [{ data: [4.58, 0.42], backgroundColor: ['#0f766e', '#e2e8f0'], borderWidth: 0, hoverOffset: 0 }]
+    },
+    options: {
+      responsive: false, cutout: '80%',
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      animation: { animateRotate: true, duration: 1200 }
+    }
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,54 @@
+# ──────────────────────────────────────────────────────────────
+#  Netlify configuration for Sapphire Clinics East, Inc.
+#  Domain: sapphireclinicseast.org
+# ──────────────────────────────────────────────────────────────
+
+[build]
+  command = "node scripts/build-content.js"   # generates content/*-index.json before deploy
+  publish = "."                               # deploy everything in this folder
+
+# Redirect www → non-www (canonical domain)
+[[redirects]]
+  from = "https://www.sapphireclinicseast.org/*"
+  to   = "https://sapphireclinicseast.org/:splat"
+  status = 301
+  force  = true
+
+# Cache static assets aggressively (images, CSS, JS)
+[[headers]]
+  for = "/css/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/*.png"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/*.jpg"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/*.JPG"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/*.svg"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Security headers for all pages
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options        = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy        = "strict-origin-when-cross-origin"

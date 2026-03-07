@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \":*)",
+      "Bash(curl -s http://localhost:8765/)",
+      "WebFetch(domain:stitch.withgoogle.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:mcp.harishgarg.com)",
+      "WebFetch(domain:ryandoser.com)",
+      "Bash(node --version)",
+      "Bash(npm --version)",
+      "Bash(/usr/local/bin/brew --version)",
+      "Bash(/opt/homebrew/bin/brew --version)",
+      "Bash(/opt/homebrew/bin/brew install node)",
+      "Bash(/opt/homebrew/bin/node --version)",
+      "Bash(/opt/homebrew/bin/npm --version)",
+      "Bash(/opt/homebrew/bin/npx --version)",
+      "Bash(python3 -m pip install pillow -q)",
+      "Bash(open \"/Users/hannahpellejo/Mirror/SAPPHIRE/00 SAPPHIRE EAST/02 Sandbox East/Marketing/Website/index.html\")",
+      "Bash(/opt/homebrew/bin/brew install gh)",
+      "Bash(/opt/homebrew/bin/gh --version)",
+      "Bash(git init)",
+      "Bash(git config user.email \"placeholder@scei.org\")",
+      "Bash(git config user.name \"SCEI Website\")",
+      "Bash(git add .)",
+      "Bash(git commit -m \"Initial website launch — Sapphire Clinics East, Inc.\")"
+    ]
+  }
+}

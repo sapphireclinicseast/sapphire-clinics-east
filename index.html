@@ -1,0 +1,1035 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sapphire Clinics East, Inc. | Official Website</title>
+  <meta name="description" content="Sapphire Clinics East, Inc. (SCEI) — Premier rehabilitation center operating Sandbox Clinic branches in Pasig and San Juan City. Physical Therapy, Occupational Therapy, Speech Therapy, SPED, Psychotherapy, and more.">
+  <meta name="keywords" content="Sapphire Clinics East, SCEI, Sandbox Clinic, rehabilitation, physical therapy, occupational therapy, speech therapy, SPED, Pasig, San Juan, Greenhills">
+  <meta property="og:title" content="Sapphire Clinics East, Inc. | Official Website">
+  <meta property="og:description" content="Rehab for Every Age, Every Stage — Sapphire Clinics East, Inc.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://sapphireclinicseast.org">
+  <link rel="canonical" href="https://sapphireclinicseast.org">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Icons (Lucide) -->
+  <script src="https://unpkg.com/lucide@latest" defer></script>
+
+  <!-- Markdown renderer (for CMS blog posts) -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <!-- Netlify Identity (for CMS admin login) -->
+  <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
+
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ================================================================
+  NAVIGATION
+================================================================ -->
+<nav class="navbar hero-top" id="navbar">
+  <div class="nav-inner">
+
+    <!-- Logo -->
+    <a class="nav-logo" href="#" onclick="scrollToSection('home'); return false;" aria-label="Sapphire Clinics East, Inc.">
+      <img src="COMPANY LOGO/SCEI LOGO-2 TRANSPARENT.png"
+           alt="Sapphire Clinics East, Inc."
+           class="nav-logo-img"
+           onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+      <div class="nav-logo-text" style="display:none;">
+        <span class="nav-logo-name">Sapphire Clinics East</span>
+        <span class="nav-logo-sub">Inc.</span>
+      </div>
+    </a>
+
+    <!-- Desktop Links -->
+    <div class="nav-links">
+      <button class="nav-link" onclick="scrollToSection('home')">Home</button>
+      <button class="nav-link" onclick="scrollToSection('about')">About Us</button>
+      <button class="nav-link" onclick="scrollToSection('leadership')">Leadership</button>
+
+      <!-- Branches Dropdown -->
+      <div class="nav-dropdown">
+        <button class="nav-link" onclick="scrollToSection('branches')">
+          Branches ▾
+        </button>
+        <div class="dropdown-menu">
+          <span class="dropdown-item" onclick="scrollToSection('branches'); setTimeout(()=>switchBranch('east'),400);">
+            📍 Sandbox East
+          </span>
+          <span class="dropdown-item" onclick="scrollToSection('branches'); setTimeout(()=>switchBranch('greenhills'),400);">
+            📍 Sandbox Greenhills
+          </span>
+        </div>
+      </div>
+
+      <button class="nav-link" onclick="scrollToSection('accomplishments')">Accomplishments</button>
+      <button class="nav-link" onclick="scrollToSection('careers')">Careers</button>
+      <button class="nav-link" onclick="scrollToSection('faqs')">FAQs</button>
+      <button class="nav-link" onclick="scrollToSection('news')">News</button>
+      <button class="nav-link" onclick="scrollToSection('contact')">Contact</button>
+    </div>
+
+    <!-- Book CTA -->
+    <div class="nav-cta">
+      <button class="btn btn-accent btn-sm" onclick="scrollToSection('contact')">Book a Session</button>
+    </div>
+
+    <!-- Hamburger -->
+    <button class="hamburger" id="hamburger" aria-label="Toggle navigation" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+
+  </div>
+</nav>
+
+<!-- Mobile Navigation -->
+<div class="mobile-nav" id="mobileNav" role="dialog" aria-label="Mobile navigation">
+  <button class="mobile-nav-close" onclick="closeMobileNav()" aria-label="Close navigation">&times;</button>
+  <button class="mobile-nav-link" onclick="scrollToSection('home')">Home</button>
+  <button class="mobile-nav-link" onclick="scrollToSection('about')">About Us</button>
+  <button class="mobile-nav-link" onclick="scrollToSection('leadership')">Leadership</button>
+  <button class="mobile-nav-link" onclick="scrollToSection('branches')">Branches</button>
+  <button class="mobile-nav-link" onclick="scrollToSection('accomplishments')">Accomplishments</button>
+  <button class="mobile-nav-link" onclick="scrollToSection('careers')">Careers</button>
+  <button class="mobile-nav-link" onclick="scrollToSection('faqs')">FAQs</button>
+  <button class="mobile-nav-link" onclick="scrollToSection('news')">News</button>
+  <button class="mobile-nav-link" onclick="scrollToSection('contact')">Contact</button>
+  <button class="mobile-nav-link" onclick="scrollToSection('contact')" style="color: var(--accent); margin-top: 12px;">Book a Session →</button>
+</div>
+
+
+<!-- ================================================================
+  HERO SECTION
+================================================================ -->
+<section id="home" class="hero">
+
+  <!-- Background Slides (populated by JS) -->
+  <div class="hero-slides" id="heroSlides"></div>
+  <div class="hero-overlay"></div>
+
+  <!-- Content -->
+  <div class="hero-content">
+    <div class="reveal">
+      <div class="hero-eyebrow">
+        <i data-lucide="heart-pulse" style="width:14px;height:14px"></i>
+        Sapphire Clinics East, Inc. (SCEI)
+      </div>
+    </div>
+
+    <h1 class="hero-title reveal delay-1">
+      Rehab for Every Age,<br>Every Stage.
+    </h1>
+
+    <div class="hero-actions reveal delay-3">
+      <button class="btn btn-accent btn-lg" onclick="scrollToSection('contact')">
+        <i data-lucide="calendar" style="width:18px;height:18px"></i>
+        Book a Session
+      </button>
+      <button class="btn btn-white btn-lg" onclick="scrollToSection('about')">
+        Learn More
+      </button>
+    </div>
+
+    <!-- Stats bar (populated by JS) -->
+    <div class="hero-stats reveal delay-4" id="heroStats"></div>
+  </div>
+
+  <!-- Slide Dots -->
+  <div class="hero-dots" id="heroDots" aria-label="Hero image navigation"></div>
+
+</section>
+
+
+<!-- ================================================================
+  ACCREDITED HMOs
+================================================================ -->
+<section id="hmos" class="hmo-section">
+  <div class="container">
+    <div class="section-header reveal">
+      <span class="section-tag">Accredited</span>
+      <h2 class="section-title">HMO Partners</h2>
+      <p class="section-subtitle">We accept a wide range of Health Maintenance Organizations for your convenience.</p>
+    </div>
+
+    <!-- HMO logos (populated by JS) -->
+    <div class="hmo-logos reveal" id="hmoLogos"></div>
+    <p class="hmo-placeholder-text reveal">
+      For the latest list of accredited HMOs, please contact any of our branches.
+    </p>
+  </div>
+</section>
+
+
+<!-- ================================================================
+  PARTNERS
+================================================================ -->
+<section id="partners" class="partners-section">
+  <div class="container">
+    <div class="section-header reveal">
+      <span class="section-tag">Partners</span>
+      <h2 class="section-title">Partners</h2>
+      <p class="section-subtitle">Proud to partner with leading academic institutions and athletic organizations committed to excellence and community health.</p>
+    </div>
+
+    <!-- Partner logos (populated by JS) -->
+    <div class="partner-logos reveal" id="partnerLogos"></div>
+    <p class="hmo-placeholder-text reveal" style="margin-top:16px;">
+      Interested in partnering with us? <button onclick="scrollToSection('contact')" style="background:none;border:none;color:var(--primary);font-weight:600;cursor:pointer;font-size:inherit;">Contact us</button> to explore partnership opportunities.
+    </p>
+  </div>
+</section>
+
+
+<!-- ================================================================
+  ABOUT US
+================================================================ -->
+<section id="about" class="about-section">
+  <div class="container">
+
+    <div class="section-header reveal">
+      <span class="section-tag">Who We Are</span>
+      <h2 class="section-title">About Sapphire Clinics East, Inc.</h2>
+      <p class="section-subtitle">Sapphire Clinics East, Inc. (SCEI) is dedicated to optimizing functional mobility, effective communication, and inclusive care — backed by evidence-based rehabilitation. SCEI operates branches under the Sandbox Clinic brand.</p>
+    </div>
+
+    <!-- Mission & Vision -->
+    <div class="grid-2 reveal" style="margin-bottom: 24px;">
+      <div class="mv-card">
+        <div class="mv-card-label">🎯 SCEI Mission</div>
+        <div class="mv-card-text">
+          By optimizing quality of life through accessible, excellent, and evidence-based rehabilitation services. Optimize functional mobility in each individual, enable effective communication to all, promote inclusivity in the society, advance clinical research, and foster excellence in the professional community.
+        </div>
+      </div>
+      <div class="mv-card light">
+        <div class="mv-card-label">👁 SCEI Vision</div>
+        <div class="mv-card-text">
+          To become the leading rehabilitation institution in the Philippines — a global leader in providing accessible, excellent, and evidence-based habilitation and rehabilitation services to help improve the overall health of society.
+        </div>
+      </div>
+    </div>
+
+    <!-- BHAG -->
+    <div class="bhag-box reveal" style="margin-bottom: 40px;">
+      <div class="bhag-box-label">🚀 Our BHAG — Big Hairy Audacious Goal</div>
+      <div class="bhag-box-text">
+        To be the #1 market leader in the rehabilitation space in the Philippines in 10 years.
+      </div>
+    </div>
+
+    <!-- Core Values -->
+    <div class="about-grid reveal">
+      <div>
+        <h3 style="font-size:22px; font-weight:800; margin-bottom:20px;">Our Core Values</h3>
+        <div class="values-list">
+          <div class="value-item">
+            <div class="value-icon"><i data-lucide="brain" style="width:18px;height:18px"></i></div>
+            <div>
+              <div class="value-name">Prudence</div>
+              <div class="value-desc">Making thoughtful, well-reasoned decisions for the best outcomes</div>
+            </div>
+          </div>
+          <div class="value-item">
+            <div class="value-icon"><i data-lucide="heart" style="width:18px;height:18px"></i></div>
+            <div>
+              <div class="value-name">Compassion</div>
+              <div class="value-desc">Genuine care and empathy for every patient and their family</div>
+            </div>
+          </div>
+          <div class="value-item">
+            <div class="value-icon"><i data-lucide="graduation-cap" style="width:18px;height:18px"></i></div>
+            <div>
+              <div class="value-name">Competence</div>
+              <div class="value-desc">Maintaining the highest standards of clinical expertise and practice</div>
+            </div>
+          </div>
+          <div class="value-item">
+            <div class="value-icon"><i data-lucide="shield-check" style="width:18px;height:18px"></i></div>
+            <div>
+              <div class="value-name">Integrity</div>
+              <div class="value-desc">Upholding honesty, transparency, and ethical conduct in all we do</div>
+            </div>
+          </div>
+          <div class="value-item">
+            <div class="value-icon"><i data-lucide="users" style="width:18px;height:18px"></i></div>
+            <div>
+              <div class="value-name">Teamwork</div>
+              <div class="value-desc">Collaborating across disciplines to deliver comprehensive, patient-centered care</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h3 style="font-size:22px; font-weight:800; margin-bottom:20px;">Why Sandbox Clinic?</h3>
+        <div class="card" style="margin-bottom:16px; border-left: 4px solid var(--primary);">
+          <div style="font-size:13px; font-weight:700; color:var(--primary); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;">Clinical Excellence</div>
+          <p style="font-size:14px; color:var(--text-muted); line-height:1.7;">We provide the highest quality of Physical Therapy, Occupational Therapy, Speech Therapy, and all services offered to our patients.</p>
+        </div>
+        <div class="card" style="margin-bottom:16px; border-left: 4px solid var(--primary);">
+          <div style="font-size:13px; font-weight:700; color:var(--primary); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;">Professional Hub</div>
+          <p style="font-size:14px; color:var(--text-muted); line-height:1.7;">A destination for driven, competent, and like-minded professionals who want to raise the standard of practice in healthcare.</p>
+        </div>
+        <div class="card" style="border-left: 4px solid var(--primary);">
+          <div style="font-size:13px; font-weight:700; color:var(--primary); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;">Community Impact</div>
+          <p style="font-size:14px; color:var(--text-muted); line-height:1.7;">Helping communities by providing accessible, high-quality healthcare — creating healthy, productive, and happy people.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ================================================================
+  BOOK NOW STRIP
+================================================================ -->
+<div class="book-strip">
+  <h2 class="reveal">Ready to Start Your Recovery Journey?</h2>
+  <p class="reveal delay-1">Our multidisciplinary team is here to help. Walk-ins welcome, subject to availability.</p>
+  <div class="btn-row reveal delay-2">
+    <button class="btn btn-white btn-lg" onclick="scrollToSection('contact')">
+      <i data-lucide="phone" style="width:18px;height:18px"></i>
+      Contact a Branch
+    </button>
+    <button class="btn btn-outline" style="border-color:rgba(255,255,255,.5);color:#fff;" onclick="scrollToSection('branches')">
+      View Our Branches
+    </button>
+  </div>
+</div>
+
+
+<!-- ================================================================
+  LEADERSHIP TEAM
+================================================================ -->
+<section id="leadership" style="padding: var(--section-padding); background: var(--bg-alt);">
+  <div class="container">
+    <div class="section-header reveal">
+      <span class="section-tag">The People Behind Us</span>
+      <h2 class="section-title">Leadership Team</h2>
+      <p class="section-subtitle">Experienced healthcare and business professionals committed to advancing rehabilitation in the Philippines.</p>
+    </div>
+
+    <div class="grid-3">
+
+      <!-- Hannah Jara -->
+      <div class="leader-card reveal">
+        <div class="leader-avatar"><img src="LEADERSHIP PICTURES/HANNAH JARA.png" alt="Hannah P. Jara"></div>
+        <div class="leader-name">Hannah P. Jara</div>
+        <div class="leader-creds">MBA, MPH, PTRP</div>
+        <div class="leader-role">President & CEO, Sapphire Clinics East, Inc.</div>
+        <p class="leader-bio">With advanced degrees from the University of the Philippines Manila and ESADE Business School, Hannah brings vast experience including serving as OIC-Deputy Team Leader for the World Bank's DOH Philippines COVID-19 Emergency Response Project. A board topnotcher (February 2017) and evidence review expert at NIH UPM.</p>
+      </div>
+
+      <!-- Adrian Mina -->
+      <div class="leader-card reveal delay-1">
+        <div class="leader-avatar"><img src="LEADERSHIP PICTURES/ADRIAN PAOLO MINA.png" alt="Adrian Paolo Mina"></div>
+        <div class="leader-name">Adrian Paolo Mina</div>
+        <div class="leader-creds">JD, PTRP</div>
+        <div class="leader-role">Corporate Secretary & Treasurer, SCEI</div>
+        <p class="leader-bio">Graduate of De La Salle University's Tañada-Diokno College of Law and the University of Santo Tomas. Currently serves as VP for Corporate Strategy & Business Development at Sandbox BGC, and CEO of Sandbox Clark and Sandbox Prime. Co-founder of Catalyst Review Solutions.</p>
+      </div>
+
+      <!-- June Nicca Medina -->
+      <div class="leader-card reveal delay-2">
+        <div class="leader-avatar"><img src="LEADERSHIP PICTURES/JUNE NICCA MEDINA.png" alt="June Nicca Medina"></div>
+        <div class="leader-name">June Nicca Medina</div>
+        <div class="leader-creds">PTRP</div>
+        <div class="leader-role">Board Member, SCEI</div>
+        <p class="leader-bio">President & CEO of Sandbox BGC and Treasurer of Sandbox Clark. Currently pursuing her MBA at De La Salle University-Manila. Co-founder and CEO of Catalyst Review Solutions. Professional lecturer at various review centers and universities, with PT experience at St. Luke's Medical Center.</p>
+      </div>
+
+      <!-- Ariel Carlo Gonzales -->
+      <div class="leader-card reveal">
+        <div class="leader-avatar"><img src="LEADERSHIP PICTURES/ARIEL JAN CARLO GONZALES.png" alt="Ariel Carlo Gonzales"></div>
+        <div class="leader-name">Ariel Carlo Gonzales</div>
+        <div class="leader-creds">MBA</div>
+        <div class="leader-role">Board Member, SCEI</div>
+        <p class="leader-bio">Graduate of the Asian Institute of Management (MBA) and Ateneo de Manila University, with an exchange at Université Catholique de Lyon. Former CFO & Head of Treasury at LICA Group of Companies and Project Development Officer at the Department of Transportation and Communication.</p>
+      </div>
+
+      <!-- Anna Kaye Lim -->
+      <div class="leader-card reveal delay-1">
+        <div class="leader-avatar"><img src="LEADERSHIP PICTURES/ANNA KAYE LIM.png" alt="Anna Kaye Lim"></div>
+        <div class="leader-name">Anna Kaye Lim</div>
+        <div class="leader-creds">MBA</div>
+        <div class="leader-role">Board Member, SCEI</div>
+        <p class="leader-bio">Finance and strategy professional with extensive experience in corporate finance, strategic purchasing, and business operations. Former AVP for Finance & Sales at H.T. Mining Resources Corporation. Holds an MBA from the Asian Institute of Management and a BS Management Engineering from Ateneo de Manila University.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ================================================================
+  BRANCHES
+================================================================ -->
+<section id="branches" class="branches-section">
+  <div class="container">
+
+    <div class="section-header reveal">
+      <span class="section-tag">Our Locations</span>
+      <h2 class="section-title">Our Branches</h2>
+      <p class="section-subtitle">Two state-of-the-art rehabilitation facilities serving Metro Manila.</p>
+    </div>
+
+    <!-- Branch Tabs -->
+    <div class="branch-tabs reveal">
+      <button class="branch-tab active" data-branch="east" onclick="switchBranch('east')">
+        <i data-lucide="building-2" style="width:18px;height:18px"></i>
+        Sandbox East
+      </button>
+      <button class="branch-tab" data-branch="greenhills" onclick="switchBranch('greenhills')">
+        <i data-lucide="building" style="width:18px;height:18px"></i>
+        Sandbox Greenhills
+      </button>
+    </div>
+
+    <!-- ── EAST PANEL ── -->
+    <div id="eastPanel" class="branch-panel active">
+
+      <div class="branch-header-card reveal">
+        <div class="branch-name">Sandbox Clinic – East Branch</div>
+        <div class="branch-address">
+          <span>📍</span>
+          Level 4, Robinsons Metro East, Marcos Highway, Brgy. Dela Paz, Santolan, Pasig
+        </div>
+        <div class="branch-contact">
+          <span>📧</span>
+          east.sandboxclinic@gmail.com
+        </div>
+        <div class="branch-contact">
+          <span>📞</span>
+          +63 917 118 9289 &nbsp;|&nbsp; (02) 5310-4991
+        </div>
+      </div>
+
+      <!-- Services -->
+      <h3 style="font-size:20px; font-weight:700; margin-bottom:16px;" class="reveal">
+        <i data-lucide="stethoscope" style="width:20px;height:20px;vertical-align:-4px;margin-right:8px;color:var(--primary)"></i>
+        Services Offered
+      </h3>
+      <div class="services-grid reveal" id="eastServices">
+        <!-- populated by JS -->
+      </div>
+
+      <!-- Facilities -->
+      <h3 class="facilities-heading reveal" style="margin-top:40px;">
+        <i data-lucide="layout-dashboard" style="width:20px;height:20px;vertical-align:-4px;color:var(--primary)"></i>
+        Our Facilities
+      </h3>
+      <div class="gallery-grid reveal" id="eastGallery">
+        <!-- populated by JS -->
+      </div>
+
+    </div><!-- /eastPanel -->
+
+
+    <!-- ── GREENHILLS PANEL ── -->
+    <div id="greenhillsPanel" class="branch-panel">
+
+      <div class="branch-header-card reveal">
+        <div class="branch-name">Sandbox Clinic – Greenhills Branch</div>
+        <div class="branch-address">
+          <span>📍</span>
+          Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City
+        </div>
+        <div class="branch-contact">
+          <span>📧</span>
+          east.sandboxclinic@gmail.com
+        </div>
+        <div class="branch-contact">
+          <span>📞</span>
+          +63 917 770 1686 &nbsp;|&nbsp; (02) 8529-1590
+        </div>
+      </div>
+
+      <!-- Services -->
+      <h3 style="font-size:20px; font-weight:700; margin-bottom:16px;" class="reveal">
+        <i data-lucide="stethoscope" style="width:20px;height:20px;vertical-align:-4px;margin-right:8px;color:var(--primary)"></i>
+        Services Offered
+      </h3>
+      <div class="services-grid reveal" id="greenhillsServices">
+        <!-- populated by JS -->
+      </div>
+
+      <!-- Facilities -->
+      <h3 class="facilities-heading reveal" style="margin-top:40px;">
+        <i data-lucide="layout-dashboard" style="width:20px;height:20px;vertical-align:-4px;color:var(--primary)"></i>
+        Our Facilities
+      </h3>
+      <div class="gallery-grid reveal" id="greenhillsGallery">
+        <!-- populated by JS -->
+      </div>
+
+    </div><!-- /greenhillsPanel -->
+
+  </div>
+</section>
+
+
+<!-- ================================================================
+  ACCOMPLISHMENTS
+================================================================ -->
+<section id="accomplishments" class="accomplishments-section">
+  <div class="container">
+
+    <div class="section-header reveal">
+      <span class="section-tag amber">Annual Reports</span>
+      <h2 class="section-title">Accomplishments</h2>
+      <p class="section-subtitle">Year-by-year performance, milestones, and impact reports for Sapphire Clinics East, Inc.</p>
+    </div>
+
+    <!-- Year Tabs -->
+    <div class="acc-tabs reveal">
+      <button class="acc-tab active" data-year="2024" onclick="switchAcc('2024')">
+        📊 2024 Report — Inaugural Year
+      </button>
+      <button class="acc-tab" data-year="2025" onclick="switchAcc('2025')">
+        📈 2025 Report — Expansion Year
+      </button>
+    </div>
+
+    <!-- 2024 Panel -->
+    <div id="acc2024" class="acc-panel active">
+      <div class="acc-open-btn reveal">
+        <a href="SCEI 2024 Dashboard.html" target="_blank" class="btn btn-outline btn-sm">
+          <i data-lucide="external-link" style="width:14px;height:14px"></i>
+          Open in Full Page
+        </a>
+      </div>
+      <div class="acc-iframe-wrap reveal">
+        <iframe src="SCEI 2024 Dashboard.html"
+                title="SCEI 2024 Annual Accomplishment Report"
+                loading="lazy"
+                allow="same-origin">
+        </iframe>
+      </div>
+    </div>
+
+    <!-- 2025 Panel -->
+    <div id="acc2025" class="acc-panel">
+      <div class="acc-open-btn reveal">
+        <a href="SCEI 2025 Dashboard v3.html" target="_blank" class="btn btn-outline btn-sm">
+          <i data-lucide="external-link" style="width:14px;height:14px"></i>
+          Open in Full Page
+        </a>
+      </div>
+      <div class="acc-iframe-wrap reveal">
+        <iframe src="SCEI 2025 Dashboard v3.html"
+                title="SCEI 2025 Annual Accomplishment Report"
+                loading="lazy"
+                allow="same-origin">
+        </iframe>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ================================================================
+  CAREERS
+================================================================ -->
+<section id="careers" class="careers-section">
+  <div class="container">
+
+    <div class="section-header reveal">
+      <span class="section-tag">Join Our Team</span>
+      <h2 class="section-title">Careers at Sandbox Clinic</h2>
+      <p class="section-subtitle">We're looking for passionate healthcare professionals who want to make a real difference.</p>
+    </div>
+
+    <div class="career-card reveal">
+      <h3>🎉 Now Hiring!</h3>
+      <p>Join a dynamic team of healthcare professionals in a state-of-the-art rehabilitation environment. We invest in your growth, your expertise, and your career.</p>
+      <div class="career-branches">
+        <div class="career-branch">
+          <div class="career-branch-name">📍 Sandbox Clinic – East Branch</div>
+          <div class="career-branch-email">
+            <i data-lucide="mail" style="width:14px;height:14px"></i>
+            hr.sandboxcliniceast@gmail.com
+          </div>
+        </div>
+        <div class="career-branch">
+          <div class="career-branch-name">📍 Sandbox Clinic – Greenhills Branch</div>
+          <div class="career-branch-email">
+            <i data-lucide="mail" style="width:14px;height:14px"></i>
+            hr.sandboxclinicgh@gmail.com
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Benefits -->
+    <h3 style="font-size:22px; font-weight:800; margin: 40px 0 20px;" class="reveal">Why Work With Us?</h3>
+    <div class="career-benefits reveal">
+      <div class="career-benefit">
+        <div class="career-benefit-icon"><i data-lucide="building-2" style="width:20px;height:20px"></i></div>
+        <h4>State-of-the-Art Facilities</h4>
+        <p>Access to modern, fully equipped spaces designed to support you and your clients' needs.</p>
+      </div>
+      <div class="career-benefit">
+        <div class="career-benefit-icon"><i data-lucide="trending-up" style="width:20px;height:20px"></i></div>
+        <h4>Competitive Compensation</h4>
+        <p>Attractive salaries paired with performance-based incentives to reward your expertise and dedication.</p>
+      </div>
+      <div class="career-benefit">
+        <div class="career-benefit-icon"><i data-lucide="graduation-cap" style="width:20px;height:20px"></i></div>
+        <h4>Exclusive Training Opportunities</h4>
+        <p>Large discounts on Sandbox-sponsored international training programs and full or partial reimbursement for professional development fees.</p>
+      </div>
+      <div class="career-benefit">
+        <div class="career-benefit-icon"><i data-lucide="crown" style="width:20px;height:20px"></i></div>
+        <h4>Career Growth</h4>
+        <p>Pathways to management roles and leadership opportunities, allowing you to expand your influence and expertise.</p>
+      </div>
+      <div class="career-benefit">
+        <div class="career-benefit-icon"><i data-lucide="users" style="width:20px;height:20px"></i></div>
+        <h4>Collaborative Environment</h4>
+        <p>A dynamic network of healthcare experts committed to innovation and excellence.</p>
+      </div>
+      <div class="career-benefit">
+        <div class="career-benefit-icon"><i data-lucide="shield-check" style="width:20px;height:20px"></i></div>
+        <h4>Comprehensive Support</h4>
+        <p>Robust administrative assistance so you can focus on delivering outstanding care while we handle the logistics.</p>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ================================================================
+  FAQs
+================================================================ -->
+<section id="faqs" class="faq-section">
+  <div class="container">
+
+    <div class="section-header reveal">
+      <span class="section-tag">Help Center</span>
+      <h2 class="section-title">Frequently Asked Questions</h2>
+      <p class="section-subtitle">Everything you need to know about Sandbox Clinic.</p>
+    </div>
+
+    <!-- About the Clinic -->
+    <div class="faq-category reveal">
+      <div class="faq-category-title">
+        <i data-lucide="info" style="width:16px;height:16px"></i>
+        About Sandbox Clinic
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" tabindex="0">
+          What is Sandbox Clinic?
+          <span class="faq-icon">+</span>
+        </div>
+        <div class="faq-a"><div class="faq-a-inner">
+          Sandbox Clinic is a healthcare hub dedicated to optimizing functional mobility, fostering effective communication, and promoting inclusivity in society. We specialize in evidence-based habilitation and rehabilitation services aimed at improving overall health and well-being.
+        </div></div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" tabindex="0">
+          Where is Sandbox Clinic located?
+          <span class="faq-icon">+</span>
+        </div>
+        <div class="faq-a"><div class="faq-a-inner">
+          We have two branches: <br><br>
+          <strong>Sandbox Clinic – East Branch:</strong> Level 4, Robinsons Metro East, Marcos Highway, Brgy. Dela Paz, Santolan, Pasig<br><br>
+          <strong>Sandbox Clinic – Greenhills Branch:</strong> Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City
+        </div></div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" tabindex="0">
+          What services do you offer?
+          <span class="faq-icon">+</span>
+        </div>
+        <div class="faq-a"><div class="faq-a-inner">
+          Both branches offer: Medical Consultations, Occupational Therapy, Physical Therapy, Speech Language Therapy, Special Education Classes, Psychotherapy, and Orthosis & Prosthesis Fabrication. Please visit the Branches section for full details.
+        </div></div>
+      </div>
+    </div>
+
+    <!-- For Patients -->
+    <div class="faq-category reveal">
+      <div class="faq-category-title">
+        <i data-lucide="heart-pulse" style="width:16px;height:16px"></i>
+        For Patients
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" tabindex="0">
+          How do I book an appointment?
+          <span class="faq-icon">+</span>
+        </div>
+        <div class="faq-a"><div class="faq-a-inner">
+          You can book an appointment by calling each branch at the contact details provided in our Contact section, or by sending a message on our Facebook or Instagram pages.
+        </div></div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" tabindex="0">
+          Do you accept walk-in patients?
+          <span class="faq-icon">+</span>
+        </div>
+        <div class="faq-a"><div class="faq-a-inner">
+          Yes, we accept walk-ins, subject to the availability of our staff. However, we recommend scheduling an appointment in advance to ensure timely service.
+        </div></div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" tabindex="0">
+          What payment methods do you accept?
+          <span class="faq-icon">+</span>
+        </div>
+        <div class="faq-a"><div class="faq-a-inner">
+          We accept cash, credit/debit cards, and select digital payment platforms. For insurance coverage and HMO payments, please check with your provider or contact us directly.
+        </div></div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" tabindex="0">
+          Can I access my medical records online?
+          <span class="faq-icon">+</span>
+        </div>
+        <div class="faq-a"><div class="faq-a-inner">
+          Yes, registered patients can access their medical records. Please check with each branch at our contact details for more information.
+        </div></div>
+      </div>
+    </div>
+
+    <!-- For Professionals -->
+    <div class="faq-category reveal">
+      <div class="faq-category-title">
+        <i data-lucide="briefcase" style="width:16px;height:16px"></i>
+        For Professionals
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" tabindex="0">
+          How can I join Sandbox Clinic as a health professional?
+          <span class="faq-icon">+</span>
+        </div>
+        <div class="faq-a"><div class="faq-a-inner">
+          We welcome applications from passionate healthcare professionals. Please visit our Careers section to learn more about open positions. You may also send your application to:<br><br>
+          <strong>East:</strong> hr.sandboxcliniceast@gmail.com<br>
+          <strong>Greenhills:</strong> hr.sandboxclinicgh@gmail.com
+        </div></div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" tabindex="0">
+          Does Sandbox Clinic offer training or mentorship programs?
+          <span class="faq-icon">+</span>
+        </div>
+        <div class="faq-a"><div class="faq-a-inner">
+          Yes, we provide mentorship and continuous professional development programs for our team and partner professionals. Please contact any branch to inquire about available programs.
+        </div></div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" tabindex="0">
+          What are the benefits of partnering with Sandbox Clinic?
+          <span class="faq-icon">+</span>
+        </div>
+        <div class="faq-a"><div class="faq-a-inner">
+          Benefits include: state-of-the-art facilities, competitive compensation with performance incentives, exclusive training opportunities, career growth pathways, collaborative professional environment, and comprehensive administrative support. See our Careers section for full details.
+        </div></div>
+      </div>
+    </div>
+
+    <!-- Compliance -->
+    <div class="faq-category reveal">
+      <div class="faq-category-title">
+        <i data-lucide="shield" style="width:16px;height:16px"></i>
+        Compliance & Policies
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" tabindex="0">
+          How does Sandbox Clinic ensure patient privacy and data security?
+          <span class="faq-icon">+</span>
+        </div>
+        <div class="faq-a"><div class="faq-a-inner">
+          We adhere to strict confidentiality and data protection regulations, particularly the Data Privacy Act of 2012. Our systems are designed to safeguard all patient information.
+        </div></div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" tabindex="0">
+          Are your services compliant with local and national regulations?
+          <span class="faq-icon">+</span>
+        </div>
+        <div class="faq-a"><div class="faq-a-inner">
+          Yes, Sandbox Clinic operates fully in compliance with regulations set by the Professional Regulation Commission, Securities and Exchange Commission, Bureau of Internal Revenue, and the local government units where our branches are located.
+        </div></div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ================================================================
+  NEWS & UPDATES
+================================================================ -->
+<section id="news" class="news-section">
+  <div class="container">
+
+    <div class="section-header reveal">
+      <span class="section-tag">Latest Updates</span>
+      <h2 class="section-title">News &amp; Updates</h2>
+      <p class="section-subtitle">Stay up to date with the latest from Sapphire Clinics East Inc.</p>
+    </div>
+
+    <!-- Tab Buttons -->
+    <div class="news-tabs reveal">
+      <button class="news-tab-btn active" data-tab="blog" onclick="switchNewsTab('blog')">
+        <i data-lucide="newspaper" style="width:15px;height:15px"></i>
+        Blog Posts &amp; News
+      </button>
+      <button class="news-tab-btn" data-tab="events" onclick="switchNewsTab('events')">
+        <i data-lucide="calendar" style="width:15px;height:15px"></i>
+        Events &amp; Training
+      </button>
+      <button class="news-tab-btn" data-tab="announcements" onclick="switchNewsTab('announcements')">
+        <i data-lucide="megaphone" style="width:15px;height:15px"></i>
+        Branch Announcements
+      </button>
+    </div>
+
+    <!-- Tab Panels -->
+    <div class="news-tab-panel active" id="news-panel-blog">
+      <div class="news-posts" id="news-posts-blog">
+        <div class="news-loading"><div class="news-spinner"></div><span>Loading posts…</span></div>
+      </div>
+    </div>
+    <div class="news-tab-panel" id="news-panel-events">
+      <div class="news-posts" id="news-posts-events">
+        <div class="news-loading"><div class="news-spinner"></div><span>Loading events…</span></div>
+      </div>
+    </div>
+    <div class="news-tab-panel" id="news-panel-announcements">
+      <div class="news-posts" id="news-posts-announcements">
+        <div class="news-loading"><div class="news-spinner"></div><span>Loading announcements…</span></div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ── Post / Announcement Modal ── -->
+<div class="post-modal-overlay" id="postModal" onclick="closePostModal(event)">
+  <div class="post-modal" role="dialog" aria-modal="true">
+    <button class="post-modal-close" onclick="closePostModal()" aria-label="Close">&times;</button>
+    <div class="post-modal-meta" id="postModalMeta"></div>
+    <h2 class="post-modal-title" id="postModalTitle"></h2>
+    <div class="post-modal-body" id="postModalBody"></div>
+  </div>
+</div>
+
+
+<!-- ================================================================
+  CONTACT
+================================================================ -->
+<section id="contact" class="contact-section">
+  <div class="container">
+
+    <div class="section-header reveal">
+      <span class="section-tag">Get In Touch</span>
+      <h2 class="section-title">Contact Us</h2>
+      <p class="section-subtitle">Reach out to any of our branches. We're happy to help with appointments, inquiries, or any concerns.</p>
+    </div>
+
+    <!-- Contact Cards -->
+    <div class="contact-grid reveal">
+
+      <div class="contact-card">
+        <div class="contact-card-title">
+          <i data-lucide="map-pin" style="width:20px;height:20px;vertical-align:-4px;margin-right:6px"></i>
+          Sandbox Clinic – East Branch
+        </div>
+        <div class="contact-detail">
+          <span class="contact-detail-icon">📍</span>
+          <span>Level 4, Robinsons Metro East, Marcos Highway, Brgy. Dela Paz, Santolan, Pasig</span>
+        </div>
+        <div class="contact-detail">
+          <span class="contact-detail-icon">📧</span>
+          <span>east.sandboxclinic@gmail.com</span>
+        </div>
+        <div class="contact-detail">
+          <span class="contact-detail-icon">📞</span>
+          <span>+63 917 118 9289 | (02) 5310-4991</span>
+        </div>
+        <div style="margin-top:20px; display:flex; flex-wrap:wrap; gap:8px;">
+          <a href="https://www.facebook.com/sandboxcliniceast" target="_blank" rel="noopener" class="btn btn-white btn-sm">
+            Facebook
+          </a>
+          <a href="https://www.instagram.com/sandboxcliniceast/" target="_blank" rel="noopener" class="btn btn-white btn-sm">
+            Instagram
+          </a>
+          <a href="https://www.linkedin.com/company/sandbox-clinic-east/" target="_blank" rel="noopener" class="btn btn-white btn-sm">
+            LinkedIn
+          </a>
+        </div>
+      </div>
+
+      <div class="contact-card light">
+        <div class="contact-card-title">
+          <i data-lucide="map-pin" style="width:20px;height:20px;vertical-align:-4px;margin-right:6px"></i>
+          Sandbox Clinic – Greenhills Branch
+        </div>
+        <div class="contact-detail">
+          <span class="contact-detail-icon">📍</span>
+          <span>Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City</span>
+        </div>
+        <div class="contact-detail">
+          <span class="contact-detail-icon">📧</span>
+          <span>east.sandboxclinic@gmail.com</span>
+        </div>
+        <div class="contact-detail">
+          <span class="contact-detail-icon">📞</span>
+          <span>+63 917 770 1686 | (02) 8529-1590</span>
+        </div>
+        <div style="margin-top:20px; display:flex; flex-wrap:wrap; gap:8px;">
+          <a href="https://www.facebook.com/sandboxclinicgreenhills" target="_blank" rel="noopener" class="btn btn-white btn-sm">
+            Facebook
+          </a>
+          <a href="https://www.instagram.com/sandboxclinicgh/" target="_blank" rel="noopener" class="btn btn-white btn-sm">
+            Instagram
+          </a>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Social Media -->
+    <div class="social-section reveal" style="margin-top:48px;">
+      <div class="social-title">Follow Us on Social Media</div>
+      <div class="social-links">
+        <a href="https://www.tiktok.com/@sandboxclinic" target="_blank" rel="noopener" class="social-link tk">
+          🎵 TikTok — @sandboxclinic
+        </a>
+        <a href="https://www.facebook.com/sandboxcliniceast" target="_blank" rel="noopener" class="social-link fb">
+          📘 East — Facebook
+        </a>
+        <a href="https://www.instagram.com/sandboxcliniceast/" target="_blank" rel="noopener" class="social-link ig">
+          📸 East — Instagram
+        </a>
+        <a href="https://www.linkedin.com/company/sandbox-clinic-east/" target="_blank" rel="noopener" class="social-link li">
+          💼 East — LinkedIn
+        </a>
+        <a href="https://www.facebook.com/sandboxclinicgreenhills" target="_blank" rel="noopener" class="social-link fb">
+          📘 Greenhills — Facebook
+        </a>
+        <a href="https://www.instagram.com/sandboxclinicgh/" target="_blank" rel="noopener" class="social-link ig">
+          📸 Greenhills — Instagram
+        </a>
+      </div>
+    </div>
+
+    <!-- Verdana Rehab -->
+    <a href="https://verdanarehab.com/" target="_blank" rel="noopener" class="verdana-banner reveal" style="margin-top:40px;">
+      <div class="verdana-icon">🌿</div>
+      <div>
+        <h3>Verdana Rehab</h3>
+        <p>A sister initiative expanding accessible rehabilitation services. Visit Verdana Rehab to learn more about their programs and how they complement our mission.</p>
+        <div class="btn btn-white btn-sm" style="display:inline-flex; margin-top:12px;">
+          Visit verdanarehab.com →
+        </div>
+      </div>
+    </a>
+
+  </div>
+</section>
+
+
+<!-- ================================================================
+  FOOTER
+================================================================ -->
+<footer class="footer">
+  <div class="footer-grid">
+
+    <!-- Brand -->
+    <div>
+      <div style="margin-bottom:12px;">
+        <img src="COMPANY LOGO/SCEI LOGO-1 TRANSPARENT.png"
+             alt="Sapphire Clinics East, Inc."
+             style="height:36px; width:auto; object-fit:contain; filter:brightness(0) invert(1); opacity:0.85;">
+      </div>
+      <div class="footer-brand-sub" style="margin-bottom:12px;">Operating Sandbox Clinic Branches</div>
+      <p class="footer-brand-desc">Sapphire Clinics East, Inc. (SCEI) operates premier rehabilitation clinics under the Sandbox Clinic brand — dedicated to evidence-based healthcare and optimizing quality of life across Metro Manila.</p>
+    </div>
+
+    <!-- Quick Links -->
+    <div>
+      <div class="footer-col-title">Quick Links</div>
+      <span class="footer-link" onclick="scrollToSection('home')">Home</span>
+      <span class="footer-link" onclick="scrollToSection('about')">About Us</span>
+      <span class="footer-link" onclick="scrollToSection('leadership')">Leadership</span>
+      <span class="footer-link" onclick="scrollToSection('branches')">Branches</span>
+      <span class="footer-link" onclick="scrollToSection('accomplishments')">Accomplishments</span>
+      <span class="footer-link" onclick="scrollToSection('careers')">Careers</span>
+      <span class="footer-link" onclick="scrollToSection('faqs')">FAQs</span>
+    </div>
+
+    <!-- East Branch -->
+    <div>
+      <div class="footer-col-title">Sandbox East</div>
+      <p class="footer-contact-item">📍 Level 4, Robinsons Metro East, Pasig</p>
+      <p class="footer-contact-item">📧 east.sandboxclinic@gmail.com</p>
+      <p class="footer-contact-item">📞 +63 917 118 9289</p>
+      <p class="footer-contact-item">📞 (02) 5310-4991</p>
+    </div>
+
+    <!-- Greenhills Branch -->
+    <div>
+      <div class="footer-col-title">Sandbox Greenhills</div>
+      <p class="footer-contact-item">📍 Level 8, GH Tower Offices, San Juan</p>
+      <p class="footer-contact-item">📧 east.sandboxclinic@gmail.com</p>
+      <p class="footer-contact-item">📞 +63 917 770 1686</p>
+      <p class="footer-contact-item">📞 (02) 8529-1590</p>
+    </div>
+
+  </div>
+
+  <div class="footer-bottom">
+    <span>© 2025 Sapphire Clinics East, Inc. All rights reserved.</span>
+    <span>sapphireclinicseast.org</span>
+  </div>
+</footer>
+
+
+<!-- ================================================================
+  LIGHTBOX (Gallery Modal)
+================================================================ -->
+<div id="lightbox" class="lightbox" role="dialog" aria-modal="true" aria-label="Facility photo viewer">
+  <img id="lbImg" class="lightbox-img" src="" alt="">
+  <div id="lbCaption" class="lightbox-caption"></div>
+  <button class="lightbox-close" onclick="closeLightbox()" aria-label="Close">×</button>
+  <button class="lightbox-prev" onclick="lbNav(-1)" aria-label="Previous">&#8592;</button>
+  <button class="lightbox-next" onclick="lbNav(1)" aria-label="Next">&#8594;</button>
+</div>
+
+
+<!-- ================================================================
+  SCROLL TO TOP BUTTON
+================================================================ -->
+<button class="scroll-top" id="scrollTop" aria-label="Scroll to top">↑</button>
+
+
+<!-- JavaScript -->
+<script src="js/main.js"></script>
+
+</body>
+</html>

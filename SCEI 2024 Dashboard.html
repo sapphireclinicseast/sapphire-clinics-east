@@ -1,0 +1,1696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SCEI 2024 Accomplishment Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+:root {
+  --teal-950: #042f2e;
+  --teal-900: #134e4a;
+  --teal-800: #115e59;
+  --teal-700: #0f766e;
+  --teal-600: #0d9488;
+  --teal-500: #14b8a6;
+  --teal-400: #2dd4bf;
+  --teal-300: #5eead4;
+  --teal-200: #99f6e4;
+  --teal-100: #ccfbf1;
+  --teal-50:  #f0fdfa;
+  --slate-900: #0f172a;
+  --slate-800: #1e293b;
+  --slate-700: #334155;
+  --slate-600: #475569;
+  --slate-500: #64748b;
+  --slate-400: #94a3b8;
+  --slate-300: #cbd5e1;
+  --slate-200: #e2e8f0;
+  --slate-100: #f1f5f9;
+  --slate-50:  #f8fafc;
+  --white: #ffffff;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1);
+  --radius: 16px;
+  --radius-sm: 10px;
+  --radius-xs: 6px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--slate-50);
+  color: var(--slate-700);
+  line-height: 1.6;
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,h2,h3,h4,h5,h6 { font-family: 'DM Sans', 'Inter', sans-serif; color: var(--slate-900); }
+
+/* SCROLL REVEAL */
+.reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1); }
+.reveal.visible { opacity: 1; transform: translateY(0); }
+.reveal:nth-child(2) { transition-delay: 0.08s; }
+.reveal:nth-child(3) { transition-delay: 0.16s; }
+.reveal:nth-child(4) { transition-delay: 0.24s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1; transform: none; transition: none; }
+  .kpi-num { transition: none !important; }
+  html { scroll-behavior: auto; }
+}
+
+/* HEADER */
+.site-header {
+  background: linear-gradient(135deg, var(--teal-950) 0%, var(--teal-800) 40%, var(--teal-700) 100%);
+  color: var(--white);
+  padding: 56px 48px 48px;
+  position: relative;
+  overflow: hidden;
+}
+.site-header::before {
+  content: '';
+  position: absolute; top: -120px; right: -80px;
+  width: 400px; height: 400px;
+  background: radial-gradient(circle, rgba(45,212,191,0.15) 0%, transparent 70%);
+  border-radius: 50%;
+}
+.site-header::after {
+  content: '';
+  position: absolute; bottom: -100px; left: 15%;
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, rgba(20,184,166,0.1) 0%, transparent 70%);
+  border-radius: 50%;
+}
+.header-inner { max-width: 1200px; margin: 0 auto; position: relative; z-index: 1; }
+.header-org { margin-bottom: 20px; }
+.org-name {
+  font-family: 'DM Sans', sans-serif;
+  font-size: clamp(14px, 2vw, 18px);
+  font-weight: 700;
+  letter-spacing: 3.5px;
+  text-transform: uppercase;
+  opacity: 0.92;
+}
+.org-sub {
+  font-size: 11px;
+  letter-spacing: 2.5px;
+  opacity: 0.5;
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+.header-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(45,212,191,0.12);
+  border: 1px solid rgba(45,212,191,0.3);
+  color: var(--teal-300);
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  padding: 6px 16px; border-radius: 100px;
+  margin-bottom: 16px;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.header-title {
+  font-family: 'DM Sans', sans-serif;
+  font-size: clamp(28px, 4vw, 44px);
+  font-weight: 800;
+  letter-spacing: -1px;
+  line-height: 1.1;
+  margin-bottom: 8px;
+}
+.header-period {
+  font-size: 13px; opacity: 0.6;
+  margin-bottom: 32px;
+  font-weight: 400;
+}
+.header-stats {
+  display: flex; gap: 0; flex-wrap: wrap;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 14px;
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  overflow: hidden;
+}
+.header-stat {
+  text-align: center;
+  padding: 20px 28px;
+  flex: 1; min-width: 140px;
+  border-right: 1px solid rgba(255,255,255,0.08);
+}
+.header-stat:last-child { border-right: none; }
+.header-stat .num {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 28px; font-weight: 800;
+  color: var(--teal-300);
+  line-height: 1;
+}
+.header-stat .lbl {
+  font-size: 10px; opacity: 0.55;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-top: 6px; font-weight: 500;
+}
+
+/* SIDEBAR */
+.sidebar {
+  position: fixed; top: 0; left: 0;
+  width: 240px; height: 100vh;
+  background: var(--teal-950);
+  color: var(--white);
+  z-index: 200;
+  display: flex; flex-direction: column;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.15) transparent;
+}
+.sidebar::-webkit-scrollbar { width: 4px; }
+.sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+.sidebar-brand {
+  padding: 28px 22px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.sidebar-brand .brand-name {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px; font-weight: 700;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  opacity: 0.95; line-height: 1.3;
+}
+.sidebar-brand .brand-sub {
+  font-size: 10px; letter-spacing: 1.5px;
+  text-transform: uppercase; opacity: 0.4;
+  margin-top: 4px;
+}
+.sidebar-nav { padding: 12px 10px; flex: 1; }
+.nav-btn {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%;
+  background: none; border: none;
+  padding: 10px 14px;
+  font-size: 12.5px; font-weight: 500;
+  font-family: 'Inter', sans-serif;
+  color: rgba(255,255,255,0.5);
+  cursor: pointer; white-space: nowrap;
+  border-radius: 8px;
+  transition: all 0.2s;
+  text-align: left;
+  margin-bottom: 2px;
+}
+.nav-btn i { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.6; }
+.nav-btn:hover { color: rgba(255,255,255,0.85); background: rgba(255,255,255,0.08); }
+.nav-btn:focus-visible { outline: 2px solid var(--teal-400); outline-offset: -2px; border-radius: 8px; }
+.nav-btn.active {
+  color: var(--white);
+  background: rgba(255,255,255,0.1);
+  font-weight: 600;
+}
+.nav-btn.active i { opacity: 1; }
+.sidebar-footer {
+  padding: 16px 22px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  font-size: 10px; opacity: 0.35;
+  letter-spacing: 0.5px;
+}
+
+/* MOBILE SIDEBAR TOGGLE */
+.sidebar-toggle {
+  display: none;
+  position: fixed; top: 16px; left: 16px;
+  z-index: 300;
+  width: 44px; height: 44px;
+  background: var(--teal-900);
+  color: var(--white);
+  border: none; border-radius: 12px;
+  cursor: pointer;
+  align-items: center; justify-content: center;
+  box-shadow: var(--shadow-lg);
+}
+.sidebar-toggle i { width: 20px; height: 20px; }
+.sidebar-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 150;
+}
+
+/* LAYOUT */
+.page-wrapper { margin-left: 240px; }
+
+/* MAIN */
+.main { max-width: 1200px; margin: 0 auto; padding: 40px 32px 80px; }
+
+/* SECTIONS */
+.section { display: none; }
+.section.active { display: block; }
+
+/* CARDS */
+.card {
+  background: var(--white);
+  border-radius: var(--radius);
+  border: 1px solid var(--slate-200);
+  padding: 28px;
+  transition: box-shadow 0.3s, transform 0.3s;
+}
+.card:hover { box-shadow: var(--shadow-lg); }
+
+.glass-card {
+  background: rgba(255,255,255,0.7);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.5);
+  border-radius: var(--radius);
+  padding: 28px;
+  box-shadow: var(--shadow);
+}
+
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 20px; margin-top: 20px; }
+.grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-top: 20px; }
+.grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 20px; }
+
+/* KPI CARDS */
+.kpi-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  border: 1px solid var(--slate-200);
+  padding: 24px 20px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.3s cubic-bezier(0.16,1,0.3,1), box-shadow 0.3s;
+  cursor: default;
+}
+.kpi-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--teal-500), var(--teal-400));
+}
+.kpi-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-xl); }
+.kpi-card .kpi-icon {
+  width: 44px; height: 44px;
+  background: var(--teal-50);
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 12px;
+  color: var(--teal-600);
+}
+.kpi-card .kpi-icon i { width: 22px; height: 22px; }
+.kpi-card .kpi-num {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 32px; font-weight: 800;
+  color: var(--teal-700);
+  line-height: 1; margin-bottom: 6px;
+}
+.kpi-card .kpi-lbl {
+  font-size: 11px; color: var(--slate-500);
+  text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600;
+}
+.kpi-card.accent::before { background: linear-gradient(90deg, var(--teal-400), var(--teal-300)); }
+
+/* SECTION HEADING */
+.section-heading {
+  display: flex; align-items: center; gap: 14px;
+  margin-bottom: 24px;
+}
+.section-heading h2 {
+  font-size: 22px; font-weight: 700;
+  letter-spacing: -0.3px;
+}
+.section-heading .tag {
+  background: var(--teal-50); color: var(--teal-700);
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 1.2px; text-transform: uppercase;
+  padding: 5px 12px; border-radius: 100px;
+  border: 1px solid var(--teal-200);
+}
+
+/* CEO CARD */
+.ceo-card {
+  background: linear-gradient(135deg, var(--teal-50) 0%, var(--white) 100%);
+  border-left: 4px solid var(--teal-500);
+}
+.ceo-quote {
+  font-size: 15px; color: var(--slate-700);
+  font-style: italic; line-height: 1.85; margin-bottom: 20px;
+}
+.ceo-sig { display: flex; align-items: center; gap: 16px; }
+.ceo-avatar {
+  width: 52px; height: 52px;
+  background: linear-gradient(135deg, var(--teal-700), var(--teal-500));
+  border-radius: 14px; display: flex; align-items: center; justify-content: center;
+  color: var(--white); font-weight: 700; font-size: 16px;
+  font-family: 'DM Sans', sans-serif;
+}
+.ceo-sig-name { font-weight: 700; color: var(--teal-900); font-size: 14px; }
+.ceo-sig-title { font-size: 12px; color: var(--slate-500); }
+
+/* MV CARDS */
+.mv-card {
+  background: linear-gradient(135deg, var(--teal-900), var(--teal-700));
+  color: var(--white); border-radius: var(--radius); padding: 32px;
+  border: none; position: relative; overflow: hidden;
+}
+.mv-card::after {
+  content: '';
+  position: absolute; top: -50px; right: -50px;
+  width: 160px; height: 160px;
+  background: radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%);
+  border-radius: 50%;
+}
+.mv-card h3 {
+  font-size: 11px; letter-spacing: 2.5px; text-transform: uppercase;
+  opacity: 0.6; margin-bottom: 12px; color: var(--white);
+  display: flex; align-items: center; gap: 8px;
+}
+.mv-card h3 i { width: 16px; height: 16px; opacity: 0.7; }
+.mv-card p { font-size: 15px; line-height: 1.75; opacity: 0.92; }
+.mv-card.bright { background: linear-gradient(135deg, var(--teal-700), var(--teal-500)); }
+
+/* CHART */
+.chart-wrap { position: relative; height: 280px; margin-top: 12px; }
+
+/* TIMELINE */
+.timeline { position: relative; padding-left: 28px; }
+.timeline::before {
+  content: ''; position: absolute; left: 8px; top: 4px; bottom: 4px;
+  width: 2px;
+  background: linear-gradient(180deg, var(--teal-400), var(--teal-200), transparent);
+  border-radius: 2px;
+}
+.tl-item { position: relative; margin-bottom: 24px; }
+.tl-item:last-child { margin-bottom: 0; }
+.tl-dot {
+  position: absolute; left: -24px; top: 5px;
+  width: 12px; height: 12px;
+  background: var(--white);
+  border: 2.5px solid var(--teal-500);
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgba(20,184,166,0.15);
+}
+.tl-date {
+  font-size: 11px; font-weight: 700; color: var(--teal-600);
+  text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 3px;
+}
+.tl-title { font-size: 14px; font-weight: 700; color: var(--slate-800); margin-bottom: 4px; }
+.tl-desc { font-size: 13px; color: var(--slate-600); line-height: 1.65; }
+
+/* BADGES */
+.badge-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.badge {
+  padding: 5px 12px; border-radius: 100px;
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 0.2px;
+}
+.badge.teal { background: var(--teal-50); color: var(--teal-700); border: 1px solid var(--teal-200); }
+.badge.dark { background: var(--teal-900); color: var(--white); }
+.badge.bright { background: var(--teal-100); color: var(--teal-800); }
+.badge.outline { background: var(--white); color: var(--teal-700); border: 1px solid var(--teal-300); }
+
+/* STAFF BRANCH */
+.staff-branch {
+  background: var(--white); border-radius: var(--radius);
+  border: 1px solid var(--slate-200); overflow: hidden;
+}
+.branch-header {
+  background: linear-gradient(90deg, var(--teal-900), var(--teal-700));
+  color: var(--white); padding: 16px 24px;
+  font-weight: 700; font-size: 14px;
+  font-family: 'DM Sans', sans-serif;
+  display: flex; align-items: center; gap: 10px;
+}
+.branch-header i { width: 18px; height: 18px; opacity: 0.8; }
+.branch-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1px; background: var(--slate-100);
+}
+.branch-cell { background: var(--white); padding: 16px 18px; }
+.branch-cell .bc-num {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 26px; font-weight: 800; color: var(--teal-600);
+}
+.branch-cell .bc-role { font-size: 12px; color: var(--slate-500); line-height: 1.4; }
+
+/* PROGRESS */
+.progress-item { margin-bottom: 18px; }
+.progress-label {
+  display: flex; justify-content: space-between;
+  font-size: 12px; font-weight: 600; color: var(--slate-700);
+  margin-bottom: 6px;
+}
+.progress-track { height: 8px; background: var(--slate-100); border-radius: 100px; overflow: hidden; }
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--teal-600), var(--teal-400));
+  border-radius: 100px;
+  transition: width 1.4s cubic-bezier(0.16,1,0.3,1);
+}
+.progress-fill.over { background: linear-gradient(90deg, #059669, #34d399); }
+.progress-fill.mid { background: linear-gradient(90deg, var(--teal-700), var(--teal-500)); }
+.progress-fill.low { background: linear-gradient(90deg, #0891b2, #22d3ee); }
+
+/* LEADER */
+.leader-card {
+  background: var(--white); border-radius: var(--radius);
+  border: 1px solid var(--slate-200);
+  padding: 28px;
+  transition: transform 0.3s, box-shadow 0.3s;
+}
+.leader-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-xl); }
+.leader-avatar {
+  width: 60px; height: 60px;
+  background: linear-gradient(135deg, var(--teal-800), var(--teal-500));
+  border-radius: 16px; display: flex; align-items: center; justify-content: center;
+  color: var(--white); font-size: 18px; font-weight: 700; margin-bottom: 14px;
+  font-family: 'DM Sans', sans-serif;
+}
+.leader-name { font-size: 15px; font-weight: 700; }
+.leader-creds { font-size: 12px; color: var(--teal-600); font-weight: 600; margin-bottom: 2px; }
+.leader-role { font-size: 12px; color: var(--teal-500); font-weight: 600; margin-bottom: 12px; }
+.leader-bio { font-size: 12px; color: var(--slate-600); line-height: 1.7; }
+
+/* INFO BOX */
+.info-box {
+  background: var(--teal-50); border-left: 3px solid var(--teal-400);
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+  padding: 14px 16px; margin-top: 12px;
+}
+.info-box p { font-size: 13px; color: var(--slate-700); line-height: 1.65; }
+
+/* CONTACT */
+.contact-card {
+  background: linear-gradient(135deg, var(--teal-900), var(--teal-700));
+  color: var(--white); border-radius: var(--radius); padding: 32px;
+  border: none; position: relative; overflow: hidden;
+}
+.contact-card::after {
+  content: '';
+  position: absolute; bottom: -60px; right: -60px;
+  width: 200px; height: 200px;
+  background: radial-gradient(circle, rgba(255,255,255,0.06) 0%, transparent 70%);
+  border-radius: 50%;
+}
+.contact-card h3 {
+  font-size: 18px; font-weight: 700; margin-bottom: 6px;
+  color: var(--white); display: flex; align-items: center; gap: 10px;
+}
+.contact-card h3 i { width: 20px; height: 20px; }
+.contact-card p { opacity: 0.7; font-size: 13px; margin-bottom: 18px; }
+.contact-detail {
+  display: flex; align-items: flex-start; gap: 10px;
+  margin-bottom: 10px; font-size: 13px;
+}
+.contact-detail .icon { flex-shrink: 0; margin-top: 2px; opacity: 0.7; }
+.contact-detail .icon i { width: 16px; height: 16px; }
+
+/* CLOSING QUOTE */
+.closing-quote {
+  background: linear-gradient(135deg, var(--teal-900), var(--teal-700));
+  color: var(--white); border-radius: var(--radius); padding: 48px;
+  text-align: center; margin-top: 28px;
+  position: relative; overflow: hidden;
+}
+.closing-quote::before {
+  content: '';
+  position: absolute; top: -80px; left: 50%;
+  width: 400px; height: 400px;
+  background: radial-gradient(circle, rgba(45,212,191,0.1) 0%, transparent 70%);
+  border-radius: 50%;
+  transform: translateX(-50%);
+}
+.closing-quote blockquote {
+  font-family: 'DM Sans', sans-serif;
+  font-size: clamp(16px, 2.2vw, 22px);
+  font-style: italic; line-height: 1.7;
+  margin-bottom: 16px; opacity: 0.95;
+  position: relative;
+}
+.closing-quote cite { font-size: 13px; opacity: 0.55; font-style: normal; font-weight: 500; }
+.closing-tagline {
+  margin-top: 24px; font-size: 12px; opacity: 0.7;
+  font-weight: 700; letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+/* SATISFACTION RING */
+.satisfaction-ring { width: 130px; height: 130px; margin: 0 auto 12px; position: relative; }
+.sat-score {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 26px; font-weight: 800; color: var(--teal-700); line-height: 1.1;
+}
+.sat-score span { font-size: 11px; font-weight: 600; color: var(--slate-400); }
+
+/* PURPOSE CARD */
+.purpose-card { border-top: 3px solid var(--teal-500); }
+.purpose-card h4 { color: var(--teal-700); font-size: 14px; margin-bottom: 8px; }
+.purpose-icon {
+  width: 44px; height: 44px;
+  background: var(--teal-50);
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 14px;
+  color: var(--teal-600);
+}
+.purpose-icon i { width: 22px; height: 22px; }
+
+/* DEPT TAG */
+.dept-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--teal-50); color: var(--teal-700);
+  font-size: 10px; font-weight: 700; letter-spacing: 1px;
+  padding: 4px 12px; border-radius: 100px; margin-bottom: 10px;
+  text-transform: uppercase; border: 1px solid var(--teal-200);
+}
+.dept-tag.new { background: var(--teal-600); color: var(--white); border-color: var(--teal-600); }
+
+.sub-h {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px; font-weight: 700; color: var(--teal-700);
+  margin-bottom: 12px;
+  display: flex; align-items: center; gap: 8px;
+}
+.sub-h i { width: 18px; height: 18px; }
+
+.teal-hr { border: none; border-top: 1px solid var(--slate-200); margin: 18px 0; }
+.section-intro { font-size: 14px; color: var(--slate-600); margin-bottom: 24px; line-height: 1.75; }
+
+/* EVENT CARD */
+.event-card {
+  background: var(--white); border-radius: var(--radius);
+  border: 1px solid var(--slate-200); padding: 24px;
+  transition: transform 0.3s, box-shadow 0.3s;
+}
+.event-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
+.event-icon {
+  width: 48px; height: 48px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 14px;
+}
+.event-date { font-size: 11px; font-weight: 700; color: var(--teal-600); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 4px; }
+.event-name { font-size: 14px; font-weight: 700; color: var(--slate-800); margin-bottom: 6px; }
+.event-desc { font-size: 13px; color: var(--slate-600); line-height: 1.65; }
+
+/* TRAINING ITEM */
+.training-item {
+  display: flex; gap: 14px; align-items: flex-start;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--slate-100);
+}
+.training-item:last-child { border-bottom: none; }
+.training-dot {
+  width: 32px; height: 32px; flex-shrink: 0;
+  background: var(--teal-50); border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--teal-600);
+}
+.training-dot i { width: 16px; height: 16px; }
+.training-title { font-size: 13px; font-weight: 700; color: var(--slate-800); margin-bottom: 2px; }
+.training-meta { font-size: 12px; color: var(--slate-500); }
+
+/* RESPONSIVE */
+@media (max-width: 900px) {
+  .sidebar { transform: translateX(-100%); transition: transform 0.3s cubic-bezier(0.16,1,0.3,1); }
+  .sidebar.open { transform: translateX(0); }
+  .sidebar-toggle { display: flex; }
+  .sidebar-overlay.open { display: block; }
+  .page-wrapper { margin-left: 0; }
+  .site-header { padding: 32px 20px 28px; padding-top: 72px; }
+  .header-stats { flex-direction: column; }
+  .header-stat { border-right: none; border-bottom: 1px solid rgba(255,255,255,0.08); padding: 14px 20px; }
+  .header-stat:last-child { border-bottom: none; }
+  .main { padding: 24px 16px 48px; }
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .card { padding: 20px; }
+  .closing-quote { padding: 28px 20px; }
+}
+@media (max-width: 480px) {
+  .grid-4 { grid-template-columns: repeat(2, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar { transition: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-brand">
+    <div class="brand-name">Sapphire Clinics<br>East, Inc.</div>
+    <div class="brand-sub">2024 Annual Report</div>
+  </div>
+  <nav class="sidebar-nav">
+    <button class="nav-btn active" onclick="showSection('overview',this)"><i data-lucide="layout-dashboard"></i> Overview</button>
+    <button class="nav-btn" onclick="showSection('whoweare',this)"><i data-lucide="info"></i> Who We Are</button>
+    <button class="nav-btn" onclick="showSection('people',this)"><i data-lucide="users"></i> Our People</button>
+    <button class="nav-btn" onclick="showSection('construction',this)"><i data-lucide="hard-hat"></i> Construction &amp; Opening</button>
+    <button class="nav-btn" onclick="showSection('deptperformance',this)"><i data-lucide="bar-chart-2"></i> Dept Performance</button>
+    <button class="nav-btn" onclick="showSection('recruitment',this)"><i data-lucide="search"></i> Recruitment</button>
+    <button class="nav-btn" onclick="showSection('staffprograms',this)"><i data-lucide="heart-handshake"></i> Staff Programs</button>
+    <button class="nav-btn" onclick="showSection('governance',this)"><i data-lucide="shield"></i> Governance</button>
+    <button class="nav-btn" onclick="showSection('leadership',this)"><i data-lucide="crown"></i> Leadership</button>
+    <button class="nav-btn" onclick="showSection('contact',this)"><i data-lucide="phone"></i> Contact</button>
+  </nav>
+  <div class="sidebar-footer">SCEI &middot; Sandbox Clinic East &middot; 2024</div>
+</aside>
+
+<!-- MOBILE TOGGLE -->
+<button class="sidebar-toggle" id="sidebarToggle" aria-label="Open navigation">
+  <i data-lucide="menu"></i>
+</button>
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+<div class="page-wrapper">
+
+<!-- HEADER -->
+<header class="site-header">
+  <div class="header-inner">
+    <div class="header-org">
+      <div class="org-name">Sapphire Clinics East, Inc.</div>
+      <div class="org-sub">SCEI &middot; Sandbox Clinic East</div>
+    </div>
+    <div class="header-badge">2024 Annual Report &middot; Inaugural Fiscal Year</div>
+    <h1 class="header-title">Accomplishment Report</h1>
+    <p class="header-period">Reporting Period: January to December 2024</p>
+    <div class="header-stats">
+      <div class="header-stat"><div class="num" data-count="1">0</div><div class="lbl">Active Branch</div></div>
+      <div class="header-stat"><div class="num" data-count="43">0</div><div class="lbl">Team Members</div></div>
+      <div class="header-stat"><div class="num" data-count="97.23" data-decimal="true">0</div><div class="lbl">% of Target Achieved</div></div>
+      <div class="header-stat"><div class="num" data-count="345">0</div><div class="lbl">Sq Meters Facility</div></div>
+      <div class="header-stat"><div class="num" data-count="5">0</div><div class="lbl">Board Members</div></div>
+    </div>
+  </div>
+</header>
+
+<div class="main">
+
+<!-- ===================== OVERVIEW ===================== -->
+<section id="overview" class="section active">
+
+  <div class="section-heading reveal"><h2>Year at a Glance</h2><span class="tag">2024 Overview</span></div>
+
+  <div class="grid-4 reveal">
+    <div class="kpi-card"><div class="kpi-icon"><i data-lucide="flag"></i></div><div class="kpi-num">2024</div><div class="kpi-lbl">Inaugural Fiscal Year</div></div>
+    <div class="kpi-card accent"><div class="kpi-icon"><i data-lucide="calendar-check"></i></div><div class="kpi-num">Jun 15</div><div class="kpi-lbl">Grand Opening</div></div>
+    <div class="kpi-card"><div class="kpi-icon"><i data-lucide="trending-up"></i></div><div class="kpi-num">97.23%</div><div class="kpi-lbl">Overall Target Met</div></div>
+    <div class="kpi-card accent"><div class="kpi-icon"><i data-lucide="users"></i></div><div class="kpi-num">43+</div><div class="kpi-lbl">Team Members</div></div>
+    <div class="kpi-card"><div class="kpi-icon"><i data-lucide="building-2"></i></div><div class="kpi-num">345 m²</div><div class="kpi-lbl">Facility Area</div></div>
+    <div class="kpi-card accent"><div class="kpi-icon"><i data-lucide="heart-pulse"></i></div><div class="kpi-num">6</div><div class="kpi-lbl">Clinical Departments</div></div>
+    <div class="kpi-card"><div class="kpi-icon"><i data-lucide="graduation-cap"></i></div><div class="kpi-num">5+</div><div class="kpi-lbl">Staff Trainings</div></div>
+    <div class="kpi-card accent"><div class="kpi-icon"><i data-lucide="handshake"></i></div><div class="kpi-num">3</div><div class="kpi-lbl">Recruitment Events</div></div>
+  </div>
+
+  <!-- CEO Message -->
+  <div style="margin-top:32px" class="reveal">
+    <div class="card ceo-card">
+      <p style="font-size:11px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:var(--teal-500); margin-bottom:12px;">Message from the CEO</p>
+      <p class="ceo-quote">"The year 2024 was a landmark for Sandbox Clinic East, marking the organization's inaugural fiscal year of operations. More than just the start of its journey, it was a year of foundation-building — laying down systems, processes, and best practices that will serve as the cornerstone for the clinic's growth in the years to come."</p>
+      <p class="ceo-quote">"The investments made in 2024 — in manpower, state-of-the-art equipment, and advanced information systems — position SCEI for sustained growth. These early efforts are expected to yield positive returns for shareholders as early as 2025. Notably, SCEI is steadily earning the trust and recognition of the rehabilitation community, including both therapists and clients, thanks to the exceptional quality of care it provides."</p>
+      <div class="ceo-sig">
+        <div class="ceo-avatar">HJ</div>
+        <div>
+          <div class="ceo-sig-name">Hannah P. Jara, MBA, MPH, PTRP</div>
+          <div class="ceo-sig-title">CEO &amp; President, Sapphire Clinics East, Inc.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Inaugural Year Highlights -->
+  <div style="margin-top:28px" class="reveal">
+    <div class="section-heading"><h2>2024 Highlights</h2><span class="tag">Foundation Year</span></div>
+    <div class="grid-3">
+      <div class="card purpose-card">
+        <div class="purpose-icon"><i data-lucide="hard-hat"></i></div>
+        <h4 class="sub-h">Construction &amp; Opening</h4>
+        <p style="font-size:13px; line-height:1.75; color:var(--slate-600)">Construction commenced March 8, 2024 and concluded on June 15, 2024 — a 3-month build delivering a state-of-the-art 345 sq m rehabilitation facility at Robinsons Metro East, Pasig.</p>
+      </div>
+      <div class="card purpose-card">
+        <div class="purpose-icon"><i data-lucide="users"></i></div>
+        <h4 class="sub-h">Multidisciplinary Team Built</h4>
+        <p style="font-size:13px; line-height:1.75; color:var(--slate-600)">By year-end, SCEI assembled 43+ professionals across 9 disciplines — OT, PT, SLP, SPED, Medical, Psychology, Orthosis &amp; Prosthesis, and support staff — setting the standard for comprehensive care.</p>
+      </div>
+      <div class="card purpose-card">
+        <div class="purpose-icon"><i data-lucide="bar-chart-2"></i></div>
+        <h4 class="sub-h">97.23% Overall Performance</h4>
+        <p style="font-size:13px; line-height:1.75; color:var(--slate-600)">Despite being in its first year, the clinic achieved 97.23% of projected targets. Occupational Therapy exceeded projections by +24.75%, while O&amp;P services added unplanned revenue.</p>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ===================== WHO WE ARE ===================== -->
+<section id="whoweare" class="section">
+
+  <div class="section-heading reveal"><h2>Who We Are</h2><span class="tag">Identity &amp; Purpose</span></div>
+
+  <p class="section-intro reveal">Sapphire Clinics East, Inc. (SCEI) operates Sandbox Clinic East — a premier rehabilitation facility committed to delivering accessible, evidence-based healthcare to the Metro East community and beyond.</p>
+
+  <div class="grid-2 reveal">
+    <div class="mv-card">
+      <h3><i data-lucide="target"></i> Mission</h3>
+      <p>To become the leading rehabilitation institution in the Philippines.</p>
+    </div>
+    <div class="mv-card bright">
+      <h3><i data-lucide="eye"></i> Vision</h3>
+      <p>To optimize the quality of life through accessible, excellent, and evidence-based rehabilitation services.</p>
+    </div>
+  </div>
+
+  <div style="margin-top:24px" class="reveal">
+    <div class="section-heading"><h2>Our Purpose</h2><span class="tag">Why We Exist</span></div>
+    <div class="grid-3">
+      <div class="card purpose-card">
+        <div class="purpose-icon"><i data-lucide="heart-pulse"></i></div>
+        <h4 class="sub-h">Clinical Excellence</h4>
+        <p style="font-size:13px; line-height:1.75; color:var(--slate-600)">To provide the highest quality of Physical Therapy, Occupational Therapy, Speech Therapy, and all services we offer to our patients.</p>
+      </div>
+      <div class="card purpose-card">
+        <div class="purpose-icon"><i data-lucide="graduation-cap"></i></div>
+        <h4 class="sub-h">Professional Hub</h4>
+        <p style="font-size:13px; line-height:1.75; color:var(--slate-600)">To be the destination of young, driven, motivated, competent, and like-minded professionals who want to further raise the standard of practice in the medical and allied health profession.</p>
+      </div>
+      <div class="card purpose-card">
+        <div class="purpose-icon"><i data-lucide="globe"></i></div>
+        <h4 class="sub-h">Community Impact</h4>
+        <p style="font-size:13px; line-height:1.75; color:var(--slate-600)">To help the community by providing accessible and high-quality healthcare, thus creating happy, productive, and healthy people. Aspires to create a healthy and safe environment for the future generation.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Brand Statement -->
+  <div style="margin-top:24px" class="reveal">
+    <div class="card" style="background: linear-gradient(135deg, var(--teal-50) 0%, var(--white) 100%); border-left: 4px solid var(--teal-500);">
+      <p style="font-size:11px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:var(--teal-500); margin-bottom:14px;">Our Brand Promise</p>
+      <p style="font-size:15px; line-height:1.85; color:var(--slate-700)">Our institution aspires to be the gold standard in rehabilitation care in the Philippines, setting a benchmark for quality, accessibility, and evidence-based practices. As a hub for professional excellence and training, we aim to inspire and cultivate the next generation of healthcare leaders. Beyond individual care, our goal is to contribute meaningfully to society by creating healthier and more resilient communities.</p>
+      <div class="badge-row" style="margin-top:18px;">
+        <span class="badge teal">Gold Standard Care</span>
+        <span class="badge dark">Evidence-Based</span>
+        <span class="badge bright">Community-Centered</span>
+        <span class="badge outline">Accessibility</span>
+        <span class="badge teal">Inter-Professional</span>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ===================== OUR PEOPLE ===================== -->
+<section id="people" class="section">
+
+  <div class="section-heading reveal"><h2>Our People</h2><span class="tag">Team Composition &amp; Charts</span></div>
+
+  <p class="section-intro reveal">By the close of 2024, Sandbox Clinic East had assembled a robust and diverse multidisciplinary team across clinical, medical, and administrative functions — reflecting its commitment to comprehensive, patient-centered care.</p>
+
+  <div class="reveal">
+    <div class="staff-branch">
+      <div class="branch-header"><i data-lucide="building-2"></i> Sandbox Clinic East — End of Year 2024 Headcount</div>
+      <div class="branch-grid">
+        <div class="branch-cell"><div class="bc-num">16</div><div class="bc-role">Occupational Therapists</div></div>
+        <div class="branch-cell"><div class="bc-num">2</div><div class="bc-role">Speech-Language Pathologists</div></div>
+        <div class="branch-cell"><div class="bc-num">4</div><div class="bc-role">SPED Teachers</div></div>
+        <div class="branch-cell"><div class="bc-num">2</div><div class="bc-role">Physical Therapists</div></div>
+        <div class="branch-cell"><div class="bc-num">8</div><div class="bc-role">Physicians (Various Specializations)</div></div>
+        <div class="branch-cell"><div class="bc-num">5</div><div class="bc-role">Psychologists</div></div>
+        <div class="branch-cell"><div class="bc-num">2</div><div class="bc-role">Prosthetist-Orthotists</div></div>
+        <div class="branch-cell"><div class="bc-num">2</div><div class="bc-role">Front Desk Officers</div></div>
+        <div class="branch-cell"><div class="bc-num">2</div><div class="bc-role">Clinic Aides</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="grid-2 reveal" style="margin-top:24px;">
+    <div class="card">
+      <div class="sub-h"><i data-lucide="pie-chart"></i> Staff Composition by Role</div>
+      <div class="chart-wrap"><canvas id="staffChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="sub-h" style="justify-content:center; margin-bottom:20px;"><i data-lucide="star"></i> Team Breakdown</div>
+      <div style="display:flex; flex-direction:column; gap:10px; margin-top:8px;">
+        <div class="progress-item">
+          <div class="progress-label"><span>Occupational Therapists</span><span>16</span></div>
+          <div class="progress-track"><div class="progress-fill over" style="width:74%"></div></div>
+        </div>
+        <div class="progress-item">
+          <div class="progress-label"><span>Physicians</span><span>8</span></div>
+          <div class="progress-track"><div class="progress-fill mid" style="width:37%"></div></div>
+        </div>
+        <div class="progress-item">
+          <div class="progress-label"><span>Psychologists</span><span>5</span></div>
+          <div class="progress-track"><div class="progress-fill mid" style="width:23%"></div></div>
+        </div>
+        <div class="progress-item">
+          <div class="progress-label"><span>SPED Teachers</span><span>4</span></div>
+          <div class="progress-track"><div class="progress-fill" style="width:19%"></div></div>
+        </div>
+        <div class="progress-item">
+          <div class="progress-label"><span>Speech-Language Pathologists</span><span>2</span></div>
+          <div class="progress-track"><div class="progress-fill low" style="width:9%"></div></div>
+        </div>
+        <div class="progress-item">
+          <div class="progress-label"><span>Physical Therapists</span><span>2</span></div>
+          <div class="progress-track"><div class="progress-fill low" style="width:9%"></div></div>
+        </div>
+        <div class="progress-item">
+          <div class="progress-label"><span>Prosthetist-Orthotists</span><span>2</span></div>
+          <div class="progress-track"><div class="progress-fill" style="width:9%"></div></div>
+        </div>
+        <div class="progress-item">
+          <div class="progress-label"><span>Support Staff</span><span>4</span></div>
+          <div class="progress-track"><div class="progress-fill low" style="width:19%"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Physician Specializations -->
+  <div style="margin-top:24px;" class="reveal">
+    <div class="card">
+      <div class="sub-h"><i data-lucide="stethoscope"></i> Physician Specializations</div>
+      <p style="font-size:13px; line-height:1.75; color:var(--slate-600); margin-bottom:14px;">Leveraging the robust health network established by Sandbox BGC, the East branch recruited physicians across a variety of specialized fields, enabling comprehensive, patient-centered care.</p>
+      <div class="badge-row">
+        <span class="badge dark">Rehabilitation Medicine</span>
+        <span class="badge teal">Orthopedic Medicine</span>
+        <span class="badge dark">Internal Medicine</span>
+        <span class="badge teal">Developmental Pediatrics</span>
+        <span class="badge bright">Psychiatry / Psychology</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Initial Onboarding -->
+  <div style="margin-top:20px;" class="reveal">
+    <div class="info-box">
+      <p><strong>Initial Onboarding:</strong> The onboarding of the HR department took place on <strong>June 4, 2024</strong>, designed to ensure a smooth transition into the organization. The program focused on familiarizing new hires with the clinic's mission, values, policies, and operational procedures, while fostering a sense of belonging within the team.</p>
+    </div>
+  </div>
+
+</section>
+
+<!-- ===================== CONSTRUCTION & OPENING ===================== -->
+<section id="construction" class="section">
+
+  <div class="section-heading reveal"><h2>Construction &amp; Grand Opening</h2><span class="tag">Facility Development</span></div>
+
+  <p class="section-intro reveal">The establishment of Sandbox Clinic East signifies a milestone in the development of state-of-the-art rehabilitation facilities in the region. From planning to grand opening, 2024 marked the physical birth of SCEI.</p>
+
+  <!-- Construction Timeline -->
+  <div class="grid-2 reveal">
+    <div class="card">
+      <div class="sub-h"><i data-lucide="calendar"></i> Construction Timeline</div>
+      <div class="timeline">
+        <div class="tl-item">
+          <div class="tl-dot"></div>
+          <div class="tl-date">Q4 2023</div>
+          <div class="tl-title">Planning Phase</div>
+          <div class="tl-desc">Construction planning commenced with discussions with Robinsons Land Corporation on clinic site selection and design requirements.</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot"></div>
+          <div class="tl-date">January 2024</div>
+          <div class="tl-title">Competitive Bidding</div>
+          <div class="tl-desc">Formal invitation for competitive bids issued to three qualified firms. Architectural design awarded to Villarino Construction Corp., with technical advice from Ms. Charli Nicole Lim, OT.</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot"></div>
+          <div class="tl-date">March 8, 2024</div>
+          <div class="tl-title">Construction Begins</div>
+          <div class="tl-desc">Construction officially commenced under Oneiro Engineering Services as project manager, ensuring strict adherence to quality and timeline requirements.</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot"></div>
+          <div class="tl-date">June 4, 2024</div>
+          <div class="tl-title">Initial HR Onboarding</div>
+          <div class="tl-desc">HR department onboarding conducted to prepare the inaugural team for clinic opening, familiarizing staff with mission, values, and operational procedures.</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot"></div>
+          <div class="tl-date">June 15, 2024</div>
+          <div class="tl-title">🎉 Grand Opening</div>
+          <div class="tl-desc">Simultaneous construction completion and grand opening celebrated with shareholders, newly hired staff, key suppliers, and Robinsons Land Corporation representatives.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Facility Specs -->
+    <div style="display:flex; flex-direction:column; gap:16px;">
+      <div class="card">
+        <div class="sub-h"><i data-lucide="layout"></i> Facility Overview</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:4px;">
+          <div style="background:var(--teal-50); border-radius:var(--radius-sm); padding:14px; text-align:center;">
+            <div style="font-family:'DM Sans',sans-serif; font-size:26px; font-weight:800; color:var(--teal-600);">345</div>
+            <div style="font-size:11px; color:var(--slate-500); font-weight:600;">Square Meters</div>
+          </div>
+          <div style="background:var(--teal-50); border-radius:var(--radius-sm); padding:14px; text-align:center;">
+            <div style="font-family:'DM Sans',sans-serif; font-size:26px; font-weight:800; color:var(--teal-600);">4F</div>
+            <div style="font-size:11px; color:var(--slate-500); font-weight:600;">Floor Level</div>
+          </div>
+        </div>
+        <div class="info-box" style="margin-top:12px;">
+          <p><strong>Location:</strong> 4th Floor, Robinsons Metro East, Pasig City</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="sub-h"><i data-lucide="door-open"></i> Specialized Rooms</div>
+        <div style="display:flex; flex-direction:column; gap:8px; margin-top:4px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--slate-50); border-radius:8px;">
+            <span style="font-size:13px; color:var(--slate-700);">SPED Rooms</span>
+            <span style="font-family:'DM Sans',sans-serif; font-weight:700; color:var(--teal-600);">2</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--slate-50); border-radius:8px;">
+            <span style="font-size:13px; color:var(--slate-700);">Pediatric Therapy Rooms</span>
+            <span style="font-family:'DM Sans',sans-serif; font-weight:700; color:var(--teal-600);">4</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--slate-50); border-radius:8px;">
+            <span style="font-size:13px; color:var(--slate-700);">Adult Therapy Rooms</span>
+            <span style="font-family:'DM Sans',sans-serif; font-weight:700; color:var(--teal-600);">3</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--slate-50); border-radius:8px;">
+            <span style="font-size:13px; color:var(--slate-700);">Physical Therapy Gym</span>
+            <span style="font-family:'DM Sans',sans-serif; font-weight:700; color:var(--teal-600);">1</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--slate-50); border-radius:8px;">
+            <span style="font-size:13px; color:var(--slate-700);">Multisensory Room</span>
+            <span style="font-family:'DM Sans',sans-serif; font-weight:700; color:var(--teal-600);">1</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--slate-50); border-radius:8px;">
+            <span style="font-size:13px; color:var(--slate-700);">Prosthesis / Orthosis Room</span>
+            <span style="font-family:'DM Sans',sans-serif; font-weight:700; color:var(--teal-600);">1</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--slate-50); border-radius:8px;">
+            <span style="font-size:13px; color:var(--slate-700);">Pediatric Gym</span>
+            <span style="font-family:'DM Sans',sans-serif; font-weight:700; color:var(--teal-600);">1</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="sub-h"><i data-lucide="wrench"></i> Project Partners</div>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <div style="padding:10px 14px; background:var(--teal-50); border-radius:8px; border-left:3px solid var(--teal-500);">
+            <div style="font-size:12px; font-weight:700; color:var(--teal-700);">Villarino Construction Corp.</div>
+            <div style="font-size:11px; color:var(--slate-500);">Architectural Design</div>
+          </div>
+          <div style="padding:10px 14px; background:var(--teal-50); border-radius:8px; border-left:3px solid var(--teal-500);">
+            <div style="font-size:12px; font-weight:700; color:var(--teal-700);">Ms. Charli Nicole Lim, OT</div>
+            <div style="font-size:11px; color:var(--slate-500);">Technical Advisor (Occupational Therapist)</div>
+          </div>
+          <div style="padding:10px 14px; background:var(--teal-50); border-radius:8px; border-left:3px solid var(--teal-500);">
+            <div style="font-size:12px; font-weight:700; color:var(--teal-700);">Oneiro Engineering Services</div>
+            <div style="font-size:11px; color:var(--slate-500);">Construction &amp; Project Management</div>
+          </div>
+          <div style="padding:10px 14px; background:var(--teal-50); border-radius:8px; border-left:3px solid var(--teal-500);">
+            <div style="font-size:12px; font-weight:700; color:var(--teal-700);">Robinsons Land Corporation</div>
+            <div style="font-size:11px; color:var(--slate-500);">Facility Landlord &amp; Accredited Supplier Coordination</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Grand Opening Highlight -->
+  <div style="margin-top:24px;" class="reveal">
+    <div class="card" style="background:linear-gradient(135deg, var(--teal-900), var(--teal-700)); color:var(--white); border:none; position:relative; overflow:hidden;">
+      <div style="position:absolute; top:-80px; right:-40px; width:250px; height:250px; background:radial-gradient(circle, rgba(45,212,191,0.1) 0%, transparent 70%); border-radius:50%;"></div>
+      <div style="position:relative; z-index:1;">
+        <div style="font-size:11px; font-weight:700; letter-spacing:2.5px; text-transform:uppercase; opacity:0.6; margin-bottom:10px;">June 15, 2024</div>
+        <h3 style="font-size:22px; font-weight:800; margin-bottom:12px; color:var(--white);">Grand Opening Celebration</h3>
+        <p style="font-size:14px; line-height:1.8; opacity:0.85;">The grand opening of Sandbox Clinic East celebrated the collaboration of shareholders, newly hired staff, key suppliers, and representatives from Robinsons Land Corporation. The event marked a significant milestone in the institution's journey toward becoming a premier rehabilitation facility in the Metro East area.</p>
+        <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:20px;">
+          <div style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:12px 16px; backdrop-filter:blur(8px);">
+            <div style="font-size:11px; font-weight:700;">Shareholders</div>
+            <div style="font-size:10px; opacity:0.6; margin-top:2px;">In Attendance</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:12px 16px; backdrop-filter:blur(8px);">
+            <div style="font-size:11px; font-weight:700;">Inaugural Staff</div>
+            <div style="font-size:10px; opacity:0.6; margin-top:2px;">43+ Team Members</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:12px 16px; backdrop-filter:blur(8px);">
+            <div style="font-size:11px; font-weight:700;">Key Suppliers</div>
+            <div style="font-size:10px; opacity:0.6; margin-top:2px;">Partners Present</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:12px 16px; backdrop-filter:blur(8px);">
+            <div style="font-size:11px; font-weight:700;">Robinsons Land Corp.</div>
+            <div style="font-size:10px; opacity:0.6; margin-top:2px;">Landlord Representatives</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ===================== DEPT PERFORMANCE ===================== -->
+<section id="deptperformance" class="section">
+
+  <div class="section-heading reveal"><h2>Department Performance</h2><span class="tag">2024 Results</span></div>
+
+  <p class="section-intro reveal">In 2024, Sandbox Clinic East demonstrated commendable performance across multiple departments, achieving <strong>97.23%</strong> of the projected target. Below is a detailed assessment of each department's performance, accomplishments, and challenges.</p>
+
+  <!-- Overall Performance Bar -->
+  <div class="reveal">
+    <div class="card" style="background:linear-gradient(135deg, var(--teal-50), var(--white)); border-left:4px solid var(--teal-500);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <div class="sub-h" style="margin-bottom:0;"><i data-lucide="target"></i> Overall Performance vs. Target</div>
+        <span style="font-family:'DM Sans',sans-serif; font-size:28px; font-weight:800; color:var(--teal-600);">97.23%</span>
+      </div>
+      <div class="progress-track" style="height:12px;">
+        <div class="progress-fill mid" style="width:97.23%"></div>
+      </div>
+      <p style="font-size:12px; color:var(--slate-500); margin-top:8px;">2024 marked a year of foundational growth and valuable lessons. With strategic adjustments and resource optimization, SCEI is well-positioned for greater success in 2025.</p>
+    </div>
+  </div>
+
+  <!-- Department Cards -->
+  <div class="grid-2 reveal" style="margin-top:20px;">
+
+    <div class="card">
+      <div class="dept-tag"><i data-lucide="activity" style="width:12px;height:12px;"></i> Occupational Therapy</div>
+      <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:12px;">
+        <h4 style="font-size:16px; font-weight:700; color:var(--slate-800);">OT Services</h4>
+        <span style="font-family:'DM Sans',sans-serif; font-size:22px; font-weight:800; color:#059669;">+24.75%</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill over" style="width:100%; background:linear-gradient(90deg,#059669,#34d399)"></div></div>
+      <div class="info-box">
+        <p>The OT Department <strong>exceeded expectations, surpassing projections by +24.75%</strong>. This outstanding performance reflects the department's effectiveness in meeting client demands and leveraging its reputation. Continued focus on service quality and partnerships will sustain this momentum.</p>
+      </div>
+      <div class="badge-row"><span class="badge" style="background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;">Exceeded Target</span><span class="badge teal">Top Performing Dept</span></div>
+    </div>
+
+    <div class="card">
+      <div class="dept-tag"><i data-lucide="heart-pulse" style="width:12px;height:12px;"></i> Physical Therapy</div>
+      <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:12px;">
+        <h4 style="font-size:16px; font-weight:700; color:var(--slate-800);">PT Services</h4>
+        <span style="font-family:'DM Sans',sans-serif; font-size:22px; font-weight:800; color:var(--teal-600);">80.63%</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill mid" style="width:80.63%"></div></div>
+      <div class="info-box">
+        <p>The PT Department achieved <strong>80.63% of its target</strong>. This solid performance was supported by the availability of advanced equipment, which enhanced marketing efforts and attracted clients. The ongoing accreditation process with several HMOs is expected to further bolster sales once finalized.</p>
+      </div>
+      <div class="badge-row"><span class="badge teal">Solid Performance</span><span class="badge outline">HMO Accreditation Pending</span></div>
+    </div>
+
+    <div class="card">
+      <div class="dept-tag"><i data-lucide="mic" style="width:12px;height:12px;"></i> Speech-Language Pathology</div>
+      <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:12px;">
+        <h4 style="font-size:16px; font-weight:700; color:var(--slate-800);">SLP Services</h4>
+        <span style="font-family:'DM Sans',sans-serif; font-size:22px; font-weight:800; color:var(--teal-700);">38.05%</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill low" style="width:38.05%"></div></div>
+      <div class="info-box">
+        <p>Revenue achieved <strong>38.05% of projection</strong>, primarily due to the limited pool of available SLPs (few schools offer speech therapy programs nationwide). The recent licensure exam in November 2024 and forthcoming oath-taking in January 2025 restricted new hiring. An increase in recruitment is anticipated in 2025.</p>
+      </div>
+      <div class="badge-row"><span class="badge bright">Staffing Limited</span><span class="badge teal">Improving in 2025</span></div>
+    </div>
+
+    <div class="card">
+      <div class="dept-tag"><i data-lucide="book-open" style="width:12px;height:12px;"></i> SPED Services</div>
+      <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:12px;">
+        <h4 style="font-size:16px; font-weight:700; color:var(--slate-800);">SPED Department</h4>
+        <span style="font-family:'DM Sans',sans-serif; font-size:22px; font-weight:800; color:var(--teal-700);">38.45%</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill low" style="width:38.45%"></div></div>
+      <div class="info-box">
+        <p>SPED Services generated <strong>38.45% of target</strong>, reflecting lower demand in the clinic's area. Services were restructured to better align with local demand. The proposed budgeted income statement for 2025 already reflects the revised sales expectations from this department.</p>
+      </div>
+      <div class="badge-row"><span class="badge bright">Restructured for 2025</span><span class="badge teal">Lower Local Demand</span></div>
+    </div>
+
+    <div class="card">
+      <div class="dept-tag"><i data-lucide="stethoscope" style="width:12px;height:12px;"></i> Medical Consultation</div>
+      <div style="display:flex; align-items:flex-end; margin-bottom:12px;">
+        <h4 style="font-size:16px; font-weight:700; color:var(--slate-800);">Medical Services</h4>
+      </div>
+      <div class="info-box">
+        <p>The successful recruitment of several developmental pediatricians significantly enhanced service offerings and boosted sales. The inclusion of registered psychologists shortly after clinic operations commenced further strengthened the department's capacity to meet client needs, contributing positively to overall revenue.</p>
+      </div>
+      <div class="badge-row"><span class="badge" style="background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;">Strong Revenue</span><span class="badge teal">Dev Peds Key Driver</span></div>
+    </div>
+
+    <div class="card">
+      <div class="dept-tag new"><i data-lucide="zap" style="width:12px;height:12px;"></i> NEW: Orthosis &amp; Prosthesis</div>
+      <div style="display:flex; align-items:flex-end; margin-bottom:12px;">
+        <h4 style="font-size:16px; font-weight:700; color:var(--slate-800);">O&amp;P Services</h4>
+      </div>
+      <div class="info-box" style="background:var(--teal-100); border-left-color:var(--teal-500);">
+        <p><strong>Initially unplanned</strong>, Orthosis and Prosthesis Services were introduced to diversify the clinic's offerings and complement existing services, particularly for pediatric physical therapy patients. Despite being a new addition, this service <strong>contributed significantly in revenue</strong>, showcasing its potential to enhance overall sales and service integration.</p>
+      </div>
+      <div class="badge-row"><span class="badge dark">Unplanned Service</span><span class="badge" style="background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;">Significant Revenue</span></div>
+    </div>
+
+  </div>
+
+  <!-- Performance Summary Chart -->
+  <div style="margin-top:24px;" class="reveal">
+    <div class="card">
+      <div class="sub-h"><i data-lucide="bar-chart-3"></i> Department Performance Overview</div>
+      <div class="chart-wrap"><canvas id="deptChart"></canvas></div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ===================== RECRUITMENT ===================== -->
+<section id="recruitment" class="section">
+
+  <div class="section-heading reveal"><h2>Recruitment &amp; Visibility</h2><span class="tag">Talent Acquisition 2024</span></div>
+
+  <p class="section-intro reveal">Recruitment initiatives in 2024 underscored the clinic's efforts to attract top talent and strengthen ties with the healthcare professional community, supporting both growth and excellence in patient care.</p>
+
+  <div class="grid-3 reveal">
+
+    <div class="event-card">
+      <div class="event-icon" style="background:linear-gradient(135deg,var(--teal-100),var(--teal-50)); color:var(--teal-700);">
+        <i data-lucide="graduation-cap" style="width:24px;height:24px;"></i>
+      </div>
+      <div class="event-date">July 22, 2024</div>
+      <div class="event-name">UP CAMP Job Fair</div>
+      <div class="event-desc">The College of Allied Medical Professions (CAMP) Job Fair at the University of the Philippines Manila brought together employers and healthcare job-seekers. Sandbox Clinic's presence promoted career opportunities, established connections with promising candidates, and strengthened its relationship with one of the country's premier academic institutions.</div>
+      <div class="badge-row"><span class="badge teal">UP Manila</span><span class="badge outline">OT / PT / SLP</span></div>
+    </div>
+
+    <div class="event-card">
+      <div class="event-icon" style="background:linear-gradient(135deg,#fef3c7,#fde68a); color:#92400e;">
+        <i data-lucide="award" style="width:24px;height:24px;"></i>
+      </div>
+      <div class="event-date">June 22, 2024</div>
+      <div class="event-name">OT Oath-Taking Ceremony</div>
+      <div class="event-desc">Representatives attended the Occupational Therapist Oath-Taking Ceremony at the Philippine International Convention Center (PICC), organized by the Professional Regulation Commission. Sandbox Clinic celebrated the accomplishments of newly licensed OTs, built connections, and explored recruitment opportunities.</div>
+      <div class="badge-row"><span class="badge teal">PICC</span><span class="badge dark">PRC Event</span></div>
+    </div>
+
+    <div class="event-card">
+      <div class="event-icon" style="background:linear-gradient(135deg,var(--teal-50),#ecfdf5); color:var(--teal-700);">
+        <i data-lucide="mic" style="width:24px;height:24px;"></i>
+      </div>
+      <div class="event-date">August 4, 2024</div>
+      <div class="event-name">PASP Convention 2024</div>
+      <div class="event-desc">Representatives from Sandbox Clinic East, BGC, and Clark attended the Philippine Association of Speech Pathologists (PASP) Convention as one of the sponsors at Unilab Bayanihan Center, Mandaluyong City. The clinic supported the SLP community, promoted career opportunities, and explored recruitment for current and future positions.</div>
+      <div class="badge-row"><span class="badge teal">Convention Sponsor</span><span class="badge outline">PASP</span></div>
+    </div>
+
+  </div>
+
+  <!-- Physician Recruitment Highlight -->
+  <div style="margin-top:24px;" class="reveal">
+    <div class="card" style="border-left:4px solid var(--teal-500);">
+      <div class="sub-h"><i data-lucide="stethoscope"></i> Strategic Physician Recruitment</div>
+      <p style="font-size:14px; line-height:1.8; color:var(--slate-600);">Leveraging the robust health network previously established by Sandbox BGC, the East branch successfully expanded its multidisciplinary team by recruiting physicians from a variety of specialized fields. This strategic integration of expertise enabled the clinic to assemble a distinguished roster including specialists in rehabilitation medicine, orthopedic medicine, internal medicine, and developmental pediatrics.</p>
+      <div class="info-box">
+        <p>The inclusion of diverse medical disciplines enhances the clinic's ability to provide comprehensive, patient-centered care and ensures patients receive tailored treatment plans — further solidifying SCEI's reputation for excellence.</p>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ===================== STAFF PROGRAMS ===================== -->
+<section id="staffprograms" class="section">
+
+  <div class="section-heading reveal"><h2>Staff Programs</h2><span class="tag">Training &amp; Events 2024</span></div>
+
+  <p class="section-intro reveal">In 2024, Sandbox Clinic conducted a series of training programs and staff events to enhance clinical skills, update professional knowledge, and build a strong team culture in its inaugural year.</p>
+
+  <div class="grid-2 reveal">
+
+    <!-- Trainings -->
+    <div class="card">
+      <div class="sub-h"><i data-lucide="book-open"></i> Professional Trainings</div>
+
+      <div class="training-item">
+        <div class="training-dot"><i data-lucide="needle"></i></div>
+        <div>
+          <div class="training-title">Dry Needling Technique</div>
+          <div class="training-meta">June 22, 2024 &nbsp;·&nbsp; With Ma'am Hannah de Luna</div>
+        </div>
+      </div>
+
+      <div class="training-item">
+        <div class="training-dot"><i data-lucide="dumbbell"></i></div>
+        <div>
+          <div class="training-title">Sports Rehabilitation Training</div>
+          <div class="training-meta">October 17, 2024 &nbsp;·&nbsp; With Ma'am Hannah de Luna</div>
+        </div>
+      </div>
+
+      <div class="training-item">
+        <div class="training-dot"><i data-lucide="graduation-cap"></i></div>
+        <div>
+          <div class="training-title">Outcomes Based Clinical Teaching &amp; Learning: Series IV</div>
+          <div class="training-meta">August 4, 2024 &nbsp;·&nbsp; Health Professions Education</div>
+        </div>
+      </div>
+
+      <div class="training-item">
+        <div class="training-dot"><i data-lucide="book"></i></div>
+        <div>
+          <div class="training-title">"Lessons as Games for Educators: Effective Engagement for Millennials &amp; Gen-Z"</div>
+          <div class="training-meta">September 5, 2024 &nbsp;·&nbsp; SPED Educators Series</div>
+        </div>
+      </div>
+
+      <div class="training-item">
+        <div class="training-dot"><i data-lucide="users"></i></div>
+        <div>
+          <div class="training-title">"Special Education 101 for Teachers: A Comprehensive Overview on SEN"</div>
+          <div class="training-meta">September 12, 2024 &nbsp;·&nbsp; SPED Educators Series</div>
+        </div>
+      </div>
+
+      <div class="training-item">
+        <div class="training-dot"><i data-lucide="brain"></i></div>
+        <div>
+          <div class="training-title">"Classroom Behavior &amp; Psychology 101: Proven Strategies for Challenging Behavior"</div>
+          <div class="training-meta">September 19, 2024 &nbsp;·&nbsp; SPED Educators Series</div>
+        </div>
+      </div>
+
+      <div class="training-item">
+        <div class="training-dot"><i data-lucide="lightbulb"></i></div>
+        <div>
+          <div class="training-title">"Modern Strategies for Effective Education: Interactive Learning Model &amp; Best Practices"</div>
+          <div class="training-meta">September 24, 2024 &nbsp;·&nbsp; SPED Educators Series</div>
+        </div>
+      </div>
+
+      <div class="training-item">
+        <div class="training-dot"><i data-lucide="sparkles"></i></div>
+        <div>
+          <div class="training-title">Reading Beyond Lines</div>
+          <div class="training-meta">November 26, 2024 &nbsp;·&nbsp; Philippine Association for the Gifted</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Staff Events -->
+    <div style="display:flex; flex-direction:column; gap:16px;">
+
+      <div class="card">
+        <div class="sub-h"><i data-lucide="party-popper"></i> Staff Events &amp; Celebrations</div>
+
+        <div class="event-card" style="border:none; border-top:1px solid var(--slate-100); border-radius:0; padding:16px 0;">
+          <div class="event-icon" style="background:linear-gradient(135deg,#fef3c7,#fed7aa); color:#92400e; width:40px; height:40px;">
+            <i data-lucide="ghost" style="width:20px;height:20px;"></i>
+          </div>
+          <div class="event-date">October 26, 2024</div>
+          <div class="event-name">Halloween Party</div>
+          <div class="event-desc">The clinic transformed into a spooky yet fun-filled venue. The team prepared treats while attendees showcased creative costumes. Organized to foster camaraderie, encourage creativity, and celebrate the season with staff, team, and clients in a lighthearted way.</div>
+          <div class="badge-row"><span class="badge teal">Team Building</span><span class="badge outline">Clients Welcome</span></div>
+        </div>
+
+        <div class="event-card" style="border:none; border-top:1px solid var(--slate-100); border-radius:0; padding:16px 0 0 0;">
+          <div class="event-icon" style="background:linear-gradient(135deg,#dbeafe,#bfdbfe); color:#1e40af; width:40px; height:40px;">
+            <i data-lucide="tree-pine" style="width:20px;height:20px;"></i>
+          </div>
+          <div class="event-date">December 15, 2024</div>
+          <div class="event-name">Christmas Party</div>
+          <div class="event-desc">The Sandbox Clinic East Christmas Party brought employees, management, and stakeholders together to celebrate the holiday season. It served as a platform to reflect on the year's accomplishments, foster camaraderie among team members, and express gratitude for everyone's hard work and dedication in the inaugural year.</div>
+          <div class="badge-row"><span class="badge dark">Year-End Celebration</span><span class="badge teal">Inaugural Year</span></div>
+        </div>
+      </div>
+
+      <div class="card" style="background:linear-gradient(135deg,var(--teal-50),var(--white)); border-left:4px solid var(--teal-400);">
+        <div class="sub-h"><i data-lucide="trending-up"></i> Commitment to Development</div>
+        <p style="font-size:13px; line-height:1.8; color:var(--slate-600);">These training initiatives aimed to align with the clinic's mission to provide exceptional healthcare services while fostering a culture of continuous professional development. Sandbox Clinic remains deeply committed to hiring professionals who align with its core values, ensuring that new hires are a strong fit poised for long-term contributions.</p>
+      </div>
+
+    </div>
+  </div>
+
+</section>
+
+<!-- ===================== GOVERNANCE ===================== -->
+<section id="governance" class="section">
+
+  <div class="section-heading reveal"><h2>Governance</h2><span class="tag">Board Meetings 2024</span></div>
+
+  <p class="section-intro reveal">The Board of Directors is mandated to convene biannually to review the corporation's performance and guide its strategic direction. The board meetings held in 2024 were instrumental in shaping Sandbox Clinic's operational and strategic initiatives.</p>
+
+  <div class="grid-2 reveal">
+
+    <div class="card">
+      <div class="sub-h"><i data-lucide="gavel"></i> Board Meeting 1 — Q2 2024</div>
+      <div style="display:flex; align-items:center; gap:14px; margin-bottom:16px;">
+        <div style="width:56px; height:56px; background:linear-gradient(135deg,var(--teal-900),var(--teal-600)); border-radius:14px; display:flex; align-items:center; justify-content:center; color:var(--white); flex-shrink:0;">
+          <i data-lucide="calendar" style="width:24px;height:24px;"></i>
+        </div>
+        <div>
+          <div style="font-family:'DM Sans',sans-serif; font-size:18px; font-weight:800; color:var(--teal-700);">May 19, 2024</div>
+          <div style="font-size:12px; color:var(--slate-500);">First Board Session of the Inaugural Year</div>
+        </div>
+      </div>
+      <p style="font-size:13px; line-height:1.75; color:var(--slate-600);">The first board meeting provided an early opportunity to review the clinic's establishment progress, assess initial operational performance since the June 15 opening plans, and set strategic priorities for the second half of 2024. The board reinforced its commitment to excellence and forward-looking direction for the newly opened facility.</p>
+      <div class="badge-row"><span class="badge dark">Strategic Planning</span><span class="badge teal">Q2 2024</span></div>
+    </div>
+
+    <div class="card">
+      <div class="sub-h"><i data-lucide="gavel"></i> Board Meeting 2 — Q4 2024</div>
+      <div style="display:flex; align-items:center; gap:14px; margin-bottom:16px;">
+        <div style="width:56px; height:56px; background:linear-gradient(135deg,var(--teal-900),var(--teal-600)); border-radius:14px; display:flex; align-items:center; justify-content:center; color:var(--white); flex-shrink:0;">
+          <i data-lucide="calendar" style="width:24px;height:24px;"></i>
+        </div>
+        <div>
+          <div style="font-family:'DM Sans',sans-serif; font-size:18px; font-weight:800; color:var(--teal-700);">November 24, 2024</div>
+          <div style="font-size:12px; color:var(--slate-500);">Year-End Review &amp; 2025 Strategy</div>
+        </div>
+      </div>
+      <p style="font-size:13px; line-height:1.75; color:var(--slate-600);">The second board meeting reviewed full-year 2024 performance against projections, addressed operational challenges, and established the strategic direction for 2025. The board underscored its unwavering commitment to proactive problem-solving and its forward-looking approach to capitalizing on opportunities.</p>
+      <div class="badge-row"><span class="badge dark">Year-End Review</span><span class="badge teal">2025 Planning</span></div>
+    </div>
+
+  </div>
+
+  <!-- Board Mandate -->
+  <div style="margin-top:24px;" class="reveal">
+    <div class="card" style="background:linear-gradient(135deg,var(--teal-900),var(--teal-700)); color:var(--white); border:none; position:relative; overflow:hidden;">
+      <div style="position:absolute; top:-60px; right:-40px; width:200px; height:200px; background:radial-gradient(circle,rgba(45,212,191,0.1) 0%,transparent 70%); border-radius:50%;"></div>
+      <div style="position:relative; z-index:1;">
+        <p style="font-size:11px; font-weight:700; letter-spacing:2px; text-transform:uppercase; opacity:0.6; margin-bottom:12px;">Governance Mandate</p>
+        <p style="font-size:15px; line-height:1.85; opacity:0.92;">These meetings underscored the board's unwavering commitment to excellence, proactive problem-solving, and its forward-looking approach to addressing challenges and capitalizing on opportunities. Through these sessions, the board reinforced its dedication to driving the continued success and growth of the corporation.</p>
+        <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:20px;">
+          <div style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:12px 16px;">
+            <div style="font-size:12px; font-weight:700;">Biannual Sessions</div>
+            <div style="font-size:10px; opacity:0.6; margin-top:2px;">Mandated Frequency</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:12px 16px;">
+            <div style="font-size:12px; font-weight:700;">Performance Review</div>
+            <div style="font-size:10px; opacity:0.6; margin-top:2px;">Corporate Accountability</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:12px 16px;">
+            <div style="font-size:12px; font-weight:700;">Strategic Direction</div>
+            <div style="font-size:10px; opacity:0.6; margin-top:2px;">Forward-Looking Guidance</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ===================== LEADERSHIP ===================== -->
+<section id="leadership" class="section">
+
+  <div class="section-heading reveal"><h2>Board of Directors</h2><span class="tag">Leadership 2024</span></div>
+
+  <p class="section-intro reveal">The Board of Directors of Sapphire Clinics East Inc. is composed of five esteemed professionals, all nominated and elected from the pool of existing shareholders. Each board member brings a wealth of expertise, leadership, and experience from various fields, including healthcare, business development, law, and finance.</p>
+
+  <div class="grid-3 reveal">
+
+    <div class="leader-card" style="grid-column: span 1;">
+      <div class="leader-avatar">HJ</div>
+      <div class="leader-name">Hannah P. Jara</div>
+      <div class="leader-creds">MBA, MPH, PTRP</div>
+      <div class="leader-role">CEO &amp; President</div>
+      <div class="leader-bio">Elected as the President and CEO, Hannah brings advanced degrees in Public Health and Business Administration from UP Manila and ESADE Business School. Her background includes OIC-Deputy Team Leader for the World Bank DOH Philippines COVID-19 Emergency Response Project, Senior Manager at Catalyst Review Solutions, and board topnotcher in February 2017.</div>
+      <div class="badge-row"><span class="badge dark">CEO &amp; President</span><span class="badge teal">UP Manila · ESADE</span></div>
+    </div>
+
+    <div class="leader-card">
+      <div class="leader-avatar">AM</div>
+      <div class="leader-name">Adrian Paolo Mina</div>
+      <div class="leader-creds">JD, PTRP</div>
+      <div class="leader-role">Corporate Secretary &amp; Treasurer</div>
+      <div class="leader-bio">A graduate of De La Salle University's Tañada-Diokno College of Law and UST, Adrian serves as VP for Corporate Strategy at Sandbox BGC and CEO of Sandbox Clark and Sandbox Prime. Co-founder of Catalyst Review Solutions; Board Director &amp; Treasurer for Milord Realty Corporation.</div>
+      <div class="badge-row"><span class="badge dark">Secretary &amp; Treasurer</span><span class="badge teal">DLSU · UST</span></div>
+    </div>
+
+    <div class="leader-card">
+      <div class="leader-avatar">JM</div>
+      <div class="leader-name">June Nicca Medina</div>
+      <div class="leader-creds">PTRP</div>
+      <div class="leader-role">Board Member</div>
+      <div class="leader-bio">Currently pursuing her MBA at De La Salle University-Manila and holds a degree in Physical Therapy from DLSHS. President and CEO of Sandbox BGC and Treasurer of Sandbox Clark. Co-founder and CEO of Catalyst Review Solutions; former PT at St. Luke's Medical Center.</div>
+      <div class="badge-row"><span class="badge dark">Board Member</span><span class="badge teal">DLSU MBA (In Progress)</span></div>
+    </div>
+
+    <div class="leader-card">
+      <div class="leader-avatar">CG</div>
+      <div class="leader-name">Ariel Carlo Gonzales</div>
+      <div class="leader-creds">MBA</div>
+      <div class="leader-role">Board Member</div>
+      <div class="leader-bio">Graduate of the Asian Institute of Management (MBA) and Ateneo de Manila University with an exchange at Université Catholique de Lyon. Held senior roles as CFO and Head of Treasury for LICA Group of Companies, and Project Development Officer for the Department of Transportation and Communication.</div>
+      <div class="badge-row"><span class="badge dark">Board Member</span><span class="badge teal">AIM · Ateneo</span></div>
+    </div>
+
+    <div class="leader-card">
+      <div class="leader-avatar">AB</div>
+      <div class="leader-name">Abram Barrameda</div>
+      <div class="leader-creds">MBA</div>
+      <div class="leader-role">Board Member</div>
+      <div class="leader-bio">MBA from the Asian Institute of Management and the University of Mannheim; diplomas in Corporate Finance and Applied Project Management from Ateneo. Former Operations Manager at Abba's Orchard Montessori School and Product Development &amp; Marketing at Filinvest Land Inc.</div>
+      <div class="badge-row"><span class="badge dark">Board Member</span><span class="badge teal">AIM · Uni. of Mannheim</span></div>
+    </div>
+
+  </div>
+
+  <!-- Collective Vision -->
+  <div style="margin-top:24px;" class="reveal">
+    <div class="card" style="background:linear-gradient(135deg,var(--teal-50),var(--white)); border-top:3px solid var(--teal-500); text-align:center; padding:32px;">
+      <p style="font-size:11px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:var(--teal-500); margin-bottom:14px;">Collective Vision</p>
+      <p style="font-size:15px; line-height:1.85; color:var(--slate-700); max-width:700px; margin:0 auto;">Their collective vision and dedication ensure the strategic direction and growth of Sandbox Clinic East as a premier institution in rehabilitation and allied healthcare services.</p>
+    </div>
+  </div>
+
+</section>
+
+<!-- ===================== CONTACT ===================== -->
+<section id="contact" class="section">
+
+  <div class="section-heading reveal"><h2>Contact &amp; Location</h2><span class="tag">Get in Touch</span></div>
+
+  <div class="grid-2 reveal">
+    <div class="contact-card">
+      <h3><i data-lucide="building-2"></i> Sandbox Clinic East</h3>
+      <p>4th Floor, Robinsons Metro East, Pasig City</p>
+      <div class="contact-detail">
+        <span class="icon"><i data-lucide="phone" style="width:16px;height:16px;"></i></span>
+        <div>0917 118 9289 &nbsp;|&nbsp; 0917 873 8885 &nbsp;|&nbsp; (02) 5310 4991</div>
+      </div>
+      <div class="contact-detail">
+        <span class="icon"><i data-lucide="mail" style="width:16px;height:16px;"></i></span>
+        <div>east.sandboxclinic@gmail.com</div>
+      </div>
+      <div class="contact-detail">
+        <span class="icon"><i data-lucide="instagram" style="width:16px;height:16px;"></i></span>
+        <div>@sandboxcliniceast</div>
+      </div>
+      <div class="contact-detail">
+        <span class="icon"><i data-lucide="globe" style="width:16px;height:16px;"></i></span>
+        <div>sandboxclinicph.com</div>
+      </div>
+    </div>
+
+    <div class="card" style="background:linear-gradient(135deg,var(--teal-50),var(--white)); border:1px solid var(--teal-200);">
+      <div class="sub-h"><i data-lucide="map-pin"></i> Branch Information</div>
+      <p style="font-size:13px; color:var(--slate-600); line-height:1.75; margin-bottom:16px;">As of the end of 2024, Sapphire Clinics East, Inc. operates one clinic location — Sandbox Clinic East at Robinsons Metro East, Pasig City. This was the inaugural branch, established and opened in 2024.</p>
+      <div style="background:var(--teal-900); border-radius:12px; padding:16px 20px; color:var(--white);">
+        <div style="font-size:11px; letter-spacing:2px; text-transform:uppercase; opacity:0.5; margin-bottom:6px;">Address</div>
+        <div style="font-size:14px; font-weight:700;">4th Floor, Robinsons Metro East</div>
+        <div style="font-size:13px; opacity:0.75; margin-top:4px;">Pasig City, Metro Manila, Philippines</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="closing-quote reveal">
+    <blockquote>"The achievements of Sandbox Clinic East in 2024 are a testament to the dedication and collaboration of its exceptional team. From the frontlines to the back-end operations, every staff member played an integral role in delivering results."</blockquote>
+    <cite>&mdash; Hannah P. Jara, CEO &amp; President, SCEI</cite>
+    <div class="closing-tagline">Choose Health. &nbsp; Choose Function. &nbsp; Choose Ability. &nbsp; Choose Sandbox Clinic.</div>
+  </div>
+
+</section>
+
+</div><!-- /main -->
+</div><!-- /page-wrapper -->
+
+<script>
+// INIT LUCIDE ICONS
+document.addEventListener('DOMContentLoaded', () => {
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+});
+
+// SIDEBAR TOGGLE (mobile)
+const sidebar = document.getElementById('sidebar');
+const sidebarToggle = document.getElementById('sidebarToggle');
+const sidebarOverlay = document.getElementById('sidebarOverlay');
+function openSidebar() { sidebar.classList.add('open'); sidebarOverlay.classList.add('open'); }
+function closeSidebar() { sidebar.classList.remove('open'); sidebarOverlay.classList.remove('open'); }
+sidebarToggle.addEventListener('click', openSidebar);
+sidebarOverlay.addEventListener('click', closeSidebar);
+
+// NAVIGATION
+let chartsRendered = {};
+function showSection(id, btn) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  btn.classList.add('active');
+  closeSidebar();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  setTimeout(() => {
+    animateBars();
+    observeReveals();
+  }, 80);
+  if (id === 'people' && !chartsRendered.people) { renderStaffChart(); chartsRendered.people = true; }
+  if (id === 'deptperformance' && !chartsRendered.dept) { renderDeptChart(); chartsRendered.dept = true; }
+}
+
+// SCROLL REVEAL via IntersectionObserver
+function observeReveals() {
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (prefersReduced) {
+    document.querySelectorAll('.reveal').forEach(el => el.classList.add('visible'));
+    return;
+  }
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
+  document.querySelectorAll('.reveal:not(.visible)').forEach(el => observer.observe(el));
+}
+document.addEventListener('DOMContentLoaded', observeReveals);
+
+// COUNT-UP ANIMATION for header stats
+function animateCountUp() {
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  document.querySelectorAll('.header-stat .num[data-count]').forEach(el => {
+    const target = parseFloat(el.dataset.count);
+    const isDecimal = el.dataset.decimal === 'true';
+    if (prefersReduced) {
+      el.textContent = isDecimal ? target.toFixed(2) : (target >= 1000 ? target.toLocaleString() + '+' : target.toString());
+      return;
+    }
+    const duration = 2000;
+    const start = performance.now();
+    function update(now) {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 4);
+      const current = eased * target;
+      if (isDecimal) {
+        el.textContent = current.toFixed(2);
+      } else if (target >= 1000) {
+        el.textContent = Math.round(current).toLocaleString() + '+';
+      } else {
+        el.textContent = Math.round(current).toString();
+      }
+      if (progress < 1) requestAnimationFrame(update);
+    }
+    requestAnimationFrame(update);
+  });
+}
+document.addEventListener('DOMContentLoaded', () => setTimeout(animateCountUp, 400));
+
+// PROGRESS BARS
+function animateBars() {
+  document.querySelectorAll('.progress-fill').forEach(bar => {
+    const w = bar.style.width;
+    bar.style.width = '0';
+    setTimeout(() => { bar.style.width = w; }, 80);
+  });
+}
+setTimeout(animateBars, 500);
+
+// CHARTS
+const palette = [
+  '#042f2e','#115e59','#0f766e','#0d9488',
+  '#14b8a6','#2dd4bf','#5eead4','#99f6e4','#ccfbf1'
+];
+Chart.defaults.font.family = "'Inter', sans-serif";
+
+function renderStaffChart() {
+  const ctx = document.getElementById('staffChart');
+  if (!ctx) return;
+  new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['OT (16)','Physicians (8)','Psychologists (5)','SPED (4)','SLP (2)','PT (2)','O&P (2)','Support (4)'],
+      datasets: [{
+        data: [16, 8, 5, 4, 2, 2, 2, 4],
+        backgroundColor: palette,
+        borderWidth: 2,
+        borderColor: '#fff',
+        hoverOffset: 8
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      cutout: '55%',
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: { font: { size: 11 }, padding: 10, color: '#334155', usePointStyle: true, pointStyleWidth: 8 }
+        }
+      }
+    }
+  });
+}
+
+function renderDeptChart() {
+  const ctx = document.getElementById('deptChart');
+  if (!ctx) return;
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['Occupational Therapy', 'Physical Therapy', 'SLP', 'SPED', 'Overall'],
+      datasets: [
+        {
+          label: 'Achieved (%)',
+          data: [124.75, 80.63, 38.05, 38.45, 97.23],
+          backgroundColor: ['#059669','#0d9488','#2dd4bf','#5eead4','#0f766e'],
+          borderRadius: 6,
+          borderWidth: 0
+        },
+        {
+          label: 'Target (%)',
+          data: [100, 100, 100, 100, 100],
+          backgroundColor: 'rgba(203,213,225,0.4)',
+          borderColor: 'rgba(148,163,184,0.5)',
+          borderWidth: 1,
+          borderRadius: 6
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top', labels: { font: { size: 11 }, color: '#334155', usePointStyle: true } },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}%`
+          }
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          max: 140,
+          ticks: { callback: v => v + '%', font: { size: 11 } },
+          grid: { color: 'rgba(203,213,225,0.4)' }
+        },
+        x: { ticks: { font: { size: 11 } }, grid: { display: false } }
+      }
+    }
+  });
+}
+</script>
+
+</body>
+</html>

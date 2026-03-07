@@ -1,0 +1,126 @@
+# ──────────────────────────────────────────────────────────────────
+#  Decap CMS Configuration — Sapphire Clinics East, Inc.
+#  ⚠️  Replace YOUR_GITHUB_USERNAME and YOUR_REPO_NAME below
+#      with your actual GitHub username and repository name
+#      after you complete GitHub setup.
+# ──────────────────────────────────────────────────────────────────
+
+backend:
+  name: github
+  repo: YOUR_GITHUB_USERNAME/YOUR_REPO_NAME   # e.g.  hannahpellejo/sapphire-clinics-east
+  branch: main
+
+# Where uploaded images will be stored
+media_folder: "images/uploads"
+public_folder: "/images/uploads"
+
+# ── Content Collections ────────────────────────────────────────────
+
+collections:
+
+  # ── 1. Blog Posts & News ──────────────────────────────────────────
+  - name: "blog"
+    label: "📰 Blog Posts & News"
+    folder: "content/blog"
+    create: true
+    delete: true
+    slug: "{{year}}-{{month}}-{{day}}-{{slug}}"
+    summary: "{{title}}  |  {{date}}"
+    sortable_fields: ["date", "title"]
+    fields:
+      - label: "Title"
+        name: "title"
+        widget: "string"
+        hint: "Headline of your post (e.g. 'SCEI Joins PhilHealth Accreditation Drive')"
+
+      - label: "Date"
+        name: "date"
+        widget: "datetime"
+        hint: "Publication date — most recent posts appear at the top automatically"
+
+      - label: "Short Summary"
+        name: "summary"
+        widget: "string"
+        hint: "One or two sentences shown on the news card. Keep it under 160 characters."
+
+      - label: "Full Content"
+        name: "body"
+        widget: "markdown"
+        hint: "Write the full post here. You can use bold, bullet points, headings, etc."
+
+
+  # ── 2. Upcoming Events & Training ────────────────────────────────
+  - name: "events"
+    label: "📅 Events & Training"
+    folder: "content/events"
+    create: true
+    delete: true
+    slug: "{{year}}-{{month}}-{{day}}-{{slug}}"
+    summary: "{{title}}  |  {{date}}"
+    sortable_fields: ["date", "title"]
+    fields:
+      - label: "Event Title"
+        name: "title"
+        widget: "string"
+        hint: "Name of the event or training session"
+
+      - label: "Date"
+        name: "date"
+        widget: "datetime"
+        hint: "Date of the event (used for sorting — soonest events appear first)"
+
+      - label: "Location"
+        name: "location"
+        widget: "string"
+        required: false
+        hint: "Where is this happening? (e.g. 'Sandbox East Clinic' or 'Online via Zoom')"
+
+      - label: "Short Summary"
+        name: "summary"
+        widget: "string"
+        hint: "Brief one-liner shown on the event card"
+
+      - label: "Full Details"
+        name: "body"
+        widget: "markdown"
+        hint: "Full event description — schedule, speakers, registration info, etc."
+
+
+  # ── 3. Branch Announcements ───────────────────────────────────────
+  - name: "announcements"
+    label: "📢 Branch Announcements"
+    folder: "content/announcements"
+    create: true
+    delete: true
+    slug: "{{year}}-{{month}}-{{day}}-{{slug}}"
+    summary: "{{title}}  |  {{branch}}  |  {{date}}"
+    sortable_fields: ["date", "title"]
+    fields:
+      - label: "Announcement Title"
+        name: "title"
+        widget: "string"
+        hint: "Short, clear title (e.g. 'Holiday Hours — East Branch')"
+
+      - label: "Date"
+        name: "date"
+        widget: "datetime"
+        hint: "Date of this announcement"
+
+      - label: "Branch"
+        name: "branch"
+        widget: "select"
+        options:
+          - "Sandbox East"
+          - "Sandbox Greenhills"
+          - "Both Branches"
+        hint: "Which branch does this announcement apply to?"
+
+      - label: "Short Summary"
+        name: "summary"
+        widget: "string"
+        hint: "One sentence preview shown on the announcement card"
+
+      - label: "Full Content"
+        name: "body"
+        widget: "markdown"
+        hint: "Full announcement text. Paste your content here."
