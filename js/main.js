@@ -586,27 +586,38 @@ if (window.netlifyIdentity) {
 }
 
 /* ── LOGO INTRO SPLASH SCREEN ──────────────────────────────────
-   Shows animated logo on first visit each session.
-   sessionStorage flag prevents it from showing again on
-   page refreshes within the same browser tab session.
+   The overlay auto-dismisses via a CSS animation (li-overlayOut)
+   that fires after 5.5s — no JS required for the dismiss itself.
+   JS is only needed to:
+     1. Instantly hide on repeat visits (no animation flash)
+     2. Provide the Skip button dismiss
    ─────────────────────────────────────────────────────────────── */
 function dismissIntro() {
+  /* Skip button: cancel CSS animation, fade out quickly, then hide */
   var overlay = document.getElementById('logo-intro-overlay');
   if (!overlay) return;
-  overlay.classList.add('li-hidden');
+  overlay.style.animation = 'none';
+  overlay.style.transition = 'opacity 0.5s ease';
+  overlay.style.opacity = '0';
+  overlay.style.pointerEvents = 'none';
+  setTimeout(function() { overlay.style.display = 'none'; }, 520);
   sessionStorage.setItem('scei_intro_seen', '1');
 }
 
 function initIntro() {
   var overlay = document.getElementById('logo-intro-overlay');
   if (!overlay) return;
-  /* Skip if already seen this session */
+  /* Repeat visit — hide instantly before any paint */
   if (sessionStorage.getItem('scei_intro_seen')) {
-    overlay.classList.add('li-hidden');
+    overlay.style.animation = 'none';
+    overlay.style.display = 'none';
     return;
   }
-  /* Auto-dismiss after animation completes (~5.8s) */
-  setTimeout(dismissIntro, 5800);
+  /* First visit — let CSS animation handle auto-dismiss.
+     After it completes, store the flag so repeat visits skip it. */
+  setTimeout(function() {
+    sessionStorage.setItem('scei_intro_seen', '1');
+  }, 6500);
 }
 
 /* Load news on DOM ready */
