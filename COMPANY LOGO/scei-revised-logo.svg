@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 260" width="440" height="520">
+  <defs>
+    <style>
+      .ms { fill: none; stroke: #1A7B8A; stroke-linejoin: miter; stroke-linecap: square; }
+      .mf { fill: #1A7B8A; stroke: none; }
+      .wm { font-family: 'Futura', 'Century Gothic', 'Trebuchet MS', 'Gill Sans', sans-serif; fill: #1A7B8A; }
+    </style>
+  </defs>
+
+  <!-- ============================================================
+       SAPPHIRE CLINICS EAST, INC. — REVISED LOGO
+       Concept: Faceted Sapphire Crystal — nested diamond mark
+       Outer Diamond → Inscribed Square → Inner Diamond → Center Fill
+       ============================================================ -->
+
+  <g transform="translate(110, 102)">
+
+    <!-- LEVEL 1: Outer diamond (primary frame) -->
+    <polygon class="ms" stroke-width="5.5"
+      points="0,-88 88,0 0,88 -88,0"/>
+
+    <!-- LEVEL 2: Inscribed axis-aligned square (midpoints of outer diamond) -->
+    <!-- Corners sit exactly at the midpoints of the outer diamond's sides -->
+    <polygon class="ms" stroke-width="4.2"
+      points="44,-44 44,44 -44,44 -44,-44"/>
+
+    <!-- LEVEL 3: Inner diamond (inscribed in the square) -->
+    <!-- Corners at midpoints of the square's sides -->
+    <polygon class="ms" stroke-width="3.2"
+      points="0,-44 44,0 0,44 -44,0"/>
+
+    <!-- FACET DETAIL LINES: outer diamond corners to inner diamond corners -->
+    <!-- Top outer → inner top -->
+    <line class="ms" stroke-width="2.2" x1="0" y1="-88" x2="0" y2="-44"/>
+    <!-- Right outer → inner right -->
+    <line class="ms" stroke-width="2.2" x1="88" y1="0" x2="44" y2="0"/>
+    <!-- Bottom outer → inner bottom -->
+    <line class="ms" stroke-width="2.2" x1="0" y1="88" x2="0" y2="44"/>
+    <!-- Left outer → inner left -->
+    <line class="ms" stroke-width="2.2" x1="-88" y1="0" x2="-44" y2="0"/>
+
+    <!-- SECONDARY FACET LINES: square corners to inner diamond (diagonal depth) -->
+    <line class="ms" stroke-width="1.8" x1="44" y1="-44" x2="44" y2="0"/>
+    <line class="ms" stroke-width="1.8" x1="44" y1="-44" x2="0" y2="-44"/>
+    <line class="ms" stroke-width="1.8" x1="44" y1="44" x2="44" y2="0"/>
+    <line class="ms" stroke-width="1.8" x1="44" y1="44" x2="0" y2="44"/>
+    <line class="ms" stroke-width="1.8" x1="-44" y1="44" x2="-44" y2="0"/>
+    <line class="ms" stroke-width="1.8" x1="-44" y1="44" x2="0" y2="44"/>
+    <line class="ms" stroke-width="1.8" x1="-44" y1="-44" x2="-44" y2="0"/>
+    <line class="ms" stroke-width="1.8" x1="-44" y1="-44" x2="0" y2="-44"/>
+
+    <!-- CENTER: Filled sapphire table (focal point) -->
+    <polygon class="mf" points="0,-14 14,0 0,14 -14,0"/>
+
+  </g>
+
+  <!-- ============================================================
+       WORDMARK
+       ============================================================ -->
+
+  <!-- Primary name: SAPPHIRE -->
+  <text class="wm"
+    x="110" y="216"
+    text-anchor="middle"
+    font-size="24"
+    font-weight="800"
+    letter-spacing="7">SAPPHIRE</text>
+
+  <!-- Sub-name: CLINICS EAST, INC. -->
+  <text class="wm"
+    x="110" y="235"
+    text-anchor="middle"
+    font-size="9"
+    font-weight="400"
+    letter-spacing="3.2">CLINICS EAST, INC.</text>
+
+  <!-- Thin rule between mark and wordmark -->
+  <line x1="55" y1="204" x2="165" y2="204" stroke="#1A7B8A" stroke-width="0.8" opacity="0.5"/>
+
+</svg>

@@ -585,5 +585,32 @@ if (window.netlifyIdentity) {
   });
 }
 
+/* ── LOGO INTRO SPLASH SCREEN ──────────────────────────────────
+   Shows animated logo on first visit each session.
+   sessionStorage flag prevents it from showing again on
+   page refreshes within the same browser tab session.
+   ─────────────────────────────────────────────────────────────── */
+function dismissIntro() {
+  var overlay = document.getElementById('logo-intro-overlay');
+  if (!overlay) return;
+  overlay.classList.add('li-hidden');
+  sessionStorage.setItem('scei_intro_seen', '1');
+}
+
+function initIntro() {
+  var overlay = document.getElementById('logo-intro-overlay');
+  if (!overlay) return;
+  /* Skip if already seen this session */
+  if (sessionStorage.getItem('scei_intro_seen')) {
+    overlay.classList.add('li-hidden');
+    return;
+  }
+  /* Auto-dismiss after animation completes (~5.8s) */
+  setTimeout(dismissIntro, 5800);
+}
+
 /* Load news on DOM ready */
-document.addEventListener('DOMContentLoaded', () => loadNewsSection());
+document.addEventListener('DOMContentLoaded', function() {
+  initIntro();
+  loadNewsSection();
+});

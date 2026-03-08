@@ -1,0 +1,1779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sapphire Clinics East, Inc. — Brand Guide 2026</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700;800;900&family=Open+Sans:ital,wght@0,300;0,400;0,600;1,300;1,400&display=swap" rel="stylesheet">
+  <style>
+    /* ═══════════════════════════════════════════════════════════════
+       DESIGN TOKENS
+    ═══════════════════════════════════════════════════════════════ */
+    :root {
+      --teal:        #1A7B8A;
+      --deep-teal:   #0D5B68;
+      --bright-teal: #2AAABB;
+      --pale-teal:   #E4F3F5;
+      --white:       #FFFFFF;
+      --off-white:   #F7FAFB;
+      --light-gray:  #E8EDEF;
+      --mid-gray:    #9AABB0;
+      --charcoal:    #1C2B30;
+      --near-black:  #0A1012;
+      --gold:        #C9A227;
+      --gold-light:  #F0D582;
+
+      --font-display: 'Montserrat', 'Futura', 'Century Gothic', sans-serif;
+      --font-body:    'Open Sans', 'Gill Sans', sans-serif;
+      --font-mark:    'Futura', 'Century Gothic', 'Trebuchet MS', sans-serif;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       RESET & BASE
+    ═══════════════════════════════════════════════════════════════ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--font-body);
+      color: var(--charcoal);
+      background: var(--white);
+      line-height: 1.7;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       NAVIGATION
+    ═══════════════════════════════════════════════════════════════ */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      background: rgba(10,16,18,0.96);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 40px;
+      height: 58px;
+      border-bottom: 1px solid rgba(26,123,138,0.25);
+    }
+
+    .nav-logo {
+      color: var(--white);
+      font-family: var(--font-mark);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 28px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: rgba(255,255,255,0.6);
+      text-decoration: none;
+      font-size: 0.68rem;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover { color: var(--bright-teal); }
+
+    /* ═══════════════════════════════════════════════════════════════
+       SECTIONS — common layout
+    ═══════════════════════════════════════════════════════════════ */
+    .section {
+      padding: 100px 80px;
+      position: relative;
+    }
+
+    .section-dark {
+      background: var(--near-black);
+      color: var(--white);
+    }
+
+    .section-teal {
+      background: var(--teal);
+      color: var(--white);
+    }
+
+    .section-light {
+      background: var(--off-white);
+    }
+
+    .section-white {
+      background: var(--white);
+    }
+
+    .section-deep {
+      background: var(--deep-teal);
+      color: var(--white);
+    }
+
+    .section-label {
+      display: inline-block;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: var(--teal);
+      margin-bottom: 12px;
+      padding: 4px 10px;
+      border: 1px solid var(--teal);
+      border-radius: 2px;
+    }
+
+    .section-dark .section-label,
+    .section-teal .section-label,
+    .section-deep .section-label {
+      color: rgba(255,255,255,0.6);
+      border-color: rgba(255,255,255,0.3);
+    }
+
+    h1, h2, h3, h4 { font-family: var(--font-display); }
+
+    .section-title {
+      font-size: clamp(2rem, 4vw, 3.2rem);
+      font-weight: 800;
+      line-height: 1.1;
+      margin-bottom: 24px;
+      letter-spacing: -0.02em;
+    }
+
+    .section-subtitle {
+      font-size: 1.1rem;
+      font-weight: 400;
+      opacity: 0.8;
+      max-width: 640px;
+      line-height: 1.7;
+    }
+
+    .divider {
+      width: 48px;
+      height: 3px;
+      background: var(--teal);
+      margin: 20px 0;
+      border-radius: 2px;
+    }
+
+    .section-dark .divider,
+    .section-teal .divider,
+    .section-deep .divider { background: rgba(255,255,255,0.5); }
+
+    /* ═══════════════════════════════════════════════════════════════
+       HERO / COVER
+    ═══════════════════════════════════════════════════════════════ */
+    #cover {
+      min-height: 100vh;
+      background: var(--near-black);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 80px 40px 60px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #cover::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 70% 60% at 50% 50%,
+        rgba(26,123,138,0.14) 0%,
+        rgba(13,91,104,0.06) 50%,
+        transparent 75%);
+    }
+
+    .cover-mark {
+      position: relative;
+      z-index: 1;
+      margin-bottom: 36px;
+    }
+
+    .cover-eyebrow {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: var(--teal);
+      position: relative;
+      z-index: 1;
+      margin-bottom: 16px;
+    }
+
+    .cover-title {
+      font-family: var(--font-display);
+      font-size: clamp(2.4rem, 5vw, 4rem);
+      font-weight: 900;
+      color: var(--white);
+      letter-spacing: -0.02em;
+      line-height: 1.05;
+      position: relative;
+      z-index: 1;
+      margin-bottom: 12px;
+    }
+
+    .cover-title span { color: var(--teal); }
+
+    .cover-sub {
+      font-size: 0.9rem;
+      font-weight: 300;
+      color: rgba(255,255,255,0.5);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      position: relative;
+      z-index: 1;
+      margin-top: 8px;
+    }
+
+    .cover-version {
+      position: absolute;
+      bottom: 32px;
+      right: 40px;
+      font-size: 0.62rem;
+      color: rgba(255,255,255,0.2);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       BRAND STORY
+    ═══════════════════════════════════════════════════════════════ */
+    .story-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 48px;
+      margin-top: 64px;
+    }
+
+    .story-card {
+      padding: 40px;
+      border: 1px solid rgba(26,123,138,0.2);
+      border-radius: 4px;
+      position: relative;
+    }
+
+    .story-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 3px;
+      height: 100%;
+      background: var(--teal);
+      border-radius: 4px 0 0 4px;
+    }
+
+    .story-card h3 {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--teal);
+      margin-bottom: 14px;
+    }
+
+    .story-card p {
+      font-size: 1rem;
+      line-height: 1.75;
+      color: rgba(255,255,255,0.85);
+      font-style: italic;
+    }
+
+    .bhag-block {
+      margin-top: 48px;
+      padding: 48px;
+      background: rgba(26,123,138,0.12);
+      border-radius: 4px;
+      border: 1px solid rgba(26,123,138,0.35);
+      text-align: center;
+    }
+
+    .bhag-label {
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: var(--bright-teal);
+      margin-bottom: 16px;
+      display: block;
+    }
+
+    .bhag-text {
+      font-family: var(--font-display);
+      font-size: clamp(1.3rem, 2.5vw, 2rem);
+      font-weight: 700;
+      color: var(--white);
+      line-height: 1.3;
+    }
+
+    .bhag-text em {
+      color: var(--bright-teal);
+      font-style: normal;
+    }
+
+    /* HEALTH Goals */
+    .health-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+      margin-top: 48px;
+    }
+
+    .health-card {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 4px;
+      padding: 28px;
+      transition: border-color 0.3s, background 0.3s;
+    }
+
+    .health-card:hover {
+      border-color: rgba(26,123,138,0.6);
+      background: rgba(26,123,138,0.08);
+    }
+
+    .health-letter {
+      width: 44px;
+      height: 44px;
+      background: var(--teal);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      font-size: 1.3rem;
+      font-weight: 900;
+      color: var(--white);
+      margin-bottom: 16px;
+    }
+
+    .health-card h4 {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--bright-teal);
+      margin-bottom: 8px;
+    }
+
+    .health-card p {
+      font-size: 0.88rem;
+      color: rgba(255,255,255,0.65);
+      line-height: 1.6;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       LOGO SYSTEM
+    ═══════════════════════════════════════════════════════════════ */
+    .logo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 2px;
+      margin-top: 48px;
+    }
+
+    .logo-cell {
+      padding: 60px 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      min-height: 260px;
+    }
+
+    .logo-cell-label {
+      font-size: 0.62rem;
+      font-weight: 600;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      opacity: 0.5;
+    }
+
+    .logo-bg-white  { background: var(--white); }
+    .logo-bg-light  { background: var(--off-white); }
+    .logo-bg-teal   { background: var(--teal); }
+    .logo-bg-deep   { background: var(--deep-teal); }
+    .logo-bg-dark   { background: var(--near-black); }
+
+    /* Clear space diagram */
+    .clearspace-box {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin: 48px auto;
+    }
+
+    .clearspace-inner {
+      position: relative;
+      padding: 32px;
+      border: 2px dashed rgba(26,123,138,0.5);
+    }
+
+    .cs-label {
+      position: absolute;
+      font-size: 0.6rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      color: var(--teal);
+      text-transform: uppercase;
+    }
+
+    .cs-label.top    { top: -20px; left: 50%; transform: translateX(-50%); }
+    .cs-label.bottom { bottom: -20px; left: 50%; transform: translateX(-50%); }
+    .cs-label.left   { left: -48px; top: 50%; transform: translateY(-50%) rotate(-90deg); }
+    .cs-label.right  { right: -48px; top: 50%; transform: translateY(-50%) rotate(90deg); }
+
+    /* Incorrect usage */
+    .dont-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-top: 32px;
+    }
+
+    .dont-card {
+      border: 2px solid rgba(220,50,50,0.3);
+      border-radius: 4px;
+      padding: 24px;
+      text-align: center;
+      position: relative;
+      background: var(--off-white);
+    }
+
+    .dont-card::after {
+      content: '✕';
+      position: absolute;
+      top: 8px;
+      right: 12px;
+      color: #DC3232;
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    .dont-label {
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: #DC3232;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-top: 12px;
+      display: block;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       COLOR SYSTEM
+    ═══════════════════════════════════════════════════════════════ */
+    .color-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .swatch {
+      border-radius: 4px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .swatch-color {
+      height: 120px;
+    }
+
+    .swatch-info {
+      padding: 14px 16px;
+      background: var(--white);
+      border: 1px solid var(--light-gray);
+      border-top: none;
+    }
+
+    .swatch-name {
+      font-family: var(--font-display);
+      font-size: 0.78rem;
+      font-weight: 700;
+      display: block;
+      margin-bottom: 4px;
+      color: var(--charcoal);
+    }
+
+    .swatch-hex {
+      font-family: 'Courier New', monospace;
+      font-size: 0.7rem;
+      color: var(--mid-gray);
+      display: block;
+    }
+
+    .swatch-detail {
+      font-size: 0.65rem;
+      color: var(--mid-gray);
+      margin-top: 2px;
+      display: block;
+    }
+
+    .color-usage-bar {
+      display: flex;
+      height: 16px;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-top: 40px;
+    }
+
+    .color-usage-bar div {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.6rem;
+      font-weight: 700;
+      color: white;
+      letter-spacing: 0.1em;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       TYPOGRAPHY
+    ═══════════════════════════════════════════════════════════════ */
+    .type-specimen {
+      margin-top: 48px;
+    }
+
+    .type-family-header {
+      border-bottom: 1px solid var(--light-gray);
+      padding-bottom: 16px;
+      margin-bottom: 32px;
+    }
+
+    .type-family-name {
+      font-family: var(--font-display);
+      font-size: 2.8rem;
+      font-weight: 800;
+      color: var(--teal);
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+
+    .type-family-meta {
+      font-size: 0.75rem;
+      color: var(--mid-gray);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .type-scale-row {
+      display: flex;
+      align-items: baseline;
+      gap: 24px;
+      margin-bottom: 20px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--light-gray);
+    }
+
+    .type-scale-meta {
+      min-width: 120px;
+      font-size: 0.65rem;
+      color: var(--mid-gray);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-family: 'Courier New', monospace;
+      line-height: 1.4;
+    }
+
+    .type-scale-sample {
+      flex: 1;
+      color: var(--charcoal);
+    }
+
+    .weight-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 20px;
+      margin-top: 32px;
+    }
+
+    .weight-card {
+      padding: 20px;
+      background: var(--off-white);
+      border-radius: 4px;
+    }
+
+    .weight-sample {
+      font-size: 1.8rem;
+      line-height: 1;
+      color: var(--charcoal);
+      margin-bottom: 8px;
+    }
+
+    .weight-label {
+      font-size: 0.65rem;
+      color: var(--mid-gray);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       BRAND VOICE
+    ═══════════════════════════════════════════════════════════════ */
+    .voice-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 20px;
+      margin-top: 48px;
+    }
+
+    .voice-card {
+      padding: 32px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 4px;
+    }
+
+    .voice-icon {
+      font-size: 2rem;
+      margin-bottom: 14px;
+    }
+
+    .voice-card h3 {
+      font-family: var(--font-display);
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--bright-teal);
+      margin-bottom: 10px;
+    }
+
+    .voice-card p {
+      font-size: 0.85rem;
+      color: rgba(255,255,255,0.65);
+      line-height: 1.65;
+    }
+
+    .voice-example {
+      margin-top: 48px;
+    }
+
+    .voice-example h3 {
+      font-family: var(--font-display);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.5);
+      margin-bottom: 24px;
+    }
+
+    .example-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .example-card {
+      padding: 20px 24px;
+      border-radius: 4px;
+      font-size: 0.88rem;
+      line-height: 1.6;
+    }
+
+    .example-do {
+      background: rgba(26,123,138,0.15);
+      border-left: 3px solid var(--teal);
+      color: rgba(255,255,255,0.85);
+    }
+
+    .example-dont {
+      background: rgba(220,50,50,0.1);
+      border-left: 3px solid #DC3232;
+      color: rgba(255,255,255,0.6);
+      text-decoration: line-through;
+      text-decoration-color: rgba(220,50,50,0.5);
+    }
+
+    .example-tag {
+      font-size: 0.6rem;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+      display: block;
+    }
+
+    .example-do .example-tag   { color: var(--bright-teal); }
+    .example-dont .example-tag { color: #DC6464; }
+
+    /* ═══════════════════════════════════════════════════════════════
+       APPLICATIONS
+    ═══════════════════════════════════════════════════════════════ */
+    .app-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 28px;
+      margin-top: 48px;
+    }
+
+    /* Business Card Mockup */
+    .biz-card {
+      width: 100%;
+      max-width: 340px;
+      aspect-ratio: 1.75/1;
+      border-radius: 6px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+    }
+
+    .biz-card-front {
+      background: var(--teal);
+      padding: 28px 28px;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .biz-card-front .name {
+      font-family: var(--font-display);
+      color: var(--white);
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+
+    .biz-card-front .title {
+      font-size: 0.6rem;
+      color: rgba(255,255,255,0.7);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    .biz-card-front .contact {
+      font-size: 0.58rem;
+      color: rgba(255,255,255,0.8);
+      letter-spacing: 0.05em;
+      line-height: 1.8;
+    }
+
+    .biz-card-back {
+      background: var(--near-black);
+      padding: 28px;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Letterhead Mockup */
+    .letterhead-mock {
+      background: var(--white);
+      border: 1px solid var(--light-gray);
+      border-radius: 4px;
+      padding: 28px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    }
+
+    .lh-header {
+      border-bottom: 2px solid var(--teal);
+      padding-bottom: 16px;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+    }
+
+    .lh-body-lines {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .lh-line {
+      height: 6px;
+      background: var(--light-gray);
+      border-radius: 3px;
+    }
+
+    .lh-line.short { width: 40%; }
+    .lh-line.med   { width: 70%; }
+    .lh-line.long  { width: 100%; }
+
+    /* Social Media Template */
+    .social-mock {
+      aspect-ratio: 1/1;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      text-align: center;
+    }
+
+    .social-mock.post-teal { background: var(--teal); }
+    .social-mock.post-dark { background: var(--near-black); }
+
+    .social-tagline {
+      font-family: var(--font-display);
+      color: var(--white);
+      font-size: 0.9rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      padding: 0 20px;
+      line-height: 1.4;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       FOOTER
+    ═══════════════════════════════════════════════════════════════ */
+    footer {
+      background: var(--near-black);
+      color: rgba(255,255,255,0.4);
+      text-align: center;
+      padding: 48px 40px;
+      font-size: 0.72rem;
+      letter-spacing: 0.1em;
+      line-height: 2;
+    }
+
+    footer strong {
+      color: var(--teal);
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       UTILITY
+    ═══════════════════════════════════════════════════════════════ */
+    .mt-8  { margin-top: 8px; }
+    .mt-16 { margin-top: 16px; }
+    .mt-24 { margin-top: 24px; }
+    .mt-32 { margin-top: 32px; }
+    .mt-48 { margin-top: 48px; }
+    .mt-64 { margin-top: 64px; }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 48px;
+    }
+
+    @media (max-width: 768px) {
+      .section { padding: 80px 24px; }
+      nav { padding: 0 20px; }
+      .nav-links { display: none; }
+      .story-grid, .grid-2, .example-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Navigation ─────────────────────────────────────────────────── -->
+<nav>
+  <span class="nav-logo">◆ SCEI Brand Guide 2026</span>
+  <ul class="nav-links">
+    <li><a href="#brand-story">Story</a></li>
+    <li><a href="#logo">Logo</a></li>
+    <li><a href="#colors">Colors</a></li>
+    <li><a href="#typography">Type</a></li>
+    <li><a href="#voice">Voice</a></li>
+    <li><a href="#applications">Applications</a></li>
+    <li><a href="#imagery">Imagery</a></li>
+  </ul>
+</nav>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     COVER
+═══════════════════════════════════════════════════════════════════ -->
+<section id="cover">
+  <div class="cover-mark">
+    <!-- Inline SVG mark for cover -->
+    <svg width="140" height="140" viewBox="-100 -100 200 200" xmlns="http://www.w3.org/2000/svg"
+      style="filter:drop-shadow(0 0 18px rgba(26,123,138,0.55))">
+      <polygon fill="none" stroke="#1A7B8A" stroke-width="5.5" stroke-linejoin="miter"
+        points="0,-88 88,0 0,88 -88,0"/>
+      <polygon fill="none" stroke="#1A7B8A" stroke-width="4.2" stroke-linejoin="miter"
+        points="44,-44 44,44 -44,44 -44,-44"/>
+      <polygon fill="none" stroke="#1A7B8A" stroke-width="3.2" stroke-linejoin="miter"
+        points="0,-44 44,0 0,44 -44,0"/>
+      <line stroke="#1A7B8A" stroke-width="2.2" x1="0"   y1="-88" x2="0"   y2="-44"/>
+      <line stroke="#1A7B8A" stroke-width="2.2" x1="88"  y1="0"   x2="44"  y2="0"/>
+      <line stroke="#1A7B8A" stroke-width="2.2" x1="0"   y1="88"  x2="0"   y2="44"/>
+      <line stroke="#1A7B8A" stroke-width="2.2" x1="-88" y1="0"   x2="-44" y2="0"/>
+      <line stroke="#1A7B8A" stroke-width="1.8" x1="44"  y1="-44" x2="44"  y2="0"/>
+      <line stroke="#1A7B8A" stroke-width="1.8" x1="44"  y1="-44" x2="0"   y2="-44"/>
+      <line stroke="#1A7B8A" stroke-width="1.8" x1="44"  y1="44"  x2="44"  y2="0"/>
+      <line stroke="#1A7B8A" stroke-width="1.8" x1="44"  y1="44"  x2="0"   y2="44"/>
+      <line stroke="#1A7B8A" stroke-width="1.8" x1="-44" y1="44"  x2="-44" y2="0"/>
+      <line stroke="#1A7B8A" stroke-width="1.8" x1="-44" y1="44"  x2="0"   y2="44"/>
+      <line stroke="#1A7B8A" stroke-width="1.8" x1="-44" y1="-44" x2="-44" y2="0"/>
+      <line stroke="#1A7B8A" stroke-width="1.8" x1="-44" y1="-44" x2="0"   y2="-44"/>
+      <polygon fill="#1A7B8A" stroke="none" points="0,-14 14,0 0,14 -14,0"/>
+    </svg>
+  </div>
+  <div class="cover-eyebrow">Sapphire Clinics East, Inc.</div>
+  <h1 class="cover-title">Brand <span>Identity</span><br>Guidelines</h1>
+  <p class="cover-sub">Version 2.0 &nbsp;·&nbsp; 2026 Edition</p>
+  <div class="cover-version">Confidential — Internal Use</div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SECTION 1: BRAND STORY
+═══════════════════════════════════════════════════════════════════ -->
+<section id="brand-story" class="section section-dark">
+  <span class="section-label">01 — Brand Story</span>
+  <h2 class="section-title">Who We Are &amp;<br>What We Stand For</h2>
+  <div class="divider"></div>
+  <p class="section-subtitle">
+    Sapphire Clinics East, Inc. (SCEI) is a rehabilitation-focused corporation and an associate of
+    Sapphire Clinics Incorporated. SCEI currently operates two clinic branches under the Sandbox
+    Clinic brand — <strong style="color:var(--bright-teal);">Sandbox Clinic East</strong> and
+    <strong style="color:var(--bright-teal);">Sandbox Clinic Greenhills</strong> — delivering
+    world-class, holistic rehabilitative care and professional excellence across Metro Manila.
+    The Sandbox Clinic brand is owned by Sapphire Clinics Incorporated; SCEI operates its
+    clinics as a licensed associate under that brand.
+  </p>
+
+  <div class="story-grid">
+    <div class="story-card">
+      <h3>Vision</h3>
+      <p>To lead the field of rehabilitation medicine in the Philippines by providing world-class, innovative,
+        and holistic rehabilitative care and pioneering advancements in education and training.</p>
+    </div>
+    <div class="story-card">
+      <h3>Mission</h3>
+      <p>To deliver exceptional rehabilitative services and cutting-edge treatments, while fostering
+        education and training to equip the next generation of healthcare professionals, ensuring
+        quality care and patient satisfaction.</p>
+    </div>
+  </div>
+
+  <div class="bhag-block">
+    <span class="bhag-label">Big Hairy Audacious Goal (BHAG)</span>
+    <p class="bhag-text">
+      To be the <em>#1 market leader</em> in the rehabilitation space<br>
+      in the Philippines within <em>10 years.</em>
+    </p>
+  </div>
+
+  <!-- HEALTH Goals -->
+  <div class="mt-64">
+    <span class="section-label">Strategic Framework</span>
+    <h3 class="section-title" style="font-size:1.8rem; margin-top:12px;">The HEALTH Goals</h3>
+    <p class="section-subtitle">Our six strategic pillars — each pillar also shapes how our brand
+      communicates, looks, and feels.</p>
+    <div class="health-grid">
+      <div class="health-card">
+        <div class="health-letter">H</div>
+        <h4>One Operational Excellence</h4>
+        <p>Optimize operations and implement state-of-the-art digitalization to streamline patient management and care delivery.</p>
+      </div>
+      <div class="health-card">
+        <div class="health-letter">E</div>
+        <h4>Xpand Market Presence</h4>
+        <p>Launch targeted campaigns, open new clinics in strategic locations, and develop a comprehensive online presence.</p>
+      </div>
+      <div class="health-card">
+        <div class="health-letter">A</div>
+        <h4>Chieve Financial Growth</h4>
+        <p>Achieve annual revenue growth of at least 10% while ensuring sustainable profit margins and affordable care.</p>
+      </div>
+      <div class="health-card">
+        <div class="health-letter">L</div>
+        <h4>Ead in Patient Care</h4>
+        <p>Implement advanced therapeutic modalities and achieve a patient satisfaction score of 90% or higher.</p>
+      </div>
+      <div class="health-card">
+        <div class="health-letter">T</div>
+        <h4>Rain and Educate</h4>
+        <p>Develop accredited training programs and partner with academic institutions to offer post-graduate courses.</p>
+      </div>
+      <div class="health-card">
+        <div class="health-letter">H</div>
+        <h4>Ealthy Growth Initiatives</h4>
+        <p>Diversify funding sources, explore new revenue streams, and create a social arm for underserved demographics.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SECTION 2: LOGO SYSTEM
+═══════════════════════════════════════════════════════════════════ -->
+<section id="logo" class="section section-white">
+  <span class="section-label">02 — Logo System</span>
+  <h2 class="section-title">The Faceted<br>Sapphire Mark</h2>
+  <div class="divider"></div>
+  <p class="section-subtitle">
+    The revised logo evolves the original geometric diamond mark into a refined, multi-faceted
+    sapphire crystal — a direct reference to both the company name and its commitment to precision,
+    clarity, and excellence. The nested structure (Outer Diamond → Inscribed Square → Inner Diamond)
+    creates a three-dimensional gem-cut quality that is both modern and distinctly ownable.
+  </p>
+
+  <!-- Logo variants on different backgrounds -->
+  <div class="logo-grid mt-48">
+    <!-- Primary: Teal on White -->
+    <div class="logo-cell logo-bg-white">
+      <svg width="130" height="157" viewBox="0 0 220 260" xmlns="http://www.w3.org/2000/svg">
+        <g transform="translate(110,102)">
+          <polygon fill="none" stroke="#1A7B8A" stroke-width="5.5" stroke-linejoin="miter" points="0,-88 88,0 0,88 -88,0"/>
+          <polygon fill="none" stroke="#1A7B8A" stroke-width="4.2" stroke-linejoin="miter" points="44,-44 44,44 -44,44 -44,-44"/>
+          <polygon fill="none" stroke="#1A7B8A" stroke-width="3.2" stroke-linejoin="miter" points="0,-44 44,0 0,44 -44,0"/>
+          <line stroke="#1A7B8A" stroke-width="2.2" x1="0" y1="-88" x2="0" y2="-44"/>
+          <line stroke="#1A7B8A" stroke-width="2.2" x1="88" y1="0" x2="44" y2="0"/>
+          <line stroke="#1A7B8A" stroke-width="2.2" x1="0" y1="88" x2="0" y2="44"/>
+          <line stroke="#1A7B8A" stroke-width="2.2" x1="-88" y1="0" x2="-44" y2="0"/>
+          <line stroke="#1A7B8A" stroke-width="1.8" x1="44" y1="-44" x2="44" y2="0"/>
+          <line stroke="#1A7B8A" stroke-width="1.8" x1="44" y1="-44" x2="0" y2="-44"/>
+          <line stroke="#1A7B8A" stroke-width="1.8" x1="44" y1="44" x2="44" y2="0"/>
+          <line stroke="#1A7B8A" stroke-width="1.8" x1="44" y1="44" x2="0" y2="44"/>
+          <line stroke="#1A7B8A" stroke-width="1.8" x1="-44" y1="44" x2="-44" y2="0"/>
+          <line stroke="#1A7B8A" stroke-width="1.8" x1="-44" y1="44" x2="0" y2="44"/>
+          <line stroke="#1A7B8A" stroke-width="1.8" x1="-44" y1="-44" x2="-44" y2="0"/>
+          <line stroke="#1A7B8A" stroke-width="1.8" x1="-44" y1="-44" x2="0" y2="-44"/>
+          <polygon fill="#1A7B8A" stroke="none" points="0,-14 14,0 0,14 -14,0"/>
+        </g>
+        <line x1="55" y1="204" x2="165" y2="204" stroke="#1A7B8A" stroke-width="0.8" opacity="0.4"/>
+        <text x="110" y="218" text-anchor="middle" font-family="'Futura','Century Gothic',sans-serif" font-size="24" font-weight="800" letter-spacing="7" fill="#1A7B8A">SAPPHIRE</text>
+        <text x="110" y="237" text-anchor="middle" font-family="'Futura','Century Gothic',sans-serif" font-size="9" font-weight="400" letter-spacing="3.2" fill="#1A7B8A">CLINICS EAST, INC.</text>
+      </svg>
+      <span class="logo-cell-label" style="color:#9AABB0">Primary — White BG</span>
+    </div>
+
+    <!-- White on Teal -->
+    <div class="logo-cell logo-bg-teal">
+      <svg width="130" height="157" viewBox="0 0 220 260" xmlns="http://www.w3.org/2000/svg">
+        <g transform="translate(110,102)">
+          <polygon fill="none" stroke="#fff" stroke-width="5.5" stroke-linejoin="miter" points="0,-88 88,0 0,88 -88,0"/>
+          <polygon fill="none" stroke="#fff" stroke-width="4.2" stroke-linejoin="miter" points="44,-44 44,44 -44,44 -44,-44"/>
+          <polygon fill="none" stroke="#fff" stroke-width="3.2" stroke-linejoin="miter" points="0,-44 44,0 0,44 -44,0"/>
+          <line stroke="#fff" stroke-width="2.2" x1="0" y1="-88" x2="0" y2="-44"/>
+          <line stroke="#fff" stroke-width="2.2" x1="88" y1="0" x2="44" y2="0"/>
+          <line stroke="#fff" stroke-width="2.2" x1="0" y1="88" x2="0" y2="44"/>
+          <line stroke="#fff" stroke-width="2.2" x1="-88" y1="0" x2="-44" y2="0"/>
+          <line stroke="#fff" stroke-width="1.8" x1="44" y1="-44" x2="44" y2="0"/>
+          <line stroke="#fff" stroke-width="1.8" x1="44" y1="-44" x2="0" y2="-44"/>
+          <line stroke="#fff" stroke-width="1.8" x1="44" y1="44" x2="44" y2="0"/>
+          <line stroke="#fff" stroke-width="1.8" x1="44" y1="44" x2="0" y2="44"/>
+          <line stroke="#fff" stroke-width="1.8" x1="-44" y1="44" x2="-44" y2="0"/>
+          <line stroke="#fff" stroke-width="1.8" x1="-44" y1="44" x2="0" y2="44"/>
+          <line stroke="#fff" stroke-width="1.8" x1="-44" y1="-44" x2="-44" y2="0"/>
+          <line stroke="#fff" stroke-width="1.8" x1="-44" y1="-44" x2="0" y2="-44"/>
+          <polygon fill="#fff" stroke="none" points="0,-14 14,0 0,14 -14,0"/>
+        </g>
+        <line x1="55" y1="204" x2="165" y2="204" stroke="#fff" stroke-width="0.8" opacity="0.4"/>
+        <text x="110" y="218" text-anchor="middle" font-family="'Futura','Century Gothic',sans-serif" font-size="24" font-weight="800" letter-spacing="7" fill="#fff">SAPPHIRE</text>
+        <text x="110" y="237" text-anchor="middle" font-family="'Futura','Century Gothic',sans-serif" font-size="9" font-weight="400" letter-spacing="3.2" fill="rgba(255,255,255,0.8)">CLINICS EAST, INC.</text>
+      </svg>
+      <span class="logo-cell-label" style="color:rgba(255,255,255,0.5)">Reversed — Teal BG</span>
+    </div>
+
+    <!-- White on Dark -->
+    <div class="logo-cell logo-bg-dark">
+      <svg width="130" height="157" viewBox="0 0 220 260" xmlns="http://www.w3.org/2000/svg">
+        <g transform="translate(110,102)">
+          <polygon fill="none" stroke="#fff" stroke-width="5.5" stroke-linejoin="miter" points="0,-88 88,0 0,88 -88,0"/>
+          <polygon fill="none" stroke="#fff" stroke-width="4.2" stroke-linejoin="miter" points="44,-44 44,44 -44,44 -44,-44"/>
+          <polygon fill="none" stroke="#fff" stroke-width="3.2" stroke-linejoin="miter" points="0,-44 44,0 0,44 -44,0"/>
+          <line stroke="#fff" stroke-width="2.2" x1="0" y1="-88" x2="0" y2="-44"/>
+          <line stroke="#fff" stroke-width="2.2" x1="88" y1="0" x2="44" y2="0"/>
+          <line stroke="#fff" stroke-width="2.2" x1="0" y1="88" x2="0" y2="44"/>
+          <line stroke="#fff" stroke-width="2.2" x1="-88" y1="0" x2="-44" y2="0"/>
+          <line stroke="#fff" stroke-width="1.8" x1="44" y1="-44" x2="44" y2="0"/>
+          <line stroke="#fff" stroke-width="1.8" x1="44" y1="-44" x2="0" y2="-44"/>
+          <line stroke="#fff" stroke-width="1.8" x1="44" y1="44" x2="44" y2="0"/>
+          <line stroke="#fff" stroke-width="1.8" x1="44" y1="44" x2="0" y2="44"/>
+          <line stroke="#fff" stroke-width="1.8" x1="-44" y1="44" x2="-44" y2="0"/>
+          <line stroke="#fff" stroke-width="1.8" x1="-44" y1="44" x2="0" y2="44"/>
+          <line stroke="#fff" stroke-width="1.8" x1="-44" y1="-44" x2="-44" y2="0"/>
+          <line stroke="#fff" stroke-width="1.8" x1="-44" y1="-44" x2="0" y2="-44"/>
+          <polygon fill="#fff" stroke="none" points="0,-14 14,0 0,14 -14,0"/>
+        </g>
+        <line x1="55" y1="204" x2="165" y2="204" stroke="#fff" stroke-width="0.8" opacity="0.4"/>
+        <text x="110" y="218" text-anchor="middle" font-family="'Futura','Century Gothic',sans-serif" font-size="24" font-weight="800" letter-spacing="7" fill="#fff">SAPPHIRE</text>
+        <text x="110" y="237" text-anchor="middle" font-family="'Futura','Century Gothic',sans-serif" font-size="9" font-weight="400" letter-spacing="3.2" fill="rgba(255,255,255,0.75)">CLINICS EAST, INC.</text>
+      </svg>
+      <span class="logo-cell-label" style="color:rgba(255,255,255,0.3)">Reversed — Dark BG</span>
+    </div>
+
+    <!-- Mark only on light -->
+    <div class="logo-cell logo-bg-light">
+      <svg width="110" height="110" viewBox="-100 -100 200 200" xmlns="http://www.w3.org/2000/svg">
+        <polygon fill="none" stroke="#1A7B8A" stroke-width="5.5" stroke-linejoin="miter" points="0,-88 88,0 0,88 -88,0"/>
+        <polygon fill="none" stroke="#1A7B8A" stroke-width="4.2" stroke-linejoin="miter" points="44,-44 44,44 -44,44 -44,-44"/>
+        <polygon fill="none" stroke="#1A7B8A" stroke-width="3.2" stroke-linejoin="miter" points="0,-44 44,0 0,44 -44,0"/>
+        <line stroke="#1A7B8A" stroke-width="2.2" x1="0" y1="-88" x2="0" y2="-44"/>
+        <line stroke="#1A7B8A" stroke-width="2.2" x1="88" y1="0" x2="44" y2="0"/>
+        <line stroke="#1A7B8A" stroke-width="2.2" x1="0" y1="88" x2="0" y2="44"/>
+        <line stroke="#1A7B8A" stroke-width="2.2" x1="-88" y1="0" x2="-44" y2="0"/>
+        <line stroke="#1A7B8A" stroke-width="1.8" x1="44" y1="-44" x2="44" y2="0"/>
+        <line stroke="#1A7B8A" stroke-width="1.8" x1="44" y1="-44" x2="0" y2="-44"/>
+        <line stroke="#1A7B8A" stroke-width="1.8" x1="44" y1="44" x2="44" y2="0"/>
+        <line stroke="#1A7B8A" stroke-width="1.8" x1="44" y1="44" x2="0" y2="44"/>
+        <line stroke="#1A7B8A" stroke-width="1.8" x1="-44" y1="44" x2="-44" y2="0"/>
+        <line stroke="#1A7B8A" stroke-width="1.8" x1="-44" y1="44" x2="0" y2="44"/>
+        <line stroke="#1A7B8A" stroke-width="1.8" x1="-44" y1="-44" x2="-44" y2="0"/>
+        <line stroke="#1A7B8A" stroke-width="1.8" x1="-44" y1="-44" x2="0" y2="-44"/>
+        <polygon fill="#1A7B8A" stroke="none" points="0,-14 14,0 0,14 -14,0"/>
+      </svg>
+      <span class="logo-cell-label" style="color:#9AABB0">Mark Only — Social / Favicon</span>
+    </div>
+  </div>
+
+  <!-- Clear Space -->
+  <div class="mt-64">
+    <span class="section-label">Clear Space</span>
+    <h3 class="section-title" style="font-size:1.6rem; margin-top:12px;">Breathing Room</h3>
+    <p class="section-subtitle">Always maintain a minimum clear space equal to the height of the
+      letter "X" in the wordmark around all sides of the logo. Never crowd the mark.</p>
+    <div style="display:flex; justify-content:center; margin-top:40px;">
+      <div class="clearspace-inner">
+        <span class="cs-label top">1x clearspace</span>
+        <span class="cs-label bottom">1x clearspace</span>
+        <span class="cs-label left">1x</span>
+        <span class="cs-label right">1x</span>
+        <svg width="100" height="121" viewBox="0 0 220 260" xmlns="http://www.w3.org/2000/svg">
+          <g transform="translate(110,102)">
+            <polygon fill="none" stroke="#1A7B8A" stroke-width="5.5" stroke-linejoin="miter" points="0,-88 88,0 0,88 -88,0"/>
+            <polygon fill="none" stroke="#1A7B8A" stroke-width="4.2" stroke-linejoin="miter" points="44,-44 44,44 -44,44 -44,-44"/>
+            <polygon fill="none" stroke="#1A7B8A" stroke-width="3.2" stroke-linejoin="miter" points="0,-44 44,0 0,44 -44,0"/>
+            <polygon fill="#1A7B8A" stroke="none" points="0,-14 14,0 0,14 -14,0"/>
+          </g>
+          <text x="110" y="218" text-anchor="middle" font-family="sans-serif" font-size="24" font-weight="800" letter-spacing="7" fill="#1A7B8A">SAPPHIRE</text>
+          <text x="110" y="237" text-anchor="middle" font-family="sans-serif" font-size="9" letter-spacing="3.2" fill="#1A7B8A">CLINICS EAST, INC.</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- Incorrect usage -->
+  <div class="mt-64">
+    <span class="section-label">Logo Don'ts</span>
+    <h3 class="section-title" style="font-size:1.6rem; margin-top:12px;">Incorrect Usage</h3>
+    <div class="dont-grid">
+      <div class="dont-card">
+        <svg width="60" height="72" viewBox="0 0 220 260" style="opacity:0.35; transform:rotate(25deg)">
+          <g transform="translate(110,102)">
+            <polygon fill="none" stroke="#1A7B8A" stroke-width="8" points="0,-88 88,0 0,88 -88,0"/>
+            <polygon fill="#1A7B8A" stroke="none" points="0,-14 14,0 0,14 -14,0"/>
+          </g>
+          <text x="110" y="218" text-anchor="middle" font-family="sans-serif" font-size="24" font-weight="800" letter-spacing="7" fill="#1A7B8A">SAPPHIRE</text>
+        </svg>
+        <span class="dont-label">Do not rotate</span>
+      </div>
+      <div class="dont-card">
+        <svg width="60" height="72" viewBox="0 0 220 260" style="opacity:0.5; transform:scaleX(0.6)">
+          <g transform="translate(110,102)">
+            <polygon fill="none" stroke="#1A7B8A" stroke-width="8" points="0,-88 88,0 0,88 -88,0"/>
+            <polygon fill="#1A7B8A" stroke="none" points="0,-14 14,0 0,14 -14,0"/>
+          </g>
+          <text x="110" y="218" text-anchor="middle" font-family="sans-serif" font-size="24" font-weight="800" letter-spacing="7" fill="#1A7B8A">SAPPHIRE</text>
+        </svg>
+        <span class="dont-label">Do not stretch or distort</span>
+      </div>
+      <div class="dont-card">
+        <svg width="60" height="72" viewBox="0 0 220 260">
+          <g transform="translate(110,102)">
+            <polygon fill="none" stroke="#E86B0A" stroke-width="8" points="0,-88 88,0 0,88 -88,0"/>
+            <polygon fill="#E86B0A" stroke="none" points="0,-14 14,0 0,14 -14,0"/>
+          </g>
+          <text x="110" y="218" text-anchor="middle" font-family="sans-serif" font-size="24" font-weight="800" letter-spacing="7" fill="#E86B0A">SAPPHIRE</text>
+        </svg>
+        <span class="dont-label">Do not recolor incorrectly</span>
+      </div>
+      <div class="dont-card">
+        <div style="font-family:serif; font-size:1.4rem; font-weight:bold; color:#1A7B8A; letter-spacing:0.1em; padding: 8px 0;">
+          Sapphire<br><span style="font-size:0.75rem">Clinics East Inc.</span>
+        </div>
+        <span class="dont-label">Do not use alternate typefaces</span>
+      </div>
+      <div class="dont-card">
+        <svg width="60" height="72" viewBox="0 0 220 260" style="opacity:0.25">
+          <g transform="translate(110,102)">
+            <polygon fill="none" stroke="#1A7B8A" stroke-width="8" points="0,-88 88,0 0,88 -88,0"/>
+            <polygon fill="#1A7B8A" stroke="none" points="0,-14 14,0 0,14 -14,0"/>
+          </g>
+          <text x="110" y="218" text-anchor="middle" font-family="sans-serif" font-size="24" font-weight="800" letter-spacing="7" fill="#1A7B8A">SAPPHIRE</text>
+        </svg>
+        <span class="dont-label">Do not use low-contrast versions</span>
+      </div>
+      <div class="dont-card">
+        <svg width="60" height="72" viewBox="0 0 220 260">
+          <g transform="translate(110,102)">
+            <polygon fill="none" stroke="#1A7B8A" stroke-width="8" points="0,-88 88,0 0,88 -88,0"/>
+            <polygon fill="#1A7B8A" stroke="none" points="0,-14 14,0 0,14 -14,0"/>
+          </g>
+          <text x="110" y="218" text-anchor="middle" font-family="sans-serif" font-size="24" font-weight="800" letter-spacing="7" fill="#1A7B8A">SAPPHIRE</text>
+          <rect x="60" y="208" width="100" height="35" fill="#E8E0D0" opacity="0.8"/>
+        </svg>
+        <span class="dont-label">Do not place on busy backgrounds</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SECTION 3: COLOR SYSTEM
+═══════════════════════════════════════════════════════════════════ -->
+<section id="colors" class="section section-light">
+  <span class="section-label">03 — Color System</span>
+  <h2 class="section-title">Brand Color Palette</h2>
+  <div class="divider"></div>
+  <p class="section-subtitle">
+    Our palette is anchored in Sapphire Teal — a color that communicates trust, precision,
+    and the clarity of a cut gemstone. Deep Teal provides authority; Bright Teal brings
+    energy for digital interfaces. Gold signals premium positioning.
+  </p>
+
+  <!-- Primary Palette -->
+  <div class="mt-48">
+    <h3 style="font-family:var(--font-display); font-size:0.8rem; font-weight:700; letter-spacing:0.2em; text-transform:uppercase; color:var(--mid-gray); margin-bottom:16px;">Primary Palette</h3>
+    <div class="color-row">
+      <div class="swatch">
+        <div class="swatch-color" style="background:#1A7B8A;"></div>
+        <div class="swatch-info">
+          <span class="swatch-name">Sapphire Teal</span>
+          <span class="swatch-hex">#1A7B8A</span>
+          <span class="swatch-detail">R 26 G 123 B 138</span>
+          <span class="swatch-detail">Primary brand color</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:#0D5B68;"></div>
+        <div class="swatch-info">
+          <span class="swatch-name">Deep Teal</span>
+          <span class="swatch-hex">#0D5B68</span>
+          <span class="swatch-detail">R 13 G 91 B 104</span>
+          <span class="swatch-detail">Headers, authority</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:#2AAABB;"></div>
+        <div class="swatch-info">
+          <span class="swatch-name">Bright Teal</span>
+          <span class="swatch-hex">#2AAABB</span>
+          <span class="swatch-detail">R 42 G 170 B 187</span>
+          <span class="swatch-detail">Digital accents, CTAs</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:#E4F3F5;"></div>
+        <div class="swatch-info">
+          <span class="swatch-name">Pale Teal</span>
+          <span class="swatch-hex">#E4F3F5</span>
+          <span class="swatch-detail">R 228 G 243 B 245</span>
+          <span class="swatch-detail">Backgrounds, tints</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Secondary Palette -->
+  <div class="mt-32">
+    <h3 style="font-family:var(--font-display); font-size:0.8rem; font-weight:700; letter-spacing:0.2em; text-transform:uppercase; color:var(--mid-gray); margin-bottom:16px;">Secondary Palette</h3>
+    <div class="color-row">
+      <div class="swatch">
+        <div class="swatch-color" style="background:#C9A227;"></div>
+        <div class="swatch-info">
+          <span class="swatch-name">Brand Gold</span>
+          <span class="swatch-hex">#C9A227</span>
+          <span class="swatch-detail">R 201 G 162 B 39</span>
+          <span class="swatch-detail">Premium / Awards</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:#1C2B30;"></div>
+        <div class="swatch-info">
+          <span class="swatch-name">Charcoal</span>
+          <span class="swatch-hex">#1C2B30</span>
+          <span class="swatch-detail">R 28 G 43 B 48</span>
+          <span class="swatch-detail">Body text, dark UI</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:#E8EDEF; border: 1px solid #ddd;"></div>
+        <div class="swatch-info">
+          <span class="swatch-name">Light Gray</span>
+          <span class="swatch-hex">#E8EDEF</span>
+          <span class="swatch-detail">R 232 G 237 B 239</span>
+          <span class="swatch-detail">Borders, dividers</span>
+        </div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:#FFFFFF; border: 1px solid #ddd;"></div>
+        <div class="swatch-info">
+          <span class="swatch-name">Pure White</span>
+          <span class="swatch-hex">#FFFFFF</span>
+          <span class="swatch-detail">R 255 G 255 B 255</span>
+          <span class="swatch-detail">Primary background</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Usage ratio -->
+  <div class="mt-48">
+    <h3 style="font-family:var(--font-display); font-size:0.8rem; font-weight:700; letter-spacing:0.2em; text-transform:uppercase; color:var(--mid-gray); margin-bottom:12px;">Recommended Color Ratio</h3>
+    <p style="font-size:0.88rem; color:var(--mid-gray); margin-bottom:20px;">
+      Follow the 60–30–10 rule: 60% neutral (white/light gray), 30% primary teal, 10% accent (gold or bright teal).
+    </p>
+    <div class="color-usage-bar">
+      <div style="width:60%; background:#E4F3F5; color:#9AABB0;">60% Neutral</div>
+      <div style="width:30%; background:#1A7B8A;">30% Teal</div>
+      <div style="width:10%; background:#C9A227;">10%</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SECTION 4: TYPOGRAPHY
+═══════════════════════════════════════════════════════════════════ -->
+<section id="typography" class="section section-white">
+  <span class="section-label">04 — Typography</span>
+  <h2 class="section-title">Type System</h2>
+  <div class="divider"></div>
+  <p class="section-subtitle">
+    Our type system pairs the geometric authority of Montserrat for headlines with the warm
+    readability of Open Sans for body text — creating a balance of clinical precision and
+    human approachability.
+  </p>
+
+  <div class="type-specimen">
+    <!-- Montserrat -->
+    <div class="type-family-header">
+      <div class="type-family-name" style="font-family:'Montserrat',sans-serif;">Montserrat</div>
+      <div class="type-family-meta">Primary / Display Typeface &nbsp;·&nbsp; Headlines, Wordmark, Navigation</div>
+    </div>
+
+    <div class="type-scale-row">
+      <div class="type-scale-meta">Hero<br>80px / 700</div>
+      <div class="type-scale-sample" style="font-family:'Montserrat',sans-serif; font-size:3rem; font-weight:700; color:var(--teal); line-height:1.05; letter-spacing:-0.02em;">
+        Rehabilitative Care
+      </div>
+    </div>
+    <div class="type-scale-row">
+      <div class="type-scale-meta">H1<br>48px / 800</div>
+      <div class="type-scale-sample" style="font-family:'Montserrat',sans-serif; font-size:2rem; font-weight:800;">
+        Leading with Excellence
+      </div>
+    </div>
+    <div class="type-scale-row">
+      <div class="type-scale-meta">H2<br>32px / 700</div>
+      <div class="type-scale-sample" style="font-family:'Montserrat',sans-serif; font-size:1.5rem; font-weight:700;">
+        World-Class Patient Care
+      </div>
+    </div>
+    <div class="type-scale-row">
+      <div class="type-scale-meta">H3<br>22px / 600</div>
+      <div class="type-scale-sample" style="font-family:'Montserrat',sans-serif; font-size:1.1rem; font-weight:600;">
+        Physical Therapy · Occupational Therapy · Speech Therapy
+      </div>
+    </div>
+    <div class="type-scale-row">
+      <div class="type-scale-meta">Label<br>11px / 700<br>spaced</div>
+      <div class="type-scale-sample" style="font-family:'Montserrat',sans-serif; font-size:0.68rem; font-weight:700; letter-spacing:0.22em; text-transform:uppercase; color:var(--teal);">
+        SAPPHIRE CLINICS EAST, INC. &nbsp;·&nbsp; PASIG, METRO MANILA
+      </div>
+    </div>
+
+    <!-- Weight grid -->
+    <div class="weight-grid mt-32">
+      <div class="weight-card">
+        <div class="weight-sample" style="font-family:'Montserrat',sans-serif; font-weight:300;">Aa</div>
+        <div class="weight-label">Light 300</div>
+      </div>
+      <div class="weight-card">
+        <div class="weight-sample" style="font-family:'Montserrat',sans-serif; font-weight:400;">Aa</div>
+        <div class="weight-label">Regular 400</div>
+      </div>
+      <div class="weight-card">
+        <div class="weight-sample" style="font-family:'Montserrat',sans-serif; font-weight:600;">Aa</div>
+        <div class="weight-label">SemiBold 600</div>
+      </div>
+      <div class="weight-card">
+        <div class="weight-sample" style="font-family:'Montserrat',sans-serif; font-weight:700;">Aa</div>
+        <div class="weight-label">Bold 700</div>
+      </div>
+      <div class="weight-card">
+        <div class="weight-sample" style="font-family:'Montserrat',sans-serif; font-weight:800;">Aa</div>
+        <div class="weight-label">ExtraBold 800</div>
+      </div>
+      <div class="weight-card">
+        <div class="weight-sample" style="font-family:'Montserrat',sans-serif; font-weight:900;">Aa</div>
+        <div class="weight-label">Black 900</div>
+      </div>
+    </div>
+
+    <!-- Open Sans -->
+    <div class="type-family-header mt-64">
+      <div class="type-family-name" style="font-family:'Open Sans',sans-serif; font-size:2.2rem;">Open Sans</div>
+      <div class="type-family-meta">Secondary / Body Typeface &nbsp;·&nbsp; Body copy, captions, clinical notes, forms</div>
+    </div>
+
+    <div class="type-scale-row">
+      <div class="type-scale-meta">Body LG<br>18px / 400</div>
+      <div class="type-scale-sample" style="font-family:'Open Sans',sans-serif; font-size:1rem; font-weight:400; max-width: 640px;">
+        Sapphire Clinics East is committed to delivering exceptional rehabilitative care to every
+        patient — from children receiving sensory integration therapy to adults recovering through
+        physical rehabilitation.
+      </div>
+    </div>
+    <div class="type-scale-row">
+      <div class="type-scale-meta">Body<br>16px / 400</div>
+      <div class="type-scale-sample" style="font-family:'Open Sans',sans-serif; font-size:0.88rem; font-weight:400; max-width:580px; color:var(--mid-gray);">
+        Our multidisciplinary team works collaboratively to provide evidence-based treatment plans
+        tailored to each patient's unique goals, ensuring the highest quality outcomes and satisfaction.
+      </div>
+    </div>
+    <div class="type-scale-row">
+      <div class="type-scale-meta">Caption<br>12px / 300</div>
+      <div class="type-scale-sample" style="font-family:'Open Sans',sans-serif; font-size:0.72rem; font-weight:300; color:var(--mid-gray); letter-spacing:0.04em;">
+        Level 4, Robinsons Metro East · Marcos Highway · Brgy. Dela Paz · Santolan, Pasig · Metro Manila · 1800
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SECTION 5: BRAND VOICE
+═══════════════════════════════════════════════════════════════════ -->
+<section id="voice" class="section section-dark">
+  <span class="section-label">05 — Brand Voice &amp; Tone</span>
+  <h2 class="section-title">How We Sound</h2>
+  <div class="divider"></div>
+  <p class="section-subtitle">
+    Our brand voice is the audible expression of who we are. Rooted in our vision to lead
+    rehabilitation medicine in the Philippines, we speak with authority, warmth, and optimism —
+    always centering the patient's journey.
+  </p>
+
+  <div class="voice-grid">
+    <div class="voice-card">
+      <div class="voice-icon">🏆</div>
+      <h3>Authoritative</h3>
+      <p>We speak from a position of clinical expertise and evidence-based practice. We own our
+        role as future market leaders without arrogance.</p>
+    </div>
+    <div class="voice-card">
+      <div class="voice-icon">🤝</div>
+      <h3>Compassionate</h3>
+      <p>Behind every session is a person with goals, fears, and a family. We lead with empathy
+        and patient-centered language in all communications.</p>
+    </div>
+    <div class="voice-card">
+      <div class="voice-icon">💡</div>
+      <h3>Innovative</h3>
+      <p>We embrace cutting-edge modalities and technology. Our tone reflects forward-thinking
+        confidence — pioneering, not following.</p>
+    </div>
+    <div class="voice-card">
+      <div class="voice-icon">🌏</div>
+      <h3>Inclusive</h3>
+      <p>From pediatric SPED to adult rehabilitation to orthosis fabrication — we serve a wide
+        spectrum. Our language is accessible and free of unnecessary medical jargon.</p>
+    </div>
+    <div class="voice-card">
+      <div class="voice-icon">📈</div>
+      <h3>Aspirational</h3>
+      <p>Aligned with our BHAG, we communicate a vision of growth and possibility — for our
+        patients, our team, and the Philippines' rehab landscape.</p>
+    </div>
+    <div class="voice-card">
+      <div class="voice-icon">✅</div>
+      <h3>Trustworthy</h3>
+      <p>Transparent about our services, honest in our messaging. We build trust through
+        consistent, reliable, and professional communication.</p>
+    </div>
+  </div>
+
+  <!-- Voice examples: Do / Don't -->
+  <div class="voice-example mt-64">
+    <h3>Voice in Practice</h3>
+
+    <div class="example-row">
+      <div class="example-card example-do">
+        <span class="example-tag">✓ Use</span>
+        "Your recovery journey starts here — with a team that's fully invested in your progress."
+      </div>
+      <div class="example-card example-dont">
+        <span class="example-tag">✗ Avoid</span>
+        "We offer services for rehabilitation patients at our clinic location."
+      </div>
+    </div>
+
+    <div class="example-row">
+      <div class="example-card example-do">
+        <span class="example-tag">✓ Use</span>
+        "Backed by world-class training and innovative modalities, our therapists bring the best of global rehabilitation science to your doorstep."
+      </div>
+      <div class="example-card example-dont">
+        <span class="example-tag">✗ Avoid</span>
+        "We are a clinic that does therapy. We have different types of therapy available."
+      </div>
+    </div>
+
+    <div class="example-row">
+      <div class="example-card example-do">
+        <span class="example-tag">✓ Use</span>
+        "Rehab for Every Age, Every Stage — experience the Sapphire Clinics East standard of care."
+      </div>
+      <div class="example-card example-dont">
+        <span class="example-tag">✗ Avoid</span>
+        "We are a clinic that does rehab. Come visit us for your therapy needs."
+      </div>
+    </div>
+  </div>
+
+  <!-- Tagline guidelines -->
+  <div class="mt-64" style="padding:48px; background:rgba(26,123,138,0.1); border:1px solid rgba(26,123,138,0.3); border-radius:4px;">
+    <span class="section-label">SCEI Core Tagline</span>
+    <h3 style="font-family:var(--font-display); font-size:1.8rem; font-weight:800; color:var(--white); margin-top:16px; line-height:1.25;">
+      "Rehab for Every Age, Every Stage."
+    </h3>
+    <p style="color:rgba(255,255,255,0.6); font-size:0.88rem; margin-top:20px; max-width:580px; line-height:1.75;">
+      This tagline communicates SCEI's commitment to serving the full spectrum of rehabilitation
+      needs — from pediatric SPED to adult orthosis fabrication and beyond. It is inclusive,
+      memorable, and directly aligned with the vision of leading rehabilitation medicine in
+      the Philippines. Use this tagline across all SCEI corporate communications, clinic
+      signage, digital assets, and patient-facing materials.
+    </p>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SECTION 6: BRAND APPLICATIONS
+═══════════════════════════════════════════════════════════════════ -->
+<section id="applications" class="section section-light">
+  <span class="section-label">06 — Brand Applications</span>
+  <h2 class="section-title">In the Wild</h2>
+  <div class="divider"></div>
+  <p class="section-subtitle">
+    Brand consistency across all touchpoints — from a business card to a social media post —
+    builds recognition and reinforces trust with patients, partners, and investors.
+  </p>
+
+  <div class="app-grid">
+
+    <!-- Business Card Front -->
+    <div>
+      <h3 style="font-family:var(--font-display); font-size:0.75rem; font-weight:700; letter-spacing:0.18em; text-transform:uppercase; color:var(--mid-gray); margin-bottom:16px;">Business Card — Front</h3>
+      <div class="biz-card">
+        <div class="biz-card-front">
+          <div>
+            <!-- small mark -->
+            <svg width="28" height="28" viewBox="-100 -100 200 200">
+              <polygon fill="none" stroke="#fff" stroke-width="7" points="0,-88 88,0 0,88 -88,0"/>
+              <polygon fill="none" stroke="#fff" stroke-width="5" points="44,-44 44,44 -44,44 -44,-44"/>
+              <polygon fill="none" stroke="#fff" stroke-width="4" points="0,-44 44,0 0,44 -44,0"/>
+              <polygon fill="#fff" stroke="none" points="0,-14 14,0 0,14 -14,0"/>
+            </svg>
+          </div>
+          <div>
+            <div class="name">Hannah P. Jara, MBA, MPH, PTRP</div>
+            <div class="title">CEO &amp; President · Sapphire Clinics East, Inc.</div>
+          </div>
+          <div class="contact">
+            main@sapphireclinicseast.org<br>
+            +63 995 540 3624<br>
+            Level 4, Robinsons Metro East · Pasig
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Business Card Back -->
+    <div>
+      <h3 style="font-family:var(--font-display); font-size:0.75rem; font-weight:700; letter-spacing:0.18em; text-transform:uppercase; color:var(--mid-gray); margin-bottom:16px;">Business Card — Back</h3>
+      <div class="biz-card">
+        <div class="biz-card-back">
+          <svg width="80" height="97" viewBox="0 0 220 260" xmlns="http://www.w3.org/2000/svg">
+            <g transform="translate(110,102)">
+              <polygon fill="none" stroke="#1A7B8A" stroke-width="5.5" stroke-linejoin="miter" points="0,-88 88,0 0,88 -88,0"/>
+              <polygon fill="none" stroke="#1A7B8A" stroke-width="4.2" stroke-linejoin="miter" points="44,-44 44,44 -44,44 -44,-44"/>
+              <polygon fill="none" stroke="#1A7B8A" stroke-width="3.2" stroke-linejoin="miter" points="0,-44 44,0 0,44 -44,0"/>
+              <polygon fill="#1A7B8A" stroke="none" points="0,-14 14,0 0,14 -14,0"/>
+            </g>
+            <text x="110" y="218" text-anchor="middle" font-family="sans-serif" font-size="24" font-weight="800" letter-spacing="7" fill="#1A7B8A">SAPPHIRE</text>
+            <text x="110" y="237" text-anchor="middle" font-family="sans-serif" font-size="9" letter-spacing="3.2" fill="rgba(26,123,138,0.7)">CLINICS EAST, INC.</text>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Letterhead -->
+    <div>
+      <h3 style="font-family:var(--font-display); font-size:0.75rem; font-weight:700; letter-spacing:0.18em; text-transform:uppercase; color:var(--mid-gray); margin-bottom:16px;">Letterhead</h3>
+      <div class="letterhead-mock">
+        <div class="lh-header">
+          <svg width="80" height="30" viewBox="0 0 280 80" xmlns="http://www.w3.org/2000/svg">
+            <g transform="translate(36,38)">
+              <polygon fill="none" stroke="#1A7B8A" stroke-width="6" stroke-linejoin="miter" points="0,-30 30,0 0,30 -30,0"/>
+              <polygon fill="none" stroke="#1A7B8A" stroke-width="4" stroke-linejoin="miter" points="15,-15 15,15 -15,15 -15,-15"/>
+              <polygon fill="#1A7B8A" stroke="none" points="0,-6 6,0 0,6 -6,0"/>
+            </g>
+            <text x="78" y="30" font-family="sans-serif" font-size="17" font-weight="800" letter-spacing="4" fill="#1A7B8A">SAPPHIRE</text>
+            <text x="80" y="46" font-family="sans-serif" font-size="7" font-weight="400" letter-spacing="2.5" fill="#1A7B8A">CLINICS EAST, INC.</text>
+          </svg>
+          <div style="font-size:0.6rem; color:var(--mid-gray); text-align:right; line-height:1.8;">
+            Level 4, Robinsons Metro East<br>
+            Marcos Hwy, Pasig · 1800<br>
+            main@sapphireclinicseast.org
+          </div>
+        </div>
+        <div class="lh-body-lines">
+          <div class="lh-line short"></div>
+          <div class="lh-line short"></div>
+          <div style="height:16px;"></div>
+          <div class="lh-line long"></div>
+          <div class="lh-line long"></div>
+          <div class="lh-line med"></div>
+          <div style="height:10px;"></div>
+          <div class="lh-line long"></div>
+          <div class="lh-line long"></div>
+          <div class="lh-line long"></div>
+          <div class="lh-line med"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Social Media Post -->
+    <div>
+      <h3 style="font-family:var(--font-display); font-size:0.75rem; font-weight:700; letter-spacing:0.18em; text-transform:uppercase; color:var(--mid-gray); margin-bottom:16px;">Social Media — Square Post</h3>
+      <div class="social-mock post-teal">
+        <svg width="48" height="48" viewBox="-100 -100 200 200">
+          <polygon fill="none" stroke="#fff" stroke-width="7" points="0,-88 88,0 0,88 -88,0"/>
+          <polygon fill="none" stroke="#fff" stroke-width="5" points="44,-44 44,44 -44,44 -44,-44"/>
+          <polygon fill="none" stroke="#fff" stroke-width="4" points="0,-44 44,0 0,44 -44,0"/>
+          <polygon fill="#fff" stroke="none" points="0,-14 14,0 0,14 -14,0"/>
+        </svg>
+        <div class="social-tagline">Rehab for Every<br>Age, Every Stage.</div>
+        <div style="font-size:0.6rem; color:rgba(255,255,255,0.65); letter-spacing:0.12em; text-transform:uppercase;">
+          @sapphireclinicseast
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Digital Specs -->
+  <div class="mt-64">
+    <span class="section-label">Digital Specifications</span>
+    <h3 class="section-title" style="font-size:1.6rem; margin-top:12px;">Screen-Ready Assets</h3>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-top:32px;">
+      <div style="padding:20px; background:var(--white); border:1px solid var(--light-gray); border-radius:4px;">
+        <div style="font-family:var(--font-display); font-weight:700; font-size:0.8rem; color:var(--teal); margin-bottom:8px;">Favicon / App Icon</div>
+        <div style="font-size:0.78rem; color:var(--mid-gray); line-height:1.8;">16×16px, 32×32px,<br>180×180px (Apple Touch)<br>Mark only — teal on white</div>
+      </div>
+      <div style="padding:20px; background:var(--white); border:1px solid var(--light-gray); border-radius:4px;">
+        <div style="font-family:var(--font-display); font-weight:700; font-size:0.8rem; color:var(--teal); margin-bottom:8px;">Facebook / LinkedIn Cover</div>
+        <div style="font-size:0.78rem; color:var(--mid-gray); line-height:1.8;">1200×630px<br>Teal background preferred<br>White logo centered</div>
+      </div>
+      <div style="padding:20px; background:var(--white); border:1px solid var(--light-gray); border-radius:4px;">
+        <div style="font-family:var(--font-display); font-weight:700; font-size:0.8rem; color:var(--teal); margin-bottom:8px;">Profile Photo</div>
+        <div style="font-size:0.78rem; color:var(--mid-gray); line-height:1.8;">400×400px minimum<br>Mark on teal circle<br>or mark on white square</div>
+      </div>
+      <div style="padding:20px; background:var(--white); border:1px solid var(--light-gray); border-radius:4px;">
+        <div style="font-family:var(--font-display); font-weight:700; font-size:0.8rem; color:var(--teal); margin-bottom:8px;">Email Signature</div>
+        <div style="font-size:0.78rem; color:var(--mid-gray); line-height:1.8;">Horizontal logo<br>Max 200px wide<br>Teal on white</div>
+      </div>
+      <div style="padding:20px; background:var(--white); border:1px solid var(--light-gray); border-radius:4px;">
+        <div style="font-family:var(--font-display); font-weight:700; font-size:0.8rem; color:var(--teal); margin-bottom:8px;">Website Header</div>
+        <div style="font-size:0.78rem; color:var(--mid-gray); line-height:1.8;">Horizontal variant<br>48–64px height<br>White on dark nav bar</div>
+      </div>
+      <div style="padding:20px; background:var(--white); border:1px solid var(--light-gray); border-radius:4px;">
+        <div style="font-family:var(--font-display); font-weight:700; font-size:0.8rem; color:var(--teal); margin-bottom:8px;">Website Intro Video</div>
+        <div style="font-size:0.78rem; color:var(--mid-gray); line-height:1.8;">Use scei-logo-intro.html<br>Embed as full-screen<br>Dark background, 5s duration</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SECTION 7: IMAGERY GUIDELINES
+═══════════════════════════════════════════════════════════════════ -->
+<section id="imagery" class="section section-deep">
+  <span class="section-label">07 — Imagery</span>
+  <h2 class="section-title">Photography &amp;<br>Visual Style</h2>
+  <div class="divider"></div>
+  <p class="section-subtitle">
+    Every image we publish should reinforce our brand promise: world-class care delivered
+    with warmth, precision, and hope.
+  </p>
+
+  <div class="health-grid mt-48">
+    <div class="health-card">
+      <div class="health-letter" style="background:rgba(255,255,255,0.1); font-size:1.5rem;">📷</div>
+      <h4>Authentic Moments</h4>
+      <p>Prioritize real therapist-patient interactions over posed stock photography. Candid,
+        in-session imagery communicates genuine care.</p>
+    </div>
+    <div class="health-card">
+      <div class="health-letter" style="background:rgba(255,255,255,0.1); font-size:1.5rem;">🎨</div>
+      <h4>Color Grading</h4>
+      <p>Photos should have a cool-warm balance with slight teal toning in shadows. Avoid heavy
+        filters. Keep skin tones natural and vibrant.</p>
+    </div>
+    <div class="health-card">
+      <div class="health-letter" style="background:rgba(255,255,255,0.1); font-size:1.5rem;">💫</div>
+      <h4>Lighting</h4>
+      <p>Clean, bright, clinical-yet-warm. Natural light preferred for patient photos. Even
+        studio lighting for professional headshots and equipment.</p>
+    </div>
+    <div class="health-card">
+      <div class="health-letter" style="background:rgba(255,255,255,0.1); font-size:1.5rem;">👨‍👩‍👧</div>
+      <h4>Subject Matter</h4>
+      <p>Show the full patient journey: assessment, active therapy, achievement moments.
+        Represent the diversity of our patient population across all ages.</p>
+    </div>
+    <div class="health-card">
+      <div class="health-letter" style="background:rgba(255,255,255,0.1); font-size:1.5rem;">🏥</div>
+      <h4>Facility Shots</h4>
+      <p>Showcase the modern, well-equipped clinic environment. Clean lines, teal accents,
+        state-of-the-art therapy equipment, and multisensory spaces.</p>
+    </div>
+    <div class="health-card">
+      <div class="health-letter" style="background:rgba(255,255,255,0.1); font-size:1.5rem;">🚫</div>
+      <h4>Avoid</h4>
+      <p>Over-edited stock images, generic "hospital" aesthetics, overly clinical cold imagery,
+        and any imagery that shows patients in distress without context.</p>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════════════
+     FOOTER
+═══════════════════════════════════════════════════════════════════ -->
+<footer>
+  <svg width="40" height="40" viewBox="-100 -100 200 200" style="opacity:0.3; margin-bottom:16px; display:block; margin-left:auto; margin-right:auto;">
+    <polygon fill="none" stroke="#1A7B8A" stroke-width="7" points="0,-88 88,0 0,88 -88,0"/>
+    <polygon fill="none" stroke="#1A7B8A" stroke-width="5" points="44,-44 44,44 -44,44 -44,-44"/>
+    <polygon fill="#1A7B8A" stroke="none" points="0,-14 14,0 0,14 -14,0"/>
+  </svg>
+  <strong>SAPPHIRE CLINICS EAST, INC.</strong><br>
+  Brand Identity Guidelines — Version 2.0 — 2026<br>
+  Level 4, Robinsons Metro East · Marcos Highway · Brgy. Dela Paz · Santolan, Pasig · Metro Manila · 1800<br>
+  main@sapphireclinicseast.org<br><br>
+  This document is confidential and intended for internal use and authorized brand partners only.<br>
+  All brand assets are proprietary to Sapphire Clinics East, Inc.
+</footer>
+
+</body>
+</html>

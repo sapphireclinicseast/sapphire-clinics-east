@@ -27,9 +27,66 @@
   <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
 
   <!-- Stylesheet -->
-  <link rel="stylesheet" href="css/style.css?v=2">
+  <link rel="stylesheet" href="css/style.css?v=3">
 </head>
 <body>
+
+<!-- ================================================================
+  LOGO INTRO SPLASH SCREEN
+  Shown once per session. Auto-dismisses after ~5.8s or on Skip click.
+================================================================ -->
+<div id="logo-intro-overlay" role="dialog" aria-label="Sapphire Clinics East logo intro">
+
+  <div class="li-bg-glow"></div>
+  <div class="li-corner tl"></div>
+  <div class="li-corner tr"></div>
+  <div class="li-corner bl"></div>
+  <div class="li-corner br"></div>
+
+  <div class="li-wrapper">
+
+    <svg id="li-logo-svg" viewBox="-100 -100 200 200" xmlns="http://www.w3.org/2000/svg">
+      <g id="li-mark-group">
+
+        <polygon id="li-outer-diamond"    points="0,-88 88,0 0,88 -88,0"/>
+        <polygon id="li-inscribed-square" points="44,-44 44,44 -44,44 -44,-44"/>
+        <polygon id="li-inner-diamond"    points="0,-44 44,0 0,44 -44,0"/>
+
+        <g id="li-facet-group">
+          <line class="li-facet cardinal" x1="0"   y1="-88" x2="0"   y2="-44"/>
+          <line class="li-facet cardinal" x1="88"  y1="0"   x2="44"  y2="0"/>
+          <line class="li-facet cardinal" x1="0"   y1="88"  x2="0"   y2="44"/>
+          <line class="li-facet cardinal" x1="-88" y1="0"   x2="-44" y2="0"/>
+          <line class="li-facet diagonal" x1="44"  y1="-44" x2="44"  y2="0"/>
+          <line class="li-facet diagonal" x1="44"  y1="-44" x2="0"   y2="-44"/>
+          <line class="li-facet diagonal" x1="44"  y1="44"  x2="44"  y2="0"/>
+          <line class="li-facet diagonal" x1="44"  y1="44"  x2="0"   y2="44"/>
+          <line class="li-facet diagonal" x1="-44" y1="44"  x2="-44" y2="0"/>
+          <line class="li-facet diagonal" x1="-44" y1="44"  x2="0"   y2="44"/>
+          <line class="li-facet diagonal" x1="-44" y1="-44" x2="-44" y2="0"/>
+          <line class="li-facet diagonal" x1="-44" y1="-44" x2="0"   y2="-44"/>
+        </g>
+
+        <polygon id="li-center-table" points="0,-14 14,0 0,14 -14,0"/>
+
+      </g>
+    </svg>
+
+    <div class="li-wordmark">
+      <span class="li-wordmark-primary">Sapphire</span>
+      <span class="li-wordmark-rule"></span>
+      <span class="li-wordmark-secondary">Clinics East, Inc.</span>
+    </div>
+
+    <div class="li-tagline">
+      <span>Rehab for Every Age, Every Stage.</span>
+    </div>
+
+  </div>
+
+  <button class="li-skip" onclick="dismissIntro()" aria-label="Skip intro">↺ &nbsp;Skip</button>
+
+</div>
 
 <!-- ================================================================
   NAVIGATION
@@ -39,11 +96,26 @@
 
     <!-- Logo -->
     <a class="nav-logo" href="#" onclick="scrollToSection('home'); return false;" aria-label="Sapphire Clinics East, Inc.">
-      <img src="COMPANY LOGO/SCEI LOGO-2 TRANSPARENT.png"
-           alt="Sapphire Clinics East, Inc."
-           class="nav-logo-img"
-           onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-      <div class="nav-logo-text" style="display:none;">
+      <!-- Inline SVG diamond mark — uses currentColor (white on hero, teal on scrolled) -->
+      <svg class="nav-logo-mark" viewBox="-100 -100 200 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <polygon fill="none" stroke="currentColor" stroke-width="5.5" stroke-linejoin="miter" points="0,-88 88,0 0,88 -88,0"/>
+        <polygon fill="none" stroke="currentColor" stroke-width="4.2" stroke-linejoin="miter" points="44,-44 44,44 -44,44 -44,-44"/>
+        <polygon fill="none" stroke="currentColor" stroke-width="3.2" stroke-linejoin="miter" points="0,-44 44,0 0,44 -44,0"/>
+        <line fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square" x1="0" y1="-88" x2="0" y2="-44"/>
+        <line fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square" x1="88" y1="0" x2="44" y2="0"/>
+        <line fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square" x1="0" y1="88" x2="0" y2="44"/>
+        <line fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square" x1="-88" y1="0" x2="-44" y2="0"/>
+        <line fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" x1="44" y1="-44" x2="44" y2="0"/>
+        <line fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" x1="44" y1="-44" x2="0" y2="-44"/>
+        <line fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" x1="44" y1="44" x2="44" y2="0"/>
+        <line fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" x1="44" y1="44" x2="0" y2="44"/>
+        <line fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" x1="-44" y1="44" x2="-44" y2="0"/>
+        <line fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" x1="-44" y1="44" x2="0" y2="44"/>
+        <line fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" x1="-44" y1="-44" x2="-44" y2="0"/>
+        <line fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" x1="-44" y1="-44" x2="0" y2="-44"/>
+        <polygon fill="currentColor" points="0,-14 14,0 0,14 -14,0"/>
+      </svg>
+      <div class="nav-logo-text">
         <span class="nav-logo-name">Sapphire Clinics East</span>
         <span class="nav-logo-sub">Inc.</span>
       </div>
@@ -963,9 +1035,9 @@
     <!-- Brand -->
     <div>
       <div style="margin-bottom:12px;">
-        <img src="COMPANY LOGO/SCEI LOGO-1 TRANSPARENT.png"
+        <img src="COMPANY LOGO/scei-revised-logo.svg"
              alt="Sapphire Clinics East, Inc."
-             style="height:36px; width:auto; object-fit:contain; filter:brightness(0) invert(1); opacity:0.85;">
+             style="width:160px; height:auto; object-fit:contain; filter:brightness(0) invert(1); opacity:0.9;">
       </div>
       <div class="footer-brand-sub" style="margin-bottom:12px;">Operating Sandbox Clinic Branches</div>
       <p class="footer-brand-desc">Sapphire Clinics East, Inc. (SCEI) operates premier rehabilitation clinics under the Sandbox Clinic brand — dedicated to evidence-based healthcare and optimizing quality of life across Metro Manila.</p>
