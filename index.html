@@ -27,65 +27,93 @@
   <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
 
   <!-- Stylesheet -->
-  <link rel="stylesheet" href="css/style.css?v=4">
+  <link rel="stylesheet" href="css/style.css?v=5">
 </head>
 <body>
 
 <!-- ================================================================
   LOGO INTRO SPLASH SCREEN
-  Shown once per session. Auto-dismisses after ~5.8s or on Skip click.
+  HTML lifted verbatim from scei-logo-intro.html.
+  Auto-dismisses via CSS after ~5.5s, or on Skip click.
+  sessionStorage prevents replay within the same browser session.
 ================================================================ -->
 <div id="logo-intro-overlay" role="dialog" aria-label="Sapphire Clinics East logo intro">
+  <div class="scene">
 
-  <div class="li-bg-glow"></div>
-  <div class="li-corner tl"></div>
-  <div class="li-corner tr"></div>
-  <div class="li-corner bl"></div>
-  <div class="li-corner br"></div>
+    <!-- Background ambient glow -->
+    <div class="bg-glow"></div>
 
-  <div class="li-wrapper">
+    <!-- Corner frame decorations -->
+    <div class="corner tl"></div>
+    <div class="corner tr"></div>
+    <div class="corner bl"></div>
+    <div class="corner br"></div>
 
-    <svg id="li-logo-svg" viewBox="-100 -100 200 200" xmlns="http://www.w3.org/2000/svg">
-      <g id="li-mark-group">
+    <!-- Logo wrapper -->
+    <div class="logo-wrapper">
 
-        <polygon id="li-outer-diamond"    points="0,-88 88,0 0,88 -88,0"/>
-        <polygon id="li-inscribed-square" points="44,-44 44,44 -44,44 -44,-44"/>
-        <polygon id="li-inner-diamond"    points="0,-44 44,0 0,44 -44,0"/>
+      <!-- Mark SVG -->
+      <svg id="logo-svg" viewBox="-100 -100 200 200" xmlns="http://www.w3.org/2000/svg">
+        <g id="logo-mark-group">
 
-        <g id="li-facet-group">
-          <line class="li-facet cardinal" x1="0"   y1="-88" x2="0"   y2="-44"/>
-          <line class="li-facet cardinal" x1="88"  y1="0"   x2="44"  y2="0"/>
-          <line class="li-facet cardinal" x1="0"   y1="88"  x2="0"   y2="44"/>
-          <line class="li-facet cardinal" x1="-88" y1="0"   x2="-44" y2="0"/>
-          <line class="li-facet diagonal" x1="44"  y1="-44" x2="44"  y2="0"/>
-          <line class="li-facet diagonal" x1="44"  y1="-44" x2="0"   y2="-44"/>
-          <line class="li-facet diagonal" x1="44"  y1="44"  x2="44"  y2="0"/>
-          <line class="li-facet diagonal" x1="44"  y1="44"  x2="0"   y2="44"/>
-          <line class="li-facet diagonal" x1="-44" y1="44"  x2="-44" y2="0"/>
-          <line class="li-facet diagonal" x1="-44" y1="44"  x2="0"   y2="44"/>
-          <line class="li-facet diagonal" x1="-44" y1="-44" x2="-44" y2="0"/>
-          <line class="li-facet diagonal" x1="-44" y1="-44" x2="0"   y2="-44"/>
+          <!-- Level 1: Outer Diamond -->
+          <polygon id="outer-diamond"
+            points="0,-88 88,0 0,88 -88,0"/>
+
+          <!-- Level 2: Inscribed Square -->
+          <polygon id="inscribed-square"
+            points="44,-44 44,44 -44,44 -44,-44"/>
+
+          <!-- Level 3: Inner Diamond -->
+          <polygon id="inner-diamond"
+            points="0,-44 44,0 0,44 -44,0"/>
+
+          <!-- Facet lines group -->
+          <g id="facet-group">
+            <!-- Cardinal lines (outer → inner) -->
+            <line class="facet-line cardinal" x1="0"   y1="-88" x2="0"   y2="-44"/>
+            <line class="facet-line cardinal" x1="88"  y1="0"   x2="44"  y2="0"/>
+            <line class="facet-line cardinal" x1="0"   y1="88"  x2="0"   y2="44"/>
+            <line class="facet-line cardinal" x1="-88" y1="0"   x2="-44" y2="0"/>
+            <!-- Diagonal lines (square corners → inner diamond) -->
+            <line class="facet-line diagonal" x1="44"  y1="-44" x2="44"  y2="0"/>
+            <line class="facet-line diagonal" x1="44"  y1="-44" x2="0"   y2="-44"/>
+            <line class="facet-line diagonal" x1="44"  y1="44"  x2="44"  y2="0"/>
+            <line class="facet-line diagonal" x1="44"  y1="44"  x2="0"   y2="44"/>
+            <line class="facet-line diagonal" x1="-44" y1="44"  x2="-44" y2="0"/>
+            <line class="facet-line diagonal" x1="-44" y1="44"  x2="0"   y2="44"/>
+            <line class="facet-line diagonal" x1="-44" y1="-44" x2="-44" y2="0"/>
+            <line class="facet-line diagonal" x1="-44" y1="-44" x2="0"   y2="-44"/>
+          </g>
+
+          <!-- Center table diamond -->
+          <polygon id="center-table"
+            points="0,-14 14,0 0,14 -14,0"/>
+
         </g>
+      </svg>
 
-        <polygon id="li-center-table" points="0,-14 14,0 0,14 -14,0"/>
+      <!-- Wordmark -->
+      <div class="wordmark-container">
+        <span class="wordmark-primary">Sapphire</span>
+        <span class="wordmark-rule"></span>
+        <span class="wordmark-secondary">Clinics East, Inc.</span>
+      </div>
 
-      </g>
-    </svg>
+      <!-- Tagline -->
+      <div class="tagline">
+        <span>Rehab for Every Age, Every Stage.</span>
+      </div>
 
-    <div class="li-wordmark">
-      <span class="li-wordmark-primary">Sapphire</span>
-      <span class="li-wordmark-rule"></span>
-      <span class="li-wordmark-secondary">Clinics East, Inc.</span>
-    </div>
+    </div><!-- /logo-wrapper -->
 
-    <div class="li-tagline">
-      <span>Rehab for Every Age, Every Stage.</span>
-    </div>
+    <!-- Skip button (replaces Replay in the standalone version) -->
+    <button class="replay-btn" onclick="dismissIntro()">↺ &nbsp;Skip</button>
 
-  </div>
+    <!-- Embed note -->
+    <div class="embed-note">Sapphire Clinics East, Inc. &nbsp;·&nbsp; Website Intro</div>
 
-  <button class="li-skip" onclick="dismissIntro()" aria-label="Skip intro">↺ &nbsp;Skip</button>
-
+  </div><!-- /scene -->
 </div>
 
 <!-- ================================================================
