@@ -6,8 +6,12 @@
 # ──────────────────────────────────────────────────────────────────
 
 backend:
-  name: git-gateway
+  name: github
+  repo: sapphireclinicseast/sapphire-clinics-east
   branch: main
+  # OAuth proxy running on the VPS (see scripts/oauth-proxy.js)
+  base_url: https://sapphireclinicseast.org
+  auth_endpoint: oauth
 
 # Where uploaded images will be stored
 media_folder: "images/uploads"
