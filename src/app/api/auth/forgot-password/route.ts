@@ -25,16 +25,10 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  // Send via Gmail API (HTTPS — works even when SMTP ports are blocked)
-  let emailSent = false
-  let emailError: string | null = null
-
+  // Send via Gmail API (HTTPS — works even when SMTP ports are blocked on VPS)
   try {
     const gmailAcct = await prisma.gmailAccount.findFirst()
-    if (!gmailAcct) {
-      emailError = 'No Gmail account connected'
-      console.warn('[forgot-password] No Gmail account connected')
-    } else {
+    if (gmailAcct) {
       const emailBody = [
         `Hi ${user.name},`,
         '',
@@ -56,14 +50,14 @@ export async function POST(req: NextRequest) {
       )
       const gmail = await getGmailClient(gmailAcct.refreshToken)
       const result = await gmail.users.messages.send({ userId: 'me', requestBody: { raw } })
-      emailSent = true
       console.log('[forgot-password] Reset code sent via Gmail API, messageId:', result.data.id)
+    } else {
+      console.warn('[forgot-password] No Gmail account connected — reset code not emailed')
     }
   } catch (err: unknown) {
-    const errMsg = err instanceof Error ? err.message : String(err)
-    emailError = errMsg
     console.error('[forgot-password] Gmail API error:', err)
+    // Code is still stored — user can retry
   }
 
-  return NextResponse.json({ ok: true, emailSent, emailError })
+  return NextResponse.json({ ok: true })
 }
