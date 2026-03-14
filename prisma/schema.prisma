@@ -1,0 +1,183 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  MARKETING_ADMIN
+  SBEA_ADMIN
+  SBGH_ADMIN
+  VERDANA_ADMIN
+  SBEA_FRONT_DESK
+  SBGH_FRONT_DESK
+}
+
+enum Platform {
+  FACEBOOK
+  INSTAGRAM
+  TIKTOK
+}
+
+enum PostStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  FAILED
+}
+
+enum TemplateType {
+  BIRTHDAY
+  HOLIDAY
+  GENERAL
+}
+
+enum PatientType {
+  PEDIATRIC
+  ADULT
+}
+
+enum Branch {
+  SANDBOX_EAST
+  SANDBOX_GREENHILLS
+  VERDANA_STORE
+}
+
+model User {
+  id                String          @id @default(cuid())
+  name              String
+  email             String          @unique
+  passwordHash      String
+  role              Role            @default(MARKETING_ADMIN)
+  avatar            String?
+  resetToken        String?
+  resetTokenExpiry  DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  posts             ScheduledPost[]
+  campaigns         EmailCampaign[]
+}
+
+model SocialAccount {
+  id          String   @id @default(cuid())
+  platform    Platform
+  accessToken String
+  accountId   String
+  pageId      String?
+  pageName    String?
+  profileUrl  String?
+  connectedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ScheduledPost {
+  id          String     @id @default(cuid())
+  content     String
+  caption     String?
+  imageUrl    String?
+  mediaType   String?    // 'image' | 'video' — null treated as image
+  platforms   Platform[]
+  accountIds  String[]   @default([])
+  scheduledAt DateTime
+  status      PostStatus @default(DRAFT)
+  errorMsg    String?
+  publishedId String?
+  userId      String
+  createdBy   User       @relation(fields: [userId], references: [id])
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Template {
+  id         String       @id @default(cuid())
+  type       TemplateType
+  name       String
+  config     Json
+  previewUrl String?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+}
+
+model Patient {
+  id          String      @id @default(cuid())
+  firstName   String
+  lastName    String
+  email       String?
+  phone       String?
+  dob         DateTime?
+  patientType PatientType
+  branch      Branch?          // legacy single-branch (kept for backward compat)
+  branches    Branch[]    @default([])  // multi-branch (primary)
+  sex         String?
+  civilStatus String?
+  religion    String?
+  nationality String?
+  address     String?          // full address or barangay
+  city        String?          // city/municipality (for map choropleth)
+  diagnosis   String?
+  notes       String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model EmailCampaign {
+  id             String    @id @default(cuid())
+  subject        String
+  body           String
+  recipientGroup String
+  status         String    @default("draft")
+  recipientCount Int       @default(0)
+  scheduledAt    DateTime?
+  sentAt         DateTime?
+  gmailAccountId String?
+  userId         String
+  createdBy      User      @relation(fields: [userId], references: [id])
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+model BrandGuide {
+  id         String    @id @default(cuid())
+  name       String?   // e.g. "Sandbox Clinic", "Verdana Store"
+  fileName   String
+  fileUrl    String
+  analyzedAt DateTime?
+  styleJson  Json?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+model GmailAccount {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  displayName  String?
+  refreshToken String
+  connectedAt  DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model CanvaAccount {
+  id           String    @id @default(cuid())
+  accessToken  String
+  refreshToken String?
+  expiresAt    DateTime?
+  canvaUserId  String?
+  displayName  String?
+  connectedAt  DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Analytics {
+  id          String   @id @default(cuid())
+  platform    Platform
+  date        DateTime
+  reach       Int      @default(0)
+  impressions Int      @default(0)
+  engagement  Int      @default(0)
+  followers   Int      @default(0)
+  createdAt   DateTime @default(now())
+}
