@@ -55,6 +55,7 @@
     "react-dom": "19.2.3",
     "react-dropzone": "^15.0.0",
     "recharts": "^3.8.0",
+    "resend": "^6.9.3",
     "sharp": "^0.34.5",
     "tailwind-merge": "^3.5.0",
     "ts-node": "^10.9.2",

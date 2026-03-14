@@ -72,6 +72,7 @@ services:
       CANVA_CLIENT_SECRET: ${CANVA_CLIENT_SECRET}
       GMAIL_RESET_USER: ${GMAIL_RESET_USER}
       GMAIL_RESET_PASS: ${GMAIL_RESET_PASS}
+      RESEND_API_KEY: ${RESEND_API_KEY}
       UPLOAD_DIR: /app/uploads
       AUTH_TRUST_HOST: "true"
     volumes:
