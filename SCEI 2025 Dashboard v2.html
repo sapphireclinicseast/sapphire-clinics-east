@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <style>
 :root {
   --teal-950: #042f2e;
@@ -662,6 +663,181 @@ h1,h2,h3,h4,h5,h6 { font-family: 'DM Sans', 'Inter', sans-serif; color: var(--sl
 @media (prefers-reduced-motion: reduce) {
   .sidebar { transition: none; }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   SATISFACTION SURVEY MODULE
+   ══════════════════════════════════════════════════════════════ */
+.survey-tabs {
+  display: flex; gap: 4px;
+  background: var(--slate-100);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  margin-bottom: 24px;
+}
+.survey-tab {
+  display: flex; align-items: center; gap: 6px;
+  padding: 10px 18px;
+  background: none; border: none;
+  font-family: 'Inter', sans-serif;
+  font-size: 12.5px; font-weight: 500;
+  color: var(--slate-500);
+  cursor: pointer;
+  border-radius: var(--radius-xs, 6px);
+  transition: all 0.2s;
+}
+.survey-tab i { width: 16px; height: 16px; }
+.survey-tab:hover { color: var(--slate-700); background: rgba(255,255,255,0.5); }
+.survey-tab.active {
+  color: var(--teal-700); background: var(--white);
+  font-weight: 600; box-shadow: var(--shadow-sm);
+}
+.survey-panel { display: none; }
+.survey-panel.active { display: block; }
+
+.survey-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.survey-table th {
+  text-align: left; padding: 12px 16px;
+  font-size: 11px; font-weight: 700; color: var(--slate-500);
+  text-transform: uppercase; letter-spacing: 0.8px;
+  border-bottom: 2px solid var(--slate-200);
+}
+.survey-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--slate-100);
+  color: var(--slate-700);
+}
+.survey-table tr:hover td { background: var(--teal-50); }
+
+.survey-input, .survey-select {
+  width: 100%; padding: 10px 14px;
+  border: 1px solid var(--slate-300);
+  border-radius: 6px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px; color: var(--slate-700);
+  background: var(--white);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.survey-input:focus, .survey-select:focus {
+  outline: none; border-color: var(--teal-500);
+  box-shadow: 0 0 0 3px rgba(20,184,166,0.15);
+}
+.survey-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 20px;
+  background: linear-gradient(135deg, var(--teal-700), var(--teal-500));
+  color: var(--white); border: none; border-radius: 6px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all 0.2s;
+}
+.survey-btn:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }
+.survey-btn i { width: 16px; height: 16px; }
+.survey-btn-secondary {
+  background: var(--slate-200); color: var(--slate-600);
+}
+.survey-btn-secondary:hover { background: var(--slate-300); }
+
+.survey-progress-bar {
+  height: 6px; background: var(--slate-100);
+  border-radius: 3px; overflow: hidden; flex: 1;
+}
+.survey-progress-fill {
+  height: 100%; border-radius: 3px;
+  background: linear-gradient(90deg, var(--teal-500), var(--teal-400));
+  transition: width 0.3s ease;
+}
+.survey-progress-label {
+  font-size: 11px; font-weight: 600; color: var(--slate-500);
+  min-width: 50px; text-align: right;
+}
+
+.form-row { display: flex; gap: 12px; margin-bottom: 12px; }
+.form-row > * { flex: 1; }
+.form-group { margin-bottom: 16px; }
+.form-group label {
+  display: block; font-size: 12px; font-weight: 600;
+  color: var(--slate-600); margin-bottom: 6px;
+}
+
+/* Survey modal (QR code) */
+.survey-modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(4px);
+  z-index: 500;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.3s;
+}
+.survey-modal-overlay.open { opacity: 1; pointer-events: auto; }
+.survey-modal {
+  background: var(--white);
+  border-radius: var(--radius, 12px);
+  padding: 32px;
+  max-width: 480px; width: 90%;
+  box-shadow: var(--shadow-xl);
+  text-align: center;
+  transform: translateY(20px);
+  transition: transform 0.3s cubic-bezier(0.16,1,0.3,1);
+}
+.survey-modal-overlay.open .survey-modal { transform: translateY(0); }
+.survey-modal h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; color: var(--slate-900); }
+.survey-modal .qr-container {
+  width: 220px; height: 220px;
+  margin: 20px auto; padding: 10px;
+  background: var(--white);
+  border: 2px solid var(--slate-200);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+}
+.survey-modal .survey-url {
+  font-size: 11px; color: var(--slate-400);
+  word-break: break-all; margin-top: 12px;
+}
+
+/* Front desk auto-prompt */
+.survey-prompt-overlay {
+  position: fixed; inset: 0;
+  background: rgba(4,47,46,0.85);
+  backdrop-filter: blur(8px);
+  z-index: 600;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.4s;
+}
+.survey-prompt-overlay.open { opacity: 1; pointer-events: auto; }
+.survey-prompt {
+  background: var(--white);
+  border-radius: var(--radius, 12px);
+  padding: 40px;
+  max-width: 520px; width: 90%;
+  box-shadow: var(--shadow-xl);
+  text-align: center;
+}
+
+/* Response cards */
+.response-card {
+  background: var(--white);
+  border: 1px solid var(--slate-200);
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-bottom: 12px;
+  transition: box-shadow 0.2s;
+}
+.response-card:hover { box-shadow: var(--shadow-md); }
+.response-card .rc-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 8px;
+}
+.response-card .rc-staff { font-weight: 600; color: var(--slate-900); font-size: 14px; }
+.response-card .rc-date { font-size: 12px; color: var(--slate-400); }
+.response-card .rc-meta { font-size: 12px; color: var(--slate-500); }
+.response-card .rc-score {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--teal-50); color: var(--teal-700);
+  padding: 4px 10px; border-radius: 12px;
+  font-size: 13px; font-weight: 600;
+}
 </style>
 </head>
 <body>
@@ -684,6 +860,7 @@ h1,h2,h3,h4,h5,h6 { font-family: 'DM Sans', 'Inter', sans-serif; color: var(--sl
     <button class="nav-btn" onclick="showSection('governance',this)"><i data-lucide="shield"></i> Governance</button>
     <button class="nav-btn" onclick="showSection('leadership',this)"><i data-lucide="crown"></i> Leadership</button>
     <button class="nav-btn" onclick="showSection('boarddecisions',this)"><i data-lucide="gavel"></i> Board Decisions</button>
+    <button class="nav-btn" onclick="showSection('surveys',this)"><i data-lucide="clipboard-check"></i> Satisfaction Surveys</button>
     <button class="nav-btn" onclick="showSection('contact',this)"><i data-lucide="phone"></i> Contact</button>
   </nav>
   <div class="sidebar-footer">SCEI &middot; Sandbox Clinic</div>
@@ -1554,8 +1731,186 @@ h1,h2,h3,h4,h5,h6 { font-family: 'DM Sans', 'Inter', sans-serif; color: var(--sl
 
 </section>
 
+<!-- ══════════════════════════════════════════════════════════════
+     SATISFACTION SURVEYS
+     ══════════════════════════════════════════════════════════════ -->
+<section id="surveys" class="section">
+
+  <div class="section-heading reveal"><h2>Satisfaction Surveys</h2><span class="tag">Quality Assurance</span></div>
+
+  <!-- Tab Bar -->
+  <div class="survey-tabs reveal">
+    <button class="survey-tab active" onclick="showSurveyTab('survey-overview',this)"><i data-lucide="bar-chart-3"></i> Overview</button>
+    <button class="survey-tab" onclick="showSurveyTab('survey-manage',this)"><i data-lucide="list-checks"></i> Manage</button>
+    <button class="survey-tab" onclick="showSurveyTab('survey-responses',this)"><i data-lucide="file-text"></i> Responses</button>
+  </div>
+
+  <!-- Tab: Overview -->
+  <div id="survey-overview" class="survey-panel active">
+    <div class="grid-4 reveal" id="surveyKpis">
+      <div class="kpi-card"><div class="kpi-icon"><i data-lucide="clipboard-check"></i></div><div class="kpi-num" id="kpiTotalSurveys">—</div><div class="kpi-lbl">Total Surveys</div></div>
+      <div class="kpi-card accent"><div class="kpi-icon"><i data-lucide="star"></i></div><div class="kpi-num" id="kpiAvgScore">—</div><div class="kpi-lbl">Avg. Score /5</div></div>
+      <div class="kpi-card"><div class="kpi-icon"><i data-lucide="target"></i></div><div class="kpi-num" id="kpiCompletion">—</div><div class="kpi-lbl">Completion Rate</div></div>
+      <div class="kpi-card accent"><div class="kpi-icon"><i data-lucide="clock"></i></div><div class="kpi-num" id="kpiPending">—</div><div class="kpi-lbl">Pending</div></div>
+    </div>
+    <div class="grid-2 reveal" style="margin-top:20px">
+      <div class="card">
+        <h3 class="sub-h"><i data-lucide="trending-up"></i> Satisfaction Trend</h3>
+        <div class="chart-wrap"><canvas id="surveyTrendChart"></canvas></div>
+      </div>
+      <div class="card">
+        <h3 class="sub-h"><i data-lucide="users"></i> Assessment Progress</h3>
+        <div class="chart-wrap"><canvas id="staffProgressChart"></canvas></div>
+      </div>
+    </div>
+    <div class="grid-2 reveal" style="margin-top:20px">
+      <div class="card">
+        <h3 class="sub-h"><i data-lucide="building-2"></i> Scores by Branch</h3>
+        <div class="chart-wrap"><canvas id="branchScoresChart"></canvas></div>
+      </div>
+      <div class="card">
+        <h3 class="sub-h"><i data-lucide="puzzle"></i> Scores by Department</h3>
+        <div class="chart-wrap"><canvas id="deptScoresChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: Manage Surveys -->
+  <div id="survey-manage" class="survey-panel">
+    <div class="card reveal">
+      <h3 class="sub-h"><i data-lucide="calendar-check"></i> Assessment Schedule</h3>
+      <p style="font-size:13px;color:var(--slate-500);margin-bottom:16px">Track which staff have been assessed and how many remain for the year.</p>
+
+      <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+        <select class="survey-select" id="staffFilterBranch" onchange="loadStaffTable()" style="max-width:200px">
+          <option value="">All Branches</option>
+          <option value="east_pasig">Sandbox East Pasig</option>
+          <option value="greenhills">Sandbox Greenhills</option>
+        </select>
+        <select class="survey-select" id="staffFilterType" onchange="loadStaffTable()" style="max-width:200px">
+          <option value="">All Types</option>
+          <option value="clinical">Clinical Staff</option>
+          <option value="admin">Front Desk Staff</option>
+        </select>
+      </div>
+
+      <div id="staffAssessmentTable">
+        <p style="color:var(--slate-400);font-size:13px;text-align:center;padding:40px 0">Loading staff data...</p>
+      </div>
+    </div>
+
+    <div class="card reveal" style="margin-top:20px">
+      <h3 class="sub-h"><i data-lucide="qr-code"></i> Manual Survey Assignment</h3>
+      <p style="font-size:13px;color:var(--slate-500);margin-bottom:16px">Create a survey assignment and generate a QR code for the patient.</p>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Staff Member</label>
+          <select class="survey-select" id="assignStaff">
+            <option value="">Select staff...</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Branch</label>
+          <select class="survey-select" id="assignBranch">
+            <option value="east_pasig">Sandbox East Pasig</option>
+            <option value="greenhills">Sandbox Greenhills</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Patient Name</label>
+          <input class="survey-input" type="text" id="assignPatientName" placeholder="Enter patient name">
+        </div>
+        <div class="form-group">
+          <label>Patient Age</label>
+          <input class="survey-input" type="number" id="assignPatientAge" placeholder="Age" min="0" max="120">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Session Type</label>
+        <select class="survey-select" id="assignSessionType">
+          <option value="individual">Individual Session</option>
+          <option value="group">Group Session</option>
+        </select>
+      </div>
+
+      <button class="survey-btn" onclick="createManualAssignment()"><i data-lucide="qr-code"></i> Generate Survey QR Code</button>
+    </div>
+  </div>
+
+  <!-- Tab: Responses -->
+  <div id="survey-responses" class="survey-panel">
+    <div class="card reveal">
+      <h3 class="sub-h"><i data-lucide="filter"></i> Filter Responses</h3>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <select class="survey-select" id="respFilterBranch" onchange="loadResponses()" style="max-width:180px">
+          <option value="">All Branches</option>
+          <option value="east_pasig">East Pasig</option>
+          <option value="greenhills">Greenhills</option>
+        </select>
+        <select class="survey-select" id="respFilterType" onchange="loadResponses()" style="max-width:180px">
+          <option value="">All Survey Types</option>
+          <option value="HR10">HR10 — Pedia</option>
+          <option value="HR11">HR11 — Adult</option>
+          <option value="HR12">HR12 — Admin</option>
+          <option value="HR16">HR16 — Group</option>
+        </select>
+        <input class="survey-input" type="date" id="respFilterFrom" onchange="loadResponses()" style="max-width:160px" placeholder="From">
+        <input class="survey-input" type="date" id="respFilterTo" onchange="loadResponses()" style="max-width:160px" placeholder="To">
+      </div>
+    </div>
+    <div id="responsesList" style="margin-top:16px">
+      <p style="color:var(--slate-400);font-size:13px;text-align:center;padding:40px 0">Select filters and click to load responses.</p>
+    </div>
+    <div id="responsesPagination" style="margin-top:16px;text-align:center"></div>
+  </div>
+
+</section>
+
 </div><!-- /main -->
 </div><!-- /page-wrapper -->
+
+<!-- ═══ Survey Prompt Modal (auto-popup for front desk) ═══ -->
+<div class="survey-prompt-overlay" id="surveyPromptOverlay">
+  <div class="survey-prompt">
+    <div style="width:56px;height:56px;background:var(--teal-50);border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;color:var(--teal-600)">
+      <i data-lucide="clipboard-check" style="width:28px;height:28px"></i>
+    </div>
+    <h3 style="font-size:20px;margin-bottom:8px">Patient Satisfaction Survey</h3>
+    <p style="color:var(--slate-500);font-size:14px;margin-bottom:4px">
+      Time to assess: <strong id="promptStaffName"></strong>
+    </p>
+    <p style="color:var(--slate-400);font-size:12px;margin-bottom:24px" id="promptReason"></p>
+    <input type="hidden" id="promptStaffId">
+    <input type="hidden" id="promptStaffType">
+    <div style="margin-bottom:16px">
+      <label style="font-size:12px;font-weight:600;color:var(--slate-600);display:block;margin-bottom:6px">Patient Name</label>
+      <input type="text" id="promptPatientName" class="survey-input" placeholder="Enter patient name">
+    </div>
+    <div style="margin-bottom:20px">
+      <label style="font-size:12px;font-weight:600;color:var(--slate-600);display:block;margin-bottom:6px">Patient Age</label>
+      <input type="number" id="promptPatientAge" class="survey-input" placeholder="Age" min="0" max="120">
+    </div>
+    <div style="display:flex;gap:12px;justify-content:center">
+      <button class="survey-btn" onclick="acceptSurveyPrompt()"><i data-lucide="qr-code"></i> Generate QR Code</button>
+      <button class="survey-btn survey-btn-secondary" onclick="skipSurveyPrompt()">Skip This Time</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ QR Code Modal ═══ -->
+<div class="survey-modal-overlay" id="surveyModalOverlay">
+  <div class="survey-modal">
+    <h3>Scan to Take Survey</h3>
+    <p style="color:var(--slate-500);font-size:13px;margin-bottom:4px">Ask the patient to scan this QR code with the clinic tablet.</p>
+    <p style="color:var(--teal-600);font-size:13px;font-weight:600" id="qrSurveyType"></p>
+    <div class="qr-container" id="qrCodeContainer"></div>
+    <div class="survey-url" id="surveyUrlDisplay"></div>
+    <button class="survey-btn" style="margin-top:20px" onclick="closeQrModal()"><i data-lucide="x"></i> Close</button>
+  </div>
+</div>
 
 <script>
 // INIT LUCIDE ICONS
@@ -1585,6 +1940,7 @@ function showSection(id, btn) {
     observeReveals();
   }, 80);
   if (id === 'people') renderPeopleCharts();
+  if (id === 'surveys') loadSurveyDashboard();
 }
 
 // SCROLL REVEAL via IntersectionObserver
@@ -1702,6 +2058,474 @@ function renderPeopleCharts() {
     }
   });
 }
+
+// ══════════════════════════════════════════════════════════════════
+//  SATISFACTION SURVEY MODULE
+// ══════════════════════════════════════════════════════════════════
+
+const SURVEY_API = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ? `${window.location.protocol}//${window.location.hostname}:3031/api/survey`
+  : `${window.location.origin}/api/survey`;
+const SURVEY_API_KEY = 'SCEI_SURVEY_DEV_KEY'; // Updated on VPS via env var
+
+let surveyChartsRendered = false;
+let surveyChartInstances = {};
+let currentResponsePage = 1;
+
+// ── API Helper ───────────────────────────────────────────────────
+async function surveyFetch(endpoint, options = {}) {
+  const res = await fetch(SURVEY_API + endpoint, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Key': SURVEY_API_KEY,
+      ...(options.headers || {})
+    }
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `API error ${res.status}`);
+  }
+  return res.json();
+}
+
+// ── Tab Switching ────────────────────────────────────────────────
+function showSurveyTab(panelId, btn) {
+  document.querySelectorAll('.survey-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.survey-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById(panelId).classList.add('active');
+  btn.classList.add('active');
+
+  if (panelId === 'survey-manage') loadStaffTable();
+  if (panelId === 'survey-responses') loadResponses();
+}
+
+// ── Load Dashboard ───────────────────────────────────────────────
+async function loadSurveyDashboard() {
+  try {
+    const data = await surveyFetch('/dashboard');
+    renderSurveyKpis(data);
+    renderSurveyCharts(data);
+    loadStaffDropdown();
+  } catch (e) {
+    console.warn('Survey dashboard load failed:', e);
+    document.getElementById('kpiTotalSurveys').textContent = '—';
+    document.getElementById('kpiAvgScore').textContent = '—';
+    document.getElementById('kpiCompletion').textContent = '—';
+    document.getElementById('kpiPending').textContent = '—';
+  }
+}
+
+function renderSurveyKpis(data) {
+  document.getElementById('kpiTotalSurveys').textContent = data.totalSurveys || 0;
+  document.getElementById('kpiAvgScore').textContent = data.avgScore ? data.avgScore.toFixed(2) : '—';
+  document.getElementById('kpiCompletion').textContent = data.completionRate ? data.completionRate + '%' : '0%';
+  document.getElementById('kpiPending').textContent = data.pending || 0;
+}
+
+function renderSurveyCharts(data) {
+  // Destroy previous chart instances
+  Object.values(surveyChartInstances).forEach(c => c.destroy());
+  surveyChartInstances = {};
+
+  const palette = ['#042f2e','#115e59','#0f766e','#0d9488','#14b8a6','#2dd4bf','#5eead4','#99f6e4'];
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  // Satisfaction Trend
+  const trendCtx = document.getElementById('surveyTrendChart');
+  if (trendCtx) {
+    const trendData = new Array(12).fill(null);
+    const trendCount = new Array(12).fill(0);
+    (data.monthlyTrend || []).forEach(m => {
+      const idx = parseInt(m.month) - 1;
+      trendData[idx] = m.avg_score ? parseFloat(m.avg_score.toFixed(2)) : null;
+      trendCount[idx] = m.count;
+    });
+    surveyChartInstances.trend = new Chart(trendCtx, {
+      type: 'line',
+      data: {
+        labels: months,
+        datasets: [{
+          label: 'Avg Score',
+          data: trendData,
+          borderColor: '#0d9488',
+          backgroundColor: 'rgba(13,148,136,0.1)',
+          fill: true, tension: 0.4,
+          pointRadius: 4, pointBackgroundColor: '#0d9488'
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: true,
+        scales: { y: { min: 0, max: 5, ticks: { stepSize: 1 } } },
+        plugins: { legend: { display: false } }
+      }
+    });
+  }
+
+  // Assessment Progress (horizontal bar)
+  const progressCtx = document.getElementById('staffProgressChart');
+  if (progressCtx) {
+    const deptLabels = ['OT','PT','SLP','PSYCH','SPED','Front Desk'];
+    const completed = deptLabels.map(() => 0);
+    const remaining = deptLabels.map(() => 0);
+
+    // This would normally come from the staff endpoint; use byDept for now
+    surveyChartInstances.progress = new Chart(progressCtx, {
+      type: 'bar',
+      data: {
+        labels: deptLabels,
+        datasets: [
+          { label: 'Completed', data: completed, backgroundColor: '#0d9488' },
+          { label: 'Remaining', data: remaining, backgroundColor: '#e2e8f0' }
+        ]
+      },
+      options: {
+        indexAxis: 'y', responsive: true, maintainAspectRatio: true,
+        scales: { x: { stacked: true }, y: { stacked: true } },
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } }
+      }
+    });
+  }
+
+  // Scores by Branch
+  const branchCtx = document.getElementById('branchScoresChart');
+  if (branchCtx) {
+    const branchLabels = (data.byBranch || []).map(b => b.branch.replace('_', ' '));
+    const branchScores = (data.byBranch || []).map(b => b.avg_score ? parseFloat(b.avg_score.toFixed(2)) : 0);
+    surveyChartInstances.branch = new Chart(branchCtx, {
+      type: 'bar',
+      data: {
+        labels: branchLabels,
+        datasets: [{ label: 'Avg Score', data: branchScores, backgroundColor: palette.slice(0, branchLabels.length) }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: true,
+        scales: { y: { min: 0, max: 5 } },
+        plugins: { legend: { display: false } }
+      }
+    });
+  }
+
+  // Scores by Department
+  const deptCtx = document.getElementById('deptScoresChart');
+  if (deptCtx) {
+    const deptLabels = (data.byDept || []).map(d => d.department);
+    const deptScores = (data.byDept || []).map(d => d.avg_score ? parseFloat(d.avg_score.toFixed(2)) : 0);
+    surveyChartInstances.dept = new Chart(deptCtx, {
+      type: 'doughnut',
+      data: {
+        labels: deptLabels,
+        datasets: [{ data: deptScores, backgroundColor: palette.slice(0, deptLabels.length) }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: true,
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } }
+      }
+    });
+  }
+}
+
+// ── Staff Assessment Table ───────────────────────────────────────
+async function loadStaffTable() {
+  const branch = document.getElementById('staffFilterBranch').value;
+  const tableEl = document.getElementById('staffAssessmentTable');
+
+  try {
+    let url = '/staff?year=' + new Date().getFullYear();
+    if (branch) url += '&branch=' + branch;
+    const staff = await surveyFetch(url);
+
+    const typeFilter = document.getElementById('staffFilterType').value;
+    const filtered = typeFilter ? staff.filter(s => s.staff_type === typeFilter) : staff;
+
+    if (filtered.length === 0) {
+      tableEl.innerHTML = '<p style="color:var(--slate-400);font-size:13px;text-align:center;padding:40px 0">No staff found.</p>';
+      return;
+    }
+
+    let html = `<table class="survey-table">
+      <thead><tr>
+        <th>Name</th><th>Role</th><th>Branch</th><th>Type</th><th>Progress</th><th>Last Assessed</th>
+      </tr></thead><tbody>`;
+
+    filtered.forEach(s => {
+      const pct = s.target_count > 0 ? Math.round((s.completed / s.target_count) * 100) : 0;
+      const branchLabel = s.branch === 'east_pasig' ? 'East' : s.branch === 'greenhills' ? 'Greenhills' : s.branch;
+      const lastDate = s.last_assessed ? new Date(s.last_assessed).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—';
+      html += `<tr>
+        <td style="font-weight:500">${escHtml(s.name)}</td>
+        <td>${escHtml(s.role)}</td>
+        <td>${escHtml(branchLabel)}</td>
+        <td><span style="font-size:11px;padding:2px 8px;border-radius:10px;background:${s.staff_type === 'clinical' ? 'var(--teal-50)' : '#fef3c7'};color:${s.staff_type === 'clinical' ? 'var(--teal-700)' : '#92400e'}">${s.staff_type}</span></td>
+        <td style="min-width:160px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="survey-progress-bar"><div class="survey-progress-fill" style="width:${pct}%"></div></div>
+            <span class="survey-progress-label">${s.completed}/${s.target_count}</span>
+          </div>
+        </td>
+        <td style="font-size:12px;color:var(--slate-400)">${lastDate}</td>
+      </tr>`;
+    });
+
+    html += '</tbody></table>';
+    tableEl.innerHTML = html;
+  } catch (e) {
+    tableEl.innerHTML = `<p style="color:#dc2626;font-size:13px;text-align:center;padding:20px">Error loading staff data: ${escHtml(e.message)}</p>`;
+  }
+}
+
+// ── Staff Dropdown for Manual Assignment ─────────────────────────
+async function loadStaffDropdown() {
+  try {
+    const staff = await surveyFetch('/staff');
+    const select = document.getElementById('assignStaff');
+    select.innerHTML = '<option value="">Select staff...</option>';
+
+    const grouped = {};
+    staff.forEach(s => {
+      const key = s.staff_type === 'admin' ? 'Front Desk' : s.role;
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(s);
+    });
+
+    Object.keys(grouped).sort().forEach(group => {
+      const optgroup = document.createElement('optgroup');
+      optgroup.label = group;
+      grouped[group].forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s.id;
+        opt.textContent = s.name;
+        opt.dataset.type = s.staff_type;
+        optgroup.appendChild(opt);
+      });
+      select.appendChild(optgroup);
+    });
+  } catch (e) {
+    console.warn('Failed to load staff dropdown:', e);
+  }
+}
+
+// ── Create Manual Assignment ─────────────────────────────────────
+async function createManualAssignment() {
+  const staffId = document.getElementById('assignStaff').value;
+  const branch = document.getElementById('assignBranch').value;
+  const patientName = document.getElementById('assignPatientName').value.trim();
+  const patientAge = document.getElementById('assignPatientAge').value;
+  const sessionType = document.getElementById('assignSessionType').value;
+
+  if (!staffId) return alert('Please select a staff member.');
+
+  try {
+    const result = await surveyFetch('/assign', {
+      method: 'POST',
+      body: JSON.stringify({
+        staffId: parseInt(staffId),
+        patientName: patientName || null,
+        patientAge: patientAge ? parseInt(patientAge) : null,
+        branch,
+        sessionType,
+        assignedBy: getSurveyUserRole() || 'manual'
+      })
+    });
+
+    showQrModal(result.assignmentId, result.surveyUrl, result.surveyType);
+  } catch (e) {
+    alert('Error creating assignment: ' + e.message);
+  }
+}
+
+// ── QR Code Modal ────────────────────────────────────────────────
+function showQrModal(assignmentId, surveyUrl, surveyType) {
+  const overlay = document.getElementById('surveyModalOverlay');
+  const qrContainer = document.getElementById('qrCodeContainer');
+  const urlDisplay = document.getElementById('surveyUrlDisplay');
+  const typeDisplay = document.getElementById('qrSurveyType');
+
+  qrContainer.innerHTML = '';
+
+  if (typeof QRCode !== 'undefined') {
+    new QRCode(qrContainer, {
+      text: surveyUrl,
+      width: 200,
+      height: 200,
+      colorDark: '#042f2e',
+      colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.M
+    });
+  } else {
+    qrContainer.innerHTML = '<p style="color:var(--slate-500);font-size:13px">QR Code library not loaded</p>';
+  }
+
+  urlDisplay.textContent = surveyUrl;
+  typeDisplay.textContent = surveyType ? `Survey: ${surveyType}` : '';
+  overlay.classList.add('open');
+
+  // Re-render Lucide icons in modal
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function closeQrModal() {
+  document.getElementById('surveyModalOverlay').classList.remove('open');
+}
+
+// ── Load Responses ───────────────────────────────────────────────
+async function loadResponses(page) {
+  if (page) currentResponsePage = page;
+  else currentResponsePage = 1;
+
+  const branch = document.getElementById('respFilterBranch').value;
+  const surveyType = document.getElementById('respFilterType').value;
+  const from = document.getElementById('respFilterFrom').value;
+  const to = document.getElementById('respFilterTo').value;
+
+  let url = `/responses?page=${currentResponsePage}&limit=20`;
+  if (branch) url += '&branch=' + branch;
+  if (surveyType) url += '&surveyType=' + surveyType;
+  if (from) url += '&from=' + from;
+  if (to) url += '&to=' + to;
+
+  const listEl = document.getElementById('responsesList');
+
+  try {
+    const data = await surveyFetch(url);
+
+    if (data.responses.length === 0) {
+      listEl.innerHTML = '<p style="color:var(--slate-400);font-size:13px;text-align:center;padding:40px 0">No responses found.</p>';
+      document.getElementById('responsesPagination').innerHTML = '';
+      return;
+    }
+
+    let html = '';
+    data.responses.forEach(r => {
+      const ratings = r.responses_json.ratings || [];
+      const avgScore = ratings.length > 0
+        ? (ratings.reduce((sum, rt) => sum + rt.value, 0) / ratings.length).toFixed(2)
+        : '—';
+      const date = new Date(r.submitted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const branchLabel = r.branch === 'east_pasig' ? 'East Pasig' : r.branch === 'greenhills' ? 'Greenhills' : r.branch;
+
+      html += `<div class="response-card">
+        <div class="rc-header">
+          <div>
+            <div class="rc-staff">${escHtml(r.staff_name)}</div>
+            <div class="rc-meta">${escHtml(r.staff_role)} &middot; ${escHtml(branchLabel)} &middot; ${r.survey_type}</div>
+          </div>
+          <div style="text-align:right">
+            <div class="rc-score">${avgScore} / 5</div>
+            <div class="rc-date">${date}</div>
+          </div>
+        </div>
+        ${r.respondent_name ? `<div class="rc-meta" style="margin-top:4px">Respondent: ${escHtml(r.respondent_name)}</div>` : ''}
+        ${r.patient_name ? `<div class="rc-meta">Patient: ${escHtml(r.patient_name)}</div>` : ''}
+      </div>`;
+    });
+
+    listEl.innerHTML = html;
+
+    // Pagination
+    const totalPages = Math.ceil(data.total / data.limit);
+    let pagHtml = '';
+    if (totalPages > 1) {
+      for (let i = 1; i <= totalPages; i++) {
+        pagHtml += `<button class="survey-btn ${i === currentResponsePage ? '' : 'survey-btn-secondary'}"
+          style="padding:6px 14px;font-size:12px;margin:0 4px"
+          onclick="loadResponses(${i})">${i}</button>`;
+      }
+    }
+    document.getElementById('responsesPagination').innerHTML = pagHtml;
+  } catch (e) {
+    listEl.innerHTML = `<p style="color:#dc2626;font-size:13px;text-align:center;padding:20px">Error: ${escHtml(e.message)}</p>`;
+  }
+}
+
+// ── Front Desk Auto-Prompt System ────────────────────────────────
+function getSurveyUserRole() {
+  // Check URL parameter first
+  const params = new URLSearchParams(window.location.search);
+  const urlRole = params.get('role');
+  if (urlRole) {
+    localStorage.setItem('scei_user_role', urlRole);
+    return urlRole;
+  }
+  return localStorage.getItem('scei_user_role');
+}
+
+function initSurveyPromptSystem() {
+  const role = getSurveyUserRole();
+  if (!role || !role.includes('FRONT_DESK')) return;
+
+  const branch = role.includes('SBEA') ? 'east_pasig' : 'greenhills';
+
+  // Check after 5 second delay on load
+  setTimeout(() => checkSurveyPrompt(branch), 5000);
+
+  // Check every 30 minutes
+  setInterval(() => checkSurveyPrompt(branch), 30 * 60 * 1000);
+}
+
+async function checkSurveyPrompt(branch) {
+  try {
+    const data = await surveyFetch('/schedule/next?branch=' + branch);
+    if (data.shouldPrompt) {
+      showSurveyPrompt(data);
+    }
+  } catch (e) {
+    console.warn('Survey prompt check failed:', e);
+  }
+}
+
+function showSurveyPrompt(data) {
+  document.getElementById('promptStaffName').textContent = data.staffName;
+  document.getElementById('promptReason').textContent = data.reason;
+  document.getElementById('promptStaffId').value = data.staffId;
+  document.getElementById('promptStaffType').value = data.staffType;
+  document.getElementById('promptPatientName').value = '';
+  document.getElementById('promptPatientAge').value = '';
+  document.getElementById('surveyPromptOverlay').classList.add('open');
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function skipSurveyPrompt() {
+  document.getElementById('surveyPromptOverlay').classList.remove('open');
+}
+
+async function acceptSurveyPrompt() {
+  const staffId = document.getElementById('promptStaffId').value;
+  const patientName = document.getElementById('promptPatientName').value.trim();
+  const patientAge = document.getElementById('promptPatientAge').value;
+  const role = getSurveyUserRole();
+  const branch = role.includes('SBEA') ? 'east_pasig' : 'greenhills';
+
+  try {
+    const result = await surveyFetch('/assign', {
+      method: 'POST',
+      body: JSON.stringify({
+        staffId: parseInt(staffId),
+        patientName: patientName || null,
+        patientAge: patientAge ? parseInt(patientAge) : null,
+        branch,
+        sessionType: 'individual',
+        assignedBy: role
+      })
+    });
+
+    document.getElementById('surveyPromptOverlay').classList.remove('open');
+    showQrModal(result.assignmentId, result.surveyUrl, result.surveyType);
+  } catch (e) {
+    alert('Error creating survey: ' + e.message);
+  }
+}
+
+// ── HTML Escape Helper ───────────────────────────────────────────
+function escHtml(str) {
+  if (!str) return '';
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ── Initialize prompt system on load ─────────────────────────────
+document.addEventListener('DOMContentLoaded', initSurveyPromptSystem);
 </script>
 </body>
 </html>

@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Satisfaction Survey — Sapphire Clinics East</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --teal-950: #042f2e; --teal-900: #134e4a; --teal-800: #115e59;
+  --teal-700: #0f766e; --teal-600: #0d9488; --teal-500: #14b8a6;
+  --teal-400: #2dd4bf; --teal-300: #5eead4; --teal-200: #99f6e4;
+  --teal-100: #ccfbf1; --teal-50:  #f0fdfa;
+  --slate-900: #0f172a; --slate-700: #334155; --slate-600: #475569;
+  --slate-500: #64748b; --slate-400: #94a3b8; --slate-300: #cbd5e1;
+  --slate-200: #e2e8f0; --slate-100: #f1f5f9; --slate-50: #f8fafc;
+  --white: #ffffff;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+  --radius: 12px; --radius-sm: 8px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Inter', -apple-system, sans-serif;
+  background: var(--slate-50);
+  color: var(--slate-700);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* Header */
+.survey-header {
+  background: linear-gradient(135deg, var(--teal-950), var(--teal-800));
+  color: var(--white);
+  padding: 32px 20px;
+  text-align: center;
+}
+.survey-header .brand { font-size: 12px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: var(--teal-300); margin-bottom: 8px; }
+.survey-header h1 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+.survey-header .sub { font-size: 13px; color: var(--teal-200); max-width: 500px; margin: 0 auto; }
+
+/* Container */
+.survey-container { max-width: 640px; margin: 0 auto; padding: 24px 16px 80px; }
+
+/* Welcome screen */
+.welcome-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 32px 24px;
+  box-shadow: var(--shadow);
+  text-align: center;
+  margin-bottom: 24px;
+}
+.welcome-card h2 { font-size: 20px; color: var(--teal-900); margin-bottom: 12px; }
+.welcome-card p { font-size: 14px; color: var(--slate-600); margin-bottom: 16px; }
+.welcome-card .privacy {
+  font-size: 11px; color: var(--slate-500);
+  background: var(--slate-50); border-radius: var(--radius-sm);
+  padding: 12px 16px; text-align: left; font-style: italic;
+  line-height: 1.6; margin-top: 16px;
+}
+.btn-start {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 14px 36px; margin-top: 20px;
+  background: linear-gradient(135deg, var(--teal-700), var(--teal-500));
+  color: var(--white); border: none; border-radius: var(--radius-sm);
+  font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 600;
+  cursor: pointer; transition: all 0.2s;
+}
+.btn-start:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(13,148,136,0.35); }
+
+/* Form sections */
+.form-section {
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 16px;
+  border: 1px solid var(--slate-200);
+}
+.form-section h3 {
+  font-size: 16px; font-weight: 700; color: var(--teal-900);
+  margin-bottom: 4px;
+}
+.form-section .section-desc {
+  font-size: 13px; color: var(--slate-500); margin-bottom: 16px;
+}
+
+/* Form fields */
+.form-field { margin-bottom: 20px; }
+.form-field:last-child { margin-bottom: 0; }
+.form-label {
+  display: block; font-size: 13px; font-weight: 600;
+  color: var(--slate-700); margin-bottom: 6px;
+}
+.form-label .required { color: #ef4444; margin-left: 2px; }
+
+.form-input, .form-select {
+  width: 100%; padding: 10px 14px;
+  border: 1px solid var(--slate-300);
+  border-radius: var(--radius-sm);
+  font-family: 'Inter', sans-serif;
+  font-size: 14px; color: var(--slate-700);
+  background: var(--white);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.form-input:focus, .form-select:focus {
+  outline: none;
+  border-color: var(--teal-500);
+  box-shadow: 0 0 0 3px rgba(20,184,166,0.15);
+}
+.form-textarea {
+  width: 100%; padding: 12px 14px;
+  border: 1px solid var(--slate-300);
+  border-radius: var(--radius-sm);
+  font-family: 'Inter', sans-serif;
+  font-size: 14px; color: var(--slate-700);
+  min-height: 100px; resize: vertical;
+}
+.form-textarea:focus {
+  outline: none;
+  border-color: var(--teal-500);
+  box-shadow: 0 0 0 3px rgba(20,184,166,0.15);
+}
+
+/* Opinion Scale */
+.opinion-scale-wrapper { margin-top: 8px; }
+.opinion-scale-labels {
+  display: flex; justify-content: space-between;
+  font-size: 11px; color: var(--slate-400);
+  margin-bottom: 8px;
+}
+.opinion-scale {
+  display: flex; gap: 6px; justify-content: center;
+}
+.opinion-scale label {
+  display: flex; flex-direction: column;
+  align-items: center; gap: 4px;
+  cursor: pointer; flex: 1;
+}
+.opinion-scale input[type="radio"] { display: none; }
+.scale-dot {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  border: 2px solid var(--slate-300);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 600;
+  color: var(--slate-500);
+  transition: all 0.2s;
+  background: var(--white);
+}
+.opinion-scale label:hover .scale-dot {
+  border-color: var(--teal-400);
+  color: var(--teal-600);
+  background: var(--teal-50);
+}
+.opinion-scale input[type="radio"]:checked + .scale-dot {
+  background: var(--teal-600);
+  border-color: var(--teal-600);
+  color: var(--white);
+  transform: scale(1.1);
+}
+
+/* Submit */
+.btn-submit {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; padding: 16px;
+  background: linear-gradient(135deg, var(--teal-700), var(--teal-500));
+  color: var(--white); border: none; border-radius: var(--radius-sm);
+  font-family: 'Inter', sans-serif; font-size: 16px; font-weight: 700;
+  cursor: pointer; transition: all 0.2s;
+  margin-top: 12px;
+}
+.btn-submit:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(13,148,136,0.35); }
+.btn-submit:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* Thank you screen */
+.thank-you {
+  text-align: center; padding: 60px 24px;
+  background: var(--white);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.thank-you .check-icon {
+  width: 72px; height: 72px;
+  background: var(--teal-50);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 20px;
+  color: var(--teal-600);
+  font-size: 36px;
+}
+.thank-you h2 { font-size: 22px; color: var(--teal-900); margin-bottom: 12px; }
+.thank-you p { font-size: 14px; color: var(--slate-600); max-width: 400px; margin: 0 auto; white-space: pre-line; }
+
+/* Error / Loading states */
+.error-card, .loading-card {
+  text-align: center; padding: 60px 24px;
+  background: var(--white);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.error-card h2 { color: #dc2626; margin-bottom: 8px; }
+.loading-card h2 { color: var(--teal-700); }
+.spinner {
+  width: 40px; height: 40px;
+  border: 3px solid var(--slate-200);
+  border-top-color: var(--teal-500);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 16px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Progress bar */
+.progress-bar {
+  position: fixed; top: 0; left: 0; right: 0;
+  height: 4px; background: var(--slate-200);
+  z-index: 100;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--teal-500), var(--teal-400));
+  transition: width 0.3s ease;
+  width: 0%;
+}
+
+/* Conditional sections */
+.conditional-section { display: none; }
+.conditional-section.visible { display: block; }
+
+/* Staff info badge */
+.staff-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--teal-50); border: 1px solid var(--teal-200);
+  border-radius: var(--radius-sm); padding: 8px 16px;
+  font-size: 13px; color: var(--teal-800);
+  margin-bottom: 16px;
+}
+.staff-badge strong { font-weight: 700; }
+
+@media (max-width: 480px) {
+  .survey-header { padding: 24px 16px; }
+  .survey-header h1 { font-size: 18px; }
+  .form-section { padding: 16px; }
+  .scale-dot { width: 38px; height: 38px; font-size: 12px; }
+  .opinion-scale { gap: 4px; }
+}
+</style>
+</head>
+<body>
+
+<div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+
+<div class="survey-header">
+  <div class="brand">Sapphire Clinics East, Inc.</div>
+  <h1 id="surveyTitle">Patient Satisfaction Survey</h1>
+  <div class="sub" id="surveySubtitle">Loading survey...</div>
+</div>
+
+<div class="survey-container" id="surveyContainer">
+  <div class="loading-card" id="loadingState">
+    <div class="spinner"></div>
+    <h2>Loading Survey</h2>
+    <p style="color:var(--slate-500);font-size:14px">Please wait...</p>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════
+//  SATISFACTION SURVEY — PUBLIC FORM
+// ══════════════════════════════════════════════════════════════════
+
+const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  ? `${window.location.protocol}//${window.location.hostname}:3031`
+  : `${window.location.origin}`;
+
+let surveyData = null;
+let currentStep = 0; // 0 = welcome, 1+ = sections
+let formValues = {};
+
+// ── Init ──────────────────────────────────────────────────────────
+async function init() {
+  const params = new URLSearchParams(window.location.search);
+  const id = params.get('id');
+
+  if (!id) {
+    showError('No Survey ID', 'This link is missing a survey ID. Please scan the QR code again.');
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/survey/assignment/${id}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      if (res.status === 410) {
+        showError('Survey Unavailable', err.error || 'This survey has already been completed or has expired.');
+      } else {
+        showError('Survey Not Found', err.error || 'This survey link is invalid.');
+      }
+      return;
+    }
+
+    surveyData = await res.json();
+    showWelcome();
+  } catch (e) {
+    showError('Connection Error', 'Could not connect to the server. Please check your internet connection and try again.');
+  }
+}
+
+// ── Show Welcome Screen ──────────────────────────────────────────
+function showWelcome() {
+  const schema = surveyData.schema;
+  document.getElementById('surveyTitle').textContent = schema.title;
+  document.getElementById('surveySubtitle').textContent = 'Sapphire Clinics East, Inc.';
+
+  const container = document.getElementById('surveyContainer');
+  container.innerHTML = `
+    <div class="welcome-card">
+      <h2>${escapeHtml(schema.title)}</h2>
+      <p>${escapeHtml(schema.welcomeNote || '')}</p>
+      ${surveyData.staffName ? `<div class="staff-badge">Assessing: <strong>${escapeHtml(surveyData.staffName)}</strong> (${escapeHtml(surveyData.staffRole)})</div>` : ''}
+      <div class="privacy">${escapeHtml(schema.privacyNote || '')}</div>
+      <button class="btn-start" onclick="startSurvey()">Start Survey</button>
+    </div>
+  `;
+  updateProgress(0);
+}
+
+// ── Start Survey ─────────────────────────────────────────────────
+function startSurvey() {
+  // Pre-fill values from assignment
+  if (surveyData.patientName) {
+    const parts = surveyData.patientName.split(' ');
+    formValues.patient_first_name = parts[0] || '';
+    formValues.patient_last_name = parts.slice(1).join(' ') || '';
+  }
+  if (surveyData.staffName) {
+    formValues.therapist = surveyData.staffName;
+    formValues.front_desk_officer = surveyData.staffName;
+  }
+  if (surveyData.branch) {
+    const branchMap = {
+      east_pasig: 'Sandbox East Pasig',
+      greenhills: 'Sandbox Greenhills San Juan',
+      activefun_bgc: 'Sandbox Activefun BGC',
+      prime_bgc: 'Sandbox Prime BGC',
+      clark: 'Sandbox Clark Pampanga'
+    };
+    formValues.branch = branchMap[surveyData.branch] || surveyData.branch;
+  }
+
+  renderForm();
+}
+
+// ── Render Full Form ─────────────────────────────────────────────
+function renderForm() {
+  const schema = surveyData.schema;
+  const container = document.getElementById('surveyContainer');
+  container.innerHTML = '<form id="surveyForm" onsubmit="submitSurvey(event)"></form>';
+  const form = document.getElementById('surveyForm');
+
+  schema.sections.forEach((section, sIdx) => {
+    const sectionEl = document.createElement('div');
+    sectionEl.className = 'form-section';
+
+    // Handle conditional sections
+    if (section.condition) {
+      sectionEl.className += ' conditional-section';
+      sectionEl.dataset.conditionField = section.condition.field;
+      sectionEl.dataset.conditionValue = section.condition.value;
+
+      // Check if already visible
+      if (formValues[section.condition.field] === section.condition.value) {
+        sectionEl.classList.add('visible');
+      }
+    }
+
+    let html = `<h3>${escapeHtml(section.title)}</h3>`;
+    if (section.description) {
+      html += `<div class="section-desc">${escapeHtml(section.description)}</div>`;
+    }
+
+    section.fields.forEach(field => {
+      html += renderField(field, sIdx);
+    });
+
+    sectionEl.innerHTML = html;
+    form.appendChild(sectionEl);
+  });
+
+  // Submit button
+  const submitDiv = document.createElement('div');
+  submitDiv.innerHTML = '<button type="submit" class="btn-submit" id="submitBtn">Submit Survey</button>';
+  form.appendChild(submitDiv);
+
+  updateProgress(10);
+
+  // Set up conditional logic listeners
+  form.querySelectorAll('select, input[type="radio"]').forEach(el => {
+    el.addEventListener('change', handleFieldChange);
+  });
+
+  // Track progress
+  form.querySelectorAll('input, select, textarea').forEach(el => {
+    el.addEventListener('change', updateFormProgress);
+    el.addEventListener('input', updateFormProgress);
+  });
+}
+
+// ── Render Individual Field ──────────────────────────────────────
+function renderField(field, sectionIdx) {
+  const prefillVal = field.prefill ? (formValues[field.name] || '') : '';
+  const requiredMark = field.required ? '<span class="required">*</span>' : '';
+
+  switch (field.type) {
+    case 'text':
+    case 'email':
+    case 'tel':
+      return `
+        <div class="form-field">
+          <label class="form-label">${escapeHtml(field.label)}${requiredMark}</label>
+          <input class="form-input" type="${field.type}" name="${field.name}"
+            value="${escapeHtml(prefillVal)}"
+            placeholder="${escapeHtml(field.placeholder || '')}"
+            ${field.required ? 'required' : ''}>
+        </div>`;
+
+    case 'select':
+      const options = field.options || [];
+      return `
+        <div class="form-field">
+          <label class="form-label">${escapeHtml(field.label)}${requiredMark}</label>
+          <select class="form-select" name="${field.name}" ${field.required ? 'required' : ''}>
+            <option value="">Select...</option>
+            ${options.map(o => `<option value="${escapeHtml(o)}" ${prefillVal === o ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('')}
+          </select>
+        </div>`;
+
+    case 'dropdown':
+      // For staff dropdowns, options come from the API via options_from
+      if (field.options_from) {
+        const staffOptions = getStaffOptions(field.options_from);
+        return `
+          <div class="form-field">
+            <label class="form-label">${escapeHtml(field.label)}${requiredMark}</label>
+            <select class="form-select" name="${field.name}" ${field.required ? 'required' : ''}>
+              <option value="">Select...</option>
+              ${staffOptions.map(o => `<option value="${escapeHtml(o)}" ${prefillVal === o ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('')}
+            </select>
+          </div>`;
+      }
+      return renderField({ ...field, type: 'select' }, sectionIdx);
+
+    case 'conditional_dropdown':
+      return `
+        <div class="form-field" id="field_${field.name}">
+          <label class="form-label">${escapeHtml(field.label)}${requiredMark}</label>
+          <div id="conditional_${field.name}">
+            ${renderConditionalInput(field, formValues[field.depends_on])}
+          </div>
+        </div>`;
+
+    case 'opinion_scale': {
+      const scale = field.scale || { min: 0, max: 5, left: 'Strongly Disagree', right: 'Strongly Agree' };
+      let dotsHtml = '';
+      for (let i = scale.min; i <= scale.max; i++) {
+        dotsHtml += `
+          <label>
+            <input type="radio" name="${field.name}" value="${i}" ${field.required ? 'required' : ''}>
+            <span class="scale-dot">${i}</span>
+          </label>`;
+      }
+      return `
+        <div class="form-field">
+          <label class="form-label">${escapeHtml(field.label)}${requiredMark}</label>
+          <div class="opinion-scale-wrapper">
+            <div class="opinion-scale-labels">
+              <span>${escapeHtml(scale.left)}</span>
+              <span>${escapeHtml(scale.right)}</span>
+            </div>
+            <div class="opinion-scale">${dotsHtml}</div>
+          </div>
+        </div>`;
+    }
+
+    case 'textarea':
+      return `
+        <div class="form-field">
+          <label class="form-label">${escapeHtml(field.label)}${requiredMark}</label>
+          <textarea class="form-textarea" name="${field.name}"
+            placeholder="${escapeHtml(field.placeholder || 'Please share your thoughts...')}"
+            ${field.required ? 'required' : ''}></textarea>
+        </div>`;
+
+    default:
+      return '';
+  }
+}
+
+// ── Staff Options from Survey Data ───────────────────────────────
+function getStaffOptions(optionsFrom) {
+  // The staff name is pre-selected; show all staff from the Typeform data
+  // In a real implementation, this would query the API
+  // For now, use the pre-filled staff name as the only option (since it's pre-selected)
+  if (surveyData.staffName) {
+    return [surveyData.staffName];
+  }
+  return [];
+}
+
+// ── Conditional Input Rendering ──────────────────────────────────
+function renderConditionalInput(field, currentValue) {
+  if (!currentValue || !field.conditions) {
+    const def = field.conditions && field.conditions._default;
+    if (def && def.type === 'text') {
+      return `<input class="form-input" type="text" name="${field.name}" placeholder="${escapeHtml(def.placeholder || '')}">`;
+    }
+    return `<select class="form-select" name="${field.name}"><option value="">Select branch first...</option></select>`;
+  }
+
+  const condition = field.conditions[currentValue] || field.conditions._default;
+  if (!condition) {
+    return `<input class="form-input" type="text" name="${field.name}" placeholder="Enter name">`;
+  }
+
+  if (condition.type === 'dropdown') {
+    const prefillVal = formValues[field.name] || '';
+    return `
+      <select class="form-select" name="${field.name}">
+        <option value="">Select...</option>
+        ${condition.options.map(o => `<option value="${escapeHtml(o)}" ${prefillVal === o ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('')}
+      </select>`;
+  }
+
+  return `<input class="form-input" type="text" name="${field.name}" placeholder="${escapeHtml(condition.placeholder || 'Enter name')}">`;
+}
+
+// ── Handle Field Changes ─────────────────────────────────────────
+function handleFieldChange(e) {
+  const name = e.target.name;
+  const value = e.target.value;
+  formValues[name] = value;
+
+  // Show/hide conditional sections
+  document.querySelectorAll(`[data-condition-field="${name}"]`).forEach(el => {
+    if (el.dataset.conditionValue === value) {
+      el.classList.add('visible');
+    } else {
+      el.classList.remove('visible');
+    }
+  });
+
+  // Update conditional dropdowns
+  document.querySelectorAll(`[id^="field_"]`).forEach(fieldEl => {
+    const conditionalContainer = fieldEl.querySelector(`[id^="conditional_"]`);
+    if (!conditionalContainer) return;
+
+    const fieldName = conditionalContainer.id.replace('conditional_', '');
+    const schema = surveyData.schema;
+    let fieldDef = null;
+    schema.sections.forEach(s => {
+      s.fields.forEach(f => {
+        if (f.name === fieldName && f.depends_on === name) fieldDef = f;
+      });
+    });
+    if (fieldDef) {
+      conditionalContainer.innerHTML = renderConditionalInput(fieldDef, value);
+    }
+  });
+}
+
+// ── Update Progress Bar ──────────────────────────────────────────
+function updateFormProgress() {
+  const form = document.getElementById('surveyForm');
+  if (!form) return;
+
+  const allFields = form.querySelectorAll('input:not([type="radio"]), select, textarea');
+  const radioGroups = new Set();
+  form.querySelectorAll('input[type="radio"]').forEach(r => radioGroups.add(r.name));
+
+  let total = allFields.length + radioGroups.size;
+  let filled = 0;
+
+  allFields.forEach(f => { if (f.value.trim()) filled++; });
+  radioGroups.forEach(name => {
+    if (form.querySelector(`input[name="${name}"]:checked`)) filled++;
+  });
+
+  const pct = total > 0 ? Math.round((filled / total) * 100) : 0;
+  updateProgress(10 + pct * 0.9);
+}
+
+function updateProgress(pct) {
+  document.getElementById('progressFill').style.width = pct + '%';
+}
+
+// ── Submit Survey ────────────────────────────────────────────────
+async function submitSurvey(e) {
+  e.preventDefault();
+  const form = e.target;
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting...';
+
+  const formData = new FormData(form);
+  const data = {};
+  const ratings = [];
+
+  for (const [key, value] of formData.entries()) {
+    if (key.match(/^[ap]?q\d+$/)) {
+      ratings.push({ name: key, value: parseInt(value) });
+    } else {
+      data[key] = value;
+    }
+  }
+
+  const payload = {
+    responses: { ...data, ratings },
+    respondentName: data.guardian_first_name
+      ? `${data.guardian_first_name} ${data.guardian_last_name || ''}`.trim()
+      : data.assessor_first_name
+        ? `${data.assessor_first_name} ${data.assessor_last_name || ''}`.trim()
+        : `${data.patient_first_name || ''} ${data.patient_last_name || ''}`.trim(),
+    respondentEmail: data.guardian_email || data.assessor_email || data.patient_email || null,
+    respondentPhone: data.guardian_phone || data.assessor_phone || data.patient_phone || null
+  };
+
+  try {
+    const res = await fetch(`${API_BASE}/api/survey/assignment/${surveyData.id}/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Submission failed');
+    }
+
+    showThankYou();
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = 'Submit Survey';
+    alert('Error submitting survey: ' + err.message + '\n\nPlease try again.');
+  }
+}
+
+// ── Thank You Screen ─────────────────────────────────────────────
+function showThankYou() {
+  const schema = surveyData.schema;
+  const ty = schema.thankYou || {};
+  const container = document.getElementById('surveyContainer');
+  container.innerHTML = `
+    <div class="thank-you">
+      <div class="check-icon">&#10003;</div>
+      <h2>${escapeHtml(ty.title || 'Thank you!')}</h2>
+      <p>${escapeHtml(ty.description || 'Your feedback has been recorded.')}</p>
+    </div>
+  `;
+  updateProgress(100);
+}
+
+// ── Error Screen ─────────────────────────────────────────────────
+function showError(title, message) {
+  document.getElementById('surveyContainer').innerHTML = `
+    <div class="error-card">
+      <h2>${escapeHtml(title)}</h2>
+      <p style="color:var(--slate-600);font-size:14px">${escapeHtml(message)}</p>
+    </div>
+  `;
+}
+
+// ── Helpers ──────────────────────────────────────────────────────
+function escapeHtml(str) {
+  if (!str) return '';
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ── Start ────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

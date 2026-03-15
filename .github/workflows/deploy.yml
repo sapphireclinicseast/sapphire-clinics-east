@@ -57,6 +57,8 @@ jobs:
             --exclude='COMPANY LOGO/node_modules' \
             --exclude='COMPANY LOGO/package*.json' \
             --exclude='COMPANY LOGO/capture-intro.mjs' \
+            --exclude='api/node_modules' \
+            --exclude='data/' \
             ./ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/sapphireclinicseast.org/
 
       # ── 5. Reload Nginx to pick up any config changes ────────────
@@ -65,3 +67,20 @@ jobs:
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
             "systemctl reload nginx || nginx -s reload"
+
+      # ── 6. Install survey API deps & start/restart ─────────────────
+      - name: Setup & Restart Survey API
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            'mkdir -p /var/www/sapphireclinicseast.org/data && \
+             cd /var/www/sapphireclinicseast.org/api && \
+             npm install --production && \
+             if pm2 describe scei-survey >/dev/null 2>&1; then \
+               pm2 restart scei-survey; \
+             else \
+               SURVEY_API_KEY=${SURVEY_API_KEY:-SCEI_SURVEY_KEY_2025} pm2 start survey-api.js --name scei-survey && pm2 save; \
+             fi && \
+             if [ ! -f /var/www/sapphireclinicseast.org/data/surveys.db ]; then \
+               node seed-data.js; \
+             fi'
