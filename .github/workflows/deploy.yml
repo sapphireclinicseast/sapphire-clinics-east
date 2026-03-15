@@ -61,12 +61,15 @@ jobs:
             --exclude='data/' \
             ./ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/sapphireclinicseast.org/
 
-      # ── 5. Reload Nginx to pick up any config changes ────────────
-      - name: Reload Nginx
+      # ── 5. Update Nginx config & reload ─────────────────────────
+      - name: Update Nginx config
         run: |
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            scripts/nginx.conf \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/etc/nginx/sites-available/sapphireclinicseast.org
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
-            "systemctl reload nginx || nginx -s reload"
+            "ln -sf /etc/nginx/sites-available/sapphireclinicseast.org /etc/nginx/sites-enabled/ && nginx -t && systemctl reload nginx"
 
       # ── 6. Install survey API deps & start/restart ─────────────────
       - name: Setup & Restart Survey API
