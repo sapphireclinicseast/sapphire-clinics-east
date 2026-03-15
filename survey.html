@@ -82,10 +82,7 @@ body {
 }
 .form-section h3 {
   font-size: 16px; font-weight: 700; color: var(--teal-900);
-  margin-bottom: 4px;
-}
-.form-section .section-desc {
-  font-size: 13px; color: var(--slate-500); margin-bottom: 16px;
+  margin-bottom: 16px;
 }
 
 /* Form fields */
@@ -95,22 +92,7 @@ body {
   display: block; font-size: 13px; font-weight: 600;
   color: var(--slate-700); margin-bottom: 6px;
 }
-.form-label .required { color: #ef4444; margin-left: 2px; }
 
-.form-input, .form-select {
-  width: 100%; padding: 10px 14px;
-  border: 1px solid var(--slate-300);
-  border-radius: var(--radius-sm);
-  font-family: 'Inter', sans-serif;
-  font-size: 14px; color: var(--slate-700);
-  background: var(--white);
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-.form-input:focus, .form-select:focus {
-  outline: none;
-  border-color: var(--teal-500);
-  box-shadow: 0 0 0 3px rgba(20,184,166,0.15);
-}
 .form-textarea {
   width: 100%; padding: 12px 14px;
   border: 1px solid var(--slate-300);
@@ -193,7 +175,7 @@ body {
   font-size: 36px;
 }
 .thank-you h2 { font-size: 22px; color: var(--teal-900); margin-bottom: 12px; }
-.thank-you p { font-size: 14px; color: var(--slate-600); max-width: 400px; margin: 0 auto; white-space: pre-line; }
+.thank-you p { font-size: 14px; color: var(--slate-600); max-width: 400px; margin: 0 auto; }
 
 /* Error / Loading states */
 .error-card, .loading-card {
@@ -226,10 +208,6 @@ body {
   transition: width 0.3s ease;
   width: 0%;
 }
-
-/* Conditional sections */
-.conditional-section { display: none; }
-.conditional-section.visible { display: block; }
 
 /* Staff info badge */
 .staff-badge {
@@ -271,15 +249,13 @@ body {
 <script>
 // ══════════════════════════════════════════════════════════════════
 //  SATISFACTION SURVEY — PUBLIC FORM
+//  API: /api/customer-survey/assignment/{id}
 // ══════════════════════════════════════════════════════════════════
 
-const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-  ? `${window.location.protocol}//${window.location.hostname}:3031`
-  : `${window.location.origin}`;
+// Survey API base — served by marketing.sapphireclinicseast.org via nginx proxy
+const API_BASE = window.location.origin;
 
 let surveyData = null;
-let currentStep = 0; // 0 = welcome, 1+ = sections
-let formValues = {};
 
 // ── Init ──────────────────────────────────────────────────────────
 async function init() {
@@ -292,7 +268,7 @@ async function init() {
   }
 
   try {
-    const res = await fetch(`${API_BASE}/api/survey/assignment/${id}`);
+    const res = await fetch(`${API_BASE}/api/customer-survey/assignment/${id}`);
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       if (res.status === 410) {
@@ -314,77 +290,64 @@ async function init() {
 function showWelcome() {
   const schema = surveyData.schema;
   document.getElementById('surveyTitle').textContent = schema.title;
-  document.getElementById('surveySubtitle').textContent = 'Sapphire Clinics East, Inc.';
+  document.getElementById('surveySubtitle').textContent = schema.description || 'Sapphire Clinics East, Inc.';
 
   const container = document.getElementById('surveyContainer');
   container.innerHTML = `
     <div class="welcome-card">
-      <h2>${escapeHtml(schema.title)}</h2>
-      <p>${escapeHtml(schema.welcomeNote || '')}</p>
-      ${surveyData.staffName ? `<div class="staff-badge">Assessing: <strong>${escapeHtml(surveyData.staffName)}</strong> (${escapeHtml(surveyData.staffRole)})</div>` : ''}
-      <div class="privacy">${escapeHtml(schema.privacyNote || '')}</div>
-      <button class="btn-start" onclick="startSurvey()">Start Survey</button>
+      <h2>${esc(schema.title)}</h2>
+      <p>${esc(schema.description || 'Please share your experience with us.')}</p>
+      ${surveyData.staffName ? `<div class="staff-badge">Assessing: <strong>${esc(surveyData.staffName)}</strong> (${esc(surveyData.staffRole)})</div>` : ''}
+      <div class="privacy">Your responses are confidential and will be used solely to improve our services. No personal identifiable information will be shared externally.</div>
+      <button class="btn-start" onclick="renderForm()">Start Survey</button>
     </div>
   `;
   updateProgress(0);
 }
 
-// ── Start Survey ─────────────────────────────────────────────────
-function startSurvey() {
-  // Pre-fill values from assignment
-  if (surveyData.patientName) {
-    const parts = surveyData.patientName.split(' ');
-    formValues.patient_first_name = parts[0] || '';
-    formValues.patient_last_name = parts.slice(1).join(' ') || '';
-  }
-  if (surveyData.staffName) {
-    formValues.therapist = surveyData.staffName;
-    formValues.front_desk_officer = surveyData.staffName;
-  }
-  if (surveyData.branch) {
-    const branchMap = {
-      east_pasig: 'Sandbox East Pasig',
-      greenhills: 'Sandbox Greenhills San Juan',
-      activefun_bgc: 'Sandbox Activefun BGC',
-      prime_bgc: 'Sandbox Prime BGC',
-      clark: 'Sandbox Clark Pampanga'
-    };
-    formValues.branch = branchMap[surveyData.branch] || surveyData.branch;
-  }
-
-  renderForm();
-}
-
-// ── Render Full Form ─────────────────────────────────────────────
+// ── Render Survey Form ───────────────────────────────────────────
 function renderForm() {
   const schema = surveyData.schema;
   const container = document.getElementById('surveyContainer');
   container.innerHTML = '<form id="surveyForm" onsubmit="submitSurvey(event)"></form>';
   const form = document.getElementById('surveyForm');
+  const scale = schema.scale || { min: 1, max: 5, labels: ['Strongly Disagree', 'Disagree', 'Neutral', 'Agree', 'Strongly Agree'] };
 
-  schema.sections.forEach((section, sIdx) => {
+  schema.sections.forEach((section) => {
     const sectionEl = document.createElement('div');
     sectionEl.className = 'form-section';
 
-    // Handle conditional sections
-    if (section.condition) {
-      sectionEl.className += ' conditional-section';
-      sectionEl.dataset.conditionField = section.condition.field;
-      sectionEl.dataset.conditionValue = section.condition.value;
+    let html = `<h3>${esc(section.title)}</h3>`;
 
-      // Check if already visible
-      if (formValues[section.condition.field] === section.condition.value) {
-        sectionEl.classList.add('visible');
+    section.questions.forEach(q => {
+      if (q.type === 'rating') {
+        // Opinion scale
+        let dotsHtml = '';
+        for (let i = scale.min; i <= scale.max; i++) {
+          dotsHtml += `
+            <label>
+              <input type="radio" name="${q.id}" value="${i}" required>
+              <span class="scale-dot">${i}</span>
+            </label>`;
+        }
+        html += `
+          <div class="form-field">
+            <label class="form-label">${esc(q.text)}</label>
+            <div class="opinion-scale-wrapper">
+              <div class="opinion-scale-labels">
+                <span>${esc(scale.labels[0])}</span>
+                <span>${esc(scale.labels[scale.labels.length - 1])}</span>
+              </div>
+              <div class="opinion-scale">${dotsHtml}</div>
+            </div>
+          </div>`;
+      } else if (q.type === 'text') {
+        html += `
+          <div class="form-field">
+            <label class="form-label">${esc(q.text)}</label>
+            <textarea class="form-textarea" name="${q.id}" placeholder="Please share your thoughts..."></textarea>
+          </div>`;
       }
-    }
-
-    let html = `<h3>${escapeHtml(section.title)}</h3>`;
-    if (section.description) {
-      html += `<div class="section-desc">${escapeHtml(section.description)}</div>`;
-    }
-
-    section.fields.forEach(field => {
-      html += renderField(field, sIdx);
     });
 
     sectionEl.innerHTML = html;
@@ -398,177 +361,10 @@ function renderForm() {
 
   updateProgress(10);
 
-  // Set up conditional logic listeners
-  form.querySelectorAll('select, input[type="radio"]').forEach(el => {
-    el.addEventListener('change', handleFieldChange);
-  });
-
   // Track progress
-  form.querySelectorAll('input, select, textarea').forEach(el => {
+  form.querySelectorAll('input, textarea').forEach(el => {
     el.addEventListener('change', updateFormProgress);
     el.addEventListener('input', updateFormProgress);
-  });
-}
-
-// ── Render Individual Field ──────────────────────────────────────
-function renderField(field, sectionIdx) {
-  const prefillVal = field.prefill ? (formValues[field.name] || '') : '';
-  const requiredMark = field.required ? '<span class="required">*</span>' : '';
-
-  switch (field.type) {
-    case 'text':
-    case 'email':
-    case 'tel':
-      return `
-        <div class="form-field">
-          <label class="form-label">${escapeHtml(field.label)}${requiredMark}</label>
-          <input class="form-input" type="${field.type}" name="${field.name}"
-            value="${escapeHtml(prefillVal)}"
-            placeholder="${escapeHtml(field.placeholder || '')}"
-            ${field.required ? 'required' : ''}>
-        </div>`;
-
-    case 'select':
-      const options = field.options || [];
-      return `
-        <div class="form-field">
-          <label class="form-label">${escapeHtml(field.label)}${requiredMark}</label>
-          <select class="form-select" name="${field.name}" ${field.required ? 'required' : ''}>
-            <option value="">Select...</option>
-            ${options.map(o => `<option value="${escapeHtml(o)}" ${prefillVal === o ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('')}
-          </select>
-        </div>`;
-
-    case 'dropdown':
-      // For staff dropdowns, options come from the API via options_from
-      if (field.options_from) {
-        const staffOptions = getStaffOptions(field.options_from);
-        return `
-          <div class="form-field">
-            <label class="form-label">${escapeHtml(field.label)}${requiredMark}</label>
-            <select class="form-select" name="${field.name}" ${field.required ? 'required' : ''}>
-              <option value="">Select...</option>
-              ${staffOptions.map(o => `<option value="${escapeHtml(o)}" ${prefillVal === o ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('')}
-            </select>
-          </div>`;
-      }
-      return renderField({ ...field, type: 'select' }, sectionIdx);
-
-    case 'conditional_dropdown':
-      return `
-        <div class="form-field" id="field_${field.name}">
-          <label class="form-label">${escapeHtml(field.label)}${requiredMark}</label>
-          <div id="conditional_${field.name}">
-            ${renderConditionalInput(field, formValues[field.depends_on])}
-          </div>
-        </div>`;
-
-    case 'opinion_scale': {
-      const scale = field.scale || { min: 0, max: 5, left: 'Strongly Disagree', right: 'Strongly Agree' };
-      let dotsHtml = '';
-      for (let i = scale.min; i <= scale.max; i++) {
-        dotsHtml += `
-          <label>
-            <input type="radio" name="${field.name}" value="${i}" ${field.required ? 'required' : ''}>
-            <span class="scale-dot">${i}</span>
-          </label>`;
-      }
-      return `
-        <div class="form-field">
-          <label class="form-label">${escapeHtml(field.label)}${requiredMark}</label>
-          <div class="opinion-scale-wrapper">
-            <div class="opinion-scale-labels">
-              <span>${escapeHtml(scale.left)}</span>
-              <span>${escapeHtml(scale.right)}</span>
-            </div>
-            <div class="opinion-scale">${dotsHtml}</div>
-          </div>
-        </div>`;
-    }
-
-    case 'textarea':
-      return `
-        <div class="form-field">
-          <label class="form-label">${escapeHtml(field.label)}${requiredMark}</label>
-          <textarea class="form-textarea" name="${field.name}"
-            placeholder="${escapeHtml(field.placeholder || 'Please share your thoughts...')}"
-            ${field.required ? 'required' : ''}></textarea>
-        </div>`;
-
-    default:
-      return '';
-  }
-}
-
-// ── Staff Options from Survey Data ───────────────────────────────
-function getStaffOptions(optionsFrom) {
-  // The staff name is pre-selected; show all staff from the Typeform data
-  // In a real implementation, this would query the API
-  // For now, use the pre-filled staff name as the only option (since it's pre-selected)
-  if (surveyData.staffName) {
-    return [surveyData.staffName];
-  }
-  return [];
-}
-
-// ── Conditional Input Rendering ──────────────────────────────────
-function renderConditionalInput(field, currentValue) {
-  if (!currentValue || !field.conditions) {
-    const def = field.conditions && field.conditions._default;
-    if (def && def.type === 'text') {
-      return `<input class="form-input" type="text" name="${field.name}" placeholder="${escapeHtml(def.placeholder || '')}">`;
-    }
-    return `<select class="form-select" name="${field.name}"><option value="">Select branch first...</option></select>`;
-  }
-
-  const condition = field.conditions[currentValue] || field.conditions._default;
-  if (!condition) {
-    return `<input class="form-input" type="text" name="${field.name}" placeholder="Enter name">`;
-  }
-
-  if (condition.type === 'dropdown') {
-    const prefillVal = formValues[field.name] || '';
-    return `
-      <select class="form-select" name="${field.name}">
-        <option value="">Select...</option>
-        ${condition.options.map(o => `<option value="${escapeHtml(o)}" ${prefillVal === o ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('')}
-      </select>`;
-  }
-
-  return `<input class="form-input" type="text" name="${field.name}" placeholder="${escapeHtml(condition.placeholder || 'Enter name')}">`;
-}
-
-// ── Handle Field Changes ─────────────────────────────────────────
-function handleFieldChange(e) {
-  const name = e.target.name;
-  const value = e.target.value;
-  formValues[name] = value;
-
-  // Show/hide conditional sections
-  document.querySelectorAll(`[data-condition-field="${name}"]`).forEach(el => {
-    if (el.dataset.conditionValue === value) {
-      el.classList.add('visible');
-    } else {
-      el.classList.remove('visible');
-    }
-  });
-
-  // Update conditional dropdowns
-  document.querySelectorAll(`[id^="field_"]`).forEach(fieldEl => {
-    const conditionalContainer = fieldEl.querySelector(`[id^="conditional_"]`);
-    if (!conditionalContainer) return;
-
-    const fieldName = conditionalContainer.id.replace('conditional_', '');
-    const schema = surveyData.schema;
-    let fieldDef = null;
-    schema.sections.forEach(s => {
-      s.fields.forEach(f => {
-        if (f.name === fieldName && f.depends_on === name) fieldDef = f;
-      });
-    });
-    if (fieldDef) {
-      conditionalContainer.innerHTML = renderConditionalInput(fieldDef, value);
-    }
   });
 }
 
@@ -577,14 +373,14 @@ function updateFormProgress() {
   const form = document.getElementById('surveyForm');
   if (!form) return;
 
-  const allFields = form.querySelectorAll('input:not([type="radio"]), select, textarea');
+  const textareas = form.querySelectorAll('textarea');
   const radioGroups = new Set();
   form.querySelectorAll('input[type="radio"]').forEach(r => radioGroups.add(r.name));
 
-  let total = allFields.length + radioGroups.size;
+  let total = textareas.length + radioGroups.size;
   let filled = 0;
 
-  allFields.forEach(f => { if (f.value.trim()) filled++; });
+  textareas.forEach(f => { if (f.value.trim()) filled++; });
   radioGroups.forEach(name => {
     if (form.querySelector(`input[name="${name}"]:checked`)) filled++;
   });
@@ -606,30 +402,28 @@ async function submitSurvey(e) {
   btn.textContent = 'Submitting...';
 
   const formData = new FormData(form);
-  const data = {};
   const ratings = [];
+  const textResponses = {};
 
   for (const [key, value] of formData.entries()) {
-    if (key.match(/^[ap]?q\d+$/)) {
-      ratings.push({ name: key, value: parseInt(value) });
+    const v = value.toString();
+    // Rating questions have ids like q1, q2, etc. and numeric values
+    if (/^\d+$/.test(v)) {
+      ratings.push({ name: key, value: parseInt(v) });
     } else {
-      data[key] = value;
+      textResponses[key] = v;
     }
   }
 
   const payload = {
-    responses: { ...data, ratings },
-    respondentName: data.guardian_first_name
-      ? `${data.guardian_first_name} ${data.guardian_last_name || ''}`.trim()
-      : data.assessor_first_name
-        ? `${data.assessor_first_name} ${data.assessor_last_name || ''}`.trim()
-        : `${data.patient_first_name || ''} ${data.patient_last_name || ''}`.trim(),
-    respondentEmail: data.guardian_email || data.assessor_email || data.patient_email || null,
-    respondentPhone: data.guardian_phone || data.assessor_phone || data.patient_phone || null
+    responses: { ...textResponses, ratings },
+    respondentName: surveyData.patientName || null,
+    respondentEmail: null,
+    respondentPhone: null
   };
 
   try {
-    const res = await fetch(`${API_BASE}/api/survey/assignment/${surveyData.id}/submit`, {
+    const res = await fetch(`${API_BASE}/api/customer-survey/assignment/${surveyData.id}/submit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -650,14 +444,11 @@ async function submitSurvey(e) {
 
 // ── Thank You Screen ─────────────────────────────────────────────
 function showThankYou() {
-  const schema = surveyData.schema;
-  const ty = schema.thankYou || {};
-  const container = document.getElementById('surveyContainer');
-  container.innerHTML = `
+  document.getElementById('surveyContainer').innerHTML = `
     <div class="thank-you">
       <div class="check-icon">&#10003;</div>
-      <h2>${escapeHtml(ty.title || 'Thank you!')}</h2>
-      <p>${escapeHtml(ty.description || 'Your feedback has been recorded.')}</p>
+      <h2>Thank you!</h2>
+      <p>Your feedback has been recorded and will help us improve our services. You may now return the tablet to the front desk.</p>
     </div>
   `;
   updateProgress(100);
@@ -667,14 +458,14 @@ function showThankYou() {
 function showError(title, message) {
   document.getElementById('surveyContainer').innerHTML = `
     <div class="error-card">
-      <h2>${escapeHtml(title)}</h2>
-      <p style="color:var(--slate-600);font-size:14px">${escapeHtml(message)}</p>
+      <h2>${esc(title)}</h2>
+      <p style="color:var(--slate-600);font-size:14px">${esc(message)}</p>
     </div>
   `;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
-function escapeHtml(str) {
+function esc(str) {
   if (!str) return '';
   const div = document.createElement('div');
   div.textContent = str;
