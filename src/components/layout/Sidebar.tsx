@@ -7,7 +7,7 @@ import { useState } from 'react'
 import {
   LayoutDashboard, Send, Calendar, Cake, Sparkles,
   Users, Mail, BookOpen, Clock, ChevronRight, Link2, ChevronDown, X, BarChart2,
-  UserCog, ListOrdered, CalendarDays,
+  UserCog, ListOrdered, CalendarDays, ClipboardCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useBrand } from '@/contexts/BrandContext'
@@ -21,11 +21,13 @@ const CLINIC_TOOLS_ALL = [
   { href: '/staff', icon: UserCog, label: 'Staff Module' },
   { href: '/queueing', icon: ListOrdered, label: 'Queueing' },
   { href: '/clinic-schedule', icon: CalendarDays, label: 'Clinic Schedule' },
+  { href: '/customer-survey', icon: ClipboardCheck, label: 'Customer Survey' },
 ]
 
 const CLINIC_TOOLS_NO_SCHEDULE = [
   { href: '/staff', icon: UserCog, label: 'Staff Module' },
   { href: '/queueing', icon: ListOrdered, label: 'Queueing' },
+  { href: '/customer-survey', icon: ClipboardCheck, label: 'Customer Survey' },
 ]
 
 // Full access nav — built dynamically per role
@@ -84,6 +86,7 @@ const FRONT_DESK_NAV = [
       { href: '/staff', icon: UserCog, label: 'Staff Module' },
       { href: '/queueing', icon: ListOrdered, label: 'Queueing' },
       { href: '/clinic-schedule', icon: CalendarDays, label: 'Clinic Schedule' },
+      { href: '/customer-survey', icon: ClipboardCheck, label: 'Customer Survey' },
     ],
   },
 ]
