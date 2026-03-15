@@ -39,7 +39,7 @@ body {
 }
 .survey-header .brand { font-size: 12px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: var(--teal-300); margin-bottom: 8px; }
 .survey-header h1 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
-.survey-header .sub { font-size: 13px; color: var(--teal-200); max-width: 500px; margin: 0 auto; }
+.survey-header .sub { font-size: 13px; color: var(--teal-200); max-width: 500px; margin: 0 auto; white-space: pre-line; }
 
 /* Container */
 .survey-container { max-width: 640px; margin: 0 auto; padding: 24px 16px 80px; }
@@ -54,7 +54,7 @@ body {
   margin-bottom: 24px;
 }
 .welcome-card h2 { font-size: 20px; color: var(--teal-900); margin-bottom: 12px; }
-.welcome-card p { font-size: 14px; color: var(--slate-600); margin-bottom: 16px; }
+.welcome-card p { font-size: 14px; color: var(--slate-600); margin-bottom: 16px; white-space: pre-line; }
 .welcome-card .privacy {
   font-size: 11px; color: var(--slate-500);
   background: var(--slate-50); border-radius: var(--radius-sm);
@@ -86,11 +86,18 @@ body {
 }
 
 /* Form fields */
-.form-field { margin-bottom: 20px; }
+.form-field { margin-bottom: 24px; }
 .form-field:last-child { margin-bottom: 0; }
 .form-label {
   display: block; font-size: 13px; font-weight: 600;
   color: var(--slate-700); margin-bottom: 6px;
+}
+.question-number {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--teal-100); color: var(--teal-700);
+  font-size: 11px; font-weight: 700; margin-right: 8px;
+  flex-shrink: 0;
 }
 
 .form-textarea {
@@ -175,7 +182,7 @@ body {
   font-size: 36px;
 }
 .thank-you h2 { font-size: 22px; color: var(--teal-900); margin-bottom: 12px; }
-.thank-you p { font-size: 14px; color: var(--slate-600); max-width: 400px; margin: 0 auto; }
+.thank-you p { font-size: 14px; color: var(--slate-600); max-width: 400px; margin: 0 auto; white-space: pre-line; }
 
 /* Error / Loading states */
 .error-card, .loading-card {
@@ -219,6 +226,15 @@ body {
 }
 .staff-badge strong { font-weight: 700; }
 
+/* Variant badge */
+.variant-badge {
+  display: inline-block;
+  background: var(--teal-100); color: var(--teal-800);
+  font-size: 12px; font-weight: 600;
+  padding: 4px 12px; border-radius: 20px;
+  margin-bottom: 12px;
+}
+
 @media (max-width: 480px) {
   .survey-header { padding: 24px 16px; }
   .survey-header h1 { font-size: 18px; }
@@ -252,10 +268,10 @@ body {
 //  API: /api/customer-survey/assignment/{id}
 // ══════════════════════════════════════════════════════════════════
 
-// Survey API base — served by marketing.sapphireclinicseast.org via nginx proxy
 const API_BASE = window.location.origin;
 
 let surveyData = null;
+let questionCounter = 0;
 
 // ── Init ──────────────────────────────────────────────────────────
 async function init() {
@@ -290,7 +306,7 @@ async function init() {
 function showWelcome() {
   const schema = surveyData.schema;
   document.getElementById('surveyTitle').textContent = schema.title;
-  document.getElementById('surveySubtitle').textContent = schema.description || 'Sapphire Clinics East, Inc.';
+  document.getElementById('surveySubtitle').textContent = 'Sapphire Clinics East, Inc.';
 
   const container = document.getElementById('surveyContainer');
   container.innerHTML = `
@@ -298,7 +314,8 @@ function showWelcome() {
       <h2>${esc(schema.title)}</h2>
       <p>${esc(schema.description || 'Please share your experience with us.')}</p>
       ${surveyData.staffName ? `<div class="staff-badge">Assessing: <strong>${esc(surveyData.staffName)}</strong> (${esc(surveyData.staffRole)})</div>` : ''}
-      <div class="privacy">Your responses are confidential and will be used solely to improve our services. No personal identifiable information will be shared externally.</div>
+      ${schema.variant ? `<div class="variant-badge">${esc(schema.variant)}</div>` : ''}
+      ${schema.privacy ? `<div class="privacy">${esc(schema.privacy)}</div>` : ''}
       <button class="btn-start" onclick="renderForm()">Start Survey</button>
     </div>
   `;
@@ -311,7 +328,7 @@ function renderForm() {
   const container = document.getElementById('surveyContainer');
   container.innerHTML = '<form id="surveyForm" onsubmit="submitSurvey(event)"></form>';
   const form = document.getElementById('surveyForm');
-  const scale = schema.scale || { min: 1, max: 5, labels: ['Strongly Disagree', 'Disagree', 'Neutral', 'Agree', 'Strongly Agree'] };
+  questionCounter = 0;
 
   schema.sections.forEach((section) => {
     const sectionEl = document.createElement('div');
@@ -320,10 +337,14 @@ function renderForm() {
     let html = `<h3>${esc(section.title)}</h3>`;
 
     section.questions.forEach(q => {
+      questionCounter++;
       if (q.type === 'rating') {
-        // Opinion scale
+        const scale = q.scale || { steps: 6, startAtOne: false, left: 'Strongly Disagree', right: 'Strongly Agree' };
+        const startVal = scale.startAtOne ? 1 : 0;
+        const endVal = startVal + scale.steps - 1;
+
         let dotsHtml = '';
-        for (let i = scale.min; i <= scale.max; i++) {
+        for (let i = startVal; i <= endVal; i++) {
           dotsHtml += `
             <label>
               <input type="radio" name="${q.id}" value="${i}" required>
@@ -332,11 +353,11 @@ function renderForm() {
         }
         html += `
           <div class="form-field">
-            <label class="form-label">${esc(q.text)}</label>
+            <label class="form-label"><span class="question-number">${questionCounter}</span>${esc(q.text)}</label>
             <div class="opinion-scale-wrapper">
               <div class="opinion-scale-labels">
-                <span>${esc(scale.labels[0])}</span>
-                <span>${esc(scale.labels[scale.labels.length - 1])}</span>
+                <span>${esc(scale.left)}</span>
+                <span>${esc(scale.right)}</span>
               </div>
               <div class="opinion-scale">${dotsHtml}</div>
             </div>
@@ -344,7 +365,7 @@ function renderForm() {
       } else if (q.type === 'text') {
         html += `
           <div class="form-field">
-            <label class="form-label">${esc(q.text)}</label>
+            <label class="form-label"><span class="question-number">${questionCounter}</span>${esc(q.text)}</label>
             <textarea class="form-textarea" name="${q.id}" placeholder="Please share your thoughts..."></textarea>
           </div>`;
       }
@@ -407,7 +428,6 @@ async function submitSurvey(e) {
 
   for (const [key, value] of formData.entries()) {
     const v = value.toString();
-    // Rating questions have ids like q1, q2, etc. and numeric values
     if (/^\d+$/.test(v)) {
       ratings.push({ name: key, value: parseInt(v) });
     } else {
@@ -444,11 +464,12 @@ async function submitSurvey(e) {
 
 // ── Thank You Screen ─────────────────────────────────────────────
 function showThankYou() {
+  const ty = surveyData.schema.thankYou || {};
   document.getElementById('surveyContainer').innerHTML = `
     <div class="thank-you">
       <div class="check-icon">&#10003;</div>
-      <h2>Thank you!</h2>
-      <p>Your feedback has been recorded and will help us improve our services. You may now return the tablet to the front desk.</p>
+      <h2>${esc(ty.title || 'Thank you!')}</h2>
+      <p>${esc(ty.description || 'Your feedback has been recorded and will help us improve our services. You may now return the tablet to the front desk.')}</p>
     </div>
   `;
   updateProgress(100);
