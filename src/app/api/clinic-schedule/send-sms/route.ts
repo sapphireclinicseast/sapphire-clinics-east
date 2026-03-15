@@ -3,26 +3,30 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
 // ── Branch config ──────────────────────────────────────────────────────────────
+// SMS is sent via httpSMS — a free service that routes messages through your
+// clinic's own Android phone (Globe SIM), so there is NO per-message cost.
+// Setup: install the "httpSMS" app on the clinic Android phone, create a free
+// account at https://httpsms.com, and add the API key below.
 const BRANCH_CONFIG: Record<string, {
-  semaphoreKey: string
-  senderName:   string
-  phone:        string
-  clinicName:   string
-  viberToken:   string
+  httpSmsKey: string   // API key from httpsms.com (free account)
+  phone:      string   // clinic phone in E.164 — used as SMS sender
+  phoneDisplay: string // human-readable format for message text
+  clinicName: string
+  viberToken: string
 }> = {
   SBEA: {
-    semaphoreKey: process.env.SEMAPHORE_API_KEY_SBEA ?? '',
-    senderName:   process.env.SEMAPHORE_SENDER_SBEA  ?? 'SandboxEast',
-    phone:        '+63 917 118 9289',
+    httpSmsKey:   process.env.HTTPSMS_API_KEY_SBEA ?? '',
+    phone:        '+639171189289',
+    phoneDisplay: '+63 917 118 9289',
     clinicName:   'Sandbox Clinic East',
-    viberToken:   process.env.VIBER_BOT_TOKEN_SBEA   ?? '',
+    viberToken:   process.env.VIBER_BOT_TOKEN_SBEA ?? '',
   },
   SBGH: {
-    semaphoreKey: process.env.SEMAPHORE_API_KEY_SBGH ?? '',
-    senderName:   process.env.SEMAPHORE_SENDER_SBGH  ?? 'SandboxGH',
-    phone:        '+63 917 770 1686',
+    httpSmsKey:   process.env.HTTPSMS_API_KEY_SBGH ?? '',
+    phone:        '+639177701686',
+    phoneDisplay: '+63 917 770 1686',
     clinicName:   'Sandbox Clinic Greenhills',
-    viberToken:   process.env.VIBER_BOT_TOKEN_SBGH   ?? '',
+    viberToken:   process.env.VIBER_BOT_TOKEN_SBGH ?? '',
   },
 }
 
@@ -32,13 +36,16 @@ function formatTime(t: string): string {
   return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`
 }
 
-/** Normalize any Philippine phone format → 11-digit 09XXXXXXXXX for Semaphore */
-function normalizePhone(phone: string): string {
+/**
+ * Convert any Philippine phone format → E.164 (+63XXXXXXXXXX) for httpSMS.
+ * Handles: +63 956 870 2220 | +639568702220 | 09568702220 | 9568702220
+ */
+function toE164(phone: string): string {
   const digits = phone.replace(/\D/g, '')
-  if (digits.startsWith('63') && digits.length >= 11) return '0' + digits.slice(2)
-  if (digits.startsWith('0') && digits.length === 11) return digits
-  if (digits.length === 10) return '0' + digits
-  return digits
+  if (digits.startsWith('63') && digits.length >= 11) return '+' + digits
+  if (digits.startsWith('0')  && digits.length === 11) return '+63' + digits.slice(1)
+  if (digits.length === 10)                             return '+63' + digits
+  return '+' + digits
 }
 
 // Short clinic labels keep the SMS under 160 chars even in worst case.
@@ -65,11 +72,11 @@ function buildMessage(opts: {
   return (
     `Hi ${opts.patientFirstName}! ${opts.sessionType} at ${clinic} ` +
     `on ${shortDate}. ${formatTime(opts.startTime)}-${formatTime(opts.endTime)}. ` +
-    `Call/Viber ${cfg.phone}.`
+    `Call/Viber ${cfg.phoneDisplay}.`
   )
 }
 
-// ── Channel: Viber (via Viber Bot API) ────────────────────────────────────────
+// ── Channel: Viber (via Viber Bot API) ─────────────────────────────────────────
 // Succeeds only when the patient has subscribed to the clinic Viber bot.
 async function sendVia_Viber(
   viberUserId: string,
@@ -87,39 +94,45 @@ async function sendVia_Viber(
   if (json.status !== 0) throw new Error(`Viber error ${json.status}: ${json.status_message}`)
 }
 
-// ── Channel: SMS (via Semaphore) ──────────────────────────────────────────────
+// ── Channel: SMS (via httpSMS — free, uses clinic Android phone as gateway) ────
+// Install the httpSMS app on the clinic phone, register at httpsms.com,
+// add the API key as HTTPSMS_API_KEY_SBEA / HTTPSMS_API_KEY_SBGH in .env.
 async function sendVia_SMS(
-  phone:      string,
+  toPhone:    string,   // patient phone (any PH format)
+  fromPhone:  string,   // clinic phone in E.164 (must match phone registered in httpSMS app)
   message:    string,
-  senderName: string,
   apiKey:     string,
 ): Promise<void> {
-  if (!apiKey) throw new Error('Semaphore API key is not configured for this branch')
+  if (!apiKey) throw new Error(
+    'SMS gateway not configured. Install the httpSMS app on the clinic phone and add HTTPSMS_API_KEY to the server.'
+  )
 
-  const res = await fetch('https://api.semaphore.co/api/v4/messages', {
+  const res = await fetch('https://api.httpsms.com/v1/messages/send', {
     method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'x-api-key':    apiKey,
+      'Content-Type': 'application/json',
+    },
     body: JSON.stringify({
-      apikey:     apiKey,
-      number:     normalizePhone(phone),
-      message,
-      sendername: senderName,
+      content: message,
+      from:    fromPhone,        // E.164 clinic number registered in the app
+      to:      toE164(toPhone),  // E.164 patient number
     }),
   })
 
   if (!res.ok) {
     const text = await res.text()
-    throw new Error(`Semaphore error ${res.status}: ${text}`)
+    throw new Error(`httpSMS error ${res.status}: ${text}`)
   }
 }
 
-// ── Smart dispatcher: tries Viber → falls back to SMS ─────────────────────────
+// ── Smart dispatcher: tries Viber → falls back to SMS ──────────────────────────
 // Returns the channel that actually succeeded: 'viber' | 'sms'
 async function dispatchReminder(opts: {
-  patientId:   string
-  phone:       string | null
-  branch:      string
-  message:     string
+  patientId: string
+  phone:     string | null
+  branch:    string
+  message:   string
 }): Promise<'viber' | 'sms'> {
   const cfg = BRANCH_CONFIG[opts.branch] ?? BRANCH_CONFIG['SBEA']
 
@@ -134,9 +147,9 @@ async function dispatchReminder(opts: {
     }
   }
 
-  // ── Fall back to Semaphore SMS ───────────────────────────────────────────────
+  // ── Fall back to SMS via httpSMS ─────────────────────────────────────────────
   if (!opts.phone) throw new Error('Patient has no mobile number on file')
-  await sendVia_SMS(opts.phone, opts.message, cfg.senderName, cfg.semaphoreKey)
+  await sendVia_SMS(opts.phone, cfg.phone, opts.message, cfg.httpSmsKey)
   return 'sms'
 }
 
