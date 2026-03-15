@@ -78,6 +78,7 @@ services:
       VIBER_BOT_TOKEN_SBEA: ${VIBER_BOT_TOKEN_SBEA}
       VIBER_BOT_TOKEN_SBGH: ${VIBER_BOT_TOKEN_SBGH}
       UPLOAD_DIR: /app/uploads
+      BODY_SIZE_LIMIT: 200mb
       AUTH_TRUST_HOST: "true"
       EXTERNAL_API_KEY: ${EXTERNAL_API_KEY}
     volumes:
