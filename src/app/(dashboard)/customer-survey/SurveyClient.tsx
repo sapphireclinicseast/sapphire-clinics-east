@@ -2,27 +2,10 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  ClipboardCheck, BarChart3, ListChecks, FileText, Star, Target, Clock,
-  QrCode, Filter, Users, TrendingUp, Building2, X,
+  ClipboardCheck, BarChart3, ListChecks, Star, Target, Clock,
+  QrCode, Users, TrendingUp, Building2, X, ChevronUp, ChevronDown,
+  ArrowUpDown,
 } from 'lucide-react'
-
-// ── API helpers ──────────────────────────────────────────────────────────────
-
-const SURVEY_API = '/api/survey'
-const SURVEY_API_KEY = 'SCEI_SURVEY_KEY_2025'
-
-async function surveyFetch(endpoint: string, options: RequestInit = {}) {
-  const res = await fetch(`${SURVEY_API}${endpoint}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'X-API-Key': SURVEY_API_KEY,
-      ...options.headers,
-    },
-  })
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
-}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -34,48 +17,41 @@ interface DashboardData {
   targetCount: number
   pending: number
   byBranch: { branch: string; avgScore: number; count: number }[]
-  byDept: { role: string; avgScore: number; count: number }[]
   monthlyTrend: { month: string; avgScore: number; count: number }[]
 }
 
-interface StaffMember {
-  id: number
+interface StaffRow {
+  id: string
   name: string
-  role: string
+  department: string
   branch: string
-  staff_type: string
-  target_count: number
+  targetCount: number
   completed: number
-  last_assessed: string | null
+  lastAssessed: string | null
 }
 
-interface SurveyResponse {
-  id: string
-  staff_name: string
-  survey_type: string
-  patient_name: string
-  branch: string
-  avg_score: number
-  submitted_at: string
-}
+type SortKey = 'name' | 'department' | 'branch' | 'progress'
+type SortDir = 'asc' | 'desc'
 
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function SurveyClient({ role }: { role: string }) {
-  const [tab, setTab] = useState<'overview' | 'manage' | 'responses'>('overview')
+  const [tab, setTab] = useState<'overview' | 'manage'>('overview')
   const [dashboard, setDashboard] = useState<DashboardData | null>(null)
-  const [staff, setStaff] = useState<StaffMember[]>([])
-  const [responses, setResponses] = useState<SurveyResponse[]>([])
+  const [staff, setStaff] = useState<StaffRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  // Manage tab filters
-  const [staffBranch, setStaffBranch] = useState('')
-  const [staffType, setStaffType] = useState('')
+  // Sorting
+  const [sortKey, setSortKey] = useState<SortKey>('name')
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
+
+  // Filters
+  const [filterDept, setFilterDept] = useState('')
+  const [filterBranch, setFilterBranch] = useState('')
 
   // Manual assignment
   const [assignStaff, setAssignStaff] = useState('')
-  const [assignBranch, setAssignBranch] = useState('east_pasig')
   const [assignPatient, setAssignPatient] = useState('')
   const [assignAge, setAssignAge] = useState('')
   const [assignSession, setAssignSession] = useState('individual')
@@ -84,27 +60,16 @@ export default function SurveyClient({ role }: { role: string }) {
   const [showQr, setShowQr] = useState(false)
   const qrRef = useRef<HTMLDivElement>(null)
 
-  // Response filters
-  const [resBranch, setResBranch] = useState('')
-  const [resType, setResType] = useState('')
-
-  // Auto-prompt state
-  const [prompt, setPrompt] = useState<{
-    staffId: number; staffName: string; staffType: string; surveyType: string; reason: string
-  } | null>(null)
-  const [promptPatient, setPromptPatient] = useState('')
-  const [promptAge, setPromptAge] = useState('')
-
   const isFrontDesk = role === 'SBEA_FRONT_DESK' || role === 'SBGH_FRONT_DESK'
-  const branch = role === 'SBGH_FRONT_DESK' ? 'greenhills' : 'east_pasig'
 
-  // ── Load dashboard data ────────────────────────────────────────────────────
+  // ── Load dashboard ───────────────────────────────────────────────────────
   const loadDashboard = useCallback(async () => {
     try {
       setLoading(true)
-      const data = await surveyFetch('/dashboard')
-      setDashboard(data)
-    } catch (e) {
+      const res = await fetch('/api/customer-survey?view=dashboard')
+      if (!res.ok) throw new Error('Failed to load')
+      setDashboard(await res.json())
+    } catch {
       setError('Could not connect to survey API')
     } finally {
       setLoading(false)
@@ -113,110 +78,105 @@ export default function SurveyClient({ role }: { role: string }) {
 
   useEffect(() => { loadDashboard() }, [loadDashboard])
 
-  // ── Load staff ─────────────────────────────────────────────────────────────
+  // ── Load staff ───────────────────────────────────────────────────────────
   const loadStaff = useCallback(async () => {
     try {
-      const params = new URLSearchParams()
-      if (staffBranch) params.set('branch', staffBranch)
-      if (staffType) params.set('type', staffType)
-      const data = await surveyFetch(`/staff?${params}`)
-      setStaff(data)
+      const res = await fetch('/api/customer-survey?view=staff')
+      if (!res.ok) throw new Error('Failed to load')
+      setStaff(await res.json())
     } catch { /* handled by error state */ }
-  }, [staffBranch, staffType])
+  }, [])
 
   useEffect(() => {
     if (tab === 'manage') loadStaff()
   }, [tab, loadStaff])
 
-  // ── Load responses ─────────────────────────────────────────────────────────
-  const loadResponses = useCallback(async () => {
+  // ── Create assignment + QR ───────────────────────────────────────────────
+  const createAssignment = async (staffId: string, patientName: string, patientAge: string, sessionType: string) => {
     try {
-      const params = new URLSearchParams()
-      if (resBranch) params.set('branch', resBranch)
-      if (resType) params.set('type', resType)
-      const data = await surveyFetch(`/responses?${params}`)
-      setResponses(data.responses || [])
-    } catch { /* handled by error state */ }
-  }, [resBranch, resType])
-
-  useEffect(() => {
-    if (tab === 'responses') loadResponses()
-  }, [tab, loadResponses])
-
-  // ── Auto-prompt (front desk only) ──────────────────────────────────────────
-  useEffect(() => {
-    if (!isFrontDesk) return
-    const check = async () => {
-      try {
-        const data = await surveyFetch(`/schedule/next?branch=${branch}`)
-        if (data.shouldPrompt) {
-          setPrompt({
-            staffId: data.staffId,
-            staffName: data.staffName,
-            staffType: data.staffType,
-            surveyType: data.suggestedSurveyType,
-            reason: data.reason,
-          })
-        }
-      } catch { /* silently fail */ }
-    }
-    const timeout = setTimeout(check, 5000)
-    const interval = setInterval(check, 30 * 60 * 1000)
-    return () => { clearTimeout(timeout); clearInterval(interval) }
-  }, [isFrontDesk, branch])
-
-  // ── Create assignment + QR ─────────────────────────────────────────────────
-  const createAssignment = async (staffId: string | number, patientName: string, patientAge: string, sessionType: string, assignmentBranch: string) => {
-    try {
-      const result = await surveyFetch('/assign', {
+      const selectedStaff = staff.find(s => s.id === staffId)
+      const res = await fetch('/api/customer-survey', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          staffId: Number(staffId),
+          staffId,
           patientName,
           patientAge: Number(patientAge),
-          branch: assignmentBranch,
+          branch: selectedStaff?.branch ?? 'SBEA',
           sessionType,
         }),
       })
+      if (!res.ok) throw new Error('Failed to create assignment')
+      const result = await res.json()
       const surveyUrl = `https://survey.sapphireclinicseast.org?id=${result.assignmentId}`
       setQrUrl(surveyUrl)
       setQrType(result.surveyType)
       setShowQr(true)
-
-      // Generate QR code
-      setTimeout(() => {
-        if (qrRef.current) {
-          qrRef.current.innerHTML = ''
-          // @ts-expect-error - QRCode loaded via CDN
-          if (typeof window !== 'undefined' && window.QRCode) {
-            // @ts-expect-error - QRCode loaded via CDN
-            new window.QRCode(qrRef.current, {
-              text: surveyUrl,
-              width: 200,
-              height: 200,
-              colorDark: '#0f766e',
-              colorLight: '#ffffff',
-            })
-          } else {
-            // Fallback: show URL
-            qrRef.current.innerHTML = `<p style="font-size:12px;word-break:break-all">${surveyUrl}</p>`
-          }
-        }
-      }, 100)
-    } catch (e) {
+      renderQr(surveyUrl)
+    } catch {
       alert('Failed to create assignment. Please try again.')
     }
   }
 
-  // ── Tabs ───────────────────────────────────────────────────────────────────
+  const renderQr = (url: string) => {
+    setTimeout(() => {
+      if (qrRef.current) {
+        qrRef.current.innerHTML = ''
+        // @ts-expect-error - QRCode loaded via CDN
+        if (typeof window !== 'undefined' && window.QRCode) {
+          // @ts-expect-error - QRCode loaded via CDN
+          new window.QRCode(qrRef.current, { text: url, width: 200, height: 200, colorDark: '#0f766e', colorLight: '#ffffff' })
+        } else {
+          qrRef.current.innerHTML = `<p style="font-size:12px;word-break:break-all">${url}</p>`
+        }
+      }
+    }, 100)
+  }
+
+  // ── Sorting logic ────────────────────────────────────────────────────────
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+  }
+
+  const SortIcon = ({ col }: { col: SortKey }) => {
+    if (sortKey !== col) return <ArrowUpDown size={12} style={{ color: '#cbd5e1' }} />
+    return sortDir === 'asc'
+      ? <ChevronUp size={12} style={{ color: '#0f766e' }} />
+      : <ChevronDown size={12} style={{ color: '#0f766e' }} />
+  }
+
+  // ── Filter + sort staff ──────────────────────────────────────────────────
+  const filteredStaff = staff
+    .filter(s => !filterDept || s.department === filterDept)
+    .filter(s => !filterBranch || s.branch === filterBranch)
+    .sort((a, b) => {
+      let cmp = 0
+      switch (sortKey) {
+        case 'name': cmp = a.name.localeCompare(b.name); break
+        case 'department': cmp = a.department.localeCompare(b.department); break
+        case 'branch': cmp = a.branch.localeCompare(b.branch); break
+        case 'progress': cmp = (a.completed / (a.targetCount || 1)) - (b.completed / (b.targetCount || 1)); break
+      }
+      return sortDir === 'desc' ? -cmp : cmp
+    })
+
+  // ── Get unique departments for filter ────────────────────────────────────
+  const departments = [...new Set(staff.map(s => s.department))].sort()
+  const branches = [...new Set(staff.map(s => s.branch))].sort()
+
+  // ── Tabs ─────────────────────────────────────────────────────────────────
   const tabs = [
     { id: 'overview' as const, label: 'Overview', icon: BarChart3 },
     { id: 'manage' as const, label: 'Manage', icon: ListChecks },
-    { id: 'responses' as const, label: 'Responses', icon: FileText },
   ]
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'var(--teal, #0f766e)', color: '#fff' }}>
@@ -256,15 +216,13 @@ export default function SurveyClient({ role }: { role: string }) {
       {/* Overview Tab */}
       {tab === 'overview' && (
         <div>
-          {/* KPI cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <KpiCard icon={ClipboardCheck} label="Total Surveys" value={dashboard?.totalSurveys ?? '—'} />
-            <KpiCard icon={Star} label="Avg. Score /5" value={dashboard?.avgScore?.toFixed(2) ?? '—'} />
-            <KpiCard icon={Target} label="Completion Rate" value={dashboard ? `${dashboard.completionRate}%` : '—'} />
-            <KpiCard icon={Clock} label="Pending" value={dashboard?.pending ?? '—'} />
+            <KpiCard icon={ClipboardCheck} label="Total Surveys" value={loading ? '—' : dashboard?.totalSurveys ?? 0} />
+            <KpiCard icon={Star} label="Avg. Score /5" value={loading ? '—' : dashboard?.avgScore?.toFixed(2) ?? '—'} />
+            <KpiCard icon={Target} label="Completion Rate" value={loading ? '—' : dashboard ? `${dashboard.completionRate}%` : '—'} />
+            <KpiCard icon={Clock} label="Pending" value={loading ? '—' : dashboard?.pending ?? 0} />
           </div>
 
-          {/* Charts placeholder */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <ChartCard title="Satisfaction Trend" icon={TrendingUp} data={dashboard?.monthlyTrend} />
             <ChartCard title="By Branch" icon={Building2} data={dashboard?.byBranch} />
@@ -275,66 +233,96 @@ export default function SurveyClient({ role }: { role: string }) {
       {/* Manage Tab */}
       {tab === 'manage' && (
         <div className="space-y-6">
-          {/* Assessment Schedule */}
+          {/* Assessment Schedule — sortable/filterable table */}
           <div className="rounded-xl p-5" style={{ background: '#fff', border: '1px solid #e2e8f0' }}>
             <div className="flex items-center gap-2 mb-1">
               <Users size={16} style={{ color: '#0f766e' }} />
               <h3 className="font-semibold text-sm" style={{ color: '#0f766e' }}>Assessment Schedule</h3>
             </div>
-            <p className="text-xs mb-4" style={{ color: '#94a3b8' }}>Track staff assessment progress for the year.</p>
+            <p className="text-xs mb-4" style={{ color: '#94a3b8' }}>
+              Track staff assessment progress. {isFrontDesk ? 'Showing therapists at your branch.' : 'Showing all staff.'}
+            </p>
 
-            <div className="flex gap-3 mb-4">
-              <select value={staffBranch} onChange={e => setStaffBranch(e.target.value)}
+            {/* Filters */}
+            <div className="flex flex-wrap gap-3 mb-4">
+              <select value={filterDept} onChange={e => setFilterDept(e.target.value)}
                 className="px-3 py-2 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }}>
-                <option value="">All Branches</option>
-                <option value="east_pasig">Sandbox East Pasig</option>
-                <option value="greenhills">Sandbox Greenhills</option>
+                <option value="">All Departments</option>
+                {departments.map(d => <option key={d} value={d}>{d}</option>)}
               </select>
-              <select value={staffType} onChange={e => setStaffType(e.target.value)}
-                className="px-3 py-2 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }}>
-                <option value="">All Types</option>
-                <option value="clinical">Clinical Staff</option>
-                <option value="admin">Front Desk Staff</option>
-              </select>
+              {!isFrontDesk && (
+                <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)}
+                  className="px-3 py-2 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }}>
+                  <option value="">All Branches</option>
+                  {branches.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+              )}
             </div>
 
-            {staff.length > 0 ? (
+            {filteredStaff.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
-                      <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: '#94a3b8' }}>Staff</th>
-                      <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: '#94a3b8' }}>Role</th>
-                      <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: '#94a3b8' }}>Branch</th>
-                      <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: '#94a3b8' }}>Progress</th>
+                      {([
+                        ['name', 'Staff'],
+                        ['department', 'Role'],
+                        ['branch', 'Branch'],
+                        ['progress', 'Progress'],
+                      ] as [SortKey, string][]).map(([key, label]) => (
+                        <th key={key}
+                          onClick={() => toggleSort(key)}
+                          className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider cursor-pointer select-none hover:bg-slate-50"
+                          style={{ color: sortKey === key ? '#0f766e' : '#94a3b8' }}
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            {label}
+                            <SortIcon col={key} />
+                          </span>
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {staff.map(s => (
-                      <tr key={s.id} className="hover:bg-teal-50/50" style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td className="py-2.5 px-3 font-medium" style={{ color: '#1e293b' }}>{s.name}</td>
-                        <td className="py-2.5 px-3" style={{ color: '#64748b' }}>{s.role}</td>
-                        <td className="py-2.5 px-3" style={{ color: '#64748b' }}>{s.branch === 'east_pasig' ? 'East' : 'Greenhills'}</td>
-                        <td className="py-2.5 px-3">
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 h-1.5 rounded-full" style={{ background: '#f1f5f9' }}>
-                              <div className="h-full rounded-full" style={{
-                                width: `${Math.min(100, (s.completed / s.target_count) * 100)}%`,
-                                background: s.completed >= s.target_count ? '#10b981' : '#0f766e',
-                              }} />
-                            </div>
-                            <span className="text-xs font-semibold" style={{ color: '#64748b', minWidth: 40, textAlign: 'right' }}>
-                              {s.completed}/{s.target_count}
+                    {filteredStaff.map(s => {
+                      const pct = Math.min(100, (s.completed / (s.targetCount || 1)) * 100)
+                      return (
+                        <tr key={s.id} className="hover:bg-teal-50/50" style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td className="py-2.5 px-3 font-medium" style={{ color: '#1e293b' }}>{s.name}</td>
+                          <td className="py-2.5 px-3">
+                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: '#f0fdfa', color: '#0f766e' }}>
+                              {s.department}
                             </span>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="py-2.5 px-3" style={{ color: '#64748b' }}>
+                            {s.branch === 'SBEA' ? 'Sandbox East' : s.branch === 'SBGH' ? 'Greenhills' : s.branch}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 h-1.5 rounded-full" style={{ background: '#f1f5f9', minWidth: 80 }}>
+                                <div className="h-full rounded-full transition-all" style={{
+                                  width: `${pct}%`,
+                                  background: s.completed >= s.targetCount ? '#10b981' : '#0f766e',
+                                }} />
+                              </div>
+                              <span className="text-xs font-semibold whitespace-nowrap" style={{
+                                color: s.completed >= s.targetCount ? '#10b981' : '#64748b',
+                                minWidth: 40, textAlign: 'right',
+                              }}>
+                                {s.completed}/{s.targetCount}
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
             ) : (
-              <p className="text-sm" style={{ color: '#94a3b8' }}>Loading staff data...</p>
+              <p className="text-sm text-center py-6" style={{ color: '#94a3b8' }}>
+                {staff.length === 0 ? 'Loading staff data...' : 'No staff match the current filters.'}
+              </p>
             )}
           </div>
 
@@ -352,44 +340,36 @@ export default function SurveyClient({ role }: { role: string }) {
                 <select value={assignStaff} onChange={e => setAssignStaff(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }}>
                   <option value="">Select staff...</option>
-                  {staff.map(s => <option key={s.id} value={s.id}>{s.name} ({s.role})</option>)}
+                  {filteredStaff.map(s => <option key={s.id} value={s.id}>{s.name} ({s.department})</option>)}
                 </select>
               </div>
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: '#64748b' }}>Branch</label>
-                <select value={assignBranch} onChange={e => setAssignBranch(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }}>
-                  <option value="east_pasig">Sandbox East Pasig</option>
-                  <option value="greenhills">Sandbox Greenhills</option>
-                </select>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
               <div>
                 <label className="block text-xs font-semibold mb-1" style={{ color: '#64748b' }}>Patient Name</label>
                 <input type="text" value={assignPatient} onChange={e => setAssignPatient(e.target.value)}
                   placeholder="Enter patient name"
                   className="w-full px-3 py-2 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }} />
               </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
               <div>
                 <label className="block text-xs font-semibold mb-1" style={{ color: '#64748b' }}>Patient Age</label>
                 <input type="number" value={assignAge} onChange={e => setAssignAge(e.target.value)}
                   placeholder="Age" min="0" max="120"
                   className="w-full px-3 py-2 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }} />
               </div>
-            </div>
-            <div className="mb-4">
-              <label className="block text-xs font-semibold mb-1" style={{ color: '#64748b' }}>Session Type</label>
-              <select value={assignSession} onChange={e => setAssignSession(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }}>
-                <option value="individual">Individual Session</option>
-                <option value="group">Group Session</option>
-              </select>
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: '#64748b' }}>Session Type</label>
+                <select value={assignSession} onChange={e => setAssignSession(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }}>
+                  <option value="individual">Individual Session</option>
+                  <option value="group">Group Session</option>
+                </select>
+              </div>
             </div>
             <button
               onClick={() => {
                 if (!assignStaff || !assignPatient || !assignAge) return alert('Please fill in all fields')
-                createAssignment(assignStaff, assignPatient, assignAge, assignSession, assignBranch)
+                createAssignment(assignStaff, assignPatient, assignAge, assignSession)
               }}
               className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white transition-all hover:opacity-90"
               style={{ background: '#0f766e' }}
@@ -397,113 +377,6 @@ export default function SurveyClient({ role }: { role: string }) {
               <QrCode size={15} />
               Generate Survey QR Code
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* Responses Tab */}
-      {tab === 'responses' && (
-        <div>
-          <div className="rounded-xl p-5 mb-4" style={{ background: '#fff', border: '1px solid #e2e8f0' }}>
-            <div className="flex items-center gap-2 mb-3">
-              <Filter size={16} style={{ color: '#0f766e' }} />
-              <h3 className="font-semibold text-sm" style={{ color: '#0f766e' }}>Filter Responses</h3>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <select value={resBranch} onChange={e => setResBranch(e.target.value)}
-                className="px-3 py-2 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }}>
-                <option value="">All Branches</option>
-                <option value="east_pasig">East Pasig</option>
-                <option value="greenhills">Greenhills</option>
-              </select>
-              <select value={resType} onChange={e => setResType(e.target.value)}
-                className="px-3 py-2 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }}>
-                <option value="">All Survey Types</option>
-                <option value="HR10">HR10 — Pedia</option>
-                <option value="HR11">HR11 — Adult</option>
-                <option value="HR12">HR12 — Admin</option>
-                <option value="HR16">HR16 — Group</option>
-              </select>
-            </div>
-          </div>
-
-          {responses.length > 0 ? (
-            <div className="space-y-3">
-              {responses.map(r => (
-                <div key={r.id} className="rounded-xl p-4 transition-all hover:shadow-md" style={{ background: '#fff', border: '1px solid #e2e8f0' }}>
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-semibold text-sm" style={{ color: '#1e293b' }}>{r.staff_name}</span>
-                    <span className="text-xs" style={{ color: '#94a3b8' }}>{new Date(r.submitted_at).toLocaleDateString()}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-xs" style={{ color: '#64748b' }}>
-                    <span>{r.survey_type}</span>
-                    <span>·</span>
-                    <span>{r.patient_name}</span>
-                    <span>·</span>
-                    <span>{r.branch === 'east_pasig' ? 'East' : 'Greenhills'}</span>
-                    {r.avg_score && (
-                      <>
-                        <span>·</span>
-                        <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: '#f0fdfa', color: '#0f766e' }}>
-                          {r.avg_score.toFixed(1)}/5
-                        </span>
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-center py-8" style={{ color: '#94a3b8' }}>No responses found.</p>
-          )}
-        </div>
-      )}
-
-      {/* Auto-prompt overlay (front desk only) */}
-      {prompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(4,47,46,0.85)', backdropFilter: 'blur(8px)' }}>
-          <div className="rounded-2xl p-8 max-w-lg w-[90%] text-center" style={{ background: '#fff' }}>
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: '#f0fdfa', color: '#0f766e' }}>
-              <ClipboardCheck size={28} />
-            </div>
-            <h3 className="text-lg font-bold mb-1" style={{ color: '#1e293b' }}>Patient Satisfaction Survey</h3>
-            <p className="text-sm mb-1" style={{ color: '#64748b' }}>Time to assess: <strong>{prompt.staffName}</strong></p>
-            <p className="text-xs mb-5" style={{ color: '#94a3b8' }}>{prompt.reason}</p>
-            <div className="mb-3">
-              <label className="block text-xs font-semibold mb-1 text-left" style={{ color: '#64748b' }}>Patient Name</label>
-              <input type="text" value={promptPatient} onChange={e => setPromptPatient(e.target.value)}
-                placeholder="Enter patient name"
-                className="w-full px-3 py-2 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }} />
-            </div>
-            <div className="mb-5">
-              <label className="block text-xs font-semibold mb-1 text-left" style={{ color: '#64748b' }}>Patient Age</label>
-              <input type="number" value={promptAge} onChange={e => setPromptAge(e.target.value)}
-                placeholder="Age" min="0" max="120"
-                className="w-full px-3 py-2 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }} />
-            </div>
-            <div className="flex gap-3 justify-center">
-              <button
-                onClick={() => {
-                  if (!promptPatient || !promptAge) return
-                  createAssignment(prompt.staffId, promptPatient, promptAge, 'individual', branch)
-                  setPrompt(null)
-                  setPromptPatient('')
-                  setPromptAge('')
-                }}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white"
-                style={{ background: '#0f766e' }}
-              >
-                <QrCode size={15} />
-                Generate QR Code
-              </button>
-              <button
-                onClick={() => { setPrompt(null); setPromptPatient(''); setPromptAge('') }}
-                className="px-4 py-2.5 rounded-lg text-sm font-medium"
-                style={{ background: '#f1f5f9', color: '#64748b' }}
-              >
-                Skip This Time
-              </button>
-            </div>
           </div>
         </div>
       )}
@@ -544,7 +417,7 @@ function KpiCard({ icon: Icon, label, value }: { icon: typeof ClipboardCheck; la
   )
 }
 
-function ChartCard({ title, icon: Icon, data }: { title: string; icon: typeof TrendingUp; data?: unknown[] }) {
+function ChartCard({ title, icon: Icon, data }: { title: string; icon: typeof TrendingUp; data?: { month?: string; branch?: string; avgScore: number; count: number }[] }) {
   return (
     <div className="rounded-xl p-5" style={{ background: '#fff', border: '1px solid #e2e8f0' }}>
       <div className="flex items-center gap-2 mb-4">
@@ -554,18 +427,16 @@ function ChartCard({ title, icon: Icon, data }: { title: string; icon: typeof Tr
       {data && data.length > 0 ? (
         <div className="space-y-2">
           {data.map((item, i) => {
-            const d = item as Record<string, unknown>
-            const label = (d.month || d.branch || d.role || `Item ${i + 1}`) as string
-            const score = (d.avgScore || d.avg_score || 0) as number
-            const count = (d.count || 0) as number
+            const label = item.month || item.branch || `Item ${i + 1}`
+            const displayLabel = label === 'SBEA' ? 'Sandbox East' : label === 'SBGH' ? 'Greenhills' : label
             return (
               <div key={i} className="flex items-center gap-3">
-                <span className="text-xs w-24 truncate" style={{ color: '#64748b' }}>{label}</span>
+                <span className="text-xs w-24 truncate" style={{ color: '#64748b' }}>{displayLabel}</span>
                 <div className="flex-1 h-2 rounded-full" style={{ background: '#f1f5f9' }}>
-                  <div className="h-full rounded-full" style={{ width: `${(score / 5) * 100}%`, background: '#0f766e' }} />
+                  <div className="h-full rounded-full" style={{ width: `${(item.avgScore / 5) * 100}%`, background: '#0f766e' }} />
                 </div>
-                <span className="text-xs font-semibold" style={{ color: '#1e293b' }}>{score.toFixed(1)}</span>
-                <span className="text-xs" style={{ color: '#94a3b8' }}>({count})</span>
+                <span className="text-xs font-semibold" style={{ color: '#1e293b' }}>{item.avgScore.toFixed(1)}</span>
+                <span className="text-xs" style={{ color: '#94a3b8' }}>({item.count})</span>
               </div>
             )
           })}

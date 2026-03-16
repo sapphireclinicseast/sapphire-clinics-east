@@ -47,6 +47,16 @@ enum Branch {
   VERDANA_STORE
 }
 
+enum StaffDepartment {
+  OT
+  PT
+  SLP
+  SPED
+  MD
+  PSYCHOLOGY
+  ORTHOSIS
+}
+
 model User {
   id                String          @id @default(cuid())
   name              String
@@ -60,6 +70,7 @@ model User {
   updatedAt         DateTime        @updatedAt
   posts             ScheduledPost[]
   campaigns         EmailCampaign[]
+  staff             Staff[]
 }
 
 model SocialAccount {
@@ -120,8 +131,25 @@ model Patient {
   city        String?          // city/municipality (for map choropleth)
   diagnosis   String?
   notes       String?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  schedules           Schedule[]
+  viberSubscriptions  ViberSubscription[]
+  surveyAssignments   SurveyAssignment[]
+}
+
+// ── Viber Bot subscriptions ────────────────────────────────────────────────────
+// Populated when a patient messages the clinic Viber bot and provides their phone.
+// Used to send appointment reminders via Viber instead of SMS.
+model ViberSubscription {
+  id          String   @id @default(cuid())
+  patientId   String
+  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  viberUserId String   @unique          // Viber's internal user ID for this subscriber
+  branch      String                    // "SBEA" | "SBGH"
+  createdAt   DateTime @default(now())
+
+  @@unique([patientId, branch])
 }
 
 model EmailCampaign {
@@ -180,4 +208,121 @@ model Analytics {
   engagement  Int      @default(0)
   followers   Int      @default(0)
   createdAt   DateTime @default(now())
+}
+
+enum ScheduleStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  RESCHEDULED
+}
+
+model QueueAd {
+  id        String   @id @default(cuid())
+  fileName  String
+  filePath  String   // relative path under UPLOAD_DIR, e.g. "queue-ads/file.mp4"
+  mimeType  String   // "video/mp4", "image/jpeg", etc.
+  branch    String   @default("ALL")  // "ALL" | "SBEA" | "SBGH"
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Staff {
+  id          String          @id @default(cuid())
+  firstName   String          // stored ALL CAPS
+  lastName    String          // stored ALL CAPS
+  email       String?
+  phone       String?
+  department  StaffDepartment
+  branch      String          // "SBEA" | "SBGH"
+  createdById String
+  createdBy   User            @relation(fields: [createdById], references: [id])
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  schedules   Schedule[]
+  surveyAssignments SurveyAssignment[]
+  surveyResponses   SurveyResponse[]
+  assessmentTargets AssessmentTarget[]
+}
+
+// ── Satisfaction Survey ──────────────────────────────────────────────────────
+
+enum SurveyType {
+  HR10  // Pedia Patient Satisfaction (age ≤ 17)
+  HR11  // Adult Patient Satisfaction (age ≥ 18)
+  HR12  // Admin/Front Desk Satisfaction
+  HR16  // Group Therapy Satisfaction
+}
+
+enum SurveyStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  EXPIRED
+}
+
+model SurveyAssignment {
+  id          String       @id @default(cuid())
+  staffId     String
+  staff       Staff        @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  scheduleId  String?
+  schedule    Schedule?    @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  patientId   String?
+  patient     Patient?     @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  surveyType  SurveyType
+  patientName String?
+  patientAge  Int?
+  branch      String       // "SBEA" | "SBGH"
+  sessionType String?      // "individual" | "group"
+  status      SurveyStatus @default(PENDING)
+  assignedBy  String?
+  expiresAt   DateTime
+  completedAt DateTime?
+  createdAt   DateTime     @default(now())
+  response    SurveyResponse?
+}
+
+model SurveyResponse {
+  id              String           @id @default(cuid())
+  assignmentId    String           @unique
+  assignment      SurveyAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  staffId         String
+  staff           Staff            @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  surveyType      SurveyType
+  branch          String
+  respondentName  String?
+  respondentEmail String?
+  respondentPhone String?
+  responsesJson   Json
+  submittedAt     DateTime         @default(now())
+}
+
+model AssessmentTarget {
+  id          String @id @default(cuid())
+  staffId     String
+  staff       Staff  @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  year        Int
+  targetCount Int
+  completed   Int    @default(0)
+
+  @@unique([staffId, year])
+}
+
+model Schedule {
+  id          String         @id @default(cuid())
+  staffId     String
+  staff       Staff          @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  patientId   String?
+  patient     Patient?       @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  date        DateTime
+  startTime   String         // "08:00"
+  endTime     String         // "09:00"
+  duration    String         // "1h" | "1.5h" | "2h" | "custom"
+  sessionType String
+  status      ScheduleStatus @default(PENDING)
+  notes       String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  surveyAssignments SurveyAssignment[]
 }

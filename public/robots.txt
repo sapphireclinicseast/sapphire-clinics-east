@@ -1,0 +1,16 @@
+# This is an internal business tool — all crawling and indexing is disallowed.
+User-agent: *
+Disallow: /
+
+# Explicitly block AI training crawlers
+User-agent: GPTBot
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: anthropic-ai
+Disallow: /

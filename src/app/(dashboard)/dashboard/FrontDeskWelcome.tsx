@@ -1,0 +1,564 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import Image from 'next/image'
+
+// ── Famous inspirational quotes — one per calendar day ──────────────────────
+const QUOTES: { text: string; author: string }[] = [
+  { text: "The only way to do great work is to love what you do.", author: "Steve Jobs" },
+  { text: "In the middle of every difficulty lies opportunity.", author: "Albert Einstein" },
+  { text: "It always seems impossible until it's done.", author: "Nelson Mandela" },
+  { text: "The future belongs to those who believe in the beauty of their dreams.", author: "Eleanor Roosevelt" },
+  { text: "Act as if what you do makes a difference. It does.", author: "William James" },
+  { text: "Success is not final, failure is not fatal: it is the courage to continue that counts.", author: "Winston Churchill" },
+  { text: "Be the change you wish to see in the world.", author: "Mahatma Gandhi" },
+  { text: "The best way to find yourself is to lose yourself in the service of others.", author: "Mahatma Gandhi" },
+  { text: "With the new day comes new strength and new thoughts.", author: "Eleanor Roosevelt" },
+  { text: "Do what you can, with what you have, where you are.", author: "Theodore Roosevelt" },
+  { text: "What you do makes a difference, and you have to decide what kind of difference you want to make.", author: "Jane Goodall" },
+  { text: "The secret of getting ahead is getting started.", author: "Mark Twain" },
+  { text: "Believe you can and you're halfway there.", author: "Theodore Roosevelt" },
+  { text: "Start where you are. Use what you have. Do what you can.", author: "Arthur Ashe" },
+  { text: "No act of kindness, no matter how small, is ever wasted.", author: "Aesop" },
+  { text: "Optimism is the faith that leads to achievement.", author: "Helen Keller" },
+  { text: "The only limit to our realization of tomorrow will be our doubts of today.", author: "Franklin D. Roosevelt" },
+  { text: "Spread love everywhere you go.", author: "Mother Teresa" },
+  { text: "Don't judge each day by the harvest you reap but by the seeds that you plant.", author: "Robert Louis Stevenson" },
+  { text: "The purpose of our lives is to be happy.", author: "Dalai Lama" },
+  { text: "If you look at what you have in life, you'll always have more.", author: "Oprah Winfrey" },
+  { text: "Your time is limited, so don't waste it living someone else's life.", author: "Steve Jobs" },
+  { text: "Everything you've ever wanted is on the other side of fear.", author: "George Addair" },
+  { text: "You will face many defeats in life, but never let yourself be defeated.", author: "Maya Angelou" },
+  { text: "The greatest glory in living lies not in never falling, but in rising every time we fall.", author: "Nelson Mandela" },
+  { text: "In the end, it's not the years in your life that count. It's the life in your years.", author: "Abraham Lincoln" },
+  { text: "Life is either a daring adventure or nothing at all.", author: "Helen Keller" },
+  { text: "Every moment is a fresh beginning.", author: "T.S. Eliot" },
+  { text: "When everything seems to be going against you, remember that the airplane takes off against the wind, not with it.", author: "Henry Ford" },
+  { text: "It is never too late to be what you might have been.", author: "George Eliot" },
+  { text: "I find that the harder I work, the more luck I seem to have.", author: "Thomas Jefferson" },
+  { text: "Opportunities don't happen. You create them.", author: "Chris Grosser" },
+  { text: "Don't let yesterday take up too much of today.", author: "Will Rogers" },
+  { text: "You don't have to be great to start, but you have to start to be great.", author: "Zig Ziglar" },
+  { text: "Keep your face always toward the sunshine — and shadows will fall behind you.", author: "Walt Whitman" },
+  { text: "If your actions inspire others to dream more, learn more, do more and become more, you are a leader.", author: "John Quincy Adams" },
+  { text: "Leadership is not about being in charge. It is about taking care of those in your charge.", author: "Simon Sinek" },
+  { text: "The most common way people give up their power is by thinking they don't have any.", author: "Alice Walker" },
+  { text: "You must do the things you think you cannot do.", author: "Eleanor Roosevelt" },
+  { text: "Try to be a rainbow in someone's cloud.", author: "Maya Angelou" },
+  { text: "Success usually comes to those who are too busy to be looking for it.", author: "Henry David Thoreau" },
+  { text: "I can't change the direction of the wind, but I can adjust my sails to always reach my destination.", author: "Jimmy Dean" },
+  { text: "It does not matter how slowly you go as long as you do not stop.", author: "Confucius" },
+  { text: "Nothing is impossible. The word itself says 'I'm possible!'", author: "Audrey Hepburn" },
+  { text: "You are never too old to set another goal or to dream a new dream.", author: "C.S. Lewis" },
+  { text: "To handle yourself, use your head; to handle others, use your heart.", author: "Eleanor Roosevelt" },
+  { text: "Too many of us are not living our dreams because we are living our fears.", author: "Les Brown" },
+  { text: "I attribute my success to this: I never gave or took any excuse.", author: "Florence Nightingale" },
+  { text: "The way to get started is to quit talking and begin doing.", author: "Walt Disney" },
+  { text: "Somewhere, something incredible is waiting to be known.", author: "Marie Curie" },
+  { text: "If you want to lift yourself up, lift up someone else.", author: "Booker T. Washington" },
+  { text: "You can't use up creativity. The more you use, the more you have.", author: "Maya Angelou" },
+  { text: "Darkness cannot drive out darkness; only light can do that.", author: "Martin Luther King Jr." },
+  { text: "Not everything that is faced can be changed, but nothing can be changed until it is faced.", author: "James Baldwin" },
+  { text: "I have not failed. I've just found 10,000 ways that won't work.", author: "Thomas Edison" },
+  { text: "You have power over your mind, not outside events. Realize this, and you will find strength.", author: "Marcus Aurelius" },
+  { text: "What we think, we become.", author: "Buddha" },
+  { text: "Do not go where the path may lead; go instead where there is no path and leave a trail.", author: "Ralph Waldo Emerson" },
+  { text: "Injustice anywhere is a threat to justice everywhere.", author: "Martin Luther King Jr." },
+  { text: "The only person you are destined to become is the person you decide to be.", author: "Ralph Waldo Emerson" },
+  { text: "Life is what happens when you're busy making other plans.", author: "John Lennon" },
+  { text: "It is during our darkest moments that we must focus to see the light.", author: "Aristotle" },
+  { text: "Tell me and I forget. Teach me and I remember. Involve me and I learn.", author: "Benjamin Franklin" },
+  { text: "In every day, there are 1,440 minutes. That means we have 1,440 daily opportunities to make a positive impact.", author: "Les Brown" },
+]
+
+// Pick by day-of-year so each calendar day always shows the same quote
+function getDailyQuote() {
+  const now = new Date()
+  const dayOfYear = Math.floor(
+    (now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 86_400_000
+  )
+  return QUOTES[dayOfYear % QUOTES.length]
+}
+
+const HINTS = [
+  { icon: '📅', label: 'View Schedules',   hint: 'Clinic Schedule' },
+  { icon: '👥', label: 'Patient Records',  hint: 'Patient CRM'     },
+  { icon: '📺', label: 'TV Queue Display', hint: 'Queueing Module'  },
+]
+
+function getGreeting() {
+  const h = new Date().getHours()
+  if (h < 12) return 'morning'
+  if (h < 17) return 'afternoon'
+  return 'evening'
+}
+
+// ── All CSS keyframes & class definitions ────────────────────────────────────
+// Behavior cycle = 22s:
+//   0–12%  → walking bob
+//   14–23% → JUMP (squash → air → land) + happy face
+//   23–44% → walking bob
+//   45–71% → HIDE (sink below screen → peek face up → pop back)
+//   71–100%→ walking bob
+const ALPACA_CSS = `
+  /* ── Walking ── */
+  .aw-x {
+    animation: awX 42s linear infinite;
+  }
+  .aw-flip {
+    animation: awFlip 42s linear infinite;
+    transform-origin: center;
+    display: inline-block;
+  }
+
+  /* ── Jump / hide / bob (22s loop on behavior wrapper) ── */
+  .aw-behave {
+    animation: awBehave 22s ease-in-out infinite;
+    display: inline-block;
+  }
+
+  /* ── Blink (4s loop on each eyelid element) ── */
+  .aw-eyelid {
+    transform-box: fill-box;
+    transform-origin: 50% 0%;
+    animation: awBlink 4s ease-in-out infinite;
+  }
+
+  /* ── Ear wiggle during jump (synced to awBehave 14–22%) ── */
+  .aw-ear-l {
+    transform-box: fill-box;
+    transform-origin: 100% 85%;
+    animation: awEarL 22s ease-in-out infinite;
+  }
+  .aw-ear-r {
+    transform-box: fill-box;
+    transform-origin: 0% 85%;
+    animation: awEarR 22s ease-in-out infinite;
+  }
+
+  /* ── Happy expressions: appear during jump (14–23%) ── */
+  .aw-smile-normal { animation: awSmileNormal 22s ease-in-out infinite; }
+  .aw-smile-happy  { animation: awSmileHappy  22s ease-in-out infinite; }
+  .aw-squint       { animation: awSmileHappy  22s ease-in-out infinite; }
+
+  /* ── Speech bubble pulse ── */
+  .aw-bubble {
+    animation: awBubblePulse 3s ease-in-out infinite;
+  }
+
+  /* ─────────────── Keyframes ─────────────── */
+
+  @keyframes awX {
+    0%   { transform: translateX(calc(100vw + 250px)); }
+    46%  { transform: translateX(-250px); }
+    54%  { transform: translateX(-250px); }
+    100% { transform: translateX(calc(100vw + 250px)); }
+  }
+
+  @keyframes awFlip {
+    0%   { transform: scaleX(-1); }
+    46%  { transform: scaleX(-1); }
+    54%  { transform: scaleX(1); }
+    100% { transform: scaleX(1); }
+  }
+
+  @keyframes awBehave {
+    /* Walk bob */
+    0%   { transform: translateY(0px)   scaleX(1)    scaleY(1); }
+    3%   { transform: translateY(-11px) scaleX(1)    scaleY(1); }
+    6%   { transform: translateY(0px)   scaleX(1)    scaleY(1); }
+    9%   { transform: translateY(-11px) scaleX(1)    scaleY(1); }
+    12%  { transform: translateY(0px)   scaleX(1)    scaleY(1); }
+
+    /* JUMP — squat → launch → peak → land → settle */
+    14%  { transform: translateY(0px)   scaleX(1.1)  scaleY(0.85); }
+    17%  { transform: translateY(-62px) scaleX(0.87) scaleY(1.16); }
+    19%  { transform: translateY(-66px) scaleX(0.87) scaleY(1.16); }
+    21%  { transform: translateY(-8px)  scaleX(1.13) scaleY(0.80); }
+    23%  { transform: translateY(0px)   scaleX(1)    scaleY(1); }
+
+    /* Walk bob */
+    27%  { transform: translateY(-11px) scaleX(1)    scaleY(1); }
+    31%  { transform: translateY(0px)   scaleX(1)    scaleY(1); }
+    35%  { transform: translateY(-11px) scaleX(1)    scaleY(1); }
+    39%  { transform: translateY(0px)   scaleX(1)    scaleY(1); }
+    43%  { transform: translateY(-11px) scaleX(1)    scaleY(1); }
+
+    /* HIDE — sink below screen → peek just the face → pop back */
+    45%  { transform: translateY(0px)   scaleX(1)    scaleY(1); }
+    49%  { transform: translateY(200px) scaleX(1)    scaleY(1); }
+    58%  { transform: translateY(200px) scaleX(1)    scaleY(1); }
+    63%  { transform: translateY(122px) scaleX(1)    scaleY(1); }
+    67%  { transform: translateY(122px) scaleX(1)    scaleY(1); }
+    71%  { transform: translateY(0px)   scaleX(1)    scaleY(1); }
+
+    /* Walk bob */
+    75%  { transform: translateY(-11px) scaleX(1)    scaleY(1); }
+    79%  { transform: translateY(0px)   scaleX(1)    scaleY(1); }
+    83%  { transform: translateY(-11px) scaleX(1)    scaleY(1); }
+    87%  { transform: translateY(0px)   scaleX(1)    scaleY(1); }
+    91%  { transform: translateY(-11px) scaleX(1)    scaleY(1); }
+    95%  { transform: translateY(0px)   scaleX(1)    scaleY(1); }
+    100% { transform: translateY(0px)   scaleX(1)    scaleY(1); }
+  }
+
+  /* Eyelid slides down from top of eye → closed → opens */
+  @keyframes awBlink {
+    0%, 82%, 100% { transform: scaleY(0); }   /* open */
+    85%, 88%      { transform: scaleY(1); }   /* closed */
+  }
+
+  /* Normal smile hidden during jump, happy smile shown */
+  @keyframes awSmileNormal {
+    0%, 13%, 25%, 100% { opacity: 1; }
+    15%, 22%           { opacity: 0; }
+  }
+  @keyframes awSmileHappy {
+    0%, 13%, 25%, 100% { opacity: 0; }
+    15%, 22%           { opacity: 1; }
+  }
+
+  /* Ears wiggle up when jumping */
+  @keyframes awEarL {
+    0%, 13%, 25%, 100% { transform: rotate(0deg); }
+    15%, 20%           { transform: rotate(-24deg); }
+  }
+  @keyframes awEarR {
+    0%, 13%, 25%, 100% { transform: rotate(0deg); }
+    15%, 20%           { transform: rotate(24deg); }
+  }
+
+  @keyframes awBubblePulse {
+    0%, 100% { opacity: 0.93; transform: translateX(-50%) scale(1); }
+    50%      { opacity: 1;    transform: translateX(-50%) scale(1.02); }
+  }
+`
+
+// ── Alpaca SVG — styled after the cute CGI reference image ──────────────────
+// Key features: round fluffy body, orange (#ED6823), big round bear-like ears,
+// orange fluffy hair tuft on top, large warm dark eyes with glass shines,
+// small button nose, rosy cheeks, gentle smile → big smile + sparkles on jump
+function AlpacaSVG() {
+  return (
+    <svg
+      width="180"
+      height="230"
+      viewBox="0 0 180 230"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      {/* ── Back legs (far pair — muted, drawn first so body covers tops) ── */}
+      <rect x="64" y="174" width="20" height="44" rx="10" fill="#D5CAC0" />
+      <rect x="92" y="176" width="20" height="42" rx="10" fill="#D5CAC0" />
+      <rect x="64" y="207" width="20" height="11" rx="8"  fill="#B0A090" />
+      <rect x="92" y="207" width="20" height="11" rx="8"  fill="#B0A090" />
+
+      {/* ── Body (orange, large round) ── */}
+      <ellipse cx="90" cy="158" rx="60" ry="56" fill="#ED6823" />
+
+      {/* ── Chest patch (warm cream blending up to face) ── */}
+      <ellipse cx="90" cy="130" rx="32" ry="36" fill="#F5E8D0" />
+
+      {/* ── Tail (poof) ── */}
+      <ellipse cx="147" cy="122" rx="17" ry="20" fill="#ED6823" />
+      <ellipse cx="148" cy="121" rx="11" ry="13" fill="#F5A030" />
+
+      {/* ── Front legs (near pair — cream) ── */}
+      <rect x="50" y="172" width="23" height="48" rx="11.5" fill="#F5E8D0" />
+      <rect x="78" y="174" width="23" height="46" rx="11.5" fill="#F5E8D0" />
+      <rect x="50" y="209" width="23" height="11"  rx="9"   fill="#C5B4A4" />
+      <rect x="78" y="209" width="23" height="11"  rx="9"   fill="#C5B4A4" />
+
+      {/* ── Ears — round & big like the reference image ── */}
+      {/* Left ear (drawn before head → head naturally overlaps the base) */}
+      <circle cx="44" cy="48" r="26" fill="#ED6823" className="aw-ear-l" />
+      <circle cx="44" cy="48" r="17" fill="#F5A030" className="aw-ear-l" />
+      <circle cx="44" cy="48" r="9"  fill="#FBD080" className="aw-ear-l" />
+      {/* Right ear */}
+      <circle cx="136" cy="48" r="26" fill="#ED6823" className="aw-ear-r" />
+      <circle cx="136" cy="48" r="17" fill="#F5A030" className="aw-ear-r" />
+      <circle cx="136" cy="48" r="9"  fill="#FBD080" className="aw-ear-r" />
+
+      {/* ── Head (large round, orange — covers ear bases naturally) ── */}
+      <circle cx="90" cy="78" r="54" fill="#ED6823" />
+
+      {/* ── Orange fluffy hair tuft on top (drawn after head = sits on top) ── */}
+      <circle cx="70"  cy="28" r="20" fill="#ED6823" />
+      <circle cx="90"  cy="20" r="23" fill="#F07020" />
+      <circle cx="110" cy="28" r="20" fill="#ED6823" />
+      <circle cx="79"  cy="13" r="16" fill="#F5A030" />
+      <circle cx="101" cy="13" r="16" fill="#F5A030" />
+      <circle cx="90"  cy="7"  r="13" fill="#FBD080" />
+      {/* Fluffy texture bumps */}
+      <circle cx="82"  cy="18" r="9"  fill="#F5A030" opacity="0.7" />
+      <circle cx="98"  cy="18" r="9"  fill="#F5A030" opacity="0.7" />
+
+      {/* ── Face patch (warm cream oval for feature contrast) ── */}
+      <ellipse cx="90" cy="90" rx="40" ry="36" fill="#F5E8D0" />
+
+      {/* ── Eyes ── (big, round, dark brown — key cuteness feature) */}
+      {/* Left eye */}
+      <circle cx="72"  cy="78" r="16"  fill="#1C0D04" />
+      <circle cx="72"  cy="78" r="11.5" fill="#3D1A08" />
+      <circle cx="78"  cy="71" r="6"   fill="#FFFFFF" />          {/* main shine */}
+      <circle cx="68"  cy="81" r="2.8" fill="#FFFFFF" opacity="0.5" /> {/* soft glow */}
+      {/* Right eye */}
+      <circle cx="108" cy="78" r="16"   fill="#1C0D04" />
+      <circle cx="108" cy="78" r="11.5" fill="#3D1A08" />
+      <circle cx="114" cy="71" r="6"    fill="#FFFFFF" />
+      <circle cx="104" cy="81" r="2.8"  fill="#FFFFFF" opacity="0.5" />
+
+      {/* ── Happy eye squints (cover bottom of eyes during jump → squinting smile) ── */}
+      <ellipse cx="72"  cy="89" rx="16" ry="11" fill="#F5E8D0" className="aw-squint" />
+      <ellipse cx="108" cy="89" rx="16" ry="11" fill="#F5E8D0" className="aw-squint" />
+
+      {/* ── Eyelids (same color as face patch, animate scaleY 0→1 from top for blink) ── */}
+      <ellipse cx="72"  cy="78" rx="16" ry="16" fill="#F5E8D0" className="aw-eyelid" />
+      <ellipse cx="108" cy="78" rx="16" ry="16" fill="#F5E8D0" className="aw-eyelid" />
+
+      {/* ── Snout / nose area ── */}
+      <ellipse cx="90" cy="100" rx="16" ry="12" fill="#CCAA80" />
+      <ellipse cx="90" cy="97"  rx="9.5" ry="6.5" fill="#7A3020" />
+      <ellipse cx="85.5" cy="98.5" rx="2.8" ry="2.2" fill="#3D1010" />
+      <ellipse cx="94.5" cy="98.5" rx="2.8" ry="2.2" fill="#3D1010" />
+
+      {/* ── Normal smile ── */}
+      <path
+        d="M78 112 Q90 125 102 112"
+        stroke="#7A3020" strokeWidth="2.5" fill="none" strokeLinecap="round"
+        className="aw-smile-normal"
+      />
+
+      {/* ── Happy wide smile (visible during jump) ── */}
+      {/* Teeth fill behind the smile curve */}
+      <path
+        d="M73 110 Q90 130 107 110 Q107 118 90 118 Q73 118 73 110 Z"
+        fill="#FFFFFF"
+        className="aw-smile-happy"
+      />
+      {/* Smile outline */}
+      <path
+        d="M73 110 Q90 130 107 110"
+        stroke="#7A3020" strokeWidth="3" fill="none" strokeLinecap="round"
+        className="aw-smile-happy"
+      />
+
+      {/* ── Happiness sparkles (appear during jump) ── */}
+      <g className="aw-smile-happy">
+        <line x1="42" y1="65" x2="33" y2="56" stroke="#FFD060" strokeWidth="2.5" strokeLinecap="round" />
+        <line x1="40" y1="74" x2="30" y2="72" stroke="#FFD060" strokeWidth="2.5" strokeLinecap="round" />
+        <line x1="42" y1="57" x2="40" y2="48" stroke="#FFD060" strokeWidth="2.5" strokeLinecap="round" />
+        <line x1="138" y1="65" x2="147" y2="56" stroke="#FFD060" strokeWidth="2.5" strokeLinecap="round" />
+        <line x1="140" y1="74" x2="150" y2="72" stroke="#FFD060" strokeWidth="2.5" strokeLinecap="round" />
+        <line x1="138" y1="57" x2="140" y2="48" stroke="#FFD060" strokeWidth="2.5" strokeLinecap="round" />
+      </g>
+
+      {/* ── Rosy cheeks (subtle warmth) ── */}
+      <ellipse cx="56"  cy="93" rx="13" ry="9" fill="#FF8888" opacity="0.22" />
+      <ellipse cx="124" cy="93" rx="13" ry="9" fill="#FF8888" opacity="0.22" />
+    </svg>
+  )
+}
+
+// ── Main component ───────────────────────────────────────────────────────────
+export default function FrontDeskWelcome({
+  name,
+  branch,
+}: {
+  name?: string
+  branch?: string
+}) {
+  const [quote, setQuote] = useState<{ text: string; author: string } | null>(null)
+
+  useEffect(() => {
+    setQuote(getDailyQuote())
+  }, [])
+
+  const branchLabel =
+    branch === 'SBEA' ? 'Sandbox Clinic East'
+    : branch === 'SBGH' ? 'Sandbox Clinic Greenhills'
+    : undefined
+
+  return (
+    <div
+      style={{
+        position: 'relative',
+        width: '100%',
+        minHeight: 'calc(100vh - 60px)',
+        overflowX: 'hidden',
+        background: 'linear-gradient(155deg, #FFFAF4 0%, #FFF5E8 55%, #FFFCF6 100%)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        paddingTop: '3rem',
+        gap: '1.5rem',
+      }}
+    >
+      <style>{ALPACA_CSS}</style>
+
+      {/* ── Logo ── */}
+      <Image
+        src="/sandbox-clinic-logo.png"
+        alt="Sandbox Clinic"
+        width={72}
+        height={72}
+        style={{ objectFit: 'contain' }}
+      />
+
+      {/* ── Greeting ── */}
+      <div style={{ textAlign: 'center', maxWidth: '560px', padding: '0 2rem' }}>
+        <p style={{
+          fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.18em',
+          textTransform: 'uppercase', color: '#ED6823', marginBottom: '0.4rem',
+        }}>
+          Welcome back
+        </p>
+        <h1 style={{
+          fontSize: '2.2rem', fontWeight: 800, lineHeight: 1.2,
+          color: '#1A1A1A', marginBottom: '1.25rem',
+          fontFamily: 'var(--font-display, system-ui)',
+        }}>
+          Good {getGreeting()},{' '}
+          <span style={{ color: '#ED6823' }}>{name ?? 'there'}</span>! 👋
+        </h1>
+
+        {/* Daily quote — renders only after JS sets day-of-year */}
+        {quote && (
+          <div style={{
+            background: 'rgba(237,104,35,0.07)',
+            border: '1px solid rgba(237,104,35,0.18)',
+            borderRadius: '0.875rem',
+            padding: '1rem 1.4rem',
+          }}>
+            <p style={{
+              fontSize: '1rem', fontWeight: 500, lineHeight: 1.7,
+              color: '#4A3018', fontStyle: 'italic', margin: 0,
+            }}>
+              &ldquo;{quote.text}&rdquo;
+            </p>
+            <p style={{
+              fontSize: '0.78rem', fontWeight: 600, color: '#ED6823',
+              marginTop: '0.5rem', marginBottom: 0,
+            }}>
+              — {quote.author}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* ── Branch badge ── */}
+      {branchLabel && (
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: '0.45rem',
+          background: '#ED6823', color: '#fff',
+          fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.07em',
+          padding: '0.3rem 1rem', borderRadius: '99px',
+        }}>
+          <span style={{
+            width: 6, height: 6, borderRadius: '50%',
+            background: '#FFDE59', display: 'inline-block', flexShrink: 0,
+          }} />
+          {branchLabel}
+        </div>
+      )}
+
+      {/* ── Quick-access hint cards ── */}
+      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'center', padding: '0 1.5rem' }}>
+        {HINTS.map(c => (
+          <div key={c.label} style={{
+            background: '#fff', border: '1px solid #EDE5D8',
+            borderRadius: '0.875rem', padding: '0.9rem 1.25rem',
+            textAlign: 'center', minWidth: '130px',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+          }}>
+            <div style={{ fontSize: '1.5rem', marginBottom: '0.35rem' }}>{c.icon}</div>
+            <p style={{ fontSize: '0.72rem', fontWeight: 700, color: '#333' }}>{c.label}</p>
+            <p style={{ fontSize: '0.64rem', color: '#999', marginTop: '0.15rem' }}>{c.hint}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Spacer — ensures content sits above the alpaca row */}
+      <div style={{ height: '330px', flexShrink: 0 }} />
+
+      {/* ── Speech bubble — floats above the alpaca strip ── */}
+      <div
+        className="aw-bubble"
+        style={{
+          position: 'absolute',
+          bottom: '268px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: '#fff',
+          border: '2px solid #ED6823',
+          borderRadius: '0.875rem',
+          padding: '0.55rem 1.1rem',
+          fontSize: '0.72rem',
+          fontWeight: 600,
+          color: '#333',
+          textAlign: 'center',
+          whiteSpace: 'nowrap',
+          boxShadow: '0 3px 14px rgba(0,0,0,0.1)',
+          zIndex: 5,
+          pointerEvents: 'none',
+        }}
+      >
+        Welcome to your workstation!{' '}
+        <span style={{ fontWeight: 400, color: '#666' }}>
+          Choose options on the left panel to start!
+        </span>
+        {/* bubble tail outer */}
+        <span style={{
+          position: 'absolute', bottom: '-14px', left: '50%',
+          transform: 'translateX(-50%)',
+          width: 0, height: 0,
+          borderLeft: '10px solid transparent',
+          borderRight: '10px solid transparent',
+          borderTop: '14px solid #ED6823',
+        }} />
+        {/* bubble tail inner */}
+        <span style={{
+          position: 'absolute', bottom: '-10px', left: '50%',
+          transform: 'translateX(-50%)',
+          width: 0, height: 0,
+          borderLeft: '7px solid transparent',
+          borderRight: '7px solid transparent',
+          borderTop: '10px solid #fff',
+        }} />
+      </div>
+
+      {/* ── Walking alpaca strip ─────────────────────────────────────────────
+           Height = 305px so the jump (-66px) stays within bounds:
+           Alpaca top at normal = 305 - 8 - 230 = 67px from strip top
+           Jump top             = 67 - 66 = 1px from strip top  ✓
+           Hide translateY 200  = 67 + 200 = 267px  (38px visible = hair tips) ✓
+           Peek translateY 122  = 67 + 122 = 189px  (116px visible = face) ✓
+      ── */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 0, left: 0,
+          width: '100%',
+          height: '305px',
+          overflow: 'hidden',
+          pointerEvents: 'none',
+        }}
+      >
+        {/* Ground line */}
+        <div style={{
+          position: 'absolute', bottom: '6px', left: 0, right: 0, height: '2px',
+          background: 'linear-gradient(90deg, transparent, rgba(237,104,35,0.15) 20%, rgba(237,104,35,0.15) 80%, transparent)',
+        }} />
+
+        {/* X movement → flip direction → behavior (bob / jump / hide) */}
+        <div className="aw-x" style={{ position: 'absolute', bottom: '8px' }}>
+          <div className="aw-flip">
+            <div className="aw-behave">
+              <AlpacaSVG />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

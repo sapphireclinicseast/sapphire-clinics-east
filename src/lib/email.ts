@@ -1,0 +1,127 @@
+import { google } from 'googleapis'
+import { prisma } from './prisma'
+import fs from 'fs'
+import path from 'path'
+
+const TOKEN_FILE = path.join(process.cwd(), 'uploads', 'google-oauth.json')
+
+export function getLegacyRefreshToken(): string | null {
+  if (process.env.GOOGLE_REFRESH_TOKEN) return process.env.GOOGLE_REFRESH_TOKEN
+  try {
+    if (fs.existsSync(TOKEN_FILE)) {
+      const data = JSON.parse(fs.readFileSync(TOKEN_FILE, 'utf-8'))
+      if (data.refresh_token) return data.refresh_token
+    }
+  } catch {
+    // ignore
+  }
+  return null
+}
+
+export async function getGmailClient(refreshToken: string) {
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.GOOGLE_REDIRECT_URI
+  )
+  oauth2Client.setCredentials({ refresh_token: refreshToken })
+  return google.gmail({ version: 'v1', auth: oauth2Client })
+}
+
+export function makeEmailBody(to: string, subject: string, body: string, from: string): string {
+  const message = [
+    `From: Sapphire Clinics East <${from}>`,
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    'Content-Type: text/plain; charset=utf-8',
+    '',
+    body,
+  ].join('\n')
+  return Buffer.from(message).toString('base64url')
+}
+
+/**
+ * Actually sends the emails for a campaign. Called by both the route (send-now)
+ * and the BullMQ worker (scheduled delivery).
+ */
+export async function executeSendCampaign(campaignId: string): Promise<void> {
+  const campaign = await prisma.emailCampaign.findUnique({ where: { id: campaignId } })
+  if (!campaign) throw new Error(`Campaign ${campaignId} not found`)
+  if (campaign.status === 'sent') return // already sent
+
+  // Resolve Gmail credentials
+  let refreshToken: string | null = null
+  let senderEmail = 'noreply@sapphireclinicseast.org'
+
+  if (campaign.gmailAccountId) {
+    const gmailAcct = await prisma.gmailAccount.findUnique({ where: { id: campaign.gmailAccountId } })
+    if (gmailAcct) {
+      refreshToken = gmailAcct.refreshToken
+      senderEmail = gmailAcct.email
+    }
+  }
+  if (!refreshToken) refreshToken = getLegacyRefreshToken()
+  if (!refreshToken) {
+    await prisma.emailCampaign.update({ where: { id: campaignId }, data: { status: 'failed' } })
+    throw new Error('No Gmail account connected')
+  }
+
+  // Parse recipientGroup — may include branch filter encoded as "group|BRANCH1,BRANCH2"
+  const [group, branchPart] = campaign.recipientGroup.split('|')
+  const branches = branchPart ? branchPart.split(',').filter(Boolean) : []
+
+  // Build branch where clause
+  const branchWhere = branches.length > 0
+    ? {
+        OR: [
+          { branch: { in: branches } },
+          { branches: { hasSome: branches } },
+        ],
+      }
+    : {}
+
+  // Fetch recipients (with optional branch filter)
+  let patients = await prisma.patient.findMany({
+    where: branchWhere as any,
+    select: { email: true, firstName: true, lastName: true, dob: true, patientType: true },
+  })
+
+  if (group === 'pediatric') {
+    patients = patients.filter((p) => p.patientType === 'PEDIATRIC')
+  } else if (group === 'adult') {
+    patients = patients.filter((p) => p.patientType === 'ADULT')
+  } else if (group === 'birthday-month') {
+    const currentMonth = new Date().getMonth()
+    patients = patients.filter((p) => p.dob && new Date(p.dob).getMonth() === currentMonth)
+  }
+
+  const recipients = patients.filter((p) => p.email)
+  if (recipients.length === 0) {
+    await prisma.emailCampaign.update({
+      where: { id: campaignId },
+      data: { status: 'failed' },
+    })
+    throw new Error('No patients with email addresses in this group')
+  }
+
+  await prisma.emailCampaign.update({
+    where: { id: campaignId },
+    data: { status: 'sending', recipientCount: recipients.length },
+  })
+
+  try {
+    const gmail = await getGmailClient(refreshToken)
+    for (const patient of recipients) {
+      if (!patient.email) continue
+      const raw = makeEmailBody(patient.email, campaign.subject, campaign.body, senderEmail)
+      await gmail.users.messages.send({ userId: 'me', requestBody: { raw } })
+    }
+    await prisma.emailCampaign.update({
+      where: { id: campaignId },
+      data: { status: 'sent', sentAt: new Date() },
+    })
+  } catch (err) {
+    await prisma.emailCampaign.update({ where: { id: campaignId }, data: { status: 'failed' } })
+    throw err
+  }
+}

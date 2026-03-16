@@ -48,11 +48,19 @@ function toE164(phone: string): string {
   return '+' + digits
 }
 
-// Short clinic labels keep the SMS under 160 chars even in worst case.
-// Worst-case measured: 122 chars (38-char buffer to spare).
-const CLINIC_SHORT: Record<string, string> = {
-  SBEA: 'Sandbox East',
-  SBGH: 'Sandbox GH',
+const BRANCH_SHORT: Record<string, string> = {
+  SBEA: 'East',
+  SBGH: 'GH',
+}
+
+const DEPT_DISPLAY: Record<string, string> = {
+  OT:         'OT',
+  PT:         'PT',
+  SLP:        'SLP',
+  MD:         'MD',
+  SPED:       'SPED',
+  PSYCHOLOGY: 'Psych',
+  ORTHOSIS:   'Orthosis',
 }
 
 function buildMessage(opts: {
@@ -62,17 +70,18 @@ function buildMessage(opts: {
   endTime:          string
   sessionType:      string
   branch:           string
+  department:       string
 }): string {
-  const cfg       = BRANCH_CONFIG[opts.branch] ?? BRANCH_CONFIG['SBEA']
-  const clinic    = CLINIC_SHORT[opts.branch]  ?? cfg.clinicName
+  const branch    = BRANCH_SHORT[opts.branch]     ?? opts.branch
+  const dept      = DEPT_DISPLAY[opts.department] ?? opts.department
   // "Sun, Mar 15" — no year to save chars
   const shortDate = new Date(opts.date + 'T12:00:00').toLocaleDateString('en-PH', {
     weekday: 'short', month: 'short', day: 'numeric',
   })
   return (
-    `Hi ${opts.patientFirstName}! ${opts.sessionType} at ${clinic} ` +
-    `on ${shortDate}. ${formatTime(opts.startTime)}-${formatTime(opts.endTime)}. ` +
-    `Call/Viber ${cfg.phoneDisplay}.`
+    `Hi ${opts.patientFirstName}! ${dept} ${opts.sessionType} at Sandbox ${branch} ` +
+    `on ${shortDate}, ${formatTime(opts.startTime)}-${formatTime(opts.endTime)}. ` +
+    `Please reply to confirm, thank you.`
   )
 }
 
@@ -180,6 +189,7 @@ export async function POST(req: NextRequest) {
       endTime:          schedule.endTime,
       sessionType:      schedule.sessionType,
       branch,
+      department:       schedule.staff.department,
     })
 
     let channel: 'viber' | 'sms'
@@ -238,6 +248,7 @@ export async function POST(req: NextRequest) {
           endTime:          s.endTime,
           sessionType:      s.sessionType,
           branch,
+          department:       s.staff.department,
         })
         const channel = await dispatchReminder({
           patientId: s.patient.id,
