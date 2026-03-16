@@ -55,6 +55,7 @@ enum StaffDepartment {
   MD
   PSYCHOLOGY
   ORTHOSIS
+  FRONT_DESK
 }
 
 model User {
@@ -229,18 +230,21 @@ model QueueAd {
 }
 
 model Staff {
-  id          String          @id @default(cuid())
-  firstName   String          // stored ALL CAPS
-  lastName    String          // stored ALL CAPS
-  email       String?
-  phone       String?
-  department  StaffDepartment
-  branch      String          // "SBEA" | "SBGH"
-  createdById String
-  createdBy   User            @relation(fields: [createdById], references: [id])
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-  schedules   Schedule[]
+  id              String          @id @default(cuid())
+  firstName       String          // stored ALL CAPS
+  lastName        String          // stored ALL CAPS
+  email           String?
+  phone           String?
+  department      StaffDepartment
+  branch          String          // "SBEA" | "SBGH"
+  jobTitle        String?         // HR Platform job title slug (e.g. "front-desk-officer")
+  employmentType  String?         // "employee" | "consultant"
+  hrPlatformId    String?         // ID from HR Platform for sync matching
+  createdById     String?
+  createdBy       User?           @relation(fields: [createdById], references: [id])
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  schedules       Schedule[]
   surveyAssignments SurveyAssignment[]
   surveyResponses   SurveyResponse[]
   assessmentTargets AssessmentTarget[]
@@ -325,4 +329,14 @@ model Schedule {
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   surveyAssignments SurveyAssignment[]
+}
+
+// ── Survey Settings (leaderboard metric weights) ─────────────────────────────
+model SurveySettings {
+  id                    String   @id @default("default")
+  weightConfirmed       Int      @default(50)  // % weight for confirmed sessions
+  weightRescheduled     Int      @default(0)   // % weight for rescheduled sessions
+  weightCancelled       Int      @default(0)   // % weight for cancelled sessions (negative impact)
+  weightSatisfaction    Int      @default(50)  // % weight for avg satisfaction score
+  updatedAt             DateTime @updatedAt
 }

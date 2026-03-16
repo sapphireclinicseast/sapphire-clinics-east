@@ -13,7 +13,7 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const role   = (session.user as { role?: string }).role ?? ''
-  const branch = branchFromRole(role) // non-null for SBEA_* / SBGH_* roles; null for ADMIN / MARKETING_ADMIN
+  const branch = branchFromRole(role)
 
   const staff = await prisma.staff.findMany({
     where:   branch ? { branch } : {},
@@ -22,65 +22,24 @@ export async function GET() {
   return NextResponse.json(staff)
 }
 
-export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { firstName, lastName, email, phone, department, branch: bodyBranch } = await req.json()
-
-  if (!firstName || !lastName || !department) {
-    return NextResponse.json({ error: 'First name, last name, and department are required' }, { status: 400 })
-  }
-
-  const role = (session.user as { role?: string }).role ?? ''
-  const branch = branchFromRole(role) ?? bodyBranch
-
-  if (!branch) {
-    return NextResponse.json({ error: 'Branch is required' }, { status: 400 })
-  }
-
-  const staff = await prisma.staff.create({
-    data: {
-      firstName: firstName.trim().toUpperCase(),
-      lastName: lastName.trim().toUpperCase(),
-      email: email?.trim() || null,
-      phone: phone?.trim() || null,
-      department,
-      branch,
-      createdById: (session.user as { id: string }).id,
-    },
-  })
-
-  return NextResponse.json(staff, { status: 201 })
+// Staff creation is disabled — staff data is synced from the HR Platform
+export async function POST() {
+  return NextResponse.json(
+    { error: 'Staff creation is disabled. Staff data is synced from the HR Platform.' },
+    { status: 403 }
+  )
 }
 
-export async function PUT(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { id, firstName, lastName, email, phone, department, branch } = await req.json()
-
-  if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 })
-
-  const data: Record<string, unknown> = {}
-  if (firstName !== undefined) data.firstName = firstName.trim().toUpperCase()
-  if (lastName !== undefined) data.lastName = lastName.trim().toUpperCase()
-  if (email !== undefined) data.email = email?.trim() || null
-  if (phone !== undefined) data.phone = phone?.trim() || null
-  if (department !== undefined) data.department = department
-  if (branch !== undefined) data.branch = branch
-
-  const staff = await prisma.staff.update({ where: { id }, data })
-  return NextResponse.json(staff)
+export async function PUT() {
+  return NextResponse.json(
+    { error: 'Staff editing is disabled. Update staff profiles in the HR Platform.' },
+    { status: 403 }
+  )
 }
 
-export async function DELETE(req: NextRequest) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { id } = await req.json()
-  if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 })
-
-  await prisma.staff.delete({ where: { id } })
-  return NextResponse.json({ ok: true })
+export async function DELETE() {
+  return NextResponse.json(
+    { error: 'Staff deletion is disabled. Manage staff profiles in the HR Platform.' },
+    { status: 403 }
+  )
 }
