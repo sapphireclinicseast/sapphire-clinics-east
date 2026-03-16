@@ -35,6 +35,15 @@ export async function GET() {
   const currentMM = String(phNow.getMinutes()).padStart(2, '0')
   const currentTime = `${currentHH}:${currentMM}`
 
+  // Auto-expire stale PENDING assignments (older than 30 minutes)
+  await prisma.surveyAssignment.updateMany({
+    where: {
+      status: 'PENDING',
+      expiresAt: { lt: now },
+    },
+    data: { status: 'EXPIRED' },
+  })
+
   // Get today's confirmed schedules at this branch with patients
   const schedules = await prisma.schedule.findMany({
     where: {
@@ -77,11 +86,15 @@ export async function GET() {
 
   for (const sched of schedules) {
     if (!sched.patient) continue
-    // Skip if already has a survey assignment for today
-    if (sched.surveyAssignments.length > 0) continue
+    // Skip if this schedule already has a COMPLETED or active (non-expired) assignment
+    const hasActiveOrCompleted = sched.surveyAssignments.some(
+      (a: { status: string; expiresAt: Date }) =>
+        a.status === 'COMPLETED' || (a.status !== 'EXPIRED' && a.expiresAt > now)
+    )
+    if (hasActiveOrCompleted) continue
 
     const target = targetMap.get(sched.staffId)
-    const targetCount = target?.targetCount ?? 4
+    const targetCount = target?.targetCount ?? 10
     const completed = target?.completed ?? 0
 
     // Only prompt if therapist still needs assessments
