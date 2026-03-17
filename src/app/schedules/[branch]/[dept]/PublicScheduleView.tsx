@@ -29,6 +29,8 @@ interface PublicSchedule {
   id: string; date: string; startTime: string; endTime: string; sessionType: string; status: string
   staff: StaffInfo; patient: PatientInfo | null
 }
+interface LeaderboardEntry { id: string; name: string; dept: string; avgRating: number; surveyCount: number; score: number }
+interface LeaderboardData  { year: number; branchTop5: LeaderboardEntry[]; deptTop5: LeaderboardEntry[] }
 
 type SortCol = 'staff' | 'patient' | 'time' | 'sessionType' | 'status'
 type SortDir = 'asc' | 'desc'
@@ -44,7 +46,7 @@ const COLUMNS: { key: SortCol; label: string }[] = [
 function getSortVal(s: PublicSchedule, col: SortCol): string {
   switch (col) {
     case 'staff':       return `${s.staff.lastName} ${s.staff.firstName}`
-    case 'patient':     return s.patient ? `${s.patient.lastName} ${s.patient.firstName}` : ''
+    case 'patient':     return s.patient ? `${s.patient.firstName?.charAt(0)}${s.patient.lastName?.charAt(0)}` : ''
     case 'time':        return s.startTime
     case 'sessionType': return s.sessionType
     case 'status':      return s.status
@@ -166,6 +168,7 @@ export default function PublicScheduleView({
   }, [])
 
   const [view,         setView]         = useState<'daily' | 'calendar'>('daily')
+  const [showLb,       setShowLb]       = useState(false)
   const [selectedDate, setSelectedDate] = useState(todayStr)
   const [staffFilter,  setStaffFilter]  = useState('All')
 
@@ -176,13 +179,26 @@ export default function PublicScheduleView({
   const [selDay,   setSelDay]   = useState<number | null>(null)
 
   // data
-  const [schedules, setSchedules] = useState<PublicSchedule[]>([])
-  const [loading,   setLoading]   = useState(false)
+  const [schedules,    setSchedules]    = useState<PublicSchedule[]>([])
+  const [loading,      setLoading]      = useState(false)
+  const [leaderboard,  setLeaderboard]  = useState<LeaderboardData | null>(null)
+  const [lbLoading,    setLbLoading]    = useState(false)
 
   // sort + filter state (daily)
   const [sortCol,  setSortCol]  = useState<SortCol | null>(null)
   const [sortDir,  setSortDir]  = useState<SortDir>('asc')
   const [colFilters, setColFilters] = useState({ staff: '', patient: '', time: '', sessionType: '', status: '' })
+
+  // ── Fetch leaderboard (once, on verify) ──
+  useEffect(() => {
+    if (!verified) return
+    setLbLoading(true)
+    fetch(`/api/public-schedules/leaderboard?branch=${branchCode}&department=${deptCode}`)
+      .then(r => r.json())
+      .then(d => setLeaderboard(d.branchTop5 ? d : null))
+      .catch(() => setLeaderboard(null))
+      .finally(() => setLbLoading(false))
+  }, [verified, branchCode, deptCode])
 
   // ── Fetch daily ──
   useEffect(() => {
@@ -222,7 +238,7 @@ export default function PublicScheduleView({
       if (!n.includes(colFilters.staff.toLowerCase())) return false
     }
     if (colFilters.patient) {
-      const p = s.patient ? `${s.patient.lastName} ${s.patient.firstName}`.toLowerCase() : ''
+      const p = s.patient ? `${s.patient.firstName?.charAt(0)}.${s.patient.lastName?.charAt(0)}.`.toLowerCase() : ''
       if (!p.includes(colFilters.patient.toLowerCase())) return false
     }
     if (colFilters.time) {
@@ -316,12 +332,13 @@ export default function PublicScheduleView({
 
       {/* View toggle */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
-        <button style={pillBtn(view === 'daily')}    onClick={() => setView('daily')}>   Daily View   </button>
-        <button style={pillBtn(view === 'calendar')} onClick={() => setView('calendar')}>Calendar View</button>
+        <button style={pillBtn(!showLb && view === 'daily')}    onClick={() => { setView('daily');    setShowLb(false) }}>Daily View</button>
+        <button style={pillBtn(!showLb && view === 'calendar')} onClick={() => { setView('calendar'); setShowLb(false) }}>Calendar View</button>
+        <button style={pillBtn(showLb)} onClick={() => setShowLb(s => !s)}>🏆 Leaderboard</button>
       </div>
 
       {/* ── DAILY VIEW ── */}
-      {view === 'daily' && (
+      {!showLb && view === 'daily' && (
         <>
           {/* Controls */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center',
@@ -433,7 +450,7 @@ export default function PublicScheduleView({
                         </td>
                         <td style={{ padding: '10px 14px', color: '#333', whiteSpace: 'nowrap' }}>
                           {s.patient
-                            ? <span style={{ fontWeight: 500 }}>{s.patient.lastName}, {s.patient.firstName}</span>
+                            ? <span style={{ fontWeight: 500 }}>{s.patient.firstName?.charAt(0)}.{s.patient.lastName?.charAt(0)}.</span>
                             : <span style={{ color: '#ccc' }}>—</span>}
                         </td>
                         <td style={{ padding: '10px 14px', color: '#444', whiteSpace: 'nowrap' }}>
@@ -463,7 +480,7 @@ export default function PublicScheduleView({
       )}
 
       {/* ── CALENDAR VIEW ── */}
-      {view === 'calendar' && (
+      {!showLb && view === 'calendar' && (
         <>
           {/* Month nav */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
@@ -596,7 +613,7 @@ export default function PublicScheduleView({
                             </td>
                             <td style={{ padding: '9px 14px', color: '#333', whiteSpace: 'nowrap' }}>
                               {s.patient
-                                ? <span style={{ fontWeight: 500 }}>{s.patient.lastName}, {s.patient.firstName}</span>
+                                ? <span style={{ fontWeight: 500 }}>{s.patient.firstName?.charAt(0)}.{s.patient.lastName?.charAt(0)}.</span>
                                 : <span style={{ color: '#ccc' }}>—</span>}
                             </td>
                             <td style={{ padding: '9px 14px', color: '#444', whiteSpace: 'nowrap' }}>
@@ -622,6 +639,142 @@ export default function PublicScheduleView({
             </div>
           )}
         </>
+      )}
+
+      {/* ── LEADERBOARD ── */}
+      {showLb && <div style={{ marginTop: '40px', paddingTop: '32px', borderTop: '2px solid #F5E8D8' }}>
+        {/* Section header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: O, margin: '0 0 2px' }}>
+              Customer Satisfaction
+            </p>
+            <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#111', margin: 0 }}>
+              Satisfaction Leaderboard
+            </h2>
+          </div>
+          {leaderboard && (
+            <span style={{ fontSize: '11px', color: '#aaa', fontStyle: 'italic', flexShrink: 0 }}>
+              {leaderboard.year} · Top 5
+            </span>
+          )}
+        </div>
+
+        {lbLoading ? (
+          <p style={{ textAlign: 'center', padding: '32px 0', color: '#aaa', fontSize: '14px' }}>
+            Loading leaderboard…
+          </p>
+        ) : !leaderboard ? (
+          <div style={{ textAlign: 'center', padding: '32px', background: '#fff',
+            border: '1px solid #f0f0f0', borderRadius: '12px', color: '#aaa', fontSize: '13px' }}>
+            No leaderboard data available yet.
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+            <LeaderboardCard
+              title="Overall for Branch"
+              subtitle={branchLabel}
+              entries={leaderboard.branchTop5}
+              highlightDept={deptCode}
+            />
+            <LeaderboardCard
+              title="Overall for Department"
+              subtitle={deptLabel}
+              entries={leaderboard.deptTop5}
+            />
+          </div>
+        )}
+
+        {/* Disclaimer */}
+        <div style={{
+          marginTop: '14px', padding: '12px 16px',
+          background: '#FFFBF5', border: '1px solid #F5E8D8',
+          borderRadius: '10px', fontSize: '11px', color: '#888', lineHeight: 1.6,
+        }}>
+          <strong style={{ color: '#666' }}>Note:</strong> Rankings are based on Customer Satisfaction Survey results
+          chosen randomly by the system. If a therapist&apos;s name does not appear, it may also be possible that their
+          patients/clients have not yet been asked to assess them. Rankings become more representative after at least 3 months of data collection.
+        </div>
+      </div>}
+    </div>
+  )
+}
+
+// ── Leaderboard Card sub-component ───────────────────────────────────────────
+const RANK_COLORS = ['#ED6823', '#FFA235', '#FFDE59', '#aaa', '#aaa']
+const RANK_LABELS = ['1st', '2nd', '3rd', '4th', '5th']
+
+function LeaderboardCard({
+  title, subtitle, entries, highlightDept,
+}: {
+  title: string
+  subtitle: string
+  entries: LeaderboardEntry[]
+  highlightDept?: string
+}) {
+  return (
+    <div style={{
+      background: '#fff', border: '1px solid #f0f0f0',
+      borderRadius: '12px', overflow: 'hidden',
+      boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+    }}>
+      {/* Card header */}
+      <div style={{
+        background: 'linear-gradient(135deg, #ED6823, #FFA235)',
+        padding: '12px 16px',
+      }}>
+        <p style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase',
+          letterSpacing: '0.1em', color: 'rgba(255,255,255,0.75)', margin: '0 0 2px' }}>
+          {title}
+        </p>
+        <p style={{ fontSize: '14px', fontWeight: 700, color: '#fff', margin: 0 }}>{subtitle}</p>
+      </div>
+
+      {/* Rows */}
+      {entries.length === 0 ? (
+        <div style={{ padding: '24px', textAlign: 'center', fontSize: '12px', color: '#aaa' }}>
+          No data available yet.
+        </div>
+      ) : (
+        <div>
+          {entries.map((e, i) => (
+            <div key={e.id} style={{
+              display: 'flex', alignItems: 'center', gap: '12px',
+              padding: '10px 16px',
+              borderBottom: i < entries.length - 1 ? '1px solid #f5f5f5' : 'none',
+              background: i === 0 ? '#FFFBF5' : '#fff',
+            }}>
+              {/* Rank badge */}
+              <div style={{
+                width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0,
+                background: i < 3 ? RANK_COLORS[i] : '#f0f0f0',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <span style={{ fontSize: '10px', fontWeight: 800, color: i < 3 ? '#fff' : '#999' }}>
+                  {RANK_LABELS[i]}
+                </span>
+              </div>
+
+              {/* Name + dept */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: '13px', fontWeight: 600, color: '#111', margin: 0,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {e.name}
+                </p>
+                {highlightDept !== undefined && (
+                  <p style={{ fontSize: '10px', color: '#aaa', margin: 0 }}>{e.dept}</p>
+                )}
+              </div>
+
+              {/* Score */}
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <p style={{ fontSize: '15px', fontWeight: 700, color: '#ED6823', margin: 0, lineHeight: 1 }}>
+                  {e.score.toFixed(1)}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )
