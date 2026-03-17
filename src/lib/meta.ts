@@ -150,34 +150,83 @@ export async function postToFacebook({
   return res.json()
 }
 
+// ─── Verify an image URL is fetchable before sending to Instagram ─────────────
+// Instagram's servers are strict about fetching media — they reject URLs that
+// return non-image content, have restrictive headers, or respond too slowly.
+async function verifyImageUrl(imageUrl: string, pageName: string): Promise<void> {
+  try {
+    const res = await fetch(imageUrl, { method: 'HEAD' })
+    if (!res.ok) {
+      throw new Error(
+        `Instagram pre-flight check failed (${pageName}): Image URL returned HTTP ${res.status}. ` +
+        `Ensure the file exists and is publicly accessible: ${imageUrl}`
+      )
+    }
+    const ct = res.headers.get('content-type') ?? ''
+    if (!ct.startsWith('image/')) {
+      throw new Error(
+        `Instagram pre-flight check failed (${pageName}): URL returned content-type "${ct}" instead of an image. URL: ${imageUrl}`
+      )
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('Instagram pre-flight')) throw err
+    throw new Error(
+      `Instagram pre-flight check failed (${pageName}): Could not fetch image — ${err instanceof Error ? err.message : String(err)}. URL: ${imageUrl}`
+    )
+  }
+}
+
+// ─── Create an Instagram media container (with one auto-retry) ────────────────
+async function createInstagramContainer(
+  imageUrl: string,
+  caption: string,
+  account: SocialAccountCredentials,
+): Promise<string> {
+  const pageName = account.pageName ?? account.pageId
+
+  // Pre-flight: verify our server can reach the image
+  await verifyImageUrl(imageUrl, pageName)
+
+  const makeContainer = async (url: string) => {
+    const res = await fetch(`${META_API_BASE}/${account.pageId}/media`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image_url: url,
+        caption,
+        access_token: account.accessToken,
+      }),
+    })
+    if (!res.ok) {
+      const err = await res.json()
+      throw new Error(`Instagram container error (${pageName}): ${JSON.stringify(err.error ?? err)}`)
+    }
+    return (await res.json()).id as string
+  }
+
+  try {
+    return await makeContainer(imageUrl)
+  } catch (firstErr) {
+    // Retry once after a brief delay — Instagram's fetcher can be transiently slow
+    console.warn(`Instagram container failed on first attempt (${pageName}), retrying in 5s…`, firstErr)
+    await new Promise((r) => setTimeout(r, 5000))
+    return await makeContainer(imageUrl)
+  }
+}
+
 // ─── Post to a specific Instagram Business account ───────────────────────────
 export async function postToInstagram({
   caption,
   imageUrl,
   account,
 }: PostToInstagramParams): Promise<{ id: string }> {
-  // Step 1: Create media container
-  const containerRes = await fetch(`${META_API_BASE}/${account.pageId}/media`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      image_url: imageUrl,
-      caption,
-      access_token: account.accessToken,
-    }),
-  })
+  const pageName = account.pageName ?? account.pageId
 
-  if (!containerRes.ok) {
-    const err = await containerRes.json()
-    throw new Error(`Instagram container error (${account.pageName ?? account.pageId}): ${JSON.stringify(err.error ?? err)}`)
-  }
-
-  const { id: containerId } = await containerRes.json()
+  // Step 1: Create media container (with pre-flight validation + retry)
+  const containerId = await createInstagramContainer(imageUrl, caption, account)
 
   // Step 1.5: Wait for the container to be ready before publishing.
-  // Instagram returns status_code FINISHED before the media is truly available,
-  // which causes error 9007 ("media not ready") if we publish immediately.
-  await waitForInstagramContainer(containerId, account.accessToken, account.pageName ?? account.pageId)
+  await waitForInstagramContainer(containerId, account.accessToken, pageName)
 
   // Step 2: Publish
   const publishRes = await fetch(`${META_API_BASE}/${account.pageId}/media_publish`, {
@@ -191,7 +240,7 @@ export async function postToInstagram({
 
   if (!publishRes.ok) {
     const err = await publishRes.json()
-    throw new Error(`Instagram publish error (${account.pageName ?? account.pageId}): ${JSON.stringify(err.error ?? err)}`)
+    throw new Error(`Instagram publish error (${pageName}): ${JSON.stringify(err.error ?? err)}`)
   }
 
   return publishRes.json()
@@ -333,6 +382,116 @@ export async function postVideoToInstagram({
     throw new Error(`Instagram video publish error (${account.pageName ?? account.pageId}): ${JSON.stringify(err.error ?? err)}`)
   }
 
+  return publishRes.json()
+}
+
+// ─── Post carousel (multiple images) to Facebook ─────────────────────────────
+export async function postCarouselToFacebook({
+  message,
+  imageUrls,
+  account,
+}: {
+  message: string
+  imageUrls: string[]
+  account: SocialAccountCredentials
+}): Promise<{ id: string }> {
+  // Step 1: Upload each image as unpublished photo, get photo IDs
+  const photoIds: string[] = []
+  for (const url of imageUrls) {
+    const res = await fetch(`${META_API_BASE}/${account.pageId}/photos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, published: false, access_token: account.accessToken }),
+    })
+    if (!res.ok) {
+      const err = await res.json()
+      throw new Error(`Facebook carousel photo upload error: ${JSON.stringify(err.error ?? err)}`)
+    }
+    const { id } = await res.json()
+    photoIds.push(id)
+  }
+
+  // Step 2: Create feed post with attached photos
+  const res = await fetch(`${META_API_BASE}/${account.pageId}/feed`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message,
+      attached_media: photoIds.map((id) => ({ media_fbid: id })),
+      access_token: account.accessToken,
+    }),
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(`Facebook API error (${account.pageName ?? account.pageId}): ${JSON.stringify(err.error ?? err)}`)
+  }
+  return res.json()
+}
+
+// ─── Post carousel (multiple images) to Instagram ─────────────────────────────
+export async function postCarouselToInstagram({
+  caption,
+  imageUrls,
+  account,
+}: {
+  caption: string
+  imageUrls: string[]
+  account: SocialAccountCredentials
+}): Promise<{ id: string }> {
+  // Step 1: Pre-flight verify all image URLs, then create child containers
+  const pageName = account.pageName ?? account.pageId
+  for (const url of imageUrls) {
+    await verifyImageUrl(url, pageName)
+  }
+
+  const childIds: string[] = []
+  for (const url of imageUrls) {
+    const res = await fetch(`${META_API_BASE}/${account.pageId}/media`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image_url: url,
+        is_carousel_item: true,
+        access_token: account.accessToken,
+      }),
+    })
+    if (!res.ok) {
+      const err = await res.json()
+      throw new Error(`Instagram carousel child error (${pageName}): ${JSON.stringify(err.error ?? err)}`)
+    }
+    const { id } = await res.json()
+    await waitForInstagramContainer(id, account.accessToken, pageName)
+    childIds.push(id)
+  }
+
+  // Step 2: Create carousel container
+  const carouselRes = await fetch(`${META_API_BASE}/${account.pageId}/media`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      media_type: 'CAROUSEL',
+      children: childIds.join(','),
+      caption,
+      access_token: account.accessToken,
+    }),
+  })
+  if (!carouselRes.ok) {
+    const err = await carouselRes.json()
+    throw new Error(`Instagram carousel container error (${account.pageName ?? account.pageId}): ${JSON.stringify(err.error ?? err)}`)
+  }
+  const { id: carouselId } = await carouselRes.json()
+  await waitForInstagramContainer(carouselId, account.accessToken, account.pageName ?? account.pageId)
+
+  // Step 3: Publish
+  const publishRes = await fetch(`${META_API_BASE}/${account.pageId}/media_publish`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ creation_id: carouselId, access_token: account.accessToken }),
+  })
+  if (!publishRes.ok) {
+    const err = await publishRes.json()
+    throw new Error(`Instagram carousel publish error (${account.pageName ?? account.pageId}): ${JSON.stringify(err.error ?? err)}`)
+  }
   return publishRes.json()
 }
 

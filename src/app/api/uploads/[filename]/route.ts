@@ -34,7 +34,12 @@ export async function GET(
     return new NextResponse(data, {
       headers: {
         'Content-Type': contentType,
+        'Content-Length': String(data.length),
         'Cache-Control': 'public, max-age=31536000, immutable',
+        'Access-Control-Allow-Origin': '*',
+        // Override Next.js Vary header — Meta's servers don't send RSC headers
+        // and the Vary header can cause them to receive unexpected responses
+        'Vary': 'Accept',
       },
     })
   } catch {
