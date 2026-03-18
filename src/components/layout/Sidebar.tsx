@@ -7,7 +7,8 @@ import { useState } from 'react'
 import {
   LayoutDashboard, Send, Calendar, Cake, Sparkles,
   Users, Mail, BookOpen, Clock, ChevronRight, Link2, ChevronDown, X, BarChart2,
-  UserCog, ListOrdered, CalendarDays, ClipboardCheck,
+  UserCog, ListOrdered, CalendarDays, ClipboardCheck, Layers, HeartHandshake,
+  UsersRound, FileText,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useBrand } from '@/contexts/BrandContext'
@@ -22,12 +23,19 @@ const CLINIC_TOOLS_ALL = [
   { href: '/queueing', icon: ListOrdered, label: 'Queueing' },
   { href: '/clinic-schedule', icon: CalendarDays, label: 'Clinic Schedule' },
   { href: '/customer-survey', icon: ClipboardCheck, label: 'Customer Survey' },
+  { href: '/registration-forms', icon: FileText, label: 'Registration Forms' },
+  { href: '/decking', icon: Layers, label: 'Decking Module' },
+  { href: '/patient-relationship', icon: HeartHandshake, label: 'Patient Relationship' },
+  { href: '/peer-eval', icon: UsersRound, label: 'Peer Evaluation' },
 ]
 
+// Marketing Admin: no Clinic Schedule, no Decking, no Patient Relationship
 const CLINIC_TOOLS_NO_SCHEDULE = [
   { href: '/staff', icon: UserCog, label: 'Staff Module' },
   { href: '/queueing', icon: ListOrdered, label: 'Queueing' },
   { href: '/customer-survey', icon: ClipboardCheck, label: 'Customer Survey' },
+  { href: '/registration-forms', icon: FileText, label: 'Registration Forms' },
+  { href: '/peer-eval', icon: UsersRound, label: 'Peer Evaluation' },
 ]
 
 // Full access nav — built dynamically per role
@@ -77,8 +85,14 @@ function getFullNav(isAdmin: boolean, isMarketingAdmin: boolean) {
   ]
 }
 
-// Front desk nav — only the 4 clinic modules
+// Front desk nav — home + 5 clinic modules
 const FRONT_DESK_NAV = [
+  {
+    label: 'Home',
+    items: [
+      { href: '/dashboard', icon: LayoutDashboard, label: 'Home' },
+    ],
+  },
   {
     label: 'Clinic Tools',
     items: [
@@ -87,6 +101,9 @@ const FRONT_DESK_NAV = [
       { href: '/queueing', icon: ListOrdered, label: 'Queueing' },
       { href: '/clinic-schedule', icon: CalendarDays, label: 'Clinic Schedule' },
       { href: '/customer-survey', icon: ClipboardCheck, label: 'Customer Survey' },
+      { href: '/registration-forms', icon: FileText, label: 'Registration Forms' },
+      { href: '/decking', icon: Layers, label: 'Decking Module' },
+      { href: '/patient-relationship', icon: HeartHandshake, label: 'Patient Relationship' },
     ],
   },
 ]
