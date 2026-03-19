@@ -1,0 +1,99 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── Enums ────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  ACCOUNTANT
+  VIEWER
+  SBEA_ADMIN
+  SBGH_ADMIN
+  VERDANA_ADMIN
+}
+
+enum Branch {
+  SANDBOX_EAST
+  SANDBOX_GREENHILLS
+  VERDANA_STORE
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum NormalBalance {
+  DEBIT
+  CREDIT
+}
+
+// ── User ─────────────────────────────────────────────────────
+
+model User {
+  id               String    @id @default(cuid())
+  name             String
+  email            String    @unique
+  passwordHash     String
+  role             Role      @default(VIEWER)
+  branch           Branch?
+  avatar           String?
+  resetToken       String?
+  resetTokenExpiry DateTime?
+  lastLoginAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  auditLogs AuditLog[]
+  accounts  Account[]
+
+  @@index([email])
+  @@index([role])
+}
+
+// ── Audit Log ────────────────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String
+  entity    String
+  entityId  String?
+  details   Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+// ── Chart of Accounts ──────────────────────────────────────
+
+model Account {
+  id            String        @id @default(cuid())
+  accountNumber String        @unique
+  accountTitle  String
+  accountType   AccountType
+  normalBalance NormalBalance
+  description   String?
+  isActive      Boolean       @default(true)
+  createdById   String
+  createdBy     User          @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([accountType])
+  @@index([isActive])
+  @@index([createdById])
+}

@@ -1,0 +1,38 @@
+name: accounting
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: accounting_db
+    restart: always
+    environment:
+      POSTGRES_DB: sapphire_accounting
+      POSTGRES_USER: sapphire
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - accounting_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sapphire -d sapphire_accounting"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: accounting_app
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://sapphire:${POSTGRES_PASSWORD}@postgres:5432/sapphire_accounting
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      AUTH_TRUST_HOST: "true"
+    ports:
+      - "127.0.0.1:3001:3001"
+
+volumes:
+  accounting_postgres_data:
