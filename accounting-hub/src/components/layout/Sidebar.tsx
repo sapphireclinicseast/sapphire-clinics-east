@@ -14,6 +14,7 @@ import {
   Target,
   Users,
   Calculator,
+  Stethoscope,
   X,
 } from 'lucide-react'
 
@@ -48,6 +49,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: '/petty-cash', icon: Wallet, label: 'Petty Cash' },
       { href: '/inventory', icon: Package, label: 'Inventory & Procurement' },
+      { href: '/services', icon: Stethoscope, label: 'Services' },
       { href: '/pos', icon: ShoppingCart, label: 'Point of Sale' },
       { href: '/payroll', icon: BadgeDollarSign, label: 'Payroll' },
     ],

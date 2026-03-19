@@ -56,6 +56,7 @@ model User {
   auditLogs AuditLog[]
   accounts  Account[]
 
+  servicesCreated       Service[]               @relation("ServiceCreatedBy")
   suppliersCreated      Supplier[]              @relation("SupplierCreatedBy")
   inventoryItems        InventoryItem[]         @relation("ItemCreatedBy")
   inventoryAdjustments  InventoryAdjustment[]   @relation("AdjustmentBy")
@@ -101,6 +102,43 @@ model Account {
   updatedAt     DateTime      @updatedAt
 
   @@index([accountType])
+  @@index([isActive])
+  @@index([createdById])
+}
+
+// ── Services ───────────────────────────────────────────────
+
+enum ServiceBranch {
+  SANDBOX_EAST
+  SANDBOX_GREENHILLS
+  ALL
+}
+
+enum PriceType {
+  FIXED
+  ADJUSTABLE
+}
+
+model Service {
+  id                    String        @id @default(cuid())
+  name                  String
+  department            String
+  branch                ServiceBranch
+  price                 Decimal
+  priceType             PriceType     @default(FIXED)
+  hasDoctorFee          Boolean       @default(false)
+  doctorFee             Decimal?
+  clinicFee             Decimal?
+  pwdDiscountClinicOnly Boolean       @default(false)
+  description           String?
+  isActive              Boolean       @default(true)
+  createdById           String
+  createdBy             User          @relation("ServiceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  @@index([department])
+  @@index([branch])
   @@index([isActive])
   @@index([createdById])
 }

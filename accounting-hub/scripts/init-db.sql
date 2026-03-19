@@ -101,6 +101,43 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 
+-- ── Services ───────────────────────────────────────────────
+
+DO $$ BEGIN
+  CREATE TYPE "ServiceBranch" AS ENUM ('SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'ALL');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE "PriceType" AS ENUM ('FIXED', 'ADJUSTABLE');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE TABLE IF NOT EXISTS "Service" (
+  "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+  "name" TEXT NOT NULL,
+  "department" TEXT NOT NULL,
+  "branch" "ServiceBranch" NOT NULL,
+  "price" DECIMAL NOT NULL,
+  "priceType" "PriceType" NOT NULL DEFAULT 'FIXED',
+  "hasDoctorFee" BOOLEAN NOT NULL DEFAULT false,
+  "doctorFee" DECIMAL,
+  "clinicFee" DECIMAL,
+  "pwdDiscountClinicOnly" BOOLEAN NOT NULL DEFAULT false,
+  "description" TEXT,
+  "isActive" BOOLEAN NOT NULL DEFAULT true,
+  "createdById" TEXT NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "Service_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "Service_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS "Service_department_idx" ON "Service"("department");
+CREATE INDEX IF NOT EXISTS "Service_branch_idx" ON "Service"("branch");
+CREATE INDEX IF NOT EXISTS "Service_isActive_idx" ON "Service"("isActive");
+CREATE INDEX IF NOT EXISTS "Service_createdById_idx" ON "Service"("createdById");
+
 -- ── Inventory & Procurement ────────────────────────────────
 
 DO $$ BEGIN
