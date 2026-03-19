@@ -89,9 +89,10 @@ export async function GET(req: NextRequest) {
       `${process.env.NEXTAUTH_URL}/settings/accounts?canva=connected`
     )
   } catch (err) {
-    console.error('Canva callback error:', err)
+    const detail = err instanceof Error ? err.message : String(err)
+    console.error('Canva callback error:', detail)
     return NextResponse.redirect(
-      `${process.env.NEXTAUTH_URL}/settings/accounts?canva=error&message=token_exchange_failed`
+      `${process.env.NEXTAUTH_URL}/settings/accounts?canva=error&message=${encodeURIComponent(detail)}`
     )
   }
 }

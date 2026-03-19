@@ -59,7 +59,7 @@ export async function POST(
     // Upsert assessment target
     await tx.assessmentTarget.upsert({
       where: { staffId_year: { staffId: assignment.staffId, year } },
-      create: { staffId: assignment.staffId, year, targetCount: 4, completed: 1 },
+      create: { staffId: assignment.staffId, year, targetCount: 10, completed: 1 },
       update: { completed: { increment: 1 } },
     })
   })

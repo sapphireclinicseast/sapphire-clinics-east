@@ -9,6 +9,9 @@ export async function GET(req: NextRequest) {
 
   if (!branch) return NextResponse.json({ error: 'branch required' }, { status: 400 })
 
+  // ?status=CONFIRMED → only show confirmed (used by TV display)
+  const statusFilter = searchParams.get('status')?.toUpperCase()
+
   const dateStr = date ?? new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
   const dayStart = new Date(`${dateStr}T00:00:00.000Z`)
   const dayEnd   = new Date(`${dateStr}T23:59:59.999Z`)
@@ -17,6 +20,7 @@ export async function GET(req: NextRequest) {
     where: {
       date: { gte: dayStart, lte: dayEnd },
       staff: { branch },
+      ...(statusFilter ? { status: statusFilter } : {}),
     },
     include: {
       staff:   { select: { firstName: true, lastName: true, department: true, branch: true } },

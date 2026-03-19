@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Sparkles, Facebook, Instagram, Send, Image as ImageIcon, Video, X, Link2 } from 'lucide-react'
+import { Sparkles, Facebook, Instagram, Send, Image as ImageIcon, Video, X, Link2, Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
@@ -26,9 +26,10 @@ export default function ComposePage() {
   const [content, setContent] = useState('')
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([])
   const [scheduledAt, setScheduledAt] = useState('')
-  const [imageFile, setImageFile] = useState<File | null>(null)
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [imageFiles, setImageFiles] = useState<File[]>([])
+  const [imagePreviews, setImagePreviews] = useState<string[]>([])
   const [mediaType, setMediaType] = useState<'image' | 'video'>('image')
+  const [canvaImageUrls, setCanvaImageUrls] = useState<string[]>([])
   const [generating, setGenerating] = useState(false)
   const [aiPrompt, setAiPrompt] = useState('')
   const [saving, setSaving] = useState(false)
@@ -36,7 +37,8 @@ export default function ComposePage() {
   const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([])
   const [loadingAccounts, setLoadingAccounts] = useState(true)
   const [showCanvaPicker, setShowCanvaPicker] = useState(false)
-  const [canvaImageUrl, setCanvaImageUrl] = useState<string | null>(null)
+
+  const hasMedia = imageFiles.length > 0 || canvaImageUrls.length > 0
 
   useEffect(() => {
     fetch('/api/social/accounts')
@@ -56,32 +58,48 @@ export default function ComposePage() {
   }
 
   function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setImageFile(file)
-    setCanvaImageUrl(null)
-    const isVideo = file.type.startsWith('video/')
+    const files = Array.from(e.target.files ?? [])
+    if (files.length === 0) return
+    // Clear Canva images if uploading local files
+    setCanvaImageUrls([])
+    const isVideo = files[0].type.startsWith('video/')
     setMediaType(isVideo ? 'video' : 'image')
-    if (isVideo) {
-      setImagePreview(URL.createObjectURL(file))
-    } else {
-      const reader = new FileReader()
-      reader.onload = (ev) => setImagePreview(ev.target?.result as string)
-      reader.readAsDataURL(file)
-    }
+    setImageFiles((prev) => [...prev, ...files])
+    files.forEach((file) => {
+      if (isVideo) {
+        setImagePreviews((prev) => [...prev, URL.createObjectURL(file)])
+      } else {
+        const reader = new FileReader()
+        reader.onload = (ev) => setImagePreviews((prev) => [...prev, ev.target?.result as string])
+        reader.readAsDataURL(file)
+      }
+    })
+    // Reset file input so same file can be selected again
+    e.target.value = ''
   }
 
   function handleCanvaImport(imageUrl: string, _designTitle: string) {
-    setCanvaImageUrl(imageUrl)
-    setImagePreview(imageUrl)
-    setImageFile(null)
+    setImageFiles([])
+    setImagePreviews([])
+    setMediaType('image')
+    setCanvaImageUrls((prev) => [...prev, imageUrl])
     setShowCanvaPicker(false)
   }
 
-  function clearImage() {
-    setImageFile(null)
-    setImagePreview(null)
-    setCanvaImageUrl(null)
+  function removeImage(index: number) {
+    if (canvaImageUrls.length > 0) {
+      setCanvaImageUrls((prev) => prev.filter((_, i) => i !== index))
+    } else {
+      setImageFiles((prev) => prev.filter((_, i) => i !== index))
+      setImagePreviews((prev) => prev.filter((_, i) => i !== index))
+      if (imageFiles.length <= 1) setMediaType('image')
+    }
+  }
+
+  function clearAllMedia() {
+    setImageFiles([])
+    setImagePreviews([])
+    setCanvaImageUrls([])
     setMediaType('image')
   }
 
@@ -119,11 +137,16 @@ export default function ComposePage() {
     formData.append('platforms', JSON.stringify(platforms))
     formData.append('accountIds', JSON.stringify(selectedAccountIds))
     formData.append('status', status)
-    if (scheduledAt) formData.append('scheduledAt', scheduledAt)
-    if (imageFile) formData.append('image', imageFile)
+    if (scheduledAt) formData.append('scheduledAt', new Date(scheduledAt).toISOString())
     formData.append('mediaType', mediaType)
-    // For Canva images, pass the server-side URL directly
-    if (canvaImageUrl && !imageFile) formData.append('imageUrl', canvaImageUrl)
+
+    // Append multiple local files as images[]
+    imageFiles.forEach((file) => formData.append('images[]', file))
+
+    // For Canva images, pass server-side URLs
+    if (canvaImageUrls.length > 0) {
+      formData.append('imageUrls', JSON.stringify(canvaImageUrls))
+    }
 
     try {
       const res = await fetch('/api/social/post', { method: 'POST', body: formData })
@@ -135,6 +158,9 @@ export default function ComposePage() {
       setSaving(false)
     }
   }
+
+  // Build preview list: either from local files or Canva URLs
+  const previewList = canvaImageUrls.length > 0 ? canvaImageUrls : imagePreviews
 
   return (
     <>
@@ -255,39 +281,80 @@ export default function ComposePage() {
               <label className="block text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--mid-gray)' }}>
                 Image / Video (optional — required for Instagram)
               </label>
-              {!imagePreview && (
+              {previewList.length > 0 && (
                 <button
-                  onClick={() => setShowCanvaPicker(true)}
-                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg"
-                  style={{ background: '#EDE9FE', color: '#7B2FBE' }}
+                  onClick={clearAllMedia}
+                  className="text-xs px-2 py-1 rounded-lg"
+                  style={{ background: '#FEE2E2', color: '#DC2626' }}
                 >
-                  <span className="font-bold">C</span>
-                  Import from Canva
+                  Clear all
                 </button>
               )}
             </div>
 
-            {imagePreview ? (
-              <div className="relative inline-block">
-                {mediaType === 'video' ? (
-                  <video src={imagePreview} controls className="rounded-xl" style={{ maxHeight: 240, maxWidth: '100%' }} />
-                ) : (
-                  <img src={imagePreview} alt="Preview" className="rounded-xl object-cover" style={{ maxHeight: 240, maxWidth: '100%' }} />
+            {previewList.length > 0 ? (
+              <div className="space-y-3">
+                {/* Image/video grid */}
+                <div className="flex flex-wrap gap-2">
+                  {previewList.map((preview, idx) => (
+                    <div key={idx} className="relative">
+                      {mediaType === 'video' && canvaImageUrls.length === 0 ? (
+                        <video src={preview} controls className="rounded-xl" style={{ maxHeight: 160, maxWidth: 240 }} />
+                      ) : (
+                        <img
+                          src={preview}
+                          alt={`Preview ${idx + 1}`}
+                          className="rounded-xl object-cover"
+                          style={{ width: 120, height: 120, objectFit: 'cover' }}
+                        />
+                      )}
+                      {canvaImageUrls.length > 0 && (
+                        <div
+                          className="absolute top-1 left-1 flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-bold text-white"
+                          style={{ background: '#7B2FBE' }}
+                        >
+                          C
+                        </div>
+                      )}
+                      <button
+                        onClick={() => removeImage(idx)}
+                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center"
+                      >
+                        <X size={10} />
+                      </button>
+                    </div>
+                  ))}
+
+                  {/* Add more photos button (only for images, not video) */}
+                  {mediaType === 'image' && canvaImageUrls.length === 0 && (
+                    <label
+                      className="flex flex-col items-center justify-center rounded-xl cursor-pointer"
+                      style={{ width: 120, height: 120, border: '2px dashed var(--light-gray)', color: 'var(--mid-gray)' }}
+                    >
+                      <Plus size={20} />
+                      <span className="text-xs mt-1">Add more</span>
+                      <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleImageChange} />
+                    </label>
+                  )}
+
+                  {/* Add from Canva button */}
+                  {canvaImageUrls.length > 0 && (
+                    <button
+                      onClick={() => setShowCanvaPicker(true)}
+                      className="flex flex-col items-center justify-center rounded-xl cursor-pointer"
+                      style={{ width: 120, height: 120, border: '2px dashed #C4B5FD', color: '#7B2FBE' }}
+                    >
+                      <div className="w-6 h-6 rounded flex items-center justify-center text-white text-xs font-bold" style={{ background: '#7B2FBE' }}>C</div>
+                      <span className="text-xs mt-1">Add more</span>
+                    </button>
+                  )}
+                </div>
+
+                {previewList.length > 1 && (
+                  <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                    {previewList.length} photos — will be posted as a carousel
+                  </p>
                 )}
-                {canvaImageUrl && (
-                  <div
-                    className="absolute top-2 left-2 flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold text-white"
-                    style={{ background: '#7B2FBE' }}
-                  >
-                    <span>C</span> Canva
-                  </div>
-                )}
-                <button
-                  onClick={clearImage}
-                  className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center"
-                >
-                  <X size={12} />
-                </button>
               </div>
             ) : (
               <div className="flex gap-3">
@@ -300,8 +367,8 @@ export default function ComposePage() {
                     <Video size={22} />
                   </div>
                   <span className="text-sm">Click to upload image or video</span>
-                  <span className="text-xs opacity-60">JPG, PNG, MP4, MOV supported</span>
-                  <input type="file" accept="image/*,video/*" className="hidden" onChange={handleImageChange} />
+                  <span className="text-xs opacity-60">JPG, PNG, MP4, MOV — select multiple for carousel</span>
+                  <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleImageChange} />
                 </label>
                 <button
                   onClick={() => setShowCanvaPicker(true)}

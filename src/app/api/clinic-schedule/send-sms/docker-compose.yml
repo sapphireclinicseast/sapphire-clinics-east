@@ -1,0 +1,94 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sapphire_db
+    restart: always
+    environment:
+      POSTGRES_DB: sapphire_marketing
+      POSTGRES_USER: sapphire
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sapphire -d sapphire_marketing"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: sapphire_redis
+    restart: always
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: migrator
+    container_name: sapphire_migrate
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://sapphire:${POSTGRES_PASSWORD}@postgres:5432/sapphire_marketing
+
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: sapphire_app
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://sapphire:${POSTGRES_PASSWORD}@postgres:5432/sapphire_marketing
+      REDIS_URL: redis://redis:6379
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      META_APP_ID: ${META_APP_ID}
+      META_APP_SECRET: ${META_APP_SECRET}
+      META_PAGE_ACCESS_TOKEN: ${META_PAGE_ACCESS_TOKEN}
+      META_PAGE_ID: ${META_PAGE_ID}
+      META_IG_ACCOUNT_ID: ${META_IG_ACCOUNT_ID}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI}
+      GOOGLE_REFRESH_TOKEN: ${GOOGLE_REFRESH_TOKEN}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      CANVA_CLIENT_ID: ${CANVA_CLIENT_ID}
+      CANVA_CLIENT_SECRET: ${CANVA_CLIENT_SECRET}
+      GMAIL_RESET_USER: ${GMAIL_RESET_USER}
+      GMAIL_RESET_PASS: ${GMAIL_RESET_PASS}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      HTTPSMS_API_KEY_SBEA: ${HTTPSMS_API_KEY_SBEA}
+      HTTPSMS_API_KEY_SBGH: ${HTTPSMS_API_KEY_SBGH}
+      VIBER_BOT_TOKEN_SBEA: ${VIBER_BOT_TOKEN_SBEA}
+      VIBER_BOT_TOKEN_SBGH: ${VIBER_BOT_TOKEN_SBGH}
+      UPLOAD_DIR: /app/uploads
+      AUTH_TRUST_HOST: "true"
+      EXTERNAL_API_KEY: ${EXTERNAL_API_KEY}
+    volumes:
+      - uploads_data:/app/uploads
+    ports:
+      - "3000:3000"
+
+  # nginx and certbot are handled by the host system (systemd nginx + certbot.timer)
+  # System nginx proxies port 443 → localhost:3000, with auto-renewing Let's Encrypt certs
+
+volumes:
+  postgres_data:
+  redis_data:
+  uploads_data:

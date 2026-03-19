@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import {
-  Plus, Clock, AlertCircle, RefreshCw, Send,
+  Plus, Clock, AlertCircle, RefreshCw, Send, Trash2,
   CheckCircle, Calendar, List, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 
@@ -82,6 +82,16 @@ export default function ScheduledPage() {
     const id = Math.random().toString(36).slice(2)
     setToasts((t) => [...t, { id, msg, ok }])
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 5000)
+  }
+
+  const deletePost = async (postId: string) => {
+    if (!confirm('Delete this post? This cannot be undone.')) return
+    try {
+      await fetch(`/api/social/post?id=${postId}`, { method: 'DELETE' })
+      load()
+    } catch {
+      addToast('Failed to delete post.', false)
+    }
   }
 
   const publishNow = async (postId: string) => {
@@ -200,7 +210,7 @@ export default function ScheduledPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {posts.map((post) => <PostCard key={post.id} post={post} publishing={publishing} onPublish={publishNow} />)}
+            {posts.map((post) => <PostCard key={post.id} post={post} publishing={publishing} onPublish={publishNow} onDelete={deletePost} />)}
           </div>
         )
       ) : (
@@ -297,7 +307,7 @@ export default function ScheduledPage() {
                 <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>No posts on this day.</p>
               ) : (
                 <div className="space-y-2">
-                  {selectedDayPosts.map((p) => <PostCard key={p.id} post={p} publishing={publishing} onPublish={publishNow} />)}
+                  {selectedDayPosts.map((p) => <PostCard key={p.id} post={p} publishing={publishing} onPublish={publishNow} onDelete={deletePost} />)}
                 </div>
               )}
             </div>
@@ -308,7 +318,7 @@ export default function ScheduledPage() {
   )
 }
 
-function PostCard({ post, publishing, onPublish }: { post: Post; publishing: string | null; onPublish: (id: string) => void }) {
+function PostCard({ post, publishing, onPublish, onDelete }: { post: Post; publishing: string | null; onPublish: (id: string) => void; onDelete: (id: string) => void }) {
   const style = STATUS_STYLES[post.status] ?? STATUS_STYLES.DRAFT
   const isPublishing = publishing === post.id
   const canPublish = post.status === 'SCHEDULED' || post.status === 'FAILED'
@@ -333,6 +343,13 @@ function PostCard({ post, publishing, onPublish }: { post: Post; publishing: str
                 {isPublishing ? 'Publishing…' : 'Publish Now'}
               </button>
             )}
+            <button onClick={() => onDelete(post.id)}
+              className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg font-semibold"
+              style={{ background: '#FEE2E2', color: '#DC2626' }}
+              title="Delete post">
+              <Trash2 size={12} />
+              Delete
+            </button>
           </div>
         </div>
         <div className="flex items-center gap-3 flex-wrap">

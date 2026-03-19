@@ -104,6 +104,7 @@ const FRONT_DESK_NAV = [
       { href: '/registration-forms', icon: FileText, label: 'Registration Forms' },
       { href: '/decking', icon: Layers, label: 'Decking Module' },
       { href: '/patient-relationship', icon: HeartHandshake, label: 'Patient Relationship' },
+      { href: '/peer-eval', icon: UsersRound, label: 'Peer Evaluation' },
     ],
   },
 ]

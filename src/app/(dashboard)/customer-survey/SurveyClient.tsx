@@ -1220,7 +1220,7 @@ export default function SurveyClient({ role }: { role: string }) {
             </div>
           )}
 
-          {/* ── Results Settings Sub-tab (Admin only) ── */}
+          {/* ── Results Settings Sub-tab (Admin only — read-only, managed from HR platform) ── */}
           {rdSubTab === 'settings' && isAdmin && (
             <div className="space-y-4">
               <div className="rounded-xl p-5" style={{ background: '#fff', border: '1px solid #e2e8f0' }}>
@@ -1228,9 +1228,11 @@ export default function SurveyClient({ role }: { role: string }) {
                   <Settings size={18} style={{ color: '#0f766e' }} />
                   <h3 className="font-bold text-sm" style={{ color: '#1e293b' }}>Leaderboard Scoring Weights</h3>
                 </div>
-                <p className="text-xs mb-5" style={{ color: '#64748b' }}>
-                  Set the percentage weight for each metric used to compute the leaderboard composite score. Total must equal 100%.
-                </p>
+                <div className="flex items-center gap-2 mb-5 p-3 rounded-lg text-xs font-medium"
+                  style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}>
+                  <Building2 size={14} />
+                  These settings are managed by the HR Department at hr.sapphireclinicseast.org
+                </div>
 
                 {settingsLoading ? (
                   <div className="text-center py-8">
@@ -1239,10 +1241,10 @@ export default function SurveyClient({ role }: { role: string }) {
                 ) : (
                   <div className="space-y-4">
                     {([
-                      { key: 'weightConfirmed' as const, label: 'Confirmed Sessions', desc: 'Sessions with CONFIRMED status' },
-                      { key: 'weightRescheduled' as const, label: 'Rescheduled Sessions', desc: 'Sessions with RESCHEDULED status' },
-                      { key: 'weightCancelled' as const, label: 'Cancelled Sessions', desc: 'Fewer cancellations = higher score (inverted)' },
-                      { key: 'weightSatisfaction' as const, label: 'Avg Satisfaction Score', desc: 'Average patient satisfaction rating (out of 6)' },
+                      { key: 'weightConfirmed' as const, label: 'Confirmed Sessions', desc: 'Sessions with CONFIRMED status (positive effect)' },
+                      { key: 'weightRescheduled' as const, label: 'Rescheduled Sessions', desc: 'Sessions with RESCHEDULED status (negative effect)' },
+                      { key: 'weightCancelled' as const, label: 'Cancelled Sessions', desc: 'Fewer cancellations = higher score (negative effect)' },
+                      { key: 'weightSatisfaction' as const, label: 'Avg Satisfaction Score', desc: 'Average patient satisfaction rating out of 6 (positive effect)' },
                     ]).map(({ key, label, desc }) => (
                       <div key={key} className="flex items-center gap-4">
                         <div className="flex-1">
@@ -1250,70 +1252,22 @@ export default function SurveyClient({ role }: { role: string }) {
                           <p className="text-xs" style={{ color: '#94a3b8' }}>{desc}</p>
                         </div>
                         <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            min={0}
-                            max={100}
-                            value={settingsWeights[key]}
-                            onChange={e => {
-                              setSettingsWeights(prev => ({ ...prev, [key]: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) }))
-                              setSettingsMsg(null)
-                            }}
-                            className="w-20 px-3 py-2 rounded-lg text-sm text-center font-semibold border"
-                            style={{ borderColor: '#e2e8f0' }}
-                          />
+                          <span className="w-20 px-3 py-2 rounded-lg text-sm text-center font-semibold"
+                            style={{ background: '#f1f5f9', color: '#1e293b', border: '1px solid #e2e8f0' }}>
+                            {settingsWeights[key]}
+                          </span>
                           <span className="text-sm font-semibold" style={{ color: '#64748b' }}>%</span>
                         </div>
                       </div>
                     ))}
 
                     {/* Total indicator */}
-                    {(() => {
-                      const total = settingsWeights.weightConfirmed + settingsWeights.weightRescheduled + settingsWeights.weightCancelled + settingsWeights.weightSatisfaction
-                      const isValid = total === 100
-                      return (
-                        <div className="flex items-center justify-between pt-4 mt-2" style={{ borderTop: '2px solid #e2e8f0' }}>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold" style={{ color: '#1e293b' }}>Total:</span>
-                            <span className="text-lg font-bold" style={{ color: isValid ? '#16a34a' : '#dc2626' }}>
-                              {total}%
-                            </span>
-                            {!isValid && (
-                              <span className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full" style={{ background: '#fef2f2', color: '#dc2626' }}>
-                                <AlertTriangle size={12} /> Must equal 100%
-                              </span>
-                            )}
-                            {isValid && (
-                              <span className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full" style={{ background: '#f0fdf4', color: '#16a34a' }}>
-                                <Check size={12} /> Valid
-                              </span>
-                            )}
-                          </div>
-                          <button
-                            onClick={saveSettings}
-                            disabled={settingsSaving || !isValid}
-                            className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-50"
-                            style={{ background: isValid ? '#0f766e' : '#94a3b8' }}
-                          >
-                            <Save size={14} />
-                            {settingsSaving ? 'Saving...' : 'Save Settings'}
-                          </button>
-                        </div>
-                      )
-                    })()}
-
-                    {/* Status message */}
-                    {settingsMsg && (
-                      <div className="flex items-center gap-2 p-3 rounded-lg text-sm font-medium"
-                        style={settingsMsg.type === 'success'
-                          ? { background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }
-                          : { background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }
-                        }
-                      >
-                        {settingsMsg.type === 'success' ? <Check size={14} /> : <AlertTriangle size={14} />}
-                        {settingsMsg.text}
-                      </div>
-                    )}
+                    <div className="flex items-center pt-4 mt-2" style={{ borderTop: '2px solid #e2e8f0' }}>
+                      <span className="text-sm font-bold" style={{ color: '#1e293b' }}>Total:</span>
+                      <span className="text-lg font-bold ml-2" style={{ color: '#16a34a' }}>
+                        {settingsWeights.weightConfirmed + settingsWeights.weightRescheduled + settingsWeights.weightCancelled + settingsWeights.weightSatisfaction}%
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>

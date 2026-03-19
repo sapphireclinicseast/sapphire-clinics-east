@@ -97,7 +97,12 @@ export async function POST(req: NextRequest) {
     const res = await fetch('https://api.httpsms.com/v1/messages/send', {
       method:  'POST',
       headers: { 'x-api-key': cfg.httpSmsKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: chunk, from: cfg.phone, to }),
+      body: JSON.stringify({
+        content:    chunk,
+        from:       cfg.phone,
+        to,
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      }),
     })
     if (!res.ok) {
       const text = await res.text()

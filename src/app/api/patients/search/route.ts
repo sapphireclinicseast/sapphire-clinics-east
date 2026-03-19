@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
         { lastName: { contains: q, mode: 'insensitive' } },
       ],
     },
-    select: { id: true, firstName: true, lastName: true, email: true, branches: true },
+    select: { id: true, firstName: true, lastName: true, email: true, dob: true, patientType: true, branches: true },
     orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
     take: 10,
   })

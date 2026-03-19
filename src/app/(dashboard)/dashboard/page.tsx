@@ -13,7 +13,7 @@ import {
 import { formatDate } from '@/lib/utils'
 import FrontDeskWelcome from './FrontDeskWelcome'
 
-type BirthdayPatient = { id: string; firstName: string; lastName: string; birthday: string }
+type BirthdayPatient = { id: string; firstName: string; lastName: string; birthday: string; hasPhone: boolean }
 
 const BRANCH_ENUM: Record<string, string> = {
   SBEA: 'SANDBOX_EAST',
@@ -36,16 +36,20 @@ async function getBirthdayPatients(branch: string): Promise<BirthdayPatient[]> {
 
   const branchEnum = BRANCH_ENUM[branch] ?? branch
 
-  const patients = await prisma.patient.findMany({
-    where: {
-      dob: { not: null },
-      OR: [
-        { branch: branchEnum as never },
-        { branches: { has: branchEnum as never } },
-      ],
-    },
-    select: { id: true, firstName: true, lastName: true, dob: true },
-  })
+  // Use raw SQL for enum array filter — PrismaPg driver adapter doesn't
+  // support `has` on PostgreSQL enum arrays (text vs "Branch" type mismatch).
+  const patients = await prisma.$queryRawUnsafe<
+    { id: string; firstName: string; lastName: string; dob: Date | null; phone: string | null }[]
+  >(
+    `SELECT id, "firstName", "lastName", dob, phone FROM "Patient"
+     WHERE dob IS NOT NULL
+       AND (branch::text = $1 OR $1 = ANY("branches"::text[]))`,
+    branchEnum,
+  )
+
+  // Today at midnight (server time) — used to exclude past birthdays
+  const todayStart = new Date(now)
+  todayStart.setHours(0, 0, 0, 0)
 
   return patients
     .flatMap(p => {
@@ -54,7 +58,9 @@ async function getBirthdayPatients(branch: string): Promise<BirthdayPatient[]> {
       const d = dob.getUTCDate()
       const match = weekDays.find(wd => wd.month === m && wd.day === d)
       if (!match) return []
-      return [{ id: p.id, firstName: p.firstName, lastName: p.lastName, birthday: match.iso }]
+      // Skip days before today
+      if (new Date(match.iso) < todayStart) return []
+      return [{ id: p.id, firstName: p.firstName, lastName: p.lastName, birthday: match.iso, hasPhone: !!p.phone }]
     })
     .sort((a, b) => new Date(a.birthday).getTime() - new Date(b.birthday).getTime())
 }

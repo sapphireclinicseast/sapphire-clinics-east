@@ -63,11 +63,9 @@ function getSortValue(s: StatusSchedule, col: SortCol): string {
   }
 }
 
-export default function StatusView({ role }: { role: string }) {
+export default function StatusView({ role, selectedDate, onDateChange }: { role: string; selectedDate: string; onDateChange: (d: string) => void }) {
   const branches = visibleBranches(role)
   const isMultiBranch = branches.length > 1
-
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0])
   const [activeBranch, setActiveBranch] = useState<string>('All')
   const [statusFilter, setStatusFilter] = useState<string>('All')
   const [editingStatusId, setEditingStatusId] = useState<string | null>(null)
@@ -187,7 +185,7 @@ export default function StatusView({ role }: { role: string }) {
             <input
               type="date"
               value={selectedDate}
-              onChange={e => setSelectedDate(e.target.value)}
+              onChange={e => onDateChange(e.target.value)}
               className="rounded-lg px-3 py-1.5 text-sm"
               style={{ border: '1.5px solid rgba(26,123,138,0.3)', background: '#fff', color: 'var(--charcoal)' }}
             />

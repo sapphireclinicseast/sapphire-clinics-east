@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
   let scheduledAt: string | undefined
   let status: string
   let imageUrl: string | undefined
+  let imageUrls: string[] = []
   let mediaType: string | undefined
 
   if (contentType.includes('multipart/form-data')) {
@@ -37,37 +38,54 @@ export async function POST(req: NextRequest) {
     status = form.get('status') as string || 'DRAFT'
     mediaType = form.get('mediaType') as string || undefined
 
-    const imageFile = form.get('image') as File | null
-    if (imageFile) {
-      const bytes = await imageFile.arrayBuffer()
+    // Absolute URL required — Meta's servers must be able to fetch this publicly.
+    // Prefer NEXTAUTH_URL but reject localhost (dev env baked into Docker image).
+    const configuredUrl = process.env.NEXTAUTH_URL
+    const headersUrl = `${req.headers.get('x-forwarded-proto') ?? 'https'}://${req.headers.get('x-forwarded-host') ?? req.headers.get('host')}`
+    const baseUrl = (configuredUrl && !configuredUrl.includes('localhost'))
+      ? configuredUrl
+      : headersUrl
+
+    async function saveFile(file: File): Promise<string> {
+      const bytes = await file.arrayBuffer()
       const buffer = Buffer.from(bytes)
-      const filename = `${Date.now()}-${imageFile.name.replace(/\s/g, '-')}`
+      const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}-${file.name.replace(/\s/g, '-')}`
       const uploadPath = path.join(process.cwd(), 'uploads', filename)
       await writeFile(uploadPath, buffer)
-
-      // Auto-detect mediaType from file if not provided
-      if (!mediaType) mediaType = imageFile.type.startsWith('video/') ? 'video' : 'image'
-
-      // Absolute URL required — Meta's servers must be able to fetch this publicly
-      const baseUrl = process.env.NEXTAUTH_URL
-        ?? `${req.headers.get('x-forwarded-proto') ?? 'https'}://${req.headers.get('x-forwarded-host') ?? req.headers.get('host')}`
-
+      if (!mediaType) mediaType = file.type.startsWith('video/') ? 'video' : 'image'
       if (mediaType === 'video') {
         try {
-          // Convert to H.264/AAC MP4 for Facebook/Instagram compatibility
           const convertedPath = await convertVideoForSocial(uploadPath)
-          imageUrl = `${baseUrl}/api/uploads/${path.basename(convertedPath)}`
-        } catch (convErr) {
-          console.error('Social post video conversion failed:', convErr)
-          imageUrl = `${baseUrl}/api/uploads/${filename}`
+          return `${baseUrl}/api/uploads/${path.basename(convertedPath)}`
+        } catch {
+          return `${baseUrl}/api/uploads/${filename}`
         }
-      } else {
-        imageUrl = `${baseUrl}/api/uploads/${filename}`
       }
+      return `${baseUrl}/api/uploads/${filename}`
     }
-    // If imageUrl was passed as a form field (e.g. Canva URL), use it as-is
+
+    // Support multiple images: form fields 'image' (single) or 'images[]' (multiple)
+    const imageFiles = form.getAll('images[]') as File[]
+    const singleFile = form.get('image') as File | null
+
+    if (imageFiles.length > 0) {
+      for (const f of imageFiles) {
+        if (f && f.size > 0) imageUrls.push(await saveFile(f))
+      }
+    } else if (singleFile && singleFile.size > 0) {
+      imageUrls.push(await saveFile(singleFile))
+    }
+
+    // Canva / external URLs passed as form fields
     const imageUrlField = form.get('imageUrl') as string | null
-    if (imageUrlField && !imageUrl) imageUrl = imageUrlField
+    const imageUrlsField = form.get('imageUrls') as string | null
+    if (imageUrlsField) {
+      try { imageUrls = [...imageUrls, ...JSON.parse(imageUrlsField)] } catch {}
+    } else if (imageUrlField && imageUrls.length === 0) {
+      imageUrls = [imageUrlField]
+    }
+
+    imageUrl = imageUrls[0] ?? undefined
   } else {
     const body = await req.json()
     content = body.content
@@ -78,6 +96,7 @@ export async function POST(req: NextRequest) {
     scheduledAt = body.scheduledAt
     status = body.status || 'DRAFT'
     imageUrl = body.imageUrl
+    imageUrls = body.imageUrls ?? (body.imageUrl ? [body.imageUrl] : [])
     mediaType = body.mediaType
   }
 
@@ -94,6 +113,7 @@ export async function POST(req: NextRequest) {
       content,
       caption,
       imageUrl,
+      imageUrls,
       mediaType,
       platforms: platforms as any,
       accountIds,
@@ -110,6 +130,18 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ post })
+}
+
+export async function DELETE(req: NextRequest) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { searchParams } = new URL(req.url)
+  const id = searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+
+  await prisma.scheduledPost.delete({ where: { id } })
+  return NextResponse.json({ success: true })
 }
 
 export async function GET(req: NextRequest) {

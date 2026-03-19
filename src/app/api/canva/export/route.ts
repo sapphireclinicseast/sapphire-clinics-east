@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { exportDesign, refreshAccessToken } from '@/lib/canva'
+import { exportDesign, getValidCanvaToken } from '@/lib/canva'
 import path from 'path'
 import fs from 'fs/promises'
+import sharp from 'sharp'
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
@@ -13,9 +14,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Canva not connected' }, { status: 401 })
   }
 
-  const baseUrl =
-    process.env.NEXTAUTH_URL ??
-    `${req.headers.get('x-forwarded-proto') ?? 'https'}://${req.headers.get('x-forwarded-host') ?? req.headers.get('host')}`
+  const configuredUrl = process.env.NEXTAUTH_URL
+  const headersUrl = `${req.headers.get('x-forwarded-proto') ?? 'https'}://${req.headers.get('x-forwarded-host') ?? req.headers.get('host')}`
+  const baseUrl = (configuredUrl && !configuredUrl.includes('localhost')) ? configuredUrl : headersUrl
 
   // ── Mode B: download a specific page URL and save to uploads ──────────────
   // Called after the user picks a specific page in the picker.
@@ -25,7 +26,13 @@ export async function POST(req: NextRequest) {
       if (!imageRes.ok) throw new Error('Failed to download page from Canva')
 
       const arrayBuffer = await imageRes.arrayBuffer()
-      const buffer = Buffer.from(arrayBuffer)
+      const rawBuffer = Buffer.from(arrayBuffer)
+
+      // Convert to JPEG — Instagram requires a valid JPEG/PNG.
+      // Canva CDN may return WebP, AVIF, or PNG regardless of the URL extension.
+      const jpegBuffer = await sharp(rawBuffer)
+        .jpeg({ quality: 95 })
+        .toBuffer()
 
       const uploadDir = path.join(process.cwd(), 'uploads')
       await fs.mkdir(uploadDir, { recursive: true })
@@ -37,7 +44,7 @@ export async function POST(req: NextRequest) {
       const filename = `canva-${safeTitle}-${Date.now()}.jpg`
       const filepath = path.join(uploadDir, filename)
 
-      await fs.writeFile(filepath, buffer)
+      await fs.writeFile(filepath, jpegBuffer)
 
       // Absolute URL — Facebook/Instagram require publicly accessible URLs
       const imageUrl = `${baseUrl}/api/uploads/${filename}`
@@ -60,37 +67,12 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    let accessToken = account.accessToken
-    let pages: string[]
-
-    try {
-      pages = await exportDesign(accessToken, designId)
-    } catch (exportErr) {
-      // If the access token expired, try refreshing once
-      if (
-        exportErr instanceof Error &&
-        exportErr.message.includes('401') &&
-        account.refreshToken
-      ) {
-        const refreshed = await refreshAccessToken(
-          process.env.CANVA_CLIENT_ID ?? '',
-          process.env.CANVA_CLIENT_SECRET ?? '',
-          account.refreshToken
-        )
-        accessToken = refreshed.access_token
-        await prisma.canvaAccount.update({
-          where: { id: account.id },
-          data: {
-            accessToken: refreshed.access_token,
-            ...(refreshed.refresh_token ? { refreshToken: refreshed.refresh_token } : {}),
-          },
-        })
-        pages = await exportDesign(accessToken, designId)
-      } else {
-        throw exportErr
-      }
+    const accessToken = await getValidCanvaToken()
+    if (!accessToken) {
+      return NextResponse.json({ error: 'Canva session expired. Please reconnect.' }, { status: 401 })
     }
 
+    const pages = await exportDesign(accessToken, designId)
     return NextResponse.json({ pages })
   } catch (err) {
     console.error('Canva export error:', err)

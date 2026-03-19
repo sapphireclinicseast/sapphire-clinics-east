@@ -1,6 +1,6 @@
 import { Queue, Worker, Job } from 'bullmq'
 import { prisma } from './prisma'
-import { postToFacebook, postToInstagram, postVideoToFacebook, postVideoToInstagram } from './meta'
+import { postToFacebook, postToInstagram, postVideoToFacebook, postVideoToInstagram, postCarouselToFacebook, postCarouselToInstagram } from './meta'
 import { executeSendCampaign } from './email'
 
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379'
@@ -108,56 +108,64 @@ export function startWorker() {
       })
 
       const isVideo = post.mediaType === 'video'
+      // Use imageUrls array if present (multi-photo), otherwise fall back to single imageUrl
+      const allImageUrls: string[] = (post as any).imageUrls?.length > 0
+        ? (post as any).imageUrls
+        : post.imageUrl ? [post.imageUrl] : []
+      const isCarousel = allImageUrls.length > 1
 
       for (const acct of socialAccounts) {
         try {
+          const accountCreds = {
+            accessToken: acct.accessToken,
+            pageId: acct.pageId ?? acct.accountId,
+            pageName: acct.pageName ?? undefined,
+          }
           if (acct.platform === 'FACEBOOK') {
             if (isVideo && post.imageUrl) {
               const result = await postVideoToFacebook({
                 description: post.content,
                 videoUrl: post.imageUrl,
-                account: {
-                  accessToken: acct.accessToken,
-                  pageId: acct.pageId ?? acct.accountId,
-                  pageName: acct.pageName ?? undefined,
-                },
+                account: accountCreds,
+              })
+              publishedIds.push(`FB:${acct.pageName}:${result.id}`)
+            } else if (isCarousel) {
+              const result = await postCarouselToFacebook({
+                message: post.content,
+                imageUrls: allImageUrls,
+                account: accountCreds,
               })
               publishedIds.push(`FB:${acct.pageName}:${result.id}`)
             } else {
               const result = await postToFacebook({
                 message: post.content,
-                imageUrl: post.imageUrl ?? undefined,
-                account: {
-                  accessToken: acct.accessToken,
-                  pageId: acct.pageId ?? acct.accountId,
-                  pageName: acct.pageName ?? undefined,
-                },
+                imageUrl: allImageUrls[0] ?? undefined,
+                account: accountCreds,
               })
               publishedIds.push(`FB:${acct.pageName}:${result.id}`)
             }
           } else if (acct.platform === 'INSTAGRAM') {
-            if (!post.imageUrl) {
+            if (allImageUrls.length === 0) {
               errors.push(`Instagram (${acct.pageName}): Media is required for Instagram posts`)
             } else if (isVideo) {
               const result = await postVideoToInstagram({
                 caption: post.content,
-                videoUrl: post.imageUrl,
-                account: {
-                  accessToken: acct.accessToken,
-                  pageId: acct.pageId ?? acct.accountId,
-                  pageName: acct.pageName ?? undefined,
-                },
+                videoUrl: post.imageUrl!,
+                account: accountCreds,
+              })
+              publishedIds.push(`IG:${acct.pageName}:${result.id}`)
+            } else if (isCarousel) {
+              const result = await postCarouselToInstagram({
+                caption: post.content,
+                imageUrls: allImageUrls,
+                account: accountCreds,
               })
               publishedIds.push(`IG:${acct.pageName}:${result.id}`)
             } else {
               const result = await postToInstagram({
                 caption: post.content,
-                imageUrl: post.imageUrl,
-                account: {
-                  accessToken: acct.accessToken,
-                  pageId: acct.pageId ?? acct.accountId,
-                  pageName: acct.pageName ?? undefined,
-                },
+                imageUrl: allImageUrls[0],
+                account: accountCreds,
               })
               publishedIds.push(`IG:${acct.pageName}:${result.id}`)
             }

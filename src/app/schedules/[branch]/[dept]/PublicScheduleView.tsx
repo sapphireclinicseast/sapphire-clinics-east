@@ -692,7 +692,7 @@ export default function PublicScheduleView({
           borderRadius: '10px', fontSize: '11px', color: '#888', lineHeight: 1.6,
         }}>
           <strong style={{ color: '#666' }}>Note:</strong> Rankings are based on Customer Satisfaction Survey results
-          chosen randomly by the system. If a therapist&apos;s name does not appear, it may also be possible that their
+          from patients/clients chosen randomly by the system. If a therapist&apos;s name does not appear, it may also be possible that their
           patients/clients have not yet been asked to assess them. Rankings become more representative after at least 3 months of data collection.
         </div>
       </div>}

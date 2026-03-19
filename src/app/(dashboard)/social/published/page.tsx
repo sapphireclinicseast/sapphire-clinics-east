@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
-import { Plus, CheckCircle, AlertCircle, RefreshCw, Calendar, Trash2, RotateCcw, X } from 'lucide-react'
+import { Plus, CheckCircle, AlertCircle, RefreshCw, Calendar, Trash2, RotateCcw } from 'lucide-react'
 
 const PLATFORM_COLORS: Record<string, string> = {
   FACEBOOK: '#1877F2',
@@ -60,8 +60,13 @@ export default function PublishedPage() {
 
   const deletePost = async (postId: string) => {
     if (!confirm('Delete this post record? This cannot be undone.')) return
-    await fetch(`/api/social/post?id=${postId}`, { method: 'DELETE' })
-    load()
+    const res = await fetch(`/api/social/post?id=${postId}`, { method: 'DELETE' })
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}))
+      alert(`Delete failed: ${d.error ?? res.statusText}`)
+      return
+    }
+    await load()
   }
 
   return (
@@ -129,27 +134,16 @@ export default function PublishedPage() {
 }
 
 function PublishedCard({ post, onDelete, onReload }: { post: Post; onDelete: (id: string) => void; onReload: () => void }) {
-  const [showRepost, setShowRepost] = useState(false)
-  const [reposting, setReposting] = useState(false)
-  const [repostMsg, setRepostMsg] = useState<string | null>(null)
-  const dropdownRef = useRef<HTMLDivElement>(null)
+  const [repostingFB, setRepostingFB] = useState(false)
+  const [repostingIG, setRepostingIG] = useState(false)
+  const [repostMsg, setRepostMsg]     = useState<string | null>(null)
 
   const isFailed = post.status === 'FAILED'
   const hasError = !!post.errorMsg
 
-  // Determine which platforms failed (for smart defaults)
-  const failedPlatforms: string[] = []
-  if (post.errorMsg) {
-    if (post.errorMsg.includes('INSTAGRAM') || post.errorMsg.includes('Instagram')) failedPlatforms.push('INSTAGRAM')
-    if (post.errorMsg.includes('FACEBOOK') || post.errorMsg.includes('Facebook')) failedPlatforms.push('FACEBOOK')
-  }
-  if (isFailed && failedPlatforms.length === 0) {
-    // Fully failed — default to all platforms
-    failedPlatforms.push(...post.platforms)
-  }
-
   const repost = async (platforms: string[]) => {
-    setReposting(true)
+    const isFB = platforms.includes('FACEBOOK')
+    if (isFB) setRepostingFB(true); else setRepostingIG(true)
     setRepostMsg(null)
     try {
       const res = await fetch('/api/social/post/publish', {
@@ -162,13 +156,12 @@ function PublishedCard({ post, onDelete, onReload }: { post: Post; onDelete: (id
         setRepostMsg(`Failed: ${data.error ?? 'Unknown error'}`)
       } else {
         setRepostMsg(`Reposted to ${platforms.join(', ')}`)
-        setShowRepost(false)
         onReload()
       }
     } catch (err) {
       setRepostMsg(`Error: ${err instanceof Error ? err.message : 'Unknown'}`)
     } finally {
-      setReposting(false)
+      if (isFB) setRepostingFB(false); else setRepostingIG(false)
     }
   }
 
@@ -207,67 +200,37 @@ function PublishedCard({ post, onDelete, onReload }: { post: Post; onDelete: (id
               </span>
             )}
 
-            {/* Repost button — shown for failed posts or posts with partial errors */}
+            {/* Repost buttons — shown for failed posts or posts with partial errors */}
             {(isFailed || hasError) && (
-              <div className="relative" ref={dropdownRef}>
-                <button
-                  onClick={() => setShowRepost(!showRepost)}
-                  className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg font-semibold"
-                  style={{ background: '#DBEAFE', color: '#1D4ED8' }}
-                  disabled={reposting}
-                >
-                  <RotateCcw size={12} className={reposting ? 'animate-spin' : ''} />
-                  Repost
-                </button>
-                {showRepost && (
-                  <div
-                    className="absolute right-0 top-full mt-1 z-50 rounded-lg shadow-lg p-3 min-w-[180px]"
-                    style={{ background: '#fff', border: '1px solid var(--light-gray)' }}
+              <div className="flex items-center gap-1">
+                {post.platforms.includes('FACEBOOK') && (
+                  <button
+                    onClick={() => repost(['FACEBOOK'])}
+                    disabled={repostingFB || repostingIG}
+                    className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg font-semibold hover:opacity-80 transition-opacity"
+                    style={{ background: '#1877F218', color: '#1877F2' }}
+                    title="Repost to Facebook"
                   >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Repost to:</span>
-                      <button onClick={() => setShowRepost(false)}>
-                        <X size={12} style={{ color: 'var(--mid-gray)' }} />
-                      </button>
-                    </div>
-                    <div className="space-y-1.5">
-                      {post.platforms.includes('FACEBOOK') && (
-                        <button
-                          onClick={() => repost(['FACEBOOK'])}
-                          disabled={reposting}
-                          className="w-full text-left text-xs px-3 py-2 rounded-md font-medium hover:opacity-80 transition-opacity"
-                          style={{ background: '#1877F218', color: '#1877F2' }}
-                        >
-                          Facebook only
-                        </button>
-                      )}
-                      {post.platforms.includes('INSTAGRAM') && (
-                        <button
-                          onClick={() => repost(['INSTAGRAM'])}
-                          disabled={reposting}
-                          className="w-full text-left text-xs px-3 py-2 rounded-md font-medium hover:opacity-80 transition-opacity"
-                          style={{ background: '#E1306C18', color: '#E1306C' }}
-                        >
-                          Instagram only
-                        </button>
-                      )}
-                      {post.platforms.length > 1 && (
-                        <button
-                          onClick={() => repost(post.platforms)}
-                          disabled={reposting}
-                          className="w-full text-left text-xs px-3 py-2 rounded-md font-medium hover:opacity-80 transition-opacity"
-                          style={{ background: 'var(--teal)', color: '#fff' }}
-                        >
-                          All platforms
-                        </button>
-                      )}
-                    </div>
-                    {repostMsg && (
-                      <p className="text-xs mt-2" style={{ color: repostMsg.startsWith('Failed') ? '#DC2626' : '#059669' }}>
-                        {repostMsg}
-                      </p>
-                    )}
-                  </div>
+                    <RotateCcw size={12} className={repostingFB ? 'animate-spin' : ''} />
+                    Repost to FB
+                  </button>
+                )}
+                {post.platforms.includes('INSTAGRAM') && (
+                  <button
+                    onClick={() => repost(['INSTAGRAM'])}
+                    disabled={repostingFB || repostingIG}
+                    className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg font-semibold hover:opacity-80 transition-opacity"
+                    style={{ background: '#E1306C18', color: '#E1306C' }}
+                    title="Repost to Instagram"
+                  >
+                    <RotateCcw size={12} className={repostingIG ? 'animate-spin' : ''} />
+                    Repost to IG
+                  </button>
+                )}
+                {repostMsg && (
+                  <span className="text-xs" style={{ color: repostMsg.startsWith('Failed') ? '#DC2626' : '#059669' }}>
+                    {repostMsg}
+                  </span>
                 )}
               </div>
             )}

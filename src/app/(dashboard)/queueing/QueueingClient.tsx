@@ -407,20 +407,63 @@ function branchBadge(branch: string) {
 }
 
 // ─── Ads Manager ─────────────────────────────────────────────────────────────
-function AdsManager() {
+function AdsManager({ role }: { role: string }) {
   const [ads, setAds]           = useState<Ad[]>([])
   const [uploading, setUploading] = useState(false)
   const [uploadErr, setUploadErr] = useState('')
-  const [uploadBranch, setUploadBranch] = useState('ALL')
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [showLeaderboard, setShowLeaderboard] = useState(false)
+  const [togglingLb, setTogglingLb] = useState(false)
+  const [showComplaintForm, setShowComplaintForm] = useState(false)
+  const [togglingCf, setTogglingCf] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  // Branch-restricted accounts can only manage ads for their own branch
+  const allowedBranches = role.startsWith('SBEA_')
+    ? BRANCH_OPTIONS.filter(o => o.value === 'SBEA')
+    : role.startsWith('SBGH_')
+      ? BRANCH_OPTIONS.filter(o => o.value === 'SBGH')
+      : BRANCH_OPTIONS
+  const [uploadBranch, setUploadBranch] = useState(allowedBranches[0].value)
 
   const loadAds = useCallback(async () => {
     const res = await fetch('/api/queue-ads')
     if (res.ok) setAds(await res.json())
   }, [])
 
-  useEffect(() => { loadAds() }, [loadAds])
+  // Load settings (leaderboard + complaint form)
+  const loadLeaderboardSetting = useCallback(async () => {
+    const res = await fetch('/api/queue-ads/settings')
+    if (res.ok) {
+      const data = await res.json()
+      setShowLeaderboard(data.showLeaderboard ?? false)
+      setShowComplaintForm(data.showComplaintForm ?? false)
+    }
+  }, [])
+
+  useEffect(() => { loadAds(); loadLeaderboardSetting() }, [loadAds, loadLeaderboardSetting])
+
+  async function handleToggleLeaderboard(checked: boolean) {
+    setTogglingLb(true)
+    setShowLeaderboard(checked)
+    await fetch('/api/queue-ads/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ showLeaderboard: checked }),
+    })
+    setTogglingLb(false)
+  }
+
+  async function handleToggleComplaintForm(checked: boolean) {
+    setTogglingCf(true)
+    setShowComplaintForm(checked)
+    await fetch('/api/queue-ads/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ showComplaintForm: checked }),
+    })
+    setTogglingCf(false)
+  }
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -481,7 +524,7 @@ function AdsManager() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Show on:</span>
           <div style={{ display: 'flex', gap: '0.35rem' }}>
-            {BRANCH_OPTIONS.map(opt => (
+            {allowedBranches.map(opt => (
               <button key={opt.value} type="button"
                 onClick={() => setUploadBranch(opt.value)}
                 className="text-xs font-semibold px-3 py-1 rounded-lg transition-colors"
@@ -538,13 +581,15 @@ function AdsManager() {
                     <select
                       value={ad.branch ?? 'ALL'}
                       onChange={e => handleBranchChange(ad.id, e.target.value)}
+                      disabled={allowedBranches.length === 1}
                       className="text-xs rounded-lg px-2 py-1 font-semibold"
                       style={{
                         border: '1.5px solid rgba(26,123,138,0.25)',
                         background: '#fff', color: 'var(--charcoal)',
-                        cursor: 'pointer',
+                        cursor: allowedBranches.length === 1 ? 'default' : 'pointer',
+                        opacity: allowedBranches.length === 1 ? 0.7 : 1,
                       }}>
-                      {BRANCH_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      {allowedBranches.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                   </td>
                   <td className="px-3 py-2">
@@ -576,6 +621,92 @@ function AdsManager() {
           </table>
         </div>
       )}
+
+      {/* Leaderboard toggle */}
+      <div className="rounded-xl px-4 py-3 flex items-center justify-between"
+        style={{ border: '1px solid var(--light-gray)', background: '#fff' }}>
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center"
+            style={{ background: 'var(--pale-teal)' }}>
+            <span style={{ fontSize: '1rem' }}>🏆</span>
+          </div>
+          <div>
+            <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
+              Show Leaderboard
+            </p>
+            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+              Display clinician satisfaction leaderboard on the TV queue display, alternating with ads.
+            </p>
+          </div>
+        </div>
+        <label className="relative inline-flex items-center cursor-pointer">
+          <input
+            type="checkbox"
+            checked={showLeaderboard}
+            onChange={e => handleToggleLeaderboard(e.target.checked)}
+            disabled={togglingLb}
+            className="sr-only peer"
+          />
+          <div style={{
+            width: '2.75rem', height: '1.5rem', borderRadius: '99px',
+            background: showLeaderboard ? 'var(--teal)' : 'var(--light-gray)',
+            position: 'relative', transition: 'background 0.2s',
+            opacity: togglingLb ? 0.6 : 1,
+            cursor: togglingLb ? 'wait' : 'pointer',
+          }}>
+            <div style={{
+              width: '1.15rem', height: '1.15rem', borderRadius: '50%',
+              background: '#fff', position: 'absolute', top: '0.175rem',
+              left: showLeaderboard ? '1.4rem' : '0.2rem',
+              transition: 'left 0.2s',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+            }} />
+          </div>
+        </label>
+      </div>
+
+      {/* Patient Complaint Form toggle */}
+      <div className="rounded-xl px-4 py-3 flex items-center justify-between"
+        style={{ border: '1px solid var(--light-gray)', background: '#fff' }}>
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center"
+            style={{ background: '#FFF5E8' }}>
+            <span style={{ fontSize: '1rem' }}>📋</span>
+          </div>
+          <div>
+            <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
+              Show Patient Complaint Form
+            </p>
+            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+              Display a QR code on the TV for patients to submit concerns or incidents.
+            </p>
+          </div>
+        </div>
+        <label className="relative inline-flex items-center cursor-pointer">
+          <input
+            type="checkbox"
+            checked={showComplaintForm}
+            onChange={e => handleToggleComplaintForm(e.target.checked)}
+            disabled={togglingCf}
+            className="sr-only peer"
+          />
+          <div style={{
+            width: '2.75rem', height: '1.5rem', borderRadius: '99px',
+            background: showComplaintForm ? 'var(--teal)' : 'var(--light-gray)',
+            position: 'relative', transition: 'background 0.2s',
+            opacity: togglingCf ? 0.6 : 1,
+            cursor: togglingCf ? 'wait' : 'pointer',
+          }}>
+            <div style={{
+              width: '1.15rem', height: '1.15rem', borderRadius: '50%',
+              background: '#fff', position: 'absolute', top: '0.175rem',
+              left: showComplaintForm ? '1.4rem' : '0.2rem',
+              transition: 'left 0.2s',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+            }} />
+          </div>
+        </label>
+      </div>
     </div>
   )
 }
@@ -870,7 +1001,7 @@ export default function QueueingClient({ role }: { role: string }) {
       )}
 
       {/* ── Ads tab ───────────────────────────────────────────────────────── */}
-      {activeTab === 'ads' && <AdsManager />}
+      {activeTab === 'ads' && <AdsManager role={role} />}
 
       {/* Walk-in modal */}
       {showWalkIn && (

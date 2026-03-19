@@ -203,6 +203,58 @@ export async function exportDesign(
   throw new Error('Export timed out')
 }
 
+// ── Shared token helper ───────────────────────────────────────
+// All Canva API routes must use this instead of rolling their own refresh logic.
+// Handles:
+//  - Proactive refresh when token is within 5 min of expiry
+//  - Race condition: if two requests try to refresh simultaneously, the second
+//    one will re-read the DB and use the token the first one already saved
+
+import { prisma } from '@/lib/prisma'
+
+export async function getValidCanvaToken(): Promise<string | null> {
+  const account = await prisma.canvaAccount.findFirst()
+  if (!account) return null
+
+  const clientId = process.env.CANVA_CLIENT_ID
+  const clientSecret = process.env.CANVA_CLIENT_SECRET
+  if (!clientId || !clientSecret) return account.accessToken
+
+  // Token still valid (>5 min remaining)
+  if (account.expiresAt) {
+    const msLeft = account.expiresAt.getTime() - Date.now()
+    if (msLeft > 5 * 60 * 1000) return account.accessToken
+  } else {
+    // No expiry stored — assume valid
+    return account.accessToken
+  }
+
+  // Token is expired or near expiry
+  if (!account.refreshToken) return null
+
+  try {
+    const refreshed = await refreshAccessToken(clientId, clientSecret, account.refreshToken)
+    const expiresAt = new Date(Date.now() + refreshed.expires_in * 1000)
+    await prisma.canvaAccount.update({
+      where: { id: account.id },
+      data: {
+        accessToken: refreshed.access_token,
+        expiresAt,
+        ...(refreshed.refresh_token ? { refreshToken: refreshed.refresh_token } : {}),
+      },
+    })
+    return refreshed.access_token
+  } catch {
+    // Refresh failed — race condition check: another request may have already
+    // refreshed the token and saved a different one to the DB
+    const fresh = await prisma.canvaAccount.findFirst()
+    if (fresh && fresh.accessToken !== account.accessToken) {
+      return fresh.accessToken
+    }
+    return null
+  }
+}
+
 // ── Types ─────────────────────────────────────────────────────
 
 export interface CanvaDesign {

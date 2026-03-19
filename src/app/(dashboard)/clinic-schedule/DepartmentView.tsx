@@ -5,31 +5,10 @@ import { Plus, Pencil, Trash2, Mail, MailCheck, MessageSquare, ChevronDown, Chev
 
 // ─── Session types per department ────────────────────────────────────────────
 const SESSION_TYPES: Record<string, string[]> = {
-  OT: [
-    'IE (Cash)', 'IE (HMO)',
-    'Basic Session (Cash)', 'Basic Session (HMO)',
-    'Specialized Session (Cash)', 'Specialized Session (HMO)',
-    'Group Session (Cash)', 'Group Session (HMO)',
-    'PTC (Cash)', 'PTC (HMO)',
-    'Aquatherapy (Cash)', 'Aquatherapy (HMO)',
-  ],
-  PT: [
-    'IE (Cash)', 'IE (HMO)',
-    'Basic Session (Cash)', 'Basic Session (HMO)',
-    'Specialized Session (Cash)', 'Specialized Session (HMO)',
-    'Group Session (Cash)', 'Group Session (HMO)',
-    'PTC (Cash)', 'PTC (HMO)',
-    'Aquatherapy (Cash)', 'Aquatherapy (HMO)',
-  ],
-  SLP: [
-    'IE (Cash)', 'IE (HMO)',
-    'Basic Session (Cash)', 'Basic Session (HMO)',
-    'Specialized Session (Cash)', 'Specialized Session (HMO)',
-    'Group Session (Cash)', 'Group Session (HMO)',
-    'PTC (Cash)', 'PTC (HMO)',
-    'Aquatherapy (Cash)', 'Aquatherapy (HMO)',
-  ],
-  SPED:       ['IE', 'Basic Session', 'PTC', 'Group Session'],
+  PT:         ['IE', 'Basic Session', 'Specialized Session', 'Group Session', 'PTC', 'Aquatherapy'],
+  OT:         ['IE', 'Basic Session', 'Specialized Session', 'Group Session', 'PTC', 'Aquatherapy'],
+  SLP:        ['IE', 'Basic Session', 'Specialized Session', 'Group Session', 'PTC', 'Aquatherapy'],
+  SPED:       ['IE', '1-on-1', 'PTC', 'Group Session'],
   MD:         ['Initial Consult', 'Follow Up'],
   PSYCHOLOGY: ['Individual', 'Couple', 'Family', 'Testing'],
   ORTHOSIS:   ['Initial Consult', 'Follow Up'],
@@ -306,6 +285,8 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
   const [toast, setToast] = useState('')
   // Last-week suggestions
   const [lastWeekSuggestions, setLastWeekSuggestions] = useState<Schedule[]>([])
+  // Decking suggestions
+  const [deckingSuggestions, setDeckingSuggestions] = useState<{ id: string; patient: Patient | null; startTime: string; endTime: string; dayOfWeek: string }[]>([])
 
   const loadSchedules = useCallback(async () => {
     setLoadingSchedules(true)
@@ -340,11 +321,19 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
       const res = await fetch(`/api/clinic-schedule?staffId=${staff.id}&date=${lastWeekDate}`)
       if (res.ok) setLastWeekSuggestions(await res.json())
     } catch { /* silent */ }
+    // Fetch decking suggestions for this day of week
+    const DOW_NAMES = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
+    const dow = DOW_NAMES[new Date(selectedDate + 'T12:00:00').getDay()]
+    try {
+      const res = await fetch(`/api/decking/slots?staffId=${staff.id}&dayOfWeek=${dow}`)
+      if (res.ok) setDeckingSuggestions(await res.json())
+    } catch { /* silent */ }
   }
 
   function closeAddForm() {
     setShowAdd(false)
     setLastWeekSuggestions([])
+    setDeckingSuggestions([])
     setForm({ ...EMPTY_FORM, date: selectedDate, endTime: computeEndTime('08:00', '1h') })
   }
 
@@ -568,6 +557,38 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
                   </div>
                 </div>
               )}
+              {/* ── Decking suggestions ── */}
+              {deckingSuggestions.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold mb-1.5" style={{ color: '#ED6823' }}>
+                    📋 From Decking Schedule ({['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(selectedDate + 'T12:00:00').getDay()]})
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {deckingSuggestions.map(s => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => setForm({
+                          patientId: s.patient?.id ?? '',
+                          patientLabel: s.patient ? `${s.patient.lastName}, ${s.patient.firstName}` : '',
+                          date: selectedDate,
+                          startTime: s.startTime,
+                          endTime: s.endTime,
+                          duration: 'custom',
+                          sessionType: '',
+                          status: 'PENDING',
+                          notes: '',
+                        })}
+                        className="px-3 py-1 rounded-full text-xs font-medium transition-colors hover:opacity-80"
+                        style={{ background: '#ED6823', color: '#fff' }}
+                      >
+                        {s.patient ? `${s.patient.lastName}, ${s.patient.firstName[0]}.` : '(slot)'}
+                        {' · '}{formatTime(s.startTime)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <ScheduleForm dept={staff.department} values={form} onChange={setForm}
                 onSubmit={handleAdd} onCancel={closeAddForm}
                 error={formError} submitting={saving} submitLabel="Save Schedule" />
@@ -704,13 +725,12 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
 const ALL_DEPARTMENTS = ['OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS']
 
 // ─── Main DepartmentView ───────────────────────────────────────────────────────
-export default function DepartmentView({ role }: { role: string }) {
+export default function DepartmentView({ role, selectedDate, onDateChange }: { role: string; selectedDate: string; onDateChange: (d: string) => void }) {
   const branches = visibleBranches(role)
   const [activeBranch, setActiveBranch] = useState(branches[0])
   const [activeDept, setActiveDept] = useState('All')
   const [staff, setStaff] = useState<StaffMember[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0])
 
   useEffect(() => {
     fetch('/api/staff').then(r => r.json()).then(setStaff).finally(() => setLoading(false))
@@ -747,7 +767,7 @@ export default function DepartmentView({ role }: { role: string }) {
           <input
             type="date"
             value={selectedDate}
-            onChange={e => setSelectedDate(e.target.value)}
+            onChange={e => onDateChange(e.target.value)}
             className="rounded-lg px-3 py-1.5 text-sm"
             style={{ border: '1.5px solid rgba(26,123,138,0.3)', background: '#fff', color: 'var(--charcoal)' }}
           />

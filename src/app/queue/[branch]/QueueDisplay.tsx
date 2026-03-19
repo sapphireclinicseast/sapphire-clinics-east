@@ -12,7 +12,11 @@ const DEPT_COLORS: Record<string, { bg: string; text: string }> = {
   MD:         { bg: '#DC2626', text: '#fff' },
   PSYCHOLOGY: { bg: '#0891B2', text: '#fff' },
   ORTHOSIS:   { bg: '#059669', text: '#fff' },
+  FRONT_DESK: { bg: '#6366F1', text: '#fff' },
 }
+
+// Medal colours for leaderboard
+const MEDAL_COLORS = ['#F59E0B', '#94A3B8', '#CD7F32'] // gold, silver, bronze
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface QueueItem {
@@ -35,6 +39,17 @@ interface Ad {
   order: number
 }
 
+interface LeaderboardEntry {
+  id: string; name: string; dept: string; branch: string
+  avgRating: number; sessions: number; score: number
+}
+
+interface LeaderboardData {
+  year: number
+  byDept: Record<string, LeaderboardEntry[]>
+  departments: string[]
+}
+
 function formatTime(t: string): string {
   const [h, m] = t.split(':').map(Number)
   const suffix = h >= 12 ? 'PM' : 'AM'
@@ -55,8 +70,24 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
   const [clock, setClock]     = useState('')
   const [dateLabel, setDateLabel] = useState('')
   const [lastRefresh, setLastRefresh] = useState('')
+  const [currentHour, setCurrentHour] = useState(0)
   const videoRef   = useRef<HTMLVideoElement>(null)
   const fadeTimer  = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const queuePanelRef = useRef<HTMLDivElement>(null)
+  const hourRefs = useRef<Record<number, HTMLDivElement | null>>({})
+
+  // Leaderboard state
+  const [leaderboard, setLeaderboard] = useState<LeaderboardData | null>(null)
+  const [lbEnabled, setLbEnabled] = useState(false) // controlled by Ads Manager toggle
+  const [lbDeptIdx, setLbDeptIdx] = useState(0)
+  // showLeaderboard = true means the ads panel is currently showing the leaderboard slide
+  const [showLeaderboard, setShowLeaderboard] = useState(false)
+  // Complaint form QR state
+  const [cfEnabled, setCfEnabled] = useState(false)
+  const [showComplaintQR, setShowComplaintQR] = useState(false)
+
+  const COMPLAINT_FORM_URL = 'https://hr.sapphireclinicseast.org/patient-complaint-form.html'
+  const complaintQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(COMPLAINT_FORM_URL)}&color=1A7B8A&bgcolor=FFFFFF&margin=8`
 
   // ── Live clock (updates every second) ──────────────────────────────────────
   useEffect(() => {
@@ -64,17 +95,28 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
       const now = new Date()
       setClock(now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }))
       setDateLabel(now.toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Manila' }))
+      const h = parseInt(now.toLocaleString('en-PH', { hour: 'numeric', hour12: false, timeZone: 'Asia/Manila' }), 10)
+      setCurrentHour(h)
     }
     tick()
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)
   }, [])
 
+  // ── Auto-scroll to current hour ────────────────────────────────────────────
+  useEffect(() => {
+    if (currentHour === 0) return
+    const el = hourRefs.current[currentHour]
+    if (el && queuePanelRef.current) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [currentHour, items]) // re-scroll when items update or hour changes
+
   // ── Fetch queue data ────────────────────────────────────────────────────────
   const fetchQueue = useCallback(async () => {
     try {
       const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
-      const res = await fetch(`/api/queue?branch=${branch}&date=${today}`)
+      const res = await fetch(`/api/queue?branch=${branch}&date=${today}&status=CONFIRMED`)
       if (res.ok) {
         const data = await res.json()
         setItems(data.items ?? [])
@@ -83,16 +125,58 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
     } catch { /* silent — TV should never crash */ }
   }, [branch])
 
-  // ── Advance to next ad with fade out → swap → fade in ───────────────────────
+  // ── Fetch leaderboard setting + data ───────────────────────────────────────
+  const fetchLeaderboard = useCallback(async () => {
+    try {
+      // Check settings in Ads Manager
+      const settingsRes = await fetch('/api/queue-ads/settings')
+      if (settingsRes.ok) {
+        const settings = await settingsRes.json()
+        setLbEnabled(settings.showLeaderboard ?? false)
+        setCfEnabled(settings.showComplaintForm ?? false)
+        if (!settings.showLeaderboard) {
+          setLeaderboard(null)
+          setShowLeaderboard(false)
+        }
+        if (!settings.showLeaderboard) return
+      }
+      const res = await fetch(`/api/queue/leaderboard?branch=${branch}`)
+      if (res.ok) setLeaderboard(await res.json())
+    } catch { /* silent */ }
+  }, [branch])
+
+  // ── Advance to next ad/leaderboard/complaint-QR with fade ────────────────
   const advanceAd = useCallback((currentLength: number) => {
-    if (currentLength <= 1) return
     if (fadeTimer.current) clearTimeout(fadeTimer.current)
     setFadingOut(true)
     fadeTimer.current = setTimeout(() => {
-      setAdIdx(i => (i + 1) % currentLength)
+      if (showComplaintQR) {
+        // Was showing complaint QR → back to ads
+        setShowComplaintQR(false)
+        setAdIdx(0)
+      } else if (showLeaderboard) {
+        // Was showing leaderboard → check if complaint QR should follow
+        setShowLeaderboard(false)
+        if (cfEnabled) {
+          setShowComplaintQR(true)
+        } else {
+          setAdIdx(prev => (prev + 1) % Math.max(1, currentLength))
+        }
+      } else {
+        const nextIdx = (adIdx + 1) % Math.max(1, currentLength)
+        const cycleEnd = nextIdx === 0 || currentLength <= 1
+        if (cycleEnd && lbEnabled && leaderboard && leaderboard.departments.length > 0) {
+          setShowLeaderboard(true)
+          setLbDeptIdx(prev => (prev + 1) % (leaderboard?.departments.length ?? 1))
+        } else if (cycleEnd && cfEnabled) {
+          setShowComplaintQR(true)
+        } else {
+          setAdIdx(nextIdx)
+        }
+      }
       setFadingOut(false)
     }, 500)
-  }, [])
+  }, [showComplaintQR, showLeaderboard, adIdx, leaderboard, lbEnabled, cfEnabled])
 
   // ── Fetch ads (branch-filtered) ──────────────────────────────────────────────
   const fetchAds = useCallback(async () => {
@@ -105,32 +189,42 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
   useEffect(() => {
     fetchQueue()
     fetchAds()
+    fetchLeaderboard()
     const queueInterval = setInterval(fetchQueue, 30_000)
     const adsInterval   = setInterval(fetchAds,  120_000)
-    return () => { clearInterval(queueInterval); clearInterval(adsInterval) }
-  }, [fetchQueue, fetchAds])
+    const lbInterval    = setInterval(fetchLeaderboard, 300_000) // refresh leaderboard every 5 min
+    return () => { clearInterval(queueInterval); clearInterval(adsInterval); clearInterval(lbInterval) }
+  }, [fetchQueue, fetchAds, fetchLeaderboard])
 
   // ── Reload video src when ad changes ─────────────────────────────────────
   useEffect(() => {
-    if (videoRef.current) {
+    if (videoRef.current && !showLeaderboard) {
       videoRef.current.load()
       videoRef.current.play().catch(() => {})
     }
-  }, [adIdx])
+  }, [adIdx, showLeaderboard])
 
   // ── Reset adIdx if ads list shrinks ──────────────────────────────────────
   useEffect(() => {
     if (ads.length > 0 && adIdx >= ads.length) setAdIdx(0)
   }, [ads.length, adIdx])
 
-  // ── Image ads: auto-advance after 12 s (with fade) ───────────────────────
+  // ── Image ads & leaderboard & complaint QR: auto-advance timer ────────────
   const currentAd = ads[adIdx]
   const isImage = currentAd?.mimeType.startsWith('image/')
   useEffect(() => {
+    if (showLeaderboard) {
+      const id = setTimeout(() => advanceAd(ads.length), 15_000)
+      return () => clearTimeout(id)
+    }
+    if (showComplaintQR) {
+      const id = setTimeout(() => advanceAd(ads.length), 20_000)
+      return () => clearTimeout(id)
+    }
     if (!isImage || ads.length === 0) return
     const id = setTimeout(() => advanceAd(ads.length), 12_000)
     return () => clearTimeout(id)
-  }, [adIdx, isImage, ads.length, advanceAd])
+  }, [adIdx, isImage, ads.length, advanceAd, showLeaderboard, showComplaintQR])
 
   // ── Group items by hour ─────────────────────────────────────────────────────
   const byHour: Record<number, QueueItem[]> = {}
@@ -140,9 +234,12 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
   }
   const hours = Object.keys(byHour).map(Number).sort((a, b) => a - b)
 
-  // Current hour in PH time
-  const nowHour = new Date().toLocaleString('en-PH', { hour: 'numeric', hour12: false, timeZone: 'Asia/Manila' })
-  const currentHour = parseInt(nowHour, 10)
+  // Current leaderboard department to show
+  const lbDept = leaderboard?.departments[lbDeptIdx % (leaderboard?.departments.length || 1)]
+  const lbEntries = lbDept ? (leaderboard?.byDept[lbDept] ?? []) : []
+
+  // Total slides count for dots (ads + leaderboard departments + complaint form)
+  const totalSlides = ads.length + (lbEnabled ? (leaderboard?.departments.length ?? 0) : 0) + (cfEnabled ? 1 : 0)
 
   return (
     <div style={{
@@ -177,7 +274,10 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
 
         {/* ── Queue Panel (40%) ─────────────────────────────────────────── */}
-        <div style={{ flex: '0 0 40%', overflowY: 'auto', padding: '1rem 1.25rem' }}>
+        <div ref={queuePanelRef} style={{
+          flex: '0 0 40%', overflowY: 'auto', padding: '1rem 1.25rem',
+          scrollBehavior: 'smooth',
+        }}>
           {items.length === 0 ? (
             <div style={{ textAlign: 'center', marginTop: '4rem', color: '#64748B' }}>
               <p style={{ fontSize: '1rem', fontWeight: 600 }}>No scheduled appointments today</p>
@@ -185,15 +285,21 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
           ) : (
             hours.map(h => {
               const isNow = h === currentHour
+              const isPast = h < currentHour
               return (
-                <div key={h} style={{ marginBottom: '1rem' }}>
+                <div
+                  key={h}
+                  ref={el => { hourRefs.current[h] = el }}
+                  style={{ marginBottom: '1rem' }}
+                >
                   {/* Hour header */}
                   <div style={{
                     display: 'flex', alignItems: 'center', gap: '0.5rem',
                     marginBottom: '0.35rem',
                   }}>
                     <span style={{
-                      fontSize: '0.75rem', fontWeight: 700, color: isNow ? '#FFA235' : '#94A3B8',
+                      fontSize: '0.75rem', fontWeight: 700,
+                      color: isNow ? '#FFA235' : isPast ? '#475569' : '#94A3B8',
                       textTransform: 'uppercase', letterSpacing: '0.1em',
                     }}>
                       {formatHour(h)}
@@ -206,24 +312,25 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                         NOW
                       </span>
                     )}
-                    <div style={{ flex: 1, height: '1px', background: isNow ? '#FFA235' : '#1E293B' }} />
+                    <div style={{ flex: 1, height: '1px', background: isNow ? '#FFA235' : isPast ? '#0F172A' : '#1E293B' }} />
                   </div>
 
                   {/* Rows */}
                   {byHour[h].map(item => {
                     const dept = DEPT_COLORS[item.department] ?? { bg: '#475569', text: '#fff' }
-                    const isPast = h < currentHour
                     return (
                       <div key={item.id} style={{
                         display: 'flex', alignItems: 'center', gap: '0.5rem',
                         padding: '0.4rem 0.75rem', borderRadius: '0.4rem', marginBottom: '0.3rem',
                         background: isNow ? 'rgba(237,104,35,0.08)' : isPast ? 'rgba(255,255,255,0.02)' : '#1E293B',
                         border: isNow ? '1px solid rgba(237,104,35,0.3)' : '1px solid rgba(255,255,255,0.04)',
-                        opacity: isPast ? 0.5 : 1,
+                        opacity: isPast ? 0.35 : 1,
+                        transition: 'opacity 0.5s',
                       }}>
                         {/* Time */}
                         <span style={{
-                          fontSize: '0.75rem', fontWeight: 600, color: '#CBD5E1',
+                          fontSize: '0.75rem', fontWeight: 600,
+                          color: isNow ? '#FFA235' : '#CBD5E1',
                           whiteSpace: 'nowrap', minWidth: '8.5rem',
                         }}>
                           {formatTime(item.startTime)} – {formatTime(item.endTime)}
@@ -249,7 +356,11 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                         </span>
 
                         {/* Session type */}
-                        <span style={{ fontSize: '0.72rem', color: '#94A3B8', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span style={{
+                          fontSize: '0.72rem',
+                          color: isNow ? '#E2E8F0' : '#94A3B8',
+                          flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>
                           {item.sessionType}
                         </span>
 
@@ -285,7 +396,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
           background: '#000', position: 'relative', overflow: 'hidden',
           display: 'flex', flexDirection: 'column',
         }}>
-          {ads.length === 0 ? (
+          {ads.length === 0 && (!lbEnabled || !leaderboard) && !cfEnabled ? (
             <div style={{
               flex: 1, display: 'flex', flexDirection: 'column',
               alignItems: 'center', justifyContent: 'center', gap: '1rem', color: '#334155',
@@ -295,17 +406,148 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
               <p style={{ fontSize: '0.85rem', fontWeight: 600 }}>No ads uploaded</p>
             </div>
           ) : (
-            /* Fade wrapper — opacity transitions on ad change */
+            /* Fade wrapper */
             <div style={{
               flex: 1, position: 'relative',
               transition: 'opacity 0.5s ease',
               opacity: fadingOut ? 0 : 1,
             }}>
-              {currentAd?.mimeType.startsWith('video/') ? (
+              {showComplaintQR ? (
+                /* ── Patient Complaint Form QR Slide ── */
+                <div style={{
+                  width: '100%', height: '100%',
+                  background: 'linear-gradient(180deg, #0F172A 0%, #0A1A2E 100%)',
+                  display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center',
+                  padding: '2.5rem 3rem', gap: '1.5rem',
+                }}>
+                  <p style={{
+                    fontSize: '0.7rem', fontWeight: 700, color: '#FFA235',
+                    textTransform: 'uppercase', letterSpacing: '0.15em', margin: 0,
+                  }}>
+                    📋 Patient Feedback
+                  </p>
+                  <h2 style={{
+                    fontSize: '1.8rem', fontWeight: 800, color: '#fff',
+                    textAlign: 'center', lineHeight: 1.2, margin: 0,
+                  }}>
+                    Submit a Complaint or Concern
+                  </h2>
+                  <p style={{
+                    fontSize: '0.95rem', color: 'rgba(255,255,255,0.6)',
+                    textAlign: 'center', maxWidth: '380px', lineHeight: 1.6, margin: 0,
+                  }}>
+                    Your feedback helps us improve our services. Scan the QR code below to submit a complaint or incident report.
+                  </p>
+                  {/* QR Code */}
+                  <div style={{
+                    background: '#fff', borderRadius: '16px',
+                    padding: '16px', boxShadow: '0 8px 32px rgba(237,104,35,0.2)',
+                  }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={complaintQrUrl}
+                      alt="Patient Complaint Form QR Code"
+                      width={280} height={280}
+                      style={{ display: 'block', borderRadius: '8px' }}
+                    />
+                  </div>
+                  <p style={{
+                    fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)',
+                    textAlign: 'center', margin: 0,
+                  }}>
+                    All submissions are confidential and reviewed by administration.
+                  </p>
+                </div>
+              ) : showLeaderboard ? (
+                /* ── Leaderboard Slide ── */
+                <div style={{
+                  width: '100%', height: '100%',
+                  background: 'linear-gradient(180deg, #0F172A 0%, #1E293B 100%)',
+                  display: 'flex', flexDirection: 'column',
+                  padding: '2.5rem 3rem',
+                }}>
+                  {/* Title */}
+                  <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+                    <p style={{ fontSize: '0.7rem', fontWeight: 700, color: '#FFA235', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '0.25rem' }}>
+                      ★ Patient Satisfaction Leaderboard ★
+                    </p>
+                    <p style={{ fontSize: '1.6rem', fontWeight: 800, color: '#fff', lineHeight: 1.2 }}>
+                      Top 5 — {lbDept}
+                    </p>
+                    <p style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '0.25rem' }}>
+                      {leaderboard?.year} — {branch === 'SBEA' ? 'Sandbox East' : branch === 'SBGH' ? 'Greenhills' : branch}
+                    </p>
+                  </div>
+
+                  {/* Entries */}
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.6rem', justifyContent: 'center' }}>
+                    {lbEntries.length > 0 ? lbEntries.map((entry, i) => {
+                      const medalColor = i < 3 ? MEDAL_COLORS[i] : undefined
+                      const deptColor = DEPT_COLORS[entry.dept] ?? { bg: '#475569', text: '#fff' }
+                      return (
+                        <div key={entry.id} style={{
+                          display: 'flex', alignItems: 'center', gap: '0.75rem',
+                          padding: '0.75rem 1rem', borderRadius: '0.6rem',
+                          background: i === 0 ? 'rgba(245,158,11,0.08)' : 'rgba(255,255,255,0.03)',
+                          border: i === 0 ? '1px solid rgba(245,158,11,0.25)' : '1px solid rgba(255,255,255,0.06)',
+                        }}>
+                          {/* Rank */}
+                          <div style={{
+                            width: '2.2rem', height: '2.2rem', borderRadius: '50%', flexShrink: 0,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            background: medalColor ? medalColor + '25' : '#1E293B',
+                            border: medalColor ? `2px solid ${medalColor}` : '2px solid #334155',
+                          }}>
+                            <span style={{ fontSize: '0.9rem', fontWeight: 800, color: medalColor ?? '#64748B' }}>
+                              {i + 1}
+                            </span>
+                          </div>
+
+                          {/* Name & dept */}
+                          <div style={{ flex: 1 }}>
+                            <p style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', lineHeight: 1.2 }}>
+                              {entry.name}
+                            </p>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.15rem' }}>
+                              <span style={{
+                                fontSize: '0.6rem', fontWeight: 700, padding: '0.1rem 0.4rem',
+                                borderRadius: '99px', background: deptColor.bg, color: deptColor.text,
+                                textTransform: 'uppercase',
+                              }}>
+                                {entry.dept}
+                              </span>
+                              <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                                ★ {entry.avgRating.toFixed(1)}/6 · {entry.sessions} sessions
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Score */}
+                          <div style={{ textAlign: 'right' }}>
+                            <p style={{
+                              fontSize: '1.5rem', fontWeight: 800,
+                              color: i === 0 ? '#F59E0B' : '#0D9488',
+                              lineHeight: 1,
+                            }}>
+                              {entry.score}
+                            </p>
+                            <p style={{ fontSize: '0.55rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                              Score
+                            </p>
+                          </div>
+                        </div>
+                      )
+                    }) : (
+                      <p style={{ textAlign: 'center', color: '#475569', fontSize: '0.85rem' }}>No data yet</p>
+                    )}
+                  </div>
+                </div>
+              ) : currentAd?.mimeType.startsWith('video/') ? (
                 <video
                   ref={videoRef}
                   autoPlay muted playsInline
-                  loop={ads.length === 1}
+                  loop={ads.length === 1 && (!lbEnabled || !leaderboard)}
                   style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
                   onEnded={() => advanceAd(ads.length)}
                 >
@@ -322,20 +564,37 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
             </div>
           )}
 
-          {/* Ad counter dots (outside fade wrapper so they stay visible) */}
-          {ads.length > 1 && (
+          {/* Carousel dots */}
+          {totalSlides > 1 && (
             <div style={{
               position: 'absolute', bottom: '1rem', left: 0, right: 0,
               display: 'flex', justifyContent: 'center', gap: '0.4rem',
               pointerEvents: 'none',
             }}>
               {ads.map((_, i) => (
-                <div key={i} style={{
-                  width: i === adIdx ? '1.5rem' : '0.4rem', height: '0.4rem',
-                  borderRadius: '99px', background: i === adIdx ? '#ED6823' : 'rgba(255,255,255,0.3)',
+                <div key={`ad-${i}`} style={{
+                  width: (!showLeaderboard && i === adIdx) ? '1.5rem' : '0.4rem', height: '0.4rem',
+                  borderRadius: '99px',
+                  background: (!showLeaderboard && i === adIdx) ? '#ED6823' : 'rgba(255,255,255,0.3)',
                   transition: 'width 0.3s',
                 }} />
               ))}
+              {lbEnabled && leaderboard && leaderboard.departments.length > 0 && (
+                <div style={{
+                  width: showLeaderboard ? '1.5rem' : '0.4rem', height: '0.4rem',
+                  borderRadius: '99px',
+                  background: showLeaderboard ? '#F59E0B' : 'rgba(255,255,255,0.3)',
+                  transition: 'width 0.3s',
+                }} />
+              )}
+              {cfEnabled && (
+                <div style={{
+                  width: showComplaintQR ? '1.5rem' : '0.4rem', height: '0.4rem',
+                  borderRadius: '99px',
+                  background: showComplaintQR ? '#FFA235' : 'rgba(255,255,255,0.3)',
+                  transition: 'width 0.3s',
+                }} />
+              )}
             </div>
           )}
         </div>

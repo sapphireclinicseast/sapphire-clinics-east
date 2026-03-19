@@ -109,12 +109,16 @@ export default function StaffClient({ role }: { role: string }) {
     setSyncResult(null)
     try {
       const res = await fetch('/api/staff/sync', { method: 'POST' })
+      const data = await res.json()
       if (res.ok) {
-        const data = await res.json()
         setSyncResult(data)
         load()
+      } else {
+        alert('Sync failed: ' + (data.error || 'Unknown error') + ' (HTTP ' + res.status + ')')
       }
-    } catch { /* ignore */ }
+    } catch (err) {
+      alert('Sync failed: ' + (err instanceof Error ? err.message : String(err)))
+    }
     setSyncing(false)
   }
 
@@ -249,7 +253,7 @@ export default function StaffClient({ role }: { role: string }) {
           style={{ background: '#ECFDF5', border: '1px solid #BBF7D0' }}>
           <CheckCircle2 size={15} style={{ color: '#065F46' }} />
           <span className="text-xs font-semibold" style={{ color: '#065F46' }}>
-            Sync complete: {syncResult.created} created, {syncResult.updated} updated ({syncResult.total} staff from HR Platform)
+            Sync complete: {syncResult.created} created, {syncResult.updated} updated{syncResult.deleted > 0 ? `, ${syncResult.deleted} removed` : ''} ({syncResult.total} staff from HR Platform)
           </span>
           <button onClick={() => setSyncResult(null)} className="ml-auto p-1 rounded hover:bg-green-100">
             <X size={13} style={{ color: '#065F46' }} />

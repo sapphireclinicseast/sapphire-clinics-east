@@ -123,9 +123,10 @@ async function sendVia_SMS(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      content: message,
-      from:    fromPhone,        // E.164 clinic number registered in the app
-      to:      toE164(toPhone),  // E.164 patient number
+      content:    message,
+      from:       fromPhone,        // E.164 clinic number registered in the app
+      to:         toE164(toPhone),  // E.164 patient number
+      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     }),
   })
 

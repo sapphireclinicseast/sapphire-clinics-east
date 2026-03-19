@@ -77,11 +77,9 @@ function applyColFiltersFn(rows: DailySchedule[], f: ColFilters): DailySchedule[
   })
 }
 
-export default function DailyView({ role }: { role: string }) {
+export default function DailyView({ role, selectedDate, onDateChange }: { role: string; selectedDate: string; onDateChange: (d: string) => void }) {
   const branches = visibleBranches(role)
   const isMultiBranch = branches.length > 1
-
-  const [selectedDate, setSelectedDate]   = useState(() => new Date().toISOString().split('T')[0])
   const [activeBranch, setActiveBranch]   = useState<string>('All')
   const [viewMode, setViewMode]           = useState<'all' | 'per-department'>('all')
   const [selectedDept, setSelectedDept]   = useState('All')
@@ -187,7 +185,7 @@ export default function DailyView({ role }: { role: string }) {
             <input
               type="date"
               value={selectedDate}
-              onChange={e => setSelectedDate(e.target.value)}
+              onChange={e => onDateChange(e.target.value)}
               className="rounded-lg px-3 py-1.5 text-sm"
               style={{ border: '1.5px solid rgba(26,123,138,0.3)', background: '#fff', color: 'var(--charcoal)' }}
             />

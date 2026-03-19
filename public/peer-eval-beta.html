@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Peer Evaluation — Beta Preview</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8f9fa; color: #1a1a1a; font-size: 14px; }
+
+  /* ── Layout ── */
+  .shell { display: flex; min-height: 100vh; }
+  .sidebar { width: 220px; background: #111827; color: #9ca3af; flex-shrink: 0; display: flex; flex-direction: column; padding: 0; }
+  .sidebar-logo { padding: 20px 16px 16px; border-bottom: 1px solid #1f2937; }
+  .sidebar-logo .brand { color: #fff; font-weight: 700; font-size: 15px; letter-spacing: -0.3px; }
+  .sidebar-logo .sub { color: #6b7280; font-size: 11px; margin-top: 2px; }
+  .sidebar-section { padding: 16px 8px 4px; }
+  .sidebar-section-label { font-size: 10px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: #4b5563; padding: 0 8px 6px; }
+  .sidebar-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; cursor: pointer; color: #9ca3af; font-size: 13px; font-weight: 500; transition: all 0.15s; }
+  .sidebar-item:hover { background: #1f2937; color: #e5e7eb; }
+  .sidebar-item.active { background: #1d4ed8; color: #fff; }
+  .sidebar-item svg { width: 16px; height: 16px; flex-shrink: 0; }
+  .main { flex: 1; overflow-y: auto; padding: 0; }
+
+  /* ── Topbar ── */
+  .topbar { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; }
+  .topbar-title { font-size: 18px; font-weight: 700; color: #111827; }
+  .topbar-badge { background: #fef3c7; color: #92400e; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 9999px; border: 1px solid #fde68a; margin-left: 8px; }
+  .topbar-user { display: flex; align-items: center; gap: 8px; }
+  .avatar { width: 32px; height: 32px; background: #1d4ed8; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; font-weight: 700; }
+
+  /* ── Page content ── */
+  .page { padding: 24px; }
+  .page-header { margin-bottom: 20px; }
+  .page-header h1 { font-size: 20px; font-weight: 700; color: #111827; display: flex; align-items: center; gap: 8px; }
+  .page-header p { color: #6b7280; font-size: 13px; margin-top: 4px; }
+
+  /* ── Tabs ── */
+  .tabs { display: flex; gap: 0; border-bottom: 2px solid #e5e7eb; margin-bottom: 24px; }
+  .tab { padding: 10px 20px; font-size: 13px; font-weight: 600; cursor: pointer; color: #6b7280; border-bottom: 2px solid transparent; margin-bottom: -2px; display: flex; align-items: center; gap: 6px; transition: all 0.15s; }
+  .tab:hover { color: #374151; }
+  .tab.active { color: #1d4ed8; border-bottom-color: #1d4ed8; }
+  .tab svg { width: 15px; height: 15px; }
+
+  /* ── Filter bar ── */
+  .filter-bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; background: #fff; padding: 12px 16px; border-radius: 8px; border: 1px solid #e5e7eb; }
+  .filter-bar select, .filter-bar input { border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 10px; font-size: 13px; color: #374151; background: #fff; outline: none; }
+  .filter-bar select:focus, .filter-bar input:focus { border-color: #1d4ed8; box-shadow: 0 0 0 2px #dbeafe; }
+  .filter-bar label { font-size: 12px; color: #6b7280; font-weight: 500; }
+  .filter-group { display: flex; flex-direction: column; gap: 3px; }
+  .btn { padding: 7px 14px; border-radius: 6px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s; }
+  .btn svg { width: 14px; height: 14px; }
+  .btn-primary { background: #1d4ed8; color: #fff; }
+  .btn-primary:hover { background: #1e40af; }
+  .btn-danger { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+  .btn-danger:hover { background: #fee2e2; }
+  .btn-ghost { background: transparent; color: #6b7280; border: 1px solid #e5e7eb; }
+  .btn-ghost:hover { background: #f9fafb; color: #374151; }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+  .btn-green { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+
+  /* ── Table ── */
+  .table-wrap { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #f9fafb; padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: #6b7280; border-bottom: 1px solid #e5e7eb; white-space: nowrap; cursor: pointer; user-select: none; }
+  th:hover { color: #374151; }
+  td { padding: 12px 14px; border-bottom: 1px solid #f3f4f6; font-size: 13px; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f9fafb; }
+
+  /* ── Status badges ── */
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .badge svg { width: 11px; height: 11px; }
+  .badge-pending { background: #fefce8; color: #854d0e; border: 1px solid #fef08a; }
+  .badge-completed { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+  .badge-expired { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+  .badge-hr08a { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+  .badge-hr08p { background: #faf5ff; color: #7c3aed; border: 1px solid #e9d5ff; }
+  .badge-hr09 { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
+
+  /* ── Staff name ── */
+  .staff-name { font-weight: 600; color: #111827; }
+  .staff-dept { font-size: 11px; color: #9ca3af; margin-top: 1px; }
+
+  /* ── Action row ── */
+  .actions { display: flex; gap: 6px; align-items: center; }
+
+  /* ── Modal ── */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 100; }
+  .modal { background: #fff; border-radius: 12px; width: 600px; max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.25); }
+  .modal-header { padding: 20px 24px 16px; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; background: #fff; z-index: 1; }
+  .modal-title { font-size: 16px; font-weight: 700; color: #111827; }
+  .modal-subtitle { font-size: 12px; color: #6b7280; margin-top: 2px; }
+  .modal-body { padding: 20px 24px; }
+  .modal-footer { padding: 16px 24px; border-top: 1px solid #e5e7eb; display: flex; gap: 10px; justify-content: flex-end; background: #f9fafb; border-radius: 0 0 12px 12px; }
+  .close-btn { background: none; border: none; cursor: pointer; color: #9ca3af; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 6px; }
+  .close-btn:hover { background: #f3f4f6; color: #374151; }
+  .close-btn svg { width: 18px; height: 18px; }
+
+  /* ── Score sliders ── */
+  .score-group { margin-bottom: 18px; }
+  .score-label { font-size: 13px; color: #374151; margin-bottom: 8px; font-weight: 500; line-height: 1.4; }
+  .score-row { display: flex; align-items: center; gap: 12px; }
+  .score-row input[type=range] { flex: 1; accent-color: #1d4ed8; height: 4px; }
+  .score-val { background: #1d4ed8; color: #fff; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 9999px; min-width: 28px; text-align: center; }
+  .score-ends { display: flex; justify-content: space-between; font-size: 10px; color: #9ca3af; margin-top: 3px; }
+  .textarea { width: 100%; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 12px; font-size: 13px; resize: vertical; min-height: 80px; outline: none; font-family: inherit; }
+  .textarea:focus { border-color: #1d4ed8; box-shadow: 0 0 0 2px #dbeafe; }
+  .field-label { font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+
+  /* ── Results accordion ── */
+  .accordion-item { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 10px; overflow: hidden; }
+  .accordion-header { padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
+  .accordion-header:hover { background: #f9fafb; }
+  .accordion-body { padding: 16px; border-top: 1px solid #f3f4f6; display: none; }
+  .accordion-body.open { display: block; }
+  .score-bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .score-bar-label { font-size: 12px; color: #6b7280; width: 280px; flex-shrink: 0; }
+  .score-bar-track { flex: 1; background: #e5e7eb; border-radius: 9999px; height: 8px; overflow: hidden; }
+  .score-bar-fill { height: 100%; border-radius: 9999px; background: linear-gradient(90deg, #3b82f6, #1d4ed8); }
+  .score-bar-val { font-size: 12px; font-weight: 700; color: #1d4ed8; min-width: 32px; text-align: right; }
+  .avg-score { font-size: 24px; font-weight: 800; color: #1d4ed8; }
+  .avg-label { font-size: 12px; color: #6b7280; }
+  .feedback-box { background: #f9fafb; border-radius: 6px; padding: 10px 12px; font-size: 13px; color: #374151; margin-top: 4px; line-height: 1.5; }
+
+  /* ── Generate tab ── */
+  .radio-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 20px; }
+  .radio-card { border: 2px solid #e5e7eb; border-radius: 10px; padding: 16px; cursor: pointer; transition: all 0.15s; }
+  .radio-card:hover { border-color: #93c5fd; background: #eff6ff; }
+  .radio-card.selected { border-color: #1d4ed8; background: #eff6ff; }
+  .radio-card-title { font-size: 14px; font-weight: 700; color: #111827; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+  .radio-card-desc { font-size: 12px; color: #6b7280; line-height: 1.5; }
+  .info-box { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 14px 16px; font-size: 13px; color: #1e40af; line-height: 1.6; margin-bottom: 20px; }
+  .info-box strong { font-weight: 700; display: block; margin-bottom: 4px; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 20px; }
+  .form-field { display: flex; flex-direction: column; gap: 6px; }
+  .form-field label { font-size: 12px; font-weight: 600; color: #374151; }
+  .form-field select { border: 1px solid #d1d5db; border-radius: 6px; padding: 8px 10px; font-size: 13px; color: #374151; background: #fff; outline: none; }
+  .form-field select:focus { border-color: #1d4ed8; box-shadow: 0 0 0 2px #dbeafe; }
+
+  /* ── Confirm modal ── */
+  .confirm-list { list-style: none; margin: 12px 0; }
+  .confirm-list li { padding: 6px 0; font-size: 13px; color: #374151; display: flex; align-items: flex-start; gap: 8px; }
+  .confirm-list li::before { content: "→"; color: #1d4ed8; font-weight: 700; flex-shrink: 0; }
+
+  /* ── Empty/loading states ── */
+  .empty { text-align: center; padding: 48px 24px; color: #9ca3af; }
+  .empty svg { width: 40px; height: 40px; margin: 0 auto 12px; opacity: 0.4; }
+  .empty p { font-size: 14px; }
+
+  /* ── Divider ── */
+  .divider { border: none; border-top: 1px solid #e5e7eb; margin: 16px 0; }
+
+  /* ── Notification ── */
+  .toast { position: fixed; bottom: 24px; right: 24px; background: #111827; color: #fff; padding: 12px 18px; border-radius: 8px; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); z-index: 200; transform: translateY(0); transition: all 0.3s; }
+  .toast svg { width: 16px; height: 16px; color: #4ade80; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-logo">
+      <div class="brand">Sapphire Marketing Hub</div>
+      <div class="sub">Sandbox East · Admin</div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-label">Main</div>
+      <div class="sidebar-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Dashboard
+      </div>
+      <div class="sidebar-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Staff
+      </div>
+      <div class="sidebar-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Clinic Schedule
+      </div>
+      <div class="sidebar-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        Patient Survey
+      </div>
+      <div class="sidebar-item active">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-2-3.5"/><path d="M16 3.13a4 4 0 0 1 3 3.87"/></svg>
+        Peer Evaluation
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <div class="main">
+    <!-- Topbar -->
+    <div class="topbar">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="topbar-title">Peer Evaluation</div>
+        <span class="topbar-badge">BETA</span>
+      </div>
+      <div class="topbar-user">
+        <div class="avatar">HA</div>
+        <span style="font-size:13px;color:#374151;font-weight:500">Hannah</span>
+      </div>
+    </div>
+
+    <!-- Page -->
+    <div class="page">
+      <div class="page-header">
+        <h1>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-2-3.5"/><path d="M16 3.13a4 4 0 0 1 3 3.87"/></svg>
+          Peer Evaluation
+        </h1>
+        <p>Manage HR08 and HR09 peer evaluation assignments and view results across branches.</p>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab('assignments')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          Assignments
+        </div>
+        <div class="tab" onclick="switchTab('results')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="18" y="3" width="4" height="18"/><rect x="10" y="9" width="4" height="12"/><rect x="2" y="13" width="4" height="8"/></svg>
+          Results
+        </div>
+        <div class="tab" onclick="switchTab('generate')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          Generate
+        </div>
+      </div>
+
+      <!-- ── ASSIGNMENTS TAB ── -->
+      <div id="tab-assignments">
+        <div class="filter-bar">
+          <div class="filter-group">
+            <label>Form Type</label>
+            <select>
+              <option>All Types</option>
+              <option>HR08 – Admin assess All</option>
+              <option>HR08 – Peer assess Peer</option>
+              <option>HR09 – Clinical assess Admin</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label>Branch</label>
+            <select>
+              <option>All Branches</option>
+              <option selected>Sandbox East</option>
+              <option>Sandbox Greenhills</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label>Year</label>
+            <select><option>2026</option></select>
+          </div>
+          <div class="filter-group">
+            <label>Month</label>
+            <select>
+              <option>All Months</option>
+              <option selected>March</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label>Status</label>
+            <select>
+              <option>All Statuses</option>
+              <option>Pending</option>
+              <option>Completed</option>
+              <option>Expired</option>
+            </select>
+          </div>
+          <div class="filter-group" style="justify-content:flex-end;margin-left:auto">
+            <button class="btn btn-ghost btn-sm" style="margin-top:18px">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        <div style="font-size:12px;color:#6b7280;margin-bottom:10px;">Showing 8 of 24 assignments · SBEA · March 2026</div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Type ↕</th>
+                <th>Assessor ↕</th>
+                <th>Assessee ↕</th>
+                <th>Period</th>
+                <th>Status ↕</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="badge badge-hr08a">HR08 Admin</span></td>
+                <td>
+                  <div class="staff-name">Julie Ann Osorio</div>
+                  <div class="staff-dept">FRONT_DESK · SBEA</div>
+                </td>
+                <td>
+                  <div class="staff-name">Alyssa Bianca Prado</div>
+                  <div class="staff-dept">OT · SBEA</div>
+                </td>
+                <td style="color:#6b7280">2026 · Full year</td>
+                <td><span class="badge badge-pending">⏳ Pending</span></td>
+                <td>
+                  <div class="actions">
+                    <button class="btn btn-primary btn-sm" onclick="openModal()">Enter Score</button>
+                    <button class="btn btn-ghost btn-sm">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                      Typeform
+                    </button>
+                    <button class="btn btn-danger btn-sm">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td><span class="badge badge-hr08p">HR08 Peer</span></td>
+                <td>
+                  <div class="staff-name">Agatha Escobar</div>
+                  <div class="staff-dept">OT · SBEA</div>
+                </td>
+                <td>
+                  <div class="staff-name">Caitlynn Billedo</div>
+                  <div class="staff-dept">OT · SBEA</div>
+                </td>
+                <td style="color:#6b7280">2026 · Full year</td>
+                <td><span class="badge badge-completed">✓ Completed</span></td>
+                <td>
+                  <div class="actions">
+                    <span style="font-size:12px;color:#16a34a;font-weight:600">Avg: 4.6/5</span>
+                    <button class="btn btn-ghost btn-sm">View</button>
+                    <button class="btn btn-danger btn-sm">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td><span class="badge badge-hr09">HR09</span></td>
+                <td>
+                  <div class="staff-name">Angeri de Borja</div>
+                  <div class="staff-dept">SLP · SBEA</div>
+                </td>
+                <td>
+                  <div class="staff-name">Jan De Asis</div>
+                  <div class="staff-dept">ADMIN · SBEA</div>
+                </td>
+                <td style="color:#6b7280">2026 · March</td>
+                <td><span class="badge badge-pending">⏳ Pending</span></td>
+                <td>
+                  <div class="actions">
+                    <button class="btn btn-primary btn-sm" onclick="openModal()">Enter Score</button>
+                    <button class="btn btn-ghost btn-sm">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                      Typeform
+                    </button>
+                    <button class="btn btn-danger btn-sm">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td><span class="badge badge-hr08p">HR08 Peer</span></td>
+                <td>
+                  <div class="staff-name">Denise Veronica Salao</div>
+                  <div class="staff-dept">PT · SBEA</div>
+                </td>
+                <td>
+                  <div class="staff-name">Janine Sadiz</div>
+                  <div class="staff-dept">PT · SBEA</div>
+                </td>
+                <td style="color:#6b7280">2026 · Full year</td>
+                <td><span class="badge badge-pending">⏳ Pending</span></td>
+                <td>
+                  <div class="actions">
+                    <button class="btn btn-primary btn-sm" onclick="openModal()">Enter Score</button>
+                    <button class="btn btn-ghost btn-sm">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/></svg>
+                      Typeform
+                    </button>
+                    <button class="btn btn-danger btn-sm">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td><span class="badge badge-hr09">HR09</span></td>
+                <td>
+                  <div class="staff-name">Dwayne Ranay</div>
+                  <div class="staff-dept">PSYCHOLOGY · SBEA</div>
+                </td>
+                <td>
+                  <div class="staff-name">Jahzeel Villanueva-Santos</div>
+                  <div class="staff-dept">FRONT_DESK · SBEA</div>
+                </td>
+                <td style="color:#6b7280">2026 · March</td>
+                <td><span class="badge badge-expired">✗ Expired</span></td>
+                <td>
+                  <div class="actions">
+                    <span style="font-size:12px;color:#dc2626;font-weight:600">Expired</span>
+                    <button class="btn btn-danger btn-sm">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td><span class="badge badge-hr08a">HR08 Admin</span></td>
+                <td>
+                  <div class="staff-name">Normina Boticario</div>
+                  <div class="staff-dept">ADMIN · SBEA</div>
+                </td>
+                <td>
+                  <div class="staff-name">Camille Gutierrez Cruz</div>
+                  <div class="staff-dept">SPED · SBEA</div>
+                </td>
+                <td style="color:#6b7280">2026 · Full year</td>
+                <td><span class="badge badge-completed">✓ Completed</span></td>
+                <td>
+                  <div class="actions">
+                    <span style="font-size:12px;color:#16a34a;font-weight:600">Avg: 4.2/5</span>
+                    <button class="btn btn-ghost btn-sm">View</button>
+                    <button class="btn btn-danger btn-sm">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td><span class="badge badge-hr08p">HR08 Peer</span></td>
+                <td>
+                  <div class="staff-name">Carmelle Montalbo</div>
+                  <div class="staff-dept">PSYCHOLOGY · SBEA</div>
+                </td>
+                <td>
+                  <div class="staff-name">Wealyn Sarmiento Reña</div>
+                  <div class="staff-dept">PSYCHOLOGY · SBEA</div>
+                </td>
+                <td style="color:#6b7280">2026 · Full year</td>
+                <td><span class="badge badge-pending">⏳ Pending</span></td>
+                <td>
+                  <div class="actions">
+                    <button class="btn btn-primary btn-sm" onclick="openModal()">Enter Score</button>
+                    <button class="btn btn-ghost btn-sm">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/></svg>
+                      Typeform
+                    </button>
+                    <button class="btn btn-danger btn-sm">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td><span class="badge badge-hr09">HR09</span></td>
+                <td>
+                  <div class="staff-name">Marian Juliet Manrique</div>
+                  <div class="staff-dept">SLP · SBEA</div>
+                </td>
+                <td>
+                  <div class="staff-name">Eugenia Reyes</div>
+                  <div class="staff-dept">ADMIN · SBEA</div>
+                </td>
+                <td style="color:#6b7280">2026 · March</td>
+                <td><span class="badge badge-pending">⏳ Pending</span></td>
+                <td>
+                  <div class="actions">
+                    <button class="btn btn-primary btn-sm" onclick="openModal()">Enter Score</button>
+                    <button class="btn btn-ghost btn-sm">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/></svg>
+                      Typeform
+                    </button>
+                    <button class="btn btn-danger btn-sm">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── RESULTS TAB ── -->
+      <div id="tab-results" style="display:none">
+        <div class="filter-bar">
+          <div class="filter-group">
+            <label>Branch</label>
+            <select><option selected>Sandbox East</option><option>Sandbox Greenhills</option></select>
+          </div>
+          <div class="filter-group">
+            <label>Form Type</label>
+            <select><option>All</option><option>HR08 Admin</option><option>HR08 Peer</option><option>HR09</option></select>
+          </div>
+          <div class="filter-group">
+            <label>Year</label>
+            <select><option>2026</option></select>
+          </div>
+        </div>
+
+        <div style="font-size:12px;color:#6b7280;margin-bottom:14px;">3 staff members with responses — grouped by assessee</div>
+
+        <!-- Accordion 1 -->
+        <div class="accordion-item">
+          <div class="accordion-header" onclick="toggleAccordion(this)">
+            <div style="display:flex;align-items:center;gap:12px">
+              <div class="avatar" style="width:36px;height:36px;font-size:13px">CA</div>
+              <div>
+                <div style="font-weight:700;color:#111827">Caitlynn Billedo, OTRP</div>
+                <div style="font-size:12px;color:#6b7280">OT · SBEA · 2 responses</div>
+              </div>
+              <span class="badge badge-hr08p" style="margin-left:8px">HR08 Peer</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:16px">
+              <div style="text-align:right">
+                <div class="avg-score">4.6</div>
+                <div class="avg-label">avg / 5</div>
+              </div>
+              <svg id="chevron-1" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+          </div>
+          <div class="accordion-body open" id="body-1">
+            <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px">Score Breakdown</div>
+            <div class="score-bar-row">
+              <div class="score-bar-label">Addresses unique needs of clients during one-on-one sessions</div>
+              <div class="score-bar-track"><div class="score-bar-fill" style="width:92%"></div></div>
+              <div class="score-bar-val">4.6</div>
+            </div>
+            <div class="score-bar-row">
+              <div class="score-bar-label">Quality and appropriateness of interventions used during sessions</div>
+              <div class="score-bar-track"><div class="score-bar-fill" style="width:90%"></div></div>
+              <div class="score-bar-val">4.5</div>
+            </div>
+            <div class="score-bar-row">
+              <div class="score-bar-label">Communicates effectively and builds rapport with clients</div>
+              <div class="score-bar-track"><div class="score-bar-fill" style="width:94%"></div></div>
+              <div class="score-bar-val">4.7</div>
+            </div>
+            <div class="score-bar-row">
+              <div class="score-bar-label">Professionalism and adherence to ethical guidelines</div>
+              <div class="score-bar-track"><div class="score-bar-fill" style="width:96%"></div></div>
+              <div class="score-bar-val">4.8</div>
+            </div>
+            <div class="score-bar-row">
+              <div class="score-bar-label">Adaptable and responsive to changing client needs</div>
+              <div class="score-bar-track"><div class="score-bar-fill" style="width:88%"></div></div>
+              <div class="score-bar-val">4.4</div>
+            </div>
+            <div class="score-bar-row">
+              <div class="score-bar-label">Effectiveness in contributing to client progress and outcomes</div>
+              <div class="score-bar-track"><div class="score-bar-fill" style="width:92%"></div></div>
+              <div class="score-bar-val">4.6</div>
+            </div>
+            <div class="score-bar-row">
+              <div class="score-bar-label">Utilizes evidence-based practices in sessions</div>
+              <div class="score-bar-track"><div class="score-bar-fill" style="width:90%"></div></div>
+              <div class="score-bar-val">4.5</div>
+            </div>
+            <div class="score-bar-row">
+              <div class="score-bar-label">Collaboration and communication with other professionals</div>
+              <div class="score-bar-track"><div class="score-bar-fill" style="width:94%"></div></div>
+              <div class="score-bar-val">4.7</div>
+            </div>
+            <div class="score-bar-row">
+              <div class="score-bar-label">Friendly and approachable with clients and staff</div>
+              <div class="score-bar-track"><div class="score-bar-fill" style="width:96%"></div></div>
+              <div class="score-bar-val">4.8</div>
+            </div>
+            <div class="score-bar-row">
+              <div class="score-bar-label">Builds and maintains positive working relationships with staff</div>
+              <div class="score-bar-track"><div class="score-bar-fill" style="width:90%"></div></div>
+              <div class="score-bar-val">4.5</div>
+            </div>
+            <hr class="divider">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+              <div>
+                <div class="field-label">Strengths &amp; Accomplishments</div>
+                <div class="feedback-box">Very dedicated and client-focused. Always goes the extra mile to understand each child's needs. Great team player.</div>
+              </div>
+              <div>
+                <div class="field-label">Areas for Improvement</div>
+                <div class="feedback-box">Could improve on documentation timeliness. Occasionally sessions run over time.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Accordion 2 -->
+        <div class="accordion-item">
+          <div class="accordion-header" onclick="toggleAccordion(this)">
+            <div style="display:flex;align-items:center;gap:12px">
+              <div class="avatar" style="width:36px;height:36px;font-size:13px;background:#7c3aed">CG</div>
+              <div>
+                <div style="font-weight:700;color:#111827">Camille Gutierrez Cruz, LPT</div>
+                <div style="font-size:12px;color:#6b7280">SPED · SBEA · 1 response</div>
+              </div>
+              <span class="badge badge-hr08a" style="margin-left:8px">HR08 Admin</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:16px">
+              <div style="text-align:right">
+                <div class="avg-score">4.2</div>
+                <div class="avg-label">avg / 5</div>
+              </div>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+          </div>
+          <div class="accordion-body" id="body-2">
+            <div style="font-size:13px;color:#6b7280;text-align:center;padding:16px">Click header to expand</div>
+          </div>
+        </div>
+
+        <!-- Accordion 3 -->
+        <div class="accordion-item">
+          <div class="accordion-header" onclick="toggleAccordion(this)">
+            <div style="display:flex;align-items:center;gap:12px">
+              <div class="avatar" style="width:36px;height:36px;font-size:13px;background:#c2410c">JA</div>
+              <div>
+                <div style="font-weight:700;color:#111827">Jan De Asis</div>
+                <div style="font-size:12px;color:#6b7280">ADMIN · SBEA · 1 response</div>
+              </div>
+              <span class="badge badge-hr09" style="margin-left:8px">HR09</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:16px">
+              <div style="text-align:right">
+                <div class="avg-score">3.9</div>
+                <div class="avg-label">avg / 5</div>
+              </div>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+          </div>
+          <div class="accordion-body" id="body-3"></div>
+        </div>
+      </div>
+
+      <!-- ── GENERATE TAB ── -->
+      <div id="tab-generate" style="display:none">
+        <div class="radio-grid">
+          <div class="radio-card selected" onclick="selectForm('hr08a')">
+            <div class="radio-card-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-2-3.5"/><path d="M16 3.13a4 4 0 0 1 3 3.87"/></svg>
+              HR08 Admin
+            </div>
+            <div class="radio-card-desc">Admin/Front Desk staff assess all clinical staff + each other in the same branch.</div>
+          </div>
+          <div class="radio-card" onclick="selectForm('hr08p')">
+            <div class="radio-card-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+              HR08 Peer
+            </div>
+            <div class="radio-card-desc">Clinical staff assess same-dept peers who share at least one work day. Min. 2 assessors per therapist.</div>
+          </div>
+          <div class="radio-card" onclick="selectForm('hr09')">
+            <div class="radio-card-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c2410c" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              HR09 Monthly
+            </div>
+            <div class="radio-card-desc">All clinical staff assess one admin/front desk staff member per month. Rotates randomly — full coverage by year end.</div>
+          </div>
+        </div>
+
+        <div class="info-box" id="info-hr08a">
+          <strong>HR08 – Admin assesses All (Full-Year)</strong>
+          All admin and front desk staff in the selected branch will be assigned to assess:
+          every clinical staff member + all other admin staff.
+          Period month is set to 0 (full-year). Existing assignments for the same year are skipped.
+        </div>
+        <div class="info-box" id="info-hr08p" style="display:none">
+          <strong>HR08 – Peer assesses Peer (Full-Year)</strong>
+          For each clinical staff member, this will find peers in the same department who share at least one work day (from Decking config).
+          It then picks 2–3 peers at random to be the assessors. Period month = 0 (full-year). Existing pairs are skipped.
+        </div>
+        <div class="info-box" id="info-hr09" style="display:none">
+          <strong>HR09 – Clinical assesses Admin (Monthly Rotation)</strong>
+          Each clinical staff member is assigned one admin/front desk staff to assess for the selected month.
+          The rotation order is randomized per year using a deterministic seed so all admin staff are covered evenly by year end.
+        </div>
+
+        <div class="form-grid">
+          <div class="form-field">
+            <label>Branch</label>
+            <select>
+              <option>Sandbox East (SBEA)</option>
+              <option>Sandbox Greenhills (SBGH)</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label>Year</label>
+            <select><option>2026</option><option>2025</option></select>
+          </div>
+          <div class="form-field" id="month-field">
+            <label>Month</label>
+            <select id="month-select" disabled>
+              <option value="0">Full Year (N/A for HR09)</option>
+              <option value="1">January</option><option value="2">February</option>
+              <option value="3" selected>March</option><option value="4">April</option>
+              <option value="5">May</option><option value="6">June</option>
+              <option value="7">July</option><option value="8">August</option>
+              <option value="9">September</option><option value="10">October</option>
+              <option value="11">November</option><option value="12">December</option>
+            </select>
+          </div>
+        </div>
+
+        <button class="btn btn-primary" onclick="openConfirm()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          Generate Assignments
+        </button>
+      </div>
+
+    </div><!-- /page -->
+  </div><!-- /main -->
+</div><!-- /shell -->
+
+<!-- ── Score Entry Modal ── -->
+<div class="modal-overlay" id="score-modal" style="display:none" onclick="closeModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Enter Peer Evaluation Score</div>
+        <div class="modal-subtitle">HR08 Peer · Julie Ann Osorio → Alyssa Bianca Prado · SBEA 2026</div>
+      </div>
+      <button class="close-btn" onclick="closeModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:12px;color:#6b7280;margin-bottom:16px;padding:10px 12px;background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb">
+        Rate each item from 0 (Very Dissatisfied) to 5 (Very Satisfied).
+      </div>
+
+      <div class="score-group">
+        <div class="score-label">1. Effectively addresses the unique needs of clients during one-on-one sessions</div>
+        <div class="score-row">
+          <input type="range" min="0" max="5" value="4" step="1" oninput="this.nextElementSibling.textContent=this.value">
+          <span class="score-val">4</span>
+        </div>
+        <div class="score-ends"><span>0 · Very Dissatisfied</span><span>Very Satisfied · 5</span></div>
+      </div>
+
+      <div class="score-group">
+        <div class="score-label">2. Quality and appropriateness of the interventions used during sessions</div>
+        <div class="score-row">
+          <input type="range" min="0" max="5" value="5" step="1" oninput="this.nextElementSibling.textContent=this.value">
+          <span class="score-val">5</span>
+        </div>
+        <div class="score-ends"><span>0 · Very Dissatisfied</span><span>Very Satisfied · 5</span></div>
+      </div>
+
+      <div class="score-group">
+        <div class="score-label">3. Communicates effectively and builds strong rapport with clients</div>
+        <div class="score-row">
+          <input type="range" min="0" max="5" value="4" step="1" oninput="this.nextElementSibling.textContent=this.value">
+          <span class="score-val">4</span>
+        </div>
+        <div class="score-ends"><span>0 · Very Dissatisfied</span><span>Very Satisfied · 5</span></div>
+      </div>
+
+      <div class="score-group">
+        <div class="score-label">4. Professionalism and adherence to ethical guidelines</div>
+        <div class="score-row">
+          <input type="range" min="0" max="5" value="5" step="1" oninput="this.nextElementSibling.textContent=this.value">
+          <span class="score-val">5</span>
+        </div>
+        <div class="score-ends"><span>0 · Very Dissatisfied</span><span>Very Satisfied · 5</span></div>
+      </div>
+
+      <div class="score-group">
+        <div class="score-label">5. Adaptable and responsive to changing needs of clients during sessions</div>
+        <div class="score-row">
+          <input type="range" min="0" max="5" value="4" step="1" oninput="this.nextElementSibling.textContent=this.value">
+          <span class="score-val">4</span>
+        </div>
+        <div class="score-ends"><span>0 · Very Dissatisfied</span><span>Very Satisfied · 5</span></div>
+      </div>
+
+      <div class="score-group">
+        <div class="score-label">6. Effectiveness in contributing to the client's overall progress and outcomes</div>
+        <div class="score-row">
+          <input type="range" min="0" max="5" value="4" step="1" oninput="this.nextElementSibling.textContent=this.value">
+          <span class="score-val">4</span>
+        </div>
+        <div class="score-ends"><span>0 · Very Dissatisfied</span><span>Very Satisfied · 5</span></div>
+      </div>
+
+      <div class="score-group">
+        <div class="score-label">7. Utilizes evidence-based practices in sessions</div>
+        <div class="score-row">
+          <input type="range" min="0" max="5" value="5" step="1" oninput="this.nextElementSibling.textContent=this.value">
+          <span class="score-val">5</span>
+        </div>
+        <div class="score-ends"><span>0 · Very Dissatisfied</span><span>Very Satisfied · 5</span></div>
+      </div>
+
+      <div class="score-group">
+        <div class="score-label">8. Collaboration and communication with other professionals involved in client care</div>
+        <div class="score-row">
+          <input type="range" min="0" max="5" value="4" step="1" oninput="this.nextElementSibling.textContent=this.value">
+          <span class="score-val">4</span>
+        </div>
+        <div class="score-ends"><span>0 · Very Dissatisfied</span><span>Very Satisfied · 5</span></div>
+      </div>
+
+      <div class="score-group">
+        <div class="score-label">9. Friendly and approachable with both clients and staff members</div>
+        <div class="score-row">
+          <input type="range" min="0" max="5" value="5" step="1" oninput="this.nextElementSibling.textContent=this.value">
+          <span class="score-val">5</span>
+        </div>
+        <div class="score-ends"><span>0 · Very Dissatisfied</span><span>Very Satisfied · 5</span></div>
+      </div>
+
+      <div class="score-group">
+        <div class="score-label">10. Builds and maintains positive working relationships with other staff members</div>
+        <div class="score-row">
+          <input type="range" min="0" max="5" value="4" step="1" oninput="this.nextElementSibling.textContent=this.value">
+          <span class="score-val">4</span>
+        </div>
+        <div class="score-ends"><span>0 · Very Dissatisfied</span><span>Very Satisfied · 5</span></div>
+      </div>
+
+      <hr class="divider">
+
+      <div class="score-group">
+        <div class="field-label">Strengths &amp; Accomplishments</div>
+        <textarea class="textarea" placeholder="Describe the strengths and notable accomplishments of this staff member…"></textarea>
+      </div>
+      <div class="score-group">
+        <div class="field-label">Performance Areas that Need Improvement</div>
+        <textarea class="textarea" placeholder="Describe areas where this staff member can improve…"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-green">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>
+        Mark as Completed
+      </button>
+      <button class="btn btn-primary" onclick="submitScore()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13"/><polyline points="7 3 7 8 15 8"/></svg>
+        Save Score
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Confirm Generate Modal ── -->
+<div class="modal-overlay" id="confirm-modal" style="display:none" onclick="closeConfirm(event)">
+  <div class="modal" style="width:480px" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Confirm Assignment Generation</div>
+        <div class="modal-subtitle">This will create new peer evaluation assignments</div>
+      </div>
+      <button class="close-btn" onclick="closeConfirm()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="info-box">
+        <strong>HR08 Admin · Sandbox East · 2026</strong>
+        Assignments will be generated for this configuration. Duplicates are automatically skipped.
+      </div>
+      <ul class="confirm-list">
+        <li>All FRONT_DESK and admin staff in SBEA will be assigned as assessors</li>
+        <li>Each assessor will evaluate all clinical staff + other admin staff</li>
+        <li>Period: Full Year 2026 (month = 0)</li>
+        <li>Existing identical pairs will be skipped</li>
+      </ul>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeConfirm()">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmGenerate()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        Generate Now
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ── -->
+<div class="toast" id="toast" style="display:none">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+  <span id="toast-msg">Done!</span>
+</div>
+
+<script>
+  function switchTab(name) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('[id^="tab-"]').forEach(d => d.style.display = 'none');
+    document.querySelector('.tab:nth-child(' + (name==='assignments'?1:name==='results'?2:3) + ')').classList.add('active');
+    document.getElementById('tab-' + name).style.display = 'block';
+  }
+
+  function toggleAccordion(header) {
+    const body = header.nextElementSibling;
+    const isOpen = body.classList.contains('open');
+    body.classList.toggle('open', !isOpen);
+    body.style.display = isOpen ? 'none' : 'block';
+  }
+
+  function openModal() {
+    document.getElementById('score-modal').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  }
+  function closeModal(e) {
+    if (!e || e.target === document.getElementById('score-modal')) {
+      document.getElementById('score-modal').style.display = 'none';
+      document.body.style.overflow = '';
+    }
+  }
+
+  function submitScore() {
+    closeModal();
+    showToast('Score saved and assignment marked as Completed');
+  }
+
+  function openConfirm() {
+    document.getElementById('confirm-modal').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  }
+  function closeConfirm(e) {
+    if (!e || e.target === document.getElementById('confirm-modal')) {
+      document.getElementById('confirm-modal').style.display = 'none';
+      document.body.style.overflow = '';
+    }
+  }
+  function confirmGenerate() {
+    closeConfirm();
+    showToast('34 assignments generated successfully');
+  }
+
+  function selectForm(type) {
+    document.querySelectorAll('.radio-card').forEach(c => c.classList.remove('selected'));
+    event.currentTarget.classList.add('selected');
+    document.querySelectorAll('[id^="info-"]').forEach(i => i.style.display = 'none');
+    document.getElementById('info-' + type).style.display = 'block';
+    const monthSel = document.getElementById('month-select');
+    monthSel.disabled = type !== 'hr09';
+    if (type === 'hr09') {
+      monthSel.value = '3';
+    } else {
+      monthSel.value = '0';
+    }
+  }
+
+  function showToast(msg) {
+    const toast = document.getElementById('toast');
+    document.getElementById('toast-msg').textContent = msg;
+    toast.style.display = 'flex';
+    setTimeout(() => { toast.style.display = 'none'; }, 3000);
+  }
+
+  // Keep accordion 1 open on load
+  document.querySelector('#body-1').style.display = 'block';
+</script>
+</body>
+</html>

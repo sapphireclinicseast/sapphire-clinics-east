@@ -3,6 +3,32 @@
 import { useEffect, useState } from 'react'
 import Image from 'next/image'
 
+type BirthdayPatient = { id: string; firstName: string; lastName: string; birthday: string; hasPhone: boolean }
+type SmsState = 'idle' | 'sending' | 'sent' | 'error'
+type EmailState = 'idle' | 'sending' | 'sent' | 'error'
+
+// localStorage key for tracking sent birthday emails/SMS (resets each day)
+function storageKey(type: 'email' | 'sms'): string {
+  const d = new Date()
+  return `birthday-${type}-sent-${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+}
+function loadSent(type: 'email' | 'sms'): Set<string> {
+  try {
+    const raw = localStorage.getItem(storageKey(type))
+    return new Set(raw ? JSON.parse(raw) : [])
+  } catch { return new Set() }
+}
+function markSent(type: 'email' | 'sms', patientId: string) {
+  try {
+    const sent = loadSent(type)
+    sent.add(patientId)
+    localStorage.setItem(storageKey(type), JSON.stringify([...sent]))
+  } catch {}
+}
+
+const loadSentEmails = () => loadSent('email')
+const markEmailSent = (id: string) => markSent('email', id)
+
 // ── Famous inspirational quotes — one per calendar day ──────────────────────
 const QUOTES: { text: string; author: string }[] = [
   { text: "The only way to do great work is to love what you do.", author: "Steve Jobs" },
@@ -364,14 +390,22 @@ function AlpacaSVG() {
 export default function FrontDeskWelcome({
   name,
   branch,
+  birthdayPatients = [],
 }: {
   name?: string
   branch?: string
+  birthdayPatients?: BirthdayPatient[]
 }) {
   const [quote, setQuote] = useState<{ text: string; author: string } | null>(null)
+  const [smsState, setSmsState] = useState<Record<string, SmsState>>({})
+  const [emailState, setEmailState] = useState<Record<string, EmailState>>({})
+  const [sentEmailIds, setSentEmailIds] = useState<Set<string>>(new Set())
+  const [sentSmsIds, setSentSmsIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     setQuote(getDailyQuote())
+    setSentEmailIds(loadSentEmails())
+    setSentSmsIds(loadSent('sms'))
   }, [])
 
   const branchLabel =
@@ -476,6 +510,210 @@ export default function FrontDeskWelcome({
             <p style={{ fontSize: '0.64rem', color: '#999', marginTop: '0.15rem' }}>{c.hint}</p>
           </div>
         ))}
+      </div>
+
+      {/* ── Birthday Reminder ── */}
+      <div style={{ width: '100%', maxWidth: '560px', padding: '0 1.5rem' }}>
+        <div style={{
+          background: '#fff',
+          border: '1px solid #EDE5D8',
+          borderRadius: '0.875rem',
+          overflow: 'hidden',
+          boxShadow: '0 1px 6px rgba(0,0,0,0.05)',
+        }}>
+          {/* Header */}
+          <div style={{
+            background: 'linear-gradient(135deg, #ED6823, #F5A030)',
+            padding: '0.7rem 1.1rem',
+            display: 'flex', alignItems: 'center', gap: '0.5rem',
+          }}>
+            <span style={{ fontSize: '1rem' }}>🎂</span>
+            <p style={{ color: '#fff', fontWeight: 700, fontSize: '0.78rem', margin: 0, letterSpacing: '0.04em' }}>
+              Birthdays This Week
+            </p>
+            <span style={{
+              marginLeft: 'auto',
+              background: 'rgba(255,255,255,0.25)',
+              color: '#fff',
+              borderRadius: '99px',
+              padding: '0.12rem 0.55rem',
+              fontSize: '0.68rem',
+              fontWeight: 700,
+            }}>
+              {birthdayPatients.length} patient{birthdayPatients.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+
+          {/* Body */}
+          <div style={{ padding: '0.65rem 0.875rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {birthdayPatients.length === 0 ? (
+              <p style={{ textAlign: 'center', fontSize: '0.75rem', color: '#AAA', padding: '0.6rem 0', margin: 0 }}>
+                No patient birthdays this week 🌿
+              </p>
+            ) : (
+              birthdayPatients.map(p => {
+                const dobDate = new Date(p.birthday)
+                const today = new Date()
+                const isToday =
+                  dobDate.getUTCDate() === today.getDate() &&
+                  dobDate.getUTCMonth() === today.getMonth()
+                const dayLabel = isToday
+                  ? 'Today! 🎉'
+                  : dobDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
+                const clinicName =
+                  branch === 'SBEA' ? 'Sandbox Clinic East'
+                  : branch === 'SBGH' ? 'Sandbox Clinic Greenhills'
+                  : 'Sandbox Clinic'
+                const msg = `Happy Birthday, ${p.firstName}! 🎂 Wishing you a wonderful day filled with joy and good health! From all of us at ${clinicName}. 🧡`
+                const sms = smsState[p.id] ?? 'idle'
+                const email = emailState[p.id] ?? 'idle'
+                const alreadySent = sentEmailIds.has(p.id)
+                const alreadySentSms = sentSmsIds.has(p.id)
+
+                async function sendSms() {
+                  // Mark in localStorage immediately — prevents duplicate sends if
+                  // the user refreshes while the request is still in-flight
+                  markSent('sms', p.id)
+                  setSentSmsIds(loadSent('sms'))
+                  setSmsState(s => ({ ...s, [p.id]: 'sending' }))
+                  try {
+                    const res = await fetch('/api/birthday/send-sms', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ patientId: p.id, branch, message: msg }),
+                    })
+                    if (res.ok) {
+                      setSmsState(s => ({ ...s, [p.id]: 'sent' }))
+                    } else {
+                      // Definitive server error — SMS was NOT sent; allow retry
+                      const d = await res.json().catch(() => ({}))
+                      setSmsState(s => ({ ...s, [p.id]: 'error' }))
+                      // Remove the optimistic mark so the user can try again
+                      try {
+                        const sent = loadSent('sms')
+                        sent.delete(p.id)
+                        localStorage.setItem(storageKey('sms'), JSON.stringify([...sent]))
+                        setSentSmsIds(new Set(sent))
+                      } catch {}
+                      if (d.error) alert(`SMS failed: ${d.error}`)
+                    }
+                  } catch {
+                    setSmsState(s => ({ ...s, [p.id]: 'error' }))
+                    // Network/timeout error — SMS status unknown; keep the mark
+                    // to prevent accidental duplicates (check httpSMS dashboard)
+                  }
+                }
+
+                async function sendEmail(force = false) {
+                  if (alreadySent && !force) {
+                    if (!confirm(`A birthday email was already sent to ${p.firstName} today. Send again?`)) return
+                    if (!confirm('Are you sure? This will send a second birthday email.')) return
+                  }
+                  setEmailState(s => ({ ...s, [p.id]: 'sending' }))
+                  try {
+                    const res = await fetch('/api/birthday/send-email', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ patientId: p.id, branch }),
+                    })
+                    if (res.ok) {
+                      setEmailState(s => ({ ...s, [p.id]: 'sent' }))
+                      markEmailSent(p.id)
+                      setSentEmailIds(loadSentEmails())
+                    } else {
+                      const d = await res.json().catch(() => ({}))
+                      setEmailState(s => ({ ...s, [p.id]: 'error' }))
+                      alert(d.error || 'Failed to send email.')
+                    }
+                  } catch {
+                    setEmailState(s => ({ ...s, [p.id]: 'error' }))
+                  }
+                }
+
+                return (
+                  <div key={p.id} style={{
+                    display: 'flex', alignItems: 'center', gap: '0.65rem',
+                    background: isToday ? '#FFF7F0' : '#FAFAFA',
+                    border: `1px solid ${isToday ? '#F5B48A' : '#EDE5D8'}`,
+                    borderRadius: '0.6rem',
+                    padding: '0.55rem 0.8rem',
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontWeight: 700, fontSize: '0.8rem', color: '#1A1A1A', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {p.firstName} {p.lastName}
+                      </p>
+                      <p style={{ fontSize: '0.67rem', color: isToday ? '#ED6823' : '#999', margin: 0, fontWeight: isToday ? 600 : 400 }}>
+                        {dayLabel}
+                      </p>
+                    </div>
+                    {/* Send Email */}
+                    <button
+                      onClick={() => sendEmail(false)}
+                      disabled={email === 'sending'}
+                      title={
+                        alreadySent || email === 'sent'
+                          ? 'Email already sent today — click to resend'
+                          : 'Send birthday greeting email'
+                      }
+                      style={{
+                        background: (alreadySent || email === 'sent') ? '#22C55E' : email === 'error' ? '#EF4444' : '#fff',
+                        color: (alreadySent || email === 'sent') ? '#fff' : email === 'error' ? '#fff' : '#ED6823',
+                        border: `1px solid ${(alreadySent || email === 'sent') ? '#22C55E' : email === 'error' ? '#EF4444' : '#ED6823'}`,
+                        borderRadius: '0.4rem',
+                        padding: '0.32rem 0.7rem', fontSize: '0.67rem', fontWeight: 600,
+                        cursor: email === 'sending' ? 'wait' : 'pointer',
+                        whiteSpace: 'nowrap', flexShrink: 0,
+                        opacity: email === 'sending' ? 0.7 : 1,
+                        transition: 'all 0.2s',
+                      }}
+                    >
+                      {email === 'sending' ? 'Sending…'
+                        : (alreadySent || email === 'sent') ? '✓ Email Sent'
+                        : email === 'error' ? '✕ Failed'
+                        : '✉ Send Email'}
+                    </button>
+                    {/* Send SMS */}
+                    {p.hasPhone && (
+                      <button
+                        onClick={sendSms}
+                        disabled={sms === 'sending' || sms === 'sent' || alreadySentSms}
+                        title={sms === 'error' ? 'Failed — tap to retry' : alreadySentSms ? 'SMS already sent today' : 'Send SMS birthday greeting'}
+                        style={{
+                          background:
+                            (alreadySentSms || sms === 'sent') ? '#22C55E'
+                            : sms === 'error' ? '#EF4444'
+                            : '#ED6823',
+                          color: '#fff', border: 'none', borderRadius: '0.4rem',
+                          padding: '0.32rem 0.7rem', fontSize: '0.67rem', fontWeight: 600,
+                          cursor: (sms === 'sending' || sms === 'sent' || alreadySentSms) ? 'default' : 'pointer',
+                          whiteSpace: 'nowrap', flexShrink: 0,
+                          opacity: sms === 'sending' ? 0.7 : 1,
+                          transition: 'all 0.2s',
+                        }}
+                      >
+                        {sms === 'sending' ? 'Sending…'
+                          : (alreadySentSms || sms === 'sent') ? '✓ SMS Sent!'
+                          : sms === 'error'   ? '✕ Failed'
+                          : '📱 Send SMS'}
+                      </button>
+                    )}
+                  </div>
+                )
+              })
+            )}
+          </div>
+
+          {/* Text prompt hint */}
+          {birthdayPatients.length > 0 && (
+            <div style={{
+              borderTop: '1px solid #F0E8DC',
+              padding: '0.5rem 0.875rem',
+              fontSize: '0.65rem', color: '#AAA', fontStyle: 'italic',
+            }}>
+              &ldquo;Send Email&rdquo; sends a birthday greeting to the patient&apos;s email (requires email on file). &ldquo;Send SMS&rdquo; sends it to their phone (requires phone number on file).
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Spacer — ensures content sits above the alpaca row */}

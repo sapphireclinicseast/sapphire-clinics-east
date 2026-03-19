@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts'
-import { Users, Baby, UserCheck, CalendarDays } from 'lucide-react'
+import { Users, Baby, UserCheck, CalendarDays, Cake, MessageSquare } from 'lucide-react'
 
 const PatientMap = dynamic(() => import('@/components/patients/PatientMap'), { ssr: false })
 
@@ -105,10 +105,26 @@ function DiagnosisTick(props: {
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
+interface BirthdayPatient {
+  id: string
+  firstName: string
+  lastName: string
+  phone: string | null
+  branches: string[]
+  birthdayDate: string
+  isToday: boolean
+}
+
 export default function PatientDashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [loading, setLoading] = useState(true)
   const [selectedBranches, setSelectedBranches] = useState<Branch[]>([...ALL_BRANCHES])
+
+  // Birthday celebrants
+  const [birthdays,       setBirthdays]       = useState<BirthdayPatient[]>([])
+  const [bdayLoading,     setBdayLoading]     = useState(true)
+  const [scheduling,      setScheduling]      = useState(false)
+  const [scheduleResult,  setScheduleResult]  = useState<{ scheduled: number; skipped: number; errors: string[] } | null>(null)
 
   const fetchStats = useCallback((branches: Branch[]) => {
     setLoading(true)
@@ -134,6 +150,23 @@ export default function PatientDashboardPage() {
   useEffect(() => {
     fetchStats(selectedBranches)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    setBdayLoading(true)
+    fetch('/api/patients/birthdays')
+      .then(r => r.json())
+      .then(d => setBirthdays(Array.isArray(d) ? d : []))
+      .finally(() => setBdayLoading(false))
+  }, [])
+
+  async function handleScheduleBirthdaySms() {
+    setScheduling(true)
+    setScheduleResult(null)
+    const res = await fetch('/api/patients/schedule-birthday-sms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+    const d   = await res.json()
+    setScheduleResult(d)
+    setScheduling(false)
+  }
 
   // Clicking a specific branch pill selects ONLY that branch (exclusive/radio behavior).
   // Clicking "All" restores the combined view.
@@ -237,6 +270,86 @@ export default function PatientDashboardPage() {
               </button>
             )
           })}
+        </div>
+      </div>
+
+      {/* ── Birthday widget ── */}
+      <div className="rounded-xl overflow-hidden" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+        {/* Header bar */}
+        <div className="flex items-center justify-between px-5 py-3" style={{ background: '#FFF7F0', borderBottom: '1px solid #F5D5C0' }}>
+          <div className="flex items-center gap-2">
+            <Cake size={16} style={{ color: '#ED6823' }} />
+            <span className="text-sm font-bold" style={{ color: '#ED6823' }}>
+              This Week&apos;s Celebrants
+            </span>
+            {!bdayLoading && (
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: '#ED6823', color: '#fff' }}>
+                {birthdays.length}
+              </span>
+            )}
+          </div>
+          <button
+            onClick={handleScheduleBirthdaySms}
+            disabled={scheduling || birthdays.filter(b => b.phone).length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
+            style={{
+              background: '#ED6823', color: '#fff', border: 'none', cursor: 'pointer',
+              opacity: (scheduling || birthdays.filter(b => b.phone).length === 0) ? 0.5 : 1,
+              whiteSpace: 'nowrap',
+            }}
+            title={birthdays.filter(b => b.phone).length === 0 ? 'No celebrants with a mobile number on file' : 'Schedule birthday SMS at 8:00 AM on each patient\'s birthday'}
+          >
+            <MessageSquare size={12} />
+            {scheduling ? 'Scheduling…' : 'Schedule SMS Birthday Greeting for the Week\'s Celebrants'}
+          </button>
+        </div>
+
+        {/* Schedule result banner */}
+        {scheduleResult && (
+          <div className="px-5 py-2 text-xs flex items-center gap-2"
+            style={{ background: scheduleResult.errors.length > 0 ? '#FEF3C7' : '#ECFDF5', borderBottom: '1px solid var(--light-gray)' }}>
+            {scheduleResult.errors.length === 0
+              ? <span style={{ color: '#065F46' }}>✓ {scheduleResult.scheduled} SMS scheduled at 8:00 AM on each birthday. {scheduleResult.skipped > 0 && `${scheduleResult.skipped} skipped (no phone or branch).`}</span>
+              : <span style={{ color: '#92400E' }}>⚠ {scheduleResult.scheduled} scheduled, {scheduleResult.errors.length} failed: {scheduleResult.errors[0]}</span>}
+          </div>
+        )}
+
+        {/* Scrollable celebrant list */}
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' as any }}>
+          {bdayLoading ? (
+            <p className="text-xs text-center py-5" style={{ color: 'var(--mid-gray)' }}>Loading…</p>
+          ) : birthdays.length === 0 ? (
+            <p className="text-xs text-center py-5" style={{ color: 'var(--mid-gray)' }}>No birthdays in the next 7 days.</p>
+          ) : (
+            <div className="flex gap-3 px-5 py-4" style={{ minWidth: 'max-content' }}>
+              {birthdays.map(p => {
+                const [, mm, dd] = p.birthdayDate.split('-')
+                const monthName  = new Date(`${p.birthdayDate}T12:00:00`).toLocaleDateString('en-PH', { month: 'short' })
+                return (
+                  <div key={p.id} className="flex-shrink-0 rounded-xl px-4 py-3 flex flex-col items-center gap-1"
+                    style={{
+                      width: '120px', textAlign: 'center',
+                      background: p.isToday ? '#FFF0E8' : '#FAFAFA',
+                      border: p.isToday ? '2px solid #ED6823' : '1px solid var(--light-gray)',
+                    }}>
+                    {p.isToday && (
+                      <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: '#ED6823', color: '#fff', marginBottom: '2px' }}>TODAY</span>
+                    )}
+                    <span style={{ fontSize: '22px' }}>🎂</span>
+                    <p className="text-xs font-bold leading-tight" style={{ color: 'var(--charcoal)' }}>
+                      {p.lastName},<br />{p.firstName}
+                    </p>
+                    <p className="text-xs font-semibold" style={{ color: '#ED6823' }}>
+                      {monthName} {dd}
+                    </p>
+                    {!p.phone && (
+                      <span className="text-xs" style={{ color: '#9CA3AF' }}>no mobile</span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       </div>
 

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { getValidCanvaToken } from '@/lib/canva'
 
 export async function DELETE() {
   try {
@@ -13,8 +14,15 @@ export async function DELETE() {
 
 export async function GET() {
   const account = await prisma.canvaAccount.findFirst()
+  if (!account) {
+    return NextResponse.json({ connected: false, displayName: null, connectedAt: null })
+  }
+
+  // Proactively refresh if near expiry so the status check keeps the session alive
+  const token = await getValidCanvaToken()
+
   return NextResponse.json({
-    connected: !!account,
+    connected: !!token,
     displayName: account?.displayName || null,
     connectedAt: account?.connectedAt || null,
   })

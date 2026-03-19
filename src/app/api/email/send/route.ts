@@ -14,20 +14,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Subject and body are required' }, { status: 400 })
   }
 
-  // Build Prisma where clause for branch filter
+  // Resolve recipient IDs with raw SQL branch filter (avoids enum array type mismatch)
   const hasBranchFilter = Array.isArray(branches) && branches.length > 0
-  const branchWhere = hasBranchFilter
-    ? {
-        OR: [
-          { branch: { in: branches } },
-          { branches: { hasSome: branches } },
-        ],
-      }
-    : {}
+  let patientIds: string[] | null = null
+  if (hasBranchFilter) {
+    const placeholders = branches.map((_: string, i: number) => `$${i + 1}`).join(', ')
+    const rows = await prisma.$queryRawUnsafe<{ id: string }[]>(
+      `SELECT DISTINCT id FROM "Patient" WHERE branch::text = ANY(ARRAY[${placeholders}]) OR "branches"::text[] && ARRAY[${placeholders}]`,
+      ...branches,
+    )
+    patientIds = rows.map((r: { id: string }) => r.id)
+  }
 
   // Resolve recipient count (include branch filter)
   let patients = await prisma.patient.findMany({
-    where: branchWhere as any,
+    where: patientIds !== null ? { id: { in: patientIds } } : {},
     select: { email: true, patientType: true, dob: true },
   })
   if (recipientGroup === 'pediatric') patients = patients.filter((p) => p.patientType === 'PEDIATRIC')

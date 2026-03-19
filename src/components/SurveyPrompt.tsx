@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import Script from 'next/script'
 import { ClipboardCheck, QrCode, X, Bell } from 'lucide-react'
 
 interface PromptData {
@@ -141,8 +142,7 @@ export default function SurveyPrompt({ role }: { role: string }) {
   return (
     <>
       {/* Load QRCode library */}
-      {/* eslint-disable-next-line @next/next/no-sync-scripts */}
-      <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" />
+      <Script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" strategy="lazyOnload" />
 
       {/* Full-screen overlay */}
       <div className="fixed inset-0 z-[9999] flex items-center justify-center"

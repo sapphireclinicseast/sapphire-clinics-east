@@ -70,19 +70,19 @@ export async function executeSendCampaign(campaignId: string): Promise<void> {
   const [group, branchPart] = campaign.recipientGroup.split('|')
   const branches = branchPart ? branchPart.split(',').filter(Boolean) : []
 
-  // Build branch where clause
-  const branchWhere = branches.length > 0
-    ? {
-        OR: [
-          { branch: { in: branches } },
-          { branches: { hasSome: branches } },
-        ],
-      }
-    : {}
+  // Fetch recipients — use raw SQL for branch filter to avoid enum array type mismatch
+  let patientIds: string[] | null = null
+  if (branches.length > 0) {
+    const placeholders = branches.map((_: string, i: number) => `$${i + 1}`).join(', ')
+    const rows = await prisma.$queryRawUnsafe<{ id: string }[]>(
+      `SELECT DISTINCT id FROM "Patient" WHERE branch::text = ANY(ARRAY[${placeholders}]) OR "branches"::text[] && ARRAY[${placeholders}]`,
+      ...branches,
+    )
+    patientIds = rows.map((r: { id: string }) => r.id)
+  }
 
-  // Fetch recipients (with optional branch filter)
   let patients = await prisma.patient.findMany({
-    where: branchWhere as any,
+    where: patientIds !== null ? { id: { in: patientIds } } : {},
     select: { email: true, firstName: true, lastName: true, dob: true, patientType: true },
   })
 

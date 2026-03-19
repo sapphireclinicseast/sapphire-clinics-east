@@ -56,6 +56,7 @@ enum StaffDepartment {
   PSYCHOLOGY
   ORTHOSIS
   FRONT_DESK
+  ADMINISTRATION
 }
 
 model User {
@@ -91,6 +92,7 @@ model ScheduledPost {
   content     String
   caption     String?
   imageUrl    String?
+  imageUrls   String[]   @default([])   // all image URLs — for carousel posts
   mediaType   String?    // 'image' | 'video' — null treated as image
   platforms   Platform[]
   accountIds  String[]   @default([])
@@ -132,11 +134,24 @@ model Patient {
   city        String?          // city/municipality (for map choropleth)
   diagnosis   String?
   notes       String?
+  referralUrl String?   // optional doctor's referral document URL
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   schedules           Schedule[]
   viberSubscriptions  ViberSubscription[]
   surveyAssignments   SurveyAssignment[]
+  deckingSlots        DeckingSlot[]
+  referralTokens      ReferralUploadToken[]
+}
+
+model ReferralUploadToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  patientId String
+  patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
 }
 
 // ── Viber Bot subscriptions ────────────────────────────────────────────────────
@@ -237,6 +252,7 @@ model Staff {
   phone           String?
   department      StaffDepartment
   branch          String          // "SBEA" | "SBGH"
+  dob             DateTime?       // Birthday — synced from HR Platform
   jobTitle        String?         // HR Platform job title slug (e.g. "front-desk-officer")
   employmentType  String?         // "employee" | "consultant"
   hrPlatformId    String?         // ID from HR Platform for sync matching
@@ -248,6 +264,13 @@ model Staff {
   surveyAssignments SurveyAssignment[]
   surveyResponses   SurveyResponse[]
   assessmentTargets AssessmentTarget[]
+  deckingConfig   DeckingTherapistConfig?
+  deckingSlots    DeckingSlot[]
+  peerEvalAssor       PeerEvalAssignment[] @relation("PeerEvalAssor")
+  peerEvalAssee       PeerEvalAssignment[] @relation("PeerEvalAssee")
+  peerEvalRespAssor   PeerEvalResponse[]   @relation("PeerEvalRespAssor")
+  peerEvalRespAssee   PeerEvalResponse[]   @relation("PeerEvalRespAssee")
+  peerEvalAdminConfig PeerEvalAdminConfig?
 }
 
 // ── Satisfaction Survey ──────────────────────────────────────────────────────
@@ -331,6 +354,44 @@ model Schedule {
   surveyAssignments SurveyAssignment[]
 }
 
+// ── Decking Module ─────────────────────────────────────────────────────────────
+
+model DeckingClinicHours {
+  id        String   @id  // "SBEA" | "SBGH"
+  schedule  Json     // { MON: { open: bool, openTime: "10:00", closeTime: "20:00" }, ... }
+  updatedAt DateTime @updatedAt
+}
+
+model DeckingTherapistConfig {
+  id         String   @id @default(cuid())
+  staffId    String   @unique
+  staff      Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  workDays   Json     // ["MON", "TUE", "WED", "THU", "FRI"]
+  startTime  String   // "10:00"
+  endTime    String   // "20:00"
+  useDefault Boolean  @default(true)
+  branch     String
+  department String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model DeckingSlot {
+  id         String   @id @default(cuid())
+  staffId    String
+  staff      Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  patientId  String?
+  patient    Patient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  dayOfWeek  String   // "MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT" | "SUN"
+  startTime  String   // "10:00"
+  endTime    String   // "11:00"
+  branch     String
+  department String
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
 // ── Survey Settings (leaderboard metric weights) ─────────────────────────────
 model SurveySettings {
   id                    String   @id @default("default")
@@ -338,5 +399,71 @@ model SurveySettings {
   weightRescheduled     Int      @default(0)   // % weight for rescheduled sessions
   weightCancelled       Int      @default(0)   // % weight for cancelled sessions (negative impact)
   weightSatisfaction    Int      @default(50)  // % weight for avg satisfaction score
+  showLeaderboard       Boolean  @default(false) // Show leaderboard on TV queue display
+  showComplaintForm     Boolean  @default(false) // Show patient complaint form QR on TV display
   updatedAt             DateTime @updatedAt
+}
+
+// ── Peer Evaluation ──────────────────────────────────────────────────────────
+
+enum PeerEvalType {
+  HR08_ADMIN
+  HR08_PEER
+  HR09
+}
+
+enum PeerEvalStatus {
+  PENDING
+  COMPLETED
+  EXPIRED
+}
+
+model PeerEvalAssignment {
+  id          String         @id @default(cuid())
+  formType    PeerEvalType
+  assessorId  String
+  assesseeId  String
+  branch      String
+  periodYear  Int
+  periodMonth Int            // 0 = full-year (HR08); 1-12 for monthly (HR09)
+  status      PeerEvalStatus @default(PENDING)
+  notes       String?
+  completedAt DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  assessor  Staff              @relation("PeerEvalAssor", fields: [assessorId], references: [id], onDelete: Cascade)
+  assessee  Staff              @relation("PeerEvalAssee", fields: [assesseeId], references: [id], onDelete: Cascade)
+  response  PeerEvalResponse?
+
+  @@unique([assessorId, assesseeId, formType, periodYear, periodMonth])
+}
+
+model PeerEvalResponse {
+  id           String             @id @default(cuid())
+  assignmentId String             @unique
+  assignment   PeerEvalAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  assessorId   String
+  assesseeId   String
+  formType     PeerEvalType
+  branch       String
+  scores       Json
+  strengths    String?
+  improvements String?
+  submittedAt  DateTime           @default(now())
+
+  assessor Staff @relation("PeerEvalRespAssor", fields: [assessorId], references: [id], onDelete: Cascade)
+  assessee Staff @relation("PeerEvalRespAssee", fields: [assesseeId], references: [id], onDelete: Cascade)
+}
+
+// ── Peer Eval Admin Config (work-day schedule for admin/front-desk staff) ─────
+// Used by HR09 assignment logic and the Settings tab.
+model PeerEvalAdminConfig {
+  id        String   @id @default(cuid())
+  staffId   String   @unique
+  staff     Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  workDays  Json     // ["MON","TUE","WED","THU","FRI"]
+  branch    String   // "SBEA" | "SBGH"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

@@ -81,32 +81,55 @@ function branchLabel(branch: string): string {
 
 // ─── GET: list patients or export as CSV ─────────────────────────────────────
 
+const ROLE_BRANCH: Record<string, string> = {
+  SBEA_FRONT_DESK: 'SANDBOX_EAST',
+  SBGH_FRONT_DESK: 'SANDBOX_GREENHILLS',
+}
+
 export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const role = (session.user as { role?: string }).role ?? ''
+  const forcedBranch = ROLE_BRANCH[role] ?? null  // non-null → front desk, lock to this branch
+
   const { searchParams } = new URL(req.url)
   const type = searchParams.get('type')
   const search = searchParams.get('search')
-  const branch = searchParams.get('branch')
+  // Front desk users are always scoped to their branch regardless of query param
+  const branch = forcedBranch ?? searchParams.get('branch')
   const exportCsv = searchParams.get('export') === 'csv'
-  const exportBranches = searchParams.get('branches')?.split(',').filter(Boolean) ?? []
+  // Front desk export is also scoped to their branch
+  const exportBranches = forcedBranch
+    ? [forcedBranch]
+    : (searchParams.get('branches')?.split(',').filter(Boolean) ?? [])
+
+  // Raw SQL pre-filter for branch (avoids enum array type mismatch with PrismaPg driver adapter)
+  let branchFilterIds: string[] | null = null
+
+  if (branch) {
+    const rows = await prisma.$queryRawUnsafe<{ id: string }[]>(
+      `SELECT id FROM "Patient" WHERE branch::text = $1 OR $1 = ANY("branches"::text[])`,
+      branch,
+    )
+    branchFilterIds = rows.map(r => r.id)
+  }
+
+  if (exportCsv && exportBranches.length > 0) {
+    const placeholders = exportBranches.map((_, i) => `$${i + 1}`).join(', ')
+    const rows = await prisma.$queryRawUnsafe<{ id: string }[]>(
+      `SELECT DISTINCT id FROM "Patient" WHERE branch::text = ANY(ARRAY[${placeholders}]) OR "branches"::text[] && ARRAY[${placeholders}]`,
+      ...exportBranches,
+    )
+    const exportIds = rows.map(r => r.id)
+    branchFilterIds = branchFilterIds
+      ? branchFilterIds.filter(id => exportIds.includes(id))
+      : exportIds
+  }
 
   const where: any = {
+    ...(branchFilterIds !== null ? { id: { in: branchFilterIds } } : {}),
     ...(type ? { patientType: type as any } : {}),
-    // Filter by branch: check both legacy branch field and new branches array
-    ...(branch ? {
-      OR: [
-        { branch: branch as any },
-        { branches: { has: branch as any } },
-      ],
-    } : {}),
-    ...(exportCsv && exportBranches.length > 0 ? {
-      OR: [
-        { branch: { in: exportBranches as any } },
-        { branches: { hasSome: exportBranches as any } },
-      ],
-    } : {}),
     ...(search ? {
       OR: [
         { firstName: { contains: search, mode: 'insensitive' } },
@@ -272,9 +295,15 @@ export async function POST(req: NextRequest) {
 
   // Single patient creation
   const body = await req.json()
+  const role = (session.user as { role?: string }).role ?? ''
+  const forcedBranch = ROLE_BRANCH[role] ?? null
+
   const dob = body.dob ? new Date(body.dob) : null
   const patientType = dob ? computePatientType(dob) : (body.patientType || 'ADULT')
-  const branches: string[] = body.branches ?? (body.branch ? [body.branch] : [])
+  // Front desk users may only create patients for their own branch
+  const branches: string[] = forcedBranch
+    ? [forcedBranch]
+    : (body.branches ?? (body.branch ? [body.branch] : []))
 
   const patient = await prisma.patient.create({
     data: {

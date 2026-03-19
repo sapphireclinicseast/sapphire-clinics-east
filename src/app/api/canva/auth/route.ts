@@ -17,9 +17,12 @@ export async function GET() {
   const codeChallenge = await generateCodeChallenge(codeVerifier)
 
   // Store verifier + state in cookies (30 min expiry)
+  // secure:true required in HTTPS production so the cookie is sent back after Canva redirect
+  // sameSite:'lax' allows the cookie to be sent on top-level navigation (OAuth callback)
+  const isProduction = process.env.NODE_ENV === 'production'
   const cookieStore = await cookies()
-  cookieStore.set('canva_code_verifier', codeVerifier, { httpOnly: true, maxAge: 1800, path: '/' })
-  cookieStore.set('canva_state', state, { httpOnly: true, maxAge: 1800, path: '/' })
+  cookieStore.set('canva_code_verifier', codeVerifier, { httpOnly: true, maxAge: 1800, path: '/', secure: isProduction, sameSite: 'lax' })
+  cookieStore.set('canva_state', state, { httpOnly: true, maxAge: 1800, path: '/', secure: isProduction, sameSite: 'lax' })
 
   const authUrl = getAuthorizationUrl(clientId, redirectUri, codeChallenge, state)
   return NextResponse.redirect(authUrl)

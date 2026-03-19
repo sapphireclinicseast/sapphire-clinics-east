@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -81,15 +79,15 @@ services:
       BODY_SIZE_LIMIT: 200mb
       AUTH_TRUST_HOST: "true"
       EXTERNAL_API_KEY: ${EXTERNAL_API_KEY}
+      HR_PLATFORM_URL: http://host.docker.internal:3457
+      HR_PLATFORM_API_KEY: ${HR_PLATFORM_API_KEY}
+    extra_hosts:
+      - "host.docker.internal:172.18.0.1"
     volumes:
-      - uploads_data:/app/uploads
+      - /opt/sapphire/uploads:/app/uploads
     ports:
       - "3000:3000"
-
-  # nginx and certbot are handled by the host system (systemd nginx + certbot.timer)
-  # System nginx proxies port 443 → localhost:3000, with auto-renewing Let's Encrypt certs
 
 volumes:
   postgres_data:
   redis_data:
-  uploads_data:
