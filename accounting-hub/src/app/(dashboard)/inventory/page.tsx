@@ -354,12 +354,7 @@ export default function InventoryPage() {
 
   /* ── Auth guard ────────────────────────────────────────── */
 
-  if (!session?.user) {
-    redirect('/dashboard')
-    return null
-  }
-
-  if (loading) {
+  if (!session?.user || loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-sm" style={{ color: 'var(--mid-gray)' }}>Loading...</div>
