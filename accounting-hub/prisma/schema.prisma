@@ -85,6 +85,7 @@ model Account {
   accountNumber String        @unique
   accountTitle  String
   accountType   AccountType
+  subType       String?
   normalBalance NormalBalance
   description   String?
   isActive      Boolean       @default(true)

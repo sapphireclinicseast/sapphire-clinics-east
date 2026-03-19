@@ -26,6 +26,7 @@ export async function GET(req: Request) {
   const params = parsePagination(searchParams)
   const search = searchParams.get('search') || ''
   const accountType = searchParams.get('accountType') || ''
+  const subType = searchParams.get('subType') || ''
   const showInactive = searchParams.get('showInactive') === 'true'
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -46,6 +47,10 @@ export async function GET(req: Request) {
     where.accountType = accountType
   }
 
+  if (subType) {
+    where.subType = subType
+  }
+
   const [accounts, total] = await Promise.all([
     prisma.account.findMany({
       where,
@@ -54,6 +59,7 @@ export async function GET(req: Request) {
         accountNumber: true,
         accountTitle: true,
         accountType: true,
+        subType: true,
         normalBalance: true,
         description: true,
         isActive: true,
@@ -78,7 +84,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { accountNumber, accountTitle, accountType, normalBalance, description } = await req.json()
+    const { accountNumber, accountTitle, accountType, subType, normalBalance, description } = await req.json()
 
     if (!accountNumber?.trim() || !accountTitle?.trim() || !accountType) {
       return NextResponse.json({ error: 'Account number, title, and type are required' }, { status: 400 })
@@ -102,6 +108,7 @@ export async function POST(req: Request) {
         accountNumber: accountNumber.trim(),
         accountTitle: accountTitle.trim(),
         accountType,
+        subType: subType?.trim() || null,
         normalBalance: balance,
         description: description?.trim() || null,
         createdById: session.user.id,
@@ -132,7 +139,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, accountNumber, accountTitle, accountType, normalBalance, description } = await req.json()
+    const { id, accountNumber, accountTitle, accountType, subType, normalBalance, description } = await req.json()
 
     if (!id) {
       return NextResponse.json({ error: 'Account ID is required' }, { status: 400 })
@@ -159,6 +166,7 @@ export async function PUT(req: Request) {
     if (accountNumber) updateData.accountNumber = accountNumber.trim()
     if (accountTitle) updateData.accountTitle = accountTitle.trim()
     if (accountType) updateData.accountType = accountType
+    if (subType !== undefined) updateData.subType = subType?.trim() || null
     if (normalBalance) updateData.normalBalance = normalBalance
     if (description !== undefined) updateData.description = description?.trim() || null
 

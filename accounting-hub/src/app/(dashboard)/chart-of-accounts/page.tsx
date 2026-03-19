@@ -22,6 +22,7 @@ interface Account {
   accountNumber: string
   accountTitle: string
   accountType: string
+  subType: string | null
   normalBalance: string
   description: string | null
   isActive: boolean
@@ -33,6 +34,7 @@ interface ImportRow {
   accountNumber: string
   accountTitle: string
   accountType: string
+  subType: string
   normalBalance: string
   description: string
   selected: boolean
@@ -62,6 +64,37 @@ const DEFAULT_BALANCE: Record<string, string> = {
   REVENUE: 'CREDIT',
   EXPENSE: 'DEBIT',
 }
+
+const SUB_TYPES: Record<string, { value: string; label: string }[]> = {
+  ASSET: [
+    { value: 'CURRENT_ASSETS', label: 'Current Assets' },
+    { value: 'PPE', label: 'Property, Plant & Equipment' },
+    { value: 'INTANGIBLE_ASSETS', label: 'Intangible Assets' },
+    { value: 'OTHER_NON_CURRENT_ASSETS', label: 'Other Non-Current Assets' },
+  ],
+  LIABILITY: [
+    { value: 'CURRENT_LIABILITIES', label: 'Current Liabilities' },
+    { value: 'NON_CURRENT_LIABILITIES', label: 'Non-Current Liabilities' },
+  ],
+  EQUITY: [
+    { value: 'OWNERS_EQUITY', label: "Owner's Equity" },
+    { value: 'RETAINED_EARNINGS', label: 'Retained Earnings' },
+  ],
+  REVENUE: [
+    { value: 'OPERATING_REVENUE', label: 'Operating Revenue' },
+    { value: 'NON_OPERATING_REVENUE', label: 'Non-Operating Revenue' },
+  ],
+  EXPENSE: [
+    { value: 'OPERATING_EXPENSES', label: 'Operating Expenses' },
+    { value: 'NON_OPERATING_EXPENSES', label: 'Non-Operating Expenses' },
+  ],
+}
+
+const ALL_SUB_TYPES = Object.values(SUB_TYPES).flat()
+
+const SUB_TYPE_LABELS: Record<string, string> = Object.fromEntries(
+  ALL_SUB_TYPES.map((s) => [s.value, s.label])
+)
 
 function parseCSV(text: string): string[][] {
   const rows: string[][] = []
@@ -105,6 +138,7 @@ export default function ChartOfAccountsPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filterType, setFilterType] = useState('')
+  const [filterSubType, setFilterSubType] = useState('')
   const [error, setError] = useState('')
 
   // Create/Edit modal
@@ -114,6 +148,7 @@ export default function ChartOfAccountsPage() {
   const [formNumber, setFormNumber] = useState('')
   const [formTitle, setFormTitle] = useState('')
   const [formType, setFormType] = useState('ASSET')
+  const [formSubType, setFormSubType] = useState('')
   const [formBalance, setFormBalance] = useState('DEBIT')
   const [formDescription, setFormDescription] = useState('')
 
@@ -131,6 +166,7 @@ export default function ChartOfAccountsPage() {
     try {
       const params = new URLSearchParams({ pageSize: '500' })
       if (filterType) params.set('accountType', filterType)
+      if (filterSubType) params.set('subType', filterSubType)
       const res = await fetch(`/api/chart-of-accounts?${params}`)
       const data = await res.json()
       setAccounts(data.data || [])
@@ -139,7 +175,7 @@ export default function ChartOfAccountsPage() {
     } finally {
       setLoading(false)
     }
-  }, [filterType])
+  }, [filterType, filterSubType])
 
   useEffect(() => {
     if (session?.user) {
@@ -154,6 +190,7 @@ export default function ChartOfAccountsPage() {
     setFormNumber('')
     setFormTitle('')
     setFormType('ASSET')
+    setFormSubType('')
     setFormBalance('DEBIT')
     setFormDescription('')
     setError('')
@@ -165,6 +202,7 @@ export default function ChartOfAccountsPage() {
     setFormNumber(account.accountNumber)
     setFormTitle(account.accountTitle)
     setFormType(account.accountType)
+    setFormSubType(account.subType || '')
     setFormBalance(account.normalBalance)
     setFormDescription(account.description || '')
     setError('')
@@ -173,6 +211,7 @@ export default function ChartOfAccountsPage() {
 
   function handleTypeChange(type: string) {
     setFormType(type)
+    setFormSubType('')
     setFormBalance(DEFAULT_BALANCE[type] || 'DEBIT')
   }
 
@@ -185,6 +224,7 @@ export default function ChartOfAccountsPage() {
       accountNumber: formNumber,
       accountTitle: formTitle,
       accountType: formType,
+      subType: formSubType,
       normalBalance: formBalance,
       description: formDescription,
     }
@@ -247,6 +287,7 @@ export default function ChartOfAccountsPage() {
     const numIdx = header.findIndex((h) => h.includes('number') || h.includes('accountnumber'))
     const titleIdx = header.findIndex((h) => h.includes('title') || h.includes('accounttitle'))
     const typeIdx = header.findIndex((h) => h.includes('type') || h.includes('accounttype'))
+    const subTypeIdx = header.findIndex((h) => h.includes('subtype') || h.includes('sub'))
     const balIdx = header.findIndex((h) => h.includes('balance') || h.includes('normalbalance'))
     const descIdx = header.findIndex((h) => h.includes('description') || h.includes('desc'))
 
@@ -266,6 +307,7 @@ export default function ChartOfAccountsPage() {
         accountNumber: r[numIdx]?.trim() || '',
         accountTitle: r[titleIdx]?.trim() || '',
         accountType: validType,
+        subType: subTypeIdx !== -1 ? (r[subTypeIdx]?.trim().toUpperCase().replace(/[^A-Z_]/g, '_') || '') : '',
         normalBalance: validBal,
         description: r[descIdx]?.trim() || '',
         selected: true,
@@ -409,13 +451,24 @@ export default function ChartOfAccountsPage() {
         </div>
         <select
           value={filterType}
-          onChange={(e) => setFilterType(e.target.value)}
+          onChange={(e) => { setFilterType(e.target.value); setFilterSubType('') }}
           className="px-3 py-2.5 rounded-xl border text-sm outline-none"
           style={{ borderColor: 'var(--light-gray)', background: 'white' }}
         >
           <option value="">All Types</option>
           {ACCOUNT_TYPE_OPTIONS.map((t) => (
             <option key={t.value} value={t.value}>{t.label}</option>
+          ))}
+        </select>
+        <select
+          value={filterSubType}
+          onChange={(e) => setFilterSubType(e.target.value)}
+          className="px-3 py-2.5 rounded-xl border text-sm outline-none"
+          style={{ borderColor: 'var(--light-gray)', background: 'white' }}
+        >
+          <option value="">All Sub Types</option>
+          {(filterType ? SUB_TYPES[filterType] || [] : ALL_SUB_TYPES).map((s) => (
+            <option key={s.value} value={s.value}>{s.label}</option>
           ))}
         </select>
       </div>
@@ -434,6 +487,7 @@ export default function ChartOfAccountsPage() {
                 <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Account No.</th>
                 <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Account Title</th>
                 <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Type</th>
+                <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Sub Type</th>
                 <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Normal Balance</th>
                 <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Description</th>
                 {canWrite && <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>}
@@ -442,7 +496,7 @@ export default function ChartOfAccountsPage() {
             <tbody>
               {filteredAccounts.length === 0 ? (
                 <tr>
-                  <td colSpan={canWrite ? 6 : 5} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
+                  <td colSpan={canWrite ? 7 : 6} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
                     <BookOpen size={32} className="mx-auto mb-2 opacity-40" />
                     <p>No accounts found</p>
                     {canWrite && <p className="text-xs mt-1">Add accounts manually or import from CSV</p>}
@@ -468,6 +522,9 @@ export default function ChartOfAccountsPage() {
                       >
                         {account.accountType}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                      {account.subType ? (SUB_TYPE_LABELS[account.subType] || account.subType) : '—'}
                     </td>
                     <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>
                       {account.normalBalance}
@@ -587,6 +644,23 @@ export default function ChartOfAccountsPage() {
                 >
                   {ACCOUNT_TYPE_OPTIONS.map((t) => (
                     <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                  Sub Type <span className="text-xs font-normal" style={{ color: 'var(--mid-gray)' }}>(optional)</span>
+                </label>
+                <select
+                  value={formSubType}
+                  onChange={(e) => setFormSubType(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                  style={{ borderColor: 'var(--light-gray)' }}
+                >
+                  <option value="">— Select sub type —</option>
+                  {(SUB_TYPES[formType] || []).map((s) => (
+                    <option key={s.value} value={s.value}>{s.label}</option>
                   ))}
                 </select>
               </div>
@@ -732,6 +806,7 @@ export default function ChartOfAccountsPage() {
                         <th className="px-3 py-2 text-left font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Account No.</th>
                         <th className="px-3 py-2 text-left font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Account Title</th>
                         <th className="px-3 py-2 text-left font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Type</th>
+                        <th className="px-3 py-2 text-left font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Sub Type</th>
                         <th className="px-3 py-2 text-left font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Balance</th>
                         <th className="px-3 py-2 text-left font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Status</th>
                       </tr>
@@ -761,6 +836,7 @@ export default function ChartOfAccountsPage() {
                               {row.accountType}
                             </span>
                           </td>
+                          <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{row.subType ? (SUB_TYPE_LABELS[row.subType] || row.subType) : '—'}</td>
                           <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{row.normalBalance}</td>
                           <td className="px-3 py-2">
                             {row.duplicate ? (

@@ -33,6 +33,7 @@ export async function POST(req: Request) {
       accountNumber: string
       accountTitle: string
       accountType: string
+      subType: string
       normalBalance: string
       description: string
     }, i: number) => {
@@ -52,6 +53,7 @@ export async function POST(req: Request) {
         accountNumber: acc.accountNumber.trim(),
         accountTitle: acc.accountTitle.trim(),
         accountType: type,
+        subType: acc.subType?.trim() || null,
         normalBalance: finalBalance,
         description: acc.description?.trim() || null,
         createdById: session.user.id,

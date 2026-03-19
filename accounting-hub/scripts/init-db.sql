@@ -94,3 +94,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Account_accountNumber_key" ON "Account"("acco
 CREATE INDEX IF NOT EXISTS "Account_accountType_idx" ON "Account"("accountType");
 CREATE INDEX IF NOT EXISTS "Account_isActive_idx" ON "Account"("isActive");
 CREATE INDEX IF NOT EXISTS "Account_createdById_idx" ON "Account"("createdById");
+
+-- Add subType column (idempotent for existing installations)
+DO $$ BEGIN
+  ALTER TABLE "Account" ADD COLUMN "subType" TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
