@@ -65,12 +65,21 @@ const DEFAULT_BALANCE: Record<string, string> = {
   EXPENSE: 'DEBIT',
 }
 
-const SUB_TYPES: Record<string, { value: string; label: string }[]> = {
+const SUB_TYPES: Record<string, { value: string; label: string; group?: string }[]> = {
   ASSET: [
-    { value: 'CURRENT_ASSETS', label: 'Current Assets' },
-    { value: 'PPE', label: 'Property, Plant & Equipment' },
-    { value: 'INTANGIBLE_ASSETS', label: 'Intangible Assets' },
-    { value: 'OTHER_NON_CURRENT_ASSETS', label: 'Other Non-Current Assets' },
+    { value: 'CURRENT_ASSETS', label: 'Current Assets', group: 'PFRS Classification' },
+    { value: 'PPE', label: 'Property, Plant & Equipment', group: 'PFRS Classification' },
+    { value: 'INTANGIBLE_ASSETS', label: 'Intangible Assets', group: 'PFRS Classification' },
+    { value: 'OTHER_NON_CURRENT_ASSETS', label: 'Other Non-Current Assets', group: 'PFRS Classification' },
+    { value: 'INV_PT', label: 'Inventory — Physical Therapy (PT)', group: 'Verdana Inventory' },
+    { value: 'INV_OT', label: 'Inventory — Occupational Therapy (OT)', group: 'Verdana Inventory' },
+    { value: 'INV_ST', label: 'Inventory — Speech Therapy (ST)', group: 'Verdana Inventory' },
+    { value: 'INV_SPED', label: 'Inventory — Special Education (SPED)', group: 'Verdana Inventory' },
+    { value: 'INV_PSY', label: 'Inventory — Psychology & Assessment (PSY)', group: 'Verdana Inventory' },
+    { value: 'INV_CLI', label: 'Inventory — Clinic & Institutional (CLI)', group: 'Verdana Inventory' },
+    { value: 'INV_DIG', label: 'Inventory — Digital & Tech (DIG)', group: 'Verdana Inventory' },
+    { value: 'INV_EDU', label: 'Inventory — Training & Education (EDU)', group: 'Verdana Inventory' },
+    { value: 'INV_MER', label: 'Inventory — Merchandise (MER)', group: 'Verdana Inventory' },
   ],
   LIABILITY: [
     { value: 'CURRENT_LIABILITIES', label: 'Current Liabilities' },
@@ -81,12 +90,30 @@ const SUB_TYPES: Record<string, { value: string; label: string }[]> = {
     { value: 'RETAINED_EARNINGS', label: 'Retained Earnings' },
   ],
   REVENUE: [
-    { value: 'OPERATING_REVENUE', label: 'Operating Revenue' },
-    { value: 'NON_OPERATING_REVENUE', label: 'Non-Operating Revenue' },
+    { value: 'OPERATING_REVENUE', label: 'Operating Revenue', group: 'PFRS Classification' },
+    { value: 'NON_OPERATING_REVENUE', label: 'Non-Operating Revenue', group: 'PFRS Classification' },
+    { value: 'REV_PT', label: 'Sales — Physical Therapy (PT)', group: 'Verdana Revenue' },
+    { value: 'REV_OT', label: 'Sales — Occupational Therapy (OT)', group: 'Verdana Revenue' },
+    { value: 'REV_ST', label: 'Sales — Speech Therapy (ST)', group: 'Verdana Revenue' },
+    { value: 'REV_SPED', label: 'Sales — Special Education (SPED)', group: 'Verdana Revenue' },
+    { value: 'REV_PSY', label: 'Sales — Psychology & Assessment (PSY)', group: 'Verdana Revenue' },
+    { value: 'REV_CLI', label: 'Sales — Clinic & Institutional (CLI)', group: 'Verdana Revenue' },
+    { value: 'REV_DIG', label: 'Sales — Digital & Tech (DIG)', group: 'Verdana Revenue' },
+    { value: 'REV_EDU', label: 'Sales — Training & Education (EDU)', group: 'Verdana Revenue' },
+    { value: 'REV_MER', label: 'Sales — Merchandise (MER)', group: 'Verdana Revenue' },
   ],
   EXPENSE: [
-    { value: 'OPERATING_EXPENSES', label: 'Operating Expenses' },
-    { value: 'NON_OPERATING_EXPENSES', label: 'Non-Operating Expenses' },
+    { value: 'OPERATING_EXPENSES', label: 'Operating Expenses', group: 'PFRS Classification' },
+    { value: 'NON_OPERATING_EXPENSES', label: 'Non-Operating Expenses', group: 'PFRS Classification' },
+    { value: 'COGS_PT', label: 'COGS — Physical Therapy (PT)', group: 'Verdana COGS' },
+    { value: 'COGS_OT', label: 'COGS — Occupational Therapy (OT)', group: 'Verdana COGS' },
+    { value: 'COGS_ST', label: 'COGS — Speech Therapy (ST)', group: 'Verdana COGS' },
+    { value: 'COGS_SPED', label: 'COGS — Special Education (SPED)', group: 'Verdana COGS' },
+    { value: 'COGS_PSY', label: 'COGS — Psychology & Assessment (PSY)', group: 'Verdana COGS' },
+    { value: 'COGS_CLI', label: 'COGS — Clinic & Institutional (CLI)', group: 'Verdana COGS' },
+    { value: 'COGS_DIG', label: 'COGS — Digital & Tech (DIG)', group: 'Verdana COGS' },
+    { value: 'COGS_EDU', label: 'COGS — Training & Education (EDU)', group: 'Verdana COGS' },
+    { value: 'COGS_MER', label: 'COGS — Merchandise (MER)', group: 'Verdana COGS' },
   ],
 }
 
@@ -659,9 +686,20 @@ export default function ChartOfAccountsPage() {
                   style={{ borderColor: 'var(--light-gray)' }}
                 >
                   <option value="">— Select sub type —</option>
-                  {(SUB_TYPES[formType] || []).map((s) => (
-                    <option key={s.value} value={s.value}>{s.label}</option>
-                  ))}
+                  {(() => {
+                    const items = SUB_TYPES[formType] || []
+                    const groups = [...new Set(items.map((s) => s.group).filter(Boolean))]
+                    if (groups.length === 0) {
+                      return items.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)
+                    }
+                    return groups.map((g) => (
+                      <optgroup key={g} label={g}>
+                        {items.filter((s) => s.group === g).map((s) => (
+                          <option key={s.value} value={s.value}>{s.label}</option>
+                        ))}
+                      </optgroup>
+                    ))
+                  })()}
                 </select>
               </div>
 
