@@ -3,8 +3,13 @@
  *
  * POST /api/staff/sync  (admin auth required)
  *
- * Fetches from HR Platform's /staff/external endpoint,
- * upserts into local Staff table, preserving IDs for existing records.
+ * Matching priority:
+ *   1. hrPlatformId  — stable ID; handles name changes, email changes, etc.
+ *   2. firstName + lastName + branch — fallback for records not yet linked
+ *
+ * On every match the following fields are always overwritten from HR:
+ *   firstName, lastName, email, phone, dob, department, branch,
+ *   jobTitle, employmentType, hrPlatformId
  */
 
 import { NextResponse } from 'next/server'
@@ -16,7 +21,7 @@ const HR_URL = process.env.HR_PLATFORM_URL || 'http://127.0.0.1:3457'
 const HR_KEY = process.env.HR_PLATFORM_API_KEY || process.env.EXTERNAL_API_KEY || ''
 
 const VALID_DEPTS: Set<string> = new Set([
-  'OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS', 'FRONT_DESK',
+  'OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS', 'FRONT_DESK', 'ADMINISTRATION',
 ])
 
 interface HRStaff {
@@ -29,6 +34,7 @@ interface HRStaff {
   employmentType: string | null
   email: string | null
   phone: string | null
+  birthday: string | null  // "YYYY-MM-DD" or empty string
 }
 
 export async function POST() {
@@ -47,26 +53,32 @@ export async function POST() {
   // Fetch staff from HR Platform
   let hrStaff: HRStaff[]
   try {
+    console.log('[staff-sync] Fetching from', `${HR_URL}/staff/external`)
     const res = await fetch(`${HR_URL}/staff/external`, {
       headers: { Authorization: `Bearer ${HR_KEY}` },
       cache: 'no-store',
     })
     if (!res.ok) {
+      console.error('[staff-sync] HR returned', res.status)
       return NextResponse.json({ error: `HR Platform returned ${res.status}` }, { status: 502 })
     }
     const data = await res.json()
     hrStaff = data.staff || []
+    console.log('[staff-sync] Received', hrStaff.length, 'staff from HR')
   } catch (err) {
     console.error('[staff-sync] Fetch failed:', err)
     return NextResponse.json({ error: 'Cannot reach HR Platform' }, { status: 502 })
   }
 
-  // Get existing staff from local DB
+  // Build two lookup maps from existing local staff:
+  //   1. by hrPlatformId  (primary — survives name/email changes)
+  //   2. by firstName|lastName|branch  (fallback for not-yet-linked records)
   const existing = await prisma.staff.findMany()
-  const existingMap = new Map<string, typeof existing[0]>()
+  const byHrId = new Map<string, typeof existing[0]>()
+  const byName = new Map<string, typeof existing[0]>()
   for (const s of existing) {
-    const key = `${s.firstName}|${s.lastName}|${s.branch}`
-    existingMap.set(key, s)
+    if (s.hrPlatformId) byHrId.set(s.hrPlatformId, s)
+    byName.set(`${s.firstName}|${s.lastName}|${s.branch}`, s)
   }
 
   let created = 0
@@ -78,40 +90,45 @@ export async function POST() {
     if (!hr.department || !VALID_DEPTS.has(hr.department)) continue
     if (!['SBEA', 'SBGH'].includes(hr.branch)) continue
 
-    const key = `${hr.firstName}|${hr.lastName}|${hr.branch}`
-    const match = existingMap.get(key)
+    // Parse birthday — accept "YYYY-MM-DD" or any ISO-parseable string
+    let dob: Date | null = null
+    if (hr.birthday) {
+      const d = new Date(hr.birthday)
+      if (!isNaN(d.getTime())) dob = d
+    }
+
+    // Match: hrPlatformId first (stable), then name+branch fallback
+    const match = byHrId.get(hr.hrId) ?? byName.get(`${hr.firstName}|${hr.lastName}|${hr.branch}`)
+
+    if (match) {
+      const changed = match.firstName !== hr.firstName || match.lastName !== hr.lastName
+      if (changed) {
+        console.log(`[staff-sync] UPDATE ${match.firstName} ${match.lastName} → ${hr.firstName} ${hr.lastName} (hrId: ${hr.hrId})`)
+      }
+    } else {
+      console.log(`[staff-sync] NEW ${hr.firstName} ${hr.lastName} (hrId: ${hr.hrId})`)
+    }
+
+    const payload = {
+      firstName:      hr.firstName,
+      lastName:       hr.lastName,
+      email:          hr.email,
+      phone:          hr.phone,
+      dob,
+      department:     hr.department as StaffDepartment,
+      branch:         hr.branch,
+      jobTitle:       hr.jobTitle,
+      employmentType: hr.employmentType,
+      hrPlatformId:   hr.hrId,
+    }
 
     try {
       if (match) {
-        // Update existing record (preserve ID and all relations)
-        await prisma.staff.update({
-          where: { id: match.id },
-          data: {
-            email: hr.email,
-            phone: hr.phone,
-            department: hr.department as StaffDepartment,
-            jobTitle: hr.jobTitle,
-            employmentType: hr.employmentType,
-            hrPlatformId: hr.hrId,
-          },
-        })
+        await prisma.staff.update({ where: { id: match.id }, data: payload })
         matchedIds.add(match.id)
         updated++
       } else {
-        // Create new record
-        const newStaff = await prisma.staff.create({
-          data: {
-            firstName: hr.firstName,
-            lastName: hr.lastName,
-            email: hr.email,
-            phone: hr.phone,
-            department: hr.department as StaffDepartment,
-            branch: hr.branch,
-            jobTitle: hr.jobTitle,
-            employmentType: hr.employmentType,
-            hrPlatformId: hr.hrId,
-          },
-        })
+        const newStaff = await prisma.staff.create({ data: payload })
         matchedIds.add(newStaff.id)
         created++
       }
@@ -121,17 +138,18 @@ export async function POST() {
     }
   }
 
-  // Find staff in Marketing Hub that aren't in HR Platform
-  const notInHR = existing
-    .filter(s => !matchedIds.has(s.id))
-    .map(s => ({ id: s.id, name: `${s.firstName} ${s.lastName}`, branch: s.branch, department: s.department }))
+  // Delete staff not found in HR Platform (only those in synced departments)
+  const toDelete = existing.filter(s => !matchedIds.has(s.id))
+  let deleted = 0
+  for (const s of toDelete) {
+    try {
+      await prisma.staff.delete({ where: { id: s.id } })
+      deleted++
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      errors.push(`Delete ${s.firstName} ${s.lastName}: ${msg}`)
+    }
+  }
 
-  return NextResponse.json({
-    synced: created + updated,
-    created,
-    updated,
-    notInHR,
-    errors,
-    total: hrStaff.length,
-  })
+  return NextResponse.json({ synced: created + updated, created, updated, deleted, errors, total: hrStaff.length })
 }
