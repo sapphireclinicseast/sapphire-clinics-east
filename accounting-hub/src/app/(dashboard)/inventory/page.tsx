@@ -1017,7 +1017,7 @@ export default function InventoryPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{s.currency || '—'}</td>
-                      <td className="px-4 py-3 text-right text-xs" style={{ color: 'var(--mid-gray)' }}>{s.defaultExchangeRate != null ? s.defaultExchangeRate.toFixed(2) : '—'}</td>
+                      <td className="px-4 py-3 text-right text-xs" style={{ color: 'var(--mid-gray)' }}>{s.defaultExchangeRate != null ? Number(s.defaultExchangeRate).toFixed(2) : '—'}</td>
                       {canWrite && (
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
