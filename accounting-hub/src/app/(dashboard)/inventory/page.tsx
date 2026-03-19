@@ -290,7 +290,7 @@ export default function InventoryPage() {
     try {
       const res = await fetch('/api/inventory?all=true')
       const data = await res.json()
-      setAllItems(data.data || [])
+      setAllItems(Array.isArray(data) ? data : data.data || [])
     } catch { /* ignore */ }
   }, [])
 
@@ -306,7 +306,7 @@ export default function InventoryPage() {
     try {
       const res = await fetch('/api/suppliers?all=true')
       const data = await res.json()
-      setAllSuppliers(data.data || [])
+      setAllSuppliers(Array.isArray(data) ? data : data.data || [])
     } catch { /* ignore */ }
   }, [])
 
