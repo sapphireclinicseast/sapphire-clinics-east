@@ -3,6 +3,9 @@ import type { NextConfig } from 'next'
 const nextConfig: NextConfig = {
   output: 'standalone',
   serverExternalPackages: ['bcryptjs'],
+  turbopack: {
+    root: __dirname,
+  },
   async headers() {
     return [
       {

@@ -56,6 +56,12 @@ model User {
   auditLogs AuditLog[]
   accounts  Account[]
 
+  suppliersCreated      Supplier[]              @relation("SupplierCreatedBy")
+  inventoryItems        InventoryItem[]         @relation("ItemCreatedBy")
+  inventoryAdjustments  InventoryAdjustment[]   @relation("AdjustmentBy")
+  transfersRequested    ConsignmentTransfer[]   @relation("TransferRequestedBy")
+  transfersApproved     ConsignmentTransfer[]   @relation("TransferApprovedBy")
+
   @@index([email])
   @@index([role])
 }
@@ -97,4 +103,122 @@ model Account {
   @@index([accountType])
   @@index([isActive])
   @@index([createdById])
+}
+
+// ── Inventory & Procurement ────────────────────────────────
+
+enum AdjustmentType {
+  SHRINKAGE
+  INCREASE
+}
+
+enum TransferStatus {
+  PENDING
+  APPROVED
+  SHIPPED
+  RECEIVED
+  RETURNED
+  CANCELLED
+}
+
+model Supplier {
+  id                  String    @id @default(cuid())
+  supplierName        String
+  email               String?
+  contactNumber       String?
+  isForeign           Boolean   @default(false)
+  currency            String    @default("PHP")
+  defaultExchangeRate Decimal?
+  address             String?
+  notes               String?
+  isActive            Boolean   @default(true)
+  createdById         String
+  createdBy           User      @relation("SupplierCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  inventoryItems InventoryItem[]
+
+  @@index([isActive])
+  @@index([createdById])
+}
+
+model InventoryItem {
+  id                   String    @id @default(cuid())
+  name                 String
+  sku                  String    @unique
+  skuDepartment        String
+  skuCategory          String
+  skuSubcategory       String
+  skuSequence          Int
+  barcode              String?
+  branch               Branch
+  accountSubType       String?
+  unitCost             Decimal   @default(0)
+  sellingPrice         Decimal?
+  quantity             Int       @default(0)
+  reorderLevel         Int?
+  supplierId           String?
+  supplier             Supplier? @relation(fields: [supplierId], references: [id])
+  supplierExchangeRate Decimal?
+  isActive             Boolean   @default(true)
+  createdById          String
+  createdBy            User      @relation("ItemCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  adjustments  InventoryAdjustment[]
+  consignments ConsignmentTransfer[]
+
+  @@index([branch])
+  @@index([skuDepartment])
+  @@index([supplierId])
+  @@index([isActive])
+  @@index([createdById])
+}
+
+model InventoryAdjustment {
+  id               String         @id @default(cuid())
+  itemId           String
+  item             InventoryItem  @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  type             AdjustmentType
+  quantityChange   Int
+  previousQuantity Int
+  newQuantity      Int
+  adjustmentDate   DateTime
+  remarks          String
+  adjustedById     String
+  adjustedBy       User           @relation("AdjustmentBy", fields: [adjustedById], references: [id], onDelete: Restrict)
+  createdAt        DateTime       @default(now())
+
+  @@index([itemId])
+  @@index([adjustedById])
+  @@index([adjustmentDate])
+}
+
+model ConsignmentTransfer {
+  id            String         @id @default(cuid())
+  itemId        String
+  item          InventoryItem  @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  fromBranch    Branch
+  toBranch      Branch
+  quantity      Int
+  status        TransferStatus @default(PENDING)
+  requestedById String
+  requestedBy   User           @relation("TransferRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+  approvedById  String?
+  approvedBy    User?          @relation("TransferApprovedBy", fields: [approvedById], references: [id])
+  requestedAt   DateTime       @default(now())
+  approvedAt    DateTime?
+  shippedAt     DateTime?
+  receivedAt    DateTime?
+  remarks       String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([itemId])
+  @@index([status])
+  @@index([fromBranch])
+  @@index([toBranch])
+  @@index([requestedById])
 }
