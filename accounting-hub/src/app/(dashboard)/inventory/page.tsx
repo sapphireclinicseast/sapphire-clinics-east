@@ -112,7 +112,7 @@ const STATUS_BADGE: Record<string, { bg: string; color: string }> = {
 
 interface Supplier {
   id: string
-  name: string
+  supplierName: string
   email: string | null
   contactNumber: string | null
   isForeign: boolean
@@ -127,15 +127,17 @@ interface InventoryItem {
   sku: string
   name: string
   branch: string
-  department: string | null
+  skuDepartment: string
+  skuCategory: string
+  skuSubcategory: string
   accountSubType: string | null
   quantity: number
   unitCost: number
   sellingPrice: number | null
   reorderLevel: number | null
   supplierId: string | null
-  supplier?: { id: string; name: string; isForeign: boolean; defaultExchangeRate: number | null } | null
-  exchangeRate: number | null
+  supplier?: { id: string; supplierName: string; isForeign: boolean; currency: string } | null
+  supplierExchangeRate: number | null
 }
 
 interface Adjustment {
@@ -408,7 +410,7 @@ export default function InventoryPage() {
     setFInitialQty(String(item.quantity))
     setFReorderLevel(item.reorderLevel != null ? String(item.reorderLevel) : '')
     setFSupplierId(item.supplierId || '')
-    setFExchangeRate(item.exchangeRate != null ? String(item.exchangeRate) : '')
+    setFExchangeRate(item.supplierExchangeRate != null ? String(item.supplierExchangeRate) : '')
     setShowInlineSupplier(false); setError('')
     setItemModalOpen(true)
   }
@@ -421,15 +423,15 @@ export default function InventoryPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: inlineSName, email: inlineSEmail || null, contactNumber: inlineSContact || null,
-          isForeign: inlineSForeign, currency: inlineSForeign ? inlineSCurrency : null,
+          supplierName: inlineSName, email: inlineSEmail || null, contactNumber: inlineSContact || null,
+          isForeign: inlineSForeign, currency: inlineSForeign ? inlineSCurrency : 'PHP',
           defaultExchangeRate: inlineSForeign && inlineSRate ? parseFloat(inlineSRate) : null,
         }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Failed to create supplier'); setSaving(false); return }
       await fetchAllSuppliers()
-      setFSupplierId(data.data?.id || '')
+      setFSupplierId(data.id || '')
       setShowInlineSupplier(false)
       setInlineSName(''); setInlineSEmail(''); setInlineSContact(''); setInlineSForeign(false); setInlineSCurrency('USD'); setInlineSRate('')
     } catch { setError('Network error') }
@@ -440,14 +442,15 @@ export default function InventoryPage() {
     e.preventDefault()
     setSaving(true); setError('')
     const body: Record<string, unknown> = {
-      name: fName, sku: fSkuValue, branch: fBranch,
-      department: fSkuDept || null, accountSubType: fSubType || null,
-      unitCost: parseFloat(fUnitCost) || 0,
-      sellingPrice: fSellingPrice ? parseFloat(fSellingPrice) : null,
-      quantity: parseInt(fInitialQty) || 0,
-      reorderLevel: fReorderLevel ? parseInt(fReorderLevel) : null,
+      name: fName, branch: fBranch,
+      skuDepartment: fSkuDept || null, skuCategory: fSkuCat || null, skuSubcategory: fSkuSub || null,
+      accountSubType: fSubType || null,
+      unitCost: fUnitCost || '0',
+      sellingPrice: fSellingPrice || null,
+      quantity: fInitialQty || '0',
+      reorderLevel: fReorderLevel || null,
       supplierId: fSupplierId || null,
-      exchangeRate: fExchangeRate ? parseFloat(fExchangeRate) : null,
+      supplierExchangeRate: fExchangeRate || null,
     }
     if (editingItem) body.id = editingItem.id
     try {
@@ -484,7 +487,7 @@ export default function InventoryPage() {
 
   function openSupplierEdit(s: Supplier) {
     setEditingSupplier(s)
-    setSName(s.name); setSEmail(s.email || ''); setSContact(s.contactNumber || '')
+    setSName(s.supplierName); setSEmail(s.email || ''); setSContact(s.contactNumber || '')
     setSForeign(s.isForeign); setSCurrency(s.currency || 'USD')
     setSRate(s.defaultExchangeRate != null ? String(s.defaultExchangeRate) : '')
     setSAddress(s.address || ''); setSNotes(s.notes || ''); setError('')
@@ -495,8 +498,8 @@ export default function InventoryPage() {
     e.preventDefault()
     setSaving(true); setError('')
     const body: Record<string, unknown> = {
-      name: sName, email: sEmail || null, contactNumber: sContact || null,
-      isForeign: sForeign, currency: sForeign ? sCurrency : null,
+      supplierName: sName, email: sEmail || null, contactNumber: sContact || null,
+      isForeign: sForeign, currency: sForeign ? sCurrency : 'PHP',
       defaultExchangeRate: sForeign && sRate ? parseFloat(sRate) : null,
       address: sAddress || null, notes: sNotes || null,
     }
@@ -720,7 +723,7 @@ export default function InventoryPage() {
                       <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{item.name}</td>
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{BRANCH_LABELS[item.branch] || item.branch}</td>
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
-                        {item.department ? (SKU_HIERARCHY[item.department]?.label || item.department) : '—'}
+                        {item.skuDepartment ? (SKU_HIERARCHY[item.skuDepartment]?.label || item.skuDepartment) : '—'}
                       </td>
                       <td className="px-4 py-3 text-right font-medium" style={{ color: item.reorderLevel && item.quantity <= item.reorderLevel ? '#dc2626' : 'var(--charcoal)' }}>
                         {item.quantity}
@@ -729,7 +732,7 @@ export default function InventoryPage() {
                         {formatCurrency(item.unitCost)}
                       </td>
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
-                        {item.supplier?.name || '—'}
+                        {item.supplier?.supplierName || '—'}
                       </td>
                       {canWrite && (
                         <td className="px-4 py-3">
@@ -894,7 +897,7 @@ export default function InventoryPage() {
                         style={{ borderColor: 'var(--light-gray)' }}
                       >
                         <option value="">— Select supplier —</option>
-                        {allSuppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        {allSuppliers.map((s) => <option key={s.id} value={s.id}>{s.supplierName}</option>)}
                         <option value="__NEW__">— Add New Supplier —</option>
                       </select>
                     ) : (
@@ -1003,7 +1006,7 @@ export default function InventoryPage() {
                     </tr>
                   ) : suppliers.map((s) => (
                     <tr key={s.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
-                      <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{s.name}</td>
+                      <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{s.supplierName}</td>
                       <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>{s.email || '—'}</td>
                       <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>{s.contactNumber || '—'}</td>
                       <td className="px-4 py-3">
