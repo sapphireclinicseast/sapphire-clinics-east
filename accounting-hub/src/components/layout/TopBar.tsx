@@ -20,6 +20,8 @@ const ROLE_LABELS: Record<string, string> = {
   SBEA_ADMIN: 'SBEA Admin',
   SBGH_ADMIN: 'SBGH Admin',
   VERDANA_ADMIN: 'Verdana Admin',
+  SBEA_FRONTDESK: 'SBEA Front Desk',
+  SBGH_FRONTDESK: 'SBGH Front Desk',
 }
 
 export default function TopBar({ user, onMenuClick }: TopBarProps) {

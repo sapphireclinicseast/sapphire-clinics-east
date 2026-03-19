@@ -18,11 +18,16 @@ import {
   X,
 } from 'lucide-react'
 
+// Roles that see all accounting modules (excludes front desk)
+const FULL_ACCESS = ['ADMIN', 'ACCOUNTANT', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+// Roles that see Services + POS (front desk + full access)
+const SERVICES_POS_ACCESS = [...FULL_ACCESS, 'SBEA_FRONTDESK', 'SBGH_FRONTDESK']
+
 interface NavItem {
   href: string
   icon: React.ElementType
   label: string
-  adminOnly?: boolean
+  roles?: string[] // If set, only these roles see this item. If unset, visible to all.
 }
 
 interface NavSection {
@@ -40,31 +45,31 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: 'General Ledger',
     items: [
-      { href: '/chart-of-accounts', icon: BookOpen, label: 'Chart of Accounts' },
-      { href: '/bank-reconciliation', icon: ArrowLeftRight, label: 'Bank Reconciliation' },
+      { href: '/chart-of-accounts', icon: BookOpen, label: 'Chart of Accounts', roles: FULL_ACCESS },
+      { href: '/bank-reconciliation', icon: ArrowLeftRight, label: 'Bank Reconciliation', roles: FULL_ACCESS },
     ],
   },
   {
     label: 'Transactions',
     items: [
-      { href: '/petty-cash', icon: Wallet, label: 'Petty Cash' },
-      { href: '/inventory', icon: Package, label: 'Inventory & Procurement' },
-      { href: '/services', icon: Stethoscope, label: 'Services' },
-      { href: '/pos', icon: ShoppingCart, label: 'Point of Sale' },
-      { href: '/payroll', icon: BadgeDollarSign, label: 'Payroll' },
+      { href: '/petty-cash', icon: Wallet, label: 'Petty Cash', roles: FULL_ACCESS },
+      { href: '/inventory', icon: Package, label: 'Inventory & Procurement', roles: FULL_ACCESS },
+      { href: '/services', icon: Stethoscope, label: 'Services', roles: SERVICES_POS_ACCESS },
+      { href: '/pos', icon: ShoppingCart, label: 'Point of Sale', roles: SERVICES_POS_ACCESS },
+      { href: '/payroll', icon: BadgeDollarSign, label: 'Payroll', roles: FULL_ACCESS },
     ],
   },
   {
     label: 'Planning & Analysis',
     items: [
-      { href: '/budgets', icon: Target, label: 'Budgets' },
-      { href: '/reports', icon: BarChart3, label: 'Reports' },
+      { href: '/budgets', icon: Target, label: 'Budgets', roles: FULL_ACCESS },
+      { href: '/reports', icon: BarChart3, label: 'Reports', roles: FULL_ACCESS },
     ],
   },
   {
     label: 'Administration',
     items: [
-      { href: '/users', icon: Users, label: 'Users', adminOnly: true },
+      { href: '/users', icon: Users, label: 'Users', roles: ['ADMIN'] },
     ],
   },
 ]
@@ -77,7 +82,6 @@ interface SidebarProps {
 
 export default function Sidebar({ userRole, open, onClose }: SidebarProps) {
   const pathname = usePathname()
-  const isAdmin = userRole === 'ADMIN'
 
   return (
     <>
@@ -131,7 +135,7 @@ export default function Sidebar({ userRole, open, onClose }: SidebarProps) {
         <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-5">
           {NAV_SECTIONS.map((section) => {
             const visibleItems = section.items.filter(
-              (item) => !item.adminOnly || isAdmin
+              (item) => !item.roles || item.roles.includes(userRole || '')
             )
             if (visibleItems.length === 0) return null
 

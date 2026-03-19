@@ -16,6 +16,8 @@ enum Role {
   SBEA_ADMIN
   SBGH_ADMIN
   VERDANA_ADMIN
+  SBEA_FRONTDESK
+  SBGH_FRONTDESK
 }
 
 enum Branch {
@@ -62,6 +64,11 @@ model User {
   inventoryAdjustments  InventoryAdjustment[]   @relation("AdjustmentBy")
   transfersRequested    ConsignmentTransfer[]   @relation("TransferRequestedBy")
   transfersApproved     ConsignmentTransfer[]   @relation("TransferApprovedBy")
+
+  referrersCreated      Referrer[]              @relation("ReferrerCreatedBy")
+  walletLogs            WalletLog[]             @relation("WalletLogBy")
+  ordersCreated         Order[]                 @relation("OrderCreatedBy")
+  discountSettings      DiscountSetting[]       @relation("DiscountCreatedBy")
 
   @@index([email])
   @@index([role])
@@ -143,6 +150,8 @@ model Service {
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 
+  orderItems OrderItem[]
+
   @@index([department])
   @@index([branch])
   @@index([isActive])
@@ -213,6 +222,7 @@ model InventoryItem {
 
   adjustments  InventoryAdjustment[]
   consignments ConsignmentTransfer[]
+  orderItems   OrderItem[]
 
   @@index([branch])
   @@index([skuDepartment])
@@ -265,4 +275,208 @@ model ConsignmentTransfer {
   @@index([fromBranch])
   @@index([toBranch])
   @@index([requestedById])
+}
+
+// ── POS System ─────────────────────────────────────────────
+
+enum OrderType {
+  SERVICE
+  PRODUCT
+}
+
+enum OrderStatus {
+  COMPLETED
+  REOPENED
+  VOIDED
+}
+
+enum PaymentMethod {
+  CASH
+  GCASH
+  PAYMAYA
+  DEBIT
+  CREDIT_CARD
+  VIP_CARD
+  PREPAID_CARD
+  REWARD_POINTS
+  SHOPEE
+  LAZADA
+  TIKTOK
+  DOWNPAYMENT
+}
+
+enum DiscountType {
+  NONE
+  PWD_SC
+  CUSTOM
+}
+
+enum WalletAction {
+  DEDUCTION
+  RELOAD
+  REWARD_EARN
+  REWARD_SPEND
+}
+
+model Referrer {
+  id             String   @id @default(cuid())
+  name           String
+  affiliation    String?
+  specialization String?
+  isActive       Boolean  @default(true)
+  createdById    String
+  createdBy      User     @relation("ReferrerCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  orders Order[]
+
+  @@index([isActive])
+  @@index([createdById])
+}
+
+model DigitalWallet {
+  id           String   @id @default(cuid())
+  patientId    String   @unique
+  patientName  String
+  patientEmail String?
+  barcode      String   @unique
+  rewardPoints Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  packages WalletPackage[]
+  logs     WalletLog[]
+  payments OrderPayment[]
+
+  @@index([patientName])
+  @@index([barcode])
+}
+
+model WalletPackage {
+  id                String        @id @default(cuid())
+  walletId          String
+  wallet            DigitalWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  serviceName       String
+  serviceId         String?
+  totalSessions     Int
+  usedSessions      Int           @default(0)
+  amountPaid        Decimal
+  purchaseDate      DateTime      @default(now())
+  expiresAt         DateTime?
+  isActive          Boolean       @default(true)
+  createdAt         DateTime      @default(now())
+
+  logs WalletLog[]
+
+  @@index([walletId])
+  @@index([isActive])
+}
+
+model WalletLog {
+  id            String        @id @default(cuid())
+  walletId      String
+  wallet        DigitalWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  packageId     String?
+  package       WalletPackage? @relation(fields: [packageId], references: [id])
+  action        WalletAction
+  description   String
+  sessions      Int?
+  pointsChange  Int?
+  balanceBefore Int?
+  balanceAfter  Int?
+  createdById   String
+  createdBy     User          @relation("WalletLogBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt     DateTime      @default(now())
+
+  @@index([walletId])
+  @@index([packageId])
+  @@index([createdAt])
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  orderNumber     Int         @unique @default(autoincrement())
+  orderType       OrderType
+  branch          String
+  patientId       String?
+  patientName     String?
+  clinicianName   String?
+  subtotal        Decimal
+  discountAmount  Decimal     @default(0)
+  discountType    DiscountType @default(NONE)
+  discountLabel   String?
+  netAmount       Decimal
+  revenueType     String      @default("EARNED")
+  referrerId      String?
+  referrer        Referrer?   @relation(fields: [referrerId], references: [id])
+  notes           String?
+  status          OrderStatus @default(COMPLETED)
+  transactionDate DateTime
+  createdById     String
+  createdBy       User        @relation("OrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  items    OrderItem[]
+  payments OrderPayment[]
+
+  @@index([orderType])
+  @@index([branch])
+  @@index([status])
+  @@index([transactionDate])
+  @@index([createdById])
+  @@index([referrerId])
+}
+
+model OrderItem {
+  id              String         @id @default(cuid())
+  orderId         String
+  order           Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  serviceId       String?
+  service         Service?       @relation(fields: [serviceId], references: [id])
+  inventoryItemId String?
+  inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id])
+  name            String
+  quantity        Int            @default(1)
+  unitPrice       Decimal
+  lineTotal       Decimal
+  createdAt       DateTime       @default(now())
+
+  @@index([orderId])
+  @@index([serviceId])
+  @@index([inventoryItemId])
+}
+
+model OrderPayment {
+  id        String        @id @default(cuid())
+  orderId   String
+  order     Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  method    PaymentMethod
+  amount    Decimal
+  walletId  String?
+  wallet    DigitalWallet? @relation(fields: [walletId], references: [id])
+  reference String?
+  createdAt DateTime      @default(now())
+
+  @@index([orderId])
+  @@index([method])
+  @@index([walletId])
+}
+
+model DiscountSetting {
+  id          String   @id @default(cuid())
+  name        String
+  type        String   @default("PERCENTAGE")
+  value       Decimal
+  branch      String?
+  isActive    Boolean  @default(true)
+  createdById String
+  createdBy   User     @relation("DiscountCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([branch])
 }
