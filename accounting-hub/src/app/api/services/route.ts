@@ -7,6 +7,7 @@ const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA
 const VALID_DEPARTMENTS = ['PT', 'MD', 'OT', 'SLP', 'SPED', 'PSYCHOLOGY', 'ORTHOSIS_PROSTHESIS']
 const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'ALL']
 const VALID_PRICE_TYPES = ['FIXED', 'ADJUSTABLE']
+const VALID_REVENUE_TYPES = ['EARNED', 'UNEARNED']
 
 export async function GET(req: Request) {
   const session = await auth()
@@ -67,7 +68,7 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json()
-    const { name, department, branch, price, priceType, hasDoctorFee,
+    const { name, department, branch, price, priceType, revenueType, hasDoctorFee,
             doctorFee, clinicFee, pwdDiscountClinicOnly, description } = body
 
     if (!name?.trim() || !department || !branch || price == null) {
@@ -89,6 +90,7 @@ export async function POST(req: Request) {
         branch,
         price: parseFloat(price),
         priceType: priceType && VALID_PRICE_TYPES.includes(priceType) ? priceType : 'FIXED',
+        revenueType: revenueType && VALID_REVENUE_TYPES.includes(revenueType) ? revenueType : 'EARNED',
         hasDoctorFee: hasDoctorFee || false,
         doctorFee: hasDoctorFee && doctorFee ? parseFloat(doctorFee) : null,
         clinicFee: hasDoctorFee && clinicFee ? parseFloat(clinicFee) : null,
@@ -122,7 +124,7 @@ export async function PUT(req: Request) {
 
   try {
     const body = await req.json()
-    const { id, name, department, branch, price, priceType, hasDoctorFee,
+    const { id, name, department, branch, price, priceType, revenueType, hasDoctorFee,
             doctorFee, clinicFee, pwdDiscountClinicOnly, description } = body
 
     if (!id) {
@@ -136,6 +138,7 @@ export async function PUT(req: Request) {
     if (branch !== undefined) data.branch = branch
     if (price !== undefined) data.price = parseFloat(price)
     if (priceType !== undefined) data.priceType = priceType
+    if (revenueType !== undefined) data.revenueType = revenueType
     if (hasDoctorFee !== undefined) {
       data.hasDoctorFee = hasDoctorFee
       if (!hasDoctorFee) {

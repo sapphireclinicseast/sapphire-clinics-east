@@ -15,6 +15,7 @@ interface Service {
   branch: string
   price: string | number
   priceType: string
+  revenueType: string
   hasDoctorFee: boolean
   doctorFee: string | number | null
   clinicFee: string | number | null
@@ -77,6 +78,7 @@ export default function ServicesPage() {
   const [fBranch, setFBranch] = useState('ALL')
   const [fPrice, setFPrice] = useState('')
   const [fPriceType, setFPriceType] = useState('FIXED')
+  const [fRevenueType, setFRevenueType] = useState('EARNED')
   const [fHasDoctorFee, setFHasDoctorFee] = useState(false)
   const [fDoctorFee, setFDoctorFee] = useState('')
   const [fClinicFee, setFClinicFee] = useState('')
@@ -121,7 +123,7 @@ export default function ServicesPage() {
   function openCreate() {
     setEditing(null)
     setFName(''); setFDept('PT'); setFBranch('ALL'); setFPrice('')
-    setFPriceType('FIXED'); setFHasDoctorFee(false); setFDoctorFee('')
+    setFPriceType('FIXED'); setFRevenueType('EARNED'); setFHasDoctorFee(false); setFDoctorFee('')
     setFClinicFee(''); setFPwdClinicOnly(false); setFDescription('')
     setError(''); setModalOpen(true)
   }
@@ -129,7 +131,7 @@ export default function ServicesPage() {
   function openEdit(s: Service) {
     setEditing(s)
     setFName(s.name); setFDept(s.department); setFBranch(s.branch)
-    setFPrice(String(s.price)); setFPriceType(s.priceType)
+    setFPrice(String(s.price)); setFPriceType(s.priceType); setFRevenueType(s.revenueType)
     setFHasDoctorFee(s.hasDoctorFee)
     setFDoctorFee(s.doctorFee != null ? String(s.doctorFee) : '')
     setFClinicFee(s.clinicFee != null ? String(s.clinicFee) : '')
@@ -151,7 +153,7 @@ export default function ServicesPage() {
     setSaving(true); setError('')
     const body: Record<string, unknown> = {
       name: fName, department: fDept, branch: fBranch,
-      price: fPrice, priceType: fPriceType,
+      price: fPrice, priceType: fPriceType, revenueType: fRevenueType,
       hasDoctorFee: fHasDoctorFee,
       doctorFee: fHasDoctorFee ? fDoctorFee : null,
       clinicFee: fHasDoctorFee ? fClinicFee : null,
@@ -276,6 +278,7 @@ export default function ServicesPage() {
                   <span className="flex items-center justify-end gap-1">Price <SortIcon field="price" /></span>
                 </th>
                 <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Pricing</th>
+                <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Revenue</th>
                 <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>PWD Rule</th>
                 {canWrite && <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>}
               </tr>
@@ -283,7 +286,7 @@ export default function ServicesPage() {
             <tbody>
               {services.length === 0 ? (
                 <tr>
-                  <td colSpan={canWrite ? 7 : 6} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
+                  <td colSpan={canWrite ? 8 : 7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
                     <Stethoscope size={32} className="mx-auto mb-2 opacity-40" />
                     <p>No services found</p>
                     {canWrite && <p className="text-xs mt-1">Add clinic services to get started</p>}
@@ -318,11 +321,19 @@ export default function ServicesPage() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-1 rounded-md text-xs font-medium ${s.priceType === 'FIXED' ? '' : ''}`}
+                      <span className="px-2 py-1 rounded-md text-xs font-medium"
                         style={s.priceType === 'FIXED'
                           ? { background: '#f3f4f6', color: '#374151' }
                           : { background: '#fef3c7', color: '#92400e' }}>
                         {s.priceType === 'FIXED' ? 'Fixed' : 'Adjustable'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="px-2 py-1 rounded-md text-xs font-medium"
+                        style={s.revenueType === 'EARNED'
+                          ? { background: '#dcfce7', color: '#166534' }
+                          : { background: '#fef3c7', color: '#92400e' }}>
+                        {s.revenueType === 'EARNED' ? 'Sales' : 'Unearned'}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
@@ -438,6 +449,22 @@ export default function ServicesPage() {
                     <option value="ADJUSTABLE">Adjustable by Cashier</option>
                   </select>
                 </div>
+              </div>
+
+              {/* Revenue Type */}
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Revenue Classification</label>
+                <select value={fRevenueType} onChange={(e) => setFRevenueType(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                  style={{ borderColor: 'var(--light-gray)' }}>
+                  <option value="EARNED">Earned Revenue (Sales — recognized immediately)</option>
+                  <option value="UNEARNED">Unearned Revenue (Package / VIP / Downpayment — consumed later)</option>
+                </select>
+                {fRevenueType === 'UNEARNED' && (
+                  <p className="mt-1.5 text-xs px-1" style={{ color: '#92400e' }}>
+                    This service will be classified as Unearned Revenue (liability) until sessions are consumed.
+                  </p>
+                )}
               </div>
 
               {/* Doctor Fee Toggle */}

@@ -119,6 +119,11 @@ enum PriceType {
   ADJUSTABLE
 }
 
+enum RevenueType {
+  EARNED
+  UNEARNED
+}
+
 model Service {
   id                    String        @id @default(cuid())
   name                  String
@@ -126,6 +131,7 @@ model Service {
   branch                ServiceBranch
   price                 Decimal
   priceType             PriceType     @default(FIXED)
+  revenueType           RevenueType   @default(EARNED)
   hasDoctorFee          Boolean       @default(false)
   doctorFee             Decimal?
   clinicFee             Decimal?

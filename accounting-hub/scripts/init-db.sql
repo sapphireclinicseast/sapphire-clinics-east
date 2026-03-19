@@ -113,6 +113,11 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
+DO $$ BEGIN
+  CREATE TYPE "RevenueType" AS ENUM ('EARNED', 'UNEARNED');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
 CREATE TABLE IF NOT EXISTS "Service" (
   "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
   "name" TEXT NOT NULL,
@@ -120,6 +125,7 @@ CREATE TABLE IF NOT EXISTS "Service" (
   "branch" "ServiceBranch" NOT NULL,
   "price" DECIMAL NOT NULL,
   "priceType" "PriceType" NOT NULL DEFAULT 'FIXED',
+  "revenueType" "RevenueType" NOT NULL DEFAULT 'EARNED',
   "hasDoctorFee" BOOLEAN NOT NULL DEFAULT false,
   "doctorFee" DECIMAL,
   "clinicFee" DECIMAL,
@@ -137,6 +143,12 @@ CREATE INDEX IF NOT EXISTS "Service_department_idx" ON "Service"("department");
 CREATE INDEX IF NOT EXISTS "Service_branch_idx" ON "Service"("branch");
 CREATE INDEX IF NOT EXISTS "Service_isActive_idx" ON "Service"("isActive");
 CREATE INDEX IF NOT EXISTS "Service_createdById_idx" ON "Service"("createdById");
+
+-- Add revenueType column (idempotent for existing installations)
+DO $$ BEGIN
+  ALTER TABLE "Service" ADD COLUMN "revenueType" "RevenueType" NOT NULL DEFAULT 'EARNED';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
 
 -- ── Inventory & Procurement ────────────────────────────────
 
