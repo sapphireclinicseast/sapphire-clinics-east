@@ -189,9 +189,15 @@ function today(): string {
 
 function normalize(data: unknown): unknown[] {
   if (Array.isArray(data)) return data
-  if (data && typeof data === 'object' && 'data' in data) {
-    const d = (data as { data: unknown }).data
-    return Array.isArray(d) ? d : []
+  if (data && typeof data === 'object') {
+    if ('data' in data) {
+      const d = (data as { data: unknown }).data
+      if (Array.isArray(d)) return d
+    }
+    if ('items' in data) {
+      const d = (data as { items: unknown }).items
+      if (Array.isArray(d)) return d
+    }
   }
   return []
 }
@@ -389,6 +395,12 @@ function CashierPanel({
   }, [selectedBranch, date])
 
   useEffect(() => { fetchQueue() }, [fetchQueue])
+
+  // Auto-refresh queue every 30 seconds for live updates
+  useEffect(() => {
+    const interval = setInterval(() => { fetchQueue() }, 30000)
+    return () => clearInterval(interval)
+  }, [fetchQueue])
 
   return (
     <div className="space-y-4">

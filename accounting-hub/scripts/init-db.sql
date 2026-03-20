@@ -304,23 +304,20 @@ CREATE INDEX IF NOT EXISTS "Referrer_createdById_idx" ON "Referrer"("createdById
 -- DigitalWallet table
 CREATE TABLE IF NOT EXISTS "DigitalWallet" (
   "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
-  "barcode" TEXT NOT NULL,
-  "patientId" TEXT,
+  "patientId" TEXT NOT NULL,
   "patientName" TEXT NOT NULL,
   "patientEmail" TEXT,
+  "barcode" TEXT NOT NULL,
   "rewardPoints" INTEGER NOT NULL DEFAULT 0,
   "isActive" BOOLEAN NOT NULL DEFAULT true,
-  "createdById" TEXT NOT NULL,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT "DigitalWallet_pkey" PRIMARY KEY ("id"),
-  CONSTRAINT "DigitalWallet_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE
+  CONSTRAINT "DigitalWallet_pkey" PRIMARY KEY ("id")
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS "DigitalWallet_patientId_key" ON "DigitalWallet"("patientId");
 CREATE UNIQUE INDEX IF NOT EXISTS "DigitalWallet_barcode_key" ON "DigitalWallet"("barcode");
 CREATE INDEX IF NOT EXISTS "DigitalWallet_patientName_idx" ON "DigitalWallet"("patientName");
-CREATE INDEX IF NOT EXISTS "DigitalWallet_isActive_idx" ON "DigitalWallet"("isActive");
-CREATE INDEX IF NOT EXISTS "DigitalWallet_createdById_idx" ON "DigitalWallet"("createdById");
 
 -- WalletPackage table
 CREATE TABLE IF NOT EXISTS "WalletPackage" (
@@ -331,13 +328,12 @@ CREATE TABLE IF NOT EXISTS "WalletPackage" (
   "totalSessions" INTEGER NOT NULL,
   "usedSessions" INTEGER NOT NULL DEFAULT 0,
   "amountPaid" DECIMAL NOT NULL,
+  "purchaseDate" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "expiresAt" TIMESTAMP(3),
   "isActive" BOOLEAN NOT NULL DEFAULT true,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "WalletPackage_pkey" PRIMARY KEY ("id"),
-  CONSTRAINT "WalletPackage_walletId_fkey" FOREIGN KEY ("walletId") REFERENCES "DigitalWallet"("id") ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT "WalletPackage_serviceId_fkey" FOREIGN KEY ("serviceId") REFERENCES "Service"("id") ON UPDATE CASCADE
+  CONSTRAINT "WalletPackage_walletId_fkey" FOREIGN KEY ("walletId") REFERENCES "DigitalWallet"("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS "WalletPackage_walletId_idx" ON "WalletPackage"("walletId");
@@ -350,10 +346,11 @@ CREATE TABLE IF NOT EXISTS "WalletLog" (
   "walletId" TEXT NOT NULL,
   "packageId" TEXT,
   "action" "WalletAction" NOT NULL,
+  "description" TEXT NOT NULL DEFAULT '',
   "sessions" INTEGER,
-  "points" INTEGER,
-  "amount" DECIMAL,
-  "note" TEXT,
+  "pointsChange" INTEGER,
+  "balanceBefore" INTEGER,
+  "balanceAfter" INTEGER,
   "createdById" TEXT NOT NULL,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "WalletLog_pkey" PRIMARY KEY ("id"),
@@ -364,7 +361,6 @@ CREATE TABLE IF NOT EXISTS "WalletLog" (
 
 CREATE INDEX IF NOT EXISTS "WalletLog_walletId_idx" ON "WalletLog"("walletId");
 CREATE INDEX IF NOT EXISTS "WalletLog_packageId_idx" ON "WalletLog"("packageId");
-CREATE INDEX IF NOT EXISTS "WalletLog_action_idx" ON "WalletLog"("action");
 CREATE INDEX IF NOT EXISTS "WalletLog_createdAt_idx" ON "WalletLog"("createdAt");
 
 -- Order number sequence
@@ -374,39 +370,36 @@ CREATE SEQUENCE IF NOT EXISTS "order_number_seq" START WITH 1001;
 CREATE TABLE IF NOT EXISTS "Order" (
   "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
   "orderNumber" INTEGER NOT NULL DEFAULT nextval('order_number_seq'),
-  "branch" "Branch" NOT NULL,
   "orderType" "OrderType" NOT NULL,
-  "status" "OrderStatus" NOT NULL DEFAULT 'COMPLETED',
-  "patientName" TEXT NOT NULL,
-  "patientEmail" TEXT,
-  "walletId" TEXT,
-  "referrerId" TEXT,
-  "doctorName" TEXT,
-  "subtotal" DECIMAL NOT NULL DEFAULT 0,
-  "discountType" "DiscountType" NOT NULL DEFAULT 'NONE',
+  "branch" TEXT NOT NULL,
+  "patientId" TEXT,
+  "patientName" TEXT,
+  "clinicianName" TEXT,
+  "subtotal" DECIMAL NOT NULL,
   "discountAmount" DECIMAL NOT NULL DEFAULT 0,
-  "total" DECIMAL NOT NULL DEFAULT 0,
+  "discountType" "DiscountType" NOT NULL DEFAULT 'NONE',
+  "discountLabel" TEXT,
+  "netAmount" DECIMAL NOT NULL,
+  "revenueType" TEXT NOT NULL DEFAULT 'EARNED',
+  "referrerId" TEXT,
   "notes" TEXT,
-  "voidedById" TEXT,
-  "voidedAt" TIMESTAMP(3),
-  "voidReason" TEXT,
+  "status" "OrderStatus" NOT NULL DEFAULT 'COMPLETED',
+  "transactionDate" TIMESTAMP(3) NOT NULL,
   "createdById" TEXT NOT NULL,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "Order_pkey" PRIMARY KEY ("id"),
-  CONSTRAINT "Order_walletId_fkey" FOREIGN KEY ("walletId") REFERENCES "DigitalWallet"("id") ON UPDATE CASCADE,
   CONSTRAINT "Order_referrerId_fkey" FOREIGN KEY ("referrerId") REFERENCES "Referrer"("id") ON UPDATE CASCADE,
-  CONSTRAINT "Order_voidedById_fkey" FOREIGN KEY ("voidedById") REFERENCES "User"("id") ON UPDATE CASCADE,
   CONSTRAINT "Order_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS "Order_orderNumber_key" ON "Order"("orderNumber");
+CREATE INDEX IF NOT EXISTS "Order_orderType_idx" ON "Order"("orderType");
 CREATE INDEX IF NOT EXISTS "Order_branch_idx" ON "Order"("branch");
 CREATE INDEX IF NOT EXISTS "Order_status_idx" ON "Order"("status");
-CREATE INDEX IF NOT EXISTS "Order_walletId_idx" ON "Order"("walletId");
-CREATE INDEX IF NOT EXISTS "Order_referrerId_idx" ON "Order"("referrerId");
+CREATE INDEX IF NOT EXISTS "Order_transactionDate_idx" ON "Order"("transactionDate");
 CREATE INDEX IF NOT EXISTS "Order_createdById_idx" ON "Order"("createdById");
-CREATE INDEX IF NOT EXISTS "Order_createdAt_idx" ON "Order"("createdAt");
+CREATE INDEX IF NOT EXISTS "Order_referrerId_idx" ON "Order"("referrerId");
 
 -- OrderItem table
 CREATE TABLE IF NOT EXISTS "OrderItem" (
@@ -417,8 +410,6 @@ CREATE TABLE IF NOT EXISTS "OrderItem" (
   "name" TEXT NOT NULL,
   "quantity" INTEGER NOT NULL DEFAULT 1,
   "unitPrice" DECIMAL NOT NULL,
-  "doctorFee" DECIMAL,
-  "clinicFee" DECIMAL,
   "lineTotal" DECIMAL NOT NULL,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "OrderItem_pkey" PRIMARY KEY ("id"),
@@ -437,30 +428,32 @@ CREATE TABLE IF NOT EXISTS "OrderPayment" (
   "orderId" TEXT NOT NULL,
   "method" "PaymentMethod" NOT NULL,
   "amount" DECIMAL NOT NULL,
+  "walletId" TEXT,
   "reference" TEXT,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "OrderPayment_pkey" PRIMARY KEY ("id"),
-  CONSTRAINT "OrderPayment_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order"("id") ON DELETE CASCADE ON UPDATE CASCADE
+  CONSTRAINT "OrderPayment_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "OrderPayment_walletId_fkey" FOREIGN KEY ("walletId") REFERENCES "DigitalWallet"("id") ON UPDATE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS "OrderPayment_orderId_idx" ON "OrderPayment"("orderId");
 CREATE INDEX IF NOT EXISTS "OrderPayment_method_idx" ON "OrderPayment"("method");
+CREATE INDEX IF NOT EXISTS "OrderPayment_walletId_idx" ON "OrderPayment"("walletId");
 
 -- DiscountSetting table
 CREATE TABLE IF NOT EXISTS "DiscountSetting" (
   "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
-  "discountType" "DiscountType" NOT NULL,
-  "label" TEXT NOT NULL,
-  "percentage" DECIMAL NOT NULL,
+  "name" TEXT NOT NULL,
+  "type" TEXT NOT NULL DEFAULT 'PERCENTAGE',
+  "value" DECIMAL NOT NULL,
+  "branch" TEXT,
   "isActive" BOOLEAN NOT NULL DEFAULT true,
+  "createdById" TEXT NOT NULL,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT "DiscountSetting_pkey" PRIMARY KEY ("id")
+  CONSTRAINT "DiscountSetting_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "DiscountSetting_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS "DiscountSetting_discountType_key" ON "DiscountSetting"("discountType");
-
--- Seed default discount settings
-INSERT INTO "DiscountSetting" ("discountType", "label", "percentage")
-VALUES ('PWD_SC', 'PWD / Senior Citizen', 20)
-ON CONFLICT ("discountType") DO NOTHING;
+CREATE INDEX IF NOT EXISTS "DiscountSetting_isActive_idx" ON "DiscountSetting"("isActive");
+CREATE INDEX IF NOT EXISTS "DiscountSetting_branch_idx" ON "DiscountSetting"("branch");
