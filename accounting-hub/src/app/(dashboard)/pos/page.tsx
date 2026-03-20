@@ -83,6 +83,8 @@ interface Referrer {
 interface DigitalWallet {
   id: string
   barcode: string
+  walletType: string
+  balance: string | number
   patientId?: string | null
   patientName: string
   patientEmail?: string | null
@@ -185,6 +187,30 @@ const BRANCHES = [
   { value: 'SANDBOX_GREENHILLS', label: 'SBGH' },
   { value: 'VERDANA_STORE', label: 'Verdana' },
 ]
+
+const WALLET_TYPES = [
+  { value: 'PACKAGE', label: 'Package' },
+  { value: 'VIP', label: 'VIP' },
+  { value: 'PREPAID_CARD', label: 'Prepaid Card' },
+  { value: 'DOWNPAYMENT', label: 'Downpayment' },
+  { value: 'ADVANCE', label: 'Advance' },
+]
+
+const WALLET_TYPE_LABELS: Record<string, string> = {
+  PACKAGE: 'Package',
+  VIP: 'VIP',
+  PREPAID_CARD: 'Prepaid Card',
+  DOWNPAYMENT: 'Downpayment',
+  ADVANCE: 'Advance',
+}
+
+const WALLET_TYPE_COLORS: Record<string, { bg: string; color: string }> = {
+  PACKAGE: { bg: '#dbeafe', color: '#1e40af' },
+  VIP: { bg: '#fef3c7', color: '#92400e' },
+  PREPAID_CARD: { bg: '#dcfce7', color: '#166534' },
+  DOWNPAYMENT: { bg: '#fce7f3', color: '#9d174d' },
+  ADVANCE: { bg: '#e0e7ff', color: '#3730a3' },
+}
 
 /* ─────────────────────────── HELPERS ─────────────────────────── */
 
@@ -558,6 +584,9 @@ function OrderFormModal({
   const [walletSearch, setWalletSearch] = useState('')
   const [walletResults, setWalletResults] = useState<DigitalWallet[]>([])
   const [showDownpayment, setShowDownpayment] = useState(false)
+  const [isAdvancePayment, setIsAdvancePayment] = useState(false)
+  const [walletPopup, setWalletPopup] = useState<{ show: boolean; wallet?: DigitalWallet; walletType?: string }>({ show: false })
+  const [patientId, setPatientId] = useState(prefill?.patientId as string || '')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const patientTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -693,18 +722,87 @@ function OrderFormModal({
     } catch { setWalletResults([]) }
   }
 
+  // Determine if any item is unearned revenue
+  const hasUnearnedItems = items.some(it => {
+    const svc = services.find(s => s.id === it.serviceId)
+    return svc?.revenueType === 'UNEARNED'
+  })
+
+  // Determine wallet type based on service revenue type or advance payment
+  const getWalletType = (): string | null => {
+    if (isAdvancePayment) return 'ADVANCE'
+    if (!hasUnearnedItems) return null
+    // For unearned, determine type from service name patterns
+    // Default to PACKAGE for unearned revenue services
+    const firstUnearned = items.find(it => {
+      const svc = services.find(s => s.id === it.serviceId)
+      return svc?.revenueType === 'UNEARNED'
+    })
+    if (!firstUnearned) return null
+    const name = firstUnearned.name.toUpperCase()
+    if (name.includes('VIP')) return 'VIP'
+    if (name.includes('PREPAID')) return 'PREPAID_CARD'
+    if (name.includes('DOWNPAYMENT') || name.includes('DOWN PAYMENT')) return 'DOWNPAYMENT'
+    if (name.includes('ADVANCE')) return 'ADVANCE'
+    return 'PACKAGE'
+  }
+
+  const effectiveRevenueType = isAdvancePayment || hasUnearnedItems ? 'UNEARNED' : 'EARNED'
+
   // Submit order
   const handleSubmit = async () => {
     if (items.length === 0) { setError('Add at least one item'); return }
     if (totalPayments < netAmount) { setError('Payments do not cover the net amount'); return }
+    if ((effectiveRevenueType === 'UNEARNED' || isAdvancePayment) && !patientName.trim()) {
+      setError('Patient name is required for unearned revenue / advance payment orders')
+      return
+    }
+
     setSubmitting(true)
     setError('')
     try {
+      // If unearned or advance, auto-create/find digital wallet
+      const walletType = getWalletType()
+      if (walletType && patientId) {
+        try {
+          const walletRes = await fetch('/api/pos/wallets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              patientName: patientName.trim(),
+              patientId,
+              walletType,
+            }),
+          })
+          const walletData = await walletRes.json()
+          if (walletData.existingWallet) {
+            setWalletPopup({ show: true, wallet: walletData, walletType })
+          }
+          // Reload wallet with the payment amount
+          if (walletData.id) {
+            const firstItem = items[0]
+            await fetch(`/api/pos/wallets/${walletData.id}/reload`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                serviceName: firstItem.name,
+                serviceId: firstItem.serviceId || null,
+                totalSessions: items.reduce((s, it) => s + it.quantity, 0),
+                amountPaid: netAmount,
+              }),
+            })
+          }
+        } catch (e) {
+          console.error('Wallet creation error:', e)
+        }
+      }
+
       const body = {
         orderType,
         branch,
         patientName: patientName || null,
-        clinicianName: clinicianName || null,
+        patientId: patientId || null,
+        clinicianName: isAdvancePayment ? null : (clinicianName || null),
         transactionDate: txDate,
         items: items.map(it => ({
           serviceId: it.serviceId || null,
@@ -723,7 +821,7 @@ function OrderFormModal({
         discountType,
         discountAmount,
         discountLabel: discountLabel || null,
-        revenueType: 'EARNED',
+        revenueType: effectiveRevenueType,
         referrerId: referrerId || null,
       }
       const res = await fetch('/api/pos/orders', {
@@ -802,7 +900,7 @@ function OrderFormModal({
             {showPatientDrop && patients.length > 0 && (
               <div className="absolute z-10 w-full mt-1 bg-white border rounded-xl shadow-lg max-h-48 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
                 {patients.map(p => (
-                  <button key={p.id} onClick={() => { setPatientName(p.name); setShowPatientDrop(false) }}
+                  <button key={p.id} onClick={() => { setPatientName(p.name); setPatientId(p.id); setShowPatientDrop(false) }}
                     className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 flex items-center justify-between" style={{ color: 'var(--charcoal)' }}>
                     <span className="font-medium">{p.name}</span>
                     {p.email ? <span className="text-xs ml-2 truncate" style={{ color: 'var(--mid-gray)' }}>{p.email}</span> : null}
@@ -815,14 +913,18 @@ function OrderFormModal({
           {/* Clinician */}
           {orderType === 'SERVICE' && (
             <div className="relative">
-              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Clinician Name</label>
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
+                Clinician Name {isAdvancePayment && <span className="text-xs font-normal">(disabled for advance payments)</span>}
+              </label>
               <input
-                value={clinicianName}
+                value={isAdvancePayment ? '' : clinicianName}
                 onChange={e => { setClinicianName(e.target.value); setClinicianSearch(e.target.value) }}
                 onFocus={() => clinicianSearch.length >= 2 && setShowClinicianDrop(true)}
                 onBlur={() => setTimeout(() => setShowClinicianDrop(false), 200)}
-                placeholder="Search clinician..."
-                className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}
+                placeholder={isAdvancePayment ? 'N/A — Advance Payment' : 'Search clinician...'}
+                disabled={isAdvancePayment}
+                className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none disabled:bg-gray-100 disabled:text-gray-400"
+                style={{ borderColor: 'var(--light-gray)' }}
               />
               {showClinicianDrop && clinicians.length > 0 && (
                 <div className="absolute z-10 w-full mt-1 bg-white border rounded-xl shadow-lg max-h-40 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
@@ -1069,6 +1171,42 @@ function OrderFormModal({
             )}
           </div>
 
+          {/* Advance Payment Toggle */}
+          {orderType === 'SERVICE' && !hasUnearnedItems && (
+            <div className="rounded-xl border p-3" style={{ borderColor: isAdvancePayment ? 'var(--teal)' : 'var(--light-gray)', background: isAdvancePayment ? 'var(--pale-teal)' : 'transparent' }}>
+              <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: 'var(--charcoal)' }}>
+                <input type="checkbox" checked={isAdvancePayment}
+                  onChange={e => {
+                    setIsAdvancePayment(e.target.checked)
+                    if (e.target.checked) setClinicianName('')
+                  }}
+                  className="rounded" />
+                <span className="font-medium">Is this an advance payment?</span>
+              </label>
+              {isAdvancePayment && (
+                <p className="text-xs mt-1 ml-6" style={{ color: 'var(--deep-teal)' }}>
+                  This will be classified as Unearned Revenue. A digital wallet (Advance type) will be created for the patient.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Unearned Revenue Notice */}
+          {(hasUnearnedItems || isAdvancePayment) && (
+            <div className="rounded-xl border p-3" style={{ borderColor: '#c084fc', background: '#faf5ff' }}>
+              <div className="flex items-center gap-2 text-sm font-medium" style={{ color: '#7c3aed' }}>
+                <Wallet size={14} />
+                Unearned Revenue — Digital Wallet
+              </div>
+              <p className="text-xs mt-1" style={{ color: '#6b21a8' }}>
+                {isAdvancePayment
+                  ? 'An Advance wallet will be auto-created/updated for this patient upon checkout.'
+                  : `A ${WALLET_TYPE_LABELS[getWalletType() || 'PACKAGE'] || 'Package'} wallet will be auto-created/updated for this patient upon checkout.`
+                }
+              </p>
+            </div>
+          )}
+
           {/* Totals */}
           <div className="rounded-xl p-4 space-y-1" style={{ background: 'var(--off-white)' }}>
             <div className="flex justify-between text-sm"><span style={{ color: 'var(--mid-gray)' }}>Subtotal</span><span style={{ color: 'var(--charcoal)' }}>{formatCurrency(subtotal)}</span></div>
@@ -1081,6 +1219,12 @@ function OrderFormModal({
               <div className="flex justify-between text-sm"><span style={{ color: 'var(--mid-gray)' }}>Change</span><span className="text-green-700">{formatCurrency(changeDue)}</span></div>
             ) : (
               <div className="flex justify-between text-sm"><span style={{ color: 'var(--mid-gray)' }}>Remaining Balance</span><span className="text-red-600">{formatCurrency(Math.abs(changeDue))}</span></div>
+            )}
+            {(hasUnearnedItems || isAdvancePayment) && (
+              <div className="flex justify-between text-sm mt-1 pt-1 border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                <span className="font-medium" style={{ color: '#7c3aed' }}>Revenue Type</span>
+                <span className="font-medium" style={{ color: '#7c3aed' }}>Unearned Revenue</span>
+              </div>
             )}
           </div>
 
@@ -1095,6 +1239,38 @@ function OrderFormModal({
             Complete Order
           </button>
         </div>
+
+        {/* Existing Wallet Popup */}
+        {walletPopup.show && walletPopup.wallet && (
+          <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center">
+            <div className="bg-white rounded-2xl p-6 shadow-xl w-full max-w-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <Wallet size={20} style={{ color: 'var(--teal)' }} />
+                <h3 className="text-base font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                  Existing Wallet Detected
+                </h3>
+              </div>
+              <div className="rounded-xl p-3 mb-4" style={{ background: 'var(--off-white)' }}>
+                <p className="text-sm" style={{ color: 'var(--charcoal)' }}>
+                  <span className="font-medium">{walletPopup.wallet.patientName}</span>
+                </p>
+                <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+                  Type: <span className="font-semibold">{WALLET_TYPE_LABELS[walletPopup.walletType || ''] || walletPopup.walletType}</span>
+                </p>
+                <p className="text-sm mt-2 font-semibold" style={{ color: 'var(--deep-teal)' }}>
+                  Current Balance: {formatCurrency(toNum(walletPopup.wallet.balance))}
+                </p>
+              </div>
+              <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
+                The payment has been added to this existing wallet.
+              </p>
+              <button onClick={() => setWalletPopup({ show: false })}
+                className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>
+                OK
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -1383,30 +1559,39 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b" style={{ borderColor: 'var(--light-gray)' }}>
-                {['Patient Name', 'Barcode', 'Packages', 'Reward Points', 'Actions'].map(h => (
+                {['Patient Name', 'Type', 'Balance', 'Barcode', 'Packages', 'Reward Points', ''].map(h => (
                   <th key={h} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {wallets.map(w => (
-                <tr key={w.id} className="border-b hover:bg-gray-50 cursor-pointer" style={{ borderColor: 'var(--light-gray)' }}
-                  onClick={() => loadWalletDetail(w)}>
-                  <td className="px-5 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{w.patientName}</td>
-                  <td className="px-5 py-3 font-mono text-xs" style={{ color: 'var(--mid-gray)' }}>{w.barcode}</td>
-                  <td className="px-5 py-3" style={{ color: 'var(--mid-gray)' }}>{w._count?.packages || 0}</td>
-                  <td className="px-5 py-3">
-                    <span className="flex items-center gap-1" style={{ color: 'var(--teal)' }}>
-                      <Star size={12} /> {w.rewardPoints || 0}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3">
-                    <button className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
-                      View
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {wallets.map(w => {
+                const typeBadge = WALLET_TYPE_COLORS[w.walletType] || { bg: '#f3f4f6', color: '#374151' }
+                return (
+                  <tr key={w.id} className="border-b hover:bg-gray-50 cursor-pointer" style={{ borderColor: 'var(--light-gray)' }}
+                    onClick={() => loadWalletDetail(w)}>
+                    <td className="px-5 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{w.patientName}</td>
+                    <td className="px-5 py-3">
+                      <span className="px-2.5 py-1 rounded-full text-xs font-semibold" style={{ background: typeBadge.bg, color: typeBadge.color }}>
+                        {WALLET_TYPE_LABELS[w.walletType] || w.walletType}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 font-semibold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(toNum(w.balance))}</td>
+                    <td className="px-5 py-3 font-mono text-xs" style={{ color: 'var(--mid-gray)' }}>{w.barcode}</td>
+                    <td className="px-5 py-3" style={{ color: 'var(--mid-gray)' }}>{w._count?.packages || 0}</td>
+                    <td className="px-5 py-3">
+                      <span className="flex items-center gap-1" style={{ color: 'var(--teal)' }}>
+                        <Star size={12} /> {w.rewardPoints || 0}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3">
+                      <button className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}
@@ -1455,6 +1640,19 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
             <h3 className="text-lg font-bold mb-1" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
               {walletDetail.patientName}
             </h3>
+            <div className="flex items-center gap-2 mb-1">
+              {(() => {
+                const typeBadge = WALLET_TYPE_COLORS[walletDetail.walletType] || { bg: '#f3f4f6', color: '#374151' }
+                return (
+                  <span className="px-2.5 py-1 rounded-full text-xs font-semibold" style={{ background: typeBadge.bg, color: typeBadge.color }}>
+                    {WALLET_TYPE_LABELS[walletDetail.walletType] || walletDetail.walletType}
+                  </span>
+                )
+              })()}
+              <span className="text-sm font-semibold" style={{ color: 'var(--deep-teal)' }}>
+                Balance: {formatCurrency(toNum(walletDetail.balance))}
+              </span>
+            </div>
             <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
               {walletDetail.patientEmail || 'No email'} &middot; Reward Points: <Star size={10} className="inline" /> {walletDetail.rewardPoints || 0}
             </p>

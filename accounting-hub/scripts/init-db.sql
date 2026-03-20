@@ -283,6 +283,7 @@ DO $$ BEGIN CREATE TYPE "OrderStatus" AS ENUM ('COMPLETED', 'REOPENED', 'VOIDED'
 DO $$ BEGIN CREATE TYPE "PaymentMethod" AS ENUM ('CASH', 'GCASH', 'PAYMAYA', 'DEBIT', 'CREDIT_CARD', 'VIP_CARD', 'PREPAID_CARD', 'REWARD_POINTS', 'SHOPEE', 'LAZADA', 'TIKTOK', 'DOWNPAYMENT'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE TYPE "DiscountType" AS ENUM ('NONE', 'PWD_SC', 'CUSTOM'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE TYPE "WalletAction" AS ENUM ('DEDUCTION', 'RELOAD', 'REWARD_EARN', 'REWARD_SPEND'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE TYPE "WalletType" AS ENUM ('PACKAGE', 'VIP', 'PREPAID_CARD', 'DOWNPAYMENT', 'ADVANCE'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- Referrer table
 CREATE TABLE IF NOT EXISTS "Referrer" (
@@ -308,6 +309,8 @@ CREATE TABLE IF NOT EXISTS "DigitalWallet" (
   "patientName" TEXT NOT NULL,
   "patientEmail" TEXT,
   "barcode" TEXT NOT NULL,
+  "walletType" "WalletType" NOT NULL,
+  "balance" DECIMAL NOT NULL DEFAULT 0,
   "rewardPoints" INTEGER NOT NULL DEFAULT 0,
   "isActive" BOOLEAN NOT NULL DEFAULT true,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -315,9 +318,10 @@ CREATE TABLE IF NOT EXISTS "DigitalWallet" (
   CONSTRAINT "DigitalWallet_pkey" PRIMARY KEY ("id")
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS "DigitalWallet_patientId_key" ON "DigitalWallet"("patientId");
 CREATE UNIQUE INDEX IF NOT EXISTS "DigitalWallet_barcode_key" ON "DigitalWallet"("barcode");
+CREATE UNIQUE INDEX IF NOT EXISTS "DigitalWallet_patientId_walletType_key" ON "DigitalWallet"("patientId", "walletType");
 CREATE INDEX IF NOT EXISTS "DigitalWallet_patientName_idx" ON "DigitalWallet"("patientName");
+CREATE INDEX IF NOT EXISTS "DigitalWallet_walletType_idx" ON "DigitalWallet"("walletType");
 
 -- WalletPackage table
 CREATE TABLE IF NOT EXISTS "WalletPackage" (

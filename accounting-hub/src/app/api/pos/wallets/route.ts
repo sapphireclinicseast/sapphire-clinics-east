@@ -5,9 +5,18 @@ import { parsePagination, paginatedResult } from '@/lib/pagination'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN', 'SBEA_FRONTDESK', 'SBGH_FRONTDESK']
 
-function generateBarcode(): string {
+const TYPE_PREFIX: Record<string, string> = {
+  PACKAGE: 'P',
+  VIP: 'V',
+  PREPAID_CARD: 'R',
+  DOWNPAYMENT: 'D',
+  ADVANCE: 'A',
+}
+
+function generateBarcode(walletType: string): string {
+  const prefix = TYPE_PREFIX[walletType] || 'W'
   const digits = Math.floor(100000 + Math.random() * 900000).toString()
-  return `SCEI-W-${digits}`
+  return `SCEI-${prefix}-${digits}`
 }
 
 export async function GET(req: Request) {
@@ -19,9 +28,14 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const params = parsePagination(searchParams)
   const search = searchParams.get('search') || ''
+  const patientId = searchParams.get('patientId') || ''
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = { isActive: true }
+
+  if (patientId) {
+    where.patientId = patientId
+  }
 
   if (search) {
     where.OR = [
@@ -54,25 +68,54 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { patientId, patientName, patientEmail } = await req.json()
+    const { patientId, patientName, patientEmail, walletType } = await req.json()
 
     if (!patientName?.trim()) {
       return NextResponse.json({ error: 'Patient name is required' }, { status: 400 })
     }
 
+    if (!walletType || !TYPE_PREFIX[walletType]) {
+      return NextResponse.json(
+        { error: 'Valid walletType is required (PACKAGE, VIP, PREPAID_CARD, DOWNPAYMENT, ADVANCE)' },
+        { status: 400 }
+      )
+    }
+
+    // Check for existing wallet with same patientId + walletType
+    if (patientId?.trim()) {
+      const existingWallet = await prisma.digitalWallet.findFirst({
+        where: {
+          patientId: patientId.trim(),
+          walletType,
+          isActive: true,
+        },
+        include: {
+          _count: { select: { packages: true } },
+        },
+      })
+
+      if (existingWallet) {
+        return NextResponse.json({
+          ...existingWallet,
+          existingWallet: true,
+        })
+      }
+    }
+
     // Generate unique barcode with retry
-    let barcode = generateBarcode()
+    let barcode = generateBarcode(walletType)
     let attempts = 0
     while (attempts < 10) {
       const existing = await prisma.digitalWallet.findUnique({ where: { barcode } })
       if (!existing) break
-      barcode = generateBarcode()
+      barcode = generateBarcode(walletType)
       attempts++
     }
 
     const wallet = await prisma.digitalWallet.create({
       data: {
         barcode,
+        walletType,
         patientId: patientId?.trim() || null,
         patientName: patientName.trim(),
         patientEmail: patientEmail?.trim() || null,
@@ -85,7 +128,7 @@ export async function POST(req: Request) {
         action: 'CREATE',
         entity: 'digitalWallet',
         entityId: wallet.id,
-        details: { patientName: wallet.patientName, barcode: wallet.barcode },
+        details: { patientName: wallet.patientName, barcode: wallet.barcode, walletType: wallet.walletType },
       },
     })
 

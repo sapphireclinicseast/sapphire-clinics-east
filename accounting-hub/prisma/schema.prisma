@@ -318,6 +318,14 @@ enum WalletAction {
   REWARD_SPEND
 }
 
+enum WalletType {
+  PACKAGE
+  VIP
+  PREPAID_CARD
+  DOWNPAYMENT
+  ADVANCE
+}
+
 model Referrer {
   id             String   @id @default(cuid())
   name           String
@@ -336,22 +344,26 @@ model Referrer {
 }
 
 model DigitalWallet {
-  id           String   @id @default(cuid())
-  patientId    String   @unique
+  id           String     @id @default(cuid())
+  patientId    String
   patientName  String
   patientEmail String?
-  barcode      String   @unique
-  rewardPoints Int      @default(0)
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  barcode      String     @unique
+  walletType   WalletType
+  balance      Decimal    @default(0)
+  rewardPoints Int        @default(0)
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
   packages WalletPackage[]
   logs     WalletLog[]
   payments OrderPayment[]
 
+  @@unique([patientId, walletType])
   @@index([patientName])
   @@index([barcode])
+  @@index([walletType])
 }
 
 model WalletPackage {

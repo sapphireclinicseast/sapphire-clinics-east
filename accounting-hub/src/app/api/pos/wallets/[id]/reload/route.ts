@@ -46,10 +46,13 @@ export async function POST(
           expiresAt: expiresAt ? new Date(expiresAt) : null,
         },
       }),
-      // Update reward points on wallet
+      // Update reward points and balance on wallet
       prisma.digitalWallet.update({
         where: { id },
-        data: { rewardPoints: { increment: rewardPointsEarned } },
+        data: {
+          rewardPoints: { increment: rewardPointsEarned },
+          balance: { increment: parseFloat(amountPaid) },
+        },
       }),
     ])
 
