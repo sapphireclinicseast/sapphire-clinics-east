@@ -127,6 +127,15 @@ interface Patient {
   id: string
   name: string
   email?: string
+  phone?: string
+  [key: string]: unknown
+}
+
+interface StaffMember {
+  id: string
+  name: string
+  department?: string
+  branch?: string
   [key: string]: unknown
 }
 
@@ -527,6 +536,9 @@ function OrderFormModal({
   const [patients, setPatients] = useState<Patient[]>([])
   const [showPatientDrop, setShowPatientDrop] = useState(false)
   const [clinicianName, setClinicianName] = useState(prefill?.clinician || '')
+  const [clinicianSearch, setClinicianSearch] = useState('')
+  const [clinicians, setClinicians] = useState<StaffMember[]>([])
+  const [showClinicianDrop, setShowClinicianDrop] = useState(false)
   const [items, setItems] = useState<OrderLineItem[]>([])
   const [serviceSearch, setServiceSearch] = useState('')
   const [services, setServices] = useState<ServiceItem[]>([])
@@ -549,6 +561,7 @@ function OrderFormModal({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const patientTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const clinicianTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const serviceTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   // Fetch discount settings + referrers on mount
@@ -570,6 +583,21 @@ function OrderFormModal({
       } catch { setPatients([]) }
     }, 300)
   }, [patientSearch])
+
+  // Clinician search
+  useEffect(() => {
+    if (clinicianSearch.length < 2) { setClinicians([]); return }
+    clearTimeout(clinicianTimer.current)
+    clinicianTimer.current = setTimeout(async () => {
+      try {
+        const qb = branch === 'SANDBOX_EAST' ? 'SBEA' : branch === 'SANDBOX_GREENHILLS' ? 'SBGH' : ''
+        const r = await fetch(`/api/pos/staff?search=${encodeURIComponent(clinicianSearch)}&branch=${qb}`)
+        const d = await r.json()
+        setClinicians(Array.isArray(d) ? d as StaffMember[] : [])
+        setShowClinicianDrop(true)
+      } catch { setClinicians([]) }
+    }, 300)
+  }, [clinicianSearch, branch])
 
   // Service search
   useEffect(() => {
@@ -767,15 +795,17 @@ function OrderFormModal({
               value={patientName}
               onChange={e => { setPatientName(e.target.value); setPatientSearch(e.target.value) }}
               onFocus={() => patientSearch.length >= 2 && setShowPatientDrop(true)}
+              onBlur={() => setTimeout(() => setShowPatientDrop(false), 200)}
               placeholder="Search patient..."
               className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}
             />
             {showPatientDrop && patients.length > 0 && (
-              <div className="absolute z-10 w-full mt-1 bg-white border rounded-xl shadow-lg max-h-40 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
+              <div className="absolute z-10 w-full mt-1 bg-white border rounded-xl shadow-lg max-h-48 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
                 {patients.map(p => (
                   <button key={p.id} onClick={() => { setPatientName(p.name); setShowPatientDrop(false) }}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50" style={{ color: 'var(--charcoal)' }}>
-                    {p.name} {p.email ? <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>({p.email})</span> : null}
+                    className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 flex items-center justify-between" style={{ color: 'var(--charcoal)' }}>
+                    <span className="font-medium">{p.name}</span>
+                    {p.email ? <span className="text-xs ml-2 truncate" style={{ color: 'var(--mid-gray)' }}>{p.email}</span> : null}
                   </button>
                 ))}
               </div>
@@ -784,10 +814,26 @@ function OrderFormModal({
 
           {/* Clinician */}
           {orderType === 'SERVICE' && (
-            <div>
+            <div className="relative">
               <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Clinician Name</label>
-              <input value={clinicianName} onChange={e => setClinicianName(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+              <input
+                value={clinicianName}
+                onChange={e => { setClinicianName(e.target.value); setClinicianSearch(e.target.value) }}
+                onFocus={() => clinicianSearch.length >= 2 && setShowClinicianDrop(true)}
+                onBlur={() => setTimeout(() => setShowClinicianDrop(false), 200)}
+                placeholder="Search clinician..."
+                className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}
+              />
+              {showClinicianDrop && clinicians.length > 0 && (
+                <div className="absolute z-10 w-full mt-1 bg-white border rounded-xl shadow-lg max-h-40 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                  {clinicians.map(c => (
+                    <button key={c.id} onClick={() => { setClinicianName(c.name); setShowClinicianDrop(false) }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50" style={{ color: 'var(--charcoal)' }}>
+                      {c.name} {c.department ? <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>({c.department})</span> : null}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

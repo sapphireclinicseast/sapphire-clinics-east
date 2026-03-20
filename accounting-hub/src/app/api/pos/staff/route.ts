@@ -12,14 +12,15 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url)
   const search = searchParams.get('search') || ''
-
-  if (!search.trim() || search.trim().length < 2) {
-    return NextResponse.json([])
-  }
+  const branch = searchParams.get('branch') || ''
 
   try {
+    const params = new URLSearchParams()
+    if (search.trim()) params.set('search', search)
+    if (branch) params.set('branch', branch)
+
     const res = await fetch(
-      `${MARKETING_HUB_URL}/api/patients/external?search=${encodeURIComponent(search)}`,
+      `${MARKETING_HUB_URL}/api/staff/external?${params.toString()}`,
       {
         headers: { 'Authorization': `Bearer ${EXTERNAL_API_KEY}` },
         cache: 'no-store',
@@ -27,23 +28,24 @@ export async function GET(req: Request) {
     )
 
     if (!res.ok) {
-      console.error('Marketing Hub patients error:', res.status)
+      console.error('Marketing Hub staff error:', res.status)
       return NextResponse.json([])
     }
 
     const data = await res.json()
-    // Transform: Marketing Hub returns {patients: [{firstName, lastName, email, ...}]}
-    // POS expects [{id, name, email}]
-    const patients = (data.patients || []).map((p: Record<string, unknown>) => ({
-      id: p.id,
-      name: `${p.firstName} ${p.lastName}`,
-      email: p.email || null,
-      phone: p.phone || null,
+    // Transform: Marketing Hub returns {staff: [{id, firstName, lastName, department, branch, jobTitle}]}
+    // POS expects [{id, name, department, branch}]
+    const staff = (data.staff || []).map((s: Record<string, unknown>) => ({
+      id: s.id,
+      name: `${s.lastName}, ${s.firstName}`,
+      department: s.department || '',
+      branch: s.branch || '',
+      jobTitle: s.jobTitle || '',
     }))
 
-    return NextResponse.json(patients)
+    return NextResponse.json(staff)
   } catch (err) {
-    console.error('Patient fetch error:', err)
+    console.error('Staff fetch error:', err)
     return NextResponse.json([])
   }
 }
