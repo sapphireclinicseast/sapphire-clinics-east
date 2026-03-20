@@ -1,9 +1,7 @@
 /**
- * External Patient API — Bearer token auth (for HR Platform integration)
+ * External Patient API — Bearer token auth
  *
- * This endpoint bypasses NextAuth and uses a simple bearer token
- * to allow the HR Platform to fetch patient data for seminar attendee selection.
- *
+ * Used by HR Platform (full list) and Accounting Hub (search).
  * Env: EXTERNAL_API_KEY — shared secret token
  */
 
@@ -19,8 +17,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  const { searchParams } = new URL(req.url)
+  const search = searchParams.get('search')?.trim()
+
   try {
     const patients = await prisma.patient.findMany({
+      where: search
+        ? {
+            OR: [
+              { firstName: { contains: search, mode: 'insensitive' } },
+              { lastName: { contains: search, mode: 'insensitive' } },
+              { email: { contains: search, mode: 'insensitive' } },
+            ],
+          }
+        : undefined,
       select: {
         id: true,
         firstName: true,
@@ -36,6 +46,7 @@ export async function GET(req: NextRequest) {
         city: true,
       },
       orderBy: { lastName: 'asc' },
+      take: search ? 20 : undefined,
     })
 
     return NextResponse.json({ patients })
