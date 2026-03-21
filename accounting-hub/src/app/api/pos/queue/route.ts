@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 
 const MARKETING_HUB_URL = process.env.MARKETING_HUB_URL || 'https://marketing.sapphireclinicseast.org'
 const EXTERNAL_API_KEY = process.env.EXTERNAL_API_KEY || ''
@@ -37,9 +38,17 @@ export async function GET(req: Request) {
 
     const data = await res.json()
 
+    // Get all orders that were converted from queue items (non-voided)
+    const convertedOrders = await prisma.order.findMany({
+      where: {
+        queueItemId: { not: null },
+        status: { not: 'VOIDED' },
+      },
+      select: { queueItemId: true },
+    })
+    const convertedIds = new Set(convertedOrders.map(o => o.queueItemId))
+
     // Transform Marketing Hub response → POS QueueItem format
-    // Marketing Hub returns: { date, branch, items: [{id, startTime, endTime, sessionType, status, clinician, patientId, patientName, ...}] }
-    // POS expects: [{id, time, patientName, sessionType, clinician}]
     const items = (data.items || []).map((item: Record<string, unknown>) => ({
       id: item.id,
       time: item.startTime ? `${item.startTime}–${item.endTime || ''}` : '',
@@ -50,6 +59,7 @@ export async function GET(req: Request) {
       department: item.department || '',
       branch: item.branch || branch,
       status: item.status || 'CONFIRMED',
+      converted: convertedIds.has(item.id as string),
     }))
 
     return NextResponse.json(items)

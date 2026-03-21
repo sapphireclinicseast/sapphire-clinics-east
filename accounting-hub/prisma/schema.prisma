@@ -422,6 +422,7 @@ model Order {
   discountLabel   String?
   netAmount       Decimal
   revenueType     String      @default("EARNED")
+  queueItemId     String?
   referrerId      String?
   referrer        Referrer?   @relation(fields: [referrerId], references: [id])
   notes           String?
@@ -441,6 +442,7 @@ model Order {
   @@index([transactionDate])
   @@index([createdById])
   @@index([referrerId])
+  @@index([queueItemId])
 }
 
 model OrderItem {

@@ -76,6 +76,7 @@ export async function POST(req: Request) {
       discountAmount = 0,
       discountLabel,
       revenueType = 'EARNED',
+      queueItemId,
       referrerId,
       notes,
     } = body
@@ -109,6 +110,7 @@ export async function POST(req: Request) {
         discountLabel: discountLabel || null,
         netAmount,
         revenueType,
+        queueItemId: queueItemId || null,
         referrerId: referrerId || null,
         notes: notes || null,
         createdById: session.user.id,

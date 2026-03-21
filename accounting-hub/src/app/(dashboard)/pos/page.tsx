@@ -16,8 +16,10 @@ interface QueueItem {
   id: string
   time: string
   patientName: string
+  patientId?: string | null
   sessionType: string
   clinician: string
+  converted?: boolean
   [key: string]: unknown
 }
 
@@ -573,13 +575,19 @@ function CashierPanel({
                     <td className="px-5 py-3" style={{ color: 'var(--mid-gray)' }}>{q.sessionType}</td>
                     <td className="px-5 py-3" style={{ color: 'var(--mid-gray)' }}>{q.clinician}</td>
                     <td className="px-5 py-3">
-                      <button
-                        onClick={() => { setPrefill(q); setShowOrderForm(true) }}
-                        className="px-3 py-1.5 rounded-lg text-xs font-medium text-white"
-                        style={{ background: 'var(--teal)' }}
-                      >
-                        Convert to Order
-                      </button>
+                      {q.converted ? (
+                        <span className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: '#dcfce7', color: '#166534' }}>
+                          Converted
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => { setPrefill(q); setShowOrderForm(true) }}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium text-white"
+                          style={{ background: 'var(--teal)' }}
+                        >
+                          Convert to Order
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -904,6 +912,7 @@ function OrderFormModal({
         patientName: patientName || null,
         patientId: patientId || null,
         clinicianName: isAdvancePayment ? null : (clinicianName || null),
+        queueItemId: prefill?.id || null,
         transactionDate: txDate,
         items: items.map(it => ({
           serviceId: it.serviceId || null,
