@@ -914,7 +914,7 @@ function OrderFormModal({
         branch,
         patientName: patientName || null,
         patientId: patientId || null,
-        clinicianName: isAdvancePayment ? null : (clinicianName || null),
+        clinicianName: (isAdvancePayment || hasUnearnedItems) ? null : (clinicianName || null),
         queueItemId: prefill?.id || null,
         transactionDate: txDate,
         items: items.map(it => ({
@@ -1054,60 +1054,7 @@ function OrderFormModal({
               className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
           </div>
 
-          {/* Patient Name */}
-          <div className="relative">
-            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Patient Name</label>
-            <input
-              value={patientName}
-              onChange={e => { setPatientName(e.target.value); setPatientSearch(e.target.value) }}
-              onFocus={() => patientSearch.length >= 2 && setShowPatientDrop(true)}
-              onBlur={() => setTimeout(() => setShowPatientDrop(false), 200)}
-              placeholder="Search patient..."
-              className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}
-            />
-            {showPatientDrop && patients.length > 0 && (
-              <div className="absolute z-10 w-full mt-1 bg-white border rounded-xl shadow-lg max-h-48 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
-                {patients.map(p => (
-                  <button key={p.id} onClick={() => { setPatientName(p.name); setPatientId(p.id); setShowPatientDrop(false) }}
-                    className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 flex items-center justify-between" style={{ color: 'var(--charcoal)' }}>
-                    <span className="font-medium">{p.name}</span>
-                    {p.email ? <span className="text-xs ml-2 truncate" style={{ color: 'var(--mid-gray)' }}>{p.email}</span> : null}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Clinician */}
-          {orderType === 'SERVICE' && (
-            <div className="relative">
-              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
-                Clinician Name {isAdvancePayment && <span className="text-xs font-normal">(disabled for advance payments)</span>}
-              </label>
-              <input
-                value={isAdvancePayment ? '' : clinicianName}
-                onChange={e => { setClinicianName(e.target.value); setClinicianSearch(e.target.value) }}
-                onFocus={() => clinicianSearch.length >= 2 && setShowClinicianDrop(true)}
-                onBlur={() => setTimeout(() => setShowClinicianDrop(false), 200)}
-                placeholder={isAdvancePayment ? 'N/A — Advance Payment' : 'Search clinician...'}
-                disabled={isAdvancePayment}
-                className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none disabled:bg-gray-100 disabled:text-gray-400"
-                style={{ borderColor: 'var(--light-gray)' }}
-              />
-              {showClinicianDrop && clinicians.length > 0 && (
-                <div className="absolute z-10 w-full mt-1 bg-white border rounded-xl shadow-lg max-h-40 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
-                  {clinicians.map(c => (
-                    <button key={c.id} onClick={() => { setClinicianName(c.name); setShowClinicianDrop(false) }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50" style={{ color: 'var(--charcoal)' }}>
-                      {c.name} {c.department ? <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>({c.department})</span> : null}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Service Selection */}
+          {/* Service Selection — moved up per SCEI request */}
           <div className="relative">
             <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
               {orderType === 'SERVICE' ? 'Add Service' : 'Add Product'}
@@ -1134,6 +1081,59 @@ function OrderFormModal({
               </div>
             )}
           </div>
+
+          {/* Patient Name */}
+          <div className="relative">
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Patient Name</label>
+            <input
+              value={patientName}
+              onChange={e => { setPatientName(e.target.value); setPatientSearch(e.target.value) }}
+              onFocus={() => patientSearch.length >= 2 && setShowPatientDrop(true)}
+              onBlur={() => setTimeout(() => setShowPatientDrop(false), 200)}
+              placeholder="Search patient..."
+              className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}
+            />
+            {showPatientDrop && patients.length > 0 && (
+              <div className="absolute z-10 w-full mt-1 bg-white border rounded-xl shadow-lg max-h-48 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                {patients.map(p => (
+                  <button key={p.id} onClick={() => { setPatientName(p.name); setPatientId(p.id); setShowPatientDrop(false) }}
+                    className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 flex items-center justify-between" style={{ color: 'var(--charcoal)' }}>
+                    <span className="font-medium">{p.name}</span>
+                    {p.email ? <span className="text-xs ml-2 truncate" style={{ color: 'var(--mid-gray)' }}>{p.email}</span> : null}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Clinician — disabled for unearned revenue services and advance payments */}
+          {orderType === 'SERVICE' && (
+            <div className="relative">
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
+                Clinician Name {(isAdvancePayment || hasUnearnedItems) && <span className="text-xs font-normal">(disabled — unearned revenue)</span>}
+              </label>
+              <input
+                value={(isAdvancePayment || hasUnearnedItems) ? '' : clinicianName}
+                onChange={e => { setClinicianName(e.target.value); setClinicianSearch(e.target.value) }}
+                onFocus={() => clinicianSearch.length >= 2 && setShowClinicianDrop(true)}
+                onBlur={() => setTimeout(() => setShowClinicianDrop(false), 200)}
+                placeholder={(isAdvancePayment || hasUnearnedItems) ? 'N/A — Unearned Revenue' : 'Search clinician...'}
+                disabled={isAdvancePayment || hasUnearnedItems}
+                className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none disabled:bg-gray-100 disabled:text-gray-400"
+                style={{ borderColor: 'var(--light-gray)' }}
+              />
+              {showClinicianDrop && clinicians.length > 0 && (
+                <div className="absolute z-10 w-full mt-1 bg-white border rounded-xl shadow-lg max-h-40 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                  {clinicians.map(c => (
+                    <button key={c.id} onClick={() => { setClinicianName(c.name); setShowClinicianDrop(false) }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50" style={{ color: 'var(--charcoal)' }}>
+                      {c.name} {c.department ? <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>({c.department})</span> : null}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Items Table */}
           {items.length > 0 && (
