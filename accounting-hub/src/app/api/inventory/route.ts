@@ -34,7 +34,7 @@ export async function GET(req: Request) {
   if (all) {
     const items = await prisma.inventoryItem.findMany({
       where,
-      select: { id: true, name: true, sku: true, branch: true, quantity: true, sellingPrice: true, unitCost: true, barcode: true },
+      select: { id: true, name: true, sku: true, branch: true, quantity: true, sellingPrice: true, unitCost: true, barcode: true, rewardPointsPrice: true },
       orderBy: { sku: 'asc' },
     })
     // Ensure Decimal fields are serialized as numbers
@@ -71,7 +71,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json()
     const { name, skuDepartment, skuCategory, skuSubcategory, branch, accountSubType,
-            unitCost, sellingPrice, quantity, reorderLevel, supplierId, supplierExchangeRate } = body
+            unitCost, sellingPrice, rewardPointsPrice, quantity, reorderLevel, supplierId, supplierExchangeRate } = body
 
     if (!name?.trim() || !skuDepartment || !skuCategory || !skuSubcategory || !branch) {
       return NextResponse.json({ error: 'Name, SKU components, and branch are required' }, { status: 400 })
@@ -106,6 +106,7 @@ export async function POST(req: Request) {
         accountSubType: accountSubType || null,
         unitCost: unitCost ? parseFloat(unitCost) : 0,
         sellingPrice: sellingPrice ? parseFloat(sellingPrice) : null,
+        rewardPointsPrice: rewardPointsPrice ? parseInt(rewardPointsPrice) : null,
         quantity: quantity ? parseInt(quantity) : 0,
         reorderLevel: reorderLevel ? parseInt(reorderLevel) : null,
         supplierId: supplierId || null,
@@ -138,7 +139,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, name, branch, accountSubType, unitCost, sellingPrice, quantity,
+    const { id, name, branch, accountSubType, unitCost, sellingPrice, rewardPointsPrice, quantity,
             reorderLevel, supplierId, supplierExchangeRate } = await req.json()
 
     if (!id) {
@@ -152,6 +153,7 @@ export async function PUT(req: Request) {
     if (accountSubType !== undefined) data.accountSubType = accountSubType || null
     if (unitCost !== undefined) data.unitCost = parseFloat(unitCost)
     if (sellingPrice !== undefined) data.sellingPrice = sellingPrice ? parseFloat(sellingPrice) : null
+    if (rewardPointsPrice !== undefined) data.rewardPointsPrice = rewardPointsPrice ? parseInt(rewardPointsPrice) : null
     if (quantity !== undefined) data.quantity = parseInt(quantity)
     if (reorderLevel !== undefined) data.reorderLevel = reorderLevel ? parseInt(reorderLevel) : null
     if (supplierId !== undefined) data.supplierId = supplierId || null

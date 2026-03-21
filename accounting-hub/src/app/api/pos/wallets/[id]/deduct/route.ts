@@ -73,11 +73,64 @@ export async function POST(
       })
     }
 
-    // Mode 2: Session deduction (package-based)
+    // Mode 2: Reward points deduction
+    if (body.rewardPoints !== undefined) {
+      const points = parseInt(body.rewardPoints)
+      if (points <= 0) {
+        return NextResponse.json({ error: 'Points must be greater than 0' }, { status: 400 })
+      }
+
+      if (wallet.rewardPoints < points) {
+        return NextResponse.json(
+          { error: `Insufficient reward points. Current: ${wallet.rewardPoints}, Requested: ${points}` },
+          { status: 400 }
+        )
+      }
+
+      const updated = await prisma.digitalWallet.update({
+        where: { id },
+        data: { rewardPoints: { decrement: points } },
+      })
+
+      await prisma.walletLog.create({
+        data: {
+          walletId: id,
+          action: 'REWARD_SPEND',
+          pointsChange: -points,
+          balanceBefore: wallet.rewardPoints,
+          balanceAfter: updated.rewardPoints,
+          description: body.description || `Spent ${points} reward points`,
+          createdById: session.user.id,
+        },
+      })
+
+      await prisma.auditLog.create({
+        data: {
+          userId: session.user.id,
+          action: 'WALLET_REWARD_SPEND',
+          entity: 'digitalWallet',
+          entityId: id,
+          details: {
+            type: 'reward_points',
+            pointsDeducted: points,
+            previousPoints: wallet.rewardPoints,
+            newPoints: updated.rewardPoints,
+            orderId: body.orderId || null,
+          },
+        },
+      })
+
+      return NextResponse.json({
+        rewardPoints: updated.rewardPoints,
+        pointsDeducted: points,
+      })
+    }
+
+    // Mode 3: Session deduction (package-based)
     const { packageId, sessions = 1 } = body
 
     if (!packageId) {
-      return NextResponse.json({ error: 'Package ID or amount is required' }, { status: 400 })
+      return NextResponse.json({ error: 'Package ID, amount, or rewardPoints is required' }, { status: 400 })
     }
 
     const walletPackage = await prisma.walletPackage.findUnique({ where: { id: packageId } })

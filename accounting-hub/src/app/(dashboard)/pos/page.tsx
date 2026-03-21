@@ -149,6 +149,7 @@ interface InventoryProduct {
   sku?: string
   barcode?: string | null
   sellingPrice?: string | number | null
+  rewardPointsPrice?: number | null
   unitCost?: string | number
   quantity?: number
   [key: string]: unknown
@@ -2523,6 +2524,15 @@ function ProductsSection({
   const [payments, setPayments] = useState<PaymentLine[]>([{ method: 'CASH', amount: 0 }])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  // Reward points wallet state
+  const [rpWalletSearch, setRpWalletSearch] = useState('')
+  const [rpWalletResults, setRpWalletResults] = useState<DigitalWallet[]>([])
+  const [rpSelectedWallet, setRpSelectedWallet] = useState<DigitalWallet | null>(null)
+  const [rpBarcode, setRpBarcode] = useState('')
+  const rpBarcodeRef = useRef<HTMLInputElement>(null)
+
+  // Check if any payment is reward points
+  const hasRewardPointsPayment = payments.some(p => p.method === 'REWARD_POINTS')
 
   useEffect(() => {
     fetch('/api/inventory?all=true&branch=VERDANA_STORE')
@@ -2579,9 +2589,45 @@ function ProductsSection({
   const netAmount = Math.max(0, subtotal - discountAmount)
   const totalPayments = payments.reduce((s, p) => s + toNum(p.amount), 0)
 
+  // Calculate reward points total for cart items
+  const rewardPointsTotal = cart.reduce((s, c) => {
+    const prod = products.find(p => p.id === c.inventoryItemId)
+    return s + (prod?.rewardPointsPrice || 0) * c.quantity
+  }, 0)
+
+  // Wallet search for reward points
+  const searchRpWallets = async (q: string) => {
+    setRpWalletSearch(q)
+    if (q.length < 2) { setRpWalletResults([]); return }
+    try {
+      const r = await fetch(`/api/pos/wallets?search=${encodeURIComponent(q)}`)
+      const d = await r.json()
+      setRpWalletResults(normalize(d) as DigitalWallet[])
+    } catch { setRpWalletResults([]) }
+  }
+
+  const scanRpBarcode = async () => {
+    if (!rpBarcode.trim()) return
+    try {
+      const r = await fetch(`/api/pos/wallets/scan/${encodeURIComponent(rpBarcode.trim())}`)
+      const d = await r.json()
+      if (d.error) { setError(d.error); return }
+      setRpSelectedWallet(d)
+      setRpBarcode('')
+    } catch { setError('Failed to scan barcode') }
+  }
+
   const handleSubmit = async () => {
     if (cart.length === 0) { setError('Add at least one product'); return }
-    if (totalPayments < netAmount) { setError('Payments do not cover the net amount'); return }
+    // For reward points payment, check wallet is selected and has enough points
+    if (hasRewardPointsPayment) {
+      if (!rpSelectedWallet) { setError('Please scan or search a wallet for reward points payment'); return }
+      if ((rpSelectedWallet.rewardPoints || 0) < rewardPointsTotal) {
+        setError(`Insufficient reward points. Need ${rewardPointsTotal} pts, wallet has ${rpSelectedWallet.rewardPoints || 0} pts`)
+        return
+      }
+    }
+    if (!hasRewardPointsPayment && totalPayments < netAmount) { setError('Payments do not cover the net amount'); return }
     setSubmitting(true)
     setError('')
     try {
@@ -2596,9 +2642,11 @@ function ProductsSection({
           unitPrice: c.unitPrice,
           lineTotal: c.lineTotal,
         })),
-        payments: payments.filter(p => toNum(p.amount) > 0).map(p => ({
+        payments: payments.filter(p => toNum(p.amount) > 0 || p.method === 'REWARD_POINTS').map(p => ({
           method: p.method,
-          amount: toNum(p.amount),
+          amount: p.method === 'REWARD_POINTS' ? rewardPointsTotal : toNum(p.amount),
+          walletId: p.method === 'REWARD_POINTS' ? rpSelectedWallet?.id : null,
+          reference: p.method === 'REWARD_POINTS' ? `${rewardPointsTotal} pts from ${rpSelectedWallet?.patientName}` : null,
         })),
         discountType,
         discountAmount,
@@ -2611,10 +2659,28 @@ function ProductsSection({
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Failed to create order'); setSubmitting(false); return }
+
+      // Deduct reward points from wallet
+      if (hasRewardPointsPayment && rpSelectedWallet) {
+        try {
+          await fetch(`/api/pos/wallets/${rpSelectedWallet.id}/deduct`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              rewardPoints: rewardPointsTotal,
+              description: `Product purchase: Order #${data.orderNumber} (${rewardPointsTotal} pts)`,
+              orderId: data.id,
+            }),
+          })
+        } catch (e) { console.error('Reward points deduction error:', e) }
+      }
+
       setCart([])
       setPayments([{ method: 'CASH', amount: 0 }])
       setPwdDiscount(false)
       setCustomDiscountId('')
+      setRpSelectedWallet(null)
+      setRpWalletSearch('')
       setError('')
       alert(`Order ${data.orderNumber} created successfully!`)
     } catch {
@@ -2747,6 +2813,11 @@ function ProductsSection({
                   <p className="text-sm font-medium truncate" style={{ color: 'var(--charcoal)' }}>{p.name}</p>
                   {p.sku && <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{p.sku}</p>}
                   <p className="text-sm font-bold mt-1" style={{ color: 'var(--teal)' }}>{formatCurrency(toNum(p.sellingPrice))}</p>
+                  {p.rewardPointsPrice && (
+                    <p className="text-xs mt-0.5 flex items-center gap-1" style={{ color: '#92400e' }}>
+                      <Star size={10} /> {p.rewardPointsPrice.toLocaleString()} pts
+                    </p>
+                  )}
                 </button>
               ))}
             </div>
@@ -2831,18 +2902,71 @@ function ProductsSection({
             </button>
           </div>
 
+          {/* Reward Points Wallet Selection */}
+          {hasRewardPointsPayment && (
+            <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: '#c084fc', background: '#faf5ff' }}>
+              <h4 className="text-xs font-semibold flex items-center gap-1" style={{ color: '#7c3aed' }}>
+                <Star size={12} /> Select Wallet for Reward Points
+              </h4>
+              {rpSelectedWallet ? (
+                <div className="flex items-center justify-between p-2 rounded-lg bg-white">
+                  <div>
+                    <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>{rpSelectedWallet.patientName}</p>
+                    <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                      <Star size={10} className="inline" /> {rpSelectedWallet.rewardPoints?.toLocaleString() || 0} pts available
+                    </p>
+                  </div>
+                  <button onClick={() => setRpSelectedWallet(null)} className="text-xs px-2 py-1 rounded-lg" style={{ color: '#7c3aed' }}>Change</button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex gap-1">
+                    <input ref={rpBarcodeRef} value={rpBarcode} onChange={e => setRpBarcode(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && scanRpBarcode()}
+                      placeholder="Scan wallet barcode..."
+                      className="flex-1 px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                    <button onClick={scanRpBarcode} className="px-2 py-1.5 rounded-lg text-xs text-white" style={{ background: 'var(--teal)' }}>
+                      <ScanLine size={12} />
+                    </button>
+                  </div>
+                  <input value={rpWalletSearch} onChange={e => searchRpWallets(e.target.value)}
+                    placeholder="Or search patient name..."
+                    className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  {rpWalletResults.length > 0 && rpWalletResults.map(w => (
+                    <button key={w.id} onClick={() => { setRpSelectedWallet(w); setRpWalletResults([]) }}
+                      className="w-full text-left px-2 py-1.5 text-xs hover:bg-gray-50 flex justify-between rounded-lg">
+                      <span className="font-medium">{w.patientName}</span>
+                      <span style={{ color: 'var(--mid-gray)' }}><Star size={10} className="inline" /> {w.rewardPoints?.toLocaleString() || 0} pts</span>
+                    </button>
+                  ))}
+                </>
+              )}
+              {cart.length > 0 && (
+                <p className="text-xs font-medium" style={{ color: '#7c3aed' }}>
+                  Points needed: {rewardPointsTotal.toLocaleString()} pts
+                  {rpSelectedWallet && (rpSelectedWallet.rewardPoints || 0) < rewardPointsTotal && (
+                    <span className="text-red-600 ml-2">Insufficient points!</span>
+                  )}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Totals */}
           <div className="pt-2 border-t space-y-1" style={{ borderColor: 'var(--light-gray)' }}>
             <div className="flex justify-between text-xs"><span style={{ color: 'var(--mid-gray)' }}>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
             {discountAmount > 0 && <div className="flex justify-between text-xs"><span style={{ color: 'var(--mid-gray)' }}>Discount</span><span className="text-red-600">-{formatCurrency(discountAmount)}</span></div>}
             <div className="flex justify-between text-sm font-bold"><span style={{ color: 'var(--charcoal)' }}>Net</span><span style={{ color: 'var(--deep-teal)' }}>{formatCurrency(netAmount)}</span></div>
-            <div className="flex justify-between text-xs"><span style={{ color: 'var(--mid-gray)' }}>Paid</span><span>{formatCurrency(totalPayments)}</span></div>
-            {totalPayments >= netAmount && netAmount > 0 && (
+            {hasRewardPointsPayment && rewardPointsTotal > 0 && (
+              <div className="flex justify-between text-xs"><span style={{ color: '#7c3aed' }}><Star size={10} className="inline" /> Reward Points</span><span style={{ color: '#7c3aed' }}>{rewardPointsTotal.toLocaleString()} pts</span></div>
+            )}
+            {!hasRewardPointsPayment && <div className="flex justify-between text-xs"><span style={{ color: 'var(--mid-gray)' }}>Paid</span><span>{formatCurrency(totalPayments)}</span></div>}
+            {!hasRewardPointsPayment && totalPayments >= netAmount && netAmount > 0 && (
               <div className="flex justify-between text-xs"><span style={{ color: 'var(--mid-gray)' }}>Change</span><span className="text-green-700">{formatCurrency(totalPayments - netAmount)}</span></div>
             )}
           </div>
 
-          <button onClick={handleSubmit} disabled={submitting || cart.length === 0 || totalPayments < netAmount}
+          <button onClick={handleSubmit} disabled={submitting || cart.length === 0 || (!hasRewardPointsPayment && totalPayments < netAmount)}
             className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2"
             style={{ background: 'var(--teal)' }}>
             {submitting && <Loader2 className="animate-spin" size={14} />}

@@ -134,6 +134,7 @@ interface InventoryItem {
   quantity: number
   unitCost: number
   sellingPrice: number | null
+  rewardPointsPrice: number | null
   reorderLevel: number | null
   supplierId: string | null
   supplier?: { id: string; supplierName: string; isForeign: boolean; currency: string } | null
@@ -224,6 +225,7 @@ export default function InventoryPage() {
   const [fSubType, setFSubType] = useState('')
   const [fUnitCost, setFUnitCost] = useState('')
   const [fSellingPrice, setFSellingPrice] = useState('')
+  const [fRewardPointsPrice, setFRewardPointsPrice] = useState('')
   const [fInitialQty, setFInitialQty] = useState('')
   const [fReorderLevel, setFReorderLevel] = useState('')
   const [fSupplierId, setFSupplierId] = useState('')
@@ -385,7 +387,7 @@ export default function InventoryPage() {
   function openItemCreate() {
     setEditingItem(null)
     setFName(''); setFSkuDept(''); setFSkuCat(''); setFSkuSub(''); setFSkuValue('')
-    setFBranch('SANDBOX_EAST'); setFSubType(''); setFUnitCost(''); setFSellingPrice('')
+    setFBranch('SANDBOX_EAST'); setFSubType(''); setFUnitCost(''); setFSellingPrice(''); setFRewardPointsPrice('')
     setFInitialQty(''); setFReorderLevel(''); setFSupplierId(''); setFExchangeRate('')
     setShowInlineSupplier(false); setError('')
     setItemModalOpen(true)
@@ -402,6 +404,7 @@ export default function InventoryPage() {
     setFSubType(item.accountSubType || '')
     setFUnitCost(String(item.unitCost))
     setFSellingPrice(item.sellingPrice != null ? String(item.sellingPrice) : '')
+    setFRewardPointsPrice(item.rewardPointsPrice != null ? String(item.rewardPointsPrice) : '')
     setFInitialQty(String(item.quantity))
     setFReorderLevel(item.reorderLevel != null ? String(item.reorderLevel) : '')
     setFSupplierId(item.supplierId || '')
@@ -442,6 +445,7 @@ export default function InventoryPage() {
       accountSubType: fSubType || null,
       unitCost: fUnitCost || '0',
       sellingPrice: fSellingPrice || null,
+      rewardPointsPrice: fRewardPointsPrice || null,
       quantity: fInitialQty || '0',
       reorderLevel: fReorderLevel || null,
       supplierId: fSupplierId || null,
@@ -856,6 +860,16 @@ export default function InventoryPage() {
                       <input type="number" step="0.01" min="0" value={fSellingPrice} onChange={(e) => setFSellingPrice(e.target.value)}
                         className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                     </div>
+                  </div>
+
+                  {/* Reward Points Price */}
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                      Reward Points Price <span className="font-normal text-xs" style={{ color: 'var(--mid-gray)' }}>(optional — points needed to purchase)</span>
+                    </label>
+                    <input type="number" min="0" value={fRewardPointsPrice} onChange={(e) => setFRewardPointsPrice(e.target.value)}
+                      placeholder="e.g. 1000"
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
 
                   {/* Qty + Reorder */}
