@@ -145,8 +145,10 @@ interface InventoryProduct {
   id: string
   name: string
   sku?: string
-  price: string | number
-  stock?: number
+  barcode?: string | null
+  sellingPrice?: string | number | null
+  unitCost?: string | number
+  quantity?: number
   [key: string]: unknown
 }
 
@@ -1820,7 +1822,8 @@ function ProductsSection({
 
   const filteredProducts = products.filter(p =>
     p.name.toLowerCase().includes(productSearch.toLowerCase()) ||
-    (p.sku && p.sku.toLowerCase().includes(productSearch.toLowerCase()))
+    (p.sku && p.sku.toLowerCase().includes(productSearch.toLowerCase())) ||
+    (p.barcode && p.barcode.toLowerCase().includes(productSearch.toLowerCase()))
   )
 
   const addToCart = (p: InventoryProduct) => {
@@ -1828,7 +1831,7 @@ function ProductsSection({
     if (existing >= 0) {
       setCart(prev => prev.map((c, i) => i === existing ? { ...c, quantity: c.quantity + 1, lineTotal: c.unitPrice * (c.quantity + 1) } : c))
     } else {
-      const price = toNum(p.price)
+      const price = toNum(p.sellingPrice)
       setCart(prev => [...prev, { inventoryItemId: p.id, name: p.name, quantity: 1, unitPrice: price, lineTotal: price }])
     }
   }
@@ -1933,10 +1936,60 @@ function ProductsSection({
     } catch {}
   }
 
+  // Barcode scanner handler
+  const barcodeInputRef = useRef<HTMLInputElement>(null)
+  const [barcodeInput, setBarcodeInput] = useState('')
+
+  const handleBarcodeScan = useCallback((barcode: string) => {
+    const trimmed = barcode.trim()
+    if (!trimmed) return
+    // Try to find product by barcode or SKU
+    const found = products.find(p =>
+      (p.barcode && p.barcode.toLowerCase() === trimmed.toLowerCase()) ||
+      (p.sku && p.sku.toLowerCase() === trimmed.toLowerCase())
+    )
+    if (found) {
+      addToCart(found)
+      setBarcodeInput('')
+    } else {
+      setError(`No product found for barcode: ${trimmed}`)
+      setTimeout(() => setError(''), 3000)
+      setBarcodeInput('')
+    }
+  }, [products]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       {/* Product List */}
       <div className="lg:col-span-2 space-y-4">
+        {/* Barcode Scanner Input */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <ScanLine size={14} className="absolute left-3 top-3" style={{ color: 'var(--teal)' }} />
+            <input
+              ref={barcodeInputRef}
+              value={barcodeInput}
+              onChange={e => setBarcodeInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  handleBarcodeScan(barcodeInput)
+                }
+              }}
+              placeholder="Scan barcode or type SKU and press Enter..."
+              className="w-full pl-9 pr-3 py-2.5 rounded-xl border text-sm outline-none font-mono"
+              style={{ borderColor: 'var(--teal)', background: 'var(--pale-teal)' }}
+              autoFocus
+            />
+          </div>
+          <button onClick={() => handleBarcodeScan(barcodeInput)}
+            className="px-4 py-2.5 rounded-xl text-sm font-medium text-white flex items-center gap-1.5"
+            style={{ background: 'var(--teal)' }}>
+            <ScanLine size={14} /> Scan
+          </button>
+        </div>
+
+        {/* Search */}
         <div className="relative">
           <Search size={14} className="absolute left-3 top-3" style={{ color: 'var(--mid-gray)' }} />
           <input value={productSearch} onChange={e => setProductSearch(e.target.value)}
@@ -1957,7 +2010,7 @@ function ProductsSection({
                   style={{ borderColor: 'var(--light-gray)' }}>
                   <p className="text-sm font-medium truncate" style={{ color: 'var(--charcoal)' }}>{p.name}</p>
                   {p.sku && <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{p.sku}</p>}
-                  <p className="text-sm font-bold mt-1" style={{ color: 'var(--teal)' }}>{formatCurrency(toNum(p.price))}</p>
+                  <p className="text-sm font-bold mt-1" style={{ color: 'var(--teal)' }}>{formatCurrency(toNum(p.sellingPrice))}</p>
                 </button>
               ))}
             </div>

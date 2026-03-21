@@ -34,7 +34,7 @@ export async function GET(req: Request) {
   if (all) {
     const items = await prisma.inventoryItem.findMany({
       where,
-      select: { id: true, name: true, sku: true, branch: true, quantity: true },
+      select: { id: true, name: true, sku: true, branch: true, quantity: true, sellingPrice: true, unitCost: true, barcode: true },
       orderBy: { sku: 'asc' },
     })
     return NextResponse.json(items)
