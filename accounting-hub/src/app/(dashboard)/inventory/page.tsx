@@ -146,6 +146,7 @@ interface InventoryItem {
   id: string
   sku: string
   name: string
+  barcode?: string | null
   branch: string
   skuDepartment: string
   skuCategory: string
