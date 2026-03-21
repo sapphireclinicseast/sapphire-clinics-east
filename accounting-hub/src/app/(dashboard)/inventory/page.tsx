@@ -19,6 +19,10 @@ import {
   Clock,
   Send,
   RotateCcw,
+  Upload,
+  Download,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react'
 import JsBarcode from 'jsbarcode'
 import { formatCurrency, formatDate } from '@/lib/utils'
@@ -274,6 +278,16 @@ export default function InventoryPage() {
   // ── Adjustment state
   const [adjustments, setAdjustments] = useState<Adjustment[]>([])
   const [adjModalOpen, setAdjModalOpen] = useState(false)
+  // Bulk upload state
+  const [bulkModalOpen, setBulkModalOpen] = useState(false)
+  const [bulkStep, setBulkStep] = useState<'upload' | 'review' | 'result'>('upload')
+  const [bulkCsvData, setBulkCsvData] = useState<{ sku: string; quantity: number; foreignCostPerUnit: number; currency: string }[]>([])
+  const [bulkLocalPayment, setBulkLocalPayment] = useState('')
+  const [bulkFreight, setBulkFreight] = useState('')
+  const [bulkRemarks, setBulkRemarks] = useState('Bulk import')
+  const [bulkSubmitting, setBulkSubmitting] = useState(false)
+  const [bulkResult, setBulkResult] = useState<{ exchangeRate: number; items: { sku: string; name: string; quantity: number; landedCostPerUnit: number; freightAllocation: number }[] } | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [adjItemId, setAdjItemId] = useState('')
   const [adjType, setAdjType] = useState<'SHRINKAGE' | 'INCREASE'>('SHRINKAGE')
   const [adjQty, setAdjQty] = useState('')
@@ -1152,12 +1166,30 @@ export default function InventoryPage() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
             <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>Track inventory adjustments and corrections</p>
             {canWrite && (
-              <button onClick={openAdjCreate}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
-                style={{ background: 'var(--teal)' }}>
-                <Plus size={18} />
-                New Adjustment
-              </button>
+              <div className="flex items-center gap-2">
+                <button onClick={() => {
+                  const csv = 'sku,quantity,foreign_cost_per_unit,currency\nOT-EQP-FIN-001,10,23,CNY\nOT-EQP-GRS-001,5,15,CNY'
+                  const blob = new Blob([csv], { type: 'text/csv' })
+                  const url = URL.createObjectURL(blob)
+                  const a = document.createElement('a')
+                  a.href = url; a.download = 'bulk-adjustment-template.csv'; a.click()
+                  URL.revokeObjectURL(url)
+                }}
+                  className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-medium border"
+                  style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
+                  <Download size={14} /> CSV Template
+                </button>
+                <button onClick={() => setBulkModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-medium border"
+                  style={{ borderColor: 'var(--teal)', color: 'var(--teal)', background: 'var(--pale-teal)' }}>
+                  <Upload size={14} /> Bulk Upload
+                </button>
+                <button onClick={openAdjCreate}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
+                  style={{ background: 'var(--teal)' }}>
+                  <Plus size={18} /> New Adjustment
+                </button>
+              </div>
             )}
           </div>
 
@@ -1276,6 +1308,215 @@ export default function InventoryPage() {
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          )}
+
+          {/* Bulk Upload Modal */}
+          {bulkModalOpen && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-8 overflow-y-auto">
+              <div className="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-xl mb-8 relative">
+                <button onClick={() => { setBulkModalOpen(false); setBulkStep('upload'); setBulkCsvData([]); setBulkResult(null) }}
+                  className="absolute top-4 right-4 p-1 hover:bg-gray-100 rounded-lg"><X size={20} style={{ color: 'var(--mid-gray)' }} /></button>
+
+                <h3 className="text-lg font-bold mb-4" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                  Bulk Inventory Adjustment
+                </h3>
+
+                {error && <div className="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-600 flex items-center gap-1"><AlertCircle size={14} />{error}</div>}
+
+                {/* Step 1: Upload CSV */}
+                {bulkStep === 'upload' && (
+                  <div className="space-y-4">
+                    <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>
+                      Upload a CSV file with columns: <code className="bg-gray-100 px-1 rounded">sku, quantity, foreign_cost_per_unit, currency</code>
+                    </p>
+                    <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (!file) return
+                      const reader = new FileReader()
+                      reader.onload = (ev) => {
+                        const text = ev.target?.result as string
+                        const lines = text.trim().split('\n')
+                        const header = lines[0].toLowerCase()
+                        if (!header.includes('sku') || !header.includes('quantity')) {
+                          setError('CSV must have columns: sku, quantity, foreign_cost_per_unit, currency')
+                          return
+                        }
+                        const rows = lines.slice(1).map(line => {
+                          const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''))
+                          return {
+                            sku: cols[0] || '',
+                            quantity: parseInt(cols[1]) || 0,
+                            foreignCostPerUnit: parseFloat(cols[2]) || 0,
+                            currency: cols[3] || 'CNY',
+                          }
+                        }).filter(r => r.sku && r.quantity > 0)
+                        if (rows.length === 0) { setError('No valid rows found in CSV'); return }
+                        setBulkCsvData(rows)
+                        setBulkStep('review')
+                        setError('')
+                      }
+                      reader.readAsText(file)
+                    }} />
+                    <button onClick={() => fileInputRef.current?.click()}
+                      className="w-full py-8 rounded-xl border-2 border-dashed text-sm flex flex-col items-center gap-2 hover:bg-gray-50"
+                      style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                      <Upload size={24} />
+                      Click to select CSV file
+                    </button>
+                  </div>
+                )}
+
+                {/* Step 2: Review + Enter local payment */}
+                {bulkStep === 'review' && (
+                  <div className="space-y-4">
+                    <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr style={{ background: 'var(--off-white)' }}>
+                            {['SKU', 'Qty', 'Cost/Unit', 'Currency', 'Line Total'].map(h => (
+                              <th key={h} className="px-3 py-2 text-left text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {bulkCsvData.map((r, idx) => (
+                            <tr key={idx} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                              <td className="px-3 py-2 font-mono text-xs">{r.sku}</td>
+                              <td className="px-3 py-2">{r.quantity}</td>
+                              <td className="px-3 py-2">{r.foreignCostPerUnit.toLocaleString()}</td>
+                              <td className="px-3 py-2">{r.currency}</td>
+                              <td className="px-3 py-2 font-medium">{(r.foreignCostPerUnit * r.quantity).toLocaleString()} {r.currency}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr style={{ background: 'var(--off-white)' }}>
+                            <td colSpan={4} className="px-3 py-2 text-right font-semibold text-xs">Total Foreign Cost:</td>
+                            <td className="px-3 py-2 font-bold">
+                              {bulkCsvData.reduce((s, r) => s + r.foreignCostPerUnit * r.quantity, 0).toLocaleString()} {bulkCsvData[0]?.currency || 'CNY'}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>
+                          Total Paid in PHP *
+                        </label>
+                        <input type="number" min={0} step="0.01" value={bulkLocalPayment}
+                          onChange={e => setBulkLocalPayment(e.target.value)}
+                          placeholder="e.g. 8000"
+                          className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                        {bulkLocalPayment && parseFloat(bulkLocalPayment) > 0 && (
+                          <p className="text-xs mt-1 font-medium" style={{ color: 'var(--deep-teal)' }}>
+                            Exchange rate: 1 {bulkCsvData[0]?.currency || 'FX'} = {(parseFloat(bulkLocalPayment) / bulkCsvData.reduce((s, r) => s + r.foreignCostPerUnit * r.quantity, 0)).toFixed(4)} PHP
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>
+                          Freight Cost (PHP) <span className="font-normal">(optional)</span>
+                        </label>
+                        <input type="number" min={0} step="0.01" value={bulkFreight}
+                          onChange={e => setBulkFreight(e.target.value)}
+                          placeholder="e.g. 5000"
+                          className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                        {bulkFreight && parseFloat(bulkFreight) > 0 && (
+                          <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+                            Distributed pro-rata by product cost
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Remarks</label>
+                      <input value={bulkRemarks} onChange={e => setBulkRemarks(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        disabled={bulkSubmitting || !bulkLocalPayment || parseFloat(bulkLocalPayment) <= 0}
+                        onClick={async () => {
+                          setBulkSubmitting(true); setError('')
+                          try {
+                            const res = await fetch('/api/inventory/adjustments/bulk', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                items: bulkCsvData.map(r => ({ sku: r.sku, quantity: r.quantity, foreignCostPerUnit: r.foreignCostPerUnit, foreignCurrency: r.currency })),
+                                localPaymentTotal: parseFloat(bulkLocalPayment),
+                                freightCost: bulkFreight ? parseFloat(bulkFreight) : 0,
+                                adjustmentDate: new Date().toISOString().split('T')[0],
+                                remarks: bulkRemarks,
+                              }),
+                            })
+                            const data = await res.json()
+                            if (!res.ok) { setError(data.error || 'Bulk upload failed'); setBulkSubmitting(false); return }
+                            setBulkResult(data)
+                            setBulkStep('result')
+                            fetchAdjustments(); fetchItems(); fetchAllItems()
+                          } catch { setError('Bulk upload failed') }
+                          finally { setBulkSubmitting(false) }
+                        }}
+                        className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2"
+                        style={{ background: 'var(--teal)' }}>
+                        {bulkSubmitting && <Loader2 className="animate-spin" size={14} />}
+                        Process Bulk Adjustment
+                      </button>
+                      <button onClick={() => { setBulkStep('upload'); setBulkCsvData([]) }}
+                        className="px-4 py-2.5 rounded-xl text-sm font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                        Back
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 3: Result */}
+                {bulkStep === 'result' && bulkResult && (
+                  <div className="space-y-4">
+                    <div className="rounded-xl p-4" style={{ background: '#dcfce7' }}>
+                      <p className="text-sm font-semibold" style={{ color: '#166534' }}>Bulk adjustment completed successfully!</p>
+                      <p className="text-xs mt-1" style={{ color: '#166534' }}>
+                        {bulkResult.items?.length || 0} items processed &middot;
+                        Exchange rate: 1 {bulkCsvData[0]?.currency || 'FX'} = {bulkResult.exchangeRate} PHP
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr style={{ background: 'var(--off-white)' }}>
+                            {['SKU', 'Product', 'Qty', 'Landed Cost/Unit', 'Freight Alloc.'].map(h => (
+                              <th key={h} className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--mid-gray)' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(bulkResult.items || []).map((r, idx) => (
+                            <tr key={idx} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                              <td className="px-3 py-2 font-mono">{r.sku}</td>
+                              <td className="px-3 py-2">{r.name}</td>
+                              <td className="px-3 py-2">{r.quantity}</td>
+                              <td className="px-3 py-2 font-medium" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(r.landedCostPerUnit)}</td>
+                              <td className="px-3 py-2">{formatCurrency(r.freightAllocation)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <button onClick={() => { setBulkModalOpen(false); setBulkStep('upload'); setBulkCsvData([]); setBulkResult(null) }}
+                      className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>
+                      Done
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}

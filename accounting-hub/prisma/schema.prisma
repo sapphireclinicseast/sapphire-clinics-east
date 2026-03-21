@@ -243,6 +243,13 @@ model InventoryAdjustment {
   newQuantity      Int
   adjustmentDate   DateTime
   remarks          String
+  batchId          String?        // Groups adjustments from same bulk upload
+  foreignCost      Decimal?       // Cost per unit in foreign currency
+  foreignCurrency  String?        // e.g. CNY, USD
+  exchangeRate     Decimal?       // Computed: localTotal / foreignTotal
+  localCost        Decimal?       // Cost per unit in PHP (after exchange)
+  freightAllocation Decimal?      // Pro-rated freight cost allocated to this item
+  totalLandedCost  Decimal?       // localCost * qty + freightAllocation
   adjustedById     String
   adjustedBy       User           @relation("AdjustmentBy", fields: [adjustedById], references: [id], onDelete: Restrict)
   createdAt        DateTime       @default(now())
@@ -250,6 +257,7 @@ model InventoryAdjustment {
   @@index([itemId])
   @@index([adjustedById])
   @@index([adjustmentDate])
+  @@index([batchId])
 }
 
 model ConsignmentTransfer {
