@@ -934,6 +934,7 @@ function OrderFormModal({
       if (!res.ok) { setError(data.error || 'Failed to create order'); setSubmitting(false); return }
 
       // Deduct wallet balance for wallet payments (VIP/Prepaid usage)
+      // 1. Explicit WALLET payment lines (walletId on the payment)
       const walletPayments = payments.filter(p => p.walletId && toNum(p.amount) > 0)
       for (const wp of walletPayments) {
         try {
@@ -948,6 +949,24 @@ function OrderFormModal({
           })
         } catch (e) {
           console.error('Wallet deduction error:', e)
+        }
+      }
+      // 2. If a VIP/Prepaid wallet was used (activeWallet set via scan/search),
+      //    deduct the net amount from that wallet even if payment method is CASH/etc.
+      const alreadyDeductedWalletIds = walletPayments.map(wp => wp.walletId)
+      if (activeWallet && !alreadyDeductedWalletIds.includes(activeWallet.id) && netAmount > 0) {
+        try {
+          await fetch(`/api/pos/wallets/${activeWallet.id}/deduct`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              amount: netAmount,
+              description: `${WALLET_TYPE_LABELS[activeWallet.walletType] || 'Wallet'} used for order ${data.orderNumber}`,
+              orderId: data.id,
+            }),
+          })
+        } catch (e) {
+          console.error('Active wallet deduction error:', e)
         }
       }
 
