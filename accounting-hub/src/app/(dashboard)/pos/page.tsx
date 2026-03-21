@@ -241,45 +241,48 @@ function printThermalReceipt(order: {
   branch?: string
   createdBy?: { name: string }
 }) {
-  const fmt = (v: string | number) => `₱${Number(v).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const fmt = (v: string | number) => Number(v).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   const totalPaid = order.payments.reduce((s, p) => s + Number(p.amount), 0)
   const change = totalPaid - Number(order.netAmount)
-  const branchLabel = order.branch === 'SANDBOX_EAST' ? 'Sandbox East' : order.branch === 'SANDBOX_GREENHILLS' ? 'Sandbox Greenhills' : order.branch || ''
+  const branchName = order.branch === 'SANDBOX_EAST' ? 'Sandbox Clinic \u2013 East' : order.branch === 'SANDBOX_GREENHILLS' ? 'Sandbox Clinic \u2013 Greenhills' : order.branch || ''
+  const address = order.branch === 'SANDBOX_GREENHILLS' ? 'Greenhills Shopping Center, San Juan City' : 'Level 4 Robinsons MetroEast, Brgy. Dela Paz, Pasig City'
+  const paymentLabel = order.payments.map(p => p.method.replace(/_/g, ' ')).join(', ')
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent('https://sapphireclinicseast.org')}`
 
-  const lines = [
-    '<div style="font-family:monospace;font-size:11px;width:280px;padding:8px;line-height:1.4">',
-    '<div style="text-align:center;font-weight:bold;font-size:13px">SAPPHIRE CLINICS</div>',
-    `<div style="text-align:center;font-size:10px">${branchLabel}</div>`,
-    '<div style="text-align:center;font-size:9px;margin-bottom:6px">Robinsons MetroEast, Brgy. Dela Paz, Pasig City</div>',
-    '<hr style="border:none;border-top:1px dashed #000">',
-    `<div style="display:flex;justify-content:space-between"><span>Order #</span><strong>${order.orderNumber}</strong></div>`,
-    `<div style="display:flex;justify-content:space-between"><span>Date</span><span>${order.transactionDate}</span></div>`,
-    order.patientName ? `<div style="display:flex;justify-content:space-between"><span>Patient</span><span>${order.patientName}</span></div>` : '',
-    order.clinicianName ? `<div style="display:flex;justify-content:space-between"><span>Clinician</span><span>${order.clinicianName}</span></div>` : '',
-    '<hr style="border:none;border-top:1px dashed #000;margin:4px 0">',
-    ...order.items.map(it =>
-      `<div style="margin:2px 0"><div>${it.name}</div><div style="display:flex;justify-content:space-between;font-size:10px;padding-left:10px"><span>${it.quantity} x ${fmt(it.unitPrice)}</span><span>${fmt(it.lineTotal)}</span></div></div>`
-    ),
-    '<hr style="border:none;border-top:1px dashed #000;margin:4px 0">',
-    `<div style="display:flex;justify-content:space-between"><span>Subtotal</span><span>${fmt(order.subtotal)}</span></div>`,
-    Number(order.discountAmount) > 0 ? `<div style="display:flex;justify-content:space-between"><span>Discount${order.discountLabel ? ` (${order.discountLabel})` : ''}</span><span>-${fmt(order.discountAmount)}</span></div>` : '',
-    `<div style="display:flex;justify-content:space-between;font-weight:bold;font-size:13px"><span>NET</span><span>${fmt(order.netAmount)}</span></div>`,
-    '<hr style="border:none;border-top:1px dashed #000;margin:4px 0">',
-    ...order.payments.map(p => `<div style="display:flex;justify-content:space-between;font-size:10px"><span>${p.method}</span><span>${fmt(p.amount)}</span></div>`),
-    `<div style="display:flex;justify-content:space-between"><span>Total Paid</span><span>${fmt(totalPaid)}</span></div>`,
-    change > 0 ? `<div style="display:flex;justify-content:space-between;font-weight:bold"><span>Change</span><span>${fmt(change)}</span></div>` : '',
-    order.revenueType === 'UNEARNED' ? '<div style="text-align:center;margin-top:4px;font-size:10px;font-style:italic">** UNEARNED REVENUE **</div>' : '',
-    '<hr style="border:none;border-top:1px dashed #000;margin:6px 0">',
-    order.createdBy ? `<div style="font-size:9px">Cashier: ${order.createdBy.name}</div>` : '',
-    `<div style="font-size:9px">Printed: ${new Date().toLocaleString('en-PH')}</div>`,
-    '<div style="text-align:center;margin-top:8px;font-size:10px">Thank you for choosing</div>',
-    '<div style="text-align:center;font-size:10px;font-weight:bold">Sapphire Clinics East Inc.</div>',
-    '</div>',
-  ].filter(Boolean)
+  const html = `<div style="font-family:'Courier New',monospace;font-size:11px;width:280px;padding:8px;line-height:1.5">
+<div style="text-align:center;font-weight:bold;font-size:12px">Sapphire Clinics East Inc.</div>
+<div style="text-align:center;font-size:11px">${branchName}</div>
+<div style="text-align:center;font-size:9px">${address}</div>
+<div style="text-align:center;font-size:9px">VAT-registered TIN: 010-817-642-00000</div>
+<div style="text-align:center;font-size:9px">+63 917 118 9289 | (02) 5310 4991</div>
+<div style="text-align:center;font-size:9px;margin-bottom:6px">east.sandboxclinic@gmail.com</div>
+<div style="font-size:10px">Receptionist: ${order.createdBy?.name || '\u2014'}</div>
+<div style="font-size:10px">Date: ${order.transactionDate}</div>
+<div style="font-size:10px">Order No: ${order.orderNumber}</div>
+<div style="font-size:10px">Payment Method: ${paymentLabel}</div>
+<div style="font-size:10px">Patient Name: ${order.patientName || '\u2014'}</div>
+<div style="border-top:1px solid #000;border-bottom:1px solid #000;margin:6px 0;padding:3px 0;display:flex;justify-content:space-between;font-weight:bold;font-size:10px">
+<span>Product/s or Service/s</span><span>Amount</span></div>
+${order.items.map(it => `<div style="display:flex;justify-content:space-between;font-size:10px;margin:2px 0">
+<span>${it.name}${it.quantity > 1 ? ' x' + it.quantity : ''}</span><span>${fmt(it.lineTotal)}</span></div>`).join('')}
+<div style="border-bottom:1px solid #000;margin:6px 0"></div>
+<div style="display:flex;justify-content:space-between;font-size:10px"><span>Subtotal:</span><span>${fmt(order.subtotal)}</span></div>
+<div style="display:flex;justify-content:space-between;font-size:10px"><span>VAT:</span><span>Inclusive</span></div>
+${Number(order.discountAmount) > 0 ? `<div style="display:flex;justify-content:space-between;font-size:10px"><span>Discount${order.discountLabel ? ' (' + order.discountLabel + ')' : ''}:</span><span>-${fmt(order.discountAmount)}</span></div>` : ''}
+<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:bold;margin-top:2px"><span>Total:</span><span>${fmt(order.netAmount)}</span></div>
+${change > 0 ? `<div style="display:flex;justify-content:space-between;font-size:10px"><span>Change:</span><span>${fmt(change)}</span></div>` : ''}
+${order.revenueType === 'UNEARNED' ? '<div style="text-align:center;margin-top:4px;font-size:9px;font-style:italic">** UNEARNED REVENUE **</div>' : ''}
+<div style="text-align:center;margin-top:10px;font-size:11px;font-weight:bold">Thank you!</div>
+<div style="text-align:center;font-size:8px;margin:4px 0">Follow us on Facebook, Instagram, and Tiktok @sandboxcliniceast</div>
+<div style="text-align:center;font-size:8px;font-style:italic;margin-bottom:8px">This is not an official sales invoice. Please request the sales invoice from the front desk.</div>
+<div style="display:flex;justify-content:center;align-items:center;gap:16px;margin:8px 0">
+<img src="${qrUrl}" style="width:60px;height:60px" />
+<img src="/logo-mark.png" style="width:50px;height:50px" onerror="this.style.display='none'" />
+</div></div>`
 
-  const win = window.open('', '_blank', 'width=320,height=600')
+  const win = window.open('', '_blank', 'width=320,height=700')
   if (!win) return
-  win.document.write(`<html><head><title>Receipt</title><style>@page{size:80mm auto;margin:2mm}@media print{body{margin:0}}</style></head><body style="margin:0;padding:0">${lines.join('')}<script>setTimeout(()=>{window.print();window.close()},300)<\/script></body></html>`)
+  win.document.write(`<html><head><title>Receipt #${order.orderNumber}</title><style>@page{size:80mm auto;margin:2mm}@media print{body{margin:0}}</style></head><body style="margin:0;padding:0">${html}<script>setTimeout(()=>{window.print();window.close()},500)<\/script></body></html>`)
   win.document.close()
 }
 
@@ -943,8 +946,25 @@ function OrderFormModal({
       if (!res.ok) { setError(data.error || 'Failed to create order'); setSubmitting(false); return }
 
       // Deduct wallet balance for wallet payments (VIP/Prepaid usage)
-      // 1. Explicit WALLET payment lines (walletId on the payment)
-      const walletPayments = payments.filter(p => p.walletId && toNum(p.amount) > 0)
+      // 1. If activeWallet is set (VIP/Prepaid card applied), deduct the net amount from it
+      if (activeWallet?.id) {
+        try {
+          await fetch(`/api/pos/wallets/${activeWallet.id}/deduct`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              amount: netAmount,
+              description: `Payment for order ${data.orderNumber} (${activeWallet.walletType || 'wallet'})`,
+              orderId: data.id,
+            }),
+          })
+        } catch (e) {
+          console.error('Wallet deduction error:', e)
+        }
+      }
+
+      // 2. Explicit WALLET payment lines (walletId on the payment)
+      const walletPayments = payments.filter(p => p.walletId && toNum(p.amount) > 0 && p.walletId !== activeWallet?.id)
       for (const wp of walletPayments) {
         try {
           await fetch(`/api/pos/wallets/${wp.walletId}/deduct`, {
@@ -2925,6 +2945,36 @@ function SalesSummarySection({ branch, canSelectBranch }: { branch: string; canS
   const serviceOrders = activeOrders.filter(o => o.orderType === 'SERVICE')
   const productOrders = activeOrders.filter(o => o.orderType === 'PRODUCT')
 
+  // Department breakdown for SCEI report
+  const deptBreakdown: Record<string, number> = {}
+  earnedOrders.filter(o => o.orderType === 'SERVICE').forEach(o => {
+    o.items.forEach(it => {
+      // Try to detect department from service name patterns
+      const name = it.name.toUpperCase()
+      let dept = 'OTHER'
+      if (name.includes('MD') || name.includes('DOCTOR') || name.includes('CONSULT')) dept = 'MD'
+      else if (name.includes('PT') || name.includes('PHYSICAL')) dept = 'PHYSICAL THERAPY'
+      else if (name.includes('OT') || name.includes('OCCUPATIONAL')) dept = 'OCCUPATIONAL THERAPY'
+      else if (name.includes('SLP') || name.includes('SPEECH')) dept = 'SPEECH LANGUAGE PATHOLOGY'
+      else if (name.includes('SPED') || name.includes('SPECIAL ED')) dept = 'SPECIAL EDUCATION'
+      else if (name.includes('PSYCH')) dept = 'PSYCHOLOGY'
+      else if (name.includes('O&P') || name.includes('ORTHO') || name.includes('PROSTH')) dept = 'ORTHOSIS AND PROSTHESIS'
+      if (!deptBreakdown[dept]) deptBreakdown[dept] = 0
+      deptBreakdown[dept] += toNum(it.lineTotal)
+    })
+  })
+
+  // Discount breakdown by type
+  const discountBreakdown: Record<string, number> = {}
+  earnedOrders.forEach(o => {
+    const amt = toNum(o.discountAmount)
+    if (amt > 0) {
+      const label = o.discountLabel || o.discountType || 'Other'
+      if (!discountBreakdown[label]) discountBreakdown[label] = 0
+      discountBreakdown[label] += amt
+    }
+  })
+
   const exportCSV = (type: 'services' | 'products') => {
     const filtered = type === 'services' ? serviceOrders : productOrders
     const rows = [['Order #', 'Date', 'Patient', 'Items', 'Subtotal', 'Discount', 'Net Amount', 'Payments', 'Status']]
@@ -2953,14 +3003,53 @@ function SalesSummarySection({ branch, canSelectBranch }: { branch: string; canS
 
   const printReport = () => {
     const win = window.open('', '_blank')
-    if (!win || !printRef.current) return
-    win.document.write(`<html><head><title>Sales Report</title><style>
-      body{font-family:sans-serif;padding:20px}
-      table{width:100%;border-collapse:collapse;margin:16px 0}
-      th,td{border:1px solid #ddd;padding:8px;text-align:left;font-size:12px}
-      th{background:#f5f5f5}
-      h1,h2,h3{margin:8px 0}
-    </style></head><body>${printRef.current.innerHTML}<script>window.print();window.close();<\/script></body></html>`)
+    if (!win) return
+    const fmt = (v: number) => `Php ${v.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    const branchLabel = selectedBranch === 'SANDBOX_EAST' ? 'SANDBOX CLINIC \u2013 EAST' : selectedBranch === 'SANDBOX_GREENHILLS' ? 'SANDBOX CLINIC \u2013 GREENHILLS' : 'ALL BRANCHES'
+    const DEPTS = ['MD', 'PHYSICAL THERAPY', 'OCCUPATIONAL THERAPY', 'SPEECH LANGUAGE PATHOLOGY', 'SPECIAL EDUCATION', 'ORTHOSIS AND PROSTHESIS', 'PSYCHOLOGY']
+    const discountLines = Object.entries(discountBreakdown).map(([k, v]) => `   ${k}: ${fmt(v)}`).join('\n') || '   None'
+    const paymentLines = Object.entries(paymentBreakdown).map(([k, v]) => `   ${k.replace(/_/g, ' ')}: ${fmt(v.total)}`).join('\n') || '   None'
+    const deptLines = DEPTS.map(d => `${d}: ${fmt(deptBreakdown[d] || 0)}`).join('\n')
+
+    const content = `<pre style="font-family:'Courier New',monospace;font-size:11px;border:1px solid #000;padding:20px;max-width:600px;margin:auto;line-height:1.6">
+                    ${branchLabel}
+                   SALES FOR THE DAY
+
+Date: ${dateFrom}${dateFrom !== dateTo ? ' to ' + dateTo : ''}
+
+Total Sales (Gross): ${fmt(grossSales)}
+
+Discounts:
+${discountLines}
+
+Total Discounts: ${fmt(totalDiscounts)}
+Net Sales: ${fmt(netSales)}
+
+Unearned Revenue: ${fmt(unearnedRevenue)}
+
+Modes of Payment
+${paymentLines}
+
+
+${deptLines}
+
+Remarks:
+
+
+This is to certify that all the details
+here are true and correct, and match the
+endorsed sales for the day.
+
+Front Desk: ___________________________
+Signature:  ___________________________
+
+Validated by: _________________________
+Signature:    _________________________
+</pre>`
+
+    win.document.write(`<html><head><title>Daily Sales Report - ${dateFrom}</title>
+<style>@page{size:letter;margin:20mm}body{margin:0;padding:20px}</style>
+</head><body>${content}<script>setTimeout(()=>{window.print()},300)<\/script></body></html>`)
     win.document.close()
   }
 
