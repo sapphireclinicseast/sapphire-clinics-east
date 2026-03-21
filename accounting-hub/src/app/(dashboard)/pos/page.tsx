@@ -247,8 +247,6 @@ function printThermalReceipt(order: {
   const branchName = order.branch === 'SANDBOX_EAST' ? 'Sandbox Clinic \u2013 East' : order.branch === 'SANDBOX_GREENHILLS' ? 'Sandbox Clinic \u2013 Greenhills' : order.branch || ''
   const address = order.branch === 'SANDBOX_GREENHILLS' ? 'Greenhills Shopping Center, San Juan City' : 'Level 4 Robinsons MetroEast, Brgy. Dela Paz, Pasig City'
   const paymentLabel = order.payments.map(p => p.method.replace(/_/g, ' ')).join(', ')
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent('https://sapphireclinicseast.org')}`
-
   const html = `<div style="font-family:'Courier New',monospace;font-size:11px;width:280px;padding:8px;line-height:1.5">
 <div style="text-align:center;font-weight:bold;font-size:12px">Sapphire Clinics East Inc.</div>
 <div style="text-align:center;font-size:11px">${branchName}</div>
@@ -275,9 +273,10 @@ ${order.revenueType === 'UNEARNED' ? '<div style="text-align:center;margin-top:4
 <div style="text-align:center;margin-top:10px;font-size:11px;font-weight:bold">Thank you!</div>
 <div style="text-align:center;font-size:8px;margin:4px 0">Follow us on Facebook, Instagram, and Tiktok @sandboxcliniceast</div>
 <div style="text-align:center;font-size:8px;font-style:italic;margin-bottom:8px">This is not an official sales invoice. Please request the sales invoice from the front desk.</div>
-<div style="display:flex;justify-content:center;align-items:center;gap:16px;margin:8px 0">
-<img src="${qrUrl}" style="width:60px;height:60px" />
-<img src="/logo-mark.png" style="width:50px;height:50px" onerror="this.style.display='none'" />
+<div style="display:flex;justify-content:center;align-items:center;gap:12px;margin:10px 0">
+<img src="/qr-feedback.png" style="width:70px;height:70px" />
+<div style="font-size:8px;text-align:center;flex:1;line-height:1.3">Scan this QR Code for any concerns/<br/>complaints.</div>
+<img src="/scei-mark.png" style="width:65px;height:65px" onerror="this.style.display='none'" />
 </div></div>`
 
   const win = window.open('', '_blank', 'width=320,height=700')
