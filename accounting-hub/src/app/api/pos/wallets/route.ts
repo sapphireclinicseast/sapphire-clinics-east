@@ -29,9 +29,14 @@ export async function GET(req: Request) {
   const params = parsePagination(searchParams)
   const search = searchParams.get('search') || ''
   const patientId = searchParams.get('patientId') || ''
+  const walletType = searchParams.get('walletType') || ''
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = { isActive: true }
+
+  if (walletType) {
+    where.walletType = walletType
+  }
 
   if (patientId) {
     where.patientId = patientId

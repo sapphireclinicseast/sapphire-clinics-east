@@ -1750,6 +1750,7 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
    ══════════════════════════════════════════════════════════════ */
 
 function WalletPanel({ session }: { session: { user?: Record<string, unknown> } | null }) {
+  const [walletTypeFilter, setWalletTypeFilter] = useState('VIP')
   const [search, setSearch] = useState('')
   const [wallets, setWallets] = useState<DigitalWallet[]>([])
   const [loading, setLoading] = useState(false)
@@ -1761,11 +1762,21 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   const [pkgForm, setPkgForm] = useState({ serviceName: '', totalSessions: 1, amountPaid: 0, expiresAt: '' })
   const barcodeRef = useRef<SVGSVGElement>(null)
 
+  const walletSubTabs = [
+    { key: 'VIP', label: 'VIP' },
+    { key: 'PACKAGE', label: 'Package' },
+    { key: 'DOWNPAYMENT', label: 'Downpayments' },
+    { key: 'ADVANCE', label: 'Advances' },
+    { key: 'PREPAID_CARD', label: 'Prepaid Card' },
+  ]
+
   const fetchWallets = useCallback(async () => {
     setLoading(true)
     try {
-      const params = search ? `?search=${encodeURIComponent(search)}` : ''
-      const r = await fetch(`/api/pos/wallets${params}`)
+      const qp = new URLSearchParams()
+      if (search) qp.set('search', search)
+      qp.set('walletType', walletTypeFilter)
+      const r = await fetch(`/api/pos/wallets?${qp}`)
       const d = await r.json()
       setWallets(normalize(d) as DigitalWallet[])
     } catch {
@@ -1773,7 +1784,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     } finally {
       setLoading(false)
     }
-  }, [search])
+  }, [search, walletTypeFilter])
 
   useEffect(() => { fetchWallets() }, [fetchWallets])
 
@@ -1861,11 +1872,33 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
 
   return (
     <div className="space-y-4">
+      {/* Wallet Type Sub-tabs */}
+      <div className="flex gap-1 flex-wrap">
+        {walletSubTabs.map(t => {
+          const colors = WALLET_TYPE_COLORS[t.key] || { bg: '#f3f4f6', color: '#374151' }
+          return (
+            <button
+              key={t.key}
+              onClick={() => { setWalletTypeFilter(t.key); setSearch('') }}
+              className="px-4 py-2 text-sm rounded-xl font-medium transition-colors"
+              style={{
+                background: walletTypeFilter === t.key ? colors.bg : 'transparent',
+                color: walletTypeFilter === t.key ? colors.color : 'var(--mid-gray)',
+                border: walletTypeFilter === t.key ? `1px solid ${colors.color}30` : '1px solid transparent',
+              }}
+            >
+              {t.label}
+            </button>
+          )
+        })}
+      </div>
+
       {/* Search + Create */}
       <div className="flex items-center gap-3">
         <div className="relative flex-1">
           <Search size={14} className="absolute left-3 top-3" style={{ color: 'var(--mid-gray)' }} />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by patient name or barcode..."
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder={`Search ${WALLET_TYPE_LABELS[walletTypeFilter] || ''} wallets by patient name...`}
             className="w-full pl-9 pr-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
         </div>
         <button onClick={() => setShowCreate(true)} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium text-white" style={{ background: 'var(--teal)' }}>
