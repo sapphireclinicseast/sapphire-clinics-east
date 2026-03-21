@@ -40,7 +40,11 @@ export async function GET(req: Request) {
         skip: (params.page - 1) * params.pageSize,
         take: params.pageSize,
         include: {
-          items: true,
+          items: {
+            include: {
+              service: { select: { id: true, name: true, department: true, revenueType: true } },
+            },
+          },
           payments: true,
           referrer: true,
           createdBy: { select: { id: true, name: true } },

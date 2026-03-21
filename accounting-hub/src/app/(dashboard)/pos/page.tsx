@@ -68,7 +68,7 @@ interface Order {
   netAmount: string | number
   revenueType: string
   status: string
-  items: { id: string; name: string; quantity: number; unitPrice: string | number; lineTotal: string | number; serviceId?: string; inventoryItemId?: string }[]
+  items: { id: string; name: string; quantity: number; unitPrice: string | number; lineTotal: string | number; serviceId?: string; inventoryItemId?: string; service?: { department?: string; revenueType?: string } | null }[]
   payments: { id: string; method: string; amount: string | number; walletId?: string; reference?: string }[]
   referrer?: { id: string; name: string } | null
   createdBy?: { name: string }
@@ -2945,20 +2945,23 @@ function SalesSummarySection({ branch, canSelectBranch }: { branch: string; canS
   const serviceOrders = activeOrders.filter(o => o.orderType === 'SERVICE')
   const productOrders = activeOrders.filter(o => o.orderType === 'PRODUCT')
 
-  // Department breakdown for SCEI report
+  // Department breakdown for SCEI report — uses Service.department field, earned revenue only
+  const DEPT_LABEL_MAP: Record<string, string> = {
+    'MD': 'MD',
+    'PT': 'PHYSICAL THERAPY',
+    'OT': 'OCCUPATIONAL THERAPY',
+    'SLP': 'SPEECH LANGUAGE PATHOLOGY',
+    'SPED': 'SPECIAL EDUCATION',
+    'PSYCHOLOGY': 'PSYCHOLOGY',
+    'O&P': 'ORTHOSIS AND PROSTHESIS',
+  }
+
   const deptBreakdown: Record<string, number> = {}
   earnedOrders.filter(o => o.orderType === 'SERVICE').forEach(o => {
     o.items.forEach(it => {
-      // Try to detect department from service name patterns
-      const name = it.name.toUpperCase()
-      let dept = 'OTHER'
-      if (name.includes('MD') || name.includes('DOCTOR') || name.includes('CONSULT')) dept = 'MD'
-      else if (name.includes('PT') || name.includes('PHYSICAL')) dept = 'PHYSICAL THERAPY'
-      else if (name.includes('OT') || name.includes('OCCUPATIONAL')) dept = 'OCCUPATIONAL THERAPY'
-      else if (name.includes('SLP') || name.includes('SPEECH')) dept = 'SPEECH LANGUAGE PATHOLOGY'
-      else if (name.includes('SPED') || name.includes('SPECIAL ED')) dept = 'SPECIAL EDUCATION'
-      else if (name.includes('PSYCH')) dept = 'PSYCHOLOGY'
-      else if (name.includes('O&P') || name.includes('ORTHO') || name.includes('PROSTH')) dept = 'ORTHOSIS AND PROSTHESIS'
+      // Use service.department from the linked Service model
+      const rawDept = it.service?.department || ''
+      const dept = DEPT_LABEL_MAP[rawDept] || rawDept.toUpperCase() || 'OTHER'
       if (!deptBreakdown[dept]) deptBreakdown[dept] = 0
       deptBreakdown[dept] += toNum(it.lineTotal)
     })
