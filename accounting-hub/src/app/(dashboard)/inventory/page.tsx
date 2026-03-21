@@ -288,6 +288,13 @@ export default function InventoryPage() {
   const [bulkSubmitting, setBulkSubmitting] = useState(false)
   const [bulkResult, setBulkResult] = useState<{ exchangeRate: number; items: { sku: string; name: string; quantity: number; landedCostPerUnit: number; freightAllocation: number }[] } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Bulk item import state
+  const [bulkItemModalOpen, setBulkItemModalOpen] = useState(false)
+  const [bulkItemCsv, setBulkItemCsv] = useState<{ name: string; department: string; category: string; subcategory: string; branch: string; unitCost: string; sellingPrice: string; rewardPointsPrice: string; quantity: string; reorderLevel: string }[]>([])
+  const [bulkItemStep, setBulkItemStep] = useState<'upload' | 'review' | 'result'>('upload')
+  const [bulkItemSubmitting, setBulkItemSubmitting] = useState(false)
+  const [bulkItemResult, setBulkItemResult] = useState<{ success: number; errors: number; items: { sku: string; name: string; barcode: string }[]; errorDetails: string[] } | null>(null)
+  const itemFileRef = useRef<HTMLInputElement>(null)
   const [adjItemId, setAdjItemId] = useState('')
   const [adjType, setAdjType] = useState<'SHRINKAGE' | 'INCREASE'>('SHRINKAGE')
   const [adjQty, setAdjQty] = useState('')
@@ -358,12 +365,24 @@ export default function InventoryPage() {
     } catch { /* ignore */ }
   }, [])
 
+  // Initial load — only runs once when session is available
+  const initialLoaded = useRef(false)
   useEffect(() => {
-    if (!session?.user) return
+    if (!session?.user || initialLoaded.current) return
+    initialLoaded.current = true
     setLoading(true)
     Promise.all([fetchItems(), fetchAllItems(), fetchSuppliers(), fetchAllSuppliers(), fetchAdjustments(), fetchConsignments()])
       .finally(() => setLoading(false))
-  }, [session, fetchItems, fetchAllItems, fetchSuppliers, fetchAllSuppliers, fetchAdjustments, fetchConsignments])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session])
+
+  // Re-fetch items when search/filter changes (debounced)
+  useEffect(() => {
+    if (!initialLoaded.current) return
+    const timeout = setTimeout(() => { fetchItems() }, 300)
+    return () => clearTimeout(timeout)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemSearch, itemBranchFilter, itemDeptFilter])
 
   /* ── SKU Generation ────────────────────────────────────── */
 
@@ -628,6 +647,38 @@ export default function InventoryPage() {
 
   const anyModalOpen = itemModalOpen || supplierModalOpen || adjModalOpen || conModalOpen
 
+  // Print bulk barcodes — A6 pages, 10 barcodes per product per page
+  const printBulkBarcodes = () => {
+    const activeItems = allItems.filter((it: InventoryItem) => it.barcode || it.sku)
+    if (activeItems.length === 0) { setError('No items with barcodes found'); return }
+    const win = window.open('', '_blank')
+    if (!win) return
+    const COPIES = 10
+    const pages = activeItems.map((item: InventoryItem) => {
+      const code = item.barcode || item.sku
+      const barcodes = Array(COPIES).fill(0).map(() =>
+        `<div style="text-align:center;margin:4px 0">
+          <svg class="bc" data-code="${code}"></svg>
+          <div style="font-size:7px;margin-top:1px">${item.name}</div>
+        </div>`
+      ).join('')
+      return `<div style="page-break-after:always;width:105mm;height:148mm;padding:4mm;box-sizing:border-box;display:flex;flex-wrap:wrap;align-content:flex-start;gap:2mm">
+        ${barcodes}
+      </div>`
+    }).join('')
+
+    win.document.write(`<html><head><title>Barcodes</title>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>
+<style>@page{size:A6;margin:3mm}body{margin:0;font-family:monospace;font-size:8px}</style>
+</head><body>${pages}<script>
+document.querySelectorAll('.bc').forEach(el=>{
+  try{JsBarcode(el,el.dataset.code,{format:'CODE128',width:1.5,height:30,displayValue:true,fontSize:9,margin:2})}catch(e){}
+});
+setTimeout(()=>window.print(),500);
+<\/script></body></html>`)
+    win.document.close()
+  }
+
   return (
     <div>
       {/* Page Title */}
@@ -672,14 +723,34 @@ export default function InventoryPage() {
               Manage stock levels and item details
             </p>
             {canWrite && (
-              <button
-                onClick={openItemCreate}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
-                style={{ background: 'var(--teal)' }}
-              >
-                <Plus size={18} />
-                Add Item
-              </button>
+              <div className="flex items-center gap-2">
+                <button onClick={() => {
+                  const csv = 'name,department,category,subcategory,branch,unit_cost,selling_price,reward_points_price,quantity,reorder_level\nPRODUCT NAME,OT,Equipment,Fine Motor,VERDANA_STORE,300,1200,,10,3'
+                  const blob = new Blob([csv], { type: 'text/csv' })
+                  const url = URL.createObjectURL(blob)
+                  const a = document.createElement('a'); a.href = url; a.download = 'inventory-import-template.csv'; a.click()
+                  URL.revokeObjectURL(url)
+                }}
+                  className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-medium border"
+                  style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
+                  <Download size={14} /> CSV Template
+                </button>
+                <button onClick={() => setBulkItemModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-medium border"
+                  style={{ borderColor: 'var(--teal)', color: 'var(--teal)', background: 'var(--pale-teal)' }}>
+                  <Upload size={14} /> Import CSV
+                </button>
+                <button onClick={() => printBulkBarcodes()}
+                  className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-medium border"
+                  style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                  <Download size={14} /> Barcodes
+                </button>
+                <button onClick={openItemCreate}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
+                  style={{ background: 'var(--teal)' }}>
+                  <Plus size={18} /> Add Item
+                </button>
+              </div>
             )}
           </div>
 
@@ -973,18 +1044,6 @@ export default function InventoryPage() {
                     )}
                   </div>
 
-                  {/* Exchange Rate (if foreign supplier — set per item at time of purchase) */}
-                  {selectedFormSupplier?.isForeign && (
-                    <div>
-                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
-                        Exchange Rate <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(1 {selectedFormSupplier.currency || 'FX'} = ? PHP — set per purchase)</span>
-                      </label>
-                      <input type="number" step="0.01" min="0" value={fExchangeRate} onChange={(e) => setFExchangeRate(e.target.value)}
-                        placeholder="Enter current exchange rate"
-                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-                    </div>
-                  )}
-
                   {/* Buttons */}
                   <div className="flex gap-3 pt-2">
                     <button type="button" onClick={() => setItemModalOpen(false)}
@@ -997,6 +1056,134 @@ export default function InventoryPage() {
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          )}
+
+          {/* Bulk Item Import Modal */}
+          {bulkItemModalOpen && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-8 overflow-y-auto">
+              <div className="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-xl mb-8 relative">
+                <button onClick={() => { setBulkItemModalOpen(false); setBulkItemStep('upload'); setBulkItemCsv([]); setBulkItemResult(null) }}
+                  className="absolute top-4 right-4 p-1 hover:bg-gray-100 rounded-lg"><X size={20} style={{ color: 'var(--mid-gray)' }} /></button>
+                <h3 className="text-lg font-bold mb-4" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                  Bulk Import Items
+                </h3>
+                {error && <div className="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-600 flex items-center gap-1"><AlertCircle size={14} />{error}</div>}
+
+                {bulkItemStep === 'upload' && (
+                  <div className="space-y-4">
+                    <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>
+                      Upload CSV with columns: <code className="bg-gray-100 px-1 rounded text-xs">name, department, category, subcategory, branch, unit_cost, selling_price, reward_points_price, quantity, reorder_level</code>
+                    </p>
+                    <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>SKU and barcode will be auto-generated from department/category/subcategory.</p>
+                    <input ref={itemFileRef} type="file" accept=".csv" className="hidden" onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (!file) return
+                      const reader = new FileReader()
+                      reader.onload = (ev) => {
+                        const text = ev.target?.result as string
+                        const lines = text.trim().split('\n')
+                        const rows = lines.slice(1).map(line => {
+                          const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''))
+                          return { name: cols[0] || '', department: cols[1] || '', category: cols[2] || '', subcategory: cols[3] || '', branch: cols[4] || 'VERDANA_STORE', unitCost: cols[5] || '', sellingPrice: cols[6] || '', rewardPointsPrice: cols[7] || '', quantity: cols[8] || '', reorderLevel: cols[9] || '' }
+                        }).filter(r => r.name)
+                        if (rows.length === 0) { setError('No valid rows'); return }
+                        setBulkItemCsv(rows); setBulkItemStep('review'); setError('')
+                      }
+                      reader.readAsText(file)
+                    }} />
+                    <button onClick={() => itemFileRef.current?.click()}
+                      className="w-full py-8 rounded-xl border-2 border-dashed text-sm flex flex-col items-center gap-2 hover:bg-gray-50"
+                      style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                      <Upload size={24} /> Click to select CSV file
+                    </button>
+                  </div>
+                )}
+
+                {bulkItemStep === 'review' && (
+                  <div className="space-y-4">
+                    <div className="rounded-xl border overflow-x-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                      <table className="w-full text-xs">
+                        <thead><tr style={{ background: 'var(--off-white)' }}>
+                          {['Name', 'Dept', 'Cat', 'Sub', 'Branch', 'Cost', 'Price', 'Qty'].map(h => (
+                            <th key={h} className="px-2 py-2 text-left font-semibold" style={{ color: 'var(--mid-gray)' }}>{h}</th>
+                          ))}
+                        </tr></thead>
+                        <tbody>
+                          {bulkItemCsv.map((r, idx) => (
+                            <tr key={idx} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                              <td className="px-2 py-1.5 font-medium">{r.name}</td>
+                              <td className="px-2 py-1.5">{r.department}</td>
+                              <td className="px-2 py-1.5">{r.category}</td>
+                              <td className="px-2 py-1.5">{r.subcategory}</td>
+                              <td className="px-2 py-1.5">{r.branch}</td>
+                              <td className="px-2 py-1.5">{r.unitCost}</td>
+                              <td className="px-2 py-1.5">{r.sellingPrice}</td>
+                              <td className="px-2 py-1.5">{r.quantity}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{bulkItemCsv.length} items to import. SKU and barcode will be auto-generated.</p>
+                    <div className="flex gap-2">
+                      <button disabled={bulkItemSubmitting} onClick={async () => {
+                        setBulkItemSubmitting(true); setError('')
+                        try {
+                          const res = await fetch('/api/inventory/bulk', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ items: bulkItemCsv }),
+                          })
+                          const data = await res.json()
+                          if (!res.ok) { setError(data.error || 'Import failed'); setBulkItemSubmitting(false); return }
+                          setBulkItemResult(data); setBulkItemStep('result')
+                          fetchItems(); fetchAllItems()
+                        } catch { setError('Import failed') }
+                        finally { setBulkItemSubmitting(false) }
+                      }}
+                        className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2"
+                        style={{ background: 'var(--teal)' }}>
+                        {bulkItemSubmitting && <Loader2 className="animate-spin" size={14} />} Import {bulkItemCsv.length} Items
+                      </button>
+                      <button onClick={() => { setBulkItemStep('upload'); setBulkItemCsv([]) }}
+                        className="px-4 py-2.5 rounded-xl text-sm font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Back</button>
+                    </div>
+                  </div>
+                )}
+
+                {bulkItemStep === 'result' && bulkItemResult && (
+                  <div className="space-y-4">
+                    <div className="rounded-xl p-4" style={{ background: '#dcfce7' }}>
+                      <p className="text-sm font-semibold" style={{ color: '#166534' }}>{bulkItemResult.success} items imported successfully!</p>
+                      {bulkItemResult.errors > 0 && <p className="text-xs mt-1 text-red-600">{bulkItemResult.errors} errors</p>}
+                    </div>
+                    {bulkItemResult.errorDetails?.length > 0 && (
+                      <div className="rounded-xl p-3 text-xs space-y-1" style={{ background: '#fef2f2' }}>
+                        {bulkItemResult.errorDetails.map((e, i) => <p key={i} className="text-red-600">{e}</p>)}
+                      </div>
+                    )}
+                    <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+                      <table className="w-full text-xs">
+                        <thead><tr style={{ background: 'var(--off-white)' }}>
+                          {['Name', 'SKU', 'Barcode'].map(h => <th key={h} className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--mid-gray)' }}>{h}</th>)}
+                        </tr></thead>
+                        <tbody>
+                          {(bulkItemResult.items || []).map((r, idx) => (
+                            <tr key={idx} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                              <td className="px-3 py-2">{r.name}</td>
+                              <td className="px-3 py-2 font-mono">{r.sku}</td>
+                              <td className="px-3 py-2 font-mono">{r.barcode}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <button onClick={() => { setBulkItemModalOpen(false); setBulkItemStep('upload'); setBulkItemCsv([]); setBulkItemResult(null) }}
+                      className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>Done</button>
+                  </div>
+                )}
               </div>
             </div>
           )}
