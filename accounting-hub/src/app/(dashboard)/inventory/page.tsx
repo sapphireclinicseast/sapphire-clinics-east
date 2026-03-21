@@ -94,6 +94,22 @@ const BRANCH_OPTIONS = [
 
 const BRANCH_LABELS: Record<string, string> = Object.fromEntries(BRANCH_OPTIONS.map((b) => [b.value, b.label]))
 
+const CURRENCIES = [
+  { value: 'CNY', label: 'CNY — Chinese Yuan' },
+  { value: 'USD', label: 'USD — US Dollar' },
+  { value: 'EUR', label: 'EUR — Euro' },
+  { value: 'JPY', label: 'JPY — Japanese Yen' },
+  { value: 'KRW', label: 'KRW — Korean Won' },
+  { value: 'SGD', label: 'SGD — Singapore Dollar' },
+  { value: 'HKD', label: 'HKD — Hong Kong Dollar' },
+  { value: 'GBP', label: 'GBP — British Pound' },
+  { value: 'AUD', label: 'AUD — Australian Dollar' },
+  { value: 'THB', label: 'THB — Thai Baht' },
+  { value: 'TWD', label: 'TWD — Taiwan Dollar' },
+  { value: 'MYR', label: 'MYR — Malaysian Ringgit' },
+  { value: 'INR', label: 'INR — Indian Rupee' },
+]
+
 const TABS = ['Inventory', 'Suppliers', 'Adjustments', 'Consignments'] as const
 type Tab = (typeof TABS)[number]
 
@@ -423,7 +439,6 @@ export default function InventoryPage() {
         body: JSON.stringify({
           supplierName: inlineSName, email: inlineSEmail || null, contactNumber: inlineSContact || null,
           isForeign: inlineSForeign, currency: inlineSForeign ? inlineSCurrency : 'PHP',
-          defaultExchangeRate: inlineSForeign && inlineSRate ? parseFloat(inlineSRate) : null,
         }),
       })
       const data = await res.json()
@@ -499,7 +514,6 @@ export default function InventoryPage() {
     const body: Record<string, unknown> = {
       supplierName: sName, email: sEmail || null, contactNumber: sContact || null,
       isForeign: sForeign, currency: sForeign ? sCurrency : 'PHP',
-      defaultExchangeRate: sForeign && sRate ? parseFloat(sRate) : null,
       address: sAddress || null, notes: sNotes || null,
     }
     if (editingSupplier) body.id = editingSupplier.id
@@ -928,11 +942,12 @@ export default function InventoryPage() {
                           Foreign Supplier
                         </label>
                         {inlineSForeign && (
-                          <div className="grid grid-cols-2 gap-2">
-                            <input type="text" placeholder="Currency (e.g. USD)" value={inlineSCurrency} onChange={(e) => setInlineSCurrency(e.target.value)}
-                              className="px-3 py-2 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-                            <input type="number" step="0.01" placeholder="Exchange Rate" value={inlineSRate} onChange={(e) => setInlineSRate(e.target.value)}
-                              className="px-3 py-2 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                          <div>
+                            <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Currency</label>
+                            <select value={inlineSCurrency} onChange={(e) => setInlineSCurrency(e.target.value)}
+                              className="w-full px-3 py-2 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                              {CURRENCIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                            </select>
                           </div>
                         )}
                         <button type="button" onClick={handleInlineSupplierSave} disabled={saving || !inlineSName.trim()}
@@ -944,14 +959,14 @@ export default function InventoryPage() {
                     )}
                   </div>
 
-                  {/* Exchange Rate (if foreign supplier) */}
+                  {/* Exchange Rate (if foreign supplier — set per item at time of purchase) */}
                   {selectedFormSupplier?.isForeign && (
                     <div>
                       <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
-                        Exchange Rate <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(1 {selectedFormSupplier.currency || 'FX'} = ? PHP)</span>
+                        Exchange Rate <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(1 {selectedFormSupplier.currency || 'FX'} = ? PHP — set per purchase)</span>
                       </label>
                       <input type="number" step="0.01" min="0" value={fExchangeRate} onChange={(e) => setFExchangeRate(e.target.value)}
-                        placeholder={selectedFormSupplier.defaultExchangeRate ? String(selectedFormSupplier.defaultExchangeRate) : ''}
+                        placeholder="Enter current exchange rate"
                         className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                     </div>
                   )}
@@ -1001,7 +1016,6 @@ export default function InventoryPage() {
                     <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Contact</th>
                     <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Foreign?</th>
                     <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Currency</th>
-                    <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Exchange Rate</th>
                     {canWrite && <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>}
                   </tr>
                 </thead>
@@ -1026,7 +1040,6 @@ export default function InventoryPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{s.currency || '—'}</td>
-                      <td className="px-4 py-3 text-right text-xs" style={{ color: 'var(--mid-gray)' }}>{s.defaultExchangeRate != null ? Number(s.defaultExchangeRate).toFixed(2) : '—'}</td>
                       {canWrite && (
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
@@ -1096,17 +1109,12 @@ export default function InventoryPage() {
                     Foreign Supplier
                   </label>
                   {sForeign && (
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Currency</label>
-                        <input type="text" value={sCurrency} onChange={(e) => setSCurrency(e.target.value)}
-                          className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Default Exchange Rate</label>
-                        <input type="number" step="0.01" min="0" value={sRate} onChange={(e) => setSRate(e.target.value)}
-                          className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-                      </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Currency</label>
+                      <select value={sCurrency} onChange={(e) => setSCurrency(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                        {CURRENCIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                      </select>
                     </div>
                   )}
                   <div>
