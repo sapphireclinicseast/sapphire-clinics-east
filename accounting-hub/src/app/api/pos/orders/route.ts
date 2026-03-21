@@ -28,8 +28,8 @@ export async function GET(req: Request) {
 
   if (dateFrom || dateTo) {
     where.transactionDate = {}
-    if (dateFrom) where.transactionDate.gte = new Date(dateFrom)
-    if (dateTo) where.transactionDate.lte = new Date(`${dateTo}T23:59:59.999Z`)
+    if (dateFrom) where.transactionDate.gte = new Date(`${dateFrom}T00:00:00+08:00`)
+    if (dateTo) where.transactionDate.lte = new Date(`${dateTo}T23:59:59.999+08:00`)
   }
 
   try {
@@ -107,7 +107,7 @@ export async function POST(req: Request) {
         patientId: patientId || null,
         patientName: patientName || null,
         clinicianName: clinicianName || null,
-        transactionDate: new Date(transactionDate),
+        transactionDate: new Date(`${transactionDate}T08:00:00+08:00`),
         subtotal,
         discountType,
         discountAmount: Number(discountAmount),

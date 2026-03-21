@@ -255,7 +255,7 @@ function printThermalReceipt(order: {
 <div style="text-align:center;font-size:9px">+63 917 118 9289 | (02) 5310 4991</div>
 <div style="text-align:center;font-size:9px;margin-bottom:6px">east.sandboxclinic@gmail.com</div>
 <div style="font-size:10px">Receptionist: ${order.createdBy?.name || '\u2014'}</div>
-<div style="font-size:10px">Date: ${order.transactionDate}</div>
+<div style="font-size:10px">Date: ${formatDate(order.transactionDate)}</div>
 <div style="font-size:10px">Order No: ${order.orderNumber}</div>
 <div style="font-size:10px">Payment Method: ${paymentLabel}</div>
 <div style="font-size:10px">Patient Name: ${order.patientName || '\u2014'}</div>
@@ -3013,11 +3013,12 @@ function SalesSummarySection({ branch, canSelectBranch }: { branch: string; canS
     const paymentLines = Object.entries(paymentBreakdown).map(([k, v]) => `   ${k.replace(/_/g, ' ')}: ${fmt(v.total)}`).join('\n') || '   None'
     const deptLines = DEPTS.map(d => `${d}: ${fmt(deptBreakdown[d] || 0)}`).join('\n')
 
-    const content = `<pre style="font-family:'Courier New',monospace;font-size:11px;border:1px solid #000;padding:20px;max-width:600px;margin:auto;line-height:1.6">
-                    ${branchLabel}
-                   SALES FOR THE DAY
-
-Date: ${dateFrom}${dateFrom !== dateTo ? ' to ' + dateTo : ''}
+    const content = `<div style="font-family:'Courier New',monospace;font-size:11px;border:1px solid #000;padding:20px;max-width:600px;margin:auto;line-height:1.6;position:relative">
+<img src="/scei-logo-full.png" style="position:absolute;top:16px;right:16px;width:100px;height:auto" onerror="this.style.display='none'" />
+<div style="text-align:center;font-size:11px;margin-bottom:4px">${branchLabel}</div>
+<div style="text-align:center;font-size:11px;margin-bottom:12px">SALES FOR THE DAY</div>
+<pre style="font-family:inherit;font-size:inherit;margin:0;line-height:1.6;white-space:pre-wrap">
+Date: ${formatDate(dateFrom)}${dateFrom !== dateTo ? ' to ' + formatDate(dateTo) : ''}
 
 Total Sales (Gross): ${fmt(grossSales)}
 
@@ -3047,7 +3048,7 @@ Signature:  ___________________________
 
 Validated by: _________________________
 Signature:    _________________________
-</pre>`
+</pre></div>`
 
     win.document.write(`<html><head><title>Daily Sales Report - ${dateFrom}</title>
 <style>@page{size:letter;margin:20mm}body{margin:0;padding:20px}</style>
