@@ -59,6 +59,7 @@ export async function POST(req: Request) {
       }
 
       try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const item = await prisma.inventoryItem.create({
           data: {
             name: row.name.trim().toUpperCase(),
@@ -66,8 +67,8 @@ export async function POST(req: Request) {
             skuDepartment: row.department,
             skuCategory: row.category,
             skuSubcategory: row.subcategory,
-            barcode: sku, // Use SKU as barcode
-            branch: row.branch,
+            barcode: sku,
+            branch: row.branch as any,
             accountSubType: row.accountSubType || null,
             unitCost: row.unitCost ? parseFloat(row.unitCost) : 0,
             sellingPrice: row.sellingPrice ? parseFloat(row.sellingPrice) : null,
@@ -76,7 +77,7 @@ export async function POST(req: Request) {
             reorderLevel: row.reorderLevel ? parseInt(row.reorderLevel) : null,
             supplierId: row.supplierId || null,
             createdById: session.user.id,
-          },
+          } as any,
         })
 
         results.push({
