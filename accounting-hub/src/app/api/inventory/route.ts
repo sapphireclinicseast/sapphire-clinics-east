@@ -37,7 +37,13 @@ export async function GET(req: Request) {
       select: { id: true, name: true, sku: true, branch: true, quantity: true, sellingPrice: true, unitCost: true, barcode: true },
       orderBy: { sku: 'asc' },
     })
-    return NextResponse.json(items)
+    // Ensure Decimal fields are serialized as numbers
+    const serialized = items.map(item => ({
+      ...item,
+      sellingPrice: item.sellingPrice ? Number(item.sellingPrice) : 0,
+      unitCost: item.unitCost ? Number(item.unitCost) : 0,
+    }))
+    return NextResponse.json(serialized)
   }
 
   const [items, total] = await Promise.all([

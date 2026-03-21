@@ -224,6 +224,63 @@ function today(): string {
   return new Date().toISOString().split('T')[0]
 }
 
+function printThermalReceipt(order: {
+  orderNumber: string | number
+  transactionDate: string
+  patientName?: string | null
+  clinicianName?: string | null
+  items: { name: string; quantity: number; unitPrice: string | number; lineTotal: string | number }[]
+  payments: { method: string; amount: string | number }[]
+  subtotal: string | number
+  discountAmount: string | number
+  discountLabel?: string | null
+  netAmount: string | number
+  revenueType?: string
+  branch?: string
+  createdBy?: { name: string }
+}) {
+  const fmt = (v: string | number) => `₱${Number(v).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const totalPaid = order.payments.reduce((s, p) => s + Number(p.amount), 0)
+  const change = totalPaid - Number(order.netAmount)
+  const branchLabel = order.branch === 'SANDBOX_EAST' ? 'Sandbox East' : order.branch === 'SANDBOX_GREENHILLS' ? 'Sandbox Greenhills' : order.branch || ''
+
+  const lines = [
+    '<div style="font-family:monospace;font-size:11px;width:280px;padding:8px;line-height:1.4">',
+    '<div style="text-align:center;font-weight:bold;font-size:13px">SAPPHIRE CLINICS</div>',
+    `<div style="text-align:center;font-size:10px">${branchLabel}</div>`,
+    '<div style="text-align:center;font-size:9px;margin-bottom:6px">Robinsons MetroEast, Brgy. Dela Paz, Pasig City</div>',
+    '<hr style="border:none;border-top:1px dashed #000">',
+    `<div style="display:flex;justify-content:space-between"><span>Order #</span><strong>${order.orderNumber}</strong></div>`,
+    `<div style="display:flex;justify-content:space-between"><span>Date</span><span>${order.transactionDate}</span></div>`,
+    order.patientName ? `<div style="display:flex;justify-content:space-between"><span>Patient</span><span>${order.patientName}</span></div>` : '',
+    order.clinicianName ? `<div style="display:flex;justify-content:space-between"><span>Clinician</span><span>${order.clinicianName}</span></div>` : '',
+    '<hr style="border:none;border-top:1px dashed #000;margin:4px 0">',
+    ...order.items.map(it =>
+      `<div style="margin:2px 0"><div>${it.name}</div><div style="display:flex;justify-content:space-between;font-size:10px;padding-left:10px"><span>${it.quantity} x ${fmt(it.unitPrice)}</span><span>${fmt(it.lineTotal)}</span></div></div>`
+    ),
+    '<hr style="border:none;border-top:1px dashed #000;margin:4px 0">',
+    `<div style="display:flex;justify-content:space-between"><span>Subtotal</span><span>${fmt(order.subtotal)}</span></div>`,
+    Number(order.discountAmount) > 0 ? `<div style="display:flex;justify-content:space-between"><span>Discount${order.discountLabel ? ` (${order.discountLabel})` : ''}</span><span>-${fmt(order.discountAmount)}</span></div>` : '',
+    `<div style="display:flex;justify-content:space-between;font-weight:bold;font-size:13px"><span>NET</span><span>${fmt(order.netAmount)}</span></div>`,
+    '<hr style="border:none;border-top:1px dashed #000;margin:4px 0">',
+    ...order.payments.map(p => `<div style="display:flex;justify-content:space-between;font-size:10px"><span>${p.method}</span><span>${fmt(p.amount)}</span></div>`),
+    `<div style="display:flex;justify-content:space-between"><span>Total Paid</span><span>${fmt(totalPaid)}</span></div>`,
+    change > 0 ? `<div style="display:flex;justify-content:space-between;font-weight:bold"><span>Change</span><span>${fmt(change)}</span></div>` : '',
+    order.revenueType === 'UNEARNED' ? '<div style="text-align:center;margin-top:4px;font-size:10px;font-style:italic">** UNEARNED REVENUE **</div>' : '',
+    '<hr style="border:none;border-top:1px dashed #000;margin:6px 0">',
+    order.createdBy ? `<div style="font-size:9px">Cashier: ${order.createdBy.name}</div>` : '',
+    `<div style="font-size:9px">Printed: ${new Date().toLocaleString('en-PH')}</div>`,
+    '<div style="text-align:center;margin-top:8px;font-size:10px">Thank you for choosing</div>',
+    '<div style="text-align:center;font-size:10px;font-weight:bold">Sapphire Clinics East Inc.</div>',
+    '</div>',
+  ].filter(Boolean)
+
+  const win = window.open('', '_blank', 'width=320,height=600')
+  if (!win) return
+  win.document.write(`<html><head><title>Receipt</title><style>@page{size:80mm auto;margin:2mm}@media print{body{margin:0}}</style></head><body style="margin:0;padding:0">${lines.join('')}<script>setTimeout(()=>{window.print();window.close()},300)<\/script></body></html>`)
+  win.document.close()
+}
+
 function normalize(data: unknown): unknown[] {
   if (Array.isArray(data)) return data
   if (data && typeof data === 'object') {
@@ -1521,6 +1578,11 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
+                        {(o.status === 'COMPLETED' || o.status === 'REOPENED') && (
+                          <button onClick={() => printThermalReceipt(o)} className="p-1.5 rounded-lg hover:bg-gray-100" title="Print Receipt">
+                            <Printer size={13} style={{ color: 'var(--teal)' }} />
+                          </button>
+                        )}
                         {o.status === 'COMPLETED' && (
                           <>
                             <button onClick={() => handleAction(o.id, 'reopen')} className="p-1.5 rounded-lg hover:bg-amber-50" title="Reopen">
