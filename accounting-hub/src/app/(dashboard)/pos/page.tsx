@@ -268,7 +268,7 @@ export default function POSPage() {
   // ── Top-level tab: Services | Products | Sales Summary
   const [mainTab, setMainTab] = useState<'services' | 'products' | 'sales'>('services')
   // ── Services sub-tab
-  const [serviceTab, setServiceTab] = useState<'cashier' | 'orders' | 'wallet'>('cashier')
+  const [serviceTab, setServiceTab] = useState<'cashier' | 'orders' | 'wallet' | 'discounts'>('cashier')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -349,14 +349,15 @@ function ServicesSection({
 }: {
   branch: string
   canSelectBranch: boolean
-  serviceTab: 'cashier' | 'orders' | 'wallet'
-  setServiceTab: (t: 'cashier' | 'orders' | 'wallet') => void
+  serviceTab: 'cashier' | 'orders' | 'wallet' | 'discounts'
+  setServiceTab: (t: 'cashier' | 'orders' | 'wallet' | 'discounts') => void
   session: { user?: Record<string, unknown> } | null
 }) {
   const subTabs = [
     { key: 'cashier' as const, label: 'Cashier' },
     { key: 'orders' as const, label: 'Orders' },
     { key: 'wallet' as const, label: 'Digital Wallet' },
+    { key: 'discounts' as const, label: 'Discount Settings' },
   ]
 
   return (
@@ -386,6 +387,9 @@ function ServicesSection({
       )}
       {serviceTab === 'wallet' && (
         <WalletPanel session={session} />
+      )}
+      {serviceTab === 'discounts' && (
+        <DiscountSettingsPanel />
       )}
     </div>
   )
@@ -589,6 +593,9 @@ function OrderFormModal({
   const [isAdvancePayment, setIsAdvancePayment] = useState(false)
   const [walletPopup, setWalletPopup] = useState<{ show: boolean; wallet?: DigitalWallet; walletType?: string }>({ show: false })
   const [patientId, setPatientId] = useState(prefill?.patientId as string || '')
+  const [activeWallet, setActiveWallet] = useState<DigitalWallet | null>(null) // wallet being used for payment
+  const [walletDiscountApplied, setWalletDiscountApplied] = useState(false)
+  const [walletDiscountRules, setWalletDiscountRules] = useState<WalletDiscountRuleItem[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const patientTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -686,6 +693,24 @@ function OrderFormModal({
       pwdNote = 'Discount on clinic fee only (doctor fee excluded)'
     }
     discountAmount = subtotal * 0.2
+  } else if (walletDiscountApplied && walletDiscountRules.length > 0 && customDiscountId) {
+    // Apply per-service wallet discount rules
+    discountType = 'CUSTOM'
+    const ds = discountSettings.find(d => d.id === customDiscountId)
+    discountLabel = ds?.name || 'Wallet Discount'
+    discountAmount = items.reduce((total, it) => {
+      const matchByService = walletDiscountRules.find(r => r.serviceId && r.serviceId === it.serviceId)
+      const svc = services.find(s => s.id === it.serviceId)
+      const matchByDept = walletDiscountRules.find(r => r.department && svc?.department === r.department)
+      const rule = matchByService || matchByDept
+      if (rule) {
+        return total + (it.lineTotal * toNum(rule.discountPercent) / 100)
+      }
+      if (ds) {
+        return total + (ds.type === 'PERCENTAGE' ? it.lineTotal * (toNum(ds.value) / 100) : toNum(ds.value) / items.length)
+      }
+      return total
+    }, 0)
   } else if (customDiscountId) {
     const ds = discountSettings.find(d => d.id === customDiscountId)
     if (ds) {
@@ -698,6 +723,21 @@ function OrderFormModal({
   const netAmount = Math.max(0, subtotal - discountAmount)
   const totalPayments = payments.reduce((s, p) => s + toNum(p.amount), 0)
   const changeDue = totalPayments - netAmount
+  const applyWalletDiscount = async (wallet: DigitalWallet) => {
+    setActiveWallet(wallet)
+    if (!wallet.walletType) return
+    try {
+      const r = await fetch(`/api/pos/discount-settings?walletType=${wallet.walletType}`)
+      const d = await r.json()
+      const settings = normalize(d) as DiscountSettingFull[]
+      if (settings.length > 0 && settings[0].rules && settings[0].rules.length > 0) {
+        setWalletDiscountRules(settings[0].rules)
+        setWalletDiscountApplied(true)
+        setCustomDiscountId(settings[0].id)
+        setPwdDiscount(false)
+      }
+    } catch { /* no wallet discounts available */ }
+  }
 
   // Wallet barcode scan
   const scanBarcode = async () => {
@@ -710,6 +750,8 @@ function OrderFormModal({
       setPayments(prev => [...prev, { method: 'WALLET', amount: 0, walletId: d.id, reference: d.barcode }])
       setShowWalletPay(false)
       setWalletBarcode('')
+      // Auto-apply wallet discount
+      applyWalletDiscount(d)
     } catch { setError('Failed to scan barcode') }
   }
 
@@ -833,6 +875,25 @@ function OrderFormModal({
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Failed to create order'); setSubmitting(false); return }
+
+      // Deduct wallet balance for wallet payments (VIP/Prepaid usage)
+      const walletPayments = payments.filter(p => p.walletId && toNum(p.amount) > 0)
+      for (const wp of walletPayments) {
+        try {
+          await fetch(`/api/pos/wallets/${wp.walletId}/deduct`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              amount: toNum(wp.amount),
+              description: `Payment for order ${data.orderNumber}`,
+              orderId: data.id,
+            }),
+          })
+        } catch (e) {
+          console.error('Wallet deduction error:', e)
+        }
+      }
+
       onSuccess()
     } catch {
       setError('Failed to create order')
@@ -1142,10 +1203,13 @@ function OrderFormModal({
                       <button key={w.id} onClick={() => {
                         setPayments(prev => [...prev, { method: 'WALLET', amount: 0, walletId: w.id, reference: w.barcode }])
                         setShowWalletPay(false)
+                        applyWalletDiscount(w)
                       }}
                         className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex justify-between">
                         <span>{w.patientName}</span>
-                        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{w.barcode}</span>
+                        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                          {WALLET_TYPE_LABELS[w.walletType] || ''} · {w.barcode} · Bal: {formatCurrency(toNum(w.balance))}
+                        </span>
                       </button>
                     ))}
                   </div>
@@ -1289,6 +1353,13 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
   const [statusFilter, setStatusFilter] = useState('')
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(false)
+  const [editOrder, setEditOrder] = useState<Order | null>(null)
+  const [editItems, setEditItems] = useState<{ name: string; quantity: number; unitPrice: number; lineTotal: number; serviceId?: string }[]>([])
+  const [editPayments, setEditPayments] = useState<{ method: string; amount: number }[]>([])
+  const [editPatient, setEditPatient] = useState('')
+  const [editClinician, setEditClinician] = useState('')
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState('')
 
   const fetchOrders = useCallback(async () => {
     setLoading(true)
@@ -1329,6 +1400,61 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
       })
     }
     fetchOrders()
+  }
+
+  const openEditOrder = (o: Order) => {
+    setEditOrder(o)
+    setEditPatient(o.patientName || '')
+    setEditClinician(o.clinicianName || '')
+    setEditItems(o.items.map(it => ({
+      name: it.name,
+      quantity: it.quantity,
+      unitPrice: toNum(it.unitPrice),
+      lineTotal: toNum(it.lineTotal),
+      serviceId: it.serviceId,
+    })))
+    setEditPayments(o.payments.map(p => ({ method: p.method, amount: toNum(p.amount) })))
+    setEditError('')
+  }
+
+  const editSubtotal = editItems.reduce((s, it) => s + it.lineTotal, 0)
+  const editTotalPayments = editPayments.reduce((s, p) => s + p.amount, 0)
+
+  const saveEditOrder = async () => {
+    if (!editOrder) return
+    setEditSaving(true)
+    setEditError('')
+    try {
+      const body = {
+        action: 'edit',
+        patientName: editPatient || null,
+        clinicianName: editClinician || null,
+        items: editItems.map(it => ({
+          serviceId: it.serviceId || null,
+          name: it.name,
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+          lineTotal: it.lineTotal,
+        })),
+        payments: editPayments.filter(p => p.amount > 0).map(p => ({
+          method: p.method,
+          amount: p.amount,
+        })),
+      }
+      const res = await fetch(`/api/pos/orders/${editOrder.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (!res.ok) { setEditError(data.error || 'Failed to save'); setEditSaving(false); return }
+      setEditOrder(null)
+      fetchOrders()
+    } catch {
+      setEditError('Failed to save changes')
+    } finally {
+      setEditSaving(false)
+    }
   }
 
   return (
@@ -1406,9 +1532,14 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                           </>
                         )}
                         {o.status === 'REOPENED' && (
-                          <button onClick={() => handleAction(o.id, 'void')} className="p-1.5 rounded-lg hover:bg-red-50" title="Void">
-                            <Ban size={13} className="text-red-500" />
-                          </button>
+                          <>
+                            <button onClick={() => openEditOrder(o)} className="p-1.5 rounded-lg hover:bg-blue-50" title="Edit">
+                              <FileText size={13} className="text-blue-600" />
+                            </button>
+                            <button onClick={() => handleAction(o.id, 'void')} className="p-1.5 rounded-lg hover:bg-red-50" title="Void">
+                              <Ban size={13} className="text-red-500" />
+                            </button>
+                          </>
                         )}
                       </div>
                     </td>
@@ -1419,6 +1550,116 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
           </table>
         )}
       </div>
+
+      {/* Edit Reopened Order Modal */}
+      {editOrder && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-8 overflow-y-auto">
+          <div className="bg-white rounded-2xl p-6 shadow-xl w-full max-w-2xl mb-8 relative">
+            <button onClick={() => setEditOrder(null)} className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-gray-100">
+              <X size={18} style={{ color: 'var(--mid-gray)' }} />
+            </button>
+            <h3 className="text-lg font-bold mb-1" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+              Edit Order — {editOrder.orderNumber}
+            </h3>
+            <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
+              <span className="px-2 py-0.5 rounded-full font-semibold" style={{ background: '#fef3c7', color: '#92400e' }}>REOPENED</span>
+              &nbsp; {formatDate(editOrder.transactionDate)}
+            </p>
+
+            {editError && <p className="text-xs text-red-600 mb-3 flex items-center gap-1"><AlertCircle size={12} />{editError}</p>}
+
+            <div className="space-y-4">
+              {/* Patient & Clinician */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Patient Name</label>
+                  <input value={editPatient} onChange={e => setEditPatient(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Clinician Name</label>
+                  <input value={editClinician} onChange={e => setEditClinician(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                </div>
+              </div>
+
+              {/* Items */}
+              <div>
+                <h4 className="text-xs font-semibold mb-2" style={{ color: 'var(--mid-gray)' }}>LINE ITEMS</h4>
+                <div className="space-y-2">
+                  {editItems.map((it, idx) => (
+                    <div key={idx} className="flex items-center gap-2 p-2 rounded-xl" style={{ background: 'var(--off-white)' }}>
+                      <input value={it.name} onChange={e => setEditItems(prev => prev.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))}
+                        className="flex-1 px-2 py-1.5 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      <input type="number" min={1} value={it.quantity}
+                        onChange={e => {
+                          const qty = parseInt(e.target.value) || 1
+                          setEditItems(prev => prev.map((x, i) => i === idx ? { ...x, quantity: qty, lineTotal: x.unitPrice * qty } : x))
+                        }}
+                        className="w-16 px-2 py-1.5 rounded-lg border text-sm text-center outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      <input type="number" min={0} step="0.01" value={it.unitPrice}
+                        onChange={e => {
+                          const price = parseFloat(e.target.value) || 0
+                          setEditItems(prev => prev.map((x, i) => i === idx ? { ...x, unitPrice: price, lineTotal: price * x.quantity } : x))
+                        }}
+                        className="w-28 px-2 py-1.5 rounded-lg border text-sm text-right outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      <span className="text-sm font-medium w-24 text-right" style={{ color: 'var(--charcoal)' }}>{formatCurrency(it.lineTotal)}</span>
+                      {editItems.length > 1 && (
+                        <button onClick={() => setEditItems(prev => prev.filter((_, i) => i !== idx))} className="p-1 rounded hover:bg-red-50">
+                          <Trash2 size={12} className="text-red-500" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <p className="text-right text-sm font-semibold mt-2" style={{ color: 'var(--charcoal)' }}>Subtotal: {formatCurrency(editSubtotal)}</p>
+              </div>
+
+              {/* Payments */}
+              <div>
+                <h4 className="text-xs font-semibold mb-2" style={{ color: 'var(--mid-gray)' }}>PAYMENTS</h4>
+                <div className="space-y-2">
+                  {editPayments.map((p, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <select value={p.method} onChange={e => setEditPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, method: e.target.value } : pp))}
+                        className="flex-1 px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                        {PAYMENT_METHODS_SERVICE.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                      </select>
+                      <input type="number" min={0} step="0.01" value={p.amount || ''}
+                        onChange={e => setEditPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, amount: parseFloat(e.target.value) || 0 } : pp))}
+                        className="w-32 px-3 py-2 rounded-xl border text-sm text-right outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      {editPayments.length > 1 && (
+                        <button onClick={() => setEditPayments(prev => prev.filter((_, i) => i !== idx))} className="p-1 rounded hover:bg-red-50">
+                          <X size={14} className="text-red-500" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button onClick={() => setEditPayments(prev => [...prev, { method: 'CASH', amount: 0 }])}
+                    className="text-xs font-medium" style={{ color: 'var(--teal)' }}>+ Add Payment</button>
+                </div>
+                <p className="text-right text-sm mt-2" style={{ color: editTotalPayments >= editSubtotal ? 'var(--deep-teal)' : '#991b1b' }}>
+                  Total Payments: {formatCurrency(editTotalPayments)}
+                </p>
+              </div>
+
+              {/* Save */}
+              <div className="flex gap-2 pt-2">
+                <button onClick={saveEditOrder} disabled={editSaving || editItems.length === 0}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2"
+                  style={{ background: 'var(--teal)' }}>
+                  {editSaving && <Loader2 className="animate-spin" size={14} />}
+                  Save Changes
+                </button>
+                <button onClick={() => setEditOrder(null)}
+                  className="px-6 py-2.5 rounded-xl text-sm font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1775,6 +2016,339 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                   </table>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════
+   DISCOUNT SETTINGS PANEL
+   ══════════════════════════════════════════════════════════════ */
+
+interface WalletDiscountRuleItem {
+  serviceId?: string | null
+  department?: string | null
+  discountPercent: number
+  service?: { name: string } | null
+}
+
+interface DiscountSettingFull {
+  id: string
+  name: string
+  type: string
+  value: string | number
+  branch?: string | null
+  walletType?: string | null
+  isActive?: boolean
+  rules?: WalletDiscountRuleItem[]
+  [key: string]: unknown
+}
+
+function DiscountSettingsPanel() {
+  const [settings, setSettings] = useState<DiscountSettingFull[]>([])
+  const [services, setServices] = useState<ServiceItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [form, setForm] = useState({
+    name: '', type: 'PERCENTAGE' as string, value: 0, branch: '', walletType: '',
+  })
+  const [rules, setRules] = useState<{ serviceId: string; department: string; discountPercent: number }[]>([])
+  const [error, setError] = useState('')
+
+  const fetchData = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [dsRes, svcRes] = await Promise.all([
+        fetch('/api/pos/discount-settings'),
+        fetch('/api/services?all=true'),
+      ])
+      const dsData = await dsRes.json()
+      const svcData = await svcRes.json()
+      setSettings(normalize(dsData) as DiscountSettingFull[])
+      setServices(normalize(svcData) as ServiceItem[])
+    } catch {
+      setSettings([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { fetchData() }, [fetchData])
+
+  const DEPARTMENTS = ['OT', 'SLP', 'PT', 'SPED', 'PSYCHOLOGY', 'MD']
+
+  const openCreate = () => {
+    setEditingId(null)
+    setForm({ name: '', type: 'PERCENTAGE', value: 0, branch: '', walletType: '' })
+    setRules([])
+    setShowForm(true)
+    setError('')
+  }
+
+  const openEdit = (ds: DiscountSettingFull) => {
+    setEditingId(ds.id)
+    setForm({
+      name: ds.name,
+      type: ds.type,
+      value: toNum(ds.value),
+      branch: ds.branch || '',
+      walletType: ds.walletType || '',
+    })
+    setRules((ds.rules || []).map(r => ({
+      serviceId: r.serviceId || '',
+      department: r.department || '',
+      discountPercent: toNum(r.discountPercent),
+    })))
+    setShowForm(true)
+    setError('')
+  }
+
+  const saveDiscount = async () => {
+    if (!form.name.trim()) { setError('Name is required'); return }
+    setError('')
+    try {
+      const body = {
+        ...form,
+        walletType: form.walletType || null,
+        branch: form.branch || null,
+        rules: rules.filter(r => r.discountPercent > 0 && (r.serviceId || r.department)),
+      }
+
+      let res: Response
+      if (editingId) {
+        res = await fetch('/api/pos/discount-settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: editingId, ...body }),
+        })
+      } else {
+        res = await fetch('/api/pos/discount-settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+      }
+      if (res.ok) {
+        setShowForm(false)
+        fetchData()
+      } else {
+        const d = await res.json()
+        setError(d.error || 'Failed to save')
+      }
+    } catch {
+      setError('Failed to save')
+    }
+  }
+
+  const deleteDiscount = async (id: string) => {
+    if (!window.confirm('Remove this discount setting?')) return
+    await fetch('/api/pos/discount-settings', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    fetchData()
+  }
+
+  const addRule = () => {
+    setRules(prev => [...prev, { serviceId: '', department: '', discountPercent: 0 }])
+  }
+
+  const walletSettings = settings.filter(s => s.walletType)
+  const generalSettings = settings.filter(s => !s.walletType)
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Discount Settings</h3>
+        <button onClick={openCreate} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium text-white" style={{ background: 'var(--teal)' }}>
+          <Plus size={16} /> New Discount
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-12"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} /></div>
+      ) : (
+        <>
+          {/* General Discounts */}
+          <div className="rounded-2xl border bg-white p-4 space-y-3" style={{ borderColor: 'var(--light-gray)' }}>
+            <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>General Discounts</h4>
+            {generalSettings.length === 0 ? (
+              <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>No general discounts configured.</p>
+            ) : generalSettings.map(ds => (
+              <div key={ds.id} className="flex items-center justify-between p-3 rounded-xl" style={{ background: 'var(--off-white)' }}>
+                <div>
+                  <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>{ds.name}</p>
+                  <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                    {ds.type === 'PERCENTAGE' ? `${toNum(ds.value)}%` : formatCurrency(toNum(ds.value))} off
+                    {ds.branch ? ` · ${ds.branch}` : ''}
+                  </p>
+                </div>
+                <div className="flex gap-1">
+                  <button onClick={() => openEdit(ds)} className="p-1.5 rounded-lg hover:bg-blue-50"><FileText size={13} className="text-blue-600" /></button>
+                  <button onClick={() => deleteDiscount(ds.id)} className="p-1.5 rounded-lg hover:bg-red-50"><Trash2 size={13} className="text-red-500" /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Wallet-Linked Discounts (VIP, Prepaid, etc.) */}
+          <div className="rounded-2xl border bg-white p-4 space-y-3" style={{ borderColor: 'var(--light-gray)' }}>
+            <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>
+              Wallet-Linked Discounts (VIP / Prepaid Card / Package)
+            </h4>
+            {walletSettings.length === 0 ? (
+              <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>No wallet-linked discounts. Create one to auto-apply discounts when a VIP/Prepaid card is used at checkout.</p>
+            ) : walletSettings.map(ds => {
+              const typeBadge = WALLET_TYPE_COLORS[ds.walletType || ''] || { bg: '#f3f4f6', color: '#374151' }
+              return (
+                <div key={ds.id} className="p-3 rounded-xl border space-y-2" style={{ borderColor: 'var(--light-gray)' }}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-1 rounded-full text-xs font-semibold" style={{ background: typeBadge.bg, color: typeBadge.color }}>
+                        {WALLET_TYPE_LABELS[ds.walletType || ''] || ds.walletType}
+                      </span>
+                      <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>{ds.name}</p>
+                    </div>
+                    <div className="flex gap-1">
+                      <button onClick={() => openEdit(ds)} className="p-1.5 rounded-lg hover:bg-blue-50"><FileText size={13} className="text-blue-600" /></button>
+                      <button onClick={() => deleteDiscount(ds.id)} className="p-1.5 rounded-lg hover:bg-red-50"><Trash2 size={13} className="text-red-500" /></button>
+                    </div>
+                  </div>
+                  {(ds.rules || []).length > 0 && (
+                    <div className="rounded-lg overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr style={{ background: 'var(--off-white)' }}>
+                            <th className="px-3 py-1.5 text-left font-semibold" style={{ color: 'var(--mid-gray)' }}>Service / Department</th>
+                            <th className="px-3 py-1.5 text-right font-semibold" style={{ color: 'var(--mid-gray)' }}>Discount %</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(ds.rules || []).map((r, idx) => (
+                            <tr key={idx} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                              <td className="px-3 py-1.5" style={{ color: 'var(--charcoal)' }}>
+                                {r.service?.name || r.department || 'All services'}
+                              </td>
+                              <td className="px-3 py-1.5 text-right font-semibold" style={{ color: 'var(--deep-teal)' }}>
+                                {toNum(r.discountPercent)}%
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+
+      {/* Create / Edit Form Modal */}
+      {showForm && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-8 overflow-y-auto">
+          <div className="bg-white rounded-2xl p-6 shadow-xl w-full max-w-2xl mb-8 relative">
+            <button onClick={() => setShowForm(false)} className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-gray-100">
+              <X size={18} style={{ color: 'var(--mid-gray)' }} />
+            </button>
+            <h3 className="text-lg font-bold mb-4" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+              {editingId ? 'Edit Discount' : 'New Discount'}
+            </h3>
+
+            {error && <p className="text-xs text-red-600 mb-3 flex items-center gap-1"><AlertCircle size={12} />{error}</p>}
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Discount Name *</label>
+                <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
+                  placeholder="e.g. VIP Gold Card Discount"
+                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Type</label>
+                  <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}
+                    className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                    <option value="PERCENTAGE">Percentage</option>
+                    <option value="FIXED">Fixed Amount</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Default Value</label>
+                  <input type="number" min={0} step="0.01" value={form.value || ''} onChange={e => setForm({ ...form, value: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
+                  Link to Wallet Type <span className="font-normal">(leave empty for general discount)</span>
+                </label>
+                <select value={form.walletType} onChange={e => setForm({ ...form, walletType: e.target.value })}
+                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                  <option value="">None — General Discount</option>
+                  {WALLET_TYPES.map(wt => <option key={wt.value} value={wt.value}>{wt.label}</option>)}
+                </select>
+              </div>
+
+              {/* Per-Service / Per-Department Discount Rules */}
+              {form.walletType && (
+                <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: '#c084fc', background: '#faf5ff' }}>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#7c3aed' }}>
+                      Service-Specific Discount Rules
+                    </h4>
+                    <button onClick={addRule} className="text-xs font-medium px-3 py-1 rounded-lg" style={{ background: '#e9d5ff', color: '#7c3aed' }}>
+                      + Add Rule
+                    </button>
+                  </div>
+                  <p className="text-xs" style={{ color: '#6b21a8' }}>
+                    Specify different discount percentages per service or department. When this wallet is used at checkout, these rules will override the default discount.
+                  </p>
+                  {rules.length === 0 ? (
+                    <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>No specific rules — the default {form.type === 'PERCENTAGE' ? `${form.value}%` : formatCurrency(form.value)} will apply to all services.</p>
+                  ) : rules.map((r, idx) => (
+                    <div key={idx} className="flex items-center gap-2 p-2 rounded-lg bg-white">
+                      <select value={r.department} onChange={e => setRules(prev => prev.map((x, i) => i === idx ? { ...x, department: e.target.value, serviceId: '' } : x))}
+                        className="px-2 py-1.5 rounded-lg border text-xs outline-none flex-1" style={{ borderColor: 'var(--light-gray)' }}>
+                        <option value="">All Departments</option>
+                        {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                      </select>
+                      <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>or</span>
+                      <select value={r.serviceId} onChange={e => setRules(prev => prev.map((x, i) => i === idx ? { ...x, serviceId: e.target.value, department: '' } : x))}
+                        className="px-2 py-1.5 rounded-lg border text-xs outline-none flex-1" style={{ borderColor: 'var(--light-gray)' }}>
+                        <option value="">Specific Service</option>
+                        {services.filter(s => !r.department || s.department === r.department).map(s => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                      <input type="number" min={0} max={100} step="0.1" value={r.discountPercent || ''}
+                        onChange={e => setRules(prev => prev.map((x, i) => i === idx ? { ...x, discountPercent: parseFloat(e.target.value) || 0 } : x))}
+                        placeholder="%" className="w-20 px-2 py-1.5 rounded-lg border text-xs text-right outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>%</span>
+                      <button onClick={() => setRules(prev => prev.filter((_, i) => i !== idx))} className="p-1 rounded hover:bg-red-50">
+                        <Trash2 size={12} className="text-red-500" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-2">
+                <button onClick={saveDiscount} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>
+                  {editingId ? 'Update Discount' : 'Create Discount'}
+                </button>
+                <button onClick={() => setShowForm(false)} className="px-6 py-2.5 rounded-xl text-sm font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2206,11 +2780,12 @@ function SalesSummarySection({ branch, canSelectBranch }: { branch: string; canS
 
   useEffect(() => { fetchReport() }, [fetchReport])
 
-  // Calculate summary
+  // Calculate summary — exclude UNEARNED revenue from Gross/Net Sales
   const activeOrders = orders.filter(o => o.status !== 'VOIDED')
-  const grossSales = activeOrders.reduce((s, o) => s + toNum(o.subtotal), 0)
-  const totalDiscounts = activeOrders.reduce((s, o) => s + toNum(o.discountAmount), 0)
-  const netSales = activeOrders.reduce((s, o) => s + toNum(o.netAmount), 0)
+  const earnedOrders = activeOrders.filter(o => o.revenueType !== 'UNEARNED')
+  const grossSales = earnedOrders.reduce((s, o) => s + toNum(o.subtotal), 0)
+  const totalDiscounts = earnedOrders.reduce((s, o) => s + toNum(o.discountAmount), 0)
+  const netSales = earnedOrders.reduce((s, o) => s + toNum(o.netAmount), 0)
   const unearnedRevenue = activeOrders.filter(o => o.revenueType === 'UNEARNED').reduce((s, o) => s + toNum(o.netAmount), 0)
 
   // Payment method breakdown

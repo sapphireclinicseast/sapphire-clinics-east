@@ -15,10 +15,69 @@ export async function POST(
 
   try {
     const { id } = await params
-    const { packageId, sessions = 1 } = await req.json()
+    const body = await req.json()
+
+    const wallet = await prisma.digitalWallet.findUnique({ where: { id } })
+    if (!wallet) {
+      return NextResponse.json({ error: 'Wallet not found' }, { status: 404 })
+    }
+
+    // Mode 1: Monetary deduction (amount-based, for VIP/Prepaid card usage)
+    if (body.amount !== undefined) {
+      const amount = parseFloat(body.amount)
+      if (amount <= 0) {
+        return NextResponse.json({ error: 'Amount must be greater than 0' }, { status: 400 })
+      }
+
+      const currentBalance = Number(wallet.balance)
+      if (amount > currentBalance) {
+        return NextResponse.json(
+          { error: `Insufficient balance. Current: ${currentBalance.toFixed(2)}, Requested: ${amount.toFixed(2)}` },
+          { status: 400 }
+        )
+      }
+
+      const updated = await prisma.digitalWallet.update({
+        where: { id },
+        data: { balance: { decrement: amount } },
+      })
+
+      await prisma.walletLog.create({
+        data: {
+          walletId: id,
+          action: 'DEDUCTION',
+          description: body.description || `Balance deduction: ${amount.toFixed(2)}`,
+          createdById: session.user.id,
+        },
+      })
+
+      await prisma.auditLog.create({
+        data: {
+          userId: session.user.id,
+          action: 'WALLET_DEDUCT',
+          entity: 'digitalWallet',
+          entityId: id,
+          details: {
+            type: 'monetary',
+            amountDeducted: amount,
+            previousBalance: currentBalance,
+            newBalance: Number(updated.balance),
+            orderId: body.orderId || null,
+          },
+        },
+      })
+
+      return NextResponse.json({
+        balance: Number(updated.balance),
+        amountDeducted: amount,
+      })
+    }
+
+    // Mode 2: Session deduction (package-based)
+    const { packageId, sessions = 1 } = body
 
     if (!packageId) {
-      return NextResponse.json({ error: 'Package ID is required' }, { status: 400 })
+      return NextResponse.json({ error: 'Package ID or amount is required' }, { status: 400 })
     }
 
     const walletPackage = await prisma.walletPackage.findUnique({ where: { id: packageId } })

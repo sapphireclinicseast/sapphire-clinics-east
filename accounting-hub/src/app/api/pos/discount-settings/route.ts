@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN', 'SBEA_FRONTDESK', 'SBGH_FRONTDESK']
 
+const VALID_WALLET_TYPES = ['PACKAGE', 'VIP', 'PREPAID_CARD', 'DOWNPAYMENT', 'ADVANCE']
+
 export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user) {
@@ -12,10 +14,12 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url)
   const branch = searchParams.get('branch')
+  const walletType = searchParams.get('walletType')
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = { isActive: true }
   if (branch) where.branch = branch
+  if (walletType) where.walletType = walletType
 
   try {
     const settings = await prisma.discountSetting.findMany({
@@ -23,6 +27,11 @@ export async function GET(req: Request) {
       orderBy: { name: 'asc' },
       include: {
         createdBy: { select: { id: true, name: true } },
+        rules: {
+          include: {
+            service: { select: { id: true, name: true } },
+          },
+        },
       },
     })
 
@@ -39,7 +48,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { name, type, value, branch } = await req.json()
+    const { name, type, value, branch, walletType, rules } = await req.json()
 
     if (!name?.trim() || !type || value === undefined) {
       return NextResponse.json(
@@ -55,13 +64,41 @@ export async function POST(req: Request) {
       )
     }
 
+    if (walletType && !VALID_WALLET_TYPES.includes(walletType)) {
+      return NextResponse.json(
+        { error: `walletType must be one of: ${VALID_WALLET_TYPES.join(', ')}` },
+        { status: 400 }
+      )
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const createData: any = {
+      name: name.trim(),
+      type,
+      value: Number(value),
+      branch: branch || null,
+      walletType: walletType || null,
+      createdById: session.user.id,
+    }
+
+    if (rules && Array.isArray(rules) && rules.length > 0) {
+      createData.rules = {
+        create: rules.map((rule: { serviceId?: string; department?: string; discountPercent: number }) => ({
+          serviceId: rule.serviceId || null,
+          department: rule.department || null,
+          discountPercent: Number(rule.discountPercent),
+        })),
+      }
+    }
+
     const setting = await prisma.discountSetting.create({
-      data: {
-        name: name.trim(),
-        type,
-        value: Number(value),
-        branch: branch || null,
-        createdById: session.user.id,
+      data: createData,
+      include: {
+        rules: {
+          include: {
+            service: { select: { id: true, name: true } },
+          },
+        },
       },
     })
 
@@ -71,7 +108,7 @@ export async function POST(req: Request) {
         action: 'CREATE',
         entity: 'discountSetting',
         entityId: setting.id,
-        details: { name: setting.name, type, value: Number(value), branch },
+        details: { name: setting.name, type, value: Number(value), branch, walletType, rulesCount: rules?.length ?? 0 },
       },
     })
 
@@ -88,7 +125,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, name, type, value, branch } = await req.json()
+    const { id, name, type, value, branch, walletType, rules } = await req.json()
 
     if (!id) {
       return NextResponse.json({ error: 'id is required' }, { status: 400 })
@@ -101,16 +138,48 @@ export async function PUT(req: Request) {
       )
     }
 
+    if (walletType && !VALID_WALLET_TYPES.includes(walletType)) {
+      return NextResponse.json(
+        { error: `walletType must be one of: ${VALID_WALLET_TYPES.join(', ')}` },
+        { status: 400 }
+      )
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = {}
     if (name !== undefined) data.name = name.trim()
     if (type !== undefined) data.type = type
     if (value !== undefined) data.value = Number(value)
     if (branch !== undefined) data.branch = branch || null
+    if (walletType !== undefined) data.walletType = walletType || null
+
+    // If rules provided, delete existing and recreate
+    if (rules !== undefined && Array.isArray(rules)) {
+      await prisma.walletDiscountRule.deleteMany({
+        where: { discountSettingId: id },
+      })
+
+      if (rules.length > 0) {
+        data.rules = {
+          create: rules.map((rule: { serviceId?: string; department?: string; discountPercent: number }) => ({
+            serviceId: rule.serviceId || null,
+            department: rule.department || null,
+            discountPercent: Number(rule.discountPercent),
+          })),
+        }
+      }
+    }
 
     const setting = await prisma.discountSetting.update({
       where: { id },
       data,
+      include: {
+        rules: {
+          include: {
+            service: { select: { id: true, name: true } },
+          },
+        },
+      },
     })
 
     await prisma.auditLog.create({
@@ -119,7 +188,7 @@ export async function PUT(req: Request) {
         action: 'UPDATE',
         entity: 'discountSetting',
         entityId: setting.id,
-        details: { updated: Object.keys(data) },
+        details: { updated: Object.keys(data), rulesReplaced: rules !== undefined },
       },
     })
 

@@ -150,7 +150,8 @@ model Service {
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 
-  orderItems OrderItem[]
+  orderItems         OrderItem[]
+  walletDiscountRules WalletDiscountRule[]
 
   @@index([department])
   @@index([branch])
@@ -483,12 +484,31 @@ model DiscountSetting {
   type        String   @default("PERCENTAGE")
   value       Decimal
   branch      String?
+  walletType  String?  // If set, links this discount to a wallet type (VIP, PREPAID_CARD, etc.)
   isActive    Boolean  @default(true)
   createdById String
   createdBy   User     @relation("DiscountCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  rules WalletDiscountRule[]
+
   @@index([isActive])
   @@index([branch])
+  @@index([walletType])
+}
+
+model WalletDiscountRule {
+  id                String          @id @default(cuid())
+  discountSettingId String
+  discountSetting   DiscountSetting @relation(fields: [discountSettingId], references: [id], onDelete: Cascade)
+  serviceId         String?
+  service           Service?        @relation(fields: [serviceId], references: [id])
+  department        String?         // e.g. "OT", "SLP", "PT" — applies to all services in dept
+  discountPercent   Decimal         // The discount percentage for this service/dept
+  createdAt         DateTime        @default(now())
+
+  @@index([discountSettingId])
+  @@index([serviceId])
+  @@index([department])
 }
