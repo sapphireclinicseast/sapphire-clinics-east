@@ -1939,54 +1939,74 @@ function ProductsSection({
   // Barcode scanner handler
   const barcodeInputRef = useRef<HTMLInputElement>(null)
   const [barcodeInput, setBarcodeInput] = useState('')
+  const [scanSuccess, setScanSuccess] = useState('')
 
-  const handleBarcodeScan = useCallback((barcode: string) => {
+  const handleBarcodeScan = (barcode: string) => {
     const trimmed = barcode.trim()
-    if (!trimmed) return
-    // Try to find product by barcode or SKU
+    if (!trimmed) { setError('Please scan or type a barcode/SKU'); return }
+    // Try to find product by barcode or SKU (exact or partial match)
     const found = products.find(p =>
       (p.barcode && p.barcode.toLowerCase() === trimmed.toLowerCase()) ||
       (p.sku && p.sku.toLowerCase() === trimmed.toLowerCase())
     )
     if (found) {
-      addToCart(found)
+      // Directly add to cart without relying on closure
+      const price = toNum(found.sellingPrice)
+      setCart(prev => {
+        const existing = prev.findIndex(c => c.inventoryItemId === found.id)
+        if (existing >= 0) {
+          return prev.map((c, i) => i === existing ? { ...c, quantity: c.quantity + 1, lineTotal: c.unitPrice * (c.quantity + 1) } : c)
+        }
+        return [...prev, { inventoryItemId: found.id, name: found.name, quantity: 1, unitPrice: price, lineTotal: price }]
+      })
       setBarcodeInput('')
+      setScanSuccess(`✓ Added: ${found.name}`)
+      setTimeout(() => setScanSuccess(''), 2000)
+      // Refocus input for next scan
+      barcodeInputRef.current?.focus()
     } else {
       setError(`No product found for barcode: ${trimmed}`)
       setTimeout(() => setError(''), 3000)
       setBarcodeInput('')
+      barcodeInputRef.current?.focus()
     }
-  }, [products]) // eslint-disable-line react-hooks/exhaustive-deps
+  }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       {/* Product List */}
       <div className="lg:col-span-2 space-y-4">
         {/* Barcode Scanner Input */}
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <ScanLine size={14} className="absolute left-3 top-3" style={{ color: 'var(--teal)' }} />
-            <input
-              ref={barcodeInputRef}
-              value={barcodeInput}
-              onChange={e => setBarcodeInput(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  handleBarcodeScan(barcodeInput)
-                }
-              }}
-              placeholder="Scan barcode or type SKU and press Enter..."
-              className="w-full pl-9 pr-3 py-2.5 rounded-xl border text-sm outline-none font-mono"
-              style={{ borderColor: 'var(--teal)', background: 'var(--pale-teal)' }}
-              autoFocus
-            />
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <ScanLine size={14} className="absolute left-3 top-3" style={{ color: 'var(--teal)' }} />
+              <input
+                ref={barcodeInputRef}
+                value={barcodeInput}
+                onChange={e => setBarcodeInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleBarcodeScan(barcodeInput)
+                  }
+                }}
+                placeholder="Scan barcode or type SKU and press Enter..."
+                className="w-full pl-9 pr-3 py-2.5 rounded-xl border text-sm outline-none font-mono"
+                style={{ borderColor: 'var(--teal)', background: 'var(--pale-teal)' }}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => handleBarcodeScan(barcodeInput)}
+              className="px-4 py-2.5 rounded-xl text-sm font-medium text-white flex items-center gap-1.5 shrink-0"
+              style={{ background: 'var(--teal)' }}>
+              <ScanLine size={14} /> Scan
+            </button>
           </div>
-          <button onClick={() => handleBarcodeScan(barcodeInput)}
-            className="px-4 py-2.5 rounded-xl text-sm font-medium text-white flex items-center gap-1.5"
-            style={{ background: 'var(--teal)' }}>
-            <ScanLine size={14} /> Scan
-          </button>
+          {scanSuccess && (
+            <p className="text-xs font-medium px-2 py-1 rounded-lg" style={{ background: '#dcfce7', color: '#166534' }}>{scanSuccess}</p>
+          )}
         </div>
 
         {/* Search */}
