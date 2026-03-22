@@ -23,9 +23,73 @@ import {
   Download,
   Loader2,
   AlertCircle,
+  Printer,
 } from 'lucide-react'
 import JsBarcode from 'jsbarcode'
 import { formatCurrency, formatDate } from '@/lib/utils'
+
+/* ── Verdana Sticker Print (A6, 3 per page) ──────────────── */
+function printVerdanaSticker(item: { name: string; sku?: string; barcode?: string | null }) {
+  const sku = item.sku || item.barcode || ''
+  const barcodeValue = item.barcode || item.sku || ''
+
+  // Create a temporary canvas to generate barcode as data URL
+  const canvas = document.createElement('canvas')
+  try {
+    JsBarcode(canvas, barcodeValue, {
+      format: 'CODE128', width: 2, height: 50, displayValue: true,
+      fontSize: 12, margin: 5, font: 'monospace',
+    })
+  } catch { /* invalid barcode */ }
+  const barcodeDataUrl = canvas.toDataURL('image/png')
+
+  // Verdana logo SVG (teal V mark with orange circle)
+  const logoSvg = `<svg viewBox="0 0 120 120" width="60" height="60" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="98" cy="22" r="18" fill="#D4842A"/>
+    <polygon points="10,10 40,10 70,110 50,110" fill="#2B5F6B"/>
+    <polygon points="50,10 80,10 100,110 80,110" fill="#2B5F6B"/>
+  </svg>`
+
+  const stickerHtml = `
+    <div style="width:100%;height:calc(100%/3);box-sizing:border-box;border-bottom:1px dashed #ccc;padding:8mm 6mm;display:flex;align-items:center;gap:4mm;font-family:Arial,sans-serif">
+      <div style="display:flex;flex-direction:column;align-items:center;min-width:60px">
+        ${logoSvg}
+        <div style="font-size:9px;font-weight:900;letter-spacing:3px;margin-top:2px;color:#2B5F6B">VERDANA</div>
+      </div>
+      <div style="flex:1;text-align:center">
+        <div style="margin-bottom:3mm">
+          <span style="font-size:14px;font-weight:700;color:#2B5F6B;letter-spacing:1px">PROGRESS, MADE </span>
+          <span style="font-size:16px;font-style:italic;font-weight:400;color:#2B5F6B">Possible</span>
+        </div>
+        <div style="font-size:10px;font-weight:700;color:#333;margin-bottom:1mm">${item.name}</div>
+        <div style="font-size:9px;color:#666;margin-bottom:2mm">${sku}</div>
+        <img src="${barcodeDataUrl}" style="height:40px;max-width:180px" />
+        <div style="margin-top:3mm;font-size:7px;font-weight:700;color:#2B5F6B;letter-spacing:1px">HTTPS://VERDANAREHAB.COM/</div>
+        <div style="margin-top:1mm;font-size:7px;color:#666;display:flex;justify-content:center;gap:8px">
+          <span>&#x1F1EB; @verdanarehab</span>
+          <span>&#x1F4F7; @verdanarehab</span>
+          <span>&#x1F3B5; @verdanarehab</span>
+        </div>
+      </div>
+    </div>`
+
+  const win = window.open('', '_blank', 'width=420,height=600')
+  if (!win) return
+  win.document.write(`<html><head><title>Sticker: ${item.name}</title>
+    <style>
+      @page { size: 105mm 148mm; margin: 0; }
+      @media print { body { margin: 0; } }
+      body { margin: 0; padding: 0; width: 105mm; height: 148mm; }
+      .page { width: 100%; height: 100%; display: flex; flex-direction: column; }
+    </style>
+  </head><body>
+    <div class="page">
+      ${stickerHtml}${stickerHtml}${stickerHtml}
+    </div>
+    <script>setTimeout(()=>{window.print()},500)<\/script>
+  </body></html>`)
+  win.document.close()
+}
 
 /* ═══════════════════════════════════════════════════════════
    CONSTANTS
@@ -840,6 +904,9 @@ setTimeout(()=>window.print(),500);
                       {canWrite && (
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
+                            <button onClick={() => printVerdanaSticker(item)} className="p-2 rounded-lg hover:bg-blue-50 transition-colors" title="Print Sticker">
+                              <Printer size={15} style={{ color: 'var(--teal)' }} />
+                            </button>
                             <button onClick={() => openItemEdit(item)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Edit">
                               <Pencil size={15} style={{ color: 'var(--teal)' }} />
                             </button>
