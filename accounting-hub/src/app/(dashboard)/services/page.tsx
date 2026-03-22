@@ -25,6 +25,7 @@ interface Service {
   description: string | null
   isActive: boolean
   createdAt: string
+  eligibleFor?: { eligibleService: { id: string; name: string; department: string; price: string | number }; discountPercent?: number | string | null }[]
 }
 
 const DEPARTMENTS = [
@@ -91,6 +92,8 @@ export default function ServicesPage() {
   const [fDescription, setFDescription] = useState('')
   const [fWalletType, setFWalletType] = useState('')
   const [fPackageSessions, setFPackageSessions] = useState('')
+  const [fEligibleServices, setFEligibleServices] = useState<{ serviceId: string; discountPercent: number }[]>([])
+  const [eligibleSearch, setEligibleSearch] = useState('')
 
   const canWrite = session?.user?.role && ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN'].includes(session.user.role as string)
 
@@ -144,7 +147,7 @@ export default function ServicesPage() {
     setFName(''); setFDept('PT'); setFBranch('ALL'); setFPrice('')
     setFPriceType('FIXED'); setFRevenueType('EARNED'); setFHasDoctorFee(false); setFDoctorFee('')
     setFClinicFee(''); setFPwdClinicOnly(false); setFDescription('')
-    setFWalletType(''); setFPackageSessions('')
+    setFWalletType(''); setFPackageSessions(''); setFEligibleServices([]); setEligibleSearch('')
     setError(''); setModalOpen(true)
   }
 
@@ -159,6 +162,13 @@ export default function ServicesPage() {
     setFDescription(s.description || '')
     setFWalletType(s.walletType || '')
     setFPackageSessions(s.packageSessions != null ? String(s.packageSessions) : '')
+    setFEligibleServices(
+      (s.eligibleFor || []).map((e: { eligibleService: { id: string }; discountPercent?: number | string | null }) => ({
+        serviceId: e.eligibleService.id,
+        discountPercent: Number(e.discountPercent) || 0,
+      }))
+    )
+    setEligibleSearch('')
     setError(''); setModalOpen(true)
   }
 
@@ -178,6 +188,7 @@ export default function ServicesPage() {
       price: fPrice, priceType: fPriceType, revenueType: fRevenueType,
       walletType: fRevenueType === 'UNEARNED' ? (fWalletType || null) : null,
       packageSessions: fRevenueType === 'UNEARNED' && fWalletType === 'PACKAGE' ? (parseInt(fPackageSessions) || null) : null,
+      eligibleServices: fRevenueType === 'UNEARNED' && (fWalletType === 'PACKAGE' || fWalletType === 'VIP') ? fEligibleServices : [],
       hasDoctorFee: fHasDoctorFee,
       doctorFee: fHasDoctorFee ? fDoctorFee : null,
       clinicFee: fHasDoctorFee ? fClinicFee : null,
@@ -515,12 +526,82 @@ export default function ServicesPage() {
                       </div>
                     )}
 
+                    {/* Eligible Services Picker (PACKAGE + VIP) */}
+                    {(fWalletType === 'PACKAGE' || fWalletType === 'VIP') && (
+                      <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: fWalletType === 'VIP' ? '#c084fc' : 'var(--teal)', background: fWalletType === 'VIP' ? '#faf5ff' : 'var(--pale-teal)' }}>
+                        <label className="block text-xs font-semibold" style={{ color: fWalletType === 'VIP' ? '#7c3aed' : 'var(--deep-teal)' }}>
+                          {fWalletType === 'PACKAGE' ? 'Eligible Services (which services can use this package)' : 'Included Services (with discount per service)'}
+                        </label>
+
+                        {/* Search + Add */}
+                        <div className="relative">
+                          <input value={eligibleSearch} onChange={(e) => setEligibleSearch(e.target.value)}
+                            placeholder="Search earned services to add..."
+                            className="w-full px-3 py-2 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                          {eligibleSearch.length >= 2 && (
+                            <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-36 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                              {services
+                                .filter(s => s.revenueType === 'EARNED' && s.name.toLowerCase().includes(eligibleSearch.toLowerCase()) && !fEligibleServices.some(es => es.serviceId === s.id))
+                                .slice(0, 15)
+                                .map(s => (
+                                  <button key={s.id} type="button" onClick={() => {
+                                    setFEligibleServices(prev => [...prev, { serviceId: s.id, discountPercent: 0 }])
+                                    setEligibleSearch('')
+                                  }}
+                                    className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex justify-between" style={{ color: 'var(--charcoal)' }}>
+                                    <span>{s.name} <span className="text-xs px-1 py-0.5 rounded" style={{ background: '#f3e8ff', color: '#6b21a8' }}>{s.department}</span></span>
+                                    <span style={{ color: 'var(--teal)' }}>{formatCurrency(Number(s.price))}</span>
+                                  </button>
+                                ))}
+                              {services.filter(s => s.revenueType === 'EARNED' && s.name.toLowerCase().includes(eligibleSearch.toLowerCase()) && !fEligibleServices.some(es => es.serviceId === s.id)).length === 0 && (
+                                <p className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>No matching earned services found</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Selected Services */}
+                        {fEligibleServices.length === 0 ? (
+                          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                            {fWalletType === 'PACKAGE' ? 'No services selected — all earned services will be eligible by default.' : 'No services added — add services to set per-service discounts.'}
+                          </p>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {fEligibleServices.map((es, idx) => {
+                              const svc = services.find(s => s.id === es.serviceId)
+                              return (
+                                <div key={es.serviceId} className="flex items-center gap-2 p-2 rounded-lg bg-white text-xs">
+                                  <span className="flex-1 font-medium" style={{ color: 'var(--charcoal)' }}>
+                                    {svc?.name || 'Unknown'} <span className="px-1 py-0.5 rounded" style={{ background: '#f3e8ff', color: '#6b21a8' }}>{svc?.department}</span>
+                                  </span>
+                                  {fWalletType === 'VIP' && (
+                                    <div className="flex items-center gap-1">
+                                      <input type="number" min={0} max={100} step="0.5" value={es.discountPercent || ''}
+                                        onChange={(e) => setFEligibleServices(prev => prev.map((x, i) => i === idx ? { ...x, discountPercent: parseFloat(e.target.value) || 0 } : x))}
+                                        placeholder="%" className="w-16 px-2 py-1 rounded border text-xs text-right outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                                      <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>%</span>
+                                    </div>
+                                  )}
+                                  <button type="button" onClick={() => setFEligibleServices(prev => prev.filter((_, i) => i !== idx))}
+                                    className="p-1 rounded hover:bg-red-50">
+                                    <X size={12} className="text-red-500" />
+                                  </button>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <p className="text-xs px-1" style={{ color: '#92400e' }}>
                       {fWalletType === 'PACKAGE'
                         ? `This service will create a Package wallet. Each session used will record ${fPackageSessions ? formatCurrency(parseFloat(fPrice || '0') / (parseInt(fPackageSessions) || 1)) : '—'} as earned revenue.`
-                        : fWalletType
-                          ? `A ${fWalletType.replace('_', ' ')} digital wallet will be auto-created for the patient during checkout.`
-                          : 'This service will be classified as Unearned Revenue (liability) until sessions are consumed.'}
+                        : fWalletType === 'VIP'
+                          ? 'This VIP card will auto-apply the set discounts when the barcode is scanned during checkout.'
+                          : fWalletType
+                            ? `A ${fWalletType.replace('_', ' ')} digital wallet will be auto-created for the patient during checkout.`
+                            : 'This service will be classified as Unearned Revenue (liability) until sessions are consumed.'}
                     </p>
                   </div>
                 )}

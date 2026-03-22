@@ -53,6 +53,13 @@ export async function GET(req: Request) {
       orderBy,
       skip: (params.page - 1) * params.pageSize,
       take: params.pageSize,
+      include: {
+        eligibleFor: {
+          include: {
+            eligibleService: { select: { id: true, name: true, department: true, price: true } },
+          },
+        },
+      },
     }),
     prisma.service.count({ where }),
   ])
@@ -69,7 +76,8 @@ export async function POST(req: Request) {
   try {
     const body = await req.json()
     const { name, department, branch, price, priceType, revenueType, walletType, packageSessions,
-            hasDoctorFee, doctorFee, clinicFee, pwdDiscountClinicOnly, description } = body
+            hasDoctorFee, doctorFee, clinicFee, pwdDiscountClinicOnly, description,
+            eligibleServices } = body
 
     if (!name?.trim() || !department || !branch || price == null) {
       return NextResponse.json({ error: 'Name, department, branch, and price are required' }, { status: 400 })
@@ -102,6 +110,18 @@ export async function POST(req: Request) {
       },
     })
 
+    // Create eligible service links (for PACKAGE / VIP)
+    if (eligibleServices?.length && revenueType === 'UNEARNED') {
+      await prisma.serviceEligibility.createMany({
+        data: eligibleServices.map((es: { serviceId: string; discountPercent?: number }) => ({
+          parentServiceId: service.id,
+          eligibleServiceId: es.serviceId,
+          discountPercent: es.discountPercent != null ? Number(es.discountPercent) : null,
+        })),
+        skipDuplicates: true,
+      })
+    }
+
     await prisma.auditLog.create({
       data: {
         userId: session.user.id,
@@ -127,7 +147,8 @@ export async function PUT(req: Request) {
   try {
     const body = await req.json()
     const { id, name, department, branch, price, priceType, revenueType, walletType, packageSessions,
-            hasDoctorFee, doctorFee, clinicFee, pwdDiscountClinicOnly, description } = body
+            hasDoctorFee, doctorFee, clinicFee, pwdDiscountClinicOnly, description,
+            eligibleServices } = body
 
     if (!id) {
       return NextResponse.json({ error: 'Service ID is required' }, { status: 400 })
@@ -160,6 +181,31 @@ export async function PUT(req: Request) {
 
     const service = await prisma.service.update({ where: { id }, data })
 
+    // Update eligible services if provided
+    if (eligibleServices !== undefined) {
+      await prisma.serviceEligibility.deleteMany({ where: { parentServiceId: id } })
+      if (eligibleServices?.length) {
+        await prisma.serviceEligibility.createMany({
+          data: eligibleServices.map((es: { serviceId: string; discountPercent?: number }) => ({
+            parentServiceId: id,
+            eligibleServiceId: es.serviceId,
+            discountPercent: es.discountPercent != null ? Number(es.discountPercent) : null,
+          })),
+          skipDuplicates: true,
+        })
+      }
+    }
+
+    // Re-fetch with eligibility
+    const result = await prisma.service.findUnique({
+      where: { id },
+      include: {
+        eligibleFor: {
+          include: { eligibleService: { select: { id: true, name: true, department: true, price: true } } },
+        },
+      },
+    })
+
     await prisma.auditLog.create({
       data: {
         userId: session.user.id,
@@ -170,7 +216,7 @@ export async function PUT(req: Request) {
       },
     })
 
-    return NextResponse.json(service)
+    return NextResponse.json(result)
   } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

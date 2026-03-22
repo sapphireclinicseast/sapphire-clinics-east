@@ -153,13 +153,30 @@ model Service {
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 
-  orderItems         OrderItem[]
+  orderItems          OrderItem[]
   walletDiscountRules WalletDiscountRule[]
+  eligibleFor         ServiceEligibility[] @relation("ParentService")
+  eligibleIn          ServiceEligibility[] @relation("EligibleService")
 
   @@index([department])
   @@index([branch])
   @@index([isActive])
   @@index([createdById])
+}
+
+// Links a package/VIP service to the earned services it covers
+model ServiceEligibility {
+  id                String   @id @default(cuid())
+  parentServiceId   String   // The package or VIP service
+  parentService     Service  @relation("ParentService", fields: [parentServiceId], references: [id], onDelete: Cascade)
+  eligibleServiceId String   // The earned service that qualifies
+  eligibleService   Service  @relation("EligibleService", fields: [eligibleServiceId], references: [id], onDelete: Cascade)
+  discountPercent   Decimal? // For VIP: the discount % on this service
+  createdAt         DateTime @default(now())
+
+  @@unique([parentServiceId, eligibleServiceId])
+  @@index([parentServiceId])
+  @@index([eligibleServiceId])
 }
 
 // ── Inventory & Procurement ────────────────────────────────
