@@ -776,7 +776,7 @@ function OrderFormModal({
   let pwdNote = ''
 
   if (pwdDiscount) {
-    discountType = 'PWD_SENIOR'
+    discountType = 'PWD_SC'
     discountLabel = 'PWD/Senior Citizen (20%)'
     // Check if any item has pwdDiscountClinicOnly
     const hasClinicOnly = items.some(it => it.hasDoctorFee && it.pwdDiscountClinicOnly)
@@ -3256,7 +3256,7 @@ function ProductsSection({
   let discountLabel = ''
 
   if (pwdDiscount) {
-    discountType = 'PWD_SENIOR'
+    discountType = 'PWD_SC'
     discountLabel = 'PWD/Senior Citizen (20%)'
     discountAmount = subtotal * 0.2
   } else if (customDiscountId) {
