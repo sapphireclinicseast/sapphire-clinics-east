@@ -35,7 +35,7 @@ const ROLE_OPTIONS = [
 ]
 
 const BRANCH_OPTIONS = [
-  { value: '', label: 'No branch' },
+  { value: 'ALL', label: 'All Branches' },
   { value: 'SANDBOX_EAST', label: 'Sandbox East' },
   { value: 'SANDBOX_GREENHILLS', label: 'Sandbox Greenhills' },
   { value: 'VERDANA_STORE', label: 'Verdana Store' },
@@ -74,7 +74,7 @@ export default function UsersPage() {
   const [formEmail, setFormEmail] = useState('')
   const [formPassword, setFormPassword] = useState('')
   const [formRole, setFormRole] = useState('VIEWER')
-  const [formBranch, setFormBranch] = useState('')
+  const [formBranch, setFormBranch] = useState('ALL')
 
   const fetchUsers = useCallback(async () => {
     try {

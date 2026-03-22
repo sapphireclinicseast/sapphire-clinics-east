@@ -24,6 +24,7 @@ enum Branch {
   SANDBOX_EAST
   SANDBOX_GREENHILLS
   VERDANA_STORE
+  ALL
 }
 
 enum AccountType {
