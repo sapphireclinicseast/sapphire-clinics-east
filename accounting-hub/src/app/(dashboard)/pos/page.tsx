@@ -675,6 +675,12 @@ function OrderFormModal({
   const [packageSearch, setPackageSearch] = useState('')
   const [packageWallets, setPackageWallets] = useState<DigitalWallet[]>([])
   const [selectedPackageWallet, setSelectedPackageWallet] = useState<DigitalWallet | null>(null)
+  const [showHmoPay, setShowHmoPay] = useState(false)
+  const [hmoSearch, setHmoSearch] = useState('')
+  const [hmoWallets, setHmoWallets] = useState<DigitalWallet[]>([])
+  const [showGlPay, setShowGlPay] = useState(false)
+  const [glSearch, setGlSearch] = useState('')
+  const [glWallets, setGlWallets] = useState<DigitalWallet[]>([])
   const [isAdvancePayment, setIsAdvancePayment] = useState(false)
   const [walletPopup, setWalletPopup] = useState<{ show: boolean; wallet?: DigitalWallet; walletType?: string }>({ show: false })
   const [patientId, setPatientId] = useState(prefill?.patientId as string || '')
@@ -814,6 +820,29 @@ function OrderFormModal({
   const changeDue = totalPayments - netAmount
 
   // Search package wallets by patient name
+  // Search HMO/GL wallets
+  const searchHmoWallets = async (q: string) => {
+    setHmoSearch(q)
+    try {
+      const params = new URLSearchParams({ walletType: 'HMO' })
+      if (q) params.set('search', q)
+      const r = await fetch(`/api/pos/wallets?${params}`)
+      const d = await r.json()
+      setHmoWallets(normalize(d) as DigitalWallet[])
+    } catch { setHmoWallets([]) }
+  }
+
+  const searchGlWallets = async (q: string) => {
+    setGlSearch(q)
+    try {
+      const params = new URLSearchParams({ walletType: 'GL' })
+      if (q) params.set('search', q)
+      const r = await fetch(`/api/pos/wallets?${params}`)
+      const d = await r.json()
+      setGlWallets(normalize(d) as DigitalWallet[])
+    } catch { setGlWallets([]) }
+  }
+
   const searchPackageWallets = async (q: string) => {
     setPackageSearch(q)
     if (q.length < 2) { setPackageWallets([]); return }
@@ -1408,12 +1437,12 @@ function OrderFormModal({
                 style={{ color: '#1e40af' }}>
                 Package
               </button>
-              <button onClick={() => setPayments(prev => [...prev, { method: 'HMO', amount: 0, reference: '' }])}
+              <button onClick={() => { const next = !showHmoPay; setShowHmoPay(next); setShowGlPay(false); if (next) searchHmoWallets('') }}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold"
                 style={{ color: '#c2410c' }}>
                 HMO
               </button>
-              <button onClick={() => setPayments(prev => [...prev, { method: 'GL', amount: 0, reference: '' }])}
+              <button onClick={() => { const next = !showGlPay; setShowGlPay(next); setShowHmoPay(false); if (next) searchGlWallets('') }}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold"
                 style={{ color: '#15803d' }}>
                 GL
@@ -1496,6 +1525,68 @@ function OrderFormModal({
                   <div className="rounded-lg p-2 text-xs" style={{ background: '#dbeafe', color: '#1e40af' }}>
                     Using: <strong>{selectedPackageWallet.patientName}</strong>&apos;s package
                   </div>
+                )}
+              </div>
+            )}
+
+            {/* HMO search */}
+            {showHmoPay && (
+              <div className="p-3 rounded-xl border space-y-2" style={{ borderColor: '#fdba74', background: '#fff7ed' }}>
+                <p className="text-xs font-semibold" style={{ color: '#c2410c' }}>Select HMO Provider</p>
+                <input value={hmoSearch} onChange={e => searchHmoWallets(e.target.value)} placeholder="Search HMO (e.g. Intellicare, Avega)..."
+                  onFocus={() => { if (!hmoSearch) searchHmoWallets('') }}
+                  className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#fdba74' }} />
+                {hmoWallets.length > 0 && (
+                  <div className="max-h-32 overflow-y-auto space-y-1">
+                    {hmoWallets.map(w => (
+                      <button key={w.id} onClick={() => {
+                        setPayments(prev => [...prev, { method: 'HMO', amount: 0, walletId: w.id, reference: w.patientName }])
+                        setShowHmoPay(false)
+                        setHmoSearch('')
+                        setHmoWallets([])
+                      }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-orange-50 rounded-lg flex justify-between">
+                        <span className="font-medium">{w.patientName}</span>
+                        <span className="text-xs" style={{ color: '#c2410c' }}>
+                          Receivable: {formatCurrency(toNum(w.balance))}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {hmoWallets.length === 0 && hmoSearch.length > 0 && (
+                  <p className="text-xs" style={{ color: '#c2410c' }}>No HMO providers found. Add one in Digital Wallet &gt; HMO tab first.</p>
+                )}
+              </div>
+            )}
+
+            {/* GL search */}
+            {showGlPay && (
+              <div className="p-3 rounded-xl border space-y-2" style={{ borderColor: '#86efac', background: '#f0fdf4' }}>
+                <p className="text-xs font-semibold" style={{ color: '#15803d' }}>Select Agency (GL)</p>
+                <input value={glSearch} onChange={e => searchGlWallets(e.target.value)} placeholder="Search agency (e.g. DSWD, PhilHealth)..."
+                  onFocus={() => { if (!glSearch) searchGlWallets('') }}
+                  className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#86efac' }} />
+                {glWallets.length > 0 && (
+                  <div className="max-h-32 overflow-y-auto space-y-1">
+                    {glWallets.map(w => (
+                      <button key={w.id} onClick={() => {
+                        setPayments(prev => [...prev, { method: 'GL', amount: 0, walletId: w.id, reference: w.patientName }])
+                        setShowGlPay(false)
+                        setGlSearch('')
+                        setGlWallets([])
+                      }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-green-50 rounded-lg flex justify-between">
+                        <span className="font-medium">{w.patientName}</span>
+                        <span className="text-xs" style={{ color: '#15803d' }}>
+                          Receivable: {formatCurrency(toNum(w.balance))}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {glWallets.length === 0 && glSearch.length > 0 && (
+                  <p className="text-xs" style={{ color: '#15803d' }}>No agencies found. Add one in Digital Wallet &gt; GL tab first.</p>
                 )}
               </div>
             )}
