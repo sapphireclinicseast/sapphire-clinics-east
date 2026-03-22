@@ -2446,8 +2446,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                           </div>
                         </td>
                       </>
-                    )
-                    </td>
+                    )}
                   </tr>
                 )
               })}
