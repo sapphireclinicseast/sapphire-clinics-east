@@ -1842,6 +1842,8 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     { key: 'DOWNPAYMENT', label: 'Downpayments' },
     { key: 'ADVANCE', label: 'Advances' },
     { key: 'PREPAID_CARD', label: 'Prepaid Card' },
+    { key: 'HMO', label: 'HMO' },
+    { key: 'GL', label: 'GL' },
   ]
 
   const fetchWallets = useCallback(async () => {
