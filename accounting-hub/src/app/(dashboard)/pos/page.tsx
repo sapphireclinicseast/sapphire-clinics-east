@@ -337,10 +337,10 @@ function isAdmin(session: any): boolean {
 export default function POSPage() {
   const { data: session } = useSession()
 
-  // ── Top-level tab: Services | Products | Sales Summary
-  const [mainTab, setMainTab] = useState<'services' | 'products' | 'sales'>('services')
+  // ── Top-level tab: Services | Orders | Products | Sales Summary
+  const [mainTab, setMainTab] = useState<'services' | 'orders' | 'products' | 'sales'>('services')
   // ── Services sub-tab
-  const [serviceTab, setServiceTab] = useState<'cashier' | 'orders' | 'wallet' | 'discounts'>('cashier')
+  const [serviceTab, setServiceTab] = useState<'cashier' | 'wallet' | 'discounts'>('cashier')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -361,6 +361,7 @@ export default function POSPage() {
 
   const mainTabs = [
     { key: 'services' as const, label: 'Services', icon: <CreditCard size={16} /> },
+    { key: 'orders' as const, label: 'Orders', icon: <FileText size={16} /> },
     { key: 'products' as const, label: 'Products', icon: <ShoppingCart size={16} /> },
     { key: 'sales' as const, label: 'Sales Summary', icon: <FileText size={16} /> },
   ]
@@ -402,6 +403,9 @@ export default function POSPage() {
           session={session}
         />
       )}
+      {mainTab === 'orders' && (
+        <OrdersPanel branch={branch} canSelectBranch={true} />
+      )}
       {mainTab === 'products' && (
         <ProductsSection branch={branch} canSelectBranch={canSelectBranch} session={session} />
       )}
@@ -421,13 +425,12 @@ function ServicesSection({
 }: {
   branch: string
   canSelectBranch: boolean
-  serviceTab: 'cashier' | 'orders' | 'wallet' | 'discounts'
-  setServiceTab: (t: 'cashier' | 'orders' | 'wallet' | 'discounts') => void
+  serviceTab: 'cashier' | 'wallet' | 'discounts'
+  setServiceTab: (t: 'cashier' | 'wallet' | 'discounts') => void
   session: { user?: Record<string, unknown> } | null
 }) {
   const subTabs = [
     { key: 'cashier' as const, label: 'Cashier' },
-    { key: 'orders' as const, label: 'Orders' },
     { key: 'wallet' as const, label: 'Digital Wallet' },
     { key: 'discounts' as const, label: 'Discount Settings' },
   ]
@@ -453,9 +456,6 @@ function ServicesSection({
 
       {serviceTab === 'cashier' && (
         <CashierPanel branch={branch} canSelectBranch={canSelectBranch} session={session} />
-      )}
-      {serviceTab === 'orders' && (
-        <OrdersPanel branch={branch} canSelectBranch={canSelectBranch} />
       )}
       {serviceTab === 'wallet' && (
         <WalletPanel session={session} />
@@ -1625,8 +1625,7 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
       if (dateFrom) params.set('dateFrom', dateFrom)
       if (dateTo) params.set('dateTo', dateTo)
       if (statusFilter) params.set('status', statusFilter)
-      params.set('orderType', 'SERVICE')
-      params.set('pageSize', '100')
+      params.set('pageSize', '200')
       const r = await fetch(`/api/pos/orders?${params}`)
       const d = await r.json()
       setOrders(normalize(d) as Order[])
@@ -1720,7 +1719,7 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
         {canSelectBranch && (
           <select value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)}
             className="px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
-            {BRANCHES.filter(b => b.value !== 'VERDANA_STORE').map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+            {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
           </select>
         )}
         <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
@@ -1749,7 +1748,7 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b" style={{ borderColor: 'var(--light-gray)' }}>
-                {['Order #', 'Date', 'Patient', 'Service(s)', 'Clinician', 'Net Amount', 'Payment', 'Status', 'Actions'].map(h => (
+                {['Order #', 'Date', 'Branch', 'Type', 'Patient', 'Item(s)', 'Clinician', 'Net Amount', 'Payment', 'Status', 'Actions'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>{h}</th>
                 ))}
               </tr>
@@ -1760,7 +1759,15 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                 return (
                   <tr key={o.id} className="border-b hover:bg-gray-50" style={{ borderColor: 'var(--light-gray)' }}>
                     <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--charcoal)' }}>{o.orderNumber}</td>
-                    <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>{formatDate(o.transactionDate)}</td>
+                    <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{formatDate(o.transactionDate)}</td>
+                    <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                      {o.branch === 'SANDBOX_EAST' ? 'SBEA' : o.branch === 'SANDBOX_GREENHILLS' ? 'SBGH' : o.branch === 'VERDANA_STORE' ? 'Verdana' : o.branch}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-xs px-1.5 py-0.5 rounded" style={o.orderType === 'SERVICE' ? { background: '#dbeafe', color: '#1e40af' } : { background: '#fef3c7', color: '#92400e' }}>
+                        {o.orderType === 'SERVICE' ? 'Service' : 'Product'}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{o.patientName || '—'}</td>
                     <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
                       {o.items.map(it => it.name).join(', ')}
