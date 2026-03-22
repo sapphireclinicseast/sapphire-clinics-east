@@ -88,11 +88,12 @@ export async function POST(req: Request) {
       )
     }
 
-    // Check for existing wallet with same patientId + walletType
-    if (patientId?.trim()) {
+    // Check for existing wallet with same patientId/name + walletType
+    const lookupId = patientId?.trim() || `${walletType}-${patientName.trim().replace(/\s+/g, '-').toUpperCase()}`
+    {
       const existingWallet = await prisma.digitalWallet.findFirst({
         where: {
-          patientId: patientId.trim(),
+          patientId: lookupId,
           walletType,
           isActive: true,
         },
@@ -131,7 +132,7 @@ export async function POST(req: Request) {
       data: {
         barcode,
         walletType,
-        patientId: patientId?.trim() || null,
+        patientId: patientId?.trim() || `${walletType}-${patientName.trim().replace(/\s+/g, '-').toUpperCase()}`,
         patientName: patientName.trim(),
         patientEmail: patientEmail?.trim() || null,
       },
