@@ -117,6 +117,8 @@ export async function PUT(
 
     if (patientName !== undefined) data.patientName = patientName || null
     if (clinicianName !== undefined) data.clinicianName = clinicianName || null
+    if (body.transactionDate) data.transactionDate = new Date(body.transactionDate)
+    if (body.dateChangeReason) data.notes = `${existing.notes || ''}${existing.notes ? ' | ' : ''}Date changed: ${body.dateChangeReason}`.trim()
     if (discountType !== undefined) data.discountType = discountType
     if (discountAmount !== undefined) data.discountAmount = Number(discountAmount)
     if (discountLabel !== undefined) data.discountLabel = discountLabel || null

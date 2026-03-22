@@ -1617,6 +1617,8 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
   const [editPayments, setEditPayments] = useState<{ method: string; amount: number }[]>([])
   const [editPatient, setEditPatient] = useState('')
   const [editClinician, setEditClinician] = useState('')
+  const [editDate, setEditDate] = useState('')
+  const [editDateReason, setEditDateReason] = useState('')
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState('')
 
@@ -1672,6 +1674,8 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
       serviceId: it.serviceId,
     })))
     setEditPayments(o.payments.map(p => ({ method: p.method, amount: toNum(p.amount) })))
+    setEditDate(o.transactionDate ? o.transactionDate.split('T')[0] : today())
+    setEditDateReason('')
     setEditError('')
   }
 
@@ -1680,6 +1684,12 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
 
   const saveEditOrder = async () => {
     if (!editOrder) return
+    // Require reason if date was changed
+    const originalDate = editOrder.transactionDate ? editOrder.transactionDate.split('T')[0] : ''
+    if (editDate !== originalDate && !editDateReason.trim()) {
+      setEditError('Please provide a reason for changing the transaction date')
+      return
+    }
     setEditSaving(true)
     setEditError('')
     try {
@@ -1687,6 +1697,8 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
         action: 'edit',
         patientName: editPatient || null,
         clinicianName: editClinician || null,
+        transactionDate: editDate || null,
+        dateChangeReason: editDate !== originalDate ? editDateReason.trim() : null,
         items: editItems.map(it => ({
           serviceId: it.serviceId || null,
           name: it.name,
@@ -1840,6 +1852,21 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
             {editError && <p className="text-xs text-red-600 mb-3 flex items-center gap-1"><AlertCircle size={12} />{editError}</p>}
 
             <div className="space-y-4">
+              {/* Transaction Date */}
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Transaction Date</label>
+                <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                {editDate !== (editOrder.transactionDate ? editOrder.transactionDate.split('T')[0] : '') && (
+                  <div className="mt-2">
+                    <label className="block text-xs font-semibold mb-1" style={{ color: '#991b1b' }}>Reason for date change *</label>
+                    <input value={editDateReason} onChange={e => setEditDateReason(e.target.value)}
+                      placeholder="e.g. Late entry, correction"
+                      className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#fca5a5', background: '#fef2f2' }} />
+                  </div>
+                )}
+              </div>
+
               {/* Patient & Clinician */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1949,6 +1976,11 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   const [selectedWallet, setSelectedWallet] = useState<DigitalWallet | null>(null)
   const [walletDetail, setWalletDetail] = useState<DigitalWallet | null>(null)
   const [showAddPackage, setShowAddPackage] = useState(false)
+  const [showSOA, setShowSOA] = useState<DigitalWallet | null>(null)
+  const [soaDateFrom, setSoaDateFrom] = useState(today())
+  const [soaDateTo, setSoaDateTo] = useState(today())
+  const [soaBranch, setSoaBranch] = useState('')
+  const [soaOrders, setSoaOrders] = useState<Order[]>([])
   const [pkgForm, setPkgForm] = useState({ serviceName: '', totalSessions: 1, amountPaid: 0, expiresAt: '' })
   const barcodeRef = useRef<SVGSVGElement>(null)
 
@@ -2191,6 +2223,122 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     win.document.close()
   }
 
+  // SOA: fetch orders for HMO/GL
+  const fetchSOAOrders = async () => {
+    if (!showSOA) return
+    try {
+      const params = new URLSearchParams({ pageSize: '500' })
+      if (soaDateFrom) params.set('dateFrom', soaDateFrom)
+      if (soaDateTo) params.set('dateTo', soaDateTo)
+      if (soaBranch) params.set('branch', soaBranch)
+      const r = await fetch(`/api/pos/orders?${params}`)
+      const d = await r.json()
+      const allOrders = normalize(d) as Order[]
+      // Filter: orders with HMO/GL payment referencing this provider
+      const providerName = showSOA.patientName
+      const walletMethod = showSOA.walletType // HMO or GL
+      const filtered = allOrders.filter(o =>
+        o.status !== 'VOIDED' &&
+        o.payments.some(p => p.method === walletMethod && p.reference && p.reference.trim().toLowerCase() === providerName.toLowerCase())
+      )
+      setSoaOrders(filtered)
+    } catch { setSoaOrders([]) }
+  }
+
+  const printSOA = () => {
+    if (!showSOA) return
+    const providerName = showSOA.patientName
+    const isHMO = showSOA.walletType === 'HMO'
+    const branchLabel = soaBranch === 'SANDBOX_EAST' ? 'Sandbox Clinic — East' : soaBranch === 'SANDBOX_GREENHILLS' ? 'Sandbox Clinic — Greenhills' : soaBranch === 'VERDANA_STORE' ? 'Verdana Store' : 'All Branches'
+    const logoUrl = `${window.location.origin}/brand/sandbox-clinic-logo.png`
+    const totalAmount = soaOrders.reduce((s, o) => {
+      const hmoPayment = o.payments.find(p => p.method === showSOA.walletType && p.reference?.trim().toLowerCase() === providerName.toLowerCase())
+      return s + (hmoPayment ? toNum(hmoPayment.amount) : 0)
+    }, 0)
+    const fmt = (v: number) => v.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+    const rows = soaOrders.map(o => {
+      const hmoPayment = o.payments.find(p => p.method === showSOA.walletType && p.reference?.trim().toLowerCase() === providerName.toLowerCase())
+      return `<tr>
+        <td style="border:1px solid #ddd;padding:6px 8px;font-size:10px">${formatDate(o.transactionDate)}</td>
+        <td style="border:1px solid #ddd;padding:6px 8px;font-size:10px">${o.items.map(it => it.name).join(', ')}</td>
+        <td style="border:1px solid #ddd;padding:6px 8px;font-size:10px">${o.patientName || '—'}</td>
+        <td style="border:1px solid #ddd;padding:6px 8px;font-size:10px">${o.clinicianName || '—'}</td>
+        <td style="border:1px solid #ddd;padding:6px 8px;font-size:10px;text-align:right;font-weight:600">₱${fmt(hmoPayment ? toNum(hmoPayment.amount) : 0)}</td>
+      </tr>`
+    }).join('')
+
+    const win = window.open('', '_blank', 'width=800,height=900')
+    if (!win) return
+    win.document.write(`<html><head><title>SOA - ${providerName}</title>
+      <style>
+        @page { size: A4; margin: 15mm; }
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        table { width: 100%; border-collapse: collapse; }
+      </style>
+    </head><body>
+      <div style="display:flex;align-items:center;gap:15px;margin-bottom:20px">
+        <img src="${logoUrl}" style="height:40px" />
+        <div>
+          <div style="font-size:16px;font-weight:700;color:#2B5F6B">SAPPHIRE CLINICS EAST INC.</div>
+          <div style="font-size:11px;color:#666">${branchLabel}</div>
+        </div>
+      </div>
+
+      <div style="text-align:center;margin-bottom:15px">
+        <div style="font-size:18px;font-weight:700;color:#222">STATEMENT OF ACCOUNT</div>
+        <div style="font-size:12px;color:#666;margin-top:4px">
+          ${isHMO ? 'HMO' : 'Guarantee Letter (GL)'}: <strong>${providerName}</strong>
+        </div>
+        <div style="font-size:11px;color:#999;margin-top:2px">
+          Period: ${formatDate(soaDateFrom)} — ${formatDate(soaDateTo)}
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr style="background:#f5f5f5">
+            <th style="border:1px solid #ddd;padding:8px;text-align:left;font-size:10px">Date</th>
+            <th style="border:1px solid #ddd;padding:8px;text-align:left;font-size:10px">Service</th>
+            <th style="border:1px solid #ddd;padding:8px;text-align:left;font-size:10px">Patient</th>
+            <th style="border:1px solid #ddd;padding:8px;text-align:left;font-size:10px">Clinician</th>
+            <th style="border:1px solid #ddd;padding:8px;text-align:right;font-size:10px">Amount</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+        <tfoot>
+          <tr style="background:#f0fdf4">
+            <td colspan="4" style="border:1px solid #ddd;padding:8px;font-weight:700;font-size:11px;text-align:right">TOTAL RECEIVABLE</td>
+            <td style="border:1px solid #ddd;padding:8px;font-weight:700;font-size:13px;text-align:right;color:#166534">₱${fmt(totalAmount)}</td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <div style="margin-top:60px;display:flex;justify-content:space-between;gap:30px">
+        <div style="flex:1;text-align:center">
+          <div style="border-top:1px solid #000;margin-top:40px;padding-top:4px;font-size:10px;font-weight:600">Front Desk</div>
+          <div style="font-size:9px;color:#666">Name / Signature</div>
+        </div>
+        <div style="flex:1;text-align:center">
+          <div style="border-top:1px solid #000;margin-top:40px;padding-top:4px;font-size:10px;font-weight:600">${isHMO ? 'HMO Officer' : 'GL Officer'}</div>
+          <div style="font-size:9px;color:#666">Name / Signature</div>
+        </div>
+        <div style="flex:1;text-align:center">
+          <div style="border-top:1px solid #000;margin-top:40px;padding-top:4px;font-size:10px;font-weight:600">Clinic Manager</div>
+          <div style="font-size:9px;color:#666">Name / Signature</div>
+        </div>
+      </div>
+
+      <script>
+        const imgs = document.querySelectorAll('img');
+        let loaded = 0;
+        imgs.forEach(img => { if (img.complete) loaded++; else img.onload = () => { if (++loaded >= imgs.length) setTimeout(() => window.print(), 300); }; });
+        if (loaded >= imgs.length) setTimeout(() => window.print(), 500);
+      <\/script>
+    </body></html>`)
+    win.document.close()
+  }
+
   return (
     <div className="space-y-4">
       {/* Wallet Type Sub-tabs */}
@@ -2219,11 +2367,11 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         <div className="relative flex-1">
           <Search size={14} className="absolute left-3 top-3" style={{ color: 'var(--mid-gray)' }} />
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder={`Search ${WALLET_TYPE_LABELS[walletTypeFilter] || ''} wallets by patient name...`}
+            placeholder={walletTypeFilter === 'HMO' ? 'Search HMO provider...' : walletTypeFilter === 'GL' ? 'Search agency...' : `Search ${WALLET_TYPE_LABELS[walletTypeFilter] || ''} wallets by patient name...`}
             className="w-full pl-9 pr-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
         </div>
         <button onClick={() => setShowCreate(true)} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium text-white" style={{ background: 'var(--teal)' }}>
-          <Plus size={16} /> Create Wallet
+          <Plus size={16} /> {walletTypeFilter === 'HMO' ? 'Add HMO' : walletTypeFilter === 'GL' ? 'Add Agency' : 'Create Wallet'}
         </button>
       </div>
 
@@ -2237,7 +2385,10 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b" style={{ borderColor: 'var(--light-gray)' }}>
-                {['Patient Name', 'Type', 'Balance', 'Barcode', 'Packages', 'Reward Points', ''].map(h => (
+                {(walletTypeFilter === 'HMO' || walletTypeFilter === 'GL'
+                  ? [walletTypeFilter === 'HMO' ? 'HMO Provider' : 'Agency', 'Type', 'Receivable Balance', 'Transactions', '']
+                  : ['Patient Name', 'Type', 'Balance', 'Barcode', 'Packages', 'Reward Points', '']
+                ).map(h => (
                   <th key={h} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>{h}</th>
                 ))}
               </tr>
@@ -2255,27 +2406,47 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                       </span>
                     </td>
                     <td className="px-5 py-3 font-semibold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(toNum(w.balance))}</td>
-                    <td className="px-5 py-3 font-mono text-xs" style={{ color: 'var(--mid-gray)' }}>
-                      {['VIP', 'PREPAID_CARD'].includes(w.walletType) ? w.barcode : '—'}
-                    </td>
-                    <td className="px-5 py-3" style={{ color: 'var(--mid-gray)' }}>{w._count?.packages || 0}</td>
-                    <td className="px-5 py-3">
-                      <span className="flex items-center gap-1" style={{ color: 'var(--teal)' }}>
-                        {['VIP', 'PREPAID_CARD'].includes(w.walletType) ? <><Star size={12} /> {w.rewardPoints || 0}</> : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-1.5">
-                        {['VIP', 'PREPAID_CARD'].includes(w.walletType) && (
-                          <button onClick={(e) => { e.stopPropagation(); printCard(w) }}
-                            className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={{ color: '#E8641B' }}>
-                            Print Card
-                          </button>
-                        )}
-                        <button className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
-                          View
-                        </button>
-                      </div>
+                    {walletTypeFilter === 'HMO' || walletTypeFilter === 'GL' ? (
+                      <>
+                        <td className="px-5 py-3" style={{ color: 'var(--mid-gray)' }}>{w._count?.packages || 0}</td>
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-1.5">
+                            <button onClick={(e) => { e.stopPropagation(); setShowSOA(w) }}
+                              className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={{ color: walletTypeFilter === 'HMO' ? '#c2410c' : '#15803d' }}>
+                              Print SOA
+                            </button>
+                            <button className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+                              View
+                            </button>
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="px-5 py-3 font-mono text-xs" style={{ color: 'var(--mid-gray)' }}>
+                          {['VIP', 'PREPAID_CARD'].includes(w.walletType) ? w.barcode : '—'}
+                        </td>
+                        <td className="px-5 py-3" style={{ color: 'var(--mid-gray)' }}>{w._count?.packages || 0}</td>
+                        <td className="px-5 py-3">
+                          <span className="flex items-center gap-1" style={{ color: 'var(--teal)' }}>
+                            {['VIP', 'PREPAID_CARD'].includes(w.walletType) ? <><Star size={12} /> {w.rewardPoints || 0}</> : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-1.5">
+                            {['VIP', 'PREPAID_CARD'].includes(w.walletType) && (
+                              <button onClick={(e) => { e.stopPropagation(); printCard(w) }}
+                                className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={{ color: '#E8641B' }}>
+                                Print Card
+                              </button>
+                            )}
+                            <button className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+                              View
+                            </button>
+                          </div>
+                        </td>
+                      </>
+                    )
                     </td>
                   </tr>
                 )
@@ -2292,25 +2463,34 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
             <button onClick={() => setShowCreate(false)} className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-gray-100">
               <X size={18} style={{ color: 'var(--mid-gray)' }} />
             </button>
-            <h3 className="text-lg font-bold mb-4" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Create Digital Wallet</h3>
+            <h3 className="text-lg font-bold mb-4" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+              {walletTypeFilter === 'HMO' ? 'Add HMO Provider' : walletTypeFilter === 'GL' ? 'Add Agency (GL)' : 'Create Digital Wallet'}
+            </h3>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Patient Name *</label>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
+                  {walletTypeFilter === 'HMO' ? 'HMO Provider Name *' : walletTypeFilter === 'GL' ? 'Agency Name *' : 'Patient Name *'}
+                </label>
                 <input value={createForm.patientName} onChange={e => setCreateForm({ ...createForm, patientName: e.target.value })}
+                  placeholder={walletTypeFilter === 'HMO' ? 'e.g. Intellicare, Avega, Maxicare' : walletTypeFilter === 'GL' ? 'e.g. DSWD, PhilHealth' : ''}
                   className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
               </div>
+              {walletTypeFilter !== 'HMO' && walletTypeFilter !== 'GL' && (
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Patient ID</label>
+                  <input value={createForm.patientId} onChange={e => setCreateForm({ ...createForm, patientId: e.target.value })}
+                    className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                </div>
+              )}
               <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Patient ID</label>
-                <input value={createForm.patientId} onChange={e => setCreateForm({ ...createForm, patientId: e.target.value })}
-                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Email</label>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
+                  {walletTypeFilter === 'HMO' || walletTypeFilter === 'GL' ? 'Contact Email' : 'Email'}
+                </label>
                 <input value={createForm.patientEmail} onChange={e => setCreateForm({ ...createForm, patientEmail: e.target.value })}
                   className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
               </div>
               <button onClick={createWallet} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>
-                Create Wallet
+                {walletTypeFilter === 'HMO' ? 'Add HMO' : walletTypeFilter === 'GL' ? 'Add Agency' : 'Create Wallet'}
               </button>
             </div>
           </div>
@@ -2467,6 +2647,92 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+      {/* SOA Modal for HMO/GL */}
+      {showSOA && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-8 overflow-y-auto">
+          <div className="bg-white rounded-2xl p-6 shadow-xl w-full max-w-2xl mb-8 relative">
+            <button onClick={() => { setShowSOA(null); setSoaOrders([]) }} className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-gray-100">
+              <X size={18} style={{ color: 'var(--mid-gray)' }} />
+            </button>
+            <h3 className="text-lg font-bold mb-1" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+              Statement of Account
+            </h3>
+            <p className="text-sm mb-4" style={{ color: 'var(--mid-gray)' }}>
+              {showSOA.walletType === 'HMO' ? 'HMO' : 'GL'}: <strong>{showSOA.patientName}</strong>
+            </p>
+
+            <div className="flex flex-wrap items-end gap-3 mb-4">
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>From</label>
+                <input type="date" value={soaDateFrom} onChange={e => setSoaDateFrom(e.target.value)}
+                  className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>To</label>
+                <input type="date" value={soaDateTo} onChange={e => setSoaDateTo(e.target.value)}
+                  className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Branch</label>
+                <select value={soaBranch} onChange={e => setSoaBranch(e.target.value)}
+                  className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                  {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+                </select>
+              </div>
+              <button onClick={fetchSOAOrders} className="px-4 py-2 rounded-xl text-sm font-medium text-white" style={{ background: 'var(--teal)' }}>
+                Generate
+              </button>
+            </div>
+
+            {soaOrders.length > 0 && (
+              <>
+                <div className="rounded-xl border overflow-hidden mb-4" style={{ borderColor: 'var(--light-gray)' }}>
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr style={{ background: 'var(--off-white)' }}>
+                        {['Date', 'Service', 'Patient', 'Clinician', 'Amount'].map(h => (
+                          <th key={h} className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--mid-gray)' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {soaOrders.map(o => {
+                        const p = o.payments.find(p => p.method === showSOA.walletType && p.reference?.trim().toLowerCase() === showSOA.patientName.toLowerCase())
+                        return (
+                          <tr key={o.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                            <td className="px-3 py-2">{formatDate(o.transactionDate)}</td>
+                            <td className="px-3 py-2">{o.items.map(it => it.name).join(', ')}</td>
+                            <td className="px-3 py-2">{o.patientName || '—'}</td>
+                            <td className="px-3 py-2">{o.clinicianName || '—'}</td>
+                            <td className="px-3 py-2 font-semibold text-right">{formatCurrency(p ? toNum(p.amount) : 0)}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ background: '#f0fdf4' }}>
+                        <td colSpan={4} className="px-3 py-2 text-right font-bold text-xs">TOTAL RECEIVABLE</td>
+                        <td className="px-3 py-2 text-right font-bold text-sm" style={{ color: '#166534' }}>
+                          {formatCurrency(soaOrders.reduce((s, o) => {
+                            const p = o.payments.find(p => p.method === showSOA.walletType && p.reference?.trim().toLowerCase() === showSOA.patientName.toLowerCase())
+                            return s + (p ? toNum(p.amount) : 0)
+                          }, 0))}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                <button onClick={printSOA} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium text-white" style={{ background: 'var(--teal)' }}>
+                  <Printer size={14} /> Print Statement of Account
+                </button>
+              </>
+            )}
+            {soaOrders.length === 0 && (
+              <p className="text-sm py-4 text-center" style={{ color: 'var(--mid-gray)' }}>Select date range and branch, then click Generate.</p>
+            )}
           </div>
         </div>
       )}
