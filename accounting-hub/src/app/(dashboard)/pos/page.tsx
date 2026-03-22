@@ -668,6 +668,10 @@ function OrderFormModal({
   const [walletSearch, setWalletSearch] = useState('')
   const [walletResults, setWalletResults] = useState<DigitalWallet[]>([])
   const [showDownpayment, setShowDownpayment] = useState(false)
+  const [showPackagePay, setShowPackagePay] = useState(false)
+  const [packageSearch, setPackageSearch] = useState('')
+  const [packageWallets, setPackageWallets] = useState<DigitalWallet[]>([])
+  const [selectedPackageWallet, setSelectedPackageWallet] = useState<DigitalWallet | null>(null)
   const [isAdvancePayment, setIsAdvancePayment] = useState(false)
   const [walletPopup, setWalletPopup] = useState<{ show: boolean; wallet?: DigitalWallet; walletType?: string }>({ show: false })
   const [patientId, setPatientId] = useState(prefill?.patientId as string || '')
@@ -799,8 +803,56 @@ function OrderFormModal({
   }
 
   const netAmount = Math.max(0, subtotal - discountAmount)
-  const totalPayments = payments.reduce((s, p) => s + (p.method === 'PACKAGE' ? netAmount : toNum(p.amount)), 0)
+  // For Package payments, use the stored per-session amount (not netAmount)
+  const totalPayments = payments.reduce((s, p) => {
+    if (p.method === 'PACKAGE') return s + (p.walletId ? toNum(p.amount) : netAmount)
+    return s + toNum(p.amount)
+  }, 0)
   const changeDue = totalPayments - netAmount
+
+  // Search package wallets by patient name
+  const searchPackageWallets = async (q: string) => {
+    setPackageSearch(q)
+    if (q.length < 2) { setPackageWallets([]); return }
+    try {
+      const r = await fetch(`/api/pos/wallets?search=${encodeURIComponent(q)}&walletType=PACKAGE`)
+      const d = await r.json()
+      setPackageWallets(normalize(d) as DigitalWallet[])
+    } catch { setPackageWallets([]) }
+  }
+
+  // Select a package wallet — find per-session rate and link
+  const selectPackageWallet = async (wallet: DigitalWallet) => {
+    setSelectedPackageWallet(wallet)
+    try {
+      const r = await fetch(`/api/pos/wallets/${wallet.id}`)
+      const detail = await r.json()
+      const activePkg = (detail.packages || []).find((pkg: WalletPackage) => {
+        const remaining = pkg.totalSessions - pkg.usedSessions
+        return remaining > 0 && pkg.isActive
+      })
+      if (activePkg) {
+        const perSession = toNum(activePkg.amountPaid) / activePkg.totalSessions
+        setPayments(prev => {
+          const existing = prev.findIndex(p => p.method === 'PACKAGE')
+          if (existing >= 0) {
+            return prev.map((p, i) => i === existing ? { ...p, amount: perSession, walletId: wallet.id, reference: `PKG:${activePkg.id}` } : p)
+          }
+          return [...prev, { method: 'PACKAGE', amount: perSession, walletId: wallet.id, reference: `PKG:${activePkg.id}` }]
+        })
+        // Override item price to per-session rate
+        if (items.length > 0) {
+          setItems(prev => prev.map((it, i) => i === 0 ? { ...it, unitPrice: perSession, lineTotal: perSession * it.quantity } : it))
+        }
+      } else {
+        setError('No active packages with remaining sessions found')
+      }
+    } catch { setError('Failed to load package details') }
+    setShowPackagePay(false)
+    setPackageSearch('')
+    setPackageWallets([])
+  }
+
   const applyWalletDiscount = async (wallet: DigitalWallet) => {
     setActiveWallet(wallet)
     if (!wallet.walletType) return
@@ -1006,6 +1058,26 @@ function OrderFormModal({
           })
         } catch (e) {
           console.error('Active wallet deduction error:', e)
+        }
+      }
+
+      // 3. Package session deduction
+      const packagePayment = payments.find(p => p.method === 'PACKAGE' && p.walletId && p.reference?.startsWith('PKG:'))
+      if (packagePayment) {
+        const pkgId = packagePayment.reference?.replace('PKG:', '') || ''
+        if (pkgId) {
+          try {
+            await fetch(`/api/pos/wallets/${packagePayment.walletId}/deduct`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                packageId: pkgId,
+                sessions: 1,
+              }),
+            })
+          } catch (e) {
+            console.error('Package session deduction error:', e)
+          }
         }
       }
 
@@ -1284,8 +1356,8 @@ function OrderFormModal({
                     {p.method === 'WALLET' && <option value="WALLET">VIP/Prepaid Card</option>}
                   </select>
                   {p.method === 'PACKAGE' ? (
-                    <span className="w-32 px-3 py-2.5 rounded-xl border text-sm text-right bg-gray-100 text-gray-500" style={{ borderColor: 'var(--light-gray)' }}>
-                      {formatCurrency(netAmount)}
+                    <span className="w-32 px-3 py-2.5 rounded-xl border text-sm text-right font-semibold" style={{ borderColor: '#93c5fd', background: '#eff6ff', color: '#1e40af' }}>
+                      {p.walletId ? formatCurrency(toNum(p.amount)) : '—'}
                     </span>
                   ) : (
                     <input type="number" min={0} step="0.01" value={p.amount || ''} placeholder="Amount"
@@ -1323,7 +1395,7 @@ function OrderFormModal({
                 style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
                 <CreditCard size={12} /> Has Downpayment
               </button>
-              <button onClick={() => setPayments(prev => [...prev, { method: 'PACKAGE', amount: 0 }])}
+              <button onClick={() => setShowPackagePay(!showPackagePay)}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold"
                 style={{ color: '#1e40af' }}>
                 Package
@@ -1390,6 +1462,33 @@ function OrderFormModal({
                     <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{w.barcode}</span>
                   </button>
                 ))}
+              </div>
+            )}
+
+            {/* Package wallet search */}
+            {showPackagePay && (
+              <div className="p-3 rounded-xl border space-y-2" style={{ borderColor: '#93c5fd', background: '#eff6ff' }}>
+                <p className="text-xs font-semibold" style={{ color: '#1e40af' }}>Search patient&apos;s package wallet</p>
+                <input value={packageSearch} onChange={e => searchPackageWallets(e.target.value)} placeholder="Search by patient name..."
+                  className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#93c5fd' }} />
+                {packageWallets.length > 0 && (
+                  <div className="max-h-32 overflow-y-auto space-y-1">
+                    {packageWallets.map(w => (
+                      <button key={w.id} onClick={() => selectPackageWallet(w)}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 rounded-lg flex justify-between">
+                        <span className="font-medium">{w.patientName}</span>
+                        <span className="text-xs" style={{ color: '#1e40af' }}>
+                          Balance: {formatCurrency(toNum(w.balance))} · {w._count?.packages || 0} pkg(s)
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {selectedPackageWallet && (
+                  <div className="rounded-lg p-2 text-xs" style={{ background: '#dbeafe', color: '#1e40af' }}>
+                    Using: <strong>{selectedPackageWallet.patientName}</strong>&apos;s package
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -2152,7 +2251,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                     <td className="px-5 py-3" style={{ color: 'var(--mid-gray)' }}>{w._count?.packages || 0}</td>
                     <td className="px-5 py-3">
                       <span className="flex items-center gap-1" style={{ color: 'var(--teal)' }}>
-                        <Star size={12} /> {w.rewardPoints || 0}
+                        {['VIP', 'PREPAID_CARD'].includes(w.walletType) ? <><Star size={12} /> {w.rewardPoints || 0}</> : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
                       </span>
                     </td>
                     <td className="px-5 py-3">
