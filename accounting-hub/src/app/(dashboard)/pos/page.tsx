@@ -958,13 +958,18 @@ function OrderFormModal({
           // Reload wallet with the payment amount
           if (walletData.id) {
             const firstItem = items[0]
+            // Use packageSessions from the service if available, otherwise fall back to item quantity
+            const svc = services.find(s => s.id === firstItem.serviceId)
+            const sessionCount = (svc as Record<string, unknown>)?.packageSessions
+              ? Number((svc as Record<string, unknown>).packageSessions)
+              : items.reduce((s, it) => s + it.quantity, 0)
             await fetch(`/api/pos/wallets/${walletData.id}/reload`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 serviceName: firstItem.name,
                 serviceId: firstItem.serviceId || null,
-                totalSessions: items.reduce((s, it) => s + it.quantity, 0),
+                totalSessions: sessionCount,
                 amountPaid: netAmount,
               }),
             })
