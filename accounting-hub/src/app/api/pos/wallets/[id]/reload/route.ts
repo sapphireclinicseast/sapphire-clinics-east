@@ -32,7 +32,9 @@ export async function POST(
       return NextResponse.json({ error: 'Wallet not found' }, { status: 404 })
     }
 
-    const rewardPointsEarned = Math.floor(amountPaid / 100)
+    // Only VIP and PREPAID_CARD earn reward points
+    const REWARD_ELIGIBLE = ['VIP', 'PREPAID_CARD']
+    const rewardPointsEarned = REWARD_ELIGIBLE.includes(wallet.walletType) ? Math.floor(amountPaid / 100) : 0
 
     const [walletPackage] = await prisma.$transaction([
       // Create the package
@@ -46,11 +48,11 @@ export async function POST(
           expiresAt: expiresAt ? new Date(expiresAt) : null,
         },
       }),
-      // Update reward points and balance on wallet
+      // Update balance (and reward points only for VIP/Prepaid)
       prisma.digitalWallet.update({
         where: { id },
         data: {
-          rewardPoints: { increment: rewardPointsEarned },
+          ...(rewardPointsEarned > 0 ? { rewardPoints: { increment: rewardPointsEarned } } : {}),
           balance: { increment: parseFloat(amountPaid) },
         },
       }),

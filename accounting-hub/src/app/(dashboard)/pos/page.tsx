@@ -2233,7 +2233,10 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
               </span>
             </div>
             <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
-              {walletDetail.patientEmail || 'No email'} &middot; Reward Points: <Star size={10} className="inline" /> {walletDetail.rewardPoints || 0}
+              {walletDetail.patientEmail || 'No email'}
+              {['VIP', 'PREPAID_CARD'].includes(walletDetail.walletType) && (
+                <> &middot; Reward Points: <Star size={10} className="inline" /> {walletDetail.rewardPoints || 0}</>
+              )}
             </p>
 
             {/* Barcode */}
