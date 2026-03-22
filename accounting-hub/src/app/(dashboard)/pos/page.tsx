@@ -1910,7 +1910,9 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     // Generate barcode as data URL
     const canvas = document.createElement('canvas')
     try {
-      JsBarcode(canvas, w.barcode, {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const JsBarcodeLib = require('jsbarcode')
+      JsBarcodeLib(canvas, w.barcode, {
         format: 'CODE128', width: 2, height: 45, displayValue: true,
         fontSize: 11, margin: 4, font: 'monospace',
       })
