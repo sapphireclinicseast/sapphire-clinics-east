@@ -222,7 +222,7 @@ export default function ServicesPage() {
     return { discount, finalPrice: doctor + clinic - discount, label: 'PWD on clinic fee only (20%)' }
   }
 
-  if (!session?.user || loading) {
+  if (loading && !initialLoaded.current) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-sm" style={{ color: 'var(--mid-gray)' }}>Loading...</div>

@@ -485,7 +485,7 @@ export default function InventoryPage() {
 
   /* ── Auth guard ────────────────────────────────────────── */
 
-  if (!session?.user || loading) {
+  if (loading && !initialLoaded.current) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-sm" style={{ color: 'var(--mid-gray)' }}>Loading...</div>

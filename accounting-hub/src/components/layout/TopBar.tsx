@@ -34,8 +34,8 @@ export default function TopBar({ user, onMenuClick }: TopBarProps) {
         setDropdownOpen(false)
       }
     }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+    document.addEventListener('mouseup', handleClickOutside)
+    return () => document.removeEventListener('mouseup', handleClickOutside)
   }, [])
 
   const initials = (user.name || 'U')

@@ -183,7 +183,7 @@ export default function UsersPage() {
       u.email.toLowerCase().includes(search.toLowerCase())
   )
 
-  if (status === 'loading' || loading) {
+  if (status !== 'authenticated' && loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-sm" style={{ color: 'var(--mid-gray)' }}>Loading...</div>
