@@ -2255,7 +2255,9 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                       </span>
                     </td>
                     <td className="px-5 py-3 font-semibold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(toNum(w.balance))}</td>
-                    <td className="px-5 py-3 font-mono text-xs" style={{ color: 'var(--mid-gray)' }}>{w.barcode}</td>
+                    <td className="px-5 py-3 font-mono text-xs" style={{ color: 'var(--mid-gray)' }}>
+                      {['VIP', 'PREPAID_CARD'].includes(w.walletType) ? w.barcode : '—'}
+                    </td>
                     <td className="px-5 py-3" style={{ color: 'var(--mid-gray)' }}>{w._count?.packages || 0}</td>
                     <td className="px-5 py-3">
                       <span className="flex items-center gap-1" style={{ color: 'var(--teal)' }}>
@@ -2346,14 +2348,16 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
               )}
             </p>
 
-            {/* Barcode */}
-            <div className="flex items-center gap-4 mb-4 p-3 rounded-xl" style={{ background: 'var(--off-white)' }}>
-              <svg ref={barcodeRef} />
-              <button onClick={printBarcode} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border"
-                style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
-                <Printer size={12} /> Print
-              </button>
-            </div>
+            {/* Barcode — only for VIP and Prepaid Card */}
+            {['VIP', 'PREPAID_CARD'].includes(walletDetail.walletType) && (
+              <div className="flex items-center gap-4 mb-4 p-3 rounded-xl" style={{ background: 'var(--off-white)' }}>
+                <svg ref={barcodeRef} />
+                <button onClick={printBarcode} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border"
+                  style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
+                  <Printer size={12} /> Print
+                </button>
+              </div>
+            )}
 
             {/* Packages */}
             <div className="mb-4">
