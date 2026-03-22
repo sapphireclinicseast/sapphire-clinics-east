@@ -255,16 +255,19 @@ function printThermalReceipt(order: {
   const fmt = (v: string | number) => Number(v).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   const totalPaid = order.payments.reduce((s, p) => s + Number(p.amount), 0)
   const change = totalPaid - Number(order.netAmount)
-  const branchName = order.branch === 'SANDBOX_EAST' ? 'Sandbox Clinic \u2013 East' : order.branch === 'SANDBOX_GREENHILLS' ? 'Sandbox Clinic \u2013 Greenhills' : order.branch || ''
-  const address = order.branch === 'SANDBOX_GREENHILLS' ? 'Greenhills Shopping Center, San Juan City' : 'Level 4 Robinsons MetroEast, Brgy. Dela Paz, Pasig City'
+  const isVerdana = order.branch === 'VERDANA_STORE'
+  const branchName = order.branch === 'SANDBOX_EAST' ? 'Sandbox Clinic \u2013 East' : order.branch === 'SANDBOX_GREENHILLS' ? 'Sandbox Clinic \u2013 Greenhills' : isVerdana ? 'VERDANA STORE' : order.branch || ''
+  const address = isVerdana ? 'Room 210B, Henry\'s Building, 80 Ortigas Extension, San Juan City' : order.branch === 'SANDBOX_GREENHILLS' ? 'Greenhills Shopping Center, San Juan City' : 'Level 4 Robinsons MetroEast, Brgy. Dela Paz, Pasig City'
+  const phone = isVerdana ? '+63 917 173 1368' : '+63 917 118 9289 | (02) 5310 4991'
+  const email = isVerdana ? 'verdanatrading@gmail.com' : 'east.sandboxclinic@gmail.com'
   const paymentLabel = order.payments.map(p => p.method.replace(/_/g, ' ')).join(', ')
   const html = `<div style="font-family:'Courier New',monospace;font-size:11px;width:280px;padding:8px;line-height:1.5">
 <div style="text-align:center;font-weight:bold;font-size:12px">Sapphire Clinics East Inc.</div>
 <div style="text-align:center;font-size:11px">${branchName}</div>
 <div style="text-align:center;font-size:9px">${address}</div>
 <div style="text-align:center;font-size:9px">VAT-registered TIN: 010-817-642-00000</div>
-<div style="text-align:center;font-size:9px">+63 917 118 9289 | (02) 5310 4991</div>
-<div style="text-align:center;font-size:9px;margin-bottom:6px">east.sandboxclinic@gmail.com</div>
+<div style="text-align:center;font-size:9px">${phone}</div>
+<div style="text-align:center;font-size:9px;margin-bottom:6px">${email}</div>
 <div style="font-size:10px">Receptionist: ${order.createdBy?.name || '\u2014'}</div>
 <div style="font-size:10px">Date: ${formatDate(order.transactionDate)}</div>
 <div style="font-size:10px">Order No: ${order.orderNumber}</div>
@@ -2105,17 +2108,17 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     if (isVIP) {
       // VIP CARD LAYOUT (Platinum/Gold/Silver)
       frontHtml = `<div class="card" style="background:${colors.bg}">
-        <div style="display:flex;align-items:center;justify-content:center;height:100%">
-          <img src="${sceiMark}" style="width:70px;height:70px;object-fit:contain" />
+        <div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%">
+          <img src="${sceiMark}" style="width:80px;height:80px;object-fit:contain" />
         </div>
       </div>`
       backHtml = `<div class="card" style="background:${colors.bg}">
-        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:4mm">
-          <img src="${barcodeImg}" style="height:45px;max-width:65mm;margin-bottom:3mm" />
-          <div style="font-size:10px;font-weight:700;letter-spacing:2px;color:${colors.text};font-family:'Courier New',monospace;text-align:center">
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;padding:12px">
+          <img src="${barcodeImg}" style="height:50px;max-width:240px;margin-bottom:8px" />
+          <div style="font-size:9px;font-weight:700;letter-spacing:2px;color:${colors.text};font-family:'Courier New',monospace;text-align:center">
             SAPPHIRE CLINICS EAST INC.
           </div>
-          <div style="font-size:12px;font-weight:900;letter-spacing:3px;color:${colors.text};font-family:'Courier New',monospace;margin-top:1mm">
+          <div style="font-size:11px;font-weight:900;letter-spacing:3px;color:${colors.text};font-family:'Courier New',monospace;margin-top:4px">
             ${tier} VIP CARD
           </div>
         </div>
@@ -2123,15 +2126,15 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     } else {
       // PREPAID CARD LAYOUT (Sandbox Clinic style)
       frontHtml = `<div class="card" style="background:#FFF;border:1px solid #ddd">
-        <div style="padding:4mm 5mm;display:flex;flex-direction:column;justify-content:space-between;height:100%;box-sizing:border-box">
-          <img src="${logoUrl}" style="height:18px;object-fit:contain;align-self:flex-start" />
+        <div style="padding:15px;display:flex;flex-direction:column;justify-content:space-between;width:100%;height:100%;box-sizing:border-box">
+          <img src="${logoUrl}" style="height:20px;object-fit:contain;align-self:flex-start" />
           <div>
-            <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:#222;font-family:monospace;margin-bottom:2mm">${cardNum}</div>
+            <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:#222;font-family:monospace;margin-bottom:6px">${cardNum}</div>
             <div style="display:flex;justify-content:space-between;align-items:flex-end">
               <div>
                 <div style="font-size:6px;color:#E8641B;font-weight:700">EXP DATE</div>
                 <div style="font-size:9px;font-weight:600;color:#333;font-family:monospace">${expStr}</div>
-                <div style="font-size:8px;color:#E8641B;font-weight:700;margin-top:1mm">${w.patientName}</div>
+                <div style="font-size:8px;color:#E8641B;font-weight:700;margin-top:4px">${w.patientName}</div>
               </div>
               <div style="text-align:right">
                 <div style="font-size:9px;font-weight:900;color:#222">RELOADABLE</div>
@@ -2143,12 +2146,12 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         </div>
       </div>`
       backHtml = `<div class="card" style="background:#FFF;border:1px solid #ddd">
-        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:4mm;box-sizing:border-box;text-align:center">
-          <img src="${barcodeImg}" style="height:40px;max-width:65mm;margin-bottom:2mm" />
-          <div style="font-size:8px;font-weight:700;color:#E8641B;margin-bottom:1mm">
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;padding:12px;box-sizing:border-box;text-align:center">
+          <img src="${barcodeImg}" style="height:45px;max-width:240px;margin-bottom:6px" />
+          <div style="font-size:7px;font-weight:700;color:#E8641B;margin-bottom:4px">
             Thank you for choosing Sandbox Clinic<br/>for your health and rehabilitation needs!
           </div>
-          <div style="font-size:6px;color:#333;text-align:justify;padding:0 2mm;margin-bottom:2mm">
+          <div style="font-size:5.5px;color:#333;text-align:justify;padding:0 8px;margin-bottom:4px;line-height:1.4">
             Your reloadable card lets you earn points every time you avail of our services or purchase products. Simply present this card during each visit to collect points and redeem exclusive Sandbox rewards and merchandise.
           </div>
           <img src="${logoUrl}" style="height:14px;object-fit:contain" />
@@ -2156,15 +2159,23 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       </div>`
     }
 
-    const win = window.open('', '_blank', 'width=420,height=600')
+    const win = window.open('', '_blank', 'width=400,height=560')
     if (!win) return
     win.document.write(`<html><head><title>Card: ${w.patientName}</title>
       <style>
-        @page { size: ${cardW} ${cardH}; margin: 0; }
-        @media print { body { margin: 0; } .card { border: none !important; } }
+        @page { size: 85.6mm 54mm; margin: 0; }
+        @media print { body { margin: 0; padding: 0; } }
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
-        body { margin: 10px; font-family: Arial, Helvetica, sans-serif; }
-        .card { width: ${cardW}; height: ${cardH}; box-sizing: border-box; border-radius: 3mm; overflow: hidden; page-break-after: always; }
+        body { margin: 8px; padding: 0; font-family: Arial, Helvetica, sans-serif; }
+        .card {
+          width: 323px; height: 204px;
+          box-sizing: border-box;
+          border-radius: 8px;
+          overflow: hidden;
+          page-break-after: always;
+          page-break-inside: avoid;
+          margin-bottom: 8px;
+        }
       </style>
     </head><body>
       ${frontHtml}
