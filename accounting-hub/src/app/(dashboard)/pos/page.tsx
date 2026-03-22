@@ -672,6 +672,8 @@ function OrderFormModal({
   const [walletSearch, setWalletSearch] = useState('')
   const [walletResults, setWalletResults] = useState<DigitalWallet[]>([])
   const [showDownpayment, setShowDownpayment] = useState(false)
+  const [dpSearch, setDpSearch] = useState('')
+  const [dpWallets, setDpWallets] = useState<DigitalWallet[]>([])
   const [showPackagePay, setShowPackagePay] = useState(false)
   const [packageSearch, setPackageSearch] = useState('')
   const [packageWallets, setPackageWallets] = useState<DigitalWallet[]>([])
@@ -842,6 +844,17 @@ function OrderFormModal({
       const d = await r.json()
       setGlWallets(normalize(d) as DigitalWallet[])
     } catch { setGlWallets([]) }
+  }
+
+  const searchDpWallets = async (q: string) => {
+    setDpSearch(q)
+    try {
+      const params = new URLSearchParams({ walletType: 'DOWNPAYMENT' })
+      if (q) params.set('search', q)
+      const r = await fetch(`/api/pos/wallets?${params}`)
+      const d = await r.json()
+      setDpWallets(normalize(d) as DigitalWallet[])
+    } catch { setDpWallets([]) }
   }
 
   const searchPackageWallets = async (q: string) => {
@@ -1429,7 +1442,7 @@ function OrderFormModal({
                 style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
                 <Wallet size={12} /> VIP/Prepaid Card
               </button>
-              <button onClick={() => setShowDownpayment(!showDownpayment)}
+              <button onClick={() => { const next = !showDownpayment; setShowDownpayment(next); if (next) searchDpWallets('') }}
                 className="px-3 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1"
                 style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
                 <CreditCard size={12} /> Has Downpayment
@@ -1487,20 +1500,32 @@ function OrderFormModal({
 
             {/* Downpayment search */}
             {showDownpayment && (
-              <div className="p-3 rounded-xl border space-y-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-                <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Search for existing wallet with balance</p>
-                <input value={walletSearch} onChange={e => searchWallets(e.target.value)} placeholder="Patient name..."
-                  className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-                {walletResults.length > 0 && walletResults.map(w => (
-                  <button key={w.id} onClick={() => {
-                    setPayments(prev => [...prev, { method: 'WALLET', amount: 0, walletId: w.id, reference: `DP-${w.barcode}` }])
-                    setShowDownpayment(false)
-                  }}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex justify-between">
-                    <span>{w.patientName}</span>
-                    <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{w.barcode}</span>
-                  </button>
-                ))}
+              <div className="p-3 rounded-xl border space-y-2" style={{ borderColor: '#f9a8d4', background: '#fdf2f8' }}>
+                <p className="text-xs font-semibold" style={{ color: '#9d174d' }}>Search Downpayment wallets</p>
+                <input value={dpSearch} onChange={e => searchDpWallets(e.target.value)} placeholder="Search by patient name..."
+                  onFocus={() => { if (!dpSearch) searchDpWallets('') }}
+                  className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#f9a8d4' }} />
+                {dpWallets.length > 0 && (
+                  <div className="max-h-32 overflow-y-auto space-y-1">
+                    {dpWallets.map(w => (
+                      <button key={w.id} onClick={() => {
+                        setPayments(prev => [...prev, { method: 'DOWNPAYMENT', amount: 0, walletId: w.id, reference: w.patientName }])
+                        setShowDownpayment(false)
+                        setDpSearch('')
+                        setDpWallets([])
+                      }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-pink-50 rounded-lg flex justify-between">
+                        <span className="font-medium">{w.patientName}</span>
+                        <span className="text-xs" style={{ color: '#9d174d' }}>
+                          Balance: {formatCurrency(toNum(w.balance))}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {dpWallets.length === 0 && dpSearch.length > 0 && (
+                  <p className="text-xs" style={{ color: '#9d174d' }}>No downpayment wallets found.</p>
+                )}
               </div>
             )}
 
