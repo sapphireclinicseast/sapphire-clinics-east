@@ -369,13 +369,18 @@ export default function InventoryPage() {
   // Initial load — only runs once when session is available
   const initialLoaded = useRef(false)
   useEffect(() => {
-    if (!session?.user || initialLoaded.current) return
+    if (initialLoaded.current) return
+    if (!session?.user) {
+      // Session not yet loaded — set a timeout to prevent stuck loading
+      const t = setTimeout(() => { if (!initialLoaded.current) setLoading(false) }, 3000)
+      return () => clearTimeout(t)
+    }
     initialLoaded.current = true
     setLoading(true)
     Promise.all([fetchItems(), fetchAllItems(), fetchSuppliers(), fetchAllSuppliers(), fetchAdjustments(), fetchConsignments()])
       .finally(() => setLoading(false))
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session])
+  }, [session?.user])
 
   // Re-fetch items when search/filter changes (debounced)
   useEffect(() => {
@@ -498,7 +503,6 @@ export default function InventoryPage() {
       quantity: fInitialQty || '0',
       reorderLevel: fReorderLevel || null,
       supplierId: fSupplierId || null,
-      supplierExchangeRate: fExchangeRate || null,
     }
     if (editingItem) body.id = editingItem.id
     try {

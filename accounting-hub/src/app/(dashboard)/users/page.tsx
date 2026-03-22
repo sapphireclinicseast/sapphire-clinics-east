@@ -89,13 +89,13 @@ export default function UsersPage() {
   }, [])
 
   useEffect(() => {
-    if (status === 'authenticated') {
-      if (session?.user?.role !== 'ADMIN') {
-        redirect('/dashboard')
-      }
-      fetchUsers()
+    if (status !== 'authenticated') return
+    if (session?.user?.role !== 'ADMIN') {
+      redirect('/dashboard')
     }
-  }, [status, session, fetchUsers])
+    fetchUsers()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status])
 
   function openCreateModal() {
     setEditingUser(null)

@@ -100,9 +100,13 @@ export default function ServicesPage() {
     finally { setLoading(false) }
   }, [search, filterDept, filterBranch, sortField, sortDir])
 
+  // Initial load + refetch on filter/sort changes (debounced)
   useEffect(() => {
-    if (session?.user) fetchServices()
-  }, [session, fetchServices])
+    if (!session?.user) return
+    const timeout = setTimeout(() => { fetchServices() }, 150)
+    return () => clearTimeout(timeout)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user, search, filterDept, filterBranch, sortField, sortDir])
 
   // Sort toggle
   function toggleSort(field: string) {

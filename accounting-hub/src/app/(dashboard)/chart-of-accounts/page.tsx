@@ -205,10 +205,11 @@ export default function ChartOfAccountsPage() {
   }, [filterType, filterSubType])
 
   useEffect(() => {
-    if (session?.user) {
-      fetchAccounts()
-    }
-  }, [session, fetchAccounts])
+    if (!session?.user) return
+    const timeout = setTimeout(() => { fetchAccounts() }, 150)
+    return () => clearTimeout(timeout)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user, filterType, filterSubType])
 
   // ── Form handlers ──────────────────────────────────────────
 
