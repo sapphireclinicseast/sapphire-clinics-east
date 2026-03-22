@@ -141,6 +141,7 @@ model Service {
   priceType             PriceType     @default(FIXED)
   revenueType           RevenueType   @default(EARNED)
   walletType            String?       // VIP, PACKAGE, PREPAID_CARD, DOWNPAYMENT, ADVANCE — only for UNEARNED
+  vipTier               String?       // PLATINUM, GOLD, SILVER — only for VIP type
   packageSessions       Int?          // Number of sessions included (only for PACKAGE type)
   hasDoctorFee          Boolean       @default(false)
   doctorFee             Decimal?
@@ -385,6 +386,7 @@ model DigitalWallet {
   patientEmail String?
   barcode      String     @unique
   walletType   WalletType
+  vipTier      String?    // PLATINUM, GOLD, SILVER — only for VIP wallets
   balance      Decimal    @default(0)
   rewardPoints Int        @default(0)
   isActive     Boolean    @default(true)

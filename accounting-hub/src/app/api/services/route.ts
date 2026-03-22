@@ -100,6 +100,7 @@ export async function POST(req: Request) {
         priceType: priceType && VALID_PRICE_TYPES.includes(priceType) ? priceType : 'FIXED',
         revenueType: revenueType && VALID_REVENUE_TYPES.includes(revenueType) ? revenueType : 'EARNED',
         walletType: revenueType === 'UNEARNED' && walletType ? walletType : null,
+        vipTier: revenueType === 'UNEARNED' && walletType === 'VIP' && body.vipTier ? body.vipTier : null,
         packageSessions: revenueType === 'UNEARNED' && walletType === 'PACKAGE' && packageSessions ? parseInt(packageSessions) : null,
         hasDoctorFee: hasDoctorFee || false,
         doctorFee: hasDoctorFee && doctorFee ? parseFloat(doctorFee) : null,
@@ -164,6 +165,7 @@ export async function PUT(req: Request) {
     if (revenueType !== undefined) {
       data.revenueType = revenueType
       data.walletType = revenueType === 'UNEARNED' && walletType ? walletType : null
+      data.vipTier = revenueType === 'UNEARNED' && walletType === 'VIP' && body.vipTier ? body.vipTier : null
       data.packageSessions = revenueType === 'UNEARNED' && walletType === 'PACKAGE' && packageSessions ? parseInt(packageSessions) : null
     }
     if (hasDoctorFee !== undefined) {

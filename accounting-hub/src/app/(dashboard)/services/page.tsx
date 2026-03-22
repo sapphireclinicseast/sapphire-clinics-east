@@ -17,6 +17,7 @@ interface Service {
   priceType: string
   revenueType: string
   walletType: string | null
+  vipTier: string | null
   packageSessions: number | null
   hasDoctorFee: boolean
   doctorFee: string | number | null
@@ -91,6 +92,7 @@ export default function ServicesPage() {
   const [fPwdClinicOnly, setFPwdClinicOnly] = useState(false)
   const [fDescription, setFDescription] = useState('')
   const [fWalletType, setFWalletType] = useState('')
+  const [fVipTier, setFVipTier] = useState('')
   const [fPackageSessions, setFPackageSessions] = useState('')
   const [fEligibleServices, setFEligibleServices] = useState<{ serviceId: string; discountPercent: number }[]>([])
   const [eligibleSearch, setEligibleSearch] = useState('')
@@ -147,7 +149,7 @@ export default function ServicesPage() {
     setFName(''); setFDept('PT'); setFBranch('ALL'); setFPrice('')
     setFPriceType('FIXED'); setFRevenueType('EARNED'); setFHasDoctorFee(false); setFDoctorFee('')
     setFClinicFee(''); setFPwdClinicOnly(false); setFDescription('')
-    setFWalletType(''); setFPackageSessions(''); setFEligibleServices([]); setEligibleSearch('')
+    setFWalletType(''); setFVipTier(''); setFPackageSessions(''); setFEligibleServices([]); setEligibleSearch('')
     setError(''); setModalOpen(true)
   }
 
@@ -161,6 +163,7 @@ export default function ServicesPage() {
     setFPwdClinicOnly(s.pwdDiscountClinicOnly)
     setFDescription(s.description || '')
     setFWalletType(s.walletType || '')
+    setFVipTier(s.vipTier || '')
     setFPackageSessions(s.packageSessions != null ? String(s.packageSessions) : '')
     setFEligibleServices(
       (s.eligibleFor || []).map((e: { eligibleService: { id: string }; discountPercent?: number | string | null }) => ({
@@ -187,6 +190,7 @@ export default function ServicesPage() {
       name: fName, department: fDept, branch: fBranch,
       price: fPrice, priceType: fPriceType, revenueType: fRevenueType,
       walletType: fRevenueType === 'UNEARNED' ? (fWalletType || null) : null,
+      vipTier: fRevenueType === 'UNEARNED' && fWalletType === 'VIP' ? (fVipTier || null) : null,
       packageSessions: fRevenueType === 'UNEARNED' && fWalletType === 'PACKAGE' ? (parseInt(fPackageSessions) || null) : null,
       eligibleServices: fRevenueType === 'UNEARNED' && (fWalletType === 'PACKAGE' || fWalletType === 'VIP') ? fEligibleServices : [],
       hasDoctorFee: fHasDoctorFee,
@@ -510,6 +514,20 @@ export default function ServicesPage() {
                         <option value="ADVANCE">Advance Payment</option>
                       </select>
                     </div>
+
+                    {fWalletType === 'VIP' && (
+                      <div>
+                        <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>VIP Tier</label>
+                        <select value={fVipTier} onChange={(e) => setFVipTier(e.target.value)}
+                          className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                          style={{ borderColor: 'var(--light-gray)' }}>
+                          <option value="">— Select tier —</option>
+                          <option value="PLATINUM">Platinum</option>
+                          <option value="GOLD">Gold</option>
+                          <option value="SILVER">Silver</option>
+                        </select>
+                      </div>
+                    )}
 
                     {fWalletType === 'PACKAGE' && (
                       <div>

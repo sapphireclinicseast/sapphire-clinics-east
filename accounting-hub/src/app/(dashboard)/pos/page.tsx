@@ -86,6 +86,7 @@ interface DigitalWallet {
   id: string
   barcode: string
   walletType: string
+  vipTier?: string | null
   balance: string | number
   patientId?: string | null
   patientName: string
@@ -1955,71 +1956,97 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   const printCard = (w: DigitalWallet) => {
     // Generate barcode as data URL
     const canvas = document.createElement('canvas')
+    const isVIP = w.walletType === 'VIP'
+    const tier = (w.vipTier || 'PLATINUM').toUpperCase()
+
+    // VIP tier colors
+    const tierColors: Record<string, { bg: string; text: string; barFg: string; barBg: string }> = {
+      PLATINUM: { bg: '#000000', text: '#FFFFFF', barFg: '#FFFFFF', barBg: '#000000' },
+      GOLD: { bg: '#C5952A', text: '#FFFFFF', barFg: '#FFFFFF', barBg: '#C5952A' },
+      SILVER: { bg: '#B8B8B8', text: '#2B3A42', barFg: '#2B3A42', barBg: '#B8B8B8' },
+    }
+    const colors = isVIP ? (tierColors[tier] || tierColors.PLATINUM) : { bg: '#FFFFFF', text: '#222', barFg: '#000', barBg: '#FFFFFF' }
+
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const JsBarcodeLib = require('jsbarcode')
       JsBarcodeLib(canvas, w.barcode, {
-        format: 'CODE128', width: 2, height: 45, displayValue: true,
-        fontSize: 11, margin: 4, font: 'monospace',
+        format: 'CODE128', width: 2, height: 50, displayValue: true,
+        fontSize: 12, margin: 6, font: 'monospace',
+        lineColor: colors.barFg, background: colors.barBg,
       })
     } catch { /* invalid */ }
     const barcodeImg = canvas.toDataURL('image/png')
 
-    // Card number: format barcode as spaced groups (like credit card)
     const cardNum = w.barcode.replace(/-/g, '').replace(/(.{4})/g, '$1 ').trim()
-
-    // Expiry: 3 years from creation date
     const created = new Date(w.createdAt as string || Date.now())
     const expiry = new Date(created)
     expiry.setFullYear(expiry.getFullYear() + 3)
     const expStr = `${String(expiry.getMonth() + 1).padStart(2, '0')}/${String(expiry.getFullYear()).slice(-2)}`
-
-    // Wallet type label
-    const typeLabel = WALLET_TYPE_LABELS[w.walletType] || w.walletType
     const logoUrl = `${window.location.origin}/brand/sandbox-clinic-logo.png`
+
+    // SCEI diamond logo as inline SVG (for VIP cards)
+    const diamondSvg = (fill: string) => `<svg viewBox="0 0 100 100" width="70" height="70" xmlns="http://www.w3.org/2000/svg">
+      <g transform="translate(50,50) rotate(45) translate(-35,-35)">
+        <rect x="0" y="0" width="70" height="70" fill="none" stroke="${fill}" stroke-width="3"/>
+        <rect x="10" y="10" width="50" height="50" fill="none" stroke="${fill}" stroke-width="2"/>
+        <rect x="20" y="20" width="30" height="30" fill="none" stroke="${fill}" stroke-width="2"/>
+        <rect x="30" y="30" width="10" height="10" fill="${fill}"/>
+        <line x1="0" y1="0" x2="20" y2="20" stroke="${fill}" stroke-width="2"/>
+        <line x1="70" y1="0" x2="50" y2="20" stroke="${fill}" stroke-width="2"/>
+        <line x1="0" y1="70" x2="20" y2="50" stroke="${fill}" stroke-width="2"/>
+        <line x1="70" y1="70" x2="50" y2="50" stroke="${fill}" stroke-width="2"/>
+      </g>
+    </svg>`
 
     const cardW = '85.6mm'
     const cardH = '54mm'
 
-    const win = window.open('', '_blank', 'width=400,height=300')
-    if (!win) return
-    win.document.write(`<html><head><title>Card: ${w.patientName}</title>
-      <style>
-        @page { size: ${cardW} ${cardH}; margin: 0; }
-        @media print { body { margin: 0; } }
-        body { margin: 10px; font-family: Arial, Helvetica, sans-serif; }
-        .card { width: ${cardW}; height: ${cardH}; box-sizing: border-box; position: relative; border: 1px solid #ddd; border-radius: 3mm; overflow: hidden; page-break-after: always; }
-        .front { padding: 4mm 5mm; display: flex; flex-direction: column; justify-content: space-between; height: 100%; box-sizing: border-box; }
-        .back { padding: 4mm 5mm; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; box-sizing: border-box; text-align: center; }
-      </style>
-    </head><body>
-      <!-- FRONT -->
-      <div class="card">
-        <div class="front">
-          <div>
-            <img src="${logoUrl}" style="height:18px;object-fit:contain" />
+    let frontHtml: string
+    let backHtml: string
+
+    if (isVIP) {
+      // VIP CARD LAYOUT (Platinum/Gold/Silver)
+      frontHtml = `<div class="card" style="background:${colors.bg}">
+        <div style="display:flex;align-items:center;justify-content:center;height:100%">
+          ${diamondSvg(colors.text)}
+        </div>
+      </div>`
+      backHtml = `<div class="card" style="background:${colors.bg}">
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:4mm">
+          <img src="${barcodeImg}" style="height:45px;max-width:65mm;margin-bottom:3mm" />
+          <div style="font-size:10px;font-weight:700;letter-spacing:2px;color:${colors.text};font-family:'Courier New',monospace;text-align:center">
+            SAPPHIRE CLINICS EAST INC.
           </div>
+          <div style="font-size:12px;font-weight:900;letter-spacing:3px;color:${colors.text};font-family:'Courier New',monospace;margin-top:1mm">
+            ${tier} VIP CARD
+          </div>
+        </div>
+      </div>`
+    } else {
+      // PREPAID CARD LAYOUT (Sandbox Clinic style)
+      frontHtml = `<div class="card" style="background:#FFF;border:1px solid #ddd">
+        <div style="padding:4mm 5mm;display:flex;flex-direction:column;justify-content:space-between;height:100%;box-sizing:border-box">
+          <img src="${logoUrl}" style="height:18px;object-fit:contain;align-self:flex-start" />
           <div>
             <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:#222;font-family:monospace;margin-bottom:2mm">${cardNum}</div>
             <div style="display:flex;justify-content:space-between;align-items:flex-end">
               <div>
-                <div style="font-size:6px;color:#E8641B;font-weight:700;text-transform:uppercase">Exp Date</div>
+                <div style="font-size:6px;color:#E8641B;font-weight:700">EXP DATE</div>
                 <div style="font-size:9px;font-weight:600;color:#333;font-family:monospace">${expStr}</div>
-                <div style="font-size:8px;color:#E8641B;font-weight:700;margin-top:1mm;text-transform:uppercase">${w.patientName}</div>
+                <div style="font-size:8px;color:#E8641B;font-weight:700;margin-top:1mm">${w.patientName}</div>
               </div>
               <div style="text-align:right">
-                <div style="font-size:9px;font-weight:900;color:#222;text-transform:uppercase">RELOADABLE</div>
-                <div style="font-size:11px;font-weight:900;color:#E8641B;text-transform:uppercase">${typeLabel.toUpperCase()}</div>
-                <div style="font-size:11px;font-weight:900;color:#E8641B;text-transform:uppercase">CARD</div>
+                <div style="font-size:9px;font-weight:900;color:#222">RELOADABLE</div>
+                <div style="font-size:11px;font-weight:900;color:#E8641B">PREPAID</div>
+                <div style="font-size:11px;font-weight:900;color:#E8641B">CARD</div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-
-      <!-- BACK -->
-      <div class="card">
-        <div class="back">
+      </div>`
+      backHtml = `<div class="card" style="background:#FFF;border:1px solid #ddd">
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:4mm;box-sizing:border-box;text-align:center">
           <img src="${barcodeImg}" style="height:40px;max-width:65mm;margin-bottom:2mm" />
           <div style="font-size:8px;font-weight:700;color:#E8641B;margin-bottom:1mm">
             Thank you for choosing Sandbox Clinic<br/>for your health and rehabilitation needs!
@@ -2029,16 +2056,29 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
           </div>
           <img src="${logoUrl}" style="height:14px;object-fit:contain" />
         </div>
-      </div>
+      </div>`
+    }
 
+    const win = window.open('', '_blank', 'width=420,height=600')
+    if (!win) return
+    win.document.write(`<html><head><title>Card: ${w.patientName}</title>
+      <style>
+        @page { size: ${cardW} ${cardH}; margin: 0; }
+        @media print { body { margin: 0; } .card { border: none !important; } }
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+        body { margin: 10px; font-family: Arial, Helvetica, sans-serif; }
+        .card { width: ${cardW}; height: ${cardH}; box-sizing: border-box; border-radius: 3mm; overflow: hidden; page-break-after: always; }
+      </style>
+    </head><body>
+      ${frontHtml}
+      ${backHtml}
       <script>
         const imgs = document.querySelectorAll('img');
         let loaded = 0;
-        imgs.forEach(img => {
-          if (img.complete) loaded++;
-          else img.onload = () => { loaded++; if (loaded >= imgs.length) setTimeout(() => window.print(), 300); };
-        });
-        if (loaded >= imgs.length) setTimeout(() => window.print(), 500);
+        const total = imgs.length;
+        function checkPrint() { if (++loaded >= total) setTimeout(() => window.print(), 400); }
+        imgs.forEach(img => { if (img.complete) checkPrint(); else { img.onload = checkPrint; img.onerror = checkPrint; } });
+        if (total === 0) setTimeout(() => window.print(), 400);
       <\/script>
     </body></html>`)
     win.document.close()
