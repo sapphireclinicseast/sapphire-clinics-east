@@ -2084,19 +2084,10 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     const expStr = `${String(expiry.getMonth() + 1).padStart(2, '0')}/${String(expiry.getFullYear()).slice(-2)}`
     const logoUrl = `${window.location.origin}/brand/sandbox-clinic-logo.png`
 
-    // SCEI diamond logo as inline SVG (for VIP cards)
-    const diamondSvg = (fill: string) => `<svg viewBox="0 0 100 100" width="70" height="70" xmlns="http://www.w3.org/2000/svg">
-      <g transform="translate(50,50) rotate(45) translate(-35,-35)">
-        <rect x="0" y="0" width="70" height="70" fill="none" stroke="${fill}" stroke-width="3"/>
-        <rect x="10" y="10" width="50" height="50" fill="none" stroke="${fill}" stroke-width="2"/>
-        <rect x="20" y="20" width="30" height="30" fill="none" stroke="${fill}" stroke-width="2"/>
-        <rect x="30" y="30" width="10" height="10" fill="${fill}"/>
-        <line x1="0" y1="0" x2="20" y2="20" stroke="${fill}" stroke-width="2"/>
-        <line x1="70" y1="0" x2="50" y2="20" stroke="${fill}" stroke-width="2"/>
-        <line x1="0" y1="70" x2="20" y2="50" stroke="${fill}" stroke-width="2"/>
-        <line x1="70" y1="70" x2="50" y2="50" stroke="${fill}" stroke-width="2"/>
-      </g>
-    </svg>`
+    // SCEI diamond mark logos (actual PNGs)
+    const sceiMarkWhite = `${window.location.origin}/brand/scei-mark-white.png`
+    const sceiMarkDark = `${window.location.origin}/brand/scei-mark-dark.png`
+    const sceiMark = tier === 'SILVER' ? sceiMarkDark : sceiMarkWhite
 
     const cardW = '85.6mm'
     const cardH = '54mm'
@@ -2108,7 +2099,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       // VIP CARD LAYOUT (Platinum/Gold/Silver)
       frontHtml = `<div class="card" style="background:${colors.bg}">
         <div style="display:flex;align-items:center;justify-content:center;height:100%">
-          ${diamondSvg(colors.text)}
+          <img src="${sceiMark}" style="width:70px;height:70px;object-fit:contain" />
         </div>
       </div>`
       backHtml = `<div class="card" style="background:${colors.bg}">
