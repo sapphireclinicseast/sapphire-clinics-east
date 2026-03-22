@@ -2018,7 +2018,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       const r = await fetch('/api/pos/wallets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(createForm),
+        body: JSON.stringify({ ...createForm, walletType: walletTypeFilter }),
       })
       if (r.ok) {
         setShowCreate(false)
