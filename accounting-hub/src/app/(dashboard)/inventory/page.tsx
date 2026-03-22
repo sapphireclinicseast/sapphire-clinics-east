@@ -293,6 +293,7 @@ function BarcodeDisplay({ value }: { value: string }) {
 
 export default function InventoryPage() {
   const { data: session } = useSession()
+  const sessionUserId = session?.user?.id as string | undefined
   const [activeTab, setActiveTab] = useState<Tab>('Inventory')
 
   // ── Shared state
@@ -444,8 +445,7 @@ export default function InventoryPage() {
   const initialLoaded = useRef(false)
   useEffect(() => {
     if (initialLoaded.current) return
-    if (!session?.user) {
-      // Session not yet loaded — set a timeout to prevent stuck loading
+    if (!sessionUserId) {
       const t = setTimeout(() => { if (!initialLoaded.current) setLoading(false) }, 3000)
       return () => clearTimeout(t)
     }
@@ -454,7 +454,7 @@ export default function InventoryPage() {
     Promise.all([fetchItems(), fetchAllItems(), fetchSuppliers(), fetchAllSuppliers(), fetchAdjustments(), fetchConsignments()])
       .finally(() => setLoading(false))
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.user])
+  }, [sessionUserId])
 
   // Re-fetch items when search/filter changes (debounced)
   useEffect(() => {

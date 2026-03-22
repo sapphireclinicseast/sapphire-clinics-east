@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import {
   Plus, Pencil, Trash2, X, Search, Stethoscope,
@@ -28,6 +28,7 @@ interface Service {
 }
 
 const DEPARTMENTS = [
+  { value: 'ALL', label: 'All Departments' },
   { value: 'PT', label: 'Physical Therapy' },
   { value: 'MD', label: 'Medical Doctor' },
   { value: 'OT', label: 'Occupational Therapy' },
@@ -59,8 +60,10 @@ const DEPT_BADGE: Record<string, { bg: string; color: string }> = {
 
 export default function ServicesPage() {
   const { data: session } = useSession()
+  const sessionUserId = session?.user?.id as string | undefined
   const [services, setServices] = useState<Service[]>([])
   const [loading, setLoading] = useState(true)
+  const initialLoaded = useRef(false)
   const [search, setSearch] = useState('')
   const [filterDept, setFilterDept] = useState('')
   const [filterBranch, setFilterBranch] = useState('')
@@ -104,13 +107,21 @@ export default function ServicesPage() {
     finally { setLoading(false) }
   }, [search, filterDept, filterBranch, sortField, sortDir])
 
-  // Initial load + refetch on filter/sort changes (debounced)
+  // Initial load
   useEffect(() => {
-    if (!session?.user) return
-    const timeout = setTimeout(() => { fetchServices() }, 150)
+    if (!sessionUserId || initialLoaded.current) return
+    initialLoaded.current = true
+    fetchServices()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionUserId])
+
+  // Refetch on filter/sort changes (debounced, only after initial load)
+  useEffect(() => {
+    if (!initialLoaded.current) return
+    const timeout = setTimeout(() => { fetchServices() }, 300)
     return () => clearTimeout(timeout)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.user, search, filterDept, filterBranch, sortField, sortDir])
+  }, [search, filterDept, filterBranch, sortField, sortDir])
 
   // Sort toggle
   function toggleSort(field: string) {

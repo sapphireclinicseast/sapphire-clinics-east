@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import {
@@ -161,6 +161,8 @@ function parseCSV(text: string): string[][] {
 
 export default function ChartOfAccountsPage() {
   const { data: session, status } = useSession()
+  const sessionUserId = session?.user?.id as string | undefined
+  const initialLoaded = useRef(false)
   const [accounts, setAccounts] = useState<Account[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -204,12 +206,21 @@ export default function ChartOfAccountsPage() {
     }
   }, [filterType, filterSubType])
 
+  // Initial load
   useEffect(() => {
-    if (!session?.user) return
-    const timeout = setTimeout(() => { fetchAccounts() }, 150)
+    if (!sessionUserId || initialLoaded.current) return
+    initialLoaded.current = true
+    fetchAccounts()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionUserId])
+
+  // Refetch on filter changes (debounced, only after initial load)
+  useEffect(() => {
+    if (!initialLoaded.current) return
+    const timeout = setTimeout(() => { fetchAccounts() }, 300)
     return () => clearTimeout(timeout)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.user, filterType, filterSubType])
+  }, [filterType, filterSubType])
 
   // ── Form handlers ──────────────────────────────────────────
 
