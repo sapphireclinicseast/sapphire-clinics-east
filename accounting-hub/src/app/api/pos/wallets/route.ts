@@ -11,6 +11,8 @@ const TYPE_PREFIX: Record<string, string> = {
   PREPAID_CARD: 'R',
   DOWNPAYMENT: 'D',
   ADVANCE: 'A',
+  HMO: 'H',
+  GL: 'G',
 }
 
 function generateBarcode(walletType: string): string {

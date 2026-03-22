@@ -333,6 +333,9 @@ enum PaymentMethod {
   LAZADA
   TIKTOK
   DOWNPAYMENT
+  PACKAGE
+  HMO
+  GL
 }
 
 enum DiscountType {
@@ -354,6 +357,8 @@ enum WalletType {
   PREPAID_CARD
   DOWNPAYMENT
   ADVANCE
+  HMO
+  GL
 }
 
 model Referrer {

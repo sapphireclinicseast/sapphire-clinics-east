@@ -163,6 +163,9 @@ const PAYMENT_METHODS_SERVICE = [
   { value: 'PAYMAYA', label: 'PayMaya' },
   { value: 'DEBIT', label: 'Debit Card' },
   { value: 'CREDIT_CARD', label: 'Credit Card' },
+  { value: 'HMO', label: 'HMO' },
+  { value: 'GL', label: 'Guarantee Letter (GL)' },
+  { value: 'PACKAGE', label: 'Package' },
 ]
 
 const PAYMENT_METHODS_PRODUCT = [
@@ -199,6 +202,8 @@ const WALLET_TYPES = [
   { value: 'PREPAID_CARD', label: 'Prepaid Card' },
   { value: 'DOWNPAYMENT', label: 'Downpayment' },
   { value: 'ADVANCE', label: 'Advance' },
+  { value: 'HMO', label: 'HMO' },
+  { value: 'GL', label: 'Guarantee Letter' },
 ]
 
 const WALLET_TYPE_LABELS: Record<string, string> = {
@@ -207,6 +212,8 @@ const WALLET_TYPE_LABELS: Record<string, string> = {
   PREPAID_CARD: 'Prepaid Card',
   DOWNPAYMENT: 'Downpayment',
   ADVANCE: 'Advance',
+  HMO: 'HMO',
+  GL: 'Guarantee Letter',
 }
 
 const WALLET_TYPE_COLORS: Record<string, { bg: string; color: string }> = {
@@ -215,6 +222,8 @@ const WALLET_TYPE_COLORS: Record<string, { bg: string; color: string }> = {
   PREPAID_CARD: { bg: '#dcfce7', color: '#166534' },
   DOWNPAYMENT: { bg: '#fce7f3', color: '#9d174d' },
   ADVANCE: { bg: '#e0e7ff', color: '#3730a3' },
+  HMO: { bg: '#fff7ed', color: '#c2410c' },
+  GL: { bg: '#f0fdf4', color: '#15803d' },
 }
 
 /* ─────────────────────────── HELPERS ─────────────────────────── */
@@ -1266,20 +1275,29 @@ function OrderFormModal({
           <div className="rounded-xl border p-3 space-y-3" style={{ borderColor: 'var(--light-gray)' }}>
             <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Payments</h4>
             {payments.map((p, idx) => (
-              <div key={idx} className="flex items-center gap-2">
-                <select value={p.method} onChange={e => setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, method: e.target.value } : pp))}
-                  className="px-3 py-2.5 rounded-xl border text-sm outline-none flex-1" style={{ borderColor: 'var(--light-gray)' }}>
-                  {paymentMethods.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                  {p.method === 'WALLET' && <option value="WALLET">VIP/Prepaid Card</option>}
-                </select>
-                <input type="number" min={0} step="0.01" value={p.amount || ''} placeholder="Amount"
-                  onChange={e => setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, amount: parseFloat(e.target.value) || 0 } : pp))}
-                  className="w-32 px-3 py-2.5 rounded-xl border text-sm outline-none text-right" style={{ borderColor: 'var(--light-gray)' }} />
-                {p.reference && <span className="text-xs px-2 py-1 rounded-lg" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{p.reference}</span>}
-                {payments.length > 1 && (
-                  <button onClick={() => setPayments(prev => prev.filter((_, i) => i !== idx))} className="p-1 rounded hover:bg-red-50">
-                    <X size={14} className="text-red-500" />
-                  </button>
+              <div key={idx} className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <select value={p.method} onChange={e => setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, method: e.target.value } : pp))}
+                    className="px-3 py-2.5 rounded-xl border text-sm outline-none flex-1" style={{ borderColor: 'var(--light-gray)' }}>
+                    {paymentMethods.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                    {p.method === 'WALLET' && <option value="WALLET">VIP/Prepaid Card</option>}
+                  </select>
+                  <input type="number" min={0} step="0.01" value={p.amount || ''} placeholder="Amount"
+                    onChange={e => setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, amount: parseFloat(e.target.value) || 0 } : pp))}
+                    className="w-32 px-3 py-2.5 rounded-xl border text-sm outline-none text-right" style={{ borderColor: 'var(--light-gray)' }} />
+                  {p.reference && !['HMO', 'GL'].includes(p.method) && (
+                    <span className="text-xs px-2 py-1 rounded-lg" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{p.reference}</span>
+                  )}
+                  {payments.length > 1 && (
+                    <button onClick={() => setPayments(prev => prev.filter((_, i) => i !== idx))} className="p-1 rounded hover:bg-red-50">
+                      <X size={14} className="text-red-500" />
+                    </button>
+                  )}
+                </div>
+                {(p.method === 'HMO' || p.method === 'GL') && (
+                  <input value={p.reference || ''} placeholder={p.method === 'HMO' ? 'HMO Provider (e.g. Intellicare, Avega)' : 'GL Provider / Reference'}
+                    onChange={e => setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, reference: e.target.value } : pp))}
+                    className="w-full px-3 py-2 rounded-xl border text-xs outline-none" style={{ borderColor: p.method === 'HMO' ? '#fed7aa' : '#bbf7d0', background: p.method === 'HMO' ? '#fff7ed' : '#f0fdf4' }} />
                 )}
               </div>
             ))}
@@ -1297,6 +1315,21 @@ function OrderFormModal({
                 className="px-3 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1"
                 style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
                 <CreditCard size={12} /> Has Downpayment
+              </button>
+              <button onClick={() => setPayments(prev => [...prev, { method: 'PACKAGE', amount: 0 }])}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+                style={{ color: '#1e40af' }}>
+                Package
+              </button>
+              <button onClick={() => setPayments(prev => [...prev, { method: 'HMO', amount: 0, reference: '' }])}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+                style={{ color: '#c2410c' }}>
+                HMO
+              </button>
+              <button onClick={() => setPayments(prev => [...prev, { method: 'GL', amount: 0, reference: '' }])}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+                style={{ color: '#15803d' }}>
+                GL
               </button>
             </div>
 
@@ -3175,6 +3208,26 @@ function SalesSummarySection({ branch, canSelectBranch }: { branch: string; canS
     })
   })
 
+  // HMO/GL provider breakdown
+  const hmoBreakdown: Record<string, { count: number; total: number }> = {}
+  const glBreakdown: Record<string, { count: number; total: number }> = {}
+  activeOrders.forEach(o => {
+    o.payments.forEach(p => {
+      if (p.method === 'HMO' && p.reference) {
+        const provider = p.reference.trim() || 'Unspecified'
+        if (!hmoBreakdown[provider]) hmoBreakdown[provider] = { count: 0, total: 0 }
+        hmoBreakdown[provider].count++
+        hmoBreakdown[provider].total += toNum(p.amount)
+      }
+      if (p.method === 'GL' && p.reference) {
+        const provider = p.reference.trim() || 'Unspecified'
+        if (!glBreakdown[provider]) glBreakdown[provider] = { count: 0, total: 0 }
+        glBreakdown[provider].count++
+        glBreakdown[provider].total += toNum(p.amount)
+      }
+    })
+  })
+
   const serviceOrders = activeOrders.filter(o => o.orderType === 'SERVICE')
   const productOrders = activeOrders.filter(o => o.orderType === 'PRODUCT')
 
@@ -3354,7 +3407,7 @@ Signature:    _________________________
                     <tbody>
                       {Object.entries(paymentBreakdown).map(([method, data]) => (
                         <tr key={method} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                          <td className="px-4 py-2" style={{ color: 'var(--charcoal)' }}>{method}</td>
+                          <td className="px-4 py-2" style={{ color: 'var(--charcoal)' }}>{method.replace(/_/g, ' ')}</td>
                           <td className="px-4 py-2" style={{ color: 'var(--mid-gray)' }}>{data.count}</td>
                           <td className="px-4 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(data.total)}</td>
                         </tr>
@@ -3366,6 +3419,60 @@ Signature:    _________________________
                   </table>
                 </div>
               </div>
+
+              {/* HMO Provider Breakdown */}
+              {Object.keys(hmoBreakdown).length > 0 && (
+                <div>
+                  <h4 className="text-sm font-semibold mb-2" style={{ color: '#c2410c' }}>HMO Breakdown by Provider</h4>
+                  <div className="rounded-xl border overflow-hidden" style={{ borderColor: '#fed7aa' }}>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr style={{ background: '#fff7ed' }}>
+                          {['HMO Provider', 'Count', 'Total'].map(h => (
+                            <th key={h} className="px-4 py-2 text-left text-xs font-semibold" style={{ color: '#c2410c' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(hmoBreakdown).sort((a, b) => b[1].total - a[1].total).map(([provider, data]) => (
+                          <tr key={provider} className="border-t" style={{ borderColor: '#fed7aa' }}>
+                            <td className="px-4 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>HMO-{provider}</td>
+                            <td className="px-4 py-2" style={{ color: 'var(--mid-gray)' }}>{data.count}</td>
+                            <td className="px-4 py-2 font-semibold" style={{ color: '#c2410c' }}>{formatCurrency(data.total)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* GL Provider Breakdown */}
+              {Object.keys(glBreakdown).length > 0 && (
+                <div>
+                  <h4 className="text-sm font-semibold mb-2" style={{ color: '#15803d' }}>Guarantee Letter (GL) Breakdown</h4>
+                  <div className="rounded-xl border overflow-hidden" style={{ borderColor: '#bbf7d0' }}>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr style={{ background: '#f0fdf4' }}>
+                          {['GL Provider', 'Count', 'Total'].map(h => (
+                            <th key={h} className="px-4 py-2 text-left text-xs font-semibold" style={{ color: '#15803d' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(glBreakdown).sort((a, b) => b[1].total - a[1].total).map(([provider, data]) => (
+                          <tr key={provider} className="border-t" style={{ borderColor: '#bbf7d0' }}>
+                            <td className="px-4 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>GL-{provider}</td>
+                            <td className="px-4 py-2" style={{ color: 'var(--mid-gray)' }}>{data.count}</td>
+                            <td className="px-4 py-2 font-semibold" style={{ color: '#15803d' }}>{formatCurrency(data.total)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

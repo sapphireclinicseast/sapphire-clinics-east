@@ -1,0 +1,8 @@
+-- Add HMO, GL to PaymentMethod enum
+ALTER TYPE "PaymentMethod" ADD VALUE IF NOT EXISTS 'PACKAGE';
+ALTER TYPE "PaymentMethod" ADD VALUE IF NOT EXISTS 'HMO';
+ALTER TYPE "PaymentMethod" ADD VALUE IF NOT EXISTS 'GL';
+
+-- Add HMO, GL to WalletType enum
+ALTER TYPE "WalletType" ADD VALUE IF NOT EXISTS 'HMO';
+ALTER TYPE "WalletType" ADD VALUE IF NOT EXISTS 'GL';
