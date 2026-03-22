@@ -2159,22 +2159,21 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       </div>`
     }
 
-    const win = window.open('', '_blank', 'width=400,height=560')
+    const win = window.open('', '_blank', 'width=340,height=440')
     if (!win) return
     win.document.write(`<html><head><title>Card: ${w.patientName}</title>
       <style>
         @page { size: 85.6mm 54mm; margin: 0; }
         @media print { body { margin: 0; padding: 0; } }
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
-        body { margin: 8px; padding: 0; font-family: Arial, Helvetica, sans-serif; }
+        body { margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; }
         .card {
-          width: 323px; height: 204px;
+          width: 85.6mm; height: 54mm;
           box-sizing: border-box;
-          border-radius: 8px;
           overflow: hidden;
           page-break-after: always;
           page-break-inside: avoid;
-          margin-bottom: 8px;
+          margin: 0; padding: 0;
         }
       </style>
     </head><body>
