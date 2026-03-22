@@ -1906,6 +1906,96 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     win.document.close()
   }
 
+  const printCard = (w: DigitalWallet) => {
+    // Generate barcode as data URL
+    const canvas = document.createElement('canvas')
+    try {
+      JsBarcode(canvas, w.barcode, {
+        format: 'CODE128', width: 2, height: 45, displayValue: true,
+        fontSize: 11, margin: 4, font: 'monospace',
+      })
+    } catch { /* invalid */ }
+    const barcodeImg = canvas.toDataURL('image/png')
+
+    // Card number: format barcode as spaced groups (like credit card)
+    const cardNum = w.barcode.replace(/-/g, '').replace(/(.{4})/g, '$1 ').trim()
+
+    // Expiry: 3 years from creation date
+    const created = new Date(w.createdAt as string || Date.now())
+    const expiry = new Date(created)
+    expiry.setFullYear(expiry.getFullYear() + 3)
+    const expStr = `${String(expiry.getMonth() + 1).padStart(2, '0')}/${String(expiry.getFullYear()).slice(-2)}`
+
+    // Wallet type label
+    const typeLabel = WALLET_TYPE_LABELS[w.walletType] || w.walletType
+    const logoUrl = `${window.location.origin}/brand/sandbox-clinic-logo.png`
+
+    const cardW = '85.6mm'
+    const cardH = '54mm'
+
+    const win = window.open('', '_blank', 'width=400,height=300')
+    if (!win) return
+    win.document.write(`<html><head><title>Card: ${w.patientName}</title>
+      <style>
+        @page { size: ${cardW} ${cardH}; margin: 0; }
+        @media print { body { margin: 0; } }
+        body { margin: 10px; font-family: Arial, Helvetica, sans-serif; }
+        .card { width: ${cardW}; height: ${cardH}; box-sizing: border-box; position: relative; border: 1px solid #ddd; border-radius: 3mm; overflow: hidden; page-break-after: always; }
+        .front { padding: 4mm 5mm; display: flex; flex-direction: column; justify-content: space-between; height: 100%; box-sizing: border-box; }
+        .back { padding: 4mm 5mm; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; box-sizing: border-box; text-align: center; }
+      </style>
+    </head><body>
+      <!-- FRONT -->
+      <div class="card">
+        <div class="front">
+          <div>
+            <img src="${logoUrl}" style="height:18px;object-fit:contain" />
+          </div>
+          <div>
+            <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:#222;font-family:monospace;margin-bottom:2mm">${cardNum}</div>
+            <div style="display:flex;justify-content:space-between;align-items:flex-end">
+              <div>
+                <div style="font-size:6px;color:#E8641B;font-weight:700;text-transform:uppercase">Exp Date</div>
+                <div style="font-size:9px;font-weight:600;color:#333;font-family:monospace">${expStr}</div>
+                <div style="font-size:8px;color:#E8641B;font-weight:700;margin-top:1mm;text-transform:uppercase">${w.patientName}</div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-size:9px;font-weight:900;color:#222;text-transform:uppercase">RELOADABLE</div>
+                <div style="font-size:11px;font-weight:900;color:#E8641B;text-transform:uppercase">${typeLabel.toUpperCase()}</div>
+                <div style="font-size:11px;font-weight:900;color:#E8641B;text-transform:uppercase">CARD</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BACK -->
+      <div class="card">
+        <div class="back">
+          <img src="${barcodeImg}" style="height:40px;max-width:65mm;margin-bottom:2mm" />
+          <div style="font-size:8px;font-weight:700;color:#E8641B;margin-bottom:1mm">
+            Thank you for choosing Sandbox Clinic<br/>for your health and rehabilitation needs!
+          </div>
+          <div style="font-size:6px;color:#333;text-align:justify;padding:0 2mm;margin-bottom:2mm">
+            Your reloadable card lets you earn points every time you avail of our services or purchase products. Simply present this card during each visit to collect points and redeem exclusive Sandbox rewards and merchandise.
+          </div>
+          <img src="${logoUrl}" style="height:14px;object-fit:contain" />
+        </div>
+      </div>
+
+      <script>
+        const imgs = document.querySelectorAll('img');
+        let loaded = 0;
+        imgs.forEach(img => {
+          if (img.complete) loaded++;
+          else img.onload = () => { loaded++; if (loaded >= imgs.length) setTimeout(() => window.print(), 300); };
+        });
+        if (loaded >= imgs.length) setTimeout(() => window.print(), 500);
+      <\/script>
+    </body></html>`)
+    win.document.close()
+  }
+
   return (
     <div className="space-y-4">
       {/* Wallet Type Sub-tabs */}
@@ -1978,9 +2068,15 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                       </span>
                     </td>
                     <td className="px-5 py-3">
-                      <button className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
-                        View
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={(e) => { e.stopPropagation(); printCard(w) }}
+                          className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={{ color: '#E8641B' }}>
+                          Print Card
+                        </button>
+                        <button className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+                          View
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 )
