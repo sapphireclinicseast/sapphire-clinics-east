@@ -139,6 +139,8 @@ model Service {
   price                 Decimal
   priceType             PriceType     @default(FIXED)
   revenueType           RevenueType   @default(EARNED)
+  walletType            String?       // VIP, PACKAGE, PREPAID_CARD, DOWNPAYMENT, ADVANCE — only for UNEARNED
+  packageSessions       Int?          // Number of sessions included (only for PACKAGE type)
   hasDoctorFee          Boolean       @default(false)
   doctorFee             Decimal?
   clinicFee             Decimal?

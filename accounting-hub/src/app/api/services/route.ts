@@ -68,8 +68,8 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json()
-    const { name, department, branch, price, priceType, revenueType, hasDoctorFee,
-            doctorFee, clinicFee, pwdDiscountClinicOnly, description } = body
+    const { name, department, branch, price, priceType, revenueType, walletType, packageSessions,
+            hasDoctorFee, doctorFee, clinicFee, pwdDiscountClinicOnly, description } = body
 
     if (!name?.trim() || !department || !branch || price == null) {
       return NextResponse.json({ error: 'Name, department, branch, and price are required' }, { status: 400 })
@@ -91,6 +91,8 @@ export async function POST(req: Request) {
         price: parseFloat(price),
         priceType: priceType && VALID_PRICE_TYPES.includes(priceType) ? priceType : 'FIXED',
         revenueType: revenueType && VALID_REVENUE_TYPES.includes(revenueType) ? revenueType : 'EARNED',
+        walletType: revenueType === 'UNEARNED' && walletType ? walletType : null,
+        packageSessions: revenueType === 'UNEARNED' && walletType === 'PACKAGE' && packageSessions ? parseInt(packageSessions) : null,
         hasDoctorFee: hasDoctorFee || false,
         doctorFee: hasDoctorFee && doctorFee ? parseFloat(doctorFee) : null,
         clinicFee: hasDoctorFee && clinicFee ? parseFloat(clinicFee) : null,
@@ -124,8 +126,8 @@ export async function PUT(req: Request) {
 
   try {
     const body = await req.json()
-    const { id, name, department, branch, price, priceType, revenueType, hasDoctorFee,
-            doctorFee, clinicFee, pwdDiscountClinicOnly, description } = body
+    const { id, name, department, branch, price, priceType, revenueType, walletType, packageSessions,
+            hasDoctorFee, doctorFee, clinicFee, pwdDiscountClinicOnly, description } = body
 
     if (!id) {
       return NextResponse.json({ error: 'Service ID is required' }, { status: 400 })
@@ -138,7 +140,11 @@ export async function PUT(req: Request) {
     if (branch !== undefined) data.branch = branch
     if (price !== undefined) data.price = parseFloat(price)
     if (priceType !== undefined) data.priceType = priceType
-    if (revenueType !== undefined) data.revenueType = revenueType
+    if (revenueType !== undefined) {
+      data.revenueType = revenueType
+      data.walletType = revenueType === 'UNEARNED' && walletType ? walletType : null
+      data.packageSessions = revenueType === 'UNEARNED' && walletType === 'PACKAGE' && packageSessions ? parseInt(packageSessions) : null
+    }
     if (hasDoctorFee !== undefined) {
       data.hasDoctorFee = hasDoctorFee
       if (!hasDoctorFee) {

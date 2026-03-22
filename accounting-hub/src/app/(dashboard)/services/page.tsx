@@ -16,6 +16,8 @@ interface Service {
   price: string | number
   priceType: string
   revenueType: string
+  walletType: string | null
+  packageSessions: number | null
   hasDoctorFee: boolean
   doctorFee: string | number | null
   clinicFee: string | number | null
@@ -84,6 +86,8 @@ export default function ServicesPage() {
   const [fClinicFee, setFClinicFee] = useState('')
   const [fPwdClinicOnly, setFPwdClinicOnly] = useState(false)
   const [fDescription, setFDescription] = useState('')
+  const [fWalletType, setFWalletType] = useState('')
+  const [fPackageSessions, setFPackageSessions] = useState('')
 
   const canWrite = session?.user?.role && ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN'].includes(session.user.role as string)
 
@@ -129,6 +133,7 @@ export default function ServicesPage() {
     setFName(''); setFDept('PT'); setFBranch('ALL'); setFPrice('')
     setFPriceType('FIXED'); setFRevenueType('EARNED'); setFHasDoctorFee(false); setFDoctorFee('')
     setFClinicFee(''); setFPwdClinicOnly(false); setFDescription('')
+    setFWalletType(''); setFPackageSessions('')
     setError(''); setModalOpen(true)
   }
 
@@ -141,6 +146,8 @@ export default function ServicesPage() {
     setFClinicFee(s.clinicFee != null ? String(s.clinicFee) : '')
     setFPwdClinicOnly(s.pwdDiscountClinicOnly)
     setFDescription(s.description || '')
+    setFWalletType(s.walletType || '')
+    setFPackageSessions(s.packageSessions != null ? String(s.packageSessions) : '')
     setError(''); setModalOpen(true)
   }
 
@@ -158,6 +165,8 @@ export default function ServicesPage() {
     const body: Record<string, unknown> = {
       name: fName, department: fDept, branch: fBranch,
       price: fPrice, priceType: fPriceType, revenueType: fRevenueType,
+      walletType: fRevenueType === 'UNEARNED' ? (fWalletType || null) : null,
+      packageSessions: fRevenueType === 'UNEARNED' && fWalletType === 'PACKAGE' ? (parseInt(fPackageSessions) || null) : null,
       hasDoctorFee: fHasDoctorFee,
       doctorFee: fHasDoctorFee ? fDoctorFee : null,
       clinicFee: fHasDoctorFee ? fClinicFee : null,
@@ -337,7 +346,7 @@ export default function ServicesPage() {
                         style={s.revenueType === 'EARNED'
                           ? { background: '#dcfce7', color: '#166534' }
                           : { background: '#fef3c7', color: '#92400e' }}>
-                        {s.revenueType === 'EARNED' ? 'Sales' : 'Unearned'}
+                        {s.revenueType === 'EARNED' ? 'Sales' : s.walletType ? `${s.walletType.replace('_', ' ')}${s.packageSessions ? ` (${s.packageSessions}s)` : ''}` : 'Unearned'}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
@@ -465,9 +474,44 @@ export default function ServicesPage() {
                   <option value="UNEARNED">Unearned Revenue (Package / VIP / Downpayment — consumed later)</option>
                 </select>
                 {fRevenueType === 'UNEARNED' && (
-                  <p className="mt-1.5 text-xs px-1" style={{ color: '#92400e' }}>
-                    This service will be classified as Unearned Revenue (liability) until sessions are consumed.
-                  </p>
+                  <div className="mt-3 space-y-3">
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Wallet Type</label>
+                      <select value={fWalletType} onChange={(e) => setFWalletType(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                        style={{ borderColor: 'var(--light-gray)' }}>
+                        <option value="">— Select type —</option>
+                        <option value="PACKAGE">Package (sessions-based)</option>
+                        <option value="VIP">VIP Card</option>
+                        <option value="PREPAID_CARD">Prepaid Card</option>
+                        <option value="DOWNPAYMENT">Downpayment</option>
+                        <option value="ADVANCE">Advance Payment</option>
+                      </select>
+                    </div>
+
+                    {fWalletType === 'PACKAGE' && (
+                      <div>
+                        <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Number of Sessions</label>
+                        <input type="number" min="1" value={fPackageSessions} onChange={(e) => setFPackageSessions(e.target.value)}
+                          placeholder="e.g. 10"
+                          className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                          style={{ borderColor: 'var(--light-gray)' }} />
+                        {fPackageSessions && fPrice && (
+                          <p className="mt-1 text-xs" style={{ color: 'var(--deep-teal)' }}>
+                            Per-session rate: {formatCurrency(parseFloat(fPrice) / (parseInt(fPackageSessions) || 1))}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    <p className="text-xs px-1" style={{ color: '#92400e' }}>
+                      {fWalletType === 'PACKAGE'
+                        ? `This service will create a Package wallet. Each session used will record ${fPackageSessions ? formatCurrency(parseFloat(fPrice || '0') / (parseInt(fPackageSessions) || 1)) : '—'} as earned revenue.`
+                        : fWalletType
+                          ? `A ${fWalletType.replace('_', ' ')} digital wallet will be auto-created for the patient during checkout.`
+                          : 'This service will be classified as Unearned Revenue (liability) until sessions are consumed.'}
+                    </p>
+                  </div>
                 )}
               </div>
 
