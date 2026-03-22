@@ -1074,15 +1074,20 @@ function OrderFormModal({
                 {filteredServices.slice(0, 20).map(s => (
                   <button key={s.id} onClick={() => addItem(s)}
                     className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 flex items-center justify-between" style={{ color: 'var(--charcoal)' }}>
-                    <span className="flex items-center gap-2">
+                    <span className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium">{s.name}</span>
                       {s.department && (
                         <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: '#f3e8ff', color: '#6b21a8' }}>
                           {s.department}
                         </span>
                       )}
+                      {s.revenueType === 'UNEARNED' && (
+                        <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: '#fef3c7', color: '#92400e' }}>
+                          {(s as Record<string, unknown>).walletType ? String((s as Record<string, unknown>).walletType).replace('_', ' ') : 'Unearned'}
+                        </span>
+                      )}
                     </span>
-                    <span className="font-semibold" style={{ color: 'var(--teal)' }}>{formatCurrency(toNum(s.price))}</span>
+                    <span className="font-semibold shrink-0" style={{ color: 'var(--teal)' }}>{formatCurrency(toNum(s.price))}</span>
                   </button>
                 ))}
               </div>

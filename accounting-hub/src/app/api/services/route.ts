@@ -34,8 +34,8 @@ export async function GET(req: Request) {
     where.department = department
   }
 
-  if (branch && VALID_BRANCHES.includes(branch)) {
-    where.branch = branch
+  if (branch && VALID_BRANCHES.includes(branch) && branch !== 'ALL') {
+    where.branch = { in: [branch, 'ALL'] }
   }
 
   // Build orderBy
