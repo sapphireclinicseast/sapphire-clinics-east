@@ -798,7 +798,7 @@ function OrderFormModal({
   }
 
   const netAmount = Math.max(0, subtotal - discountAmount)
-  const totalPayments = payments.reduce((s, p) => s + toNum(p.amount), 0)
+  const totalPayments = payments.reduce((s, p) => s + (p.method === 'PACKAGE' ? netAmount : toNum(p.amount)), 0)
   const changeDue = totalPayments - netAmount
   const applyWalletDiscount = async (wallet: DigitalWallet) => {
     setActiveWallet(wallet)
@@ -934,9 +934,9 @@ function OrderFormModal({
           unitPrice: it.unitPrice,
           lineTotal: it.lineTotal,
         })),
-        payments: payments.filter(p => toNum(p.amount) > 0).map(p => ({
+        payments: payments.filter(p => toNum(p.amount) > 0 || p.method === 'PACKAGE').map(p => ({
           method: p.method,
-          amount: toNum(p.amount),
+          amount: p.method === 'PACKAGE' ? netAmount : toNum(p.amount),
           walletId: p.walletId || null,
           reference: p.reference || null,
         })),
@@ -1282,9 +1282,15 @@ function OrderFormModal({
                     {paymentMethods.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                     {p.method === 'WALLET' && <option value="WALLET">VIP/Prepaid Card</option>}
                   </select>
-                  <input type="number" min={0} step="0.01" value={p.amount || ''} placeholder="Amount"
-                    onChange={e => setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, amount: parseFloat(e.target.value) || 0 } : pp))}
-                    className="w-32 px-3 py-2.5 rounded-xl border text-sm outline-none text-right" style={{ borderColor: 'var(--light-gray)' }} />
+                  {p.method === 'PACKAGE' ? (
+                    <span className="w-32 px-3 py-2.5 rounded-xl border text-sm text-right bg-gray-100 text-gray-500" style={{ borderColor: 'var(--light-gray)' }}>
+                      {formatCurrency(netAmount)}
+                    </span>
+                  ) : (
+                    <input type="number" min={0} step="0.01" value={p.amount || ''} placeholder="Amount"
+                      onChange={e => setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, amount: parseFloat(e.target.value) || 0 } : pp))}
+                      className="w-32 px-3 py-2.5 rounded-xl border text-sm outline-none text-right" style={{ borderColor: 'var(--light-gray)' }} />
+                  )}
                   {p.reference && !['HMO', 'GL'].includes(p.method) && (
                     <span className="text-xs px-2 py-1 rounded-lg" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{p.reference}</span>
                   )}
@@ -2111,10 +2117,12 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-1.5">
-                        <button onClick={(e) => { e.stopPropagation(); printCard(w) }}
-                          className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={{ color: '#E8641B' }}>
-                          Print Card
-                        </button>
+                        {['VIP', 'PREPAID_CARD'].includes(w.walletType) && (
+                          <button onClick={(e) => { e.stopPropagation(); printCard(w) }}
+                            className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={{ color: '#E8641B' }}>
+                            Print Card
+                          </button>
+                        )}
                         <button className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
                           View
                         </button>

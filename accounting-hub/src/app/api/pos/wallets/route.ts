@@ -109,14 +109,22 @@ export async function POST(req: Request) {
       }
     }
 
-    // Generate unique barcode with retry
-    let barcode = generateBarcode(walletType)
-    let attempts = 0
-    while (attempts < 10) {
-      const existing = await prisma.digitalWallet.findUnique({ where: { barcode } })
-      if (!existing) break
+    // Generate unique barcode (only for VIP and PREPAID_CARD — others use internal ID)
+    const CARD_TYPES = ['VIP', 'PREPAID_CARD']
+    let barcode: string
+    if (CARD_TYPES.includes(walletType)) {
       barcode = generateBarcode(walletType)
-      attempts++
+      let attempts = 0
+      while (attempts < 10) {
+        const existing = await prisma.digitalWallet.findUnique({ where: { barcode } })
+        if (!existing) break
+        barcode = generateBarcode(walletType)
+        attempts++
+      }
+    } else {
+      // Non-card wallets get a simple internal reference (no printed barcode)
+      const prefix = TYPE_PREFIX[walletType] || 'W'
+      barcode = `SCEI-${prefix}-${Date.now().toString(36).toUpperCase()}`
     }
 
     const wallet = await prisma.digitalWallet.create({
