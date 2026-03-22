@@ -2012,20 +2012,33 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
 
   useEffect(() => { fetchWallets() }, [fetchWallets])
 
+  const [createError, setCreateError] = useState('')
   const createWallet = async () => {
-    if (!createForm.patientName.trim()) return
+    if (!createForm.patientName.trim()) { setCreateError('Name is required'); return }
+    setCreateError('')
     try {
+      const payload = { ...createForm, walletType: walletTypeFilter }
       const r = await fetch('/api/pos/wallets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...createForm, walletType: walletTypeFilter }),
+        body: JSON.stringify(payload),
       })
-      if (r.ok) {
-        setShowCreate(false)
-        setCreateForm({ patientName: '', patientId: '', patientEmail: '' })
-        fetchWallets()
+      const data = await r.json()
+      if (!r.ok) {
+        setCreateError(data.error || `Failed (${r.status})`)
+        return
       }
-    } catch {}
+      if (data.existingWallet) {
+        setCreateError(`Already exists — ${walletTypeFilter === 'HMO' ? 'HMO' : walletTypeFilter === 'GL' ? 'Agency' : 'Wallet'} "${createForm.patientName}" already registered.`)
+        fetchWallets()
+        return
+      }
+      setShowCreate(false)
+      setCreateForm({ patientName: '', patientId: '', patientEmail: '' })
+      fetchWallets()
+    } catch (e) {
+      setCreateError(`Network error: ${e}`)
+    }
   }
 
   const loadWalletDetail = async (w: DigitalWallet) => {
@@ -2370,7 +2383,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
             placeholder={walletTypeFilter === 'HMO' ? 'Search HMO provider...' : walletTypeFilter === 'GL' ? 'Search agency...' : `Search ${WALLET_TYPE_LABELS[walletTypeFilter] || ''} wallets by patient name...`}
             className="w-full pl-9 pr-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
         </div>
-        <button onClick={() => setShowCreate(true)} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium text-white" style={{ background: 'var(--teal)' }}>
+        <button onClick={() => { setShowCreate(true); setCreateError('') }} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium text-white" style={{ background: 'var(--teal)' }}>
           <Plus size={16} /> {walletTypeFilter === 'HMO' ? 'Add HMO' : walletTypeFilter === 'GL' ? 'Add Agency' : 'Create Wallet'}
         </button>
       </div>
@@ -2488,6 +2501,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 <input value={createForm.patientEmail} onChange={e => setCreateForm({ ...createForm, patientEmail: e.target.value })}
                   className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
               </div>
+              {createError && <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle size={12} />{createError}</p>}
               <button onClick={createWallet} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>
                 {walletTypeFilter === 'HMO' ? 'Add HMO' : walletTypeFilter === 'GL' ? 'Add Agency' : 'Create Wallet'}
               </button>
