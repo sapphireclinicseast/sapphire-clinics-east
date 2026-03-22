@@ -33,42 +33,43 @@ function printVerdanaSticker(item: { name: string; sku?: string; barcode?: strin
   const sku = item.sku || item.barcode || ''
   const barcodeValue = item.barcode || item.sku || ''
 
-  // Create a temporary canvas to generate barcode as data URL
+  // Generate barcode as data URL
   const canvas = document.createElement('canvas')
   try {
     JsBarcode(canvas, barcodeValue, {
       format: 'CODE128', width: 2, height: 50, displayValue: true,
-      fontSize: 12, margin: 5, font: 'monospace',
+      fontSize: 11, margin: 4, font: 'monospace',
     })
   } catch { /* invalid barcode */ }
   const barcodeDataUrl = canvas.toDataURL('image/png')
 
-  // Verdana logo SVG (teal V mark with orange circle)
-  const logoSvg = `<svg viewBox="0 0 120 120" width="60" height="60" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="98" cy="22" r="18" fill="#D4842A"/>
-    <polygon points="10,10 40,10 70,110 50,110" fill="#2B5F6B"/>
-    <polygon points="50,10 80,10 100,110 80,110" fill="#2B5F6B"/>
-  </svg>`
+  // Logo from public/brand directory
+  const logoUrl = `${window.location.origin}/brand/verdana-logo.png`
+
+  // Facebook, Instagram, TikTok SVG icons (simple, monochrome)
+  const fbIcon = `<svg width="12" height="12" viewBox="0 0 24 24" fill="#333"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>`
+  const igIcon = `<svg width="12" height="12" viewBox="0 0 24 24" fill="#333"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>`
+  const ttIcon = `<svg width="12" height="12" viewBox="0 0 24 24" fill="#333"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1v-3.5a6.37 6.37 0 00-.79-.05A6.34 6.34 0 003.15 15.2a6.34 6.34 0 0010.86 4.46V13.2a8.16 8.16 0 005.58 2.17V11.9a4.81 4.81 0 01-3.15-1.13V6.69h3.15z"/></svg>`
 
   const stickerHtml = `
-    <div style="width:100%;height:calc(100%/3);box-sizing:border-box;border-bottom:1px dashed #ccc;padding:8mm 6mm;display:flex;align-items:center;gap:4mm;font-family:Arial,sans-serif">
-      <div style="display:flex;flex-direction:column;align-items:center;min-width:60px">
-        ${logoSvg}
-        <div style="font-size:9px;font-weight:900;letter-spacing:3px;margin-top:2px;color:#2B5F6B">VERDANA</div>
+    <div style="width:100%;height:calc(100%/3);box-sizing:border-box;border-bottom:1px dashed #999;padding:5mm 5mm;display:flex;align-items:center;gap:3mm;font-family:Arial,Helvetica,sans-serif">
+      <div style="display:flex;flex-direction:column;align-items:center;min-width:55px">
+        <img src="${logoUrl}" style="width:50px;height:50px;object-fit:contain" />
+        <div style="font-size:8px;font-weight:900;letter-spacing:2.5px;margin-top:1px;color:#000">VERDANA</div>
       </div>
       <div style="flex:1;text-align:center">
-        <div style="margin-bottom:3mm">
-          <span style="font-size:14px;font-weight:700;color:#2B5F6B;letter-spacing:1px">PROGRESS, MADE </span>
-          <span style="font-size:16px;font-style:italic;font-weight:400;color:#2B5F6B">Possible</span>
+        <div style="margin-bottom:2mm">
+          <span style="font-size:12px;font-weight:800;color:#000;letter-spacing:0.5px;text-transform:uppercase">PROGRESS, MADE </span>
+          <span style="font-size:14px;font-style:italic;font-weight:400;color:#000;font-family:Georgia,serif">Possible</span>
         </div>
-        <div style="font-size:10px;font-weight:700;color:#333;margin-bottom:1mm">${item.name}</div>
-        <div style="font-size:9px;color:#666;margin-bottom:2mm">${sku}</div>
-        <img src="${barcodeDataUrl}" style="height:40px;max-width:180px" />
-        <div style="margin-top:3mm;font-size:7px;font-weight:700;color:#2B5F6B;letter-spacing:1px">HTTPS://VERDANAREHAB.COM/</div>
-        <div style="margin-top:1mm;font-size:7px;color:#666;display:flex;justify-content:center;gap:8px">
-          <span>&#x1F1EB; @verdanarehab</span>
-          <span>&#x1F4F7; @verdanarehab</span>
-          <span>&#x1F3B5; @verdanarehab</span>
+        <div style="font-size:9px;font-weight:700;color:#000;margin-bottom:0.5mm">${item.name}</div>
+        <div style="font-size:8px;color:#555;margin-bottom:1.5mm">${sku}</div>
+        <img src="${barcodeDataUrl}" style="height:35px;max-width:170px" />
+        <div style="margin-top:2mm;font-size:7px;font-weight:700;color:#000;letter-spacing:0.5px">HTTPS://VERDANAREHAB.COM/</div>
+        <div style="margin-top:1.5mm;display:flex;justify-content:center;align-items:center;gap:10px;font-size:7px;color:#333">
+          <span style="display:flex;align-items:center;gap:2px">${fbIcon} @verdanarehab</span>
+          <span style="display:flex;align-items:center;gap:2px">${igIcon} @verdanarehab</span>
+          <span style="display:flex;align-items:center;gap:2px">${ttIcon} @verdanarehab</span>
         </div>
       </div>
     </div>`
@@ -86,7 +87,16 @@ function printVerdanaSticker(item: { name: string; sku?: string; barcode?: strin
     <div class="page">
       ${stickerHtml}${stickerHtml}${stickerHtml}
     </div>
-    <script>setTimeout(()=>{window.print()},500)<\/script>
+    <script>
+      // Wait for logo image to load before printing
+      const imgs = document.querySelectorAll('img');
+      let loaded = 0;
+      imgs.forEach(img => {
+        if (img.complete) { loaded++; }
+        else { img.onload = () => { loaded++; if (loaded >= imgs.length) setTimeout(() => window.print(), 300); }; }
+      });
+      if (loaded >= imgs.length) setTimeout(() => window.print(), 500);
+    <\/script>
   </body></html>`)
   win.document.close()
 }
