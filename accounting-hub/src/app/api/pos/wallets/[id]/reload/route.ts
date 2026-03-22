@@ -15,7 +15,7 @@ export async function POST(
 
   try {
     const { id } = await params
-    const { serviceName, serviceId, totalSessions, amountPaid, expiresAt } = await req.json()
+    const { serviceName, serviceId, department, totalSessions, amountPaid, expiresAt } = await req.json()
 
     if (!serviceName?.trim()) {
       return NextResponse.json({ error: 'Service name is required' }, { status: 400 })
@@ -43,6 +43,7 @@ export async function POST(
           walletId: id,
           serviceName: serviceName.trim(),
           serviceId: serviceId || null,
+          department: department || null,
           totalSessions: parseInt(totalSessions),
           amountPaid: parseFloat(amountPaid),
           expiresAt: expiresAt ? new Date(expiresAt) : null,

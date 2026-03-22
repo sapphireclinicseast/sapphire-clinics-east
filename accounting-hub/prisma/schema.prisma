@@ -409,6 +409,7 @@ model WalletPackage {
   wallet            DigitalWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
   serviceName       String
   serviceId         String?
+  department        String?
   totalSessions     Int
   usedSessions      Int           @default(0)
   amountPaid        Decimal

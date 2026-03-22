@@ -101,6 +101,7 @@ interface DigitalWallet {
 interface WalletPackage {
   id: string
   serviceName: string
+  department?: string | null
   totalSessions: number
   usedSessions: number
   amountPaid: string | number
@@ -998,6 +999,7 @@ function OrderFormModal({
               body: JSON.stringify({
                 serviceName: firstItem.name,
                 serviceId: firstItem.serviceId || null,
+                department: svc?.department || null,
                 totalSessions: sessionCount,
                 amountPaid: netAmount,
               }),
@@ -2666,7 +2668,14 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                     return (
                       <div key={pkg.id} className="rounded-xl border p-3 flex items-center justify-between" style={{ borderColor: 'var(--light-gray)' }}>
                         <div>
-                          <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>{pkg.serviceName}</p>
+                          <p className="text-sm font-medium flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
+                            {pkg.serviceName}
+                            {pkg.department && (
+                              <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: '#fce7f3', color: '#be185d' }}>
+                                {pkg.department}
+                              </span>
+                            )}
+                          </p>
                           <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
                             {pkg.usedSessions}/{pkg.totalSessions} used &middot; {remaining} remaining
                             &middot; Paid: {formatCurrency(toNum(pkg.amountPaid))}
