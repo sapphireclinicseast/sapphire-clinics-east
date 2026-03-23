@@ -59,6 +59,14 @@ export async function POST(req: Request) {
       }
 
       try {
+        // Get next skuSequence
+        const lastItem = await prisma.inventoryItem.findFirst({
+          where: { skuDepartment: row.department, skuCategory: row.category, skuSubcategory: row.subcategory },
+          orderBy: { skuSequence: 'desc' },
+          select: { skuSequence: true },
+        })
+        const nextSequence = (lastItem?.skuSequence || 0) + 1
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const item = await prisma.inventoryItem.create({
           data: {
@@ -67,6 +75,7 @@ export async function POST(req: Request) {
             skuDepartment: row.department,
             skuCategory: row.category,
             skuSubcategory: row.subcategory,
+            skuSequence: nextSequence,
             barcode: sku,
             branch: row.branch as any,
             accountSubType: row.accountSubType || null,
