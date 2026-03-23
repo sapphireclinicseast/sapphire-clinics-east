@@ -545,8 +545,9 @@ export default function InventoryPage() {
     setFSupplierId(item.supplierId || '')
     setFExchangeRate(item.supplierExchangeRate != null ? String(item.supplierExchangeRate) : '')
     // Load variants
-    setVariants((item.variants || []).map((v: { id: string; color: string; quantity: number; variantSku: string; barcode?: string }) => ({
-      id: v.id, color: v.color, quantity: v.quantity, variantSku: v.variantSku, barcode: v.barcode,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setVariants((item.variants || []).map((v: any) => ({
+      id: v.id, color: v.color, quantity: v.quantity, variantSku: v.variantSku, barcode: v.barcode || undefined,
     })))
     setNewVariantColor(''); setNewVariantQty(0)
     setShowInlineSupplier(false); setError('')
