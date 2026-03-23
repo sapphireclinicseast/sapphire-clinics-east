@@ -247,12 +247,29 @@ model InventoryItem {
   adjustments  InventoryAdjustment[]
   consignments ConsignmentTransfer[]
   orderItems   OrderItem[]
+  variants     InventoryVariant[]
 
   @@index([branch])
   @@index([skuDepartment])
   @@index([supplierId])
   @@index([isActive])
   @@index([createdById])
+}
+
+model InventoryVariant {
+  id          String        @id @default(cuid())
+  itemId      String
+  item        InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  color       String        // e.g. "Red", "Blue", "Green"
+  variantSku  String        @unique  // e.g. "OT-TOY-THE-001-RED"
+  barcode     String?       @unique
+  quantity    Int           @default(0)
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([itemId])
+  @@index([color])
 }
 
 model InventoryAdjustment {
