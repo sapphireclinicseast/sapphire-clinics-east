@@ -929,8 +929,10 @@ function OrderFormModal({
       const r = await fetch(`/api/pos/wallets/scan/${encodeURIComponent(walletBarcode.trim())}`)
       const d = await r.json()
       if (d.error) { setError(d.error); return }
-      // Add wallet payment line
-      setPayments(prev => [...prev, { method: 'WALLET', amount: 0, walletId: d.id, reference: d.barcode }])
+      // Add wallet payment line — map walletType to PaymentMethod enum
+      const walletMethodMap: Record<string, string> = { VIP: 'VIP_CARD', PREPAID_CARD: 'PREPAID_CARD', PACKAGE: 'PACKAGE', DOWNPAYMENT: 'DOWNPAYMENT', ADVANCE: 'CASH', HMO: 'HMO', GL: 'GL' }
+      const payMethod = walletMethodMap[d.walletType] || 'PREPAID_CARD'
+      setPayments(prev => [...prev, { method: payMethod, amount: 0, walletId: d.id, reference: d.barcode }])
       setShowWalletPay(false)
       setWalletBarcode('')
       // Auto-apply wallet discount
@@ -1508,9 +1510,12 @@ function OrderFormModal({
                   className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                 {walletResults.length > 0 && (
                   <div className="max-h-32 overflow-y-auto">
-                    {walletResults.map(w => (
+                    {walletResults.map(w => {
+                      const wMethodMap: Record<string, string> = { VIP: 'VIP_CARD', PREPAID_CARD: 'PREPAID_CARD', PACKAGE: 'PACKAGE', DOWNPAYMENT: 'DOWNPAYMENT', ADVANCE: 'CASH', HMO: 'HMO', GL: 'GL' }
+                      const wPayMethod = wMethodMap[w.walletType] || 'PREPAID_CARD'
+                      return (
                       <button key={w.id} onClick={() => {
-                        setPayments(prev => [...prev, { method: 'WALLET', amount: 0, walletId: w.id, reference: w.barcode }])
+                        setPayments(prev => [...prev, { method: wPayMethod, amount: 0, walletId: w.id, reference: w.barcode }])
                         setShowWalletPay(false)
                         applyWalletDiscount(w)
                       }}
@@ -1520,7 +1525,7 @@ function OrderFormModal({
                           {WALLET_TYPE_LABELS[w.walletType] || ''} · {w.barcode} · Bal: {formatCurrency(toNum(w.balance))}
                         </span>
                       </button>
-                    ))}
+                    )})}
                   </div>
                 )}
               </div>
