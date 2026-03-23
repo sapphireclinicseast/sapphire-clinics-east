@@ -1779,6 +1779,8 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
   const [editClinician, setEditClinician] = useState('')
   const [editDate, setEditDate] = useState('')
   const [editDateReason, setEditDateReason] = useState('')
+  const [editDiscountAmt, setEditDiscountAmt] = useState(0)
+  const [editDiscountLabel, setEditDiscountLabel] = useState('')
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState('')
 
@@ -1836,10 +1838,13 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
     setEditPayments(o.payments.map(p => ({ method: p.method, amount: toNum(p.amount) })))
     setEditDate(o.transactionDate ? o.transactionDate.split('T')[0] : today())
     setEditDateReason('')
+    setEditDiscountAmt(toNum(o.discountAmount))
+    setEditDiscountLabel(o.discountLabel || '')
     setEditError('')
   }
 
   const editSubtotal = editItems.reduce((s, it) => s + it.lineTotal, 0)
+  const editNetAmount = Math.max(0, editSubtotal - editDiscountAmt)
   const editTotalPayments = editPayments.reduce((s, p) => s + p.amount, 0)
 
   const saveEditOrder = async () => {
@@ -1859,6 +1864,9 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
         clinicianName: editClinician || null,
         transactionDate: editDate || null,
         dateChangeReason: editDate !== originalDate ? editDateReason.trim() : null,
+        discountAmount: editDiscountAmt,
+        discountLabel: editDiscountLabel || null,
+        discountType: editDiscountAmt > 0 ? 'CUSTOM' : 'NONE',
         items: editItems.map(it => ({
           serviceId: it.serviceId || null,
           name: it.name,
@@ -2043,7 +2051,11 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
 
               {/* Items */}
               <div>
-                <h4 className="text-xs font-semibold mb-2" style={{ color: 'var(--mid-gray)' }}>LINE ITEMS</h4>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>LINE ITEMS</h4>
+                  <button onClick={() => setEditItems(prev => [...prev, { name: '', quantity: 1, unitPrice: 0, lineTotal: 0 }])}
+                    className="text-xs font-medium" style={{ color: 'var(--teal)' }}>+ Add Item</button>
+                </div>
                 <div className="space-y-2">
                   {editItems.map((it, idx) => (
                     <div key={idx} className="flex items-center gap-2 p-2 rounded-xl" style={{ background: 'var(--off-white)' }}>
@@ -2096,9 +2108,28 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                   <button onClick={() => setEditPayments(prev => [...prev, { method: 'CASH', amount: 0 }])}
                     className="text-xs font-medium" style={{ color: 'var(--teal)' }}>+ Add Payment</button>
                 </div>
-                <p className="text-right text-sm mt-2" style={{ color: editTotalPayments >= editSubtotal ? 'var(--deep-teal)' : '#991b1b' }}>
+                <p className="text-right text-sm mt-2" style={{ color: editTotalPayments >= editNetAmount ? 'var(--deep-teal)' : '#991b1b' }}>
                   Total Payments: {formatCurrency(editTotalPayments)}
                 </p>
+              </div>
+
+              {/* Discount */}
+              <div>
+                <h4 className="text-xs font-semibold mb-2" style={{ color: 'var(--mid-gray)' }}>DISCOUNT</h4>
+                <div className="flex items-center gap-2">
+                  <input type="number" min={0} step="0.01" value={editDiscountAmt || ''}
+                    onChange={e => setEditDiscountAmt(parseFloat(e.target.value) || 0)}
+                    placeholder="Discount amount (₱)"
+                    className="flex-1 px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  <input value={editDiscountLabel} onChange={e => setEditDiscountLabel(e.target.value)}
+                    placeholder="Discount label / reason"
+                    className="flex-1 px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                </div>
+                {editDiscountAmt > 0 && (
+                  <p className="text-right text-sm font-semibold mt-1" style={{ color: 'var(--deep-teal)' }}>
+                    Net: {formatCurrency(editNetAmount)}
+                  </p>
+                )}
               </div>
 
               {/* Save */}
@@ -3304,11 +3335,13 @@ function ProductsSection({
   const [discountSettings, setDiscountSettings] = useState<DiscountSetting[]>([])
   const [showDiscountSettings, setShowDiscountSettings] = useState(false)
   const [dsForm, setDsForm] = useState({ name: '', type: 'PERCENTAGE' as 'PERCENTAGE' | 'FIXED', value: 0, branch: '' })
-  const [pwdDiscount, setPwdDiscount] = useState(false)
-  const [customDiscountId, setCustomDiscountId] = useState('')
-  const [freeformDiscountAmt, setFreeformDiscountAmt] = useState(0)
-  const [freeformDiscountType, setFreeformDiscountType] = useState<'PERCENTAGE' | 'FIXED'>('FIXED')
-  const [freeformDiscountRemarks, setFreeformDiscountRemarks] = useState('')
+  const [appliedDiscounts, setAppliedDiscounts] = useState<{ label: string; type: 'PERCENTAGE' | 'FIXED'; value: number; remarks?: string }[]>([])
+  const [showAddDiscount, setShowAddDiscount] = useState(false)
+  const [newDiscountType, setNewDiscountType] = useState<'preset' | 'pwd' | 'custom'>('preset')
+  const [newDiscountPresetId, setNewDiscountPresetId] = useState('')
+  const [newDiscountAmt, setNewDiscountAmt] = useState(0)
+  const [newDiscountAmtType, setNewDiscountAmtType] = useState<'PERCENTAGE' | 'FIXED'>('FIXED')
+  const [newDiscountRemarks, setNewDiscountRemarks] = useState('')
   const [payments, setPayments] = useState<PaymentLine[]>([{ method: 'CASH', amount: 0 }])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -3357,25 +3390,38 @@ function ProductsSection({
 
   const subtotal = cart.reduce((s, c) => s + c.lineTotal, 0)
 
+  // Calculate stacked discounts — each discount applied to original subtotal
   let discountAmount = 0
-  let discountType = 'NONE'
-  let discountLabel = ''
+  const discountLabels: string[] = []
+  appliedDiscounts.forEach(d => {
+    const amt = d.type === 'PERCENTAGE' ? subtotal * (d.value / 100) : d.value
+    discountAmount += amt
+    discountLabels.push(`${d.label}${d.remarks ? ` (${d.remarks})` : ''}`)
+  })
+  const discountType = appliedDiscounts.length > 0 ? 'CUSTOM' : 'NONE'
+  const discountLabel = discountLabels.join(' + ')
 
-  if (pwdDiscount) {
-    discountType = 'PWD_SC'
-    discountLabel = 'PWD/Senior Citizen (20%)'
-    discountAmount = subtotal * 0.2
-  } else if (customDiscountId === '__FREEFORM__' && freeformDiscountAmt > 0) {
-    discountType = 'CUSTOM'
-    discountLabel = freeformDiscountRemarks.trim() || 'Custom Discount'
-    discountAmount = freeformDiscountType === 'PERCENTAGE' ? subtotal * (freeformDiscountAmt / 100) : freeformDiscountAmt
-  } else if (customDiscountId) {
-    const ds = discountSettings.find(d => d.id === customDiscountId)
-    if (ds) {
-      discountType = 'CUSTOM'
-      discountLabel = ds.name
-      discountAmount = ds.type === 'PERCENTAGE' ? subtotal * (toNum(ds.value) / 100) : toNum(ds.value)
+  const addDiscount = () => {
+    if (newDiscountType === 'pwd') {
+      if (appliedDiscounts.some(d => d.label === 'PWD/Senior Citizen')) return
+      setAppliedDiscounts(prev => [...prev, { label: 'PWD/Senior Citizen', type: 'PERCENTAGE', value: 20 }])
+    } else if (newDiscountType === 'preset' && newDiscountPresetId) {
+      const ds = discountSettings.find(d => d.id === newDiscountPresetId)
+      if (ds) {
+        setAppliedDiscounts(prev => [...prev, { label: ds.name, type: ds.type as 'PERCENTAGE' | 'FIXED', value: toNum(ds.value) }])
+      }
+    } else if (newDiscountType === 'custom' && newDiscountAmt > 0) {
+      setAppliedDiscounts(prev => [...prev, {
+        label: 'Custom',
+        type: newDiscountAmtType,
+        value: newDiscountAmt,
+        remarks: newDiscountRemarks.trim() || undefined,
+      }])
     }
+    setShowAddDiscount(false)
+    setNewDiscountPresetId('')
+    setNewDiscountAmt(0)
+    setNewDiscountRemarks('')
   }
 
   const netAmount = Math.max(0, subtotal - discountAmount)
@@ -3651,44 +3697,68 @@ function ProductsSection({
             </div>
           )}
 
-          {/* Discount */}
+          {/* Discounts (stackable) */}
           <div className="space-y-2 pt-2 border-t" style={{ borderColor: 'var(--light-gray)' }}>
-            <label className="flex items-center gap-2 text-xs cursor-pointer" style={{ color: 'var(--charcoal)' }}>
-              <input type="checkbox" checked={pwdDiscount}
-                onChange={e => { setPwdDiscount(e.target.checked); if (e.target.checked) setCustomDiscountId('') }} className="rounded" />
-              PWD / Senior (20%)
-            </label>
-            {!pwdDiscount && (
-              <div className="space-y-2">
-                <select value={customDiscountId} onChange={e => { setCustomDiscountId(e.target.value); if (e.target.value !== '__FREEFORM__') { setFreeformDiscountAmt(0); setFreeformDiscountRemarks('') } }}
-                  className="w-full px-2 py-2 rounded-xl border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }}>
-                  <option value="">No discount</option>
-                  {discountSettings.map(ds => (
-                    <option key={ds.id} value={ds.id}>{ds.name} ({ds.type === 'PERCENTAGE' ? `${toNum(ds.value)}%` : formatCurrency(toNum(ds.value))})</option>
-                  ))}
-                  <option value="__FREEFORM__">Custom (manual entry)</option>
-                </select>
-                {customDiscountId === '__FREEFORM__' && (
-                  <div className="p-2 rounded-xl border space-y-1.5" style={{ borderColor: '#93c5fd', background: '#eff6ff' }}>
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Discounts</h4>
+              <button onClick={() => setShowAddDiscount(!showAddDiscount)} className="text-xs font-medium" style={{ color: 'var(--teal)' }}>
+                + Add Discount
+              </button>
+            </div>
+            {appliedDiscounts.map((d, idx) => (
+              <div key={idx} className="flex items-center justify-between text-xs p-1.5 rounded-lg" style={{ background: 'var(--off-white)' }}>
+                <span style={{ color: 'var(--charcoal)' }}>
+                  {d.label} ({d.type === 'PERCENTAGE' ? `${d.value}%` : formatCurrency(d.value)})
+                  {d.remarks && <span className="text-xs font-normal ml-1" style={{ color: 'var(--mid-gray)' }}>— {d.remarks}</span>}
+                </span>
+                <button onClick={() => setAppliedDiscounts(prev => prev.filter((_, i) => i !== idx))} className="p-0.5 rounded hover:bg-red-50">
+                  <X size={12} className="text-red-500" />
+                </button>
+              </div>
+            ))}
+            {showAddDiscount && (
+              <div className="p-2 rounded-xl border space-y-2" style={{ borderColor: '#93c5fd', background: '#eff6ff' }}>
+                <div className="flex gap-1.5">
+                  <select value={newDiscountType} onChange={e => setNewDiscountType(e.target.value as 'preset' | 'pwd' | 'custom')}
+                    className="px-2 py-1.5 rounded-lg border text-xs outline-none flex-1" style={{ borderColor: 'var(--light-gray)' }}>
+                    <option value="pwd">PWD / Senior (20%)</option>
+                    <option value="preset">Preset Discount</option>
+                    <option value="custom">Custom (manual)</option>
+                  </select>
+                </div>
+                {newDiscountType === 'preset' && (
+                  <select value={newDiscountPresetId} onChange={e => setNewDiscountPresetId(e.target.value)}
+                    className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                    <option value="">Select discount...</option>
+                    {discountSettings.map(ds => (
+                      <option key={ds.id} value={ds.id}>{ds.name} ({ds.type === 'PERCENTAGE' ? `${toNum(ds.value)}%` : formatCurrency(toNum(ds.value))})</option>
+                    ))}
+                  </select>
+                )}
+                {newDiscountType === 'custom' && (
+                  <>
                     <div className="flex gap-1.5">
-                      <select value={freeformDiscountType} onChange={e => setFreeformDiscountType(e.target.value as 'PERCENTAGE' | 'FIXED')}
+                      <select value={newDiscountAmtType} onChange={e => setNewDiscountAmtType(e.target.value as 'PERCENTAGE' | 'FIXED')}
                         className="px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }}>
                         <option value="FIXED">₱ Fixed</option>
                         <option value="PERCENTAGE">% Pct</option>
                       </select>
-                      <input type="number" min={0} step="0.01" value={freeformDiscountAmt || ''}
-                        onChange={e => setFreeformDiscountAmt(parseFloat(e.target.value) || 0)}
+                      <input type="number" min={0} step="0.01" value={newDiscountAmt || ''}
+                        onChange={e => setNewDiscountAmt(parseFloat(e.target.value) || 0)}
                         placeholder="Amount" className="flex-1 px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                     </div>
-                    <input value={freeformDiscountRemarks} onChange={e => setFreeformDiscountRemarks(e.target.value)}
-                      placeholder="Remarks / reason *" className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-                  </div>
+                    <input value={newDiscountRemarks} onChange={e => setNewDiscountRemarks(e.target.value)}
+                      placeholder="Remarks / reason" className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  </>
                 )}
+                <button onClick={addDiscount} className="px-3 py-1.5 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
+                  Apply
+                </button>
               </div>
             )}
             {discountAmount > 0 && (
-              <p className="text-xs font-medium" style={{ color: 'var(--deep-teal)' }}>
-                -{formatCurrency(discountAmount)} {freeformDiscountRemarks && <span className="font-normal">({freeformDiscountRemarks})</span>}
+              <p className="text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>
+                Total Discount: -{formatCurrency(discountAmount)}
               </p>
             )}
           </div>
