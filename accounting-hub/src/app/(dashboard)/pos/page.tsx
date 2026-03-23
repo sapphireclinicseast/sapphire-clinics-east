@@ -660,6 +660,9 @@ function OrderFormModal({
   const [payments, setPayments] = useState<PaymentLine[]>([{ method: 'CASH', amount: 0 }])
   const [pwdDiscount, setPwdDiscount] = useState(false)
   const [customDiscountId, setCustomDiscountId] = useState('')
+  const [freeformDiscountAmt, setFreeformDiscountAmt] = useState(0)
+  const [freeformDiscountType, setFreeformDiscountType] = useState<'PERCENTAGE' | 'FIXED'>('FIXED')
+  const [freeformDiscountRemarks, setFreeformDiscountRemarks] = useState('')
   const [discountSettings, setDiscountSettings] = useState<DiscountSetting[]>([])
   const [referrers, setReferrers] = useState<Referrer[]>([])
   const [referrerId, setReferrerId] = useState('')
@@ -805,6 +808,10 @@ function OrderFormModal({
       }
       return total
     }, 0)
+  } else if (customDiscountId === '__FREEFORM__' && freeformDiscountAmt > 0) {
+    discountType = 'CUSTOM'
+    discountLabel = freeformDiscountRemarks.trim() || 'Custom Discount'
+    discountAmount = freeformDiscountType === 'PERCENTAGE' ? subtotal * (freeformDiscountAmt / 100) : freeformDiscountAmt
   } else if (customDiscountId) {
     const ds = discountSettings.find(d => d.id === customDiscountId)
     if (ds) {
@@ -1332,8 +1339,8 @@ function OrderFormModal({
               <p className="text-xs px-2 py-1 rounded-lg" style={{ background: '#fef3c7', color: '#92400e' }}>{pwdNote}</p>
             )}
             {!pwdDiscount && (
-              <div>
-                <select value={customDiscountId} onChange={e => setCustomDiscountId(e.target.value)}
+              <div className="space-y-2">
+                <select value={customDiscountId} onChange={e => { setCustomDiscountId(e.target.value); if (e.target.value !== '__FREEFORM__') { setFreeformDiscountAmt(0); setFreeformDiscountRemarks('') } }}
                   className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
                   <option value="">No custom discount</option>
                   {discountSettings.map(ds => (
@@ -1341,12 +1348,33 @@ function OrderFormModal({
                       {ds.name} ({ds.type === 'PERCENTAGE' ? `${toNum(ds.value)}%` : formatCurrency(toNum(ds.value))})
                     </option>
                   ))}
+                  <option value="__FREEFORM__">Custom (manual entry)</option>
                 </select>
+                {customDiscountId === '__FREEFORM__' && (
+                  <div className="p-3 rounded-xl border space-y-2" style={{ borderColor: '#93c5fd', background: '#eff6ff' }}>
+                    <div className="flex gap-2">
+                      <select value={freeformDiscountType} onChange={e => setFreeformDiscountType(e.target.value as 'PERCENTAGE' | 'FIXED')}
+                        className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                        <option value="FIXED">Fixed (₱)</option>
+                        <option value="PERCENTAGE">Percentage (%)</option>
+                      </select>
+                      <input type="number" min={0} step="0.01" value={freeformDiscountAmt || ''}
+                        onChange={e => setFreeformDiscountAmt(parseFloat(e.target.value) || 0)}
+                        placeholder={freeformDiscountType === 'PERCENTAGE' ? 'e.g. 10' : 'e.g. 500'}
+                        className="flex-1 px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                    </div>
+                    <input value={freeformDiscountRemarks} onChange={e => setFreeformDiscountRemarks(e.target.value)}
+                      placeholder="Remarks / reason for discount *"
+                      className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                )}
               </div>
             )}
             {discountAmount > 0 && (
               <p className="text-sm font-medium" style={{ color: 'var(--deep-teal)' }}>
-                Discount: -{formatCurrency(discountAmount)} &middot; Net: {formatCurrency(netAmount)}
+                Discount: -{formatCurrency(discountAmount)}
+                {freeformDiscountRemarks && <span className="text-xs font-normal ml-1" style={{ color: 'var(--mid-gray)' }}>({freeformDiscountRemarks})</span>}
+                &nbsp;&middot; Net: {formatCurrency(netAmount)}
               </p>
             )}
           </div>
