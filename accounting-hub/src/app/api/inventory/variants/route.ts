@@ -20,7 +20,7 @@ export async function GET(req: Request) {
 
   const variants = await prisma.inventoryVariant.findMany({
     where: { itemId, isActive: true },
-    orderBy: { color: 'asc' },
+    orderBy: { variantLabel: 'asc' },
   })
 
   return NextResponse.json(variants)

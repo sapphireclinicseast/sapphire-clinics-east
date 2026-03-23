@@ -51,7 +51,7 @@ export async function GET(req: Request) {
       where,
       include: {
         supplier: { select: { id: true, supplierName: true, isForeign: true, currency: true } },
-        variants: { where: { isActive: true }, orderBy: { color: 'asc' } },
+        variants: { where: { isActive: true }, orderBy: { variantLabel: 'asc' } },
       },
       orderBy: { sku: 'asc' },
       skip: (params.page - 1) * params.pageSize,
