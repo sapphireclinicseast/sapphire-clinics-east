@@ -34,10 +34,12 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { itemId, color, quantity } = await req.json()
+    const { itemId, variantType, variantLabel, color, quantity } = await req.json()
+    const label = variantLabel || color // backward compat
+    const type = variantType || 'Color'
 
-    if (!itemId || !color?.trim()) {
-      return NextResponse.json({ error: 'itemId and color are required' }, { status: 400 })
+    if (!itemId || !label?.trim()) {
+      return NextResponse.json({ error: 'itemId and variant label are required' }, { status: 400 })
     }
 
     const item = await prisma.inventoryItem.findUnique({ where: { id: itemId } })
@@ -45,22 +47,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Item not found' }, { status: 404 })
     }
 
-    // Generate variant SKU: base SKU + color code
-    const colorCode = color.trim().toUpperCase().replace(/\s+/g, '').slice(0, 3)
-    const variantSku = `${item.sku}-${colorCode}`
+    // Generate variant SKU: base SKU + label code (first 3 chars)
+    const labelCode = label.trim().toUpperCase().replace(/\s+/g, '').slice(0, 3)
+    const variantSku = `${item.sku}-${labelCode}`
 
-    // Check for duplicate
-    const existing = await prisma.inventoryVariant.findUnique({ where: { variantSku } })
-    if (existing) {
-      return NextResponse.json({ error: `Variant SKU ${variantSku} already exists` }, { status: 409 })
+    // Check for duplicate — if exists, append a number
+    let finalSku = variantSku
+    let attempts = 0
+    while (await prisma.inventoryVariant.findUnique({ where: { variantSku: finalSku } })) {
+      attempts++
+      finalSku = `${variantSku}${attempts}`
+      if (attempts > 10) break
     }
 
     const variant = await prisma.inventoryVariant.create({
       data: {
         itemId,
-        color: color.trim().toUpperCase(),
-        variantSku,
-        barcode: variantSku,
+        variantType: type.trim(),
+        variantLabel: label.trim().toUpperCase(),
+        variantSku: finalSku,
+        barcode: finalSku,
         quantity: quantity ? parseInt(quantity) : 0,
       },
     })
@@ -82,7 +88,7 @@ export async function POST(req: Request) {
         action: 'CREATE',
         entity: 'inventoryVariant',
         entityId: variant.id,
-        details: { itemName: item.name, color: variant.color, variantSku, quantity: variant.quantity },
+        details: { itemName: item.name, variantType: variant.variantType, variantLabel: variant.variantLabel, variantSku: variant.variantSku, quantity: variant.quantity },
       },
     })
 
@@ -100,7 +106,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, quantity, color } = await req.json()
+    const { id, quantity, color, variantLabel, variantType } = await req.json()
 
     if (!id) {
       return NextResponse.json({ error: 'Variant ID is required' }, { status: 400 })
@@ -109,7 +115,9 @@ export async function PUT(req: Request) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = {}
     if (quantity !== undefined) data.quantity = parseInt(quantity)
-    if (color !== undefined) data.color = color.trim().toUpperCase()
+    if (variantLabel !== undefined) data.variantLabel = variantLabel.trim().toUpperCase()
+    else if (color !== undefined) data.variantLabel = color.trim().toUpperCase()
+    if (variantType !== undefined) data.variantType = variantType.trim()
 
     const variant = await prisma.inventoryVariant.update({ where: { id }, data })
 

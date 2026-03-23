@@ -234,7 +234,7 @@ interface InventoryItem {
   supplierId: string | null
   supplier?: { id: string; supplierName: string; isForeign: boolean; currency: string } | null
   supplierExchangeRate: number | null
-  variants?: { id: string; color: string; quantity: number; variantSku: string; barcode?: string | null }[]
+  variants?: { id: string; variantType: string; variantLabel: string; color?: string; quantity: number; variantSku: string; barcode?: string | null }[]
 }
 
 interface Adjustment {
@@ -327,9 +327,10 @@ export default function InventoryPage() {
   const [fReorderLevel, setFReorderLevel] = useState('')
   const [fSupplierId, setFSupplierId] = useState('')
   const [fExchangeRate, setFExchangeRate] = useState('')
-  // Color variants
-  const [variants, setVariants] = useState<{ id?: string; color: string; quantity: number; variantSku?: string; barcode?: string }[]>([])
-  const [newVariantColor, setNewVariantColor] = useState('')
+  // Variants (color, size, material, etc.)
+  const [variants, setVariants] = useState<{ id?: string; variantType: string; variantLabel: string; quantity: number; variantSku?: string; barcode?: string }[]>([])
+  const [newVariantType, setNewVariantType] = useState('Color')
+  const [newVariantLabel, setNewVariantLabel] = useState('')
   const [newVariantQty, setNewVariantQty] = useState(0)
 
   const [showInlineSupplier, setShowInlineSupplier] = useState(false)
@@ -524,7 +525,7 @@ export default function InventoryPage() {
     setFName(''); setFSkuDept(''); setFSkuCat(''); setFSkuSub(''); setFSkuValue('')
     setFBranch('SANDBOX_EAST'); setFSubType(''); setFUnitCost(''); setFSellingPrice(''); setFRewardPointsPrice('')
     setFInitialQty(''); setFReorderLevel(''); setFSupplierId(''); setFExchangeRate('')
-    setVariants([]); setNewVariantColor(''); setNewVariantQty(0)
+    setVariants([]); setNewVariantType('Color'); setNewVariantLabel(''); setNewVariantQty(0)
     setShowInlineSupplier(false); setError('')
     setItemModalOpen(true)
   }
@@ -547,25 +548,25 @@ export default function InventoryPage() {
     // Load variants
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setVariants((item.variants || []).map((v: any) => ({
-      id: v.id, color: v.color, quantity: v.quantity, variantSku: v.variantSku, barcode: v.barcode || undefined,
+      id: v.id, variantType: v.variantType || 'Color', variantLabel: v.variantLabel || v.color || '', quantity: v.quantity, variantSku: v.variantSku, barcode: v.barcode || undefined,
     })))
-    setNewVariantColor(''); setNewVariantQty(0)
+    setNewVariantType('Color'); setNewVariantLabel(''); setNewVariantQty(0)
     setShowInlineSupplier(false); setError('')
     setItemModalOpen(true)
   }
 
   async function addVariant() {
-    if (!editingItem || !newVariantColor.trim()) return
+    if (!editingItem || !newVariantLabel.trim()) return
     try {
       const r = await fetch('/api/inventory/variants', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itemId: editingItem.id, color: newVariantColor.trim(), quantity: newVariantQty }),
+        body: JSON.stringify({ itemId: editingItem.id, variantType: newVariantType, variantLabel: newVariantLabel.trim(), quantity: newVariantQty }),
       })
       const d = await r.json()
       if (r.ok) {
-        setVariants(prev => [...prev, { id: d.id, color: d.color, quantity: d.quantity, variantSku: d.variantSku, barcode: d.barcode }])
-        setNewVariantColor('')
+        setVariants(prev => [...prev, { id: d.id, variantType: d.variantType, variantLabel: d.variantLabel, quantity: d.quantity, variantSku: d.variantSku, barcode: d.barcode }])
+        setNewVariantLabel('')
         setNewVariantQty(0)
         fetchItems()
       } else {
@@ -1175,14 +1176,15 @@ setTimeout(()=>window.print(),500);
                   {editingItem && (
                     <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: 'var(--light-gray)' }}>
                       <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>
-                        Color Variants ({variants.length})
+                        Variants ({variants.length})
                       </h4>
                       {variants.length > 0 && (
                         <div className="space-y-1">
                           {variants.map(v => (
-                            <div key={v.id || v.color} className="flex items-center justify-between p-2 rounded-lg text-xs" style={{ background: 'var(--off-white)' }}>
+                            <div key={v.id || v.variantLabel} className="flex items-center justify-between p-2 rounded-lg text-xs" style={{ background: 'var(--off-white)' }}>
                               <div>
-                                <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{v.color}</span>
+                                <span className="px-1.5 py-0.5 rounded text-xs font-semibold mr-1" style={{ background: '#e0e7ff', color: '#3730a3' }}>{v.variantType}</span>
+                                <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{v.variantLabel}</span>
                                 <span className="ml-2" style={{ color: 'var(--mid-gray)' }}>SKU: {v.variantSku || '—'}</span>
                                 <span className="ml-2" style={{ color: 'var(--mid-gray)' }}>Qty: {v.quantity}</span>
                               </div>
@@ -1196,10 +1198,24 @@ setTimeout(()=>window.print(),500);
                         </div>
                       )}
                       <div className="flex gap-2 items-end">
+                        <div className="w-28">
+                          <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Type</label>
+                          <select value={newVariantType} onChange={e => setNewVariantType(e.target.value)}
+                            className="w-full px-2 py-2 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                            <option value="Color">Color</option>
+                            <option value="Size">Size</option>
+                            <option value="Material">Material</option>
+                            <option value="Flavor">Flavor</option>
+                            <option value="Scent">Scent</option>
+                            <option value="Style">Style</option>
+                            <option value="Weight">Weight</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </div>
                         <div className="flex-1">
-                          <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Color</label>
-                          <input type="text" value={newVariantColor} onChange={e => setNewVariantColor(e.target.value)}
-                            placeholder="e.g. Red, Blue, Green"
+                          <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Label</label>
+                          <input type="text" value={newVariantLabel} onChange={e => setNewVariantLabel(e.target.value)}
+                            placeholder={newVariantType === 'Color' ? 'e.g. Red, Blue' : newVariantType === 'Size' ? 'e.g. Small, Large' : 'e.g. value'}
                             className="w-full px-3 py-2 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                         </div>
                         <div className="w-20">
@@ -1207,7 +1223,7 @@ setTimeout(()=>window.print(),500);
                           <input type="number" min={0} value={newVariantQty} onChange={e => setNewVariantQty(parseInt(e.target.value) || 0)}
                             className="w-full px-3 py-2 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                         </div>
-                        <button type="button" onClick={addVariant} disabled={!newVariantColor.trim()}
+                        <button type="button" onClick={addVariant} disabled={!newVariantLabel.trim()}
                           className="px-3 py-2 rounded-lg text-xs font-medium text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
                           Add
                         </button>

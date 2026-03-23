@@ -257,19 +257,21 @@ model InventoryItem {
 }
 
 model InventoryVariant {
-  id          String        @id @default(cuid())
-  itemId      String
-  item        InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  color       String        // e.g. "Red", "Blue", "Green"
-  variantSku  String        @unique  // e.g. "OT-TOY-THE-001-RED"
-  barcode     String?       @unique
-  quantity    Int           @default(0)
-  isActive    Boolean       @default(true)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id           String        @id @default(cuid())
+  itemId       String
+  item         InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  variantType  String        @default("Color")  // e.g. "Color", "Size", "Material", "Flavor", "Scent"
+  variantLabel String        // e.g. "Red", "Large", "Wood", "Strawberry"
+  variantSku   String        @unique  // e.g. "OT-TOY-THE-001-RED"
+  barcode      String?       @unique
+  quantity     Int           @default(0)
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 
   @@index([itemId])
-  @@index([color])
+  @@index([variantType])
+  @@index([variantLabel])
 }
 
 model InventoryAdjustment {
