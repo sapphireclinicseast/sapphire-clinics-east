@@ -3515,8 +3515,7 @@ function ProductsSection({
 
       setCart([])
       setPayments([{ method: 'CASH', amount: 0 }])
-      setPwdDiscount(false)
-      setCustomDiscountId('')
+      setAppliedDiscounts([])
       setRpSelectedWallet(null)
       setRpWalletSearch('')
       setError('')
