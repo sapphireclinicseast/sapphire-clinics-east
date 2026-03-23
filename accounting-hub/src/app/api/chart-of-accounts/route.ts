@@ -61,6 +61,7 @@ export async function GET(req: Request) {
         accountType: true,
         subType: true,
         normalBalance: true,
+        currency: true,
         description: true,
         isActive: true,
         createdAt: true,
@@ -84,7 +85,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { accountNumber, accountTitle, accountType, subType, normalBalance, description } = await req.json()
+    const { accountNumber, accountTitle, accountType, subType, normalBalance, currency, description } = await req.json()
 
     if (!accountNumber?.trim() || !accountTitle?.trim() || !accountType) {
       return NextResponse.json({ error: 'Account number, title, and type are required' }, { status: 400 })
@@ -110,6 +111,7 @@ export async function POST(req: Request) {
         accountType,
         subType: subType?.trim() || null,
         normalBalance: balance,
+        currency: currency?.trim() || 'PHP',
         description: description?.trim() || null,
         createdById: session.user.id,
       },
@@ -139,7 +141,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, accountNumber, accountTitle, accountType, subType, normalBalance, description } = await req.json()
+    const { id, accountNumber, accountTitle, accountType, subType, normalBalance, currency, description } = await req.json()
 
     if (!id) {
       return NextResponse.json({ error: 'Account ID is required' }, { status: 400 })
@@ -168,6 +170,7 @@ export async function PUT(req: Request) {
     if (accountType) updateData.accountType = accountType
     if (subType !== undefined) updateData.subType = subType?.trim() || null
     if (normalBalance) updateData.normalBalance = normalBalance
+    if (currency !== undefined) updateData.currency = currency?.trim() || 'PHP'
     if (description !== undefined) updateData.description = description?.trim() || null
 
     const account = await prisma.account.update({

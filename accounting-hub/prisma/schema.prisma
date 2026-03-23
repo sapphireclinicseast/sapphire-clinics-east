@@ -102,6 +102,7 @@ model Account {
   accountType   AccountType
   subType       String?
   normalBalance NormalBalance
+  currency      String        @default("PHP")   // PHP, USD, CNY, EUR, JPY, etc.
   description   String?
   isActive      Boolean       @default(true)
   createdById   String

@@ -24,11 +24,26 @@ interface Account {
   accountType: string
   subType: string | null
   normalBalance: string
+  currency: string
   description: string | null
   isActive: boolean
   createdAt: string
   createdBy: { name: string }
 }
+
+const CURRENCIES = [
+  { value: 'PHP', label: 'PHP — Philippine Peso' },
+  { value: 'USD', label: 'USD — US Dollar' },
+  { value: 'CNY', label: 'CNY — Chinese Yuan' },
+  { value: 'EUR', label: 'EUR — Euro' },
+  { value: 'JPY', label: 'JPY — Japanese Yen' },
+  { value: 'GBP', label: 'GBP — British Pound' },
+  { value: 'SGD', label: 'SGD — Singapore Dollar' },
+  { value: 'HKD', label: 'HKD — Hong Kong Dollar' },
+  { value: 'KRW', label: 'KRW — Korean Won' },
+  { value: 'AUD', label: 'AUD — Australian Dollar' },
+  { value: 'AED', label: 'AED — UAE Dirham' },
+]
 
 interface ImportRow {
   accountNumber: string
@@ -180,6 +195,7 @@ export default function ChartOfAccountsPage() {
   const [formSubType, setFormSubType] = useState('')
   const [formBalance, setFormBalance] = useState('DEBIT')
   const [formDescription, setFormDescription] = useState('')
+  const [formCurrency, setFormCurrency] = useState('PHP')
 
   // Delete confirmation
   const [deleteConfirm, setDeleteConfirm] = useState<Account | null>(null)
@@ -231,6 +247,7 @@ export default function ChartOfAccountsPage() {
     setFormType('ASSET')
     setFormSubType('')
     setFormBalance('DEBIT')
+    setFormCurrency('PHP')
     setFormDescription('')
     setError('')
     setModalOpen(true)
@@ -243,6 +260,7 @@ export default function ChartOfAccountsPage() {
     setFormType(account.accountType)
     setFormSubType(account.subType || '')
     setFormBalance(account.normalBalance)
+    setFormCurrency(account.currency || 'PHP')
     setFormDescription(account.description || '')
     setError('')
     setModalOpen(true)
@@ -265,6 +283,7 @@ export default function ChartOfAccountsPage() {
       accountType: formType,
       subType: formSubType,
       normalBalance: formBalance,
+      currency: formCurrency,
       description: formDescription,
     }
 
@@ -528,6 +547,7 @@ export default function ChartOfAccountsPage() {
                 <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Type</th>
                 <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Sub Type</th>
                 <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Normal Balance</th>
+                <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Currency</th>
                 <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Description</th>
                 {canWrite && <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>}
               </tr>
@@ -535,7 +555,7 @@ export default function ChartOfAccountsPage() {
             <tbody>
               {filteredAccounts.length === 0 ? (
                 <tr>
-                  <td colSpan={canWrite ? 7 : 6} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
+                  <td colSpan={canWrite ? 8 : 7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
                     <BookOpen size={32} className="mx-auto mb-2 opacity-40" />
                     <p>No accounts found</p>
                     {canWrite && <p className="text-xs mt-1">Add accounts manually or import from CSV</p>}
@@ -567,6 +587,15 @@ export default function ChartOfAccountsPage() {
                     </td>
                     <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>
                       {account.normalBalance}
+                    </td>
+                    <td className="px-4 py-3" style={{ color: account.currency && account.currency !== 'PHP' ? '#92400e' : 'var(--mid-gray)' }}>
+                      {account.currency && account.currency !== 'PHP' ? (
+                        <span className="px-2 py-0.5 rounded-md text-xs font-semibold" style={{ background: '#fef3c7', color: '#92400e' }}>
+                          {account.currency}
+                        </span>
+                      ) : (
+                        <span className="text-xs">PHP</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 max-w-[200px] truncate" style={{ color: 'var(--mid-gray)' }}>
                       {account.description || '—'}
@@ -730,6 +759,30 @@ export default function ChartOfAccountsPage() {
                   <option value="CREDIT">Credit</option>
                 </select>
               </div>
+
+              {/* Currency — shown for Cash/Bank accounts under Current Assets */}
+              {formType === 'ASSET' && formSubType === 'CURRENT_ASSETS' && (
+                <div>
+                  <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                    Currency
+                  </label>
+                  <select
+                    value={formCurrency}
+                    onChange={(e) => setFormCurrency(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border text-sm outline-none transition-colors"
+                    style={{ borderColor: 'var(--light-gray)' }}
+                  >
+                    {CURRENCIES.map(c => (
+                      <option key={c.value} value={c.value}>{c.label}</option>
+                    ))}
+                  </select>
+                  {formCurrency !== 'PHP' && (
+                    <p className="text-xs mt-1 px-1" style={{ color: '#92400e' }}>
+                      This account will be denominated in {formCurrency}. Transactions will need exchange rate conversion.
+                    </p>
+                  )}
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
