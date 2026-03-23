@@ -92,6 +92,7 @@ interface DigitalWallet {
   patientName: string
   patientEmail?: string | null
   rewardPoints: number
+  isActive?: boolean
   _count?: { packages: number }
   packages?: WalletPackage[]
   logs?: WalletLog[]
@@ -2159,6 +2160,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       const qp = new URLSearchParams()
       if (search) qp.set('search', search)
       qp.set('walletType', walletTypeFilter)
+      qp.set('includeDeleted', 'true')
       const r = await fetch(`/api/pos/wallets?${qp}`)
       const d = await r.json()
       setWallets(normalize(d) as DigitalWallet[])
@@ -2209,6 +2211,24 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     } catch {
       setWalletDetail(null)
     }
+  }
+
+  const deleteWallet = async (wallet: DigitalWallet) => {
+    const reason = window.prompt('Reason for deleting this wallet:')
+    if (!reason?.trim()) return
+    if (!window.confirm(`Are you sure you want to delete the ${WALLET_TYPE_LABELS[wallet.walletType] || wallet.walletType} wallet for "${wallet.patientName}"?\n\nReason: ${reason}\n\nThis action will be logged.`)) return
+    try {
+      const r = await fetch(`/api/pos/wallets/${wallet.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: false, deleteReason: reason.trim() }),
+      })
+      if (r.ok) {
+        setSelectedWallet(null)
+        setWalletDetail(null)
+        fetchWallets()
+      }
+    } catch {}
   }
 
   // Barcode rendering
@@ -2569,9 +2589,14 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
               {wallets.map(w => {
                 const typeBadge = WALLET_TYPE_COLORS[w.walletType] || { bg: '#f3f4f6', color: '#374151' }
                 return (
-                  <tr key={w.id} className="border-b hover:bg-gray-50 cursor-pointer" style={{ borderColor: 'var(--light-gray)' }}
-                    onClick={() => loadWalletDetail(w)}>
-                    <td className="px-5 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{w.patientName}</td>
+                  <tr key={w.id}
+                    className={`border-b cursor-pointer ${w.isActive === false ? 'bg-red-50 opacity-60' : 'hover:bg-gray-50'}`}
+                    style={{ borderColor: 'var(--light-gray)' }}
+                    onClick={() => w.isActive !== false && loadWalletDetail(w)}>
+                    <td className="px-5 py-3 font-medium" style={{ color: w.isActive === false ? '#991b1b' : 'var(--charcoal)' }}>
+                      {w.patientName}
+                      {w.isActive === false && <span className="ml-2 text-xs font-normal text-red-600">(Deleted)</span>}
+                    </td>
                     <td className="px-5 py-3">
                       <span className="px-2.5 py-1 rounded-full text-xs font-semibold" style={{ background: typeBadge.bg, color: typeBadge.color }}>
                         {WALLET_TYPE_LABELS[w.walletType] || w.walletType}
@@ -2612,9 +2637,17 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                                 Print Card
                               </button>
                             )}
-                            <button className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
-                              View
-                            </button>
+                            {w.isActive !== false && (
+                              <button className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+                                View
+                              </button>
+                            )}
+                            {w.isActive !== false && (
+                              <button onClick={(e) => { e.stopPropagation(); deleteWallet(w) }}
+                                className="p-1.5 rounded-lg hover:bg-red-50" title="Delete">
+                                <Trash2 size={13} className="text-red-500" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </>

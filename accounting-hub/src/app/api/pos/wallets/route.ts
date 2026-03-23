@@ -33,8 +33,10 @@ export async function GET(req: Request) {
   const patientId = searchParams.get('patientId') || ''
   const walletType = searchParams.get('walletType') || ''
 
+  const includeDeleted = searchParams.get('includeDeleted') === 'true'
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const where: any = { isActive: true }
+  const where: any = includeDeleted ? {} : { isActive: true }
 
   if (walletType) {
     where.walletType = walletType

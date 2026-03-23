@@ -53,23 +53,30 @@ export async function PUT(
 
   try {
     const { id } = await params
-    const { patientName, patientEmail, patientId } = await req.json()
+    const body = await req.json()
+    const { patientName, patientEmail, patientId, isActive, deleteReason } = body
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = {}
     if (patientName !== undefined) data.patientName = patientName.trim()
     if (patientEmail !== undefined) data.patientEmail = patientEmail?.trim() || null
     if (patientId !== undefined) data.patientId = patientId?.trim() || null
+    if (isActive !== undefined) data.isActive = isActive
 
     const wallet = await prisma.digitalWallet.update({ where: { id }, data })
+
+    const action = isActive === false ? 'DELETE' : 'UPDATE'
 
     await prisma.auditLog.create({
       data: {
         userId: session.user.id,
-        action: 'UPDATE',
+        action,
         entity: 'digitalWallet',
         entityId: wallet.id,
-        details: { updated: Object.keys(data) },
+        details: {
+          updated: Object.keys(data),
+          ...(deleteReason ? { deleteReason, patientName: wallet.patientName, walletType: wallet.walletType, balance: Number(wallet.balance) } : {}),
+        },
       },
     })
 
