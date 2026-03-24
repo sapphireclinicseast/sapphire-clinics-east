@@ -391,6 +391,8 @@ export default function InventoryPage() {
   const [conToBranch, setConToBranch] = useState('')
   const [conQty, setConQty] = useState('')
   const [conRemarks, setConRemarks] = useState('')
+  const [batchItems, setBatchItems] = useState<{ itemId: string; quantity: number; itemName?: string; itemSku?: string }[]>([])
+  const [selectedTransferIds, setSelectedTransferIds] = useState<Set<string>>(new Set())
 
   const canWrite = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN'].includes(session?.user?.role as string)
 
@@ -1907,14 +1909,38 @@ setTimeout(()=>window.print(),500);
         <>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
             <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>Track inter-branch consignment transfers</p>
-            {canWrite && (
-              <button onClick={openConCreate}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
-                style={{ background: 'var(--teal)' }}>
-                <Plus size={18} />
-                New Transfer
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {canWrite && selectedTransferIds.size > 0 && (
+                <>
+                  <button onClick={async () => {
+                    if (!window.confirm(`Approve ${selectedTransferIds.size} selected transfer(s)?`)) return
+                    setSaving(true)
+                    await fetch('/api/inventory/consignments', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: Array.from(selectedTransferIds), action: 'approve' }) })
+                    setSelectedTransferIds(new Set()); fetchConsignments(); setSaving(false)
+                  }}
+                    className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-medium text-white" style={{ background: '#16a34a' }}>
+                    Bulk Approve ({selectedTransferIds.size})
+                  </button>
+                  <button onClick={async () => {
+                    if (!window.confirm(`Cancel ${selectedTransferIds.size} selected transfer(s)?`)) return
+                    setSaving(true)
+                    await fetch('/api/inventory/consignments', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: Array.from(selectedTransferIds), action: 'cancel' }) })
+                    setSelectedTransferIds(new Set()); fetchConsignments(); setSaving(false)
+                  }}
+                    className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-medium text-white" style={{ background: '#dc2626' }}>
+                    Bulk Cancel ({selectedTransferIds.size})
+                  </button>
+                </>
+              )}
+              {canWrite && (
+                <button onClick={openConCreate}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
+                  style={{ background: 'var(--teal)' }}>
+                  <Plus size={18} />
+                  New Transfer
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
@@ -1922,6 +1948,15 @@ setTimeout(()=>window.print(),500);
               <table className="w-full text-sm">
                 <thead>
                   <tr style={{ background: 'var(--off-white)' }}>
+                    <th className="px-2 py-3 w-8">
+                      <input type="checkbox"
+                        checked={consignments.filter(c => c.status === 'PENDING').length > 0 && consignments.filter(c => c.status === 'PENDING').every(c => selectedTransferIds.has(c.id))}
+                        onChange={e => {
+                          if (e.target.checked) setSelectedTransferIds(new Set(consignments.filter(c => c.status === 'PENDING').map(c => c.id)))
+                          else setSelectedTransferIds(new Set())
+                        }}
+                        className="rounded" />
+                    </th>
                     <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Date</th>
                     <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Item</th>
                     <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>From → To</th>
@@ -1943,6 +1978,17 @@ setTimeout(()=>window.print(),500);
                     const badge = STATUS_BADGE[c.status] || STATUS_BADGE.CANCELLED
                     return (
                       <tr key={c.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className="px-2 py-3">
+                          {c.status === 'PENDING' && (
+                            <input type="checkbox" checked={selectedTransferIds.has(c.id)}
+                              onChange={e => {
+                                const next = new Set(selectedTransferIds)
+                                if (e.target.checked) next.add(c.id); else next.delete(c.id)
+                                setSelectedTransferIds(next)
+                              }}
+                              className="rounded" />
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{formatDate(c.createdAt)}</td>
                         <td className="px-4 py-3">
                           <span className="font-mono text-xs" style={{ color: 'var(--charcoal)' }}>{c.item?.sku}</span>
@@ -2008,50 +2054,83 @@ setTimeout(()=>window.print(),500);
             </div>
           </div>
 
-          {/* New Transfer Modal */}
+          {/* New Batch Transfer Modal */}
           {conModalOpen && (
-            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl">
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-8 overflow-y-auto">
+              <div className="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-xl mb-8">
                 <div className="flex items-center justify-between mb-5">
-                  <h3 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>New Transfer</h3>
-                  <button onClick={() => setConModalOpen(false)} className="p-1 hover:bg-gray-100 rounded-lg">
+                  <h3 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>New Batch Transfer</h3>
+                  <button onClick={() => { setConModalOpen(false); setBatchItems([]) }} className="p-1 hover:bg-gray-100 rounded-lg">
                     <X size={20} style={{ color: 'var(--mid-gray)' }} />
                   </button>
                 </div>
 
                 {error && <div className="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-600">{error}</div>}
 
-                <form onSubmit={handleConSubmit} className="space-y-4">
+                <div className="space-y-4">
+                  {/* Destination branch (shared for all items) */}
                   <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Item</label>
-                    <select value={conItemId} onChange={(e) => { setConItemId(e.target.value); setConToBranch('') }} required
-                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
-                      <option value="">— Select item —</option>
-                      {allItems.map((i) => <option key={i.id} value={i.id}>{i.sku} — {i.name} ({BRANCH_LABELS[i.branch]})</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>From Branch</label>
-                    <input type="text" readOnly value={selectedConItem ? (BRANCH_LABELS[selectedConItem.branch] || selectedConItem.branch) : ''}
-                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none bg-gray-50" style={{ borderColor: 'var(--light-gray)' }} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>To Branch</label>
-                    <select value={conToBranch} onChange={(e) => setConToBranch(e.target.value)} required
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Destination Branch</label>
+                    <select value={conToBranch} onChange={(e) => setConToBranch(e.target.value)}
                       className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
                       <option value="">— Select destination —</option>
-                      {BRANCH_OPTIONS.filter((b) => b.value !== selectedConItem?.branch).map((b) => (
-                        <option key={b.value} value={b.value}>{b.label}</option>
-                      ))}
+                      {BRANCH_OPTIONS.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
                     </select>
                   </div>
+
+                  {/* Items list */}
                   <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
-                      Quantity {selectedConItem && <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(max: {selectedConItem.quantity})</span>}
-                    </label>
-                    <input type="number" min="1" max={selectedConItem?.quantity || undefined} value={conQty} onChange={(e) => setConQty(e.target.value)} required
-                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs font-medium" style={{ color: 'var(--charcoal)' }}>Items to Transfer ({batchItems.length})</label>
+                    </div>
+                    {batchItems.length > 0 && (
+                      <div className="space-y-1 mb-3">
+                        {batchItems.map((bi, idx) => (
+                          <div key={idx} className="flex items-center justify-between p-2 rounded-lg text-xs" style={{ background: 'var(--off-white)' }}>
+                            <span style={{ color: 'var(--charcoal)' }}>{bi.itemSku} — {bi.itemName}</span>
+                            <div className="flex items-center gap-2">
+                              <span style={{ color: 'var(--mid-gray)' }}>Qty: {bi.quantity}</span>
+                              <button type="button" onClick={() => setBatchItems(prev => prev.filter((_, i) => i !== idx))} className="p-0.5 rounded hover:bg-red-50">
+                                <X size={12} className="text-red-500" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Add item row */}
+                    <div className="flex gap-2 items-end">
+                      <div className="flex-1">
+                        <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Item</label>
+                        <select value={conItemId} onChange={(e) => setConItemId(e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                          <option value="">— Select item —</option>
+                          {allItems.filter(i => !conToBranch || i.branch !== conToBranch).map((i) => (
+                            <option key={i.id} value={i.id}>{i.sku} — {i.name} (Qty: {i.quantity})</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="w-20">
+                        <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Qty</label>
+                        <input type="number" min="1" max={selectedConItem?.quantity || undefined} value={conQty} onChange={(e) => setConQty(e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      </div>
+                      <button type="button" disabled={!conItemId || !conQty}
+                        onClick={() => {
+                          const item = allItems.find(i => i.id === conItemId)
+                          if (item && parseInt(conQty) > 0) {
+                            setBatchItems(prev => [...prev, { itemId: conItemId, quantity: parseInt(conQty), itemName: item.name, itemSku: item.sku }])
+                            setConItemId(''); setConQty('')
+                          }
+                        }}
+                        className="px-3 py-2 rounded-xl text-xs font-medium text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+                        + Add
+                      </button>
+                    </div>
                   </div>
+
+                  {/* Remarks */}
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
                       Remarks <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(optional)</span>
@@ -2059,17 +2138,33 @@ setTimeout(()=>window.print(),500);
                     <textarea value={conRemarks} onChange={(e) => setConRemarks(e.target.value)} rows={2}
                       className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none resize-none" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
+
+                  {/* Submit */}
                   <div className="flex gap-3 pt-2">
-                    <button type="button" onClick={() => setConModalOpen(false)}
+                    <button type="button" onClick={() => { setConModalOpen(false); setBatchItems([]) }}
                       className="flex-1 py-2.5 rounded-xl border text-sm font-medium"
                       style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>Cancel</button>
-                    <button type="submit" disabled={saving}
+                    <button type="button" disabled={saving || batchItems.length === 0 || !conToBranch}
+                      onClick={async () => {
+                        setSaving(true); setError('')
+                        try {
+                          const res = await fetch('/api/inventory/consignments', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ items: batchItems, toBranch: conToBranch, remarks: conRemarks || null }),
+                          })
+                          const data = await res.json()
+                          if (!res.ok) { setError(data.error || 'Failed'); setSaving(false); return }
+                          setConModalOpen(false); setBatchItems([]); setConToBranch(''); setConRemarks('')
+                          fetchConsignments()
+                        } catch { setError('Failed to create transfer') } finally { setSaving(false) }
+                      }}
                       className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50"
                       style={{ background: 'var(--teal)' }}>
-                      {saving ? 'Saving...' : 'Create Transfer'}
+                      {saving ? 'Creating...' : `Create Transfer (${batchItems.length} items)`}
                     </button>
                   </div>
-                </form>
+                </div>
               </div>
             </div>
           )}
