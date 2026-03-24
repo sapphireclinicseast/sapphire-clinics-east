@@ -302,30 +302,32 @@ model InventoryAdjustment {
 }
 
 model ConsignmentTransfer {
-  id            String         @id @default(cuid())
-  itemId        String
-  item          InventoryItem  @relation(fields: [itemId], references: [id], onDelete: Restrict)
-  fromBranch    Branch
-  toBranch      Branch
-  quantity      Int
-  status        TransferStatus @default(PENDING)
-  requestedById String
-  requestedBy   User           @relation("TransferRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
-  approvedById  String?
-  approvedBy    User?          @relation("TransferApprovedBy", fields: [approvedById], references: [id])
-  requestedAt   DateTime       @default(now())
-  approvedAt    DateTime?
-  shippedAt     DateTime?
-  receivedAt    DateTime?
-  remarks       String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id              String         @id @default(cuid())
+  referenceNumber String?        // Groups multiple items in one batch transfer
+  itemId          String
+  item            InventoryItem  @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  fromBranch      Branch
+  toBranch        Branch
+  quantity        Int
+  status          TransferStatus @default(PENDING)
+  requestedById   String
+  requestedBy     User           @relation("TransferRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+  approvedById    String?
+  approvedBy      User?          @relation("TransferApprovedBy", fields: [approvedById], references: [id])
+  requestedAt     DateTime       @default(now())
+  approvedAt      DateTime?
+  shippedAt       DateTime?
+  receivedAt      DateTime?
+  remarks         String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   @@index([itemId])
   @@index([status])
   @@index([fromBranch])
   @@index([toBranch])
   @@index([requestedById])
+  @@index([referenceNumber])
 }
 
 // ── POS System ─────────────────────────────────────────────

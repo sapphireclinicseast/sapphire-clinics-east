@@ -44,53 +44,76 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { itemId, toBranch, quantity, remarks } = await req.json()
+    const body = await req.json()
 
-    if (!itemId || !toBranch || !quantity) {
-      return NextResponse.json({ error: 'Item, destination branch, and quantity are required' }, { status: 400 })
+    // Support batch transfer: { items: [{itemId, quantity}], toBranch, remarks }
+    // OR single: { itemId, toBranch, quantity, remarks }
+    const toBranch = body.toBranch
+    const remarks = body.remarks?.trim() || null
+    const itemsList = body.items || [{ itemId: body.itemId, quantity: body.quantity }]
+
+    if (!toBranch || !itemsList.length) {
+      return NextResponse.json({ error: 'Destination branch and at least one item are required' }, { status: 400 })
     }
 
-    const item = await prisma.inventoryItem.findUnique({ where: { id: itemId } })
-    if (!item) {
-      return NextResponse.json({ error: 'Item not found' }, { status: 404 })
-    }
+    // Generate reference number for batch
+    const refNum = `CT-${Date.now().toString(36).toUpperCase()}`
 
-    if (item.branch === toBranch) {
-      return NextResponse.json({ error: 'Cannot transfer to the same branch' }, { status: 400 })
-    }
+    const results = []
+    const errors = []
 
-    const qty = parseInt(quantity)
-    if (qty <= 0 || qty > item.quantity) {
-      return NextResponse.json({ error: `Quantity must be between 1 and ${item.quantity}` }, { status: 400 })
-    }
+    for (let i = 0; i < itemsList.length; i++) {
+      const { itemId, quantity } = itemsList[i]
+      if (!itemId || !quantity) {
+        errors.push(`Item ${i + 1}: itemId and quantity are required`)
+        continue
+      }
 
-    const transfer = await prisma.consignmentTransfer.create({
-      data: {
-        itemId,
-        fromBranch: item.branch,
-        toBranch,
-        quantity: qty,
-        status: 'PENDING',
-        requestedById: session.user.id,
-        remarks: remarks?.trim() || null,
-      },
-      include: {
-        item: { select: { name: true, sku: true } },
-        requestedBy: { select: { name: true } },
-      },
-    })
+      const item = await prisma.inventoryItem.findUnique({ where: { id: itemId } })
+      if (!item) { errors.push(`Item ${i + 1}: not found`); continue }
+      if (item.branch === toBranch) { errors.push(`Item ${i + 1}: cannot transfer to same branch`); continue }
+
+      const qty = parseInt(quantity)
+      if (qty <= 0 || qty > item.quantity) {
+        errors.push(`Item ${i + 1} (${item.name}): quantity must be 1-${item.quantity}`)
+        continue
+      }
+
+      const transfer = await prisma.consignmentTransfer.create({
+        data: {
+          referenceNumber: itemsList.length > 1 ? refNum : null,
+          itemId,
+          fromBranch: item.branch,
+          toBranch,
+          quantity: qty,
+          status: 'PENDING',
+          requestedById: session.user.id,
+          remarks,
+        },
+        include: {
+          item: { select: { name: true, sku: true } },
+          requestedBy: { select: { name: true } },
+        },
+      })
+
+      results.push(transfer)
+    }
 
     await prisma.auditLog.create({
       data: {
         userId: session.user.id,
         action: 'CONSIGNMENT_REQUEST',
         entity: 'consignmentTransfer',
-        entityId: transfer.id,
-        details: { sku: item.sku, fromBranch: item.branch, toBranch, quantity: qty },
+        entityId: refNum,
+        details: { referenceNumber: refNum, itemCount: results.length, toBranch, errors: errors.length },
       },
     })
 
-    return NextResponse.json(transfer, { status: 201 })
+    return NextResponse.json({
+      referenceNumber: itemsList.length > 1 ? refNum : null,
+      transfers: results,
+      errors,
+    }, { status: 201 })
   } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
@@ -104,19 +127,44 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, action } = await req.json()
+    const body = await req.json()
+    const { id, ids, referenceNumber, action } = body
 
-    if (!id || !action) {
-      return NextResponse.json({ error: 'Transfer ID and action are required' }, { status: 400 })
+    if (!action) {
+      return NextResponse.json({ error: 'Action is required' }, { status: 400 })
     }
 
+    // Determine which transfers to update
+    let transferIds: string[] = []
+    if (ids && Array.isArray(ids)) {
+      transferIds = ids
+    } else if (referenceNumber) {
+      const batch = await prisma.consignmentTransfer.findMany({
+        where: { referenceNumber },
+        select: { id: true },
+      })
+      transferIds = batch.map(t => t.id)
+    } else if (id) {
+      transferIds = [id]
+    }
+
+    if (transferIds.length === 0) {
+      return NextResponse.json({ error: 'Transfer ID(s), ids array, or referenceNumber required' }, { status: 400 })
+    }
+
+    // Process each transfer
+    const results = []
+    const errors = []
+
+    for (const tid of transferIds) {
     const transfer = await prisma.consignmentTransfer.findUnique({
-      where: { id },
+      where: { id: tid },
       include: { item: true },
     })
 
     if (!transfer) {
-      return NextResponse.json({ error: 'Transfer not found' }, { status: 404 })
+      errors.push(`Transfer ${tid}: not found`)
+      continue
     }
 
     // Validate state transitions
@@ -201,7 +249,7 @@ export async function PUT(req: Request) {
     }
 
     const updated = await prisma.consignmentTransfer.update({
-      where: { id },
+      where: { id: tid },
       data: updateData,
       include: {
         item: { select: { name: true, sku: true } },
@@ -215,12 +263,19 @@ export async function PUT(req: Request) {
         userId: session.user.id,
         action: `CONSIGNMENT_${action.toUpperCase()}`,
         entity: 'consignmentTransfer',
-        entityId: id,
-        details: { action, status: updated.status },
+        entityId: tid,
+        details: { action, status: updated.status, referenceNumber: transfer.referenceNumber },
       },
     })
 
-    return NextResponse.json(updated)
+    results.push(updated)
+    } // end for loop
+
+    // Return single or batch result
+    if (transferIds.length === 1 && results.length === 1) {
+      return NextResponse.json(results[0])
+    }
+    return NextResponse.json({ updated: results.length, errors, transfers: results })
   } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
