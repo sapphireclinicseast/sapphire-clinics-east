@@ -160,6 +160,35 @@ export async function POST(req: Request) {
       },
     })
 
+    // Deduct inventory for product orders (including bundle components)
+    if (orderType === 'PRODUCT') {
+      for (const item of items) {
+        if (!item.inventoryItemId) continue
+        const invItem = await prisma.inventoryItem.findUnique({
+          where: { id: item.inventoryItemId },
+          include: { bundleComponents: true },
+        })
+        if (!invItem) continue
+        const orderQty = item.quantity || 1
+
+        if (invItem.isBundle && invItem.bundleComponents.length > 0) {
+          // Bundle: deduct each component's quantity × order quantity
+          for (const bc of invItem.bundleComponents) {
+            await prisma.inventoryItem.update({
+              where: { id: bc.componentId },
+              data: { quantity: { decrement: bc.quantity * orderQty } },
+            })
+          }
+        } else {
+          // Regular item: deduct directly
+          await prisma.inventoryItem.update({
+            where: { id: item.inventoryItemId },
+            data: { quantity: { decrement: orderQty } },
+          })
+        }
+      }
+    }
+
     await prisma.auditLog.create({
       data: {
         userId: session.user.id,

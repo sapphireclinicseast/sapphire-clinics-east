@@ -52,6 +52,7 @@ export async function GET(req: Request) {
       include: {
         supplier: { select: { id: true, supplierName: true, isForeign: true, currency: true } },
         variants: { where: { isActive: true }, orderBy: { variantLabel: 'asc' } },
+        bundleComponents: { include: { component: { select: { id: true, name: true, sku: true, quantity: true } } } },
       },
       orderBy: { sku: 'asc' },
       skip: (params.page - 1) * params.pageSize,

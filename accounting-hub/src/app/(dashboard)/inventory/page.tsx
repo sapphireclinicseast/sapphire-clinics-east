@@ -235,6 +235,8 @@ interface InventoryItem {
   supplier?: { id: string; supplierName: string; isForeign: boolean; currency: string } | null
   supplierExchangeRate: number | null
   variants?: { id: string; variantType: string; variantLabel: string; color?: string; quantity: number; variantSku: string; barcode?: string | null }[]
+  isBundle?: boolean
+  bundleComponents?: { id: string; quantity: number; component: { id: string; name: string; sku: string; quantity: number } }[]
 }
 
 interface Adjustment {
@@ -395,6 +397,11 @@ export default function InventoryPage() {
   const [batchItems, setBatchItems] = useState<{ itemId: string; quantity: number; itemName?: string; itemSku?: string }[]>([])
   const [selectedTransferIds, setSelectedTransferIds] = useState<Set<string>>(new Set())
   const [expandedRef, setExpandedRef] = useState<string | null>(null)
+  // Bundle state
+  const [isBundle, setIsBundle] = useState(false)
+  const [bundleComponents, setBundleComponents] = useState<{ id?: string; componentId: string; quantity: number; name?: string; sku?: string }[]>([])
+  const [bundleComponentId, setBundleComponentId] = useState('')
+  const [bundleComponentQty, setBundleComponentQty] = useState(1)
 
   const canWrite = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN'].includes(session?.user?.role as string)
 
@@ -530,6 +537,7 @@ export default function InventoryPage() {
     setFBranch('SANDBOX_EAST'); setFSubType(''); setFUnitCost(''); setFSellingPrice(''); setFRewardPointsPrice('')
     setFInitialQty(''); setFReorderLevel(''); setFSupplierId(''); setFExchangeRate('')
     setVariants([]); setNewVariantType('Color'); setNewVariantLabel(''); setNewVariantQty(0)
+    setIsBundle(false); setBundleComponents([]); setBundleComponentId(''); setBundleComponentQty(1)
     setShowInlineSupplier(false); setError('')
     setItemModalOpen(true)
   }
@@ -555,8 +563,48 @@ export default function InventoryPage() {
       id: v.id, variantType: v.variantType || 'Color', variantLabel: v.variantLabel || v.color || '', quantity: v.quantity, variantSku: v.variantSku, barcode: v.barcode || undefined,
     })))
     setNewVariantType('Color'); setNewVariantLabel(''); setNewVariantQty(0)
+    setIsBundle(item.isBundle || false)
+    setBundleComponents((item.bundleComponents || []).map((bc: { id: string; quantity: number; component: { id: string; name: string; sku: string } }) => ({
+      id: bc.id, componentId: bc.component.id, quantity: bc.quantity, name: bc.component.name, sku: bc.component.sku,
+    })))
+    setBundleComponentId(''); setBundleComponentQty(1)
     setShowInlineSupplier(false); setError('')
     setItemModalOpen(true)
+  }
+
+  async function addBundleComponent() {
+    if (!editingItem || !bundleComponentId) return
+    try {
+      const r = await fetch('/api/inventory/bundles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bundleId: editingItem.id, componentId: bundleComponentId, quantity: bundleComponentQty }),
+      })
+      const d = await r.json()
+      if (r.ok) {
+        setBundleComponents(prev => [...prev.filter(bc => bc.componentId !== bundleComponentId), {
+          id: d.id, componentId: d.component.id, quantity: d.quantity, name: d.component.name, sku: d.component.sku,
+        }])
+        setBundleComponentId(''); setBundleComponentQty(1)
+        setIsBundle(true)
+        fetchItems()
+      } else {
+        setError(d.error || 'Failed to add component')
+      }
+    } catch { setError('Failed to add component') }
+  }
+
+  async function removeBundleComponent(bcId: string) {
+    if (!window.confirm('Remove this component from the bundle?')) return
+    try {
+      await fetch('/api/inventory/bundles', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: bcId }),
+      })
+      setBundleComponents(prev => prev.filter(bc => bc.id !== bcId))
+      fetchItems()
+    } catch {}
   }
 
   async function addVariant() {
@@ -947,7 +995,10 @@ setTimeout(()=>window.print(),500);
                   ) : items.map((item) => (
                     <tr key={item.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
                       <td className="px-4 py-3 font-mono text-xs font-medium" style={{ color: 'var(--charcoal)' }}>{item.sku}</td>
-                      <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{item.name}</td>
+                      <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>
+                        {item.name}
+                        {item.isBundle && <span className="ml-2 px-1.5 py-0.5 rounded text-xs font-semibold" style={{ background: '#fef3c7', color: '#92400e' }}>Bundle</span>}
+                      </td>
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{BRANCH_LABELS[item.branch] || item.branch}</td>
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
                         {item.skuDepartment ? (SKU_HIERARCHY[item.skuDepartment]?.label || item.skuDepartment) : '—'}
@@ -1235,6 +1286,64 @@ setTimeout(()=>window.print(),500);
                       <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
                         Total quantity across all variants is synced to the parent item quantity.
                       </p>
+                    </div>
+                  )}
+
+                  {/* Bundle Components */}
+                  {editingItem && (
+                    <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: isBundle ? '#fbbf24' : 'var(--light-gray)', background: isBundle ? '#fffbeb' : 'transparent' }}>
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: isBundle ? '#92400e' : 'var(--mid-gray)' }}>
+                          {isBundle ? `Bundle (${bundleComponents.length} components)` : 'Bundle'}
+                        </h4>
+                        {!isBundle && (
+                          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>Mark as bundle to auto-deduct components on sale</span>
+                        )}
+                      </div>
+                      {bundleComponents.length > 0 && (
+                        <div className="space-y-1">
+                          {bundleComponents.map(bc => (
+                            <div key={bc.id || bc.componentId} className="flex items-center justify-between p-2 rounded-lg text-xs" style={{ background: 'white' }}>
+                              <div>
+                                <span className="font-mono" style={{ color: 'var(--charcoal)' }}>{bc.sku}</span>
+                                <span className="ml-2" style={{ color: 'var(--mid-gray)' }}>{bc.name}</span>
+                                <span className="ml-2 font-semibold" style={{ color: '#92400e' }}>×{bc.quantity}</span>
+                              </div>
+                              {bc.id && (
+                                <button type="button" onClick={() => removeBundleComponent(bc.id!)} className="p-1 rounded hover:bg-red-50">
+                                  <Trash2 size={12} className="text-red-500" />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex gap-2 items-end">
+                        <div className="flex-1">
+                          <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Component Product</label>
+                          <select value={bundleComponentId} onChange={e => setBundleComponentId(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                            <option value="">— Select product —</option>
+                            {allItems.filter(i => i.id !== editingItem.id && !i.isBundle).map(i => (
+                              <option key={i.id} value={i.id}>{i.sku} — {i.name} (Qty: {i.quantity})</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="w-16">
+                          <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Qty</label>
+                          <input type="number" min={1} value={bundleComponentQty} onChange={e => setBundleComponentQty(parseInt(e.target.value) || 1)}
+                            className="w-full px-2 py-2 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                        </div>
+                        <button type="button" onClick={addBundleComponent} disabled={!bundleComponentId}
+                          className="px-3 py-2 rounded-lg text-xs font-medium text-white disabled:opacity-50" style={{ background: '#f59e0b' }}>
+                          Add
+                        </button>
+                      </div>
+                      {isBundle && (
+                        <p className="text-xs" style={{ color: '#92400e' }}>
+                          When this bundle is sold, each component quantity will be automatically deducted from inventory.
+                        </p>
+                      )}
                     </div>
                   )}
 

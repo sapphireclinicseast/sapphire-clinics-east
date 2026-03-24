@@ -238,22 +238,40 @@ model InventoryItem {
   supplierId           String?
   supplier             Supplier? @relation(fields: [supplierId], references: [id])
   supplierExchangeRate Decimal?
+  isBundle             Boolean   @default(false)
   isActive             Boolean   @default(true)
   createdById          String
   createdBy            User      @relation("ItemCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
-  adjustments  InventoryAdjustment[]
-  consignments ConsignmentTransfer[]
-  orderItems   OrderItem[]
-  variants     InventoryVariant[]
+  adjustments      InventoryAdjustment[]
+  consignments     ConsignmentTransfer[]
+  orderItems       OrderItem[]
+  variants         InventoryVariant[]
+  bundleComponents BundleComponent[]     @relation("BundleParent")
+  componentOf      BundleComponent[]     @relation("BundleChild")
 
   @@index([branch])
   @@index([skuDepartment])
   @@index([supplierId])
   @@index([isActive])
   @@index([createdById])
+  @@index([isBundle])
+}
+
+model BundleComponent {
+  id           String        @id @default(cuid())
+  bundleId     String
+  bundle       InventoryItem @relation("BundleParent", fields: [bundleId], references: [id], onDelete: Cascade)
+  componentId  String
+  component    InventoryItem @relation("BundleChild", fields: [componentId], references: [id], onDelete: Restrict)
+  quantity     Int           @default(1)  // How many of this component per bundle
+  createdAt    DateTime      @default(now())
+
+  @@unique([bundleId, componentId])
+  @@index([bundleId])
+  @@index([componentId])
 }
 
 model InventoryVariant {
