@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import {
@@ -252,6 +252,7 @@ interface Adjustment {
 
 interface Consignment {
   id: string
+  referenceNumber?: string | null
   itemId: string
   item?: { sku: string; name: string }
   fromBranch: string
@@ -393,6 +394,7 @@ export default function InventoryPage() {
   const [conRemarks, setConRemarks] = useState('')
   const [batchItems, setBatchItems] = useState<{ itemId: string; quantity: number; itemName?: string; itemSku?: string }[]>([])
   const [selectedTransferIds, setSelectedTransferIds] = useState<Set<string>>(new Set())
+  const [expandedRef, setExpandedRef] = useState<string | null>(null)
 
   const canWrite = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN'].includes(session?.user?.role as string)
 
@@ -1958,9 +1960,9 @@ setTimeout(()=>window.print(),500);
                         className="rounded" />
                     </th>
                     <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Date</th>
-                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Item</th>
+                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Reference / Items</th>
                     <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>From → To</th>
-                    <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Qty</th>
+                    <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Items</th>
                     <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Status</th>
                     <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Requested By</th>
                     {canWrite && <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>}
@@ -1969,86 +1971,142 @@ setTimeout(()=>window.print(),500);
                 <tbody>
                   {consignments.length === 0 ? (
                     <tr>
-                      <td colSpan={canWrite ? 7 : 6} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
+                      <td colSpan={canWrite ? 8 : 7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
                         <ArrowRightLeft size={32} className="mx-auto mb-2 opacity-40" />
                         <p>No transfers</p>
                       </td>
                     </tr>
-                  ) : consignments.map((c) => {
-                    const badge = STATUS_BADGE[c.status] || STATUS_BADGE.CANCELLED
-                    return (
-                      <tr key={c.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
-                        <td className="px-2 py-3">
-                          {c.status === 'PENDING' && (
-                            <input type="checkbox" checked={selectedTransferIds.has(c.id)}
-                              onChange={e => {
-                                const next = new Set(selectedTransferIds)
-                                if (e.target.checked) next.add(c.id); else next.delete(c.id)
-                                setSelectedTransferIds(next)
-                              }}
-                              className="rounded" />
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{formatDate(c.createdAt)}</td>
-                        <td className="px-4 py-3">
-                          <span className="font-mono text-xs" style={{ color: 'var(--charcoal)' }}>{c.item?.sku}</span>
-                          <span className="text-xs ml-2" style={{ color: 'var(--mid-gray)' }}>{c.item?.name}</span>
-                        </td>
-                        <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
-                          {BRANCH_LABELS[c.fromBranch] || c.fromBranch}
-                          <ArrowRight size={12} className="inline mx-1" />
-                          {BRANCH_LABELS[c.toBranch] || c.toBranch}
-                        </td>
-                        <td className="px-4 py-3 text-right font-medium" style={{ color: 'var(--charcoal)' }}>{c.quantity}</td>
-                        <td className="px-4 py-3">
-                          <span className="px-2 py-1 rounded-md text-xs font-medium" style={{ background: badge.bg, color: badge.color }}>
-                            {c.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{c.requestedBy?.name || '—'}</td>
-                        {canWrite && (
-                          <td className="px-4 py-3">
-                            <div className="flex items-center justify-end gap-1">
-                              {c.status === 'PENDING' && (
-                                <>
-                                  <button onClick={() => handleConAction(c.id, 'approve')}
-                                    className="px-2.5 py-1 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90"
-                                    style={{ background: 'var(--teal)' }} title="Approve">
-                                    <CheckCircle2 size={14} className="inline mr-1" />Approve
-                                  </button>
-                                  <button onClick={() => handleConAction(c.id, 'cancel')}
-                                    className="px-2.5 py-1 rounded-lg text-xs font-semibold text-white bg-red-500 hover:bg-red-600 transition-colors" title="Cancel">
-                                    <XCircle size={14} className="inline mr-1" />Cancel
-                                  </button>
-                                </>
+                  ) : (() => {
+                    // Group by referenceNumber (null = individual transfers)
+                    const groups: { key: string; ref: string | null; items: typeof consignments; first: typeof consignments[0] }[] = []
+                    const seen = new Set<string>()
+                    consignments.forEach(c => {
+                      if (c.referenceNumber) {
+                        if (seen.has(c.referenceNumber)) return
+                        seen.add(c.referenceNumber)
+                        const groupItems = consignments.filter(x => x.referenceNumber === c.referenceNumber)
+                        groups.push({ key: c.referenceNumber, ref: c.referenceNumber, items: groupItems, first: groupItems[0] })
+                      } else {
+                        groups.push({ key: c.id, ref: null, items: [c], first: c })
+                      }
+                    })
+
+                    return groups.map(g => {
+                      const badge = STATUS_BADGE[g.first.status] || STATUS_BADGE.CANCELLED
+                      const isExpanded = expandedRef === g.key
+                      const allIds = g.items.map(i => i.id)
+                      const allPending = g.items.every(i => i.status === 'PENDING')
+                      const totalQty = g.items.reduce((s, i) => s + i.quantity, 0)
+                      return (
+                        <React.Fragment key={g.key}>
+                          <tr className="border-t hover:bg-gray-50/50 transition-colors cursor-pointer" style={{ borderColor: 'var(--light-gray)' }}
+                            onClick={() => setExpandedRef(isExpanded ? null : g.key)}>
+                            <td className="px-2 py-3">
+                              {allPending && (
+                                <input type="checkbox" checked={allIds.every(id => selectedTransferIds.has(id))}
+                                  onClick={e => e.stopPropagation()}
+                                  onChange={e => {
+                                    const next = new Set(selectedTransferIds)
+                                    if (e.target.checked) allIds.forEach(id => next.add(id))
+                                    else allIds.forEach(id => next.delete(id))
+                                    setSelectedTransferIds(next)
+                                  }}
+                                  className="rounded" />
                               )}
-                              {c.status === 'APPROVED' && (
-                                <button onClick={() => handleConAction(c.id, 'ship')}
-                                  className="px-2.5 py-1 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90"
-                                  style={{ background: '#4f46e5' }} title="Ship">
-                                  <Send size={14} className="inline mr-1" />Ship
-                                </button>
+                            </td>
+                            <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{formatDate(g.first.createdAt)}</td>
+                            <td className="px-4 py-3">
+                              {g.ref ? (
+                                <div>
+                                  <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded" style={{ background: '#e0e7ff', color: '#3730a3' }}>{g.ref}</span>
+                                  <span className="text-xs ml-2" style={{ color: 'var(--mid-gray)' }}>{g.items.length} items</span>
+                                  <span className="ml-1 text-xs" style={{ color: 'var(--mid-gray)' }}>{isExpanded ? '▼' : '▶'}</span>
+                                </div>
+                              ) : (
+                                <div>
+                                  <span className="font-mono text-xs" style={{ color: 'var(--charcoal)' }}>{g.first.item?.sku}</span>
+                                  <span className="text-xs ml-2" style={{ color: 'var(--mid-gray)' }}>{g.first.item?.name}</span>
+                                </div>
                               )}
-                              {c.status === 'SHIPPED' && (
-                                <>
-                                  <button onClick={() => handleConAction(c.id, 'receive')}
-                                    className="px-2.5 py-1 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90"
-                                    style={{ background: '#16a34a' }} title="Receive">
-                                    <CheckCircle2 size={14} className="inline mr-1" />Receive
-                                  </button>
-                                  <button onClick={() => handleConAction(c.id, 'return')}
-                                    className="px-2.5 py-1 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90"
-                                    style={{ background: '#db2777' }} title="Return">
-                                    <RotateCcw size={14} className="inline mr-1" />Return
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        )}
-                      </tr>
-                    )
-                  })}
+                            </td>
+                            <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                              {BRANCH_LABELS[g.first.fromBranch] || g.first.fromBranch}
+                              <ArrowRight size={12} className="inline mx-1" />
+                              {BRANCH_LABELS[g.first.toBranch] || g.first.toBranch}
+                            </td>
+                            <td className="px-4 py-3 text-right font-medium" style={{ color: 'var(--charcoal)' }}>
+                              {g.ref ? `${g.items.length} (${totalQty} pcs)` : g.first.quantity}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="px-2 py-1 rounded-md text-xs font-medium" style={{ background: badge.bg, color: badge.color }}>
+                                {g.first.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{g.first.requestedBy?.name || '—'}</td>
+                            {canWrite && (
+                              <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                                <div className="flex items-center justify-end gap-1">
+                                  {allPending && (
+                                    <>
+                                      <button onClick={() => { allIds.forEach(id => handleConAction(id, 'approve')); setTimeout(fetchConsignments, 500) }}
+                                        className="px-2.5 py-1 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90"
+                                        style={{ background: 'var(--teal)' }} title="Approve">
+                                        <CheckCircle2 size={14} className="inline mr-1" />Approve
+                                      </button>
+                                      <button onClick={() => { allIds.forEach(id => handleConAction(id, 'cancel')); setTimeout(fetchConsignments, 500) }}
+                                        className="px-2.5 py-1 rounded-lg text-xs font-semibold text-white bg-red-500 hover:bg-red-600 transition-colors" title="Cancel">
+                                        <XCircle size={14} className="inline mr-1" />Cancel
+                                      </button>
+                                    </>
+                                  )}
+                                  {g.first.status === 'APPROVED' && (
+                                    <button onClick={() => { allIds.forEach(id => handleConAction(id, 'ship')); setTimeout(fetchConsignments, 500) }}
+                                      className="px-2.5 py-1 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90"
+                                      style={{ background: '#4f46e5' }} title="Ship">
+                                      <Send size={14} className="inline mr-1" />Ship
+                                    </button>
+                                  )}
+                                  {g.first.status === 'SHIPPED' && (
+                                    <>
+                                      <button onClick={() => { allIds.forEach(id => handleConAction(id, 'receive')); setTimeout(fetchConsignments, 500) }}
+                                        className="px-2.5 py-1 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90"
+                                        style={{ background: '#16a34a' }} title="Receive">
+                                        <CheckCircle2 size={14} className="inline mr-1" />Receive
+                                      </button>
+                                      <button onClick={() => { allIds.forEach(id => handleConAction(id, 'return')); setTimeout(fetchConsignments, 500) }}
+                                        className="px-2.5 py-1 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90"
+                                        style={{ background: '#db2777' }} title="Return">
+                                        <RotateCcw size={14} className="inline mr-1" />Return
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+                            )}
+                          </tr>
+                          {/* Expanded detail rows for batch transfers */}
+                          {isExpanded && g.items.map(item => (
+                            <tr key={item.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: '#f8fafc' }}>
+                              <td></td>
+                              <td></td>
+                              <td className="px-4 py-2" colSpan={2}>
+                                <span className="font-mono text-xs" style={{ color: 'var(--charcoal)' }}>{item.item?.sku}</span>
+                                <span className="text-xs ml-2" style={{ color: 'var(--mid-gray)' }}>{item.item?.name}</span>
+                              </td>
+                              <td className="px-4 py-2 text-right text-xs font-medium" style={{ color: 'var(--charcoal)' }}>{item.quantity}</td>
+                              <td className="px-4 py-2">
+                                <span className="px-2 py-0.5 rounded-md text-xs font-medium" style={{ background: (STATUS_BADGE[item.status] || STATUS_BADGE.CANCELLED).bg, color: (STATUS_BADGE[item.status] || STATUS_BADGE.CANCELLED).color }}>
+                                  {item.status}
+                                </span>
+                              </td>
+                              <td></td>
+                              {canWrite && <td></td>}
+                            </tr>
+                          ))}
+                        </React.Fragment>
+                      )
+                    })
+                  })()}
                 </tbody>
               </table>
             </div>
