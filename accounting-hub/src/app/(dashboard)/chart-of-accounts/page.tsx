@@ -23,6 +23,7 @@ interface Account {
   accountTitle: string
   accountType: string
   subType: string | null
+  subSubType: string | null
   normalBalance: string
   currency: string
   description: string | null
@@ -80,21 +81,13 @@ const DEFAULT_BALANCE: Record<string, string> = {
   EXPENSE: 'DEBIT',
 }
 
-const SUB_TYPES: Record<string, { value: string; label: string; group?: string }[]> = {
+const SUB_TYPES: Record<string, { value: string; label: string; group?: string; hasSubSub?: boolean }[]> = {
   ASSET: [
     { value: 'CURRENT_ASSETS', label: 'Current Assets', group: 'PFRS Classification' },
     { value: 'PPE', label: 'Property, Plant & Equipment', group: 'PFRS Classification' },
     { value: 'INTANGIBLE_ASSETS', label: 'Intangible Assets', group: 'PFRS Classification' },
     { value: 'OTHER_NON_CURRENT_ASSETS', label: 'Other Non-Current Assets', group: 'PFRS Classification' },
-    { value: 'INV_PT', label: 'Inventory — Physical Therapy (PT)', group: 'Verdana Inventory' },
-    { value: 'INV_OT', label: 'Inventory — Occupational Therapy (OT)', group: 'Verdana Inventory' },
-    { value: 'INV_ST', label: 'Inventory — Speech Therapy (ST)', group: 'Verdana Inventory' },
-    { value: 'INV_SPED', label: 'Inventory — Special Education (SPED)', group: 'Verdana Inventory' },
-    { value: 'INV_PSY', label: 'Inventory — Psychology & Assessment (PSY)', group: 'Verdana Inventory' },
-    { value: 'INV_CLI', label: 'Inventory — Clinic & Institutional (CLI)', group: 'Verdana Inventory' },
-    { value: 'INV_DIG', label: 'Inventory — Digital & Tech (DIG)', group: 'Verdana Inventory' },
-    { value: 'INV_EDU', label: 'Inventory — Training & Education (EDU)', group: 'Verdana Inventory' },
-    { value: 'INV_MER', label: 'Inventory — Merchandise (MER)', group: 'Verdana Inventory' },
+    { value: 'INVENTORY', label: 'Inventory', group: 'Inventory Classification', hasSubSub: true },
   ],
   LIABILITY: [
     { value: 'CURRENT_LIABILITIES', label: 'Current Liabilities' },
@@ -107,36 +100,88 @@ const SUB_TYPES: Record<string, { value: string; label: string; group?: string }
   REVENUE: [
     { value: 'OPERATING_REVENUE', label: 'Operating Revenue', group: 'PFRS Classification' },
     { value: 'NON_OPERATING_REVENUE', label: 'Non-Operating Revenue', group: 'PFRS Classification' },
-    { value: 'REV_PT', label: 'Sales — Physical Therapy (PT)', group: 'Verdana Revenue' },
-    { value: 'REV_OT', label: 'Sales — Occupational Therapy (OT)', group: 'Verdana Revenue' },
-    { value: 'REV_ST', label: 'Sales — Speech Therapy (ST)', group: 'Verdana Revenue' },
-    { value: 'REV_SPED', label: 'Sales — Special Education (SPED)', group: 'Verdana Revenue' },
-    { value: 'REV_PSY', label: 'Sales — Psychology & Assessment (PSY)', group: 'Verdana Revenue' },
-    { value: 'REV_CLI', label: 'Sales — Clinic & Institutional (CLI)', group: 'Verdana Revenue' },
-    { value: 'REV_DIG', label: 'Sales — Digital & Tech (DIG)', group: 'Verdana Revenue' },
-    { value: 'REV_EDU', label: 'Sales — Training & Education (EDU)', group: 'Verdana Revenue' },
-    { value: 'REV_MER', label: 'Sales — Merchandise (MER)', group: 'Verdana Revenue' },
+    { value: 'SALES', label: 'Sales by Department', group: 'Revenue by Department', hasSubSub: true },
   ],
   EXPENSE: [
-    { value: 'OPERATING_EXPENSES', label: 'Operating Expenses', group: 'PFRS Classification' },
+    { value: 'DIRECT_EXPENSES', label: 'Direct Operating Expenses', group: 'Operating Expenses' },
+    { value: 'INDIRECT_EXPENSES', label: 'Indirect Operating Expenses', group: 'Operating Expenses' },
     { value: 'NON_OPERATING_EXPENSES', label: 'Non-Operating Expenses', group: 'PFRS Classification' },
-    { value: 'COGS_PT', label: 'COGS — Physical Therapy (PT)', group: 'Verdana COGS' },
-    { value: 'COGS_OT', label: 'COGS — Occupational Therapy (OT)', group: 'Verdana COGS' },
-    { value: 'COGS_ST', label: 'COGS — Speech Therapy (ST)', group: 'Verdana COGS' },
-    { value: 'COGS_SPED', label: 'COGS — Special Education (SPED)', group: 'Verdana COGS' },
-    { value: 'COGS_PSY', label: 'COGS — Psychology & Assessment (PSY)', group: 'Verdana COGS' },
-    { value: 'COGS_CLI', label: 'COGS — Clinic & Institutional (CLI)', group: 'Verdana COGS' },
-    { value: 'COGS_DIG', label: 'COGS — Digital & Tech (DIG)', group: 'Verdana COGS' },
-    { value: 'COGS_EDU', label: 'COGS — Training & Education (EDU)', group: 'Verdana COGS' },
-    { value: 'COGS_MER', label: 'COGS — Merchandise (MER)', group: 'Verdana COGS' },
+    { value: 'COGS', label: 'Cost of Goods Sold', group: 'Cost of Goods Sold', hasSubSub: true },
   ],
+}
+
+// Department sub-sub types used for Inventory, Sales, and COGS
+const DEPARTMENT_SUB_SUB_TYPES = [
+  { value: 'PT', label: 'Physical Therapy (PT)' },
+  { value: 'OT', label: 'Occupational Therapy (OT)' },
+  { value: 'ST', label: 'Speech Therapy (ST)' },
+  { value: 'SPED', label: 'Special Education (SPED)' },
+  { value: 'PSY', label: 'Psychology & Assessment (PSY)' },
+  { value: 'CLI', label: 'Clinic & Institutional (CLI)' },
+  { value: 'DIG', label: 'Digital & Tech (DIG)' },
+  { value: 'EDU', label: 'Training & Education (EDU)' },
+  { value: 'MER', label: 'Merchandise (MER)' },
+]
+
+// Which sub-types have sub-sub-type selectors
+const SUB_SUB_TYPES: Record<string, { value: string; label: string }[]> = {
+  INVENTORY: DEPARTMENT_SUB_SUB_TYPES,
+  SALES: DEPARTMENT_SUB_SUB_TYPES,
+  COGS: DEPARTMENT_SUB_SUB_TYPES,
 }
 
 const ALL_SUB_TYPES = Object.values(SUB_TYPES).flat()
 
-const SUB_TYPE_LABELS: Record<string, string> = Object.fromEntries(
-  ALL_SUB_TYPES.map((s) => [s.value, s.label])
+const SUB_TYPE_LABELS: Record<string, string> = {
+  ...Object.fromEntries(ALL_SUB_TYPES.map((s) => [s.value, s.label])),
+  // Legacy: old single OPERATING_EXPENSES (now split into direct/indirect)
+  OPERATING_EXPENSES: 'Operating Expenses',
+  // Legacy flat inventory subtypes (backward compatibility)
+  INV_PT: 'Inventory — Physical Therapy (PT)',
+  INV_OT: 'Inventory — Occupational Therapy (OT)',
+  INV_ST: 'Inventory — Speech Therapy (ST)',
+  INV_SPED: 'Inventory — Special Education (SPED)',
+  INV_PSY: 'Inventory — Psychology & Assessment (PSY)',
+  INV_CLI: 'Inventory — Clinic & Institutional (CLI)',
+  INV_DIG: 'Inventory — Digital & Tech (DIG)',
+  INV_EDU: 'Inventory — Training & Education (EDU)',
+  INV_MER: 'Inventory — Merchandise (MER)',
+  // Legacy flat revenue subtypes
+  REV_PT: 'Sales — Physical Therapy (PT)',
+  REV_OT: 'Sales — Occupational Therapy (OT)',
+  REV_ST: 'Sales — Speech Therapy (ST)',
+  REV_SPED: 'Sales — Special Education (SPED)',
+  REV_PSY: 'Sales — Psychology & Assessment (PSY)',
+  REV_CLI: 'Sales — Clinic & Institutional (CLI)',
+  REV_DIG: 'Sales — Digital & Tech (DIG)',
+  REV_EDU: 'Sales — Training & Education (EDU)',
+  REV_MER: 'Sales — Merchandise (MER)',
+  // Legacy flat COGS subtypes
+  COGS_PT: 'COGS — Physical Therapy (PT)',
+  COGS_OT: 'COGS — Occupational Therapy (OT)',
+  COGS_ST: 'COGS — Speech Therapy (ST)',
+  COGS_SPED: 'COGS — Special Education (SPED)',
+  COGS_PSY: 'COGS — Psychology & Assessment (PSY)',
+  COGS_CLI: 'COGS — Clinic & Institutional (CLI)',
+  COGS_DIG: 'COGS — Digital & Tech (DIG)',
+  COGS_EDU: 'COGS — Training & Education (EDU)',
+  COGS_MER: 'COGS — Merchandise (MER)',
+}
+
+const SUB_SUB_TYPE_LABELS: Record<string, string> = Object.fromEntries(
+  DEPARTMENT_SUB_SUB_TYPES.map((s) => [s.value, s.label])
 )
+
+// Build display label combining subType + subSubType
+function getSubTypeDisplay(subType: string | null, subSubType: string | null): string {
+  if (!subType) return '—'
+  const base = SUB_TYPE_LABELS[subType] || subType
+  if (subSubType) {
+    const subLabel = SUB_SUB_TYPE_LABELS[subSubType] || subSubType
+    return `${base} — ${subLabel}`
+  }
+  return base
+}
 
 function parseCSV(text: string): string[][] {
   const rows: string[][] = []
@@ -193,6 +238,7 @@ export default function ChartOfAccountsPage() {
   const [formTitle, setFormTitle] = useState('')
   const [formType, setFormType] = useState('ASSET')
   const [formSubType, setFormSubType] = useState('')
+  const [formSubSubType, setFormSubSubType] = useState('')
   const [formBalance, setFormBalance] = useState('DEBIT')
   const [formDescription, setFormDescription] = useState('')
   const [formCurrency, setFormCurrency] = useState('PHP')
@@ -246,6 +292,7 @@ export default function ChartOfAccountsPage() {
     setFormTitle('')
     setFormType('ASSET')
     setFormSubType('')
+    setFormSubSubType('')
     setFormBalance('DEBIT')
     setFormCurrency('PHP')
     setFormDescription('')
@@ -259,6 +306,7 @@ export default function ChartOfAccountsPage() {
     setFormTitle(account.accountTitle)
     setFormType(account.accountType)
     setFormSubType(account.subType || '')
+    setFormSubSubType(account.subSubType || '')
     setFormBalance(account.normalBalance)
     setFormCurrency(account.currency || 'PHP')
     setFormDescription(account.description || '')
@@ -269,7 +317,13 @@ export default function ChartOfAccountsPage() {
   function handleTypeChange(type: string) {
     setFormType(type)
     setFormSubType('')
+    setFormSubSubType('')
     setFormBalance(DEFAULT_BALANCE[type] || 'DEBIT')
+  }
+
+  function handleSubTypeChange(subType: string) {
+    setFormSubType(subType)
+    setFormSubSubType('') // Reset sub-sub type when sub type changes
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -282,6 +336,7 @@ export default function ChartOfAccountsPage() {
       accountTitle: formTitle,
       accountType: formType,
       subType: formSubType,
+      subSubType: formSubSubType,
       normalBalance: formBalance,
       currency: formCurrency,
       description: formDescription,
@@ -583,7 +638,7 @@ export default function ChartOfAccountsPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
-                      {account.subType ? (SUB_TYPE_LABELS[account.subType] || account.subType) : '—'}
+                      {getSubTypeDisplay(account.subType, account.subSubType)}
                     </td>
                     <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>
                       {account.normalBalance}
@@ -722,7 +777,7 @@ export default function ChartOfAccountsPage() {
                 </label>
                 <select
                   value={formSubType}
-                  onChange={(e) => setFormSubType(e.target.value)}
+                  onChange={(e) => handleSubTypeChange(e.target.value)}
                   className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
                   style={{ borderColor: 'var(--light-gray)' }}
                 >
@@ -744,6 +799,27 @@ export default function ChartOfAccountsPage() {
                 </select>
               </div>
 
+              {/* Sub-Sub Type — shown for Inventory, Sales, and COGS */}
+              {formSubType && SUB_SUB_TYPES[formSubType] && (
+                <div>
+                  <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                    {formSubType === 'INVENTORY' ? 'Inventory Type' : formSubType === 'SALES' ? 'Department' : 'COGS Department'}
+                    <span className="text-xs font-normal ml-1" style={{ color: 'var(--mid-gray)' }}>(specific classification)</span>
+                  </label>
+                  <select
+                    value={formSubSubType}
+                    onChange={(e) => setFormSubSubType(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                    style={{ borderColor: 'var(--light-gray)' }}
+                  >
+                    <option value="">— Select {formSubType === 'INVENTORY' ? 'inventory type' : 'department'} —</option>
+                    {SUB_SUB_TYPES[formSubType].map((s) => (
+                      <option key={s.value} value={s.value}>{s.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
                   Normal Balance
@@ -760,29 +836,28 @@ export default function ChartOfAccountsPage() {
                 </select>
               </div>
 
-              {/* Currency — shown for Cash/Bank accounts under Current Assets */}
-              {formType === 'ASSET' && formSubType === 'CURRENT_ASSETS' && (
-                <div>
-                  <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
-                    Currency
-                  </label>
-                  <select
-                    value={formCurrency}
-                    onChange={(e) => setFormCurrency(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border text-sm outline-none transition-colors"
-                    style={{ borderColor: 'var(--light-gray)' }}
-                  >
-                    {CURRENCIES.map(c => (
-                      <option key={c.value} value={c.value}>{c.label}</option>
-                    ))}
-                  </select>
-                  {formCurrency !== 'PHP' && (
-                    <p className="text-xs mt-1 px-1" style={{ color: '#92400e' }}>
-                      This account will be denominated in {formCurrency}. Transactions will need exchange rate conversion.
-                    </p>
-                  )}
-                </div>
-              )}
+              {/* Currency — available for all account types */}
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                  Currency
+                  <span className="text-xs font-normal ml-1" style={{ color: 'var(--mid-gray)' }}>(defaults to PHP)</span>
+                </label>
+                <select
+                  value={formCurrency}
+                  onChange={(e) => setFormCurrency(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border text-sm outline-none transition-colors"
+                  style={{ borderColor: 'var(--light-gray)' }}
+                >
+                  {CURRENCIES.map(c => (
+                    <option key={c.value} value={c.value}>{c.label}</option>
+                  ))}
+                </select>
+                {formCurrency !== 'PHP' && (
+                  <p className="text-xs mt-1 px-1" style={{ color: '#92400e' }}>
+                    This account is denominated in {formCurrency}. Financial reports will auto-convert to PHP using the exchange rate at time of transaction.
+                  </p>
+                )}
+              </div>
 
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>

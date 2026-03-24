@@ -101,6 +101,7 @@ model Account {
   accountTitle  String
   accountType   AccountType
   subType       String?
+  subSubType    String?       // Sub-sub classification (e.g., PT, OT, ST for inventory types)
   normalBalance NormalBalance
   currency      String        @default("PHP")   // PHP, USD, CNY, EUR, JPY, etc.
   description   String?
