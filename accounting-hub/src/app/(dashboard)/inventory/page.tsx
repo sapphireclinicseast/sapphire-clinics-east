@@ -24,6 +24,7 @@ import {
   Loader2,
   AlertCircle,
   Printer,
+  FileText,
 } from 'lucide-react'
 import JsBarcode from 'jsbarcode'
 import { formatCurrency, formatDate } from '@/lib/utils'
@@ -99,6 +100,182 @@ function printVerdanaSticker(item: { name: string; sku?: string; barcode?: strin
     <\/script>
   </body></html>`)
   win.document.close()
+}
+
+/* ── Consignment Transmittal Form PDF ──────────────────────── */
+
+interface TransmittalData {
+  referenceNumber: string | null
+  date: string
+  fromBranch: string
+  toBranch: string
+  requestedBy: string
+  status: string
+  items: { sku: string; name: string; quantity: number; remarks: string | null }[]
+}
+
+function generateTransmittalPDF(data: TransmittalData) {
+  const logoUrl = `${window.location.origin}/brand/sandbox-clinic-logo.png`
+  const today = new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })
+
+  // Build item rows — always 10 rows minimum (matching transmittal form)
+  const padded = [...data.items]
+  while (padded.length < 10) padded.push({ sku: '', name: '', quantity: 0, remarks: '' })
+
+  const itemRows = padded.map((item, i) => `
+    <tr>
+      <td class="no">${i + 1}</td>
+      <td class="particular">${item.sku ? `<span class="sku">${item.sku}</span> ${item.name}` : ''}</td>
+      <td class="qty">${item.quantity || ''}</td>
+      <td class="remarks">${item.remarks || ''}</td>
+    </tr>
+  `).join('')
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<title>Consignment Transmittal Form${data.referenceNumber ? ' — ' + data.referenceNumber : ''}</title>
+<style>
+  @page { size: A4 portrait; margin: 0.6in 0.75in; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; color: #1C2B30; font-size: 11pt; }
+
+  .header { display: flex; align-items: center; gap: 20px; margin-bottom: 6px; }
+  .header img { width: 80px; height: auto; }
+  .header-text { flex: 1; }
+  .company-name { font-size: 10pt; color: #666; }
+  .form-title { font-size: 18pt; font-weight: 700; text-align: center; margin: 2px 0 16px; letter-spacing: 1px; }
+
+  .meta-row { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 10pt; }
+  .meta-row .label { font-weight: 600; font-style: italic; }
+  .meta-row .value { border-bottom: 1px solid #333; min-width: 200px; padding-left: 4px; }
+  .meta-row .ref-value { border-bottom: 1px solid #333; min-width: 220px; padding-left: 4px; }
+
+  .section-label { font-weight: 600; font-style: italic; font-size: 10pt; margin-bottom: 4px; }
+  .info-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10pt; }
+  .info-table td { border: 1px solid #333; padding: 4px 8px; }
+  .info-table .field-label { font-weight: 600; width: 180px; background: #f9f9f9; }
+
+  .items-table { width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 10pt; }
+  .items-table th { border: 1px solid #333; padding: 6px 8px; font-weight: 700; background: #f0f0f0; text-align: left; }
+  .items-table td { border: 1px solid #333; padding: 5px 8px; height: 24px; }
+  .items-table .no { width: 40px; text-align: center; }
+  .items-table .particular { }
+  .items-table .qty { width: 60px; text-align: center; }
+  .items-table .remarks { width: 160px; }
+  .items-table .sku { font-family: 'Courier New', monospace; font-size: 9pt; color: #555; }
+
+  .signatures { display: flex; justify-content: space-between; margin-top: 30px; font-size: 10pt; }
+  .sig-block { width: 45%; }
+  .sig-block .sig-title { font-weight: 600; margin-bottom: 16px; }
+  .sig-block .sig-field { display: flex; margin-bottom: 6px; }
+  .sig-block .sig-label { width: 80px; font-weight: 500; }
+  .sig-block .sig-line { flex: 1; border-bottom: 1px solid #333; min-height: 18px; }
+
+  .status-badge { display: inline-block; padding: 2px 10px; border-radius: 4px; font-size: 9pt; font-weight: 600; }
+  .status-PENDING { background: #fef3c7; color: #92400e; }
+  .status-APPROVED { background: #dbeafe; color: #1e40af; }
+  .status-SHIPPED { background: #e0e7ff; color: #3730a3; }
+  .status-RECEIVED { background: #dcfce7; color: #166534; }
+  .status-RETURNED { background: #fce7f3; color: #9d174d; }
+  .status-CANCELLED { background: #fee2e2; color: #991b1b; }
+
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+  <!-- Header -->
+  <div class="header">
+    <img src="${logoUrl}" alt="Sandbox Logo" />
+    <div class="header-text">
+      <div class="company-name">Sapphire Clinics East Incorporated</div>
+      <div class="company-name">Multi-Specialty Clinic and Rehabilitation Center</div>
+    </div>
+  </div>
+
+  <div class="form-title">CONSIGNMENT TRANSMITTAL FORM</div>
+
+  <!-- Meta row: Date & Reference Number -->
+  <div class="meta-row">
+    <div>
+      <span class="label">Date Transmittal: </span>
+      <span class="value">${today}</span>
+    </div>
+    <div>
+      <span class="label">Reference No: </span>
+      <span class="ref-value">${data.referenceNumber || '—'}</span>
+    </div>
+  </div>
+
+  <!-- From section -->
+  <div class="section-label">From:</div>
+  <table class="info-table">
+    <tr><td class="field-label">Branch</td><td>${data.fromBranch}</td></tr>
+    <tr><td class="field-label">Staff Name</td><td>${data.requestedBy}</td></tr>
+    <tr><td class="field-label">Position & Contact No.</td><td></td></tr>
+  </table>
+
+  <!-- To section -->
+  <div class="section-label">To:</div>
+  <table class="info-table">
+    <tr><td class="field-label">Receiver's Name</td><td></td></tr>
+    <tr><td class="field-label">Branch</td><td>${data.toBranch}</td></tr>
+    <tr><td class="field-label">Contact No.</td><td></td></tr>
+  </table>
+
+  <!-- Status -->
+  <div style="margin-bottom: 12px; font-size: 10pt;">
+    <span style="font-weight: 600;">Status: </span>
+    <span class="status-badge status-${data.status}">${data.status}</span>
+  </div>
+
+  <!-- Items table -->
+  <table class="items-table">
+    <thead>
+      <tr>
+        <th class="no">No.</th>
+        <th class="particular">Particular (SKU & Item Name)</th>
+        <th class="qty">Qty</th>
+        <th class="remarks">Remarks</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${itemRows}
+    </tbody>
+  </table>
+
+  <!-- Signatures -->
+  <div class="signatures">
+    <div class="sig-block">
+      <div class="sig-title">Released By:</div>
+      <div class="sig-field"><span class="sig-label">Name:</span><span class="sig-line"></span></div>
+      <div class="sig-field"><span class="sig-label">Signature:</span><span class="sig-line"></span></div>
+      <div class="sig-field"><span class="sig-label">Date:</span><span class="sig-line"></span></div>
+      <div class="sig-field"><span class="sig-label">Contact No.</span><span class="sig-line"></span></div>
+    </div>
+    <div class="sig-block">
+      <div class="sig-title">Received By:</div>
+      <div class="sig-field"><span class="sig-label">Name:</span><span class="sig-line"></span></div>
+      <div class="sig-field"><span class="sig-label">Signature:</span><span class="sig-line"></span></div>
+      <div class="sig-field"><span class="sig-label">Date:</span><span class="sig-line"></span></div>
+      <div class="sig-field"><span class="sig-label">Contact No.</span><span class="sig-line"></span></div>
+    </div>
+  </div>
+</body></html>`
+
+  const win = window.open('', '_blank', 'width=800,height=1100')
+  if (!win) return
+  win.document.write(html)
+  win.document.close()
+  // Wait for logo to load then trigger print
+  const img = win.document.querySelector('img')
+  if (img && !img.complete) {
+    img.onload = () => setTimeout(() => win.print(), 300)
+    img.onerror = () => setTimeout(() => win.print(), 300)
+  } else {
+    setTimeout(() => win.print(), 500)
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -2155,6 +2332,25 @@ setTimeout(()=>window.print(),500);
                             {canWrite && (
                               <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                                 <div className="flex items-center justify-end gap-1">
+                                  {/* Generate PDF — always available */}
+                                  <button onClick={() => generateTransmittalPDF({
+                                    referenceNumber: g.ref,
+                                    date: g.first.createdAt,
+                                    fromBranch: BRANCH_LABELS[g.first.fromBranch] || g.first.fromBranch,
+                                    toBranch: BRANCH_LABELS[g.first.toBranch] || g.first.toBranch,
+                                    requestedBy: g.first.requestedBy?.name || '—',
+                                    status: g.first.status,
+                                    items: g.items.map(item => ({
+                                      sku: item.item?.sku || '',
+                                      name: item.item?.name || '',
+                                      quantity: item.quantity,
+                                      remarks: item.remarks,
+                                    })),
+                                  })}
+                                    className="px-2.5 py-1 rounded-lg text-xs font-semibold transition-opacity hover:opacity-90"
+                                    style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }} title="Generate Transmittal Form PDF">
+                                    <FileText size={14} className="inline mr-1" />PDF
+                                  </button>
                                   {allPending && (
                                     <>
                                       <button onClick={() => { allIds.forEach(id => handleConAction(id, 'approve')); setTimeout(fetchConsignments, 500) }}
