@@ -152,14 +152,14 @@ function ResetPasswordForm() {
 export default function ResetPasswordPage() {
   return (
     <div className="fixed inset-0 flex items-center justify-center px-4" style={{
-      background: 'linear-gradient(135deg, #0A1012 0%, #0D5B68 40%, #1A7B8A 70%, #0D5B68 100%)',
+      background: 'linear-gradient(135deg, #1A120B 0%, #C06A1F 40%, #E07C24 70%, #C06A1F 100%)',
     }}>
       <div className="absolute top-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full opacity-[0.04] bg-white pointer-events-none" />
 
       <div className="w-full max-w-[400px] animate-gate">
         <div className="flex justify-center mb-6">
           <div className="w-[60px] h-[60px] rounded-full flex items-center justify-center"
-               style={{ background: 'linear-gradient(135deg, var(--teal), var(--bright-teal))', boxShadow: '0 4px 20px rgba(26, 123, 138, 0.4)' }}>
+               style={{ background: 'linear-gradient(135deg, var(--teal), var(--bright-teal))', boxShadow: '0 4px 20px rgba(224, 124, 36, 0.4)' }}>
             <Video className="w-7 h-7 text-white" />
           </div>
         </div>

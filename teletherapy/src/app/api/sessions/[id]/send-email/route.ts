@@ -56,33 +56,33 @@ export async function POST(
     }
 
     const attachmentListHtml = emailAttachments.length > 0 ? `
-      <h3 style="font-size: 14px; color: #9AABB0; margin-top: 16px;">Attachments</h3>
-      <p style="font-size: 13px; color: #1C2B30;">${emailAttachments.length} file(s) attached to this email.</p>
+      <h3 style="font-size: 14px; color: #A09383; margin-top: 16px;">Attachments</h3>
+      <p style="font-size: 13px; color: #2B1F14;">${emailAttachments.length} file(s) attached to this email.</p>
     ` : ''
 
     const html = `
-      <div style="font-family: 'Gill Sans', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1C2B30;">
-        <div style="background: linear-gradient(135deg, #0D5B68, #1A7B8A); padding: 24px; border-radius: 12px 12px 0 0;">
+      <div style="font-family: 'Gill Sans', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #2B1F14;">
+        <div style="background: linear-gradient(135deg, #C06A1F, #E07C24); padding: 24px; border-radius: 12px 12px 0 0;">
           <h1 style="color: white; margin: 0; font-size: 20px;">Teletherapy Session Notes</h1>
           <p style="color: rgba(255,255,255,0.7); margin: 4px 0 0; font-size: 14px;">Sapphire Clinics East, Inc.</p>
         </div>
-        <div style="background: white; padding: 24px; border: 1px solid #E8EDEF; border-top: none; border-radius: 0 0 12px 12px;">
+        <div style="background: white; padding: 24px; border: 1px solid #EDE8E3; border-top: none; border-radius: 0 0 12px 12px;">
           <p>Dear <strong>${patientName}</strong>,</p>
           <p>Here are the notes from your teletherapy session:</p>
-          <div style="background: #F7FAFB; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+          <div style="background: #FDFAF7; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
             <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
-              <tr><td style="padding: 4px 0; color: #9AABB0;">Date</td><td>${sessionDate}</td></tr>
-              <tr><td style="padding: 4px 0; color: #9AABB0;">Time</td><td>${schedule.startTime} - ${schedule.endTime}</td></tr>
-              <tr><td style="padding: 4px 0; color: #9AABB0;">Session Type</td><td>${schedule.sessionType}</td></tr>
-              <tr><td style="padding: 4px 0; color: #9AABB0;">Clinician</td><td>${therapistName} (${schedule.staff.department})</td></tr>
+              <tr><td style="padding: 4px 0; color: #A09383;">Date</td><td>${sessionDate}</td></tr>
+              <tr><td style="padding: 4px 0; color: #A09383;">Time</td><td>${schedule.startTime} - ${schedule.endTime}</td></tr>
+              <tr><td style="padding: 4px 0; color: #A09383;">Session Type</td><td>${schedule.sessionType}</td></tr>
+              <tr><td style="padding: 4px 0; color: #A09383;">Clinician</td><td>${therapistName} (${schedule.staff.department})</td></tr>
             </table>
           </div>
           ${schedule.sessionNote.notes ? `
-            <h3 style="font-size: 14px; color: #9AABB0;">Session Notes</h3>
-            <div style="background: #F7FAFB; padding: 12px; border-radius: 8px; font-size: 14px; white-space: pre-wrap;">${schedule.sessionNote.notes}</div>
+            <h3 style="font-size: 14px; color: #A09383;">Session Notes</h3>
+            <div style="background: #FDFAF7; padding: 12px; border-radius: 8px; font-size: 14px; white-space: pre-wrap;">${schedule.sessionNote.notes}</div>
           ` : ''}
           ${attachmentListHtml}
-          <p style="font-size: 13px; color: #9AABB0; margin-top: 24px;">
+          <p style="font-size: 13px; color: #A09383; margin-top: 24px;">
             This is an automated message from SCEI Teletherapy. Please contact your clinician directly if you have questions.
           </p>
         </div>

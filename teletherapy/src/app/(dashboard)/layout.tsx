@@ -49,7 +49,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}
         style={{
-          background: 'linear-gradient(180deg, #0A1012 0%, #1C2B30 100%)',
+          background: 'linear-gradient(180deg, #1A120B 0%, #2B1F14 100%)',
         }}
       >
         {/* Brand */}
