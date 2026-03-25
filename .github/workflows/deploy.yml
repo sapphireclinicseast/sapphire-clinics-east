@@ -167,19 +167,19 @@ jobs:
           cd /opt/sapphire/docker && docker compose --env-file .env.production up -d postgres 2>&1 | tail -2 || true
           sleep 3
 
-          echo "→ Seeding admin account..."
+          echo "→ Seeding main admin account..."
           docker exec sapphire_db psql -U sapphire -d sapphire_marketing -c "
             ALTER TABLE \"TherapistAccount\" ADD COLUMN IF NOT EXISTS \"resetToken\" TEXT;
             ALTER TABLE \"TherapistAccount\" ADD COLUMN IF NOT EXISTS \"resetTokenExpiry\" TIMESTAMP(3);
             INSERT INTO \"TherapistAccount\" (id, \"staffId\", email, \"passwordHash\", role, \"isActive\", \"createdAt\", \"updatedAt\")
-            SELECT 'cladmin001', s.id, 'admin@sapphireclinicseast.org',
-                   '\$2b\$12\$d37ebovo6s43P5O6SBIGEuErESExhffuGbnHqxgqLTm76VaUaLqcO',
+            SELECT 'clmainadmin01', s.id, 'main@sapphireclinicseast.org',
+                   '\$2b\$12\$CzbS0M/M1L9Fj7EaChT0jO6d56oL.wFiGwaw5ayPlgjKzqBtd/64.',
                    'ADMIN', true, NOW(), NOW()
             FROM \"Staff\" s
             WHERE s.department IN ('OT','PT','SLP','SPED','PSYCHOLOGY')
             ORDER BY s.\"createdAt\" LIMIT 1
             ON CONFLICT (email) DO UPDATE SET \"passwordHash\" = EXCLUDED.\"passwordHash\";
-          " 2>/dev/null && echo "✅ Admin seeded." || echo "⚠ Admin seed skipped."
+          " 2>/dev/null && echo "✅ Main admin seeded." || echo "⚠ Admin seed skipped."
 
           echo "→ Starting teletherapy app..."
           if pm2 describe scei-teletherapy >/dev/null 2>&1; then
