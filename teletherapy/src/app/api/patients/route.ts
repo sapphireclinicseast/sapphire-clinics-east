@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   const search = req.nextUrl.searchParams.get('search') ?? ''
   const isAdmin = session.user.role === 'ADMIN'
 
-  // Get all patients that have had sessions with this clinician (or all for admin)
+  // 1. Get patients from direct sessions (staffId match)
   const staffFilter = isAdmin ? {} : { staffId: session.user.staffId }
 
   const schedules = await prisma.schedule.findMany({
@@ -37,9 +37,41 @@ export async function GET(req: NextRequest) {
     distinct: ['patientId'],
   })
 
-  let patients = schedules
-    .filter((s) => s.patient !== null)
-    .map((s) => s.patient!)
+  const patientMap = new Map<string, typeof schedules[0]['patient']>()
+  for (const s of schedules) {
+    if (s.patient) patientMap.set(s.patient.id, s.patient)
+  }
+
+  // 2. Also get patients endorsed TO this clinician (via PatientAssignment)
+  if (!isAdmin) {
+    const endorsedAssignments = await prisma.patientAssignment.findMany({
+      where: {
+        therapistAccountId: session.user.id,
+        status: 'ACTIVE',
+      },
+      include: {
+        patient: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+            patientType: true,
+            diagnosis: true,
+          },
+        },
+      },
+    })
+
+    for (const a of endorsedAssignments) {
+      if (a.patient && !patientMap.has(a.patient.id)) {
+        patientMap.set(a.patient.id, a.patient)
+      }
+    }
+  }
+
+  let patients = Array.from(patientMap.values()).filter(Boolean) as NonNullable<typeof schedules[0]['patient']>[]
 
   // Apply search filter
   if (search) {

@@ -33,8 +33,13 @@ export async function GET(
     return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
   }
 
-  // Get all sessions for this patient with this clinician (or all for admin)
-  const staffFilter = isAdmin ? {} : { staffId: session.user.staffId }
+  // Check if patient was endorsed to this clinician — if so, show ALL sessions
+  const hasActiveAssignment = !isAdmin ? await prisma.patientAssignment.findFirst({
+    where: { patientId: id, therapistAccountId: session.user.id, status: 'ACTIVE' },
+  }) : null
+
+  // If endorsed or admin, show all sessions; otherwise only own sessions
+  const staffFilter = isAdmin || hasActiveAssignment ? {} : { staffId: session.user.staffId }
 
   const sessions = await prisma.schedule.findMany({
     where: {
