@@ -138,7 +138,7 @@ jobs:
               grep "^GOOGLE_REDIRECT_URI" "$MENV" >> .env 2>/dev/null || true
               echo "UPLOAD_DIR=./uploads" >> .env
               echo "RESEND_API_KEY=re_CbH3Pirt_JqAd3RJ3TXwaFNmxckQ7GVwK" >> .env
-              echo "RESEND_FROM_EMAIL=SCEI Teletherapy <noreply@do-not-reply.sapphireclinicseast.org>" >> .env
+              echo 'RESEND_FROM_EMAIL="SCEI Teletherapy <noreply@do-not-reply.sapphireclinicseast.org>"' >> .env
             else
               echo "DATABASE_URL=postgresql://sapphire:sapphire@localhost:5433/sapphire_marketing" > .env
               echo "NEXTAUTH_URL=https://teletherapy.sapphireclinicseast.org" >> .env
@@ -146,7 +146,7 @@ jobs:
               echo "AUTH_TRUST_HOST=true" >> .env
               echo "UPLOAD_DIR=./uploads" >> .env
               echo "RESEND_API_KEY=re_CbH3Pirt_JqAd3RJ3TXwaFNmxckQ7GVwK" >> .env
-              echo "RESEND_FROM_EMAIL=SCEI Teletherapy <noreply@do-not-reply.sapphireclinicseast.org>" >> .env
+              echo 'RESEND_FROM_EMAIL="SCEI Teletherapy <noreply@do-not-reply.sapphireclinicseast.org>"' >> .env
             fi
             echo "✅ .env created."
           fi
@@ -188,19 +188,7 @@ jobs:
             ON CONFLICT (email) DO UPDATE SET \"passwordHash\" = EXCLUDED.\"passwordHash\";
           " && echo "✅ Main admin seeded." || echo "⚠ Admin seed failed."
 
-          echo "→ Verifying DB connection from host..."
           cd /var/www/sapphireclinicseast.org/teletherapy
-          set -a; source .env 2>/dev/null; set +a
-          node -e "
-            const{Client}=require('pg');
-            const url = process.env.DATABASE_URL || '';
-            console.log('URL format:', url.replace(/\/\/[^@]+@/, '//***@'));
-            const c=new Client({connectionString: url});
-            c.connect()
-              .then(()=>c.query('SELECT count(*) as cnt FROM \"TherapistAccount\"'))
-              .then(r=>{console.log('DB OK, accounts:',r.rows[0].cnt);c.end()})
-              .catch(e=>{console.error('DB FAIL code:',e.code,'errno:',e.errno);c.end()})
-          " 2>&1 | tail -3
 
           echo "→ Starting teletherapy app..."
           if pm2 describe scei-teletherapy >/dev/null 2>&1; then
