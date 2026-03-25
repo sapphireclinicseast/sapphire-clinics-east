@@ -102,7 +102,10 @@ export async function POST(req: Request) {
 
     const existing = await prisma.account.findUnique({ where: { accountNumber: accountNumber.trim() } })
     if (existing) {
-      return NextResponse.json({ error: 'Account number already exists' }, { status: 409 })
+      const inactive = !existing.isActive ? ' (currently INACTIVE — use filter to show inactive accounts and reactivate it)' : ''
+      return NextResponse.json({
+        error: `Account number ${accountNumber.trim()} already exists: "${existing.accountTitle}" (${existing.accountType}${existing.subType ? ' > ' + existing.subType : ''})${inactive}`,
+      }, { status: 409 })
     }
 
     const account = await prisma.account.create({

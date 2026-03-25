@@ -234,6 +234,7 @@ export default function ChartOfAccountsPage() {
   const [error, setError] = useState('')
   const [coaPage, setCoaPage] = useState(1)
   const [coaPageSize, setCoaPageSize] = useState(25)
+  const [showInactive, setShowInactive] = useState(false)
 
   // Create/Edit modal
   const [modalOpen, setModalOpen] = useState(false)
@@ -263,6 +264,7 @@ export default function ChartOfAccountsPage() {
       const params = new URLSearchParams({ pageSize: '500' })
       if (filterType) params.set('accountType', filterType)
       if (filterSubType) params.set('subType', filterSubType)
+      if (showInactive) params.set('showInactive', 'true')
       const res = await fetch(`/api/chart-of-accounts?${params}`)
       const data = await res.json()
       setAccounts(data.data || [])
@@ -271,7 +273,7 @@ export default function ChartOfAccountsPage() {
     } finally {
       setLoading(false)
     }
-  }, [filterType, filterSubType])
+  }, [filterType, filterSubType, showInactive])
 
   // Initial load
   useEffect(() => {
@@ -287,7 +289,7 @@ export default function ChartOfAccountsPage() {
     const timeout = setTimeout(() => { fetchAccounts() }, 300)
     return () => clearTimeout(timeout)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterType, filterSubType])
+  }, [filterType, filterSubType, showInactive])
 
   // ── Form handlers ──────────────────────────────────────────
 
@@ -602,6 +604,12 @@ export default function ChartOfAccountsPage() {
             <option key={s.value} value={s.value}>{s.label}</option>
           ))}
         </select>
+        <label className="flex items-center gap-2 text-xs cursor-pointer select-none whitespace-nowrap"
+          style={{ color: 'var(--mid-gray)' }}>
+          <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)}
+            className="rounded" />
+          Show inactive
+        </label>
       </div>
 
       {/* Error */}
@@ -638,7 +646,7 @@ export default function ChartOfAccountsPage() {
                 paginatedAccounts.map((account) => (
                   <tr
                     key={account.id}
-                    className="border-t hover:bg-gray-50/50 transition-colors"
+                    className={`border-t hover:bg-gray-50/50 transition-colors ${!account.isActive ? 'opacity-50' : ''}`}
                     style={{ borderColor: 'var(--light-gray)' }}
                   >
                     <td className="px-4 py-3 font-mono font-medium" style={{ color: 'var(--charcoal)' }}>
