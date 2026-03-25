@@ -126,7 +126,8 @@ jobs:
             echo "→ Creating teletherapy .env..."
             MENV="/opt/sapphire/docker/.env.production"
             if [ -f "$MENV" ]; then
-              grep "^DATABASE_URL" "$MENV" | sed 's/@postgres:/@localhost:/g; s/@sapphire_db:/@localhost:/g' > .env
+              PG_PASS=$(grep "^POSTGRES_PASSWORD" "$MENV" | cut -d= -f2-)
+              echo "DATABASE_URL=postgresql://sapphire:${PG_PASS}@localhost:5432/sapphire_marketing" > .env
               grep "^NEXTAUTH_SECRET" "$MENV" >> .env
               echo "NEXTAUTH_URL=https://teletherapy.sapphireclinicseast.org" >> .env
               echo "AUTH_TRUST_HOST=true" >> .env
