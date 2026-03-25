@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
+import { readFile } from 'fs/promises'
+import { existsSync } from 'fs'
+import path from 'path'
+
+const UPLOAD_DIR = process.env.UPLOAD_DIR ?? './uploads'
 
 export async function POST(
   req: NextRequest,
@@ -35,6 +40,26 @@ export async function POST(
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
     })
 
+    // Read attachments from disk
+    const emailAttachments: { filename: string; content: Buffer }[] = []
+    const noteAttachments = (schedule.sessionNote.attachments as any[] | null) ?? []
+
+    for (const att of noteAttachments) {
+      const fullPath = path.join(UPLOAD_DIR, att.filePath)
+      if (existsSync(fullPath)) {
+        const content = await readFile(fullPath)
+        emailAttachments.push({
+          filename: att.fileName,
+          content,
+        })
+      }
+    }
+
+    const attachmentListHtml = emailAttachments.length > 0 ? `
+      <h3 style="font-size: 14px; color: #9AABB0; margin-top: 16px;">Attachments</h3>
+      <p style="font-size: 13px; color: #1C2B30;">${emailAttachments.length} file(s) attached to this email.</p>
+    ` : ''
+
     const html = `
       <div style="font-family: 'Gill Sans', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1C2B30;">
         <div style="background: linear-gradient(135deg, #0D5B68, #1A7B8A); padding: 24px; border-radius: 12px 12px 0 0;">
@@ -56,6 +81,7 @@ export async function POST(
             <h3 style="font-size: 14px; color: #9AABB0;">Session Notes</h3>
             <div style="background: #F7FAFB; padding: 12px; border-radius: 8px; font-size: 14px; white-space: pre-wrap;">${schedule.sessionNote.notes}</div>
           ` : ''}
+          ${attachmentListHtml}
           <p style="font-size: 13px; color: #9AABB0; margin-top: 24px;">
             This is an automated message from SCEI Teletherapy. Please contact your clinician directly if you have questions.
           </p>
@@ -67,6 +93,7 @@ export async function POST(
       to: schedule.patient.email,
       subject: `Teletherapy Session Notes - ${sessionDate}`,
       html,
+      attachments: emailAttachments,
     })
 
     await prisma.sessionNote.update({
