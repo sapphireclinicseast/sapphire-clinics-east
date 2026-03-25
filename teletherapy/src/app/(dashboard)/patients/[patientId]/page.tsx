@@ -13,6 +13,8 @@ import {
   Stethoscope,
   ArrowRightLeft,
   UserX,
+  Trash2,
+  X,
   ChevronDown,
   ChevronUp,
   FileText,
@@ -149,6 +151,43 @@ export default function PatientDetailPage() {
       }
     } catch { showToast('Discharge failed') }
     setDischarging(false)
+  }
+
+  async function handleDeleteNote(scheduleId: string) {
+    if (!confirm('Are you sure you want to delete this session note? This cannot be undone.')) return
+    try {
+      const res = await fetch(`/api/sessions/${scheduleId}/delete-note`, { method: 'DELETE' })
+      if (res.ok) {
+        showToast('Note deleted')
+        fetchPatient()
+      } else {
+        const data = await res.json()
+        showToast(data.error ?? 'Failed to delete')
+      }
+    } catch { showToast('Failed to delete note') }
+  }
+
+  async function handleDeleteAttachment(scheduleId: string, attachmentIndex: number) {
+    if (!confirm('Delete this attachment?')) return
+    const session = sessions.find((s) => s.id === scheduleId)
+    if (!session?.sessionNote?.attachments) return
+
+    const kept = (session.sessionNote.attachments as any[]).filter((_: any, i: number) => i !== attachmentIndex)
+
+    try {
+      const res = await fetch(`/api/sessions/${scheduleId}/edit`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ existingAttachments: kept }),
+      })
+      if (res.ok) {
+        showToast('Attachment deleted')
+        fetchPatient()
+      } else {
+        const data = await res.json()
+        showToast(data.error ?? 'Failed')
+      }
+    } catch { showToast('Failed to delete attachment') }
   }
 
   function showToast(msg: string) {
@@ -381,19 +420,39 @@ export default function PatientDetailPage() {
                         )}
 
                         {s.sessionNote.attachments && (s.sessionNote.attachments as any[]).length > 0 && (
-                          <div>
+                          <div className="mb-3">
                             <p className="text-[11px] text-[var(--mid-gray)] uppercase font-semibold tracking-wider mb-1">Attachments</p>
-                            <div className="flex flex-wrap gap-2">
+                            <div className="space-y-1.5">
                               {(s.sessionNote.attachments as any[]).map((att: any, i: number) => (
-                                <a key={i} href={`/api/upload/${att.filePath}`} target="_blank"
-                                   className="flex items-center gap-1.5 text-[12px] text-[var(--teal)] bg-[var(--pale-teal)] px-2.5 py-1.5 rounded-lg hover:bg-[var(--teal)] hover:text-white transition-colors font-medium">
-                                  <Paperclip size={12} />
-                                  {att.fileName}
-                                </a>
+                                <div key={i} className="flex items-center justify-between bg-[var(--off-white)] px-3 py-2 rounded-lg border border-[var(--light-gray)]">
+                                  <a href={`/api/upload/${att.filePath}`} target="_blank"
+                                     className="flex items-center gap-1.5 text-[12px] text-[var(--teal)] hover:underline font-medium truncate">
+                                    <Paperclip size={12} />
+                                    {att.fileName}
+                                  </a>
+                                  <button
+                                    onClick={() => handleDeleteAttachment(s.id, i)}
+                                    className="text-[var(--mid-gray)] hover:text-red-500 shrink-0 ml-2 p-0.5"
+                                    title="Delete attachment"
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                </div>
                               ))}
                             </div>
                           </div>
                         )}
+
+                        {/* Delete entire note */}
+                        <div className="pt-3 border-t border-[var(--light-gray)]">
+                          <button
+                            onClick={() => handleDeleteNote(s.id)}
+                            className="flex items-center gap-1.5 text-[12px] text-red-500 hover:text-red-700 font-medium transition-colors"
+                          >
+                            <Trash2 size={13} />
+                            Delete this session note
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}
