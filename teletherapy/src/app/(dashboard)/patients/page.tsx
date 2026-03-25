@@ -118,7 +118,7 @@ export default function PatientsPage() {
             {f === 'ALL' ? 'All' : f.charAt(0) + f.slice(1).toLowerCase()}
             {f !== 'ALL' && (
               <span className="ml-1.5 opacity-70">
-                ({patients.filter((p) => f === 'ALL' || p.assignmentStatus === f).length})
+                ({patients.filter((p) => p.assignmentStatus === f).length})
               </span>
             )}
           </button>
