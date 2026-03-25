@@ -1,0 +1,26 @@
+services:
+  teletherapy_app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: teletherapy_app
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://sapphire:${POSTGRES_PASSWORD}@sapphire_db:5432/sapphire_marketing
+      - NEXTAUTH_URL=https://teletherapy.sapphireclinicseast.org
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - AUTH_TRUST_HOST=true
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI}
+      - UPLOAD_DIR=/app/uploads
+    volumes:
+      - /opt/sapphire/teletherapy-uploads:/app/uploads
+    ports:
+      - "127.0.0.1:3002:3002"
+    networks:
+      - sapphire_network
+
+networks:
+  sapphire_network:
+    external: true

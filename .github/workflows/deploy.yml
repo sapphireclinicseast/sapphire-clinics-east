@@ -59,9 +59,32 @@ jobs:
             --exclude='COMPANY LOGO/capture-intro.mjs' \
             --exclude='api/node_modules' \
             --exclude='data/' \
+            --exclude='teletherapy/node_modules' \
+            --exclude='teletherapy/.next' \
+            --exclude='teletherapy/.env' \
+            --exclude='teletherapy/uploads' \
             ./ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/sapphireclinicseast.org/
 
-      # ── 5. Update Nginx config & reload ─────────────────────────
+      # ── 5. Provision SSL for teletherapy subdomain (if needed) ──
+      - name: Setup teletherapy SSL
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            'if [ ! -d /etc/letsencrypt/live/teletherapy.sapphireclinicseast.org ]; then
+               echo "→ Provisioning SSL for teletherapy.sapphireclinicseast.org..."
+               certbot certonly --standalone --preferred-challenges http \
+                 -d teletherapy.sapphireclinicseast.org \
+                 --non-interactive --agree-tos \
+                 -m admin@sapphireclinicseast.org \
+                 --pre-hook "systemctl stop nginx" \
+                 --post-hook "systemctl start nginx" \
+                 && echo "✅ SSL cert obtained." \
+                 || echo "⚠ SSL cert failed — will retry next deploy."
+             else
+               echo "✅ SSL cert already exists."
+             fi'
+
+      # ── 6. Update Nginx config & reload ─────────────────────────
       - name: Update Nginx config
         run: |
           scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
@@ -86,4 +109,73 @@ jobs:
              fi && \
              if [ ! -f /var/www/sapphireclinicseast.org/data/surveys.db ]; then \
                node seed-data.js; \
+             fi'
+
+      # ── 8. Deploy Teletherapy app ──────────────────────────────
+      - name: Deploy Teletherapy
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            'if [ -d /var/www/sapphireclinicseast.org/teletherapy ]; then
+               cd /var/www/sapphireclinicseast.org/teletherapy
+
+               # Create .env from marketing hub env if it does not exist
+               if [ ! -f .env ]; then
+                 echo "→ Creating teletherapy .env from marketing hub..."
+                 MARKETING_ENV="/opt/sapphire/docker/.env.production"
+                 if [ -f "$MARKETING_ENV" ]; then
+                   DB_URL=$(grep "^DATABASE_URL" "$MARKETING_ENV" | head -1)
+                   NEXTAUTH_SECRET=$(grep "^NEXTAUTH_SECRET" "$MARKETING_ENV" | head -1)
+                   GOOGLE_CID=$(grep "^GOOGLE_CLIENT_ID" "$MARKETING_ENV" | head -1)
+                   GOOGLE_CS=$(grep "^GOOGLE_CLIENT_SECRET" "$MARKETING_ENV" | head -1)
+                   GOOGLE_RURI=$(grep "^GOOGLE_REDIRECT_URI" "$MARKETING_ENV" | head -1)
+                   cat > .env << ENVEOF
+${DB_URL}
+${NEXTAUTH_SECRET}
+NEXTAUTH_URL=https://teletherapy.sapphireclinicseast.org
+AUTH_TRUST_HOST=true
+${GOOGLE_CID}
+${GOOGLE_CS}
+${GOOGLE_RURI}
+UPLOAD_DIR=./uploads
+ENVEOF
+                   echo "✅ .env created."
+                 else
+                   echo "⚠ Marketing .env not found, creating minimal .env..."
+                   cat > .env << ENVEOF
+DATABASE_URL=postgresql://sapphire:sapphire@localhost:5432/sapphire_marketing
+NEXTAUTH_URL=https://teletherapy.sapphireclinicseast.org
+NEXTAUTH_SECRET=$(openssl rand -base64 32)
+AUTH_TRUST_HOST=true
+UPLOAD_DIR=./uploads
+ENVEOF
+                 fi
+               fi
+
+               mkdir -p uploads/session-notes
+
+               echo "→ Installing dependencies..."
+               npm ci --production=false 2>&1 | tail -3
+
+               echo "→ Generating Prisma client..."
+               npx prisma generate 2>&1 | tail -2
+
+               echo "→ Pushing teletherapy tables to database..."
+               npx prisma db push --accept-data-loss 2>&1 | tail -3
+
+               echo "→ Building Next.js app..."
+               npm run build 2>&1 | tail -5
+
+               echo "→ Seeding admin account..."
+               npm run db:seed 2>&1 | tail -3
+
+               echo "→ Starting teletherapy app..."
+               if pm2 describe scei-teletherapy >/dev/null 2>&1; then
+                 pm2 restart scei-teletherapy
+               else
+                 PORT=3002 HOSTNAME=0.0.0.0 pm2 start npm --name scei-teletherapy -- start && pm2 save
+               fi
+               echo "✅ Teletherapy deployed."
+             else
+               echo "⚠ Teletherapy directory not found, skipping."
              fi'

@@ -1,0 +1,166 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── Enums (shared with marketing DB) ──────────────────────────────────────────
+
+enum StaffDepartment {
+  OT
+  PT
+  SLP
+  SPED
+  MD
+  PSYCHOLOGY
+  ORTHOSIS
+  FRONT_DESK
+  ADMINISTRATION
+}
+
+enum ScheduleStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  RESCHEDULED
+}
+
+enum PatientType {
+  PEDIATRIC
+  ADULT
+}
+
+enum Branch {
+  SANDBOX_EAST
+  SANDBOX_GREENHILLS
+  VERDANA_STORE
+}
+
+// ── Shared models (read from marketing DB) ────────────────────────────────────
+
+model Staff {
+  id              String          @id @default(cuid())
+  firstName       String
+  lastName        String
+  email           String?
+  phone           String?
+  department      StaffDepartment
+  branch          String
+  dob             DateTime?
+  jobTitle        String?
+  employmentType  String?
+  hrPlatformId    String?
+  createdById     String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  schedules       Schedule[]
+  therapistAccount TherapistAccount?
+}
+
+model Patient {
+  id          String      @id @default(cuid())
+  firstName   String
+  lastName    String
+  email       String?
+  phone       String?
+  dob         DateTime?
+  patientType PatientType
+  branch      Branch?
+  branches    Branch[]    @default([])
+  sex         String?
+  civilStatus String?
+  religion    String?
+  nationality String?
+  address     String?
+  city        String?
+  diagnosis   String?
+  notes       String?
+  referralUrl String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  schedules   Schedule[]
+}
+
+model Schedule {
+  id          String         @id @default(cuid())
+  staffId     String
+  staff       Staff          @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  patientId   String?
+  patient     Patient?       @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  date        DateTime
+  startTime   String
+  endTime     String
+  duration    String
+  sessionType String
+  status      ScheduleStatus @default(PENDING)
+  notes       String?
+  meetLink    String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  sessionNote SessionNote?
+}
+
+// ── Gmail account (read from marketing DB for email sending) ──────────────────
+
+model GmailAccount {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  displayName  String?
+  refreshToken String
+  connectedAt  DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ── Teletherapy-specific models ───────────────────────────────────────────────
+
+enum TherapistRole {
+  THERAPIST
+  ADMIN
+}
+
+enum SessionNoteStatus {
+  COMPLETED
+  DISCONTINUED
+}
+
+model TherapistAccount {
+  id           String        @id @default(cuid())
+  staffId      String        @unique
+  staff        Staff         @relation(fields: [staffId], references: [id])
+  email        String        @unique
+  passwordHash String
+  role         TherapistRole @default(THERAPIST)
+  isActive     Boolean       @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  sessionNotes SessionNote[]
+}
+
+model SessionNote {
+  id                  String            @id @default(cuid())
+  scheduleId          String            @unique
+  schedule            Schedule          @relation(fields: [scheduleId], references: [id])
+  therapistAccountId  String
+  therapistAccount    TherapistAccount  @relation(fields: [therapistAccountId], references: [id])
+  status              SessionNoteStatus
+  notes               String?
+  attachments         Json?
+  discontinuedRemarks String?
+  emailSentAt         DateTime?
+  emailSentTo         String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+}
+
+model CaptureToken {
+  id         String   @id @default(cuid())
+  scheduleId String
+  token      String   @unique
+  expiresAt  DateTime
+  used       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}
