@@ -171,6 +171,7 @@ jobs:
           docker exec sapphire_db psql -U sapphire -d sapphire_marketing -c "
             ALTER TABLE \"TherapistAccount\" ADD COLUMN IF NOT EXISTS \"resetToken\" TEXT;
             ALTER TABLE \"TherapistAccount\" ADD COLUMN IF NOT EXISTS \"resetTokenExpiry\" TIMESTAMP(3);
+            DELETE FROM \"TherapistAccount\" WHERE email IN ('admin@sapphireclinicseast.org', 'main@sapphireclinicseast.org');
             INSERT INTO \"TherapistAccount\" (id, \"staffId\", email, \"passwordHash\", role, \"isActive\", \"createdAt\", \"updatedAt\")
             SELECT 'clmainadmin01', s.id, 'main@sapphireclinicseast.org',
                    '\$2b\$12\$CzbS0M/M1L9Fj7EaChT0jO6d56oL.wFiGwaw5ayPlgjKzqBtd/64.',
@@ -179,7 +180,7 @@ jobs:
             WHERE s.department IN ('OT','PT','SLP','SPED','PSYCHOLOGY')
             ORDER BY s.\"createdAt\" LIMIT 1
             ON CONFLICT (email) DO UPDATE SET \"passwordHash\" = EXCLUDED.\"passwordHash\";
-          " 2>/dev/null && echo "✅ Main admin seeded." || echo "⚠ Admin seed skipped."
+          " && echo "✅ Main admin seeded." || echo "⚠ Admin seed failed."
 
           echo "→ Starting teletherapy app..."
           if pm2 describe scei-teletherapy >/dev/null 2>&1; then
