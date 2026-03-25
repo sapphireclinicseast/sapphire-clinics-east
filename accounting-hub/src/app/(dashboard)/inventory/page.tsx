@@ -588,6 +588,13 @@ export default function InventoryPage() {
   const [batchItems, setBatchItems] = useState<{ itemId: string; quantity: number; itemName?: string; itemSku?: string }[]>([])
   const [selectedTransferIds, setSelectedTransferIds] = useState<Set<string>>(new Set())
   const [expandedRef, setExpandedRef] = useState<string | null>(null)
+  // Consignment CSV import state
+  const [conCsvModalOpen, setConCsvModalOpen] = useState(false)
+  const [conCsvStep, setConCsvStep] = useState<'upload' | 'review' | 'result'>('upload')
+  const [conCsvData, setConCsvData] = useState<{ sku: string; quantity: number; toBranch: string; remarks: string; itemName?: string; itemId?: string; error?: string }[]>([])
+  const [conCsvSubmitting, setConCsvSubmitting] = useState(false)
+  const [conCsvResult, setConCsvResult] = useState<{ success: number; errors: string[] } | null>(null)
+  const conCsvFileRef = useRef<HTMLInputElement>(null)
   // PDF modal state
   const [pdfModalOpen, setPdfModalOpen] = useState(false)
   const [pdfData, setPdfData] = useState<TransmittalData | null>(null)
@@ -2300,6 +2307,26 @@ setTimeout(()=>window.print(),500);
             <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>Track inter-branch consignment transfers</p>
             <div className="flex items-center gap-2">
               <DownloadMenu onDownload={handleDownloadConsignments} label="Download" />
+              {canWrite && (
+                <>
+                  <button onClick={() => {
+                    const csv = 'sku,quantity,to_branch,remarks\nOT-EQP-FIN-001,2,SANDBOX_GREENHILLS,Consignment\nEDU-MAT-BOK-001,3,SANDBOX_EAST,'
+                    const blob = new Blob([csv], { type: 'text/csv' })
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement('a'); a.href = url; a.download = 'consignment-import-template.csv'; a.click()
+                    URL.revokeObjectURL(url)
+                  }}
+                    className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-medium border"
+                    style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
+                    <Download size={14} /> CSV Template
+                  </button>
+                  <button onClick={() => { setConCsvModalOpen(true); setConCsvStep('upload'); setConCsvData([]); setConCsvResult(null); setError('') }}
+                    className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-medium border"
+                    style={{ borderColor: 'var(--teal)', color: 'var(--teal)', background: 'var(--pale-teal)' }}>
+                    <Upload size={14} /> Import CSV
+                  </button>
+                </>
+              )}
               {canWrite && selectedTransferIds.size > 0 && (
                 <>
                   <button onClick={async () => {
@@ -2631,6 +2658,195 @@ setTimeout(()=>window.print(),500);
                     </button>
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Consignment CSV Import Modal */}
+          {conCsvModalOpen && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-8 overflow-y-auto">
+              <div className="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-xl mb-8 relative">
+                <button onClick={() => { setConCsvModalOpen(false); setConCsvStep('upload'); setConCsvData([]); setConCsvResult(null) }}
+                  className="absolute top-4 right-4 p-1 hover:bg-gray-100 rounded-lg"><X size={20} style={{ color: 'var(--mid-gray)' }} /></button>
+
+                <h3 className="text-lg font-bold mb-4" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                  Import Consignment Transfers via CSV
+                </h3>
+
+                {error && <div className="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-600 flex items-center gap-1"><AlertCircle size={14} />{error}</div>}
+
+                {/* Step 1: Upload */}
+                {conCsvStep === 'upload' && (
+                  <div className="space-y-4">
+                    <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>
+                      Upload a CSV with columns: <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">sku, quantity, to_branch, remarks</code>
+                    </p>
+                    <div className="text-xs p-3 rounded-xl" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                      <p className="font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Branch values:</p>
+                      <ul className="space-y-0.5">
+                        {BRANCH_OPTIONS.map(b => (
+                          <li key={b.value}><code className="font-mono">{b.value}</code> — {b.label}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <input ref={conCsvFileRef} type="file" accept=".csv" className="hidden" onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (!file) return
+                      const reader = new FileReader()
+                      reader.onload = (ev) => {
+                        const text = ev.target?.result as string
+                        const lines = text.trim().split('\n')
+                        const header = lines[0].toLowerCase()
+                        if (!header.includes('sku') || !header.includes('quantity') || !header.includes('to_branch')) {
+                          setError('CSV must have columns: sku, quantity, to_branch, remarks')
+                          return
+                        }
+                        const rows = lines.slice(1).map(line => {
+                          const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''))
+                          const sku = cols[0] || ''
+                          const quantity = parseInt(cols[1]) || 0
+                          const toBranch = cols[2] || ''
+                          const remarks = cols[3] || ''
+                          // Look up item by SKU
+                          const item = allItems.find(i => i.sku === sku)
+                          return {
+                            sku, quantity, toBranch, remarks,
+                            itemName: item?.name,
+                            itemId: item?.id,
+                            error: !item ? 'SKU not found' : quantity <= 0 ? 'Invalid quantity' : quantity > item.quantity ? `Exceeds stock (${item.quantity})` : !toBranch ? 'No destination branch' : item.branch === toBranch ? 'Same branch' : undefined,
+                          }
+                        }).filter(r => r.sku)
+                        if (rows.length === 0) { setError('No valid rows found in CSV'); return }
+                        setConCsvData(rows)
+                        setConCsvStep('review')
+                        setError('')
+                      }
+                      reader.readAsText(file)
+                      e.target.value = ''
+                    }} />
+                    <button onClick={() => conCsvFileRef.current?.click()}
+                      className="w-full py-8 rounded-xl border-2 border-dashed text-sm flex flex-col items-center gap-2 hover:bg-gray-50"
+                      style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                      <Upload size={24} />
+                      Click to select CSV file
+                    </button>
+                  </div>
+                )}
+
+                {/* Step 2: Review */}
+                {conCsvStep === 'review' && (
+                  <div className="space-y-4">
+                    <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+                      <div className="overflow-x-auto max-h-[400px]">
+                        <table className="w-full text-sm">
+                          <thead className="sticky top-0">
+                            <tr style={{ background: 'var(--off-white)' }}>
+                              {['SKU', 'Item', 'Qty', 'To Branch', 'Remarks', 'Status'].map(h => (
+                                <th key={h} className="px-3 py-2 text-left text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {conCsvData.map((r, idx) => (
+                              <tr key={idx} className="border-t" style={{ borderColor: 'var(--light-gray)', background: r.error ? '#fef2f2' : undefined }}>
+                                <td className="px-3 py-2 font-mono text-xs">{r.sku}</td>
+                                <td className="px-3 py-2 text-xs">{r.itemName || '—'}</td>
+                                <td className="px-3 py-2">{r.quantity}</td>
+                                <td className="px-3 py-2 text-xs">{BRANCH_LABELS[r.toBranch] || r.toBranch}</td>
+                                <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.remarks || '—'}</td>
+                                <td className="px-3 py-2 text-xs">
+                                  {r.error
+                                    ? <span className="text-red-600 font-medium">{r.error}</span>
+                                    : <span className="text-green-600 font-medium">✓ Ready</span>}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs" style={{ color: 'var(--mid-gray)' }}>
+                      <span>{conCsvData.filter(r => !r.error).length} of {conCsvData.length} rows valid</span>
+                      {conCsvData.some(r => r.error) && (
+                        <span className="text-red-500">Rows with errors will be skipped</span>
+                      )}
+                    </div>
+
+                    <div className="flex gap-3">
+                      <button onClick={() => { setConCsvStep('upload'); setConCsvData([]) }}
+                        className="flex-1 py-2.5 rounded-xl border text-sm font-medium"
+                        style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                        Back
+                      </button>
+                      <button
+                        disabled={conCsvSubmitting || conCsvData.every(r => !!r.error)}
+                        onClick={async () => {
+                          setConCsvSubmitting(true); setError('')
+                          const validRows = conCsvData.filter(r => !r.error && r.itemId)
+                          // Group by toBranch so each group becomes a batch transfer
+                          const byBranch: Record<string, typeof validRows> = {}
+                          for (const row of validRows) {
+                            if (!byBranch[row.toBranch]) byBranch[row.toBranch] = []
+                            byBranch[row.toBranch].push(row)
+                          }
+                          let totalSuccess = 0
+                          const allErrors: string[] = []
+                          for (const [branch, rows] of Object.entries(byBranch)) {
+                            try {
+                              const res = await fetch('/api/inventory/consignments', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  toBranch: branch,
+                                  remarks: rows[0].remarks || 'CSV Import',
+                                  items: rows.map(r => ({ itemId: r.itemId, quantity: r.quantity })),
+                                }),
+                              })
+                              const data = await res.json()
+                              if (!res.ok) { allErrors.push(data.error || `Failed for ${branch}`); continue }
+                              totalSuccess += data.transfers?.length || 0
+                              if (data.errors?.length) allErrors.push(...data.errors)
+                            } catch { allErrors.push(`Network error for ${branch}`) }
+                          }
+                          setConCsvResult({ success: totalSuccess, errors: allErrors })
+                          setConCsvStep('result')
+                          setConCsvSubmitting(false)
+                          fetchConsignments()
+                        }}
+                        className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50"
+                        style={{ background: 'var(--teal)' }}>
+                        {conCsvSubmitting ? 'Creating transfers...' : `Create ${conCsvData.filter(r => !r.error).length} Transfer(s)`}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 3: Result */}
+                {conCsvStep === 'result' && conCsvResult && (
+                  <div className="space-y-4">
+                    <div className="p-4 rounded-xl text-center" style={{ background: conCsvResult.success > 0 ? '#f0fdf4' : '#fef2f2' }}>
+                      {conCsvResult.success > 0 ? (
+                        <CheckCircle2 size={32} className="mx-auto mb-2" style={{ color: '#16a34a' }} />
+                      ) : (
+                        <AlertCircle size={32} className="mx-auto mb-2" style={{ color: '#dc2626' }} />
+                      )}
+                      <p className="font-semibold" style={{ color: 'var(--charcoal)' }}>
+                        {conCsvResult.success} transfer(s) created successfully
+                      </p>
+                      {conCsvResult.errors.length > 0 && (
+                        <div className="mt-3 text-left max-h-32 overflow-y-auto text-xs text-red-600">
+                          {conCsvResult.errors.map((e, i) => <p key={i}>• {e}</p>)}
+                        </div>
+                      )}
+                    </div>
+                    <button onClick={() => { setConCsvModalOpen(false); setConCsvStep('upload'); setConCsvData([]); setConCsvResult(null) }}
+                      className="w-full py-2.5 rounded-xl text-white text-sm font-semibold"
+                      style={{ background: 'var(--teal)' }}>
+                      Done
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
