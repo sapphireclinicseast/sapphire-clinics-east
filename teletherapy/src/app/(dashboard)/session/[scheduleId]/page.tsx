@@ -225,6 +225,52 @@ export default function SessionDetailPage() {
     setSendingEmail(false)
   }
 
+  // Check if existing notes are structured psych JSON
+  function getPsychData(): PsychFormData | null {
+    if (!session?.sessionNote?.notes) return null
+    try {
+      const parsed = JSON.parse(session.sessionNote.notes)
+      if (parsed.formType?.startsWith('PSYCH_')) return parsed
+    } catch {}
+    return null
+  }
+
+  async function handlePsychEdit(data: PsychFormData) {
+    setSubmitting(true)
+    try {
+      const newAttachments: { fileName: string; filePath: string; mimeType: string }[] = []
+      for (const file of files) {
+        const formData = new FormData()
+        formData.append('file', file)
+        formData.append('scheduleId', scheduleId)
+        const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData })
+        if (uploadRes.ok) newAttachments.push(await uploadRes.json())
+      }
+
+      const body: Record<string, unknown> = {
+        notes: JSON.stringify(data),
+        existingAttachments: keptAttachments,
+      }
+      if (newAttachments.length > 0) body.attachments = newAttachments
+
+      const res = await fetch(`/api/sessions/${scheduleId}/edit`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (res.ok) {
+        showToast('Notes updated successfully')
+        setActionMode(null)
+        setFiles([])
+        fetchSession()
+      } else {
+        const d = await res.json()
+        showToast(d.error ?? 'Failed to update')
+      }
+    } catch { showToast('Failed to update notes') }
+    setSubmitting(false)
+  }
+
   async function handlePsychComplete(data: PsychFormData) {
     setSubmitting(true)
     try {
@@ -430,7 +476,28 @@ export default function SessionDetailPage() {
       )}
 
       {/* Edit form */}
-      {actionMode === 'edit' && session.sessionNote && (
+      {/* Edit form — Psychology structured notes */}
+      {actionMode === 'edit' && session.sessionNote && getPsychData() && (
+        <div className="card-static mb-6 animate-gate">
+          <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+            <Pencil size={20} className="text-[var(--teal)]" />
+            Edit Psychology Session Notes
+          </h2>
+          <PsychologyForm
+            isFirstSession={getPsychData()!.formType === 'PSYCH_INITIAL'}
+            patientName={patientName}
+            patientAge={session.patient?.dob ? String(Math.floor((Date.now() - new Date(session.patient.dob).getTime()) / 31557600000)) : null}
+            sessionDate={formatDate(session.date)}
+            onSubmit={handlePsychEdit}
+            submitting={submitting}
+            onCancel={() => { setActionMode(null); setFiles([]) }}
+            initialData={getPsychData()}
+          />
+        </div>
+      )}
+
+      {/* Edit form — Generic notes */}
+      {actionMode === 'edit' && session.sessionNote && !getPsychData() && (
         <div className="card-static mb-6 animate-gate">
           <h2 className="font-bold text-[var(--charcoal)] mb-5 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <Pencil size={20} className="text-[var(--teal)]" />
