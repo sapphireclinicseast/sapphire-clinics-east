@@ -32,6 +32,8 @@ interface ServiceItem {
   branch?: string
   hasDoctorFee?: boolean
   pwdDiscountClinicOnly?: boolean
+  doctorFee?: string | number | null
+  clinicFee?: string | number | null
   revenueType?: string
   [key: string]: unknown
 }
@@ -45,6 +47,8 @@ interface OrderLineItem {
   lineTotal: number
   hasDoctorFee?: boolean
   pwdDiscountClinicOnly?: boolean
+  doctorFee?: number
+  clinicFee?: number
 }
 
 interface PaymentLine {
@@ -765,6 +769,8 @@ function OrderFormModal({
       lineTotal: price,
       hasDoctorFee: svc.hasDoctorFee,
       pwdDiscountClinicOnly: svc.pwdDiscountClinicOnly,
+      doctorFee: svc.doctorFee != null ? toNum(svc.doctorFee) : undefined,
+      clinicFee: svc.clinicFee != null ? toNum(svc.clinicFee) : undefined,
     }])
     setServiceSearch('')
     setShowServiceDrop(false)
@@ -793,8 +799,18 @@ function OrderFormModal({
     const hasClinicOnly = items.some(it => it.hasDoctorFee && it.pwdDiscountClinicOnly)
     if (hasClinicOnly) {
       pwdNote = 'Discount on clinic fee only (doctor fee excluded)'
+      // Only apply 20% to the clinic fee portion, not doctor fee
+      discountAmount = items.reduce((sum, it) => {
+        if (it.hasDoctorFee && it.pwdDiscountClinicOnly && it.clinicFee != null) {
+          // Discount only on clinic fee * quantity
+          return sum + (it.clinicFee * it.quantity * 0.2)
+        }
+        // For items without clinic-only restriction, discount entire line
+        return sum + (it.lineTotal * 0.2)
+      }, 0)
+    } else {
+      discountAmount = subtotal * 0.2
     }
-    discountAmount = subtotal * 0.2
   } else if (walletDiscountApplied && walletDiscountRules.length > 0 && customDiscountId) {
     // Apply per-service wallet discount rules
     discountType = 'CUSTOM'
