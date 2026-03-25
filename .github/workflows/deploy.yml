@@ -158,8 +158,23 @@ jobs:
           echo "→ Building Next.js app..."
           npm run build 2>&1 | tail -5
 
+          echo "→ Adding Resend API key to .env..."
+          grep -q "RESEND_API_KEY" .env || echo "RESEND_API_KEY=re_CbH3Pirt_JqAd3RJ3TXwaFNmxckQ7GVwK" >> .env
+          grep -q "RESEND_FROM_EMAIL" .env || echo 'RESEND_FROM_EMAIL=SCEI Teletherapy <noreply@do-not-reply.sapphireclinicseast.org>' >> .env
+
           echo "→ Seeding admin account..."
-          npm run db:seed 2>&1 | tail -3 || true
+          docker exec sapphire_db psql -U sapphire -d sapphire_marketing -c "
+            ALTER TABLE \"TherapistAccount\" ADD COLUMN IF NOT EXISTS \"resetToken\" TEXT;
+            ALTER TABLE \"TherapistAccount\" ADD COLUMN IF NOT EXISTS \"resetTokenExpiry\" TIMESTAMP(3);
+            INSERT INTO \"TherapistAccount\" (id, \"staffId\", email, \"passwordHash\", role, \"isActive\", \"createdAt\", \"updatedAt\")
+            SELECT 'cladmin001', s.id, 'admin@sapphireclinicseast.org',
+                   '\$2b\$12\$UpjvHqhbig764H9E71ZJ5uo8P9SBXK4zeT27FXYueiJCjgFB66qRS',
+                   'ADMIN', true, NOW(), NOW()
+            FROM \"Staff\" s
+            WHERE s.department IN ('OT','PT','SLP','SPED','PSYCHOLOGY')
+            ORDER BY s.\"createdAt\" LIMIT 1
+            ON CONFLICT (email) DO NOTHING;
+          " 2>/dev/null && echo "✅ Admin seeded." || echo "⚠ Admin seed skipped."
 
           echo "→ Starting teletherapy app..."
           if pm2 describe scei-teletherapy >/dev/null 2>&1; then

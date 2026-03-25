@@ -3,6 +3,7 @@
 import { useState, Suspense } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { LogIn, Eye, EyeOff, Video, ShieldCheck } from 'lucide-react'
 
 function LoginForm() {
@@ -110,6 +111,12 @@ function LoginForm() {
                 {error}
               </div>
             )}
+
+            <div className="text-right">
+              <Link href="/forgot-password" className="text-[12px] text-[var(--teal)] hover:underline font-medium">
+                Forgot password?
+              </Link>
+            </div>
 
             <button
               type="submit"

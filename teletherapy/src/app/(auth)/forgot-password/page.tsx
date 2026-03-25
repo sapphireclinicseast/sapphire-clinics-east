@@ -1,0 +1,117 @@
+'use client'
+
+import { useState } from 'react'
+import Link from 'next/link'
+import { Mail, ArrowLeft, CheckCircle2, Loader2, Video } from 'lucide-react'
+
+export default function ForgotPasswordPage() {
+  const [email, setEmail] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [sent, setSent] = useState(false)
+  const [error, setError] = useState('')
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+
+      if (res.ok) {
+        setSent(true)
+      } else {
+        setError('Something went wrong. Please try again.')
+      }
+    } catch {
+      setError('Something went wrong. Please try again.')
+    }
+    setLoading(false)
+  }
+
+  return (
+    <div className="fixed inset-0 flex items-center justify-center px-4" style={{
+      background: 'linear-gradient(135deg, #0A1012 0%, #0D5B68 40%, #1A7B8A 70%, #0D5B68 100%)',
+    }}>
+      <div className="absolute top-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full opacity-[0.04] bg-white pointer-events-none" />
+
+      <div className="w-full max-w-[400px] animate-gate">
+        <div className="flex justify-center mb-6">
+          <div className="w-[60px] h-[60px] rounded-full flex items-center justify-center"
+               style={{ background: 'linear-gradient(135deg, var(--teal), var(--bright-teal))', boxShadow: '0 4px 20px rgba(26, 123, 138, 0.4)' }}>
+            <Video className="w-7 h-7 text-white" />
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl p-10 shadow-[0_20px_60px_rgba(0,0,0,0.3)]">
+          {sent ? (
+            <div className="text-center">
+              <div className="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4">
+                <CheckCircle2 className="w-7 h-7 text-green-500" />
+              </div>
+              <h2 className="text-lg font-bold text-[var(--charcoal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>
+                Check Your Email
+              </h2>
+              <p className="text-[13px] text-[var(--mid-gray)] mb-6">
+                If an account exists with <strong>{email}</strong>, we sent a password reset link.
+              </p>
+              <Link href="/login" className="btn-primary w-full py-3 rounded-xl text-[15px]">
+                <ArrowLeft size={16} />
+                Back to Login
+              </Link>
+            </div>
+          ) : (
+            <>
+              <div className="text-center mb-6">
+                <h2 className="text-lg font-bold text-[var(--charcoal)]" style={{ fontFamily: 'var(--font-display)' }}>
+                  Forgot Password
+                </h2>
+                <p className="text-[13px] text-[var(--mid-gray)] mt-1">
+                  Enter your email and we&apos;ll send a reset link.
+                </p>
+              </div>
+
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <div>
+                  <label className="block text-[13px] font-semibold text-[var(--charcoal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    autoFocus
+                    className="input"
+                    placeholder="your@email.com"
+                  />
+                </div>
+
+                {error && (
+                  <div className="bg-red-50 text-red-600 text-[13px] px-4 py-3 rounded-xl border border-red-100">
+                    {error}
+                  </div>
+                )}
+
+                <button type="submit" disabled={loading} className="btn-primary w-full py-3 rounded-xl text-[15px]">
+                  {loading ? <Loader2 size={18} className="animate-spin" /> : <Mail size={18} />}
+                  Send Reset Link
+                </button>
+              </form>
+
+              <div className="mt-5 text-center">
+                <Link href="/login" className="text-[13px] text-[var(--teal)] hover:underline font-medium">
+                  Back to Login
+                </Link>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}

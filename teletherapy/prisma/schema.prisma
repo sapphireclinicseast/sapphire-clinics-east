@@ -133,9 +133,11 @@ model TherapistAccount {
   email        String        @unique
   passwordHash String
   role         TherapistRole @default(THERAPIST)
-  isActive     Boolean       @default(true)
-  lastLoginAt  DateTime?
-  createdAt    DateTime      @default(now())
+  isActive         Boolean       @default(true)
+  lastLoginAt      DateTime?
+  resetToken       String?
+  resetTokenExpiry DateTime?
+  createdAt        DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   sessionNotes SessionNote[]
 }

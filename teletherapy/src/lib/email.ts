@@ -1,51 +1,28 @@
-import { google } from 'googleapis'
-import { prisma } from './prisma'
+import { Resend } from 'resend'
 
-export async function getGmailClient() {
-  // Try to find a connected Gmail account from the marketing DB
-  const gmailAccount = await prisma.gmailAccount.findFirst()
+const resend = new Resend(process.env.RESEND_API_KEY)
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? 'SCEI Teletherapy <noreply@do-not-reply.sapphireclinicseast.org>'
 
-  let refreshToken = gmailAccount?.refreshToken ?? process.env.GOOGLE_REFRESH_TOKEN
-  if (!refreshToken) throw new Error('No Gmail account connected. Connect one in the Marketing Hub.')
+export async function sendEmail({
+  to,
+  subject,
+  html,
+}: {
+  to: string
+  subject: string
+  html: string
+}) {
+  const { data, error } = await resend.emails.send({
+    from: FROM_EMAIL,
+    to,
+    subject,
+    html,
+  })
 
-  const oauth2Client = new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET,
-    process.env.GOOGLE_REDIRECT_URI
-  )
-  oauth2Client.setCredentials({ refresh_token: refreshToken })
-
-  return {
-    gmail: google.gmail({ version: 'v1', auth: oauth2Client }),
-    senderEmail: gmailAccount?.email ?? 'noreply@sapphireclinicseast.org',
+  if (error) {
+    console.error('Resend error:', error)
+    throw new Error(`Email send failed: ${error.message}`)
   }
-}
 
-export function makeEmailBody(
-  to: string,
-  subject: string,
-  htmlBody: string,
-  from: string
-): string {
-  const boundary = 'boundary_' + Date.now()
-  const message = [
-    `From: Sapphire Clinics East - Teletherapy <${from}>`,
-    `To: ${to}`,
-    `Subject: ${subject}`,
-    `MIME-Version: 1.0`,
-    `Content-Type: multipart/alternative; boundary="${boundary}"`,
-    '',
-    `--${boundary}`,
-    'Content-Type: text/plain; charset=utf-8',
-    '',
-    htmlBody.replace(/<[^>]*>/g, ''),
-    '',
-    `--${boundary}`,
-    'Content-Type: text/html; charset=utf-8',
-    '',
-    htmlBody,
-    '',
-    `--${boundary}--`,
-  ].join('\n')
-  return Buffer.from(message).toString('base64url')
+  return data
 }
