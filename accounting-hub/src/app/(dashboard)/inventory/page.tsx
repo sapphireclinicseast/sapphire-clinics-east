@@ -588,6 +588,10 @@ export default function InventoryPage() {
   const [batchItems, setBatchItems] = useState<{ itemId: string; quantity: number; itemName?: string; itemSku?: string }[]>([])
   const [selectedTransferIds, setSelectedTransferIds] = useState<Set<string>>(new Set())
   const [expandedRef, setExpandedRef] = useState<string | null>(null)
+  // Consignment item search
+  const [conItemSearch, setConItemSearch] = useState('')
+  const [conItemDropdownOpen, setConItemDropdownOpen] = useState(false)
+  const conSearchRef = useRef<HTMLDivElement>(null)
   // Consignment CSV import state
   const [conCsvModalOpen, setConCsvModalOpen] = useState(false)
   const [conCsvStep, setConCsvStep] = useState<'upload' | 'review' | 'result'>('upload')
@@ -729,6 +733,15 @@ export default function InventoryPage() {
     })()
     return () => { cancelled = true }
   }, [fSkuDept, fSkuCat, fSkuSub, editingItem])
+
+  // Close consignment search dropdown on click outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (conSearchRef.current && !conSearchRef.current.contains(e.target as Node)) setConItemDropdownOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   /* ── Auth guard ────────────────────────────────────────── */
 
@@ -2577,49 +2590,81 @@ setTimeout(()=>window.print(),500);
                       <label className="text-xs font-medium" style={{ color: 'var(--charcoal)' }}>Items to Transfer ({batchItems.length})</label>
                     </div>
                     {batchItems.length > 0 && (
-                      <div className="space-y-1 mb-3">
-                        {batchItems.map((bi, idx) => (
-                          <div key={idx} className="flex items-center justify-between p-2 rounded-lg text-xs" style={{ background: 'var(--off-white)' }}>
-                            <span style={{ color: 'var(--charcoal)' }}>{bi.itemSku} — {bi.itemName}</span>
-                            <div className="flex items-center gap-2">
-                              <span style={{ color: 'var(--mid-gray)' }}>Qty: {bi.quantity}</span>
-                              <button type="button" onClick={() => setBatchItems(prev => prev.filter((_, i) => i !== idx))} className="p-0.5 rounded hover:bg-red-50">
-                                <X size={12} className="text-red-500" />
-                              </button>
+                      <div className="space-y-1 mb-3 max-h-[280px] overflow-y-auto">
+                        {batchItems.map((bi, idx) => {
+                          const srcItem = allItems.find(i => i.id === bi.itemId)
+                          const maxQty = srcItem?.quantity || 999
+                          return (
+                            <div key={idx} className="flex items-center justify-between p-2 rounded-lg text-xs gap-2" style={{ background: 'var(--off-white)' }}>
+                              <span className="flex-1 truncate" style={{ color: 'var(--charcoal)' }}>{bi.itemSku} — {bi.itemName}</span>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>Qty:</span>
+                                <button type="button" onClick={() => setBatchItems(prev => prev.map((b, i) => i === idx ? { ...b, quantity: Math.max(1, b.quantity - 1) } : b))}
+                                  className="w-5 h-5 rounded flex items-center justify-center text-xs font-bold hover:bg-gray-200" style={{ background: 'var(--light-gray)', color: 'var(--charcoal)' }}>−</button>
+                                <input type="number" min={1} max={maxQty} value={bi.quantity}
+                                  onChange={(e) => {
+                                    const v = Math.max(1, Math.min(maxQty, parseInt(e.target.value) || 1))
+                                    setBatchItems(prev => prev.map((b, i) => i === idx ? { ...b, quantity: v } : b))
+                                  }}
+                                  className="w-12 px-1 py-0.5 rounded border text-center text-xs outline-none"
+                                  style={{ borderColor: 'var(--light-gray)' }} />
+                                <button type="button" onClick={() => setBatchItems(prev => prev.map((b, i) => i === idx ? { ...b, quantity: Math.min(maxQty, b.quantity + 1) } : b))}
+                                  className="w-5 h-5 rounded flex items-center justify-center text-xs font-bold hover:bg-gray-200" style={{ background: 'var(--light-gray)', color: 'var(--charcoal)' }}>+</button>
+                                {srcItem && <span className="text-[10px] ml-1" style={{ color: 'var(--mid-gray)' }}>/ {maxQty}</span>}
+                                <button type="button" onClick={() => setBatchItems(prev => prev.filter((_, i) => i !== idx))} className="p-0.5 rounded hover:bg-red-50 ml-1">
+                                  <X size={12} className="text-red-500" />
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     )}
 
-                    {/* Add item row */}
+                    {/* Add item — searchable dropdown */}
                     <div className="flex gap-2 items-end">
-                      <div className="flex-1">
-                        <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Item</label>
-                        <select value={conItemId} onChange={(e) => setConItemId(e.target.value)}
-                          className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
-                          <option value="">— Select item —</option>
-                          {allItems.filter(i => !conToBranch || i.branch !== conToBranch).map((i) => (
-                            <option key={i.id} value={i.id}>{i.sku} — {i.name} (Qty: {i.quantity})</option>
-                          ))}
-                        </select>
+                      <div className="flex-1 relative" ref={conSearchRef}>
+                        <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Search &amp; Add Item</label>
+                        <div className="relative">
+                          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
+                          <input type="text" placeholder="Type SKU or item name..."
+                            value={conItemSearch}
+                            onChange={(e) => { setConItemSearch(e.target.value); setConItemDropdownOpen(true) }}
+                            onFocus={() => setConItemDropdownOpen(true)}
+                            className="w-full pl-9 pr-3 py-2 rounded-xl border text-sm outline-none"
+                            style={{ borderColor: 'var(--light-gray)' }} />
+                        </div>
+                        {conItemDropdownOpen && (
+                          <div className="absolute left-0 right-0 top-full mt-1 bg-white border rounded-xl shadow-lg z-50 max-h-[200px] overflow-y-auto"
+                            style={{ borderColor: 'var(--light-gray)' }}>
+                            {(() => {
+                              const q = conItemSearch.toLowerCase()
+                              const filtered = allItems.filter(i =>
+                                (!conToBranch || i.branch !== conToBranch) &&
+                                !batchItems.some(b => b.itemId === i.id) &&
+                                i.quantity > 0 &&
+                                (i.sku.toLowerCase().includes(q) || i.name.toLowerCase().includes(q))
+                              ).slice(0, 50)
+                              if (filtered.length === 0) return (
+                                <div className="px-3 py-3 text-xs text-center" style={{ color: 'var(--mid-gray)' }}>No items found</div>
+                              )
+                              return filtered.map(i => (
+                                <button key={i.id} type="button"
+                                  onClick={() => {
+                                    setBatchItems(prev => [...prev, { itemId: i.id, quantity: 1, itemName: i.name, itemSku: i.sku }])
+                                    setConItemSearch('')
+                                    setConItemDropdownOpen(false)
+                                  }}
+                                  className="w-full px-3 py-2 text-left text-xs hover:bg-gray-50 flex items-center justify-between border-b last:border-b-0"
+                                  style={{ borderColor: 'var(--light-gray)' }}>
+                                  <span><span className="font-mono font-medium" style={{ color: 'var(--teal)' }}>{i.sku}</span> — {i.name}</span>
+                                  <span className="shrink-0 ml-2 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>Stock: {i.quantity}</span>
+                                </button>
+                              ))
+                            })()}
+                          </div>
+                        )}
                       </div>
-                      <div className="w-20">
-                        <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Qty</label>
-                        <input type="number" min="1" max={selectedConItem?.quantity || undefined} value={conQty} onChange={(e) => setConQty(e.target.value)}
-                          className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-                      </div>
-                      <button type="button" disabled={!conItemId || !conQty}
-                        onClick={() => {
-                          const item = allItems.find(i => i.id === conItemId)
-                          if (item && parseInt(conQty) > 0) {
-                            setBatchItems(prev => [...prev, { itemId: conItemId, quantity: parseInt(conQty), itemName: item.name, itemSku: item.sku }])
-                            setConItemId(''); setConQty('')
-                          }
-                        }}
-                        className="px-3 py-2 rounded-xl text-xs font-medium text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
-                        + Add
-                      </button>
                     </div>
                   </div>
 
