@@ -152,8 +152,8 @@ jobs:
           echo "→ Generating Prisma client..."
           npx prisma generate 2>&1 | tail -2
 
-          echo "→ Pushing teletherapy tables to database..."
-          npx prisma db push --accept-data-loss 2>&1 | tail -3
+          echo "→ Creating teletherapy tables..."
+          npm run db:setup 2>&1 | tail -3
 
           echo "→ Building Next.js app..."
           npm run build 2>&1 | tail -5

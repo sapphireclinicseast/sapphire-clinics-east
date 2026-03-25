@@ -8,6 +8,7 @@
     "start": "next start -p 3002",
     "lint": "next lint",
     "db:push": "prisma db push",
+    "db:setup": "node -e \"const{Client}=require('pg');const c=new Client(process.env.DATABASE_URL);c.connect().then(()=>require('fs').promises.readFile('prisma/setup.sql','utf8')).then(sql=>c.query(sql)).then(()=>{console.log('Tables created');c.end()}).catch(e=>{console.error(e);c.end();process.exit(1)})\"",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "docker:up": "docker compose -f docker/docker-compose.yml up -d --build",
