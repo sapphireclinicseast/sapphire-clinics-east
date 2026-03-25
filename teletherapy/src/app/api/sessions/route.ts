@@ -27,6 +27,7 @@ export async function GET(req: NextRequest) {
         gte: startOfDay,
         lte: endOfDay,
       },
+      status: 'CONFIRMED',
       // Non-admin users only see their own sessions
       ...(isAdmin ? {} : { staffId: session.user.staffId }),
     },

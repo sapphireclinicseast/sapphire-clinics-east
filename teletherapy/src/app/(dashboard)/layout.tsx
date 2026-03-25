@@ -8,6 +8,7 @@ import {
   Video,
   LayoutDashboard,
   Shield,
+  Users,
   LogOut,
   Menu,
   X,
@@ -25,6 +26,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
 
   const navItems = [
     { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/patients', label: 'Patients', icon: Users },
     ...(isAdmin
       ? [{ href: '/admin', label: 'Admin Panel', icon: Shield }]
       : []),

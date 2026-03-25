@@ -62,6 +62,34 @@ CREATE TABLE IF NOT EXISTS "CaptureToken" (
   CONSTRAINT "CaptureToken_token_key" UNIQUE ("token")
 );
 
+-- PatientAssignment enum
+DO $$ BEGIN
+  CREATE TYPE "PatientAssignmentStatus" AS ENUM ('ACTIVE', 'ENDORSED', 'DISCHARGED');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- PatientAssignment table
+CREATE TABLE IF NOT EXISTS "PatientAssignment" (
+  "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+  "patientId" TEXT NOT NULL,
+  "therapistAccountId" TEXT NOT NULL,
+  "status" "PatientAssignmentStatus" NOT NULL DEFAULT 'ACTIVE',
+  "endorsedToId" TEXT,
+  "dischargeRemarks" TEXT,
+  "endorsedAt" TIMESTAMP(3),
+  "dischargedAt" TIMESTAMP(3),
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "PatientAssignment_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "PatientAssignment_unique" UNIQUE ("patientId", "therapistAccountId", "status"),
+  CONSTRAINT "PatientAssignment_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "PatientAssignment_therapistAccountId_fkey" FOREIGN KEY ("therapistAccountId") REFERENCES "TherapistAccount"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "PatientAssignment_endorsedToId_fkey" FOREIGN KEY ("endorsedToId") REFERENCES "TherapistAccount"("id") ON DELETE SET NULL ON UPDATE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS "PatientAssignment_patientId_idx" ON "PatientAssignment"("patientId");
+CREATE INDEX IF NOT EXISTS "PatientAssignment_therapistAccountId_idx" ON "PatientAssignment"("therapistAccountId");
+
 -- Add meetLink column to Schedule if it doesn't exist
 DO $$ BEGIN
   ALTER TABLE "Schedule" ADD COLUMN "meetLink" TEXT;

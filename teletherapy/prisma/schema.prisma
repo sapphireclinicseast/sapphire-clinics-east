@@ -81,7 +81,8 @@ model Patient {
   referralUrl String?
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
-  schedules   Schedule[]
+  schedules           Schedule[]
+  patientAssignments  PatientAssignment[]
 }
 
 model Schedule {
@@ -139,7 +140,9 @@ model TherapistAccount {
   resetTokenExpiry DateTime?
   createdAt        DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
-  sessionNotes SessionNote[]
+  sessionNotes        SessionNote[]
+  patientAssignments  PatientAssignment[]
+  endorsedPatients    PatientAssignment[] @relation("EndorsedTo")
 }
 
 model SessionNote {
@@ -156,6 +159,30 @@ model SessionNote {
   emailSentTo         String?
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
+}
+
+enum PatientAssignmentStatus {
+  ACTIVE
+  ENDORSED
+  DISCHARGED
+}
+
+model PatientAssignment {
+  id                String                  @id @default(cuid())
+  patientId         String
+  patient           Patient                 @relation(fields: [patientId], references: [id])
+  therapistAccountId String
+  therapistAccount  TherapistAccount        @relation(fields: [therapistAccountId], references: [id])
+  status            PatientAssignmentStatus @default(ACTIVE)
+  endorsedToId      String?
+  endorsedTo        TherapistAccount?       @relation("EndorsedTo", fields: [endorsedToId], references: [id])
+  dischargeRemarks  String?
+  endorsedAt        DateTime?
+  dischargedAt      DateTime?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  @@unique([patientId, therapistAccountId, status])
 }
 
 model CaptureToken {
