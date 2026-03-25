@@ -18,8 +18,11 @@ import {
   ChevronDown,
   ChevronUp,
   FileText,
+  Pencil,
+  ExternalLink,
 } from 'lucide-react'
 import { formatTime, formatDate } from '@/lib/utils'
+import PsychologyNoteDisplay from '@/components/PsychologyNoteDisplay'
 
 interface PatientDetail {
   id: string
@@ -401,14 +404,22 @@ export default function PatientDetailPage() {
                   {expanded && s.sessionNote && (
                     <div className="px-4 pb-4 pt-0 border-t border-[var(--light-gray)]">
                       <div className="pt-3">
-                        {s.sessionNote.notes && (
-                          <div className="mb-3">
-                            <p className="text-[11px] text-[var(--mid-gray)] uppercase font-semibold tracking-wider mb-1">Notes</p>
-                            <div className="text-sm whitespace-pre-wrap bg-[var(--off-white)] p-3 rounded-lg border border-[var(--light-gray)]">
-                              {s.sessionNote.notes}
+                        {s.sessionNote.notes && (() => {
+                          try {
+                            const parsed = JSON.parse(s.sessionNote.notes!)
+                            if (parsed.formType?.startsWith('PSYCH_')) {
+                              return <div className="mb-3"><PsychologyNoteDisplay data={parsed} /></div>
+                            }
+                          } catch {}
+                          return (
+                            <div className="mb-3">
+                              <p className="text-[11px] text-[var(--mid-gray)] uppercase font-semibold tracking-wider mb-1">Notes</p>
+                              <div className="text-sm whitespace-pre-wrap bg-[var(--off-white)] p-3 rounded-lg border border-[var(--light-gray)]">
+                                {s.sessionNote.notes}
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          )
+                        })()}
 
                         {s.sessionNote.discontinuedRemarks && (
                           <div className="mb-3">
@@ -443,14 +454,21 @@ export default function PatientDetailPage() {
                           </div>
                         )}
 
-                        {/* Delete entire note */}
-                        <div className="pt-3 border-t border-[var(--light-gray)]">
+                        {/* Actions */}
+                        <div className="pt-3 border-t border-[var(--light-gray)] flex items-center justify-between">
+                          <button
+                            onClick={() => router.push(`/session/${s.id}`)}
+                            className="flex items-center gap-1.5 text-[12px] text-[var(--teal)] hover:underline font-medium transition-colors"
+                          >
+                            <Pencil size={13} />
+                            Edit notes
+                          </button>
                           <button
                             onClick={() => handleDeleteNote(s.id)}
                             className="flex items-center gap-1.5 text-[12px] text-red-500 hover:text-red-700 font-medium transition-colors"
                           >
                             <Trash2 size={13} />
-                            Delete this session note
+                            Delete note
                           </button>
                         </div>
                       </div>
