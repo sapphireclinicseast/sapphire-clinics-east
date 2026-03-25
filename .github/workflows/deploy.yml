@@ -164,8 +164,11 @@ jobs:
 
           echo "→ Updating docker-compose and restarting postgres with port exposed..."
           cp /var/www/sapphireclinicseast.org/docker/docker-compose.yml /opt/sapphire/docker/docker-compose.yml 2>/dev/null || true
-          cd /opt/sapphire/docker && docker compose --env-file .env.production up -d postgres 2>&1 | tail -2 || true
-          sleep 3
+          cd /opt/sapphire/docker && docker compose --env-file .env.production up -d --force-recreate postgres 2>&1 | tail -3 || true
+          sleep 5
+          echo "→ Verifying postgres port..."
+          pg_isready -h localhost -p 5432 2>&1 || echo "⚠ pg_isready not available, checking with docker..."
+          docker exec sapphire_db pg_isready -U sapphire 2>&1 | tail -1
 
           echo "→ Seeding main admin account..."
           docker exec sapphire_db psql -U sapphire -d sapphire_marketing -c "
@@ -182,9 +185,14 @@ jobs:
             ON CONFLICT (email) DO UPDATE SET \"passwordHash\" = EXCLUDED.\"passwordHash\";
           " && echo "✅ Main admin seeded." || echo "⚠ Admin seed failed."
 
+          echo "→ Verifying DB connection from host..."
+          cd /var/www/sapphireclinicseast.org/teletherapy
+          node -e "const{Client}=require('pg');const c=new Client(process.env.DATABASE_URL);c.connect().then(()=>c.query('SELECT count(*) FROM \"TherapistAccount\"')).then(r=>{console.log('DB OK, accounts:',r.rows[0].count);c.end()}).catch(e=>{console.error('DB FAIL:',e.message);c.end()})" 2>&1 | tail -2
+          cat .env | grep DATABASE_URL | sed 's/:[^@]*@/:***@/g'
+
           echo "→ Starting teletherapy app..."
           if pm2 describe scei-teletherapy >/dev/null 2>&1; then
-            pm2 restart scei-teletherapy
+            pm2 restart scei-teletherapy --update-env
           else
             PORT=3002 HOSTNAME=0.0.0.0 pm2 start npm --name scei-teletherapy -- start && pm2 save
           fi
