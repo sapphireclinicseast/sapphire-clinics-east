@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import {
@@ -28,6 +28,8 @@ import {
 } from 'lucide-react'
 import JsBarcode from 'jsbarcode'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { downloadXlsx, downloadPdf } from '@/lib/export'
+import DownloadMenu from '@/components/ui/DownloadMenu'
 
 /* ── Verdana Sticker Print (A6, 3 per page) ──────────────── */
 function printVerdanaSticker(item: { name: string; sku?: string; barcode?: string | null }) {
@@ -608,6 +610,23 @@ export default function InventoryPage() {
 
   const canWrite = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN'].includes(session?.user?.role as string)
 
+  // Memoized grouping for consignments (used by both render & download)
+  const groupedConsignments = useMemo(() => {
+    const groups: { key: string; ref: string | null; items: typeof consignments; first: typeof consignments[0] }[] = []
+    const seen = new Set<string>()
+    consignments.forEach(c => {
+      if (c.referenceNumber) {
+        if (seen.has(c.referenceNumber)) return
+        seen.add(c.referenceNumber)
+        const groupItems = consignments.filter(x => x.referenceNumber === c.referenceNumber)
+        groups.push({ key: c.referenceNumber, ref: c.referenceNumber, items: groupItems, first: groupItems[0] })
+      } else {
+        groups.push({ key: c.id, ref: null, items: [c], first: c })
+      }
+    })
+    return groups
+  }, [consignments])
+
   /* ── Fetchers ──────────────────────────────────────────── */
 
   const fetchItems = useCallback(async () => {
@@ -1059,6 +1078,57 @@ setTimeout(()=>window.print(),500);
     win.document.close()
   }
 
+  /* ── Download Handlers ──────────────────────────────────── */
+  const handleDownloadInventory = (format: 'xlsx' | 'pdf') => {
+    const headers = ['SKU', 'Name', 'Branch', 'Department', 'Category', 'Subcategory', 'Qty', 'Unit Cost', 'Selling Price', 'Reward Pts Price', 'Reorder Level', 'Supplier']
+    const rows = items.map(i => [
+      i.sku, i.name, BRANCH_LABELS[i.branch] || i.branch, i.skuDepartment, i.skuCategory, i.skuSubcategory,
+      i.quantity, formatCurrency(i.unitCost), formatCurrency(i.sellingPrice || 0),
+      i.rewardPointsPrice != null ? i.rewardPointsPrice : '', i.reorderLevel ?? '',
+      i.supplier?.supplierName || ''
+    ])
+    if (format === 'xlsx') downloadXlsx('Inventory_Items', [{ name: 'Inventory', headers, rows }])
+    else downloadPdf({ title: 'Inventory Items', subtitle: `${rows.length} items — ${itemBranchFilter ? BRANCH_LABELS[itemBranchFilter] || itemBranchFilter : 'All Branches'}`, headers, rows, landscape: true })
+  }
+
+  const handleDownloadSuppliers = (format: 'xlsx' | 'pdf') => {
+    const headers = ['Supplier Name', 'Email', 'Contact Number', 'Foreign', 'Currency', 'Exchange Rate', 'Address', 'Notes']
+    const rows = suppliers.map(s => [
+      s.supplierName, s.email || '', s.contactNumber || '',
+      s.isForeign ? 'Yes' : 'No', s.currency || 'PHP', s.defaultExchangeRate ?? '', s.address || '', s.notes || ''
+    ])
+    if (format === 'xlsx') downloadXlsx('Suppliers', [{ name: 'Suppliers', headers, rows }])
+    else downloadPdf({ title: 'Suppliers', subtitle: `${rows.length} suppliers`, headers, rows })
+  }
+
+  const handleDownloadAdjustments = (format: 'xlsx' | 'pdf') => {
+    const headers = ['Date', 'Item', 'SKU', 'Type', 'Qty Change', 'Previous', 'New', 'Remarks', 'Adjusted By']
+    const rows = adjustments.map((a: Adjustment) => [
+      formatDate(a.adjustmentDate), a.item?.name || '', a.item?.sku || '',
+      a.type, a.quantityChange, a.previousQuantity, a.newQuantity, a.remarks || '', a.adjustedBy?.name || ''
+    ])
+    if (format === 'xlsx') downloadXlsx('Inventory_Adjustments', [{ name: 'Adjustments', headers, rows }])
+    else downloadPdf({ title: 'Inventory Adjustments', subtitle: `${rows.length} adjustments`, headers, rows })
+  }
+
+  const handleDownloadConsignments = (format: 'xlsx' | 'pdf') => {
+    const headers = ['Reference', 'Date', 'From', 'To', 'Item', 'SKU', 'Qty', 'Status', 'Remarks', 'Requested By']
+    const rows: (string | number | null | undefined)[][] = []
+    for (const g of groupedConsignments) {
+      for (const item of g.items) {
+        rows.push([
+          g.ref || '', formatDate(g.first.createdAt),
+          BRANCH_LABELS[g.first.fromBranch] || g.first.fromBranch,
+          BRANCH_LABELS[g.first.toBranch] || g.first.toBranch,
+          item.item?.name || '', item.item?.sku || '', item.quantity,
+          g.first.status, item.remarks || '', g.first.requestedBy?.name || ''
+        ])
+      }
+    }
+    if (format === 'xlsx') downloadXlsx('Consignment_Transfers', [{ name: 'Consignments', headers, rows }])
+    else downloadPdf({ title: 'Consignment Transfers', subtitle: `${groupedConsignments.length} transfers — ${rows.length} items`, headers, rows, landscape: true })
+  }
+
   return (
     <div>
       {/* Page Title */}
@@ -1102,8 +1172,9 @@ setTimeout(()=>window.print(),500);
             <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>
               Manage stock levels and item details
             </p>
-            {canWrite && (
-              <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
+              <DownloadMenu onDownload={handleDownloadInventory} label="Download" />
+              {canWrite && (<>
                 <button onClick={() => {
                   const csv = 'name,department,category,subcategory,branch,unit_cost,selling_price,reward_points_price,quantity,reorder_level\nPRODUCT NAME,OT,Equipment,Fine Motor,VERDANA_STORE,300,1200,,10,3'
                   const blob = new Blob([csv], { type: 'text/csv' })
@@ -1130,8 +1201,8 @@ setTimeout(()=>window.print(),500);
                   style={{ background: 'var(--teal)' }}>
                   <Plus size={18} /> Add Item
                 </button>
-              </div>
-            )}
+              </>)}
+            </div>
           </div>
 
           {/* Filters */}
@@ -1703,14 +1774,17 @@ setTimeout(()=>window.print(),500);
         <>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
             <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>Manage supplier information</p>
-            {canWrite && (
-              <button onClick={openSupplierCreate}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
-                style={{ background: 'var(--teal)' }}>
-                <Plus size={18} />
-                Add Supplier
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              <DownloadMenu onDownload={handleDownloadSuppliers} label="Download" />
+              {canWrite && (
+                <button onClick={openSupplierCreate}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
+                  style={{ background: 'var(--teal)' }}>
+                  <Plus size={18} />
+                  Add Supplier
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
@@ -1858,8 +1932,9 @@ setTimeout(()=>window.print(),500);
         <>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
             <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>Track inventory adjustments and corrections</p>
-            {canWrite && (
-              <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
+              <DownloadMenu onDownload={handleDownloadAdjustments} label="Download" />
+              {canWrite && (<>
                 <button onClick={() => {
                   const csv = 'sku,quantity,foreign_cost_per_unit,currency\nOT-EQP-FIN-001,10,23,CNY\nOT-EQP-GRS-001,5,15,CNY'
                   const blob = new Blob([csv], { type: 'text/csv' })
@@ -1882,8 +1957,8 @@ setTimeout(()=>window.print(),500);
                   style={{ background: 'var(--teal)' }}>
                   <Plus size={18} /> New Adjustment
                 </button>
-              </div>
-            )}
+              </>)}
+            </div>
           </div>
 
           <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
@@ -2224,6 +2299,7 @@ setTimeout(()=>window.print(),500);
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
             <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>Track inter-branch consignment transfers</p>
             <div className="flex items-center gap-2">
+              <DownloadMenu onDownload={handleDownloadConsignments} label="Download" />
               {canWrite && selectedTransferIds.size > 0 && (
                 <>
                   <button onClick={async () => {
@@ -2289,21 +2365,7 @@ setTimeout(()=>window.print(),500);
                       </td>
                     </tr>
                   ) : (() => {
-                    // Group by referenceNumber (null = individual transfers)
-                    const groups: { key: string; ref: string | null; items: typeof consignments; first: typeof consignments[0] }[] = []
-                    const seen = new Set<string>()
-                    consignments.forEach(c => {
-                      if (c.referenceNumber) {
-                        if (seen.has(c.referenceNumber)) return
-                        seen.add(c.referenceNumber)
-                        const groupItems = consignments.filter(x => x.referenceNumber === c.referenceNumber)
-                        groups.push({ key: c.referenceNumber, ref: c.referenceNumber, items: groupItems, first: groupItems[0] })
-                      } else {
-                        groups.push({ key: c.id, ref: null, items: [c], first: c })
-                      }
-                    })
-
-                    return groups.map(g => {
+                    return groupedConsignments.map(g => {
                       const badge = STATUS_BADGE[g.first.status] || STATUS_BADGE.CANCELLED
                       const isExpanded = expandedRef === g.key
                       const allIds = g.items.map(i => i.id)

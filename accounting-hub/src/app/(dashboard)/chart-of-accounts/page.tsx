@@ -16,6 +16,8 @@ import {
   CheckCircle2,
   Loader2,
 } from 'lucide-react'
+import { downloadXlsx, downloadPdf } from '@/lib/export'
+import DownloadMenu from '@/components/ui/DownloadMenu'
 
 interface Account {
   id: string
@@ -505,6 +507,17 @@ export default function ChartOfAccountsPage() {
   const selectedCount = importRows.filter((r) => r.selected).length
   const duplicateCount = importRows.filter((r) => r.duplicate).length
 
+  /* ── Download Handler ───────────────────────────────────── */
+  const handleDownloadAccounts = (format: 'xlsx' | 'pdf') => {
+    const headers = ['Account #', 'Account Title', 'Type', 'Sub Type', 'Sub-Sub Type', 'Normal Balance', 'Currency', 'Status', 'Description']
+    const rows = accounts.map(a => [
+      a.accountNumber, a.accountTitle, a.accountType, a.subType || '', a.subSubType || '',
+      a.normalBalance, a.currency, a.isActive ? 'Active' : 'Inactive', a.description || ''
+    ])
+    if (format === 'xlsx') downloadXlsx('Chart_of_Accounts', [{ name: 'Accounts', headers, rows }])
+    else downloadPdf({ title: 'Chart of Accounts', subtitle: `${rows.length} accounts`, headers, rows, landscape: true })
+  }
+
   // ── Render ─────────────────────────────────────────────────
 
   if (loading && !initialLoaded.current) {
@@ -527,8 +540,9 @@ export default function ChartOfAccountsPage() {
             Manage your general ledger account structure
           </p>
         </div>
-        {canWrite && (
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
+          <DownloadMenu onDownload={handleDownloadAccounts} label="Download" />
+          {canWrite && (<>
             <button
               onClick={() => { setImportStep('upload'); setError('') }}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition-colors hover:bg-gray-50"
@@ -545,8 +559,8 @@ export default function ChartOfAccountsPage() {
               <Plus size={18} />
               Add Account
             </button>
-          </div>
-        )}
+          </>)}
+        </div>
       </div>
 
       {/* Search + Filter */}

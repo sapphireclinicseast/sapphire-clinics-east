@@ -7,6 +7,8 @@ import {
   ArrowUpDown, ChevronUp, ChevronDown, AlertCircle,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { downloadXlsx, downloadPdf } from '@/lib/export'
+import DownloadMenu from '@/components/ui/DownloadMenu'
 
 interface Service {
   id: string
@@ -237,6 +239,20 @@ export default function ServicesPage() {
     return { discount, finalPrice: doctor + clinic - discount, label: 'PWD on clinic fee only (20%)' }
   }
 
+  /* ── Download Handler ───────────────────────────────────── */
+  const handleDownloadServices = (format: 'xlsx' | 'pdf') => {
+    const headers = ['Name', 'Department', 'Branch', 'Price', 'Price Type', 'Revenue Type', 'Doctor Fee', 'Clinic Fee', 'Has Doctor Fee', 'PWD Clinic Only', 'VIP Tier', 'Package Sessions', 'Status']
+    const rows = services.map(s => [
+      s.name, DEPT_LABELS[s.department] || s.department, BRANCH_LABELS[s.branch] || s.branch,
+      formatCurrency(Number(s.price)), s.priceType, s.revenueType,
+      s.doctorFee != null ? formatCurrency(Number(s.doctorFee)) : '', s.clinicFee != null ? formatCurrency(Number(s.clinicFee)) : '',
+      s.hasDoctorFee ? 'Yes' : 'No', s.pwdDiscountClinicOnly ? 'Yes' : 'No',
+      s.vipTier || '', s.packageSessions ?? '', s.isActive ? 'Active' : 'Inactive'
+    ])
+    if (format === 'xlsx') downloadXlsx('Services', [{ name: 'Services', headers, rows }])
+    else downloadPdf({ title: 'Services', subtitle: `${rows.length} services`, headers, rows, landscape: true })
+  }
+
   if (loading && !initialLoaded.current) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -257,13 +273,16 @@ export default function ServicesPage() {
             Manage clinic services, pricing, and PWD discount rules
           </p>
         </div>
-        {canWrite && (
-          <button onClick={openCreate}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
-            style={{ background: 'var(--teal)' }}>
-            <Plus size={18} /> Add Service
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          <DownloadMenu onDownload={handleDownloadServices} label="Download" />
+          {canWrite && (
+            <button onClick={openCreate}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
+              style={{ background: 'var(--teal)' }}>
+              <Plus size={18} /> Add Service
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filters */}
