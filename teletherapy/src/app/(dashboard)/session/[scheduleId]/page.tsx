@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft,
   Clock,
@@ -63,6 +63,8 @@ export default function SessionDetailPage() {
   const params = useParams()
   const router = useRouter()
   const scheduleId = params.scheduleId as string
+  const searchParams = useSearchParams()
+  const autoEdit = searchParams.get('edit') === 'true'
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [session, setSession] = useState<SessionDetail | null>(null)
@@ -84,6 +86,13 @@ export default function SessionDetailPage() {
   const [overrideToProgress, setOverrideToProgress] = useState(false)
 
   useEffect(() => { fetchSession() }, [scheduleId])
+
+  // Auto-enter edit mode when navigated with ?edit=true
+  useEffect(() => {
+    if (autoEdit && session?.sessionNote && actionMode === null) {
+      startEdit()
+    }
+  }, [autoEdit, session?.sessionNote?.id])
 
   useEffect(() => {
     if (isPsychDept && session?.id) {

@@ -457,7 +457,7 @@ export default function PatientDetailPage() {
                         {/* Actions */}
                         <div className="pt-3 border-t border-[var(--light-gray)] flex items-center justify-between">
                           <button
-                            onClick={() => router.push(`/session/${s.id}`)}
+                            onClick={() => router.push(`/session/${s.id}?edit=true`)}
                             className="flex items-center gap-1.5 text-[12px] text-[var(--teal)] hover:underline font-medium transition-colors"
                           >
                             <Pencil size={13} />
