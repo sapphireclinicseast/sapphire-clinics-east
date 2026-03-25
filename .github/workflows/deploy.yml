@@ -160,7 +160,7 @@ jobs:
           npx prisma generate 2>&1 | tail -2
 
           echo "→ Creating teletherapy tables..."
-          cat prisma/setup.sql | docker exec -i sapphire_db psql -U sapphire -d sapphire_marketing 2>&1 | tail -5 || true
+          cat prisma/setup.sql | docker exec -i sapphire_db psql -U sapphire -d sapphire_marketing 2>&1 || true
 
           echo "→ Building Next.js app..."
           npm run build 2>&1 | tail -5
@@ -193,10 +193,7 @@ jobs:
           cd /var/www/sapphireclinicseast.org/teletherapy
 
           echo "→ Starting teletherapy app..."
-          if pm2 describe scei-teletherapy >/dev/null 2>&1; then
-            pm2 restart scei-teletherapy --update-env
-          else
-            PORT=3002 HOSTNAME=0.0.0.0 pm2 start npm --name scei-teletherapy -- start && pm2 save
-          fi
+          pm2 delete scei-teletherapy 2>/dev/null || true
+          PORT=3002 HOSTNAME=0.0.0.0 pm2 start npm --name scei-teletherapy -- start && pm2 save
           echo "✅ Teletherapy deployed."
           REMOTE_SCRIPT
