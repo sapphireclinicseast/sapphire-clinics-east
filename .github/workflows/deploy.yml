@@ -190,8 +190,17 @@ jobs:
 
           echo "→ Verifying DB connection from host..."
           cd /var/www/sapphireclinicseast.org/teletherapy
-          node -e "const{Client}=require('pg');const c=new Client(process.env.DATABASE_URL);c.connect().then(()=>c.query('SELECT count(*) FROM \"TherapistAccount\"')).then(r=>{console.log('DB OK, accounts:',r.rows[0].count);c.end()}).catch(e=>{console.error('DB FAIL:',e.message);c.end()})" 2>&1 | tail -2
-          cat .env | grep DATABASE_URL | sed 's/:[^@]*@/:***@/g'
+          export $(grep -v '^#' .env | xargs)
+          node -e "
+            const{Client}=require('pg');
+            const url = process.env.DATABASE_URL || '';
+            console.log('URL format:', url.replace(/\/\/[^@]+@/, '//***@'));
+            const c=new Client({connectionString: url});
+            c.connect()
+              .then(()=>c.query('SELECT count(*) as cnt FROM \"TherapistAccount\"'))
+              .then(r=>{console.log('DB OK, accounts:',r.rows[0].cnt);c.end()})
+              .catch(e=>{console.error('DB FAIL code:',e.code,'errno:',e.errno);c.end()})
+          " 2>&1 | tail -3
 
           echo "→ Starting teletherapy app..."
           if pm2 describe scei-teletherapy >/dev/null 2>&1; then
