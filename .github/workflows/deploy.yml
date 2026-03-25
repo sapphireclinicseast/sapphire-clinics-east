@@ -163,7 +163,7 @@ jobs:
           cat prisma/setup.sql | docker exec -i sapphire_db psql -U sapphire -d sapphire_marketing 2>&1 || true
 
           echo "→ Building Next.js app..."
-          npm run build 2>&1 | tail -5
+          npm run build 2>&1
 
           echo "→ Updating docker-compose and restarting postgres with port exposed..."
           cp /var/www/sapphireclinicseast.org/docker/docker-compose.yml /opt/sapphire/docker/docker-compose.yml 2>/dev/null || true
