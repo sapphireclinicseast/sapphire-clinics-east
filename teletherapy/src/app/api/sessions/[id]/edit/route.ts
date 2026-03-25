@@ -37,10 +37,12 @@ export async function PATCH(
     updateData.notes = body.notes || null
   }
 
-  if (body.attachments !== undefined) {
-    // Merge new attachments with existing ones
-    const existing = (schedule.sessionNote.attachments as any[] | null) ?? []
-    updateData.attachments = [...existing, ...body.attachments]
+  if (body.existingAttachments !== undefined || body.attachments !== undefined) {
+    // existingAttachments = the kept subset of old attachments (after deletions)
+    // attachments = newly uploaded attachments to append
+    const kept = body.existingAttachments ?? (schedule.sessionNote.attachments as any[] | null) ?? []
+    const added = body.attachments ?? []
+    updateData.attachments = [...kept, ...added]
   }
 
   if (body.discontinuedRemarks !== undefined) {

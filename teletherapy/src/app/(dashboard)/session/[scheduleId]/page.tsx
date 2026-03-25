@@ -67,6 +67,7 @@ export default function SessionDetailPage() {
   const [notes, setNotes] = useState('')
   const [remarks, setRemarks] = useState('')
   const [files, setFiles] = useState<File[]>([])
+  const [keptAttachments, setKeptAttachments] = useState<{ fileName: string; filePath: string; mimeType: string }[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [sendingEmail, setSendingEmail] = useState(false)
   const [qrUrl, setQrUrl] = useState<string | null>(null)
@@ -155,6 +156,7 @@ export default function SessionDetailPage() {
       const body: Record<string, unknown> = {}
       if (session?.sessionNote?.status === 'COMPLETED') {
         body.notes = notes
+        body.existingAttachments = keptAttachments
         if (newAttachments.length > 0) body.attachments = newAttachments
       } else {
         body.discontinuedRemarks = remarks
@@ -182,11 +184,16 @@ export default function SessionDetailPage() {
     if (!session?.sessionNote) return
     if (session.sessionNote.status === 'COMPLETED') {
       setNotes(session.sessionNote.notes ?? '')
+      setKeptAttachments((session.sessionNote.attachments as any[] | null) ?? [])
     } else {
       setRemarks(session.sessionNote.discontinuedRemarks ?? '')
     }
     setFiles([])
     setActionMode('edit')
+  }
+
+  function removeKeptAttachment(index: number) {
+    setKeptAttachments((prev) => prev.filter((_, i) => i !== index))
   }
 
   async function handleSendEmail() {
@@ -400,16 +407,19 @@ export default function SessionDetailPage() {
                 </div>
               )}
 
-              {/* Existing attachments */}
-              {session.sessionNote.attachments && (session.sessionNote.attachments as any[]).length > 0 && (
+              {/* Existing attachments with delete */}
+              {keptAttachments.length > 0 && (
                 <div className="mb-4">
                   <p className="text-[11px] text-[var(--mid-gray)] uppercase font-semibold tracking-wider mb-2">Existing Attachments</p>
-                  <div className="flex flex-wrap gap-2">
-                    {(session.sessionNote.attachments as any[]).map((att: any, i: number) => (
-                      <span key={i} className="flex items-center gap-1.5 text-[13px] text-[var(--charcoal)] bg-[var(--off-white)] px-3 py-2 rounded-xl border border-[var(--light-gray)] font-medium">
-                        <Paperclip size={14} className="text-[var(--teal)]" />
-                        {att.fileName}
-                      </span>
+                  <div className="space-y-2">
+                    {keptAttachments.map((att, i) => (
+                      <div key={i} className="flex items-center justify-between bg-[var(--off-white)] px-4 py-2.5 rounded-xl text-[13px] border border-[var(--light-gray)]">
+                        <a href={`/api/upload/${att.filePath}`} target="_blank" className="flex items-center gap-2 truncate font-medium text-[var(--teal)] hover:underline">
+                          <Paperclip size={14} />
+                          {att.fileName}
+                        </a>
+                        <button onClick={() => removeKeptAttachment(i)} className="text-[var(--mid-gray)] hover:text-red-500 shrink-0 ml-2" title="Remove attachment"><X size={16} /></button>
+                      </div>
                     ))}
                   </div>
                 </div>
