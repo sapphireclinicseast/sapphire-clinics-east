@@ -30,6 +30,7 @@ import JsBarcode from 'jsbarcode'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
 import DownloadMenu from '@/components/ui/DownloadMenu'
+import Pagination from '@/components/ui/Pagination'
 
 /* ── Verdana Sticker Print (A6, 3 per page) ──────────────── */
 function printVerdanaSticker(item: { name: string; sku?: string; barcode?: string | null }) {
@@ -495,6 +496,16 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+
+  // ── Pagination
+  const [invPage, setInvPage] = useState(1)
+  const [invPageSize, setInvPageSize] = useState(25)
+  const [supPage, setSupPage] = useState(1)
+  const [supPageSize, setSupPageSize] = useState(25)
+  const [adjPage, setAdjPage] = useState(1)
+  const [adjPageSize, setAdjPageSize] = useState(25)
+  const [conPage, setConPage] = useState(1)
+  const [conPageSize, setConPageSize] = useState(25)
 
   // ── Inventory state
   const [items, setItems] = useState<InventoryItem[]>([])
@@ -1286,7 +1297,7 @@ setTimeout(()=>window.print(),500);
                         <p>No inventory items</p>
                       </td>
                     </tr>
-                  ) : items.map((item) => (
+                  ) : items.slice((invPage - 1) * invPageSize, invPage * invPageSize).map((item) => (
                     <tr key={item.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
                       <td className="px-4 py-3 font-mono text-xs font-medium" style={{ color: 'var(--charcoal)' }}>{item.sku}</td>
                       <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>
@@ -1326,6 +1337,10 @@ setTimeout(()=>window.print(),500);
                 </tbody>
               </table>
             </div>
+            {items.length > 0 && (
+              <Pagination totalItems={items.length} page={invPage} pageSize={invPageSize}
+                onPageChange={setInvPage} onPageSizeChange={setInvPageSize} />
+            )}
           </div>
 
           {/* Delete Confirm */}
@@ -1828,7 +1843,7 @@ setTimeout(()=>window.print(),500);
                         <p>No suppliers</p>
                       </td>
                     </tr>
-                  ) : suppliers.map((s) => (
+                  ) : suppliers.slice((supPage - 1) * supPageSize, supPage * supPageSize).map((s) => (
                     <tr key={s.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
                       <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{s.supplierName}</td>
                       <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>{s.email || '—'}</td>
@@ -1858,6 +1873,10 @@ setTimeout(()=>window.print(),500);
                 </tbody>
               </table>
             </div>
+            {suppliers.length > 0 && (
+              <Pagination totalItems={suppliers.length} page={supPage} pageSize={supPageSize}
+                onPageChange={setSupPage} onPageSizeChange={setSupPageSize} />
+            )}
           </div>
 
           {/* Delete Supplier Confirm */}
@@ -2003,7 +2022,7 @@ setTimeout(()=>window.print(),500);
                         <p>No adjustments</p>
                       </td>
                     </tr>
-                  ) : adjustments.map((adj) => (
+                  ) : adjustments.slice((adjPage - 1) * adjPageSize, adjPage * adjPageSize).map((adj) => (
                     <tr key={adj.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{formatDate(adj.adjustmentDate)}</td>
                       <td className="px-4 py-3">
@@ -2029,6 +2048,10 @@ setTimeout(()=>window.print(),500);
                 </tbody>
               </table>
             </div>
+            {adjustments.length > 0 && (
+              <Pagination totalItems={adjustments.length} page={adjPage} pageSize={adjPageSize}
+                onPageChange={setAdjPage} onPageSizeChange={setAdjPageSize} />
+            )}
           </div>
 
           {/* New Adjustment Modal */}
@@ -2405,7 +2428,7 @@ setTimeout(()=>window.print(),500);
                       </td>
                     </tr>
                   ) : (() => {
-                    return groupedConsignments.map(g => {
+                    return groupedConsignments.slice((conPage - 1) * conPageSize, conPage * conPageSize).map(g => {
                       const badge = STATUS_BADGE[g.first.status] || STATUS_BADGE.CANCELLED
                       const isExpanded = expandedRef === g.key
                       const allIds = g.items.map(i => i.id)
@@ -2558,6 +2581,10 @@ setTimeout(()=>window.print(),500);
                 </tbody>
               </table>
             </div>
+            {groupedConsignments.length > 0 && (
+              <Pagination totalItems={groupedConsignments.length} page={conPage} pageSize={conPageSize}
+                onPageChange={setConPage} onPageSizeChange={setConPageSize} />
+            )}
           </div>
 
           {/* New Batch Transfer Modal */}

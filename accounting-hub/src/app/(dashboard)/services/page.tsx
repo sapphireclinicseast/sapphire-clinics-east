@@ -9,6 +9,7 @@ import {
 import { formatCurrency } from '@/lib/utils'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
 import DownloadMenu from '@/components/ui/DownloadMenu'
+import Pagination from '@/components/ui/Pagination'
 
 interface Service {
   id: string
@@ -74,6 +75,8 @@ export default function ServicesPage() {
   const [sortField, setSortField] = useState('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [error, setError] = useState('')
+  const [svcPage, setSvcPage] = useState(1)
+  const [svcPageSize, setSvcPageSize] = useState(25)
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false)
@@ -290,7 +293,7 @@ export default function ServicesPage() {
         <div className="relative flex-1 max-w-sm">
           <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
           <input type="text" placeholder="Search services..." value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setSvcPage(1) }}
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border text-sm outline-none"
             style={{ borderColor: 'var(--light-gray)', background: 'white' }} />
         </div>
@@ -350,7 +353,7 @@ export default function ServicesPage() {
                     {canWrite && <p className="text-xs mt-1">Add clinic services to get started</p>}
                   </td>
                 </tr>
-              ) : services.map((s) => {
+              ) : services.slice((svcPage - 1) * svcPageSize, svcPage * svcPageSize).map((s) => {
                 const price = Number(s.price)
                 const doctor = s.doctorFee != null ? Number(s.doctorFee) : null
                 const clinic = s.clinicFee != null ? Number(s.clinicFee) : null
@@ -421,6 +424,10 @@ export default function ServicesPage() {
             </tbody>
           </table>
         </div>
+        {services.length > 0 && (
+          <Pagination totalItems={services.length} page={svcPage} pageSize={svcPageSize}
+            onPageChange={setSvcPage} onPageSizeChange={setSvcPageSize} />
+        )}
       </div>
 
       {/* Delete Confirm */}

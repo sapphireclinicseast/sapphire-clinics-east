@@ -12,6 +12,7 @@ import {
   Search,
 } from 'lucide-react'
 import { formatDateTime } from '@/lib/utils'
+import Pagination from '@/components/ui/Pagination'
 
 interface User {
   id: string
@@ -67,6 +68,8 @@ export default function UsersPage() {
   const [editingUser, setEditingUser] = useState<User | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [usrPage, setUsrPage] = useState(1)
+  const [usrPageSize, setUsrPageSize] = useState(25)
   const [saving, setSaving] = useState(false)
 
   // Form fields
@@ -182,6 +185,7 @@ export default function UsersPage() {
       u.name.toLowerCase().includes(search.toLowerCase()) ||
       u.email.toLowerCase().includes(search.toLowerCase())
   )
+  const paginatedUsers = filteredUsers.slice((usrPage - 1) * usrPageSize, usrPage * usrPageSize)
 
   if (status !== 'authenticated' && loading) {
     return (
@@ -223,7 +227,7 @@ export default function UsersPage() {
           type="text"
           placeholder="Search users..."
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => { setSearch(e.target.value); setUsrPage(1) }}
           className="w-full pl-10 pr-4 py-2.5 rounded-xl border text-sm outline-none"
           style={{ borderColor: 'var(--light-gray)', background: 'white' }}
         />
@@ -257,7 +261,7 @@ export default function UsersPage() {
                   </td>
                 </tr>
               ) : (
-                filteredUsers.map((user) => (
+                paginatedUsers.map((user) => (
                   <tr
                     key={user.id}
                     className="border-t hover:bg-gray-50/50 transition-colors"
@@ -313,6 +317,10 @@ export default function UsersPage() {
             </tbody>
           </table>
         </div>
+        {filteredUsers.length > 0 && (
+          <Pagination totalItems={filteredUsers.length} page={usrPage} pageSize={usrPageSize}
+            onPageChange={setUsrPage} onPageSizeChange={setUsrPageSize} />
+        )}
       </div>
 
       {/* Delete confirmation */}

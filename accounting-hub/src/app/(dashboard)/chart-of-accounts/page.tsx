@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
 import DownloadMenu from '@/components/ui/DownloadMenu'
+import Pagination from '@/components/ui/Pagination'
 
 interface Account {
   id: string
@@ -231,6 +232,8 @@ export default function ChartOfAccountsPage() {
   const [filterType, setFilterType] = useState('')
   const [filterSubType, setFilterSubType] = useState('')
   const [error, setError] = useState('')
+  const [coaPage, setCoaPage] = useState(1)
+  const [coaPageSize, setCoaPageSize] = useState(25)
 
   // Create/Edit modal
   const [modalOpen, setModalOpen] = useState(false)
@@ -503,6 +506,7 @@ export default function ChartOfAccountsPage() {
     const q = search.toLowerCase()
     return a.accountNumber.toLowerCase().includes(q) || a.accountTitle.toLowerCase().includes(q)
   })
+  const paginatedAccounts = filteredAccounts.slice((coaPage - 1) * coaPageSize, coaPage * coaPageSize)
 
   const selectedCount = importRows.filter((r) => r.selected).length
   const duplicateCount = importRows.filter((r) => r.duplicate).length
@@ -571,7 +575,7 @@ export default function ChartOfAccountsPage() {
             type="text"
             placeholder="Search accounts..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setCoaPage(1) }}
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border text-sm outline-none"
             style={{ borderColor: 'var(--light-gray)', background: 'white' }}
           />
@@ -631,7 +635,7 @@ export default function ChartOfAccountsPage() {
                   </td>
                 </tr>
               ) : (
-                filteredAccounts.map((account) => (
+                paginatedAccounts.map((account) => (
                   <tr
                     key={account.id}
                     className="border-t hover:bg-gray-50/50 transition-colors"
@@ -687,6 +691,10 @@ export default function ChartOfAccountsPage() {
             </tbody>
           </table>
         </div>
+        {filteredAccounts.length > 0 && (
+          <Pagination totalItems={filteredAccounts.length} page={coaPage} pageSize={coaPageSize}
+            onPageChange={setCoaPage} onPageSizeChange={setCoaPageSize} />
+        )}
       </div>
 
       {/* ── Delete Confirmation ──────────────────────────────── */}

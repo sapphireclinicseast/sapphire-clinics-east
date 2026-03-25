@@ -9,6 +9,7 @@ import {
   Loader2, AlertCircle, ScanLine, UserPlus,
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import Pagination from '@/components/ui/Pagination'
 
 /* ─────────────────────────── TYPES ─────────────────────────── */
 
@@ -1772,6 +1773,8 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
   const [statusFilter, setStatusFilter] = useState('')
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(false)
+  const [ordPage, setOrdPage] = useState(1)
+  const [ordPageSize, setOrdPageSize] = useState(25)
   const [editOrder, setEditOrder] = useState<Order | null>(null)
   const [editItems, setEditItems] = useState<{ name: string; quantity: number; unitPrice: number; lineTotal: number; serviceId?: string }[]>([])
   const [editPayments, setEditPayments] = useState<{ method: string; amount: number }[]>([])
@@ -1937,7 +1940,7 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
               </tr>
             </thead>
             <tbody>
-              {orders.map(o => {
+              {orders.slice((ordPage - 1) * ordPageSize, ordPage * ordPageSize).map(o => {
                 const badge = ORDER_STATUS_BADGE[o.status] || ORDER_STATUS_BADGE.COMPLETED
                 return (
                   <tr key={o.id} className="border-b hover:bg-gray-50" style={{ borderColor: 'var(--light-gray)' }}>
@@ -1999,6 +2002,10 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
               })}
             </tbody>
           </table>
+        )}
+        {orders.length > 0 && (
+          <Pagination totalItems={orders.length} page={ordPage} pageSize={ordPageSize}
+            onPageChange={setOrdPage} onPageSizeChange={setOrdPageSize} />
         )}
       </div>
 
