@@ -153,7 +153,7 @@ jobs:
           npx prisma generate 2>&1 | tail -2
 
           echo "→ Creating teletherapy tables..."
-          npm run db:setup 2>&1 | tail -3
+          cat prisma/setup.sql | docker exec -i sapphire_db psql -U sapphire -d sapphire_marketing 2>&1 | tail -5 || true
 
           echo "→ Building Next.js app..."
           npm run build 2>&1 | tail -5
@@ -161,6 +161,10 @@ jobs:
           echo "→ Adding Resend API key to .env..."
           grep -q "RESEND_API_KEY" .env || echo "RESEND_API_KEY=re_CbH3Pirt_JqAd3RJ3TXwaFNmxckQ7GVwK" >> .env
           grep -q "RESEND_FROM_EMAIL" .env || echo 'RESEND_FROM_EMAIL=SCEI Teletherapy <noreply@do-not-reply.sapphireclinicseast.org>' >> .env
+
+          echo "→ Restarting Docker to expose postgres port..."
+          cd /opt/sapphire/docker && docker compose --env-file .env.production up -d postgres 2>&1 | tail -2 || true
+          sleep 3
 
           echo "→ Seeding admin account..."
           docker exec sapphire_db psql -U sapphire -d sapphire_marketing -c "
