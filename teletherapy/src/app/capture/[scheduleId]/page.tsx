@@ -1,8 +1,8 @@
 'use client'
 
 import { useParams, useSearchParams } from 'next/navigation'
-import { useEffect, useRef, useState } from 'react'
-import { Camera, Upload, CheckCircle2, X, RotateCcw } from 'lucide-react'
+import { useState, useRef } from 'react'
+import { Camera, Upload, CheckCircle2, X, RotateCcw, ImageIcon } from 'lucide-react'
 
 export default function CapturePage() {
   const params = useParams()
@@ -10,76 +10,42 @@ export default function CapturePage() {
   const scheduleId = params.scheduleId as string
   const token = searchParams.get('token')
 
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [status, setStatus] = useState<'loading' | 'ready' | 'captured' | 'uploading' | 'done' | 'error'>('loading')
-  const [error, setError] = useState('')
+  const [status, setStatus] = useState<'ready' | 'captured' | 'uploading' | 'done' | 'error'>(!token ? 'error' : 'ready')
+  const [error, setError] = useState(!token ? 'Invalid or missing capture token' : '')
   const [capturedImage, setCapturedImage] = useState<string | null>(null)
-  const [stream, setStream] = useState<MediaStream | null>(null)
+  const [capturedFile, setCapturedFile] = useState<File | null>(null)
 
-  useEffect(() => {
-    if (!token) {
-      setError('Invalid or missing capture token')
-      setStatus('error')
-      return
-    }
-    startCamera()
-    return () => {
-      stream?.getTracks().forEach((t) => t.stop())
-    }
-  }, [])
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
 
-  async function startCamera() {
-    try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
-      })
-      setStream(mediaStream)
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream
-      }
-      setStatus('ready')
-    } catch {
-      setError('Camera access denied. Please allow camera access and try again.')
-      setStatus('error')
-    }
-  }
+    setCapturedFile(file)
 
-  function capture() {
-    if (!videoRef.current || !canvasRef.current) return
-
-    const video = videoRef.current
-    const canvas = canvasRef.current
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
-    const ctx = canvas.getContext('2d')
-    if (ctx) {
-      ctx.drawImage(video, 0, 0)
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
-      setCapturedImage(dataUrl)
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      setCapturedImage(ev.target?.result as string)
       setStatus('captured')
-      stream?.getTracks().forEach((t) => t.stop())
     }
+    reader.readAsDataURL(file)
   }
 
   function retake() {
     setCapturedImage(null)
-    startCamera()
+    setCapturedFile(null)
+    setStatus('ready')
+    // Reset the file input so the same file can be re-selected
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   async function upload() {
-    if (!capturedImage) return
+    if (!capturedFile) return
     setStatus('uploading')
 
     try {
-      // Convert data URL to blob
-      const res = await fetch(capturedImage)
-      const blob = await res.blob()
-      const file = new File([blob], `capture-${Date.now()}.jpg`, { type: 'image/jpeg' })
-
       const formData = new FormData()
-      formData.append('file', file)
+      formData.append('file', capturedFile)
       formData.append('scheduleId', scheduleId)
       formData.append('token', token!)
 
@@ -110,19 +76,12 @@ export default function CapturePage() {
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center p-4">
-        {status === 'loading' && (
-          <div className="text-white text-center">
-            <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-sm text-white/70">Starting camera...</p>
-          </div>
-        )}
-
         {status === 'error' && (
           <div className="text-center max-w-sm">
             <X className="w-12 h-12 text-red-400 mx-auto mb-3" />
             <p className="text-white mb-2">{error}</p>
             <button
-              onClick={() => window.location.reload()}
+              onClick={() => { setError(''); setStatus('ready'); }}
               className="text-[#2AAABB] text-sm hover:underline"
             >
               Try Again
@@ -130,47 +89,70 @@ export default function CapturePage() {
           </div>
         )}
 
-        {(status === 'ready') && (
-          <>
-            <div className="relative w-full max-w-lg rounded-xl overflow-hidden mb-4">
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full"
-              />
-              {/* Overlay guides */}
-              <div className="absolute inset-4 border-2 border-white/30 rounded-lg pointer-events-none" />
+        {status === 'ready' && (
+          <div className="flex flex-col items-center gap-6 w-full max-w-lg">
+            {/* Camera capture area */}
+            <div className="w-full aspect-[4/3] border-2 border-dashed border-white/30 rounded-xl flex flex-col items-center justify-center gap-4 bg-white/5">
+              <ImageIcon className="w-16 h-16 text-white/30" />
+              <p className="text-white/50 text-sm text-center px-4">
+                Take a photo of the handwritten session notes
+              </p>
             </div>
-            <p className="text-white/60 text-xs text-center mb-4">
-              Position the handwritten notes within the frame
-            </p>
-            <button
-              onClick={capture}
-              className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform"
-            >
-              <Camera className="w-7 h-7 text-[#1C2B30]" />
-            </button>
-          </>
+
+            {/* Hidden file inputs */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleFileSelect}
+              className="hidden"
+              id="camera-input"
+            />
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleFileSelect}
+              className="hidden"
+              id="gallery-input"
+            />
+
+            {/* Action buttons */}
+            <div className="flex flex-col gap-3 w-full max-w-xs">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full flex items-center justify-center gap-3 bg-white text-[#1C2B30] py-4 rounded-xl font-semibold text-base shadow-lg active:scale-[0.98] transition-transform"
+              >
+                <Camera className="w-6 h-6" />
+                Take Photo
+              </button>
+              <button
+                onClick={() => document.getElementById('gallery-input')?.click()}
+                className="w-full flex items-center justify-center gap-3 bg-white/10 text-white py-3 rounded-xl text-sm active:scale-[0.98] transition-transform"
+              >
+                <Upload className="w-5 h-5" />
+                Choose from Gallery
+              </button>
+            </div>
+          </div>
         )}
 
         {status === 'captured' && capturedImage && (
           <>
-            <div className="w-full max-w-lg rounded-xl overflow-hidden mb-4">
+            <div className="w-full max-w-lg rounded-xl overflow-hidden mb-4 border border-white/10">
               <img src={capturedImage} alt="Captured" className="w-full" />
             </div>
             <div className="flex gap-3">
               <button
                 onClick={retake}
-                className="flex items-center gap-2 bg-white/10 text-white px-5 py-2.5 rounded-lg text-sm"
+                className="flex items-center gap-2 bg-white/10 text-white px-5 py-2.5 rounded-lg text-sm active:scale-95 transition-transform"
               >
                 <RotateCcw size={16} />
                 Retake
               </button>
               <button
                 onClick={upload}
-                className="flex items-center gap-2 bg-[#1A7B8A] text-white px-5 py-2.5 rounded-lg text-sm font-medium"
+                className="flex items-center gap-2 bg-[#1A7B8A] text-white px-5 py-2.5 rounded-lg text-sm font-medium active:scale-95 transition-transform"
               >
                 <Upload size={16} />
                 Upload
@@ -197,8 +179,6 @@ export default function CapturePage() {
           </div>
         )}
       </div>
-
-      <canvas ref={canvasRef} className="hidden" />
     </div>
   )
 }
