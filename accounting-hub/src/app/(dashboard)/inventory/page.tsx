@@ -112,6 +112,18 @@ interface TransmittalData {
   requestedBy: string
   status: string
   items: { sku: string; name: string; quantity: number; remarks: string | null }[]
+  // Fillable fields from modal
+  fromStaff?: string
+  fromPosition?: string
+  fromContact?: string
+  toReceiver?: string
+  toContact?: string
+  releasedName?: string
+  releasedDate?: string
+  releasedContact?: string
+  receivedName?: string
+  receivedDate?: string
+  receivedContact?: string
 }
 
 function generateTransmittalPDF(data: TransmittalData) {
@@ -211,17 +223,17 @@ function generateTransmittalPDF(data: TransmittalData) {
   <!-- From section -->
   <div class="section-label">From:</div>
   <table class="info-table">
-    <tr><td class="field-label">Branch</td><td>${data.fromBranch}</td></tr>
-    <tr><td class="field-label">Staff Name</td><td>${data.requestedBy}</td></tr>
-    <tr><td class="field-label">Position & Contact No.</td><td></td></tr>
+    <tr><td class="field-label">Sandbox Branch</td><td>${data.fromBranch}</td></tr>
+    <tr><td class="field-label">Staff Name</td><td>${data.fromStaff || data.requestedBy}</td></tr>
+    <tr><td class="field-label">Position & Contact No.</td><td>${[data.fromPosition, data.fromContact].filter(Boolean).join(' — ')}</td></tr>
   </table>
 
   <!-- To section -->
   <div class="section-label">To:</div>
   <table class="info-table">
-    <tr><td class="field-label">Receiver's Name</td><td></td></tr>
+    <tr><td class="field-label">Receiver's Name</td><td>${data.toReceiver || ''}</td></tr>
     <tr><td class="field-label">Branch</td><td>${data.toBranch}</td></tr>
-    <tr><td class="field-label">Contact No.</td><td></td></tr>
+    <tr><td class="field-label">Contact No.</td><td>${data.toContact || ''}</td></tr>
   </table>
 
   <!-- Status -->
@@ -249,17 +261,17 @@ function generateTransmittalPDF(data: TransmittalData) {
   <div class="signatures">
     <div class="sig-block">
       <div class="sig-title">Released By:</div>
-      <div class="sig-field"><span class="sig-label">Name:</span><span class="sig-line"></span></div>
+      <div class="sig-field"><span class="sig-label">Name:</span><span class="sig-line">${data.releasedName || ''}</span></div>
       <div class="sig-field"><span class="sig-label">Signature:</span><span class="sig-line"></span></div>
-      <div class="sig-field"><span class="sig-label">Date:</span><span class="sig-line"></span></div>
-      <div class="sig-field"><span class="sig-label">Contact No.</span><span class="sig-line"></span></div>
+      <div class="sig-field"><span class="sig-label">Date:</span><span class="sig-line">${data.releasedDate || ''}</span></div>
+      <div class="sig-field"><span class="sig-label">Contact No.</span><span class="sig-line">${data.releasedContact || ''}</span></div>
     </div>
     <div class="sig-block">
       <div class="sig-title">Received By:</div>
-      <div class="sig-field"><span class="sig-label">Name:</span><span class="sig-line"></span></div>
+      <div class="sig-field"><span class="sig-label">Name:</span><span class="sig-line">${data.receivedName || ''}</span></div>
       <div class="sig-field"><span class="sig-label">Signature:</span><span class="sig-line"></span></div>
-      <div class="sig-field"><span class="sig-label">Date:</span><span class="sig-line"></span></div>
-      <div class="sig-field"><span class="sig-label">Contact No.</span><span class="sig-line"></span></div>
+      <div class="sig-field"><span class="sig-label">Date:</span><span class="sig-line">${data.receivedDate || ''}</span></div>
+      <div class="sig-field"><span class="sig-label">Contact No.</span><span class="sig-line">${data.receivedContact || ''}</span></div>
     </div>
   </div>
 </body></html>`
@@ -574,6 +586,20 @@ export default function InventoryPage() {
   const [batchItems, setBatchItems] = useState<{ itemId: string; quantity: number; itemName?: string; itemSku?: string }[]>([])
   const [selectedTransferIds, setSelectedTransferIds] = useState<Set<string>>(new Set())
   const [expandedRef, setExpandedRef] = useState<string | null>(null)
+  // PDF modal state
+  const [pdfModalOpen, setPdfModalOpen] = useState(false)
+  const [pdfData, setPdfData] = useState<TransmittalData | null>(null)
+  const [pdfFromStaff, setPdfFromStaff] = useState('')
+  const [pdfFromPosition, setPdfFromPosition] = useState('')
+  const [pdfFromContact, setPdfFromContact] = useState('')
+  const [pdfToReceiver, setPdfToReceiver] = useState('')
+  const [pdfToContact, setPdfToContact] = useState('')
+  const [pdfReleasedName, setPdfReleasedName] = useState('')
+  const [pdfReleasedDate, setPdfReleasedDate] = useState(new Date().toISOString().split('T')[0])
+  const [pdfReleasedContact, setPdfReleasedContact] = useState('')
+  const [pdfReceivedName, setPdfReceivedName] = useState('')
+  const [pdfReceivedDate, setPdfReceivedDate] = useState('')
+  const [pdfReceivedContact, setPdfReceivedContact] = useState('')
   // Bundle state
   const [isBundle, setIsBundle] = useState(false)
   const [bundleComponents, setBundleComponents] = useState<{ id?: string; componentId: string; quantity: number; name?: string; sku?: string }[]>([])
@@ -999,7 +1025,7 @@ export default function InventoryPage() {
      RENDER
      ═══════════════════════════════════════════════════════ */
 
-  const anyModalOpen = itemModalOpen || supplierModalOpen || adjModalOpen || conModalOpen
+  const anyModalOpen = itemModalOpen || supplierModalOpen || adjModalOpen || conModalOpen || pdfModalOpen
 
   // Print bulk barcodes — A6 pages, 10 barcodes per product per page
   const printBulkBarcodes = () => {
@@ -2332,21 +2358,36 @@ setTimeout(()=>window.print(),500);
                             {canWrite && (
                               <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                                 <div className="flex items-center justify-end gap-1">
-                                  {/* Generate PDF — always available */}
-                                  <button onClick={() => generateTransmittalPDF({
-                                    referenceNumber: g.ref,
-                                    date: g.first.createdAt,
-                                    fromBranch: BRANCH_LABELS[g.first.fromBranch] || g.first.fromBranch,
-                                    toBranch: BRANCH_LABELS[g.first.toBranch] || g.first.toBranch,
-                                    requestedBy: g.first.requestedBy?.name || '—',
-                                    status: g.first.status,
-                                    items: g.items.map(item => ({
-                                      sku: item.item?.sku || '',
-                                      name: item.item?.name || '',
-                                      quantity: item.quantity,
-                                      remarks: item.remarks,
-                                    })),
-                                  })}
+                                  {/* Generate PDF — opens modal to fill details */}
+                                  <button onClick={() => {
+                                    const staffName = g.first.requestedBy?.name || ''
+                                    setPdfData({
+                                      referenceNumber: g.ref,
+                                      date: g.first.createdAt,
+                                      fromBranch: BRANCH_LABELS[g.first.fromBranch] || g.first.fromBranch,
+                                      toBranch: BRANCH_LABELS[g.first.toBranch] || g.first.toBranch,
+                                      requestedBy: staffName,
+                                      status: g.first.status,
+                                      items: g.items.map(item => ({
+                                        sku: item.item?.sku || '',
+                                        name: item.item?.name || '',
+                                        quantity: item.quantity,
+                                        remarks: item.remarks,
+                                      })),
+                                    })
+                                    setPdfFromStaff(staffName)
+                                    setPdfFromPosition('')
+                                    setPdfFromContact('')
+                                    setPdfToReceiver('')
+                                    setPdfToContact('')
+                                    setPdfReleasedName(staffName)
+                                    setPdfReleasedDate(new Date().toISOString().split('T')[0])
+                                    setPdfReleasedContact('')
+                                    setPdfReceivedName('')
+                                    setPdfReceivedDate('')
+                                    setPdfReceivedContact('')
+                                    setPdfModalOpen(true)
+                                  }}
                                     className="px-2.5 py-1 rounded-lg text-xs font-semibold transition-opacity hover:opacity-90"
                                     style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }} title="Generate Transmittal Form PDF">
                                     <FileText size={14} className="inline mr-1" />PDF
@@ -2525,6 +2566,176 @@ setTimeout(()=>window.print(),500);
                       className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50"
                       style={{ background: 'var(--teal)' }}>
                       {saving ? 'Creating...' : `Create Transfer (${batchItems.length} items)`}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* PDF Transmittal Form Modal */}
+          {pdfModalOpen && pdfData && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-8 overflow-y-auto">
+              <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-xl mb-8">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                    Generate Transmittal Form
+                  </h3>
+                  <button onClick={() => setPdfModalOpen(false)} className="p-1 hover:bg-gray-100 rounded-lg">
+                    <X size={20} style={{ color: 'var(--mid-gray)' }} />
+                  </button>
+                </div>
+
+                <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
+                  Fill in the details below. These will appear on the printed transmittal form.
+                  {pdfData.referenceNumber && (
+                    <span className="ml-1 font-mono font-semibold px-1.5 py-0.5 rounded" style={{ background: '#e0e7ff', color: '#3730a3' }}>
+                      {pdfData.referenceNumber}
+                    </span>
+                  )}
+                </p>
+
+                <div className="space-y-4">
+                  {/* FROM Section */}
+                  <div className="p-3 rounded-xl" style={{ background: 'var(--off-white)' }}>
+                    <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--teal)' }}>From</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="col-span-2">
+                        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Branch</label>
+                        <input type="text" value={pdfData.fromBranch} disabled
+                          className="w-full px-3 py-2 rounded-lg border text-sm bg-gray-50"
+                          style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }} />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Staff Name</label>
+                        <input type="text" value={pdfFromStaff} onChange={e => setPdfFromStaff(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                          style={{ borderColor: 'var(--light-gray)' }} placeholder="Name of staff releasing items" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Position</label>
+                        <input type="text" value={pdfFromPosition} onChange={e => setPdfFromPosition(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                          style={{ borderColor: 'var(--light-gray)' }} placeholder="e.g. Store Manager" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Contact No.</label>
+                        <input type="text" value={pdfFromContact} onChange={e => setPdfFromContact(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                          style={{ borderColor: 'var(--light-gray)' }} placeholder="09XX XXX XXXX" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* TO Section */}
+                  <div className="p-3 rounded-xl" style={{ background: 'var(--off-white)' }}>
+                    <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--teal)' }}>To</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="col-span-2">
+                        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Branch</label>
+                        <input type="text" value={pdfData.toBranch} disabled
+                          className="w-full px-3 py-2 rounded-lg border text-sm bg-gray-50"
+                          style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Receiver&apos;s Name</label>
+                        <input type="text" value={pdfToReceiver} onChange={e => setPdfToReceiver(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                          style={{ borderColor: 'var(--light-gray)' }} placeholder="Name of person receiving" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Contact No.</label>
+                        <input type="text" value={pdfToContact} onChange={e => setPdfToContact(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                          style={{ borderColor: 'var(--light-gray)' }} placeholder="09XX XXX XXXX" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Signatures Section */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-3 rounded-xl" style={{ background: 'var(--off-white)' }}>
+                      <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--teal)' }}>Released By</p>
+                      <div className="space-y-2">
+                        <div>
+                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Name</label>
+                          <input type="text" value={pdfReleasedName} onChange={e => setPdfReleasedName(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                            style={{ borderColor: 'var(--light-gray)' }} />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Date</label>
+                          <input type="date" value={pdfReleasedDate} onChange={e => setPdfReleasedDate(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                            style={{ borderColor: 'var(--light-gray)' }} />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Contact No.</label>
+                          <input type="text" value={pdfReleasedContact} onChange={e => setPdfReleasedContact(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                            style={{ borderColor: 'var(--light-gray)' }} placeholder="09XX XXX XXXX" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-xl" style={{ background: 'var(--off-white)' }}>
+                      <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--teal)' }}>Received By</p>
+                      <div className="space-y-2">
+                        <div>
+                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Name</label>
+                          <input type="text" value={pdfReceivedName} onChange={e => setPdfReceivedName(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                            style={{ borderColor: 'var(--light-gray)' }} />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Date</label>
+                          <input type="date" value={pdfReceivedDate} onChange={e => setPdfReceivedDate(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                            style={{ borderColor: 'var(--light-gray)' }} />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Contact No.</label>
+                          <input type="text" value={pdfReceivedContact} onChange={e => setPdfReceivedContact(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                            style={{ borderColor: 'var(--light-gray)' }} placeholder="09XX XXX XXXX" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Items preview */}
+                  <div className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                    <span className="font-semibold">{pdfData.items.length} item(s)</span> will be included in the transmittal form.
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex gap-3 pt-2">
+                    <button type="button" onClick={() => setPdfModalOpen(false)}
+                      className="flex-1 py-2.5 rounded-xl border text-sm font-medium"
+                      style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                      Cancel
+                    </button>
+                    <button type="button" onClick={() => {
+                      generateTransmittalPDF({
+                        ...pdfData,
+                        fromStaff: pdfFromStaff,
+                        fromPosition: pdfFromPosition,
+                        fromContact: pdfFromContact,
+                        toReceiver: pdfToReceiver,
+                        toContact: pdfToContact,
+                        releasedName: pdfReleasedName,
+                        releasedDate: pdfReleasedDate ? new Date(pdfReleasedDate).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' }) : '',
+                        releasedContact: pdfReleasedContact,
+                        receivedName: pdfReceivedName,
+                        receivedDate: pdfReceivedDate ? new Date(pdfReceivedDate).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' }) : '',
+                        receivedContact: pdfReceivedContact,
+                      })
+                      setPdfModalOpen(false)
+                    }}
+                      className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-2"
+                      style={{ background: 'var(--teal)' }}>
+                      <FileText size={16} />
+                      Generate PDF
                     </button>
                   </div>
                 </div>
