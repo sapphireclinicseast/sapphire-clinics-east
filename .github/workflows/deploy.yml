@@ -127,7 +127,9 @@ jobs:
             MENV="/opt/sapphire/docker/.env.production"
             if [ -f "$MENV" ]; then
               PG_PASS=$(grep "^POSTGRES_PASSWORD" "$MENV" | cut -d= -f2-)
-              echo "DATABASE_URL=postgresql://sapphire:${PG_PASS}@localhost:5433/sapphire_marketing" > .env
+              DB_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' sapphire_db 2>/dev/null || echo "localhost")
+              echo "DATABASE_URL=postgresql://sapphire:${PG_PASS}@${DB_IP}:5432/sapphire_marketing" > .env
+              echo "→ DB host: ${DB_IP}"
               grep "^NEXTAUTH_SECRET" "$MENV" >> .env
               echo "NEXTAUTH_URL=https://teletherapy.sapphireclinicseast.org" >> .env
               echo "AUTH_TRUST_HOST=true" >> .env
