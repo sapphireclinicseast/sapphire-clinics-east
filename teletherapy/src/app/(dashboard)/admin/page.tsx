@@ -148,7 +148,7 @@ export default function AdminPage() {
       <div className="card-static mb-8 animate-fade-up stagger-1">
         <h2 className="font-bold text-[var(--charcoal)] mb-5 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
           <UserPlus size={18} className="text-[var(--teal)]" />
-          Create Therapist Account
+          Create Clinician Account
         </h2>
 
         <form onSubmit={handleCreate} className="space-y-5">
@@ -189,7 +189,7 @@ export default function AdminPage() {
             <div>
               <label className="block text-[13px] font-semibold text-[var(--charcoal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>Role</label>
               <select value={role} onChange={(e) => setRole(e.target.value as 'THERAPIST' | 'ADMIN')} className="input bg-white">
-                <option value="THERAPIST">Therapist</option>
+                <option value="THERAPIST">Clinician</option>
                 <option value="ADMIN">Admin</option>
               </select>
             </div>
@@ -206,7 +206,7 @@ export default function AdminPage() {
       <div className="card-static animate-fade-up stagger-2">
         <h2 className="font-bold text-[var(--charcoal)] mb-5 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
           <Users size={18} className="text-[var(--teal)]" />
-          Therapist Accounts
+          Clinician Accounts
           <span className="badge badge-teal ml-1">{accounts.length}</span>
         </h2>
 
@@ -215,7 +215,7 @@ export default function AdminPage() {
             <div className="w-14 h-14 rounded-2xl bg-[var(--pale-teal)] flex items-center justify-center mx-auto mb-3">
               <Users size={24} className="text-[var(--teal)]" />
             </div>
-            <p className="text-[var(--mid-gray)] text-sm font-medium">No accounts created yet.</p>
+            <p className="text-[var(--mid-gray)] text-sm font-medium">No clinician accounts created yet.</p>
           </div>
         ) : (
           <div className="space-y-3">

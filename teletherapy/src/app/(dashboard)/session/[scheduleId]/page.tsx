@@ -214,7 +214,7 @@ export default function SessionDetailPage() {
           { icon: Calendar, label: 'Date', value: formatDate(session.date) },
           { icon: Clock, label: 'Time', value: `${formatTime(session.startTime)} – ${formatTime(session.endTime)}` },
           { icon: FileText, label: 'Type', value: session.sessionType },
-          { icon: Stethoscope, label: 'Therapist', value: `${session.staff.lastName} (${session.staff.department})` },
+          { icon: Stethoscope, label: 'Clinician', value: `${session.staff.lastName} (${session.staff.department})` },
         ].map((item, i) => (
           <div key={item.label} className={`card-static !p-4 animate-fade-up stagger-${i + 1}`}>
             <div className="flex items-center gap-1.5 mb-1">

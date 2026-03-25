@@ -49,7 +49,7 @@ export async function POST(
               <tr><td style="padding: 4px 0; color: #9AABB0;">Date</td><td>${sessionDate}</td></tr>
               <tr><td style="padding: 4px 0; color: #9AABB0;">Time</td><td>${schedule.startTime} - ${schedule.endTime}</td></tr>
               <tr><td style="padding: 4px 0; color: #9AABB0;">Session Type</td><td>${schedule.sessionType}</td></tr>
-              <tr><td style="padding: 4px 0; color: #9AABB0;">Therapist</td><td>${therapistName} (${schedule.staff.department})</td></tr>
+              <tr><td style="padding: 4px 0; color: #9AABB0;">Clinician</td><td>${therapistName} (${schedule.staff.department})</td></tr>
             </table>
           </div>
           ${schedule.sessionNote.notes ? `
@@ -57,7 +57,7 @@ export async function POST(
             <div style="background: #F7FAFB; padding: 12px; border-radius: 8px; font-size: 14px; white-space: pre-wrap;">${schedule.sessionNote.notes}</div>
           ` : ''}
           <p style="font-size: 13px; color: #9AABB0; margin-top: 24px;">
-            This is an automated message from SCEI Teletherapy. Please contact your therapist directly if you have questions.
+            This is an automated message from SCEI Teletherapy. Please contact your clinician directly if you have questions.
           </p>
         </div>
       </div>

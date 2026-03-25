@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
   const { staffId, email, password, role } = body
 
   if (!staffId || !email || !password) {
-    return NextResponse.json({ error: 'Staff, email, and password are required' }, { status: 400 })
+    return NextResponse.json({ error: 'Staff member, email, and password are required' }, { status: 400 })
   }
 
   if (password.length < 6) {
