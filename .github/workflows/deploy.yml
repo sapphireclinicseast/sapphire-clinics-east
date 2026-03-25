@@ -190,7 +190,7 @@ jobs:
 
           echo "→ Verifying DB connection from host..."
           cd /var/www/sapphireclinicseast.org/teletherapy
-          export $(grep -v '^#' .env | xargs)
+          set -a; source .env 2>/dev/null; set +a
           node -e "
             const{Client}=require('pg');
             const url = process.env.DATABASE_URL || '';
