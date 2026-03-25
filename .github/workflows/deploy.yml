@@ -115,67 +115,57 @@ jobs:
       - name: Deploy Teletherapy
         run: |
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
-            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
-            'if [ -d /var/www/sapphireclinicseast.org/teletherapy ]; then
-               cd /var/www/sapphireclinicseast.org/teletherapy
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} 'bash -s' << 'REMOTE_SCRIPT'
+          set -e
+          TELE_DIR="/var/www/sapphireclinicseast.org/teletherapy"
+          if [ ! -d "$TELE_DIR" ]; then echo "⚠ Teletherapy dir not found, skipping."; exit 0; fi
+          cd "$TELE_DIR"
 
-               # Create .env from marketing hub env if it does not exist
-               if [ ! -f .env ]; then
-                 echo "→ Creating teletherapy .env from marketing hub..."
-                 MARKETING_ENV="/opt/sapphire/docker/.env.production"
-                 if [ -f "$MARKETING_ENV" ]; then
-                   DB_URL=$(grep "^DATABASE_URL" "$MARKETING_ENV" | head -1)
-                   NEXTAUTH_SECRET=$(grep "^NEXTAUTH_SECRET" "$MARKETING_ENV" | head -1)
-                   GOOGLE_CID=$(grep "^GOOGLE_CLIENT_ID" "$MARKETING_ENV" | head -1)
-                   GOOGLE_CS=$(grep "^GOOGLE_CLIENT_SECRET" "$MARKETING_ENV" | head -1)
-                   GOOGLE_RURI=$(grep "^GOOGLE_REDIRECT_URI" "$MARKETING_ENV" | head -1)
-                   cat > .env << ENVEOF
-${DB_URL}
-${NEXTAUTH_SECRET}
-NEXTAUTH_URL=https://teletherapy.sapphireclinicseast.org
-AUTH_TRUST_HOST=true
-${GOOGLE_CID}
-${GOOGLE_CS}
-${GOOGLE_RURI}
-UPLOAD_DIR=./uploads
-ENVEOF
-                   echo "✅ .env created."
-                 else
-                   echo "⚠ Marketing .env not found, creating minimal .env..."
-                   cat > .env << ENVEOF
-DATABASE_URL=postgresql://sapphire:sapphire@localhost:5432/sapphire_marketing
-NEXTAUTH_URL=https://teletherapy.sapphireclinicseast.org
-NEXTAUTH_SECRET=$(openssl rand -base64 32)
-AUTH_TRUST_HOST=true
-UPLOAD_DIR=./uploads
-ENVEOF
-                 fi
-               fi
+          # Create .env from marketing hub env if missing
+          if [ ! -f .env ]; then
+            echo "→ Creating teletherapy .env..."
+            MENV="/opt/sapphire/docker/.env.production"
+            if [ -f "$MENV" ]; then
+              grep "^DATABASE_URL" "$MENV" > .env
+              grep "^NEXTAUTH_SECRET" "$MENV" >> .env
+              echo "NEXTAUTH_URL=https://teletherapy.sapphireclinicseast.org" >> .env
+              echo "AUTH_TRUST_HOST=true" >> .env
+              grep "^GOOGLE_CLIENT_ID" "$MENV" >> .env 2>/dev/null || true
+              grep "^GOOGLE_CLIENT_SECRET" "$MENV" >> .env 2>/dev/null || true
+              grep "^GOOGLE_REDIRECT_URI" "$MENV" >> .env 2>/dev/null || true
+              echo "UPLOAD_DIR=./uploads" >> .env
+            else
+              echo "DATABASE_URL=postgresql://sapphire:sapphire@localhost:5432/sapphire_marketing" > .env
+              echo "NEXTAUTH_URL=https://teletherapy.sapphireclinicseast.org" >> .env
+              echo "NEXTAUTH_SECRET=$(openssl rand -base64 32)" >> .env
+              echo "AUTH_TRUST_HOST=true" >> .env
+              echo "UPLOAD_DIR=./uploads" >> .env
+            fi
+            echo "✅ .env created."
+          fi
 
-               mkdir -p uploads/session-notes
+          mkdir -p uploads/session-notes
 
-               echo "→ Installing dependencies..."
-               npm ci --production=false 2>&1 | tail -3
+          echo "→ Installing dependencies..."
+          npm ci --production=false 2>&1 | tail -3
 
-               echo "→ Generating Prisma client..."
-               npx prisma generate 2>&1 | tail -2
+          echo "→ Generating Prisma client..."
+          npx prisma generate 2>&1 | tail -2
 
-               echo "→ Pushing teletherapy tables to database..."
-               npx prisma db push --accept-data-loss 2>&1 | tail -3
+          echo "→ Pushing teletherapy tables to database..."
+          npx prisma db push --accept-data-loss 2>&1 | tail -3
 
-               echo "→ Building Next.js app..."
-               npm run build 2>&1 | tail -5
+          echo "→ Building Next.js app..."
+          npm run build 2>&1 | tail -5
 
-               echo "→ Seeding admin account..."
-               npm run db:seed 2>&1 | tail -3
+          echo "→ Seeding admin account..."
+          npm run db:seed 2>&1 | tail -3 || true
 
-               echo "→ Starting teletherapy app..."
-               if pm2 describe scei-teletherapy >/dev/null 2>&1; then
-                 pm2 restart scei-teletherapy
-               else
-                 PORT=3002 HOSTNAME=0.0.0.0 pm2 start npm --name scei-teletherapy -- start && pm2 save
-               fi
-               echo "✅ Teletherapy deployed."
-             else
-               echo "⚠ Teletherapy directory not found, skipping."
-             fi'
+          echo "→ Starting teletherapy app..."
+          if pm2 describe scei-teletherapy >/dev/null 2>&1; then
+            pm2 restart scei-teletherapy
+          else
+            PORT=3002 HOSTNAME=0.0.0.0 pm2 start npm --name scei-teletherapy -- start && pm2 save
+          fi
+          echo "✅ Teletherapy deployed."
+          REMOTE_SCRIPT
