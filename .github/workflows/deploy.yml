@@ -177,15 +177,17 @@ jobs:
           docker exec sapphire_db psql -U sapphire -d sapphire_marketing -c "
             ALTER TABLE \"TherapistAccount\" ADD COLUMN IF NOT EXISTS \"resetToken\" TEXT;
             ALTER TABLE \"TherapistAccount\" ADD COLUMN IF NOT EXISTS \"resetTokenExpiry\" TIMESTAMP(3);
-            DELETE FROM \"TherapistAccount\" WHERE email IN ('admin@sapphireclinicseast.org', 'main@sapphireclinicseast.org');
+            DELETE FROM \"SessionNote\" WHERE \"therapistAccountId\" = 'clmainadmin01';
+            DELETE FROM \"PatientAssignment\" WHERE \"therapistAccountId\" = 'clmainadmin01' OR \"endorsedToId\" = 'clmainadmin01';
+            DELETE FROM \"TherapistAccount\" WHERE id = 'clmainadmin01' OR email IN ('admin@sapphireclinicseast.org', 'main@sapphireclinicseast.org');
             INSERT INTO \"TherapistAccount\" (id, \"staffId\", email, \"passwordHash\", role, \"isActive\", \"createdAt\", \"updatedAt\")
             SELECT 'clmainadmin01', s.id, 'main@sapphireclinicseast.org',
                    '\$2b\$12\$CzbS0M/M1L9Fj7EaChT0jO6d56oL.wFiGwaw5ayPlgjKzqBtd/64.',
                    'ADMIN', true, NOW(), NOW()
             FROM \"Staff\" s
-            WHERE s.department IN ('OT','PT','SLP','SPED','PSYCHOLOGY')
-            ORDER BY s.\"createdAt\" LIMIT 1
-            ON CONFLICT (email) DO UPDATE SET \"passwordHash\" = EXCLUDED.\"passwordHash\";
+            WHERE UPPER(s.\"lastName\") LIKE '%JARA%' AND UPPER(s.\"firstName\") LIKE '%HANNAH%'
+            LIMIT 1
+            ON CONFLICT (email) DO NOTHING;
           " && echo "✅ Main admin seeded." || echo "⚠ Admin seed failed."
 
           cd /var/www/sapphireclinicseast.org/teletherapy
