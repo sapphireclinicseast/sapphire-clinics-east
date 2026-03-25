@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import {
   Plus, Pencil, Trash2, X, Search, Stethoscope,
-  ArrowUpDown, ChevronUp, ChevronDown, AlertCircle,
+  ArrowUpDown, ChevronUp, ChevronDown, AlertCircle, XCircle,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
@@ -26,6 +26,7 @@ interface Service {
   doctorFee: string | number | null
   clinicFee: string | number | null
   pwdDiscountClinicOnly: boolean
+  noPwdDiscount: boolean
   description: string | null
   isActive: boolean
   createdAt: string
@@ -95,6 +96,7 @@ export default function ServicesPage() {
   const [fDoctorFee, setFDoctorFee] = useState('')
   const [fClinicFee, setFClinicFee] = useState('')
   const [fPwdClinicOnly, setFPwdClinicOnly] = useState(false)
+  const [fNoPwdDiscount, setFNoPwdDiscount] = useState(false)
   const [fDescription, setFDescription] = useState('')
   const [fWalletType, setFWalletType] = useState('')
   const [fVipTier, setFVipTier] = useState('')
@@ -153,7 +155,7 @@ export default function ServicesPage() {
     setEditing(null)
     setFName(''); setFDept('PT'); setFBranch('ALL'); setFPrice('')
     setFPriceType('FIXED'); setFRevenueType('EARNED'); setFHasDoctorFee(false); setFDoctorFee('')
-    setFClinicFee(''); setFPwdClinicOnly(false); setFDescription('')
+    setFClinicFee(''); setFPwdClinicOnly(false); setFNoPwdDiscount(false); setFDescription('')
     setFWalletType(''); setFVipTier(''); setFPackageSessions(''); setFEligibleServices([]); setEligibleSearch('')
     setError(''); setModalOpen(true)
   }
@@ -166,6 +168,7 @@ export default function ServicesPage() {
     setFDoctorFee(s.doctorFee != null ? String(s.doctorFee) : '')
     setFClinicFee(s.clinicFee != null ? String(s.clinicFee) : '')
     setFPwdClinicOnly(s.pwdDiscountClinicOnly)
+    setFNoPwdDiscount(s.noPwdDiscount)
     setFDescription(s.description || '')
     setFWalletType(s.walletType || '')
     setFVipTier(s.vipTier || '')
@@ -202,6 +205,7 @@ export default function ServicesPage() {
       doctorFee: fHasDoctorFee ? fDoctorFee : null,
       clinicFee: fHasDoctorFee ? fClinicFee : null,
       pwdDiscountClinicOnly: fHasDoctorFee ? fPwdClinicOnly : false,
+      noPwdDiscount: fNoPwdDiscount,
       description: fDescription,
     }
     if (editing) body.id = editing.id
@@ -398,7 +402,11 @@ export default function ServicesPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
-                      {s.hasDoctorFee && s.pwdDiscountClinicOnly ? (
+                      {s.noPwdDiscount ? (
+                        <span className="flex items-center gap-1 text-red-500 font-medium">
+                          <XCircle size={12} /> No PWD Discount
+                        </span>
+                      ) : s.hasDoctorFee && s.pwdDiscountClinicOnly ? (
                         <span className="flex items-center gap-1 text-amber-600 font-medium">
                           <AlertCircle size={12} /> Clinic fee only
                         </span>
@@ -711,6 +719,21 @@ export default function ServicesPage() {
                       )}
                     </div>
                   </div>
+                )}
+              </div>
+
+              {/* No PWD Discount Toggle */}
+              <div className="p-3 rounded-xl border" style={{ borderColor: fNoPwdDiscount ? '#fca5a5' : 'var(--light-gray)', background: fNoPwdDiscount ? '#fef2f2' : 'var(--off-white)' }}>
+                <label className="flex items-center gap-2 text-sm font-medium cursor-pointer" style={{ color: fNoPwdDiscount ? '#991b1b' : 'var(--charcoal)' }}>
+                  <input type="checkbox" checked={fNoPwdDiscount}
+                    onChange={(e) => setFNoPwdDiscount(e.target.checked)}
+                    className="rounded" />
+                  No PWD/Senior Citizen Discount
+                </label>
+                {fNoPwdDiscount && (
+                  <p className="mt-1.5 text-xs" style={{ color: '#991b1b' }}>
+                    When this service is added to an order, the PWD/SC discount checkbox will be disabled at checkout.
+                  </p>
                 )}
               </div>
 

@@ -76,7 +76,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json()
     const { name, department, branch, price, priceType, revenueType, walletType, packageSessions,
-            hasDoctorFee, doctorFee, clinicFee, pwdDiscountClinicOnly, description,
+            hasDoctorFee, doctorFee, clinicFee, pwdDiscountClinicOnly, noPwdDiscount, description,
             eligibleServices } = body
 
     if (!name?.trim() || !department || !branch || price == null) {
@@ -106,6 +106,7 @@ export async function POST(req: Request) {
         doctorFee: hasDoctorFee && doctorFee ? parseFloat(doctorFee) : null,
         clinicFee: hasDoctorFee && clinicFee ? parseFloat(clinicFee) : null,
         pwdDiscountClinicOnly: hasDoctorFee ? (pwdDiscountClinicOnly || false) : false,
+        noPwdDiscount: noPwdDiscount || false,
         description: description?.trim() || null,
         createdById: session.user.id,
       },
@@ -148,7 +149,7 @@ export async function PUT(req: Request) {
   try {
     const body = await req.json()
     const { id, name, department, branch, price, priceType, revenueType, walletType, packageSessions,
-            hasDoctorFee, doctorFee, clinicFee, pwdDiscountClinicOnly, description,
+            hasDoctorFee, doctorFee, clinicFee, pwdDiscountClinicOnly, noPwdDiscount, description,
             eligibleServices } = body
 
     if (!id) {
@@ -179,6 +180,7 @@ export async function PUT(req: Request) {
     if (doctorFee !== undefined) data.doctorFee = doctorFee ? parseFloat(doctorFee) : null
     if (clinicFee !== undefined) data.clinicFee = clinicFee ? parseFloat(clinicFee) : null
     if (pwdDiscountClinicOnly !== undefined) data.pwdDiscountClinicOnly = pwdDiscountClinicOnly
+    if (noPwdDiscount !== undefined) data.noPwdDiscount = noPwdDiscount
     if (description !== undefined) data.description = description?.trim() || null
 
     const service = await prisma.service.update({ where: { id }, data })

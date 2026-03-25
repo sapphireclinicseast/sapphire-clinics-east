@@ -149,6 +149,7 @@ model Service {
   doctorFee             Decimal?
   clinicFee             Decimal?
   pwdDiscountClinicOnly Boolean       @default(false)
+  noPwdDiscount         Boolean       @default(false)
   description           String?
   isActive              Boolean       @default(true)
   createdById           String

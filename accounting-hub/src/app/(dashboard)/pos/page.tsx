@@ -32,6 +32,7 @@ interface ServiceItem {
   branch?: string
   hasDoctorFee?: boolean
   pwdDiscountClinicOnly?: boolean
+  noPwdDiscount?: boolean
   doctorFee?: string | number | null
   clinicFee?: string | number | null
   revenueType?: string
@@ -47,6 +48,7 @@ interface OrderLineItem {
   lineTotal: number
   hasDoctorFee?: boolean
   pwdDiscountClinicOnly?: boolean
+  noPwdDiscount?: boolean
   doctorFee?: number
   clinicFee?: number
 }
@@ -769,6 +771,7 @@ function OrderFormModal({
       lineTotal: price,
       hasDoctorFee: svc.hasDoctorFee,
       pwdDiscountClinicOnly: svc.pwdDiscountClinicOnly,
+      noPwdDiscount: svc.noPwdDiscount,
       doctorFee: svc.doctorFee != null ? toNum(svc.doctorFee) : undefined,
       clinicFee: svc.clinicFee != null ? toNum(svc.clinicFee) : undefined,
     }])
@@ -783,6 +786,10 @@ function OrderFormModal({
   const removeItem = (idx: number) => {
     setItems(prev => prev.filter((_, i) => i !== idx))
   }
+
+  // Check if any item blocks PWD discount
+  const pwdBlocked = items.some(it => it.noPwdDiscount)
+  const pwdBlockedItems = items.filter(it => it.noPwdDiscount).map(it => it.name)
 
   // Calculate totals
   const subtotal = items.reduce((s, it) => s + it.lineTotal, 0)
@@ -1351,14 +1358,20 @@ function OrderFormModal({
           <div className="rounded-xl border p-3 space-y-3" style={{ borderColor: 'var(--light-gray)' }}>
             <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Discounts</h4>
             <div className="flex items-center gap-3">
-              <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: 'var(--charcoal)' }}>
-                <input type="checkbox" checked={pwdDiscount}
-                  onChange={e => { setPwdDiscount(e.target.checked); if (e.target.checked) setCustomDiscountId('') }}
+              <label className={`flex items-center gap-2 text-sm ${pwdBlocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`} style={{ color: 'var(--charcoal)' }}>
+                <input type="checkbox" checked={pwdDiscount && !pwdBlocked}
+                  onChange={e => { if (!pwdBlocked) { setPwdDiscount(e.target.checked); if (e.target.checked) setCustomDiscountId('') } }}
+                  disabled={pwdBlocked}
                   className="rounded" />
                 PWD / Senior Citizen (20%)
               </label>
             </div>
-            {pwdNote && (
+            {pwdBlocked && (
+              <p className="text-xs px-2 py-1 rounded-lg" style={{ background: '#fef2f2', color: '#991b1b' }}>
+                PWD/SC discount is not available — {pwdBlockedItems.join(', ')} {pwdBlockedItems.length === 1 ? 'does' : 'do'} not accept PWD discount
+              </p>
+            )}
+            {pwdNote && !pwdBlocked && (
               <p className="text-xs px-2 py-1 rounded-lg" style={{ background: '#fef3c7', color: '#92400e' }}>{pwdNote}</p>
             )}
             {!pwdDiscount && (
