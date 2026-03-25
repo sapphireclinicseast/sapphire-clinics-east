@@ -21,6 +21,9 @@ import {
   Pencil,
 } from 'lucide-react'
 import { formatTime, formatDate } from '@/lib/utils'
+import { useSession } from 'next-auth/react'
+import PsychologyForm, { type PsychFormData } from '@/components/PsychologyForm'
+import PsychologyNoteDisplay from '@/components/PsychologyNoteDisplay'
 
 interface SessionDetail {
   id: string
@@ -36,6 +39,7 @@ interface SessionDetail {
     firstName: string
     lastName: string
     email: string | null
+    dob: string | null
   } | null
   staff: {
     firstName: string
@@ -73,7 +77,22 @@ export default function SessionDetailPage() {
   const [qrUrl, setQrUrl] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
 
+  // Psychology form state
+  const { data: authSession } = useSession()
+  const isPsychDept = authSession?.user?.department === 'PSYCHOLOGY'
+  const [isFirstSession, setIsFirstSession] = useState(true)
+  const [overrideToProgress, setOverrideToProgress] = useState(false)
+
   useEffect(() => { fetchSession() }, [scheduleId])
+
+  useEffect(() => {
+    if (isPsychDept && session?.id) {
+      fetch(`/api/sessions/${scheduleId}/check-first-session`)
+        .then((r) => r.json())
+        .then((d) => setIsFirstSession(d.isFirstSession))
+        .catch(() => {})
+    }
+  }, [isPsychDept, session?.id, scheduleId])
 
   async function fetchSession() {
     setLoading(true)
@@ -206,6 +225,33 @@ export default function SessionDetailPage() {
     setSendingEmail(false)
   }
 
+  async function handlePsychComplete(data: PsychFormData) {
+    setSubmitting(true)
+    try {
+      // Upload any pending files
+      const attachments: { fileName: string; filePath: string; mimeType: string }[] = []
+      for (const file of files) {
+        const formData = new FormData()
+        formData.append('file', file)
+        formData.append('scheduleId', scheduleId)
+        const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData })
+        if (uploadRes.ok) attachments.push(await uploadRes.json())
+      }
+
+      const res = await fetch(`/api/sessions/${scheduleId}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: JSON.stringify(data), attachments }),
+      })
+      if (res.ok) { showToast('Session completed'); setActionMode(null); setFiles([]); fetchSession() }
+      else { const d = await res.json(); showToast(d.error ?? 'Failed') }
+    } catch { showToast('Failed to complete session') }
+    setSubmitting(false)
+  }
+
+  // Determine effective first-session status (with override)
+  const effectiveFirstSession = isFirstSession && !overrideToProgress
+
   function showToast(msg: string) {
     setToast(msg)
     setTimeout(() => setToast(null), 4000)
@@ -321,14 +367,24 @@ export default function SessionDetailPage() {
             </button>
           </div>
 
-          {session.sessionNote!.notes && (
-            <div className="mb-4">
-              <p className="text-[11px] text-[var(--mid-gray)] uppercase font-semibold tracking-wider mb-1.5">Notes</p>
-              <div className="text-sm whitespace-pre-wrap bg-[var(--off-white)] p-4 rounded-xl border border-[var(--light-gray)]">
-                {session.sessionNote!.notes}
+          {session.sessionNote!.notes && (() => {
+            // Check if notes are structured psych form JSON
+            try {
+              const parsed = JSON.parse(session.sessionNote!.notes!)
+              if (parsed.formType?.startsWith('PSYCH_')) {
+                return <div className="mb-4"><PsychologyNoteDisplay data={parsed} /></div>
+              }
+            } catch {}
+            // Fallback: plain text notes
+            return (
+              <div className="mb-4">
+                <p className="text-[11px] text-[var(--mid-gray)] uppercase font-semibold tracking-wider mb-1.5">Notes</p>
+                <div className="text-sm whitespace-pre-wrap bg-[var(--off-white)] p-4 rounded-xl border border-[var(--light-gray)]">
+                  {session.sessionNote!.notes}
+                </div>
               </div>
-            </div>
-          )}
+            )
+          })()}
 
           {session.sessionNote!.discontinuedRemarks && (
             <div className="mb-4">
@@ -485,7 +541,43 @@ export default function SessionDetailPage() {
       )}
 
       {/* Complete form */}
-      {actionMode === 'complete' && (
+      {actionMode === 'complete' && isPsychDept && session.patient && (
+        <div className="card-static animate-gate">
+          <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+            <CheckCircle2 size={20} className="text-green-500" />
+            Complete Session — Psychology
+          </h2>
+
+          {/* Override toggle for first session */}
+          {isFirstSession && (
+            <div className="mb-4 flex items-center gap-3 bg-amber-50 p-3 rounded-xl border border-amber-200">
+              <label className="flex items-center gap-2 cursor-pointer text-[13px]">
+                <input
+                  type="checkbox"
+                  checked={overrideToProgress}
+                  onChange={(e) => setOverrideToProgress(e.target.checked)}
+                  className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500"
+                />
+                <span className="text-amber-800 font-medium">
+                  Use Progress Notes form instead (returning patient)
+                </span>
+              </label>
+            </div>
+          )}
+
+          <PsychologyForm
+            isFirstSession={effectiveFirstSession}
+            patientName={`${session.patient.firstName} ${session.patient.lastName}`}
+            patientAge={session.patient.dob ? String(Math.floor((Date.now() - new Date(session.patient.dob).getTime()) / 31557600000)) : null}
+            sessionDate={formatDate(session.date)}
+            onSubmit={handlePsychComplete}
+            submitting={submitting}
+            onCancel={() => { setActionMode(null); setFiles([]); setOverrideToProgress(false) }}
+          />
+        </div>
+      )}
+
+      {actionMode === 'complete' && !isPsychDept && (
         <div className="card-static animate-gate">
           <h2 className="font-bold text-[var(--charcoal)] mb-5 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <CheckCircle2 size={20} className="text-green-500" />
