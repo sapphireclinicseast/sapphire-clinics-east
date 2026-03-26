@@ -1828,6 +1828,12 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
   const [editDateReason, setEditDateReason] = useState('')
   const [editDiscountAmt, setEditDiscountAmt] = useState(0)
   const [editDiscountLabel, setEditDiscountLabel] = useState('')
+  const [editDiscountType, setEditDiscountType] = useState('NONE')
+  const [editPwdDiscount, setEditPwdDiscount] = useState(false)
+  const [editCustomDiscountId, setEditCustomDiscountId] = useState('')
+  const [editFreeformAmt, setEditFreeformAmt] = useState(0)
+  const [editFreeformType, setEditFreeformType] = useState<'FIXED' | 'PERCENTAGE'>('FIXED')
+  const [editFreeformRemarks, setEditFreeformRemarks] = useState('')
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState('')
   const [editPatientSearch, setEditPatientSearch] = useState('')
@@ -1920,13 +1926,31 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
     setEditPayments(o.payments.map(p => ({ method: p.method, amount: toNum(p.amount) })))
     setEditDate(o.transactionDate ? o.transactionDate.split('T')[0] : today())
     setEditDateReason('')
-    setEditDiscountAmt(toNum(o.discountAmount))
-    setEditDiscountLabel(o.discountLabel || '')
+    const dAmt = toNum(o.discountAmount)
+    const dType = o.discountType || 'NONE'
+    const dLabel = o.discountLabel || ''
+    setEditDiscountAmt(dAmt)
+    setEditDiscountLabel(dLabel)
+    setEditDiscountType(dType)
+    setEditPwdDiscount(dType === 'PWD_SC')
+    setEditCustomDiscountId(dType === 'CUSTOM' && dAmt > 0 ? '__FREEFORM__' : '')
+    setEditFreeformAmt(dType === 'CUSTOM' ? dAmt : 0)
+    setEditFreeformType('FIXED')
+    setEditFreeformRemarks(dType === 'CUSTOM' ? dLabel : '')
     setEditError('')
   }
 
   const editSubtotal = editItems.reduce((s, it) => s + it.lineTotal, 0)
-  const editNetAmount = Math.max(0, editSubtotal - editDiscountAmt)
+  // Recalculate edit discount based on selected method
+  const computedEditDiscount = (() => {
+    if (editPwdDiscount) return { amount: editSubtotal * 0.2, label: 'PWD/Senior Citizen (20%)', type: 'PWD_SC' }
+    if (editCustomDiscountId === '__FREEFORM__' && editFreeformAmt > 0) {
+      const amt = editFreeformType === 'PERCENTAGE' ? editSubtotal * (editFreeformAmt / 100) : editFreeformAmt
+      return { amount: amt, label: editFreeformRemarks || 'Custom Discount', type: 'CUSTOM' }
+    }
+    return { amount: 0, label: '', type: 'NONE' }
+  })()
+  const editNetAmount = Math.max(0, editSubtotal - computedEditDiscount.amount)
   const editTotalPayments = editPayments.reduce((s, p) => s + p.amount, 0)
 
   const saveEditOrder = async () => {
@@ -1946,9 +1970,9 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
         clinicianName: editClinician || null,
         transactionDate: editDate || null,
         dateChangeReason: editDate !== originalDate ? editDateReason.trim() : null,
-        discountAmount: editDiscountAmt,
-        discountLabel: editDiscountLabel || null,
-        discountType: editDiscountAmt > 0 ? 'CUSTOM' : 'NONE',
+        discountAmount: computedEditDiscount.amount,
+        discountLabel: computedEditDiscount.label || null,
+        discountType: computedEditDiscount.type,
         items: editItems.map(it => ({
           serviceId: it.serviceId || null,
           name: it.name,
@@ -2228,21 +2252,53 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                 </p>
               </div>
 
-              {/* Discount */}
-              <div>
-                <h4 className="text-xs font-semibold mb-2" style={{ color: 'var(--mid-gray)' }}>DISCOUNT</h4>
-                <div className="flex items-center gap-2">
-                  <input type="number" min={0} step="0.01" value={editDiscountAmt || ''}
-                    onChange={e => setEditDiscountAmt(parseFloat(e.target.value) || 0)}
-                    placeholder="Discount amount (₱)"
-                    className="flex-1 px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-                  <input value={editDiscountLabel} onChange={e => setEditDiscountLabel(e.target.value)}
-                    placeholder="Discount label / reason"
-                    className="flex-1 px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+              {/* Discount Section — mirrors New Payment form */}
+              <div className="rounded-xl border p-3 space-y-3" style={{ borderColor: 'var(--light-gray)' }}>
+                <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Discounts</h4>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: 'var(--charcoal)' }}>
+                    <input type="checkbox" checked={editPwdDiscount}
+                      onChange={e => { setEditPwdDiscount(e.target.checked); if (e.target.checked) { setEditCustomDiscountId(''); setEditFreeformAmt(0) } }}
+                      className="rounded" />
+                    PWD / Senior Citizen (20%)
+                  </label>
                 </div>
-                {editDiscountAmt > 0 && (
-                  <p className="text-right text-sm font-semibold mt-1" style={{ color: 'var(--deep-teal)' }}>
-                    Net: {formatCurrency(editNetAmount)}
+                {editPwdDiscount && (
+                  <p className="text-xs font-medium" style={{ color: 'var(--deep-teal)' }}>
+                    Discount: -{formatCurrency(computedEditDiscount.amount)} &middot; Net: {formatCurrency(editNetAmount)}
+                  </p>
+                )}
+                {!editPwdDiscount && (
+                  <div className="space-y-2">
+                    <select value={editCustomDiscountId}
+                      onChange={e => { setEditCustomDiscountId(e.target.value); if (e.target.value !== '__FREEFORM__') { setEditFreeformAmt(0); setEditFreeformRemarks('') } }}
+                      className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                      <option value="">No discount</option>
+                      <option value="__FREEFORM__">Custom amount</option>
+                    </select>
+                    {editCustomDiscountId === '__FREEFORM__' && (
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <select value={editFreeformType} onChange={e => setEditFreeformType(e.target.value as 'FIXED' | 'PERCENTAGE')}
+                            className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                            <option value="FIXED">Fixed (₱)</option>
+                            <option value="PERCENTAGE">Percentage (%)</option>
+                          </select>
+                          <input type="number" min={0} step="0.01" value={editFreeformAmt || ''}
+                            onChange={e => setEditFreeformAmt(parseFloat(e.target.value) || 0)}
+                            placeholder={editFreeformType === 'FIXED' ? 'Amount' : 'Percent'}
+                            className="flex-1 px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                        </div>
+                        <input value={editFreeformRemarks} onChange={e => setEditFreeformRemarks(e.target.value)}
+                          placeholder="Discount reason / label"
+                          className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      </div>
+                    )}
+                  </div>
+                )}
+                {computedEditDiscount.amount > 0 && !editPwdDiscount && (
+                  <p className="text-right text-sm font-semibold" style={{ color: 'var(--deep-teal)' }}>
+                    Discount: -{formatCurrency(computedEditDiscount.amount)} &middot; Net: {formatCurrency(editNetAmount)}
                   </p>
                 )}
               </div>
