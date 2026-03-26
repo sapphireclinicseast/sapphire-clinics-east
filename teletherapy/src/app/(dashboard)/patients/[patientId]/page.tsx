@@ -413,13 +413,38 @@ export default function PatientDetailPage() {
                         {s.sessionType} · {s.staff.lastName} ({s.staff.department})
                       </p>
                     </div>
-                    {s.sessionNote && (
-                      expanded ? <ChevronUp size={16} className="text-[var(--mid-gray)]" /> : <ChevronDown size={16} className="text-[var(--mid-gray)]" />
-                    )}
                     {!s.sessionNote && (
-                      <span className="text-[11px] text-[var(--mid-gray)] italic">No notes</span>
+                      <span className="text-[11px] text-amber-600 font-medium mr-1">Pending</span>
                     )}
+                    {expanded ? <ChevronUp size={16} className="text-[var(--mid-gray)]" /> : <ChevronDown size={16} className="text-[var(--mid-gray)]" />}
                   </button>
+
+                  {/* Expanded: no notes yet — show action buttons */}
+                  {expanded && !s.sessionNote && (
+                    <div className="px-4 pb-4 pt-0 border-t border-[var(--light-gray)]">
+                      <div className="pt-3">
+                        <p className="text-[13px] text-[var(--mid-gray)] mb-3">
+                          No notes recorded for this session. You can add notes now:
+                        </p>
+                        <div className="flex gap-3">
+                          <button
+                            onClick={() => router.push(`/session/${s.id}`)}
+                            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold bg-green-600 text-white hover:bg-green-700 transition-colors"
+                          >
+                            <CheckCircle2 size={16} />
+                            Completed
+                          </button>
+                          <button
+                            onClick={() => router.push(`/session/${s.id}`)}
+                            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors"
+                          >
+                            <XCircle size={16} />
+                            Discontinued
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Expanded notes */}
                   {expanded && s.sessionNote && (

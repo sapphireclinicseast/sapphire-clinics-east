@@ -55,15 +55,23 @@ export async function POST(req: NextRequest) {
     where: { scheduleId },
   })
 
+  const attachment = { fileName: file.name, filePath, mimeType: file.type }
+
   if (existingNote) {
     const currentAttachments = (existingNote.attachments as any[]) ?? []
     await prisma.sessionNote.update({
       where: { scheduleId },
       data: {
-        attachments: [
-          ...currentAttachments,
-          { fileName: file.name, filePath, mimeType: file.type },
-        ],
+        attachments: [...currentAttachments, attachment],
+      },
+    })
+  } else {
+    // Create a session note with the attachment (clinician can add notes later)
+    await prisma.sessionNote.create({
+      data: {
+        scheduleId,
+        status: 'COMPLETED',
+        attachments: [attachment],
       },
     })
   }
