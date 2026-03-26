@@ -67,13 +67,27 @@ export async function POST(req: NextRequest) {
     })
   } else {
     // Create a session note with the attachment (clinician can add notes later)
-    await prisma.sessionNote.create({
-      data: {
-        scheduleId,
-        status: 'COMPLETED',
-        attachments: [attachment],
-      },
+    // Find the therapist account for this schedule's staff
+    const schedule = await prisma.schedule.findUnique({
+      where: { id: scheduleId },
+      select: { staffId: true },
     })
+    if (schedule) {
+      const account = await prisma.therapistAccount.findFirst({
+        where: { staffId: schedule.staffId },
+        select: { id: true },
+      })
+      if (account) {
+        await prisma.sessionNote.create({
+          data: {
+            scheduleId,
+            therapistAccountId: account.id,
+            status: 'COMPLETED',
+            attachments: [attachment],
+          },
+        })
+      }
+    }
   }
 
   return NextResponse.json({ success: true, filePath })
