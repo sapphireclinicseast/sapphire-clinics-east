@@ -189,6 +189,17 @@ export async function POST(req: Request) {
       }
     }
 
+    // Credit HMO/GL wallet balances (accounts receivable — money owed by HMO/GL provider)
+    const RECEIVABLE_METHODS = ['HMO', 'GL']
+    for (const p of payments) {
+      if (RECEIVABLE_METHODS.includes(p.method) && p.walletId) {
+        await prisma.digitalWallet.update({
+          where: { id: p.walletId },
+          data: { balance: { increment: Number(p.amount) } },
+        })
+      }
+    }
+
     await prisma.auditLog.create({
       data: {
         userId: session.user.id,

@@ -1857,12 +1857,12 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
     return () => clearTimeout(t)
   }, [editPatientSearch])
 
-  // Edit modal clinician search
+  // Edit modal clinician search — use the order's branch for accurate results
   useEffect(() => {
     if (editClinicianSearch.length < 2) { setEditClinicianResults([]); return }
     const t = setTimeout(async () => {
       try {
-        const qb = branch || ''
+        const qb = editOrder?.branch || branch || ''
         const r = await fetch(`/api/pos/staff?search=${encodeURIComponent(editClinicianSearch)}&branch=${qb}`)
         const d = await r.json()
         setEditClinicianResults(Array.isArray(d) ? d : d.data || [])

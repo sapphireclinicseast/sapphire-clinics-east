@@ -163,6 +163,18 @@ export async function PUT(
 
       // Delete and recreate payments if provided
       if (payments?.length) {
+        // Reverse old HMO/GL wallet credits before deleting payments
+        const RECEIVABLE_METHODS = ['HMO', 'GL']
+        const oldPayments = await tx.orderPayment.findMany({ where: { orderId: id } })
+        for (const op of oldPayments) {
+          if (RECEIVABLE_METHODS.includes(op.method) && op.walletId) {
+            await tx.digitalWallet.update({
+              where: { id: op.walletId },
+              data: { balance: { decrement: Number(op.amount) } },
+            })
+          }
+        }
+
         await tx.orderPayment.deleteMany({ where: { orderId: id } })
         await tx.orderPayment.createMany({
           data: payments.map((p: {
@@ -178,6 +190,16 @@ export async function PUT(
             reference: p.reference || null,
           })),
         })
+
+        // Apply new HMO/GL wallet credits
+        for (const p of payments) {
+          if (RECEIVABLE_METHODS.includes(p.method) && p.walletId) {
+            await tx.digitalWallet.update({
+              where: { id: p.walletId },
+              data: { balance: { increment: Number(p.amount) } },
+            })
+          }
+        }
       }
 
       return tx.order.update({
