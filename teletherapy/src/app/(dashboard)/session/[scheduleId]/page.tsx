@@ -85,6 +85,7 @@ export default function SessionDetailPage() {
   const [isFirstSession, setIsFirstSession] = useState(true)
   const [overrideToProgress, setOverrideToProgress] = useState(false)
   const [psychUseForm, setPsychUseForm] = useState(true) // true = structured form, false = upload/QR/write
+  const [psychEditUseForm, setPsychEditUseForm] = useState(true) // same toggle for edit mode
 
   useEffect(() => { fetchSession() }, [scheduleId])
 
@@ -485,34 +486,72 @@ export default function SessionDetailPage() {
         </div>
       )}
 
-      {/* Edit form */}
-      {/* Edit form — Psychology structured notes */}
-      {actionMode === 'edit' && session.sessionNote && getPsychData() && (
+      {/* Edit form — Psychology structured notes (with toggle) */}
+      {actionMode === 'edit' && session.sessionNote && isPsychDept && psychEditUseForm && (
         <div className="card-static mb-6 animate-gate">
           <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <Pencil size={20} className="text-[var(--teal)]" />
-            Edit Psychology Session Notes
+            Edit Session Notes
           </h2>
+
+          {/* Mode toggle */}
+          <div className="flex rounded-xl overflow-hidden border border-[var(--light-gray)] mb-5">
+            <button
+              onClick={() => setPsychEditUseForm(true)}
+              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--teal)] text-white"
+            >
+              <FileText size={14} className="inline mr-1.5 -mt-0.5" />
+              Use Form
+            </button>
+            <button
+              onClick={() => setPsychEditUseForm(false)}
+              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors"
+            >
+              <Upload size={14} className="inline mr-1.5 -mt-0.5" />
+              Upload / QR / Write
+            </button>
+          </div>
+
           <PsychologyForm
-            isFirstSession={getPsychData()!.formType === 'PSYCH_INITIAL'}
+            isFirstSession={getPsychData() ? getPsychData()!.formType === 'PSYCH_INITIAL' : isFirstSession}
             patientName={patientName}
             patientAge={session.patient?.dob ? String(Math.floor((Date.now() - new Date(session.patient.dob).getTime()) / 31557600000)) : null}
             sessionDate={formatDate(session.date)}
             onSubmit={handlePsychEdit}
             submitting={submitting}
-            onCancel={() => { setActionMode(null); setFiles([]) }}
+            onCancel={() => { setActionMode(null); setFiles([]); setPsychEditUseForm(true) }}
             initialData={getPsychData()}
           />
         </div>
       )}
 
-      {/* Edit form — Generic notes */}
-      {actionMode === 'edit' && session.sessionNote && !getPsychData() && (
+      {/* Edit form — Generic notes (or psych in upload mode) */}
+      {actionMode === 'edit' && session.sessionNote && (!isPsychDept || !psychEditUseForm) && (
         <div className="card-static mb-6 animate-gate">
           <h2 className="font-bold text-[var(--charcoal)] mb-5 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <Pencil size={20} className="text-[var(--teal)]" />
             Edit {session.sessionNote.status === 'COMPLETED' ? 'Session Notes' : 'Discontinuation Remarks'}
           </h2>
+
+          {/* Psych toggle — so they can switch back to form */}
+          {isPsychDept && session.sessionNote.status === 'COMPLETED' && (
+            <div className="flex rounded-xl overflow-hidden border border-[var(--light-gray)] mb-5">
+              <button
+                onClick={() => setPsychEditUseForm(true)}
+                className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors"
+              >
+                <FileText size={14} className="inline mr-1.5 -mt-0.5" />
+                Use Form
+              </button>
+              <button
+                onClick={() => setPsychEditUseForm(false)}
+                className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--teal)] text-white"
+              >
+                <Upload size={14} className="inline mr-1.5 -mt-0.5" />
+                Upload / QR / Write
+              </button>
+            </div>
+          )}
 
           {session.sessionNote.status === 'COMPLETED' ? (
             <>
