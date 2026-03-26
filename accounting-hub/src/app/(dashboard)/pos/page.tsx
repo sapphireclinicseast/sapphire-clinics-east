@@ -1830,6 +1830,41 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
   const [editDiscountLabel, setEditDiscountLabel] = useState('')
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState('')
+  const [editPatientSearch, setEditPatientSearch] = useState('')
+  const [editPatientResults, setEditPatientResults] = useState<{ id: string; name: string; email?: string }[]>([])
+  const [editShowPatientDrop, setEditShowPatientDrop] = useState(false)
+  const [editClinicianSearch, setEditClinicianSearch] = useState('')
+  const [editClinicianResults, setEditClinicianResults] = useState<{ id: string; name: string; department?: string }[]>([])
+  const [editShowClinicianDrop, setEditShowClinicianDrop] = useState(false)
+
+  // Edit modal patient search
+  useEffect(() => {
+    if (editPatientSearch.length < 2) { setEditPatientResults([]); return }
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/pos/patients?search=${encodeURIComponent(editPatientSearch)}`)
+        const d = await r.json()
+        setEditPatientResults(Array.isArray(d) ? d : d.data || [])
+        setEditShowPatientDrop(true)
+      } catch { setEditPatientResults([]) }
+    }, 300)
+    return () => clearTimeout(t)
+  }, [editPatientSearch])
+
+  // Edit modal clinician search
+  useEffect(() => {
+    if (editClinicianSearch.length < 2) { setEditClinicianResults([]); return }
+    const t = setTimeout(async () => {
+      try {
+        const qb = branch || ''
+        const r = await fetch(`/api/pos/staff?search=${encodeURIComponent(editClinicianSearch)}&branch=${qb}`)
+        const d = await r.json()
+        setEditClinicianResults(Array.isArray(d) ? d : d.data || [])
+        setEditShowClinicianDrop(true)
+      } catch { setEditClinicianResults([]) }
+    }, 300)
+    return () => clearTimeout(t)
+  }, [editClinicianSearch, branch])
 
   const fetchOrders = useCallback(async () => {
     setLoading(true)
@@ -2086,17 +2121,46 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                 )}
               </div>
 
-              {/* Patient & Clinician */}
+              {/* Patient & Clinician — with search */}
               <div className="grid grid-cols-2 gap-3">
-                <div>
+                <div className="relative">
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Patient Name</label>
-                  <input value={editPatient} onChange={e => setEditPatient(e.target.value)}
+                  <input value={editPatient}
+                    onChange={e => { setEditPatient(e.target.value); setEditPatientSearch(e.target.value) }}
+                    onFocus={() => editPatientSearch.length >= 2 && setEditShowPatientDrop(true)}
+                    onBlur={() => setTimeout(() => setEditShowPatientDrop(false), 200)}
+                    placeholder="Search patient..."
                     className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  {editShowPatientDrop && editPatientResults.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border rounded-xl shadow-lg max-h-48 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                      {editPatientResults.map(p => (
+                        <button key={p.id} onClick={() => { setEditPatient(p.name); setEditShowPatientDrop(false) }}
+                          className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 flex items-center justify-between" style={{ color: 'var(--charcoal)' }}>
+                          <span className="font-medium">{p.name}</span>
+                          {p.email ? <span className="text-xs ml-2 truncate" style={{ color: 'var(--mid-gray)' }}>{p.email}</span> : null}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div>
+                <div className="relative">
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Clinician Name</label>
-                  <input value={editClinician} onChange={e => setEditClinician(e.target.value)}
+                  <input value={editClinician}
+                    onChange={e => { setEditClinician(e.target.value); setEditClinicianSearch(e.target.value) }}
+                    onFocus={() => editClinicianSearch.length >= 2 && setEditShowClinicianDrop(true)}
+                    onBlur={() => setTimeout(() => setEditShowClinicianDrop(false), 200)}
+                    placeholder="Search clinician..."
                     className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  {editShowClinicianDrop && editClinicianResults.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border rounded-xl shadow-lg max-h-40 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                      {editClinicianResults.map(c => (
+                        <button key={c.id} onClick={() => { setEditClinician(c.name); setEditShowClinicianDrop(false) }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50" style={{ color: 'var(--charcoal)' }}>
+                          {c.name} {c.department ? <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>({c.department})</span> : null}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
