@@ -553,15 +553,30 @@ export default function SessionDetailPage() {
             </button>
           </div>
 
+          {/* Attachments — show FIRST so they're always visible */}
+          {session.sessionNote!.attachments && (session.sessionNote!.attachments as any[]).length > 0 && (
+            <div className="mb-4">
+              <p className="text-[11px] text-[var(--mid-gray)] uppercase font-semibold tracking-wider mb-1.5">Attachments</p>
+              <div className="flex flex-wrap gap-2">
+                {(session.sessionNote!.attachments as any[]).map((att: any, i: number) => (
+                  <a key={i} href={`/api/upload/${att.filePath}`} target="_blank"
+                     className="flex items-center gap-1.5 text-[13px] text-[var(--teal)] bg-[var(--pale-teal)] px-3 py-2 rounded-xl hover:bg-[var(--teal)] hover:text-white transition-colors font-medium">
+                    <Paperclip size={14} />
+                    {att.fileName}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Notes display */}
           {session.sessionNote!.notes && (() => {
-            // Check if notes are structured psych form JSON
             try {
               const parsed = JSON.parse(session.sessionNote!.notes!)
               if (parsed.formType?.startsWith('PSYCH_')) {
                 return <div className="mb-4"><PsychologyNoteDisplay data={parsed} /></div>
               }
             } catch {}
-            // Fallback: plain text notes
             return (
               <div className="mb-4">
                 <p className="text-[11px] text-[var(--mid-gray)] uppercase font-semibold tracking-wider mb-1.5">Notes</p>
@@ -581,18 +596,10 @@ export default function SessionDetailPage() {
             </div>
           )}
 
-          {session.sessionNote!.attachments && (session.sessionNote!.attachments as any[]).length > 0 && (
-            <div className="mb-4">
-              <p className="text-[11px] text-[var(--mid-gray)] uppercase font-semibold tracking-wider mb-1.5">Attachments</p>
-              <div className="flex flex-wrap gap-2">
-                {(session.sessionNote!.attachments as any[]).map((att: any, i: number) => (
-                  <a key={i} href={`/api/upload/${att.filePath}`} target="_blank"
-                     className="flex items-center gap-1.5 text-[13px] text-[var(--teal)] bg-[var(--pale-teal)] px-3 py-2 rounded-xl hover:bg-[var(--teal)] hover:text-white transition-colors font-medium">
-                    <Paperclip size={14} />
-                    {att.fileName}
-                  </a>
-                ))}
-              </div>
+          {/* No notes and no attachments indicator */}
+          {!session.sessionNote!.notes && (!session.sessionNote!.attachments || (session.sessionNote!.attachments as any[]).length === 0) && (
+            <div className="mb-4 text-center py-6 bg-[var(--off-white)] rounded-xl border border-[var(--light-gray)]">
+              <p className="text-[var(--mid-gray)] text-sm">No notes or attachments yet. Click Edit to add.</p>
             </div>
           )}
 
