@@ -64,9 +64,20 @@ export async function GET(req: NextRequest) {
       },
     })
 
+    // For endorsed patients, verify they have at least one confirmed session with this clinician
     for (const a of endorsedAssignments) {
       if (a.patient && !patientMap.has(a.patient.id)) {
-        patientMap.set(a.patient.id, a.patient)
+        const hasSession = await prisma.schedule.findFirst({
+          where: {
+            patientId: a.patient.id,
+            staffId: session.user.staffId,
+            status: 'CONFIRMED',
+          },
+          select: { id: true },
+        })
+        if (hasSession) {
+          patientMap.set(a.patient.id, a.patient)
+        }
       }
     }
   }
