@@ -87,6 +87,8 @@ export default function SessionDetailPage() {
   const [psychUseForm, setPsychUseForm] = useState(true) // true = structured form, false = upload/QR/write
   const [psychEditUseForm, setPsychEditUseForm] = useState(true) // same toggle for edit mode
   const [captureReceived, setCaptureReceived] = useState<string | null>(null) // filename of received capture
+  const [showClearFormPrompt, setShowClearFormPrompt] = useState(false) // psych: ask to clear form when switching to upload
+  const [clearFormTarget, setClearFormTarget] = useState<'complete' | 'edit' | null>(null) // which mode triggered the prompt
   const qrPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const attachmentCountRef = useRef<number>(0) // track attachment count before QR
 
@@ -173,6 +175,32 @@ export default function SessionDetailPage() {
       if (qrPollRef.current) clearInterval(qrPollRef.current)
     }
   }, [])
+
+  // Handle psych toggle to Upload/QR — check if form has data
+  function handlePsychSwitchToUpload(mode: 'complete' | 'edit') {
+    const hasExistingNotes = session?.sessionNote?.notes && session.sessionNote.notes.trim().length > 0
+    if (hasExistingNotes || (mode === 'complete' && notes.trim())) {
+      // Show prompt asking if they want to clear form data
+      setClearFormTarget(mode)
+      setShowClearFormPrompt(true)
+    } else {
+      // No form data, just switch
+      if (mode === 'complete') setPsychUseForm(false)
+      else setPsychEditUseForm(false)
+    }
+  }
+
+  function handleClearFormChoice(clearIt: boolean) {
+    if (clearIt) {
+      // Clear the notes so only the upload/attachment is saved
+      setNotes('')
+    }
+    // Switch to upload mode regardless
+    if (clearFormTarget === 'complete') setPsychUseForm(false)
+    else setPsychEditUseForm(false)
+    setShowClearFormPrompt(false)
+    setClearFormTarget(null)
+  }
 
   async function handleComplete() {
     setSubmitting(true)
@@ -382,6 +410,40 @@ export default function SessionDetailPage() {
     <div className="max-w-3xl mx-auto">
       {toast && <div className="toast">{toast}</div>}
 
+      {/* Clear Form Prompt — when psych user switches to Upload/QR with existing form data */}
+      {showClearFormPrompt && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center animate-fade-up">
+          <div className="bg-white rounded-2xl p-6 max-w-sm mx-4 shadow-2xl">
+            <h3 className="text-base font-bold text-[var(--charcoal)] mb-3" style={{ fontFamily: 'var(--font-display)' }}>
+              Existing Notes Detected
+            </h3>
+            <p className="text-[13px] text-[var(--mid-gray)] mb-5 leading-relaxed">
+              This session already has filled-up form notes. Would you like to clear the form data and replace with uploads only, or keep the form data and just add attachments?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => handleClearFormChoice(false)}
+                className="w-full py-2.5 rounded-xl text-[13px] font-semibold bg-[var(--teal)] text-white hover:opacity-90 transition-opacity"
+              >
+                Keep form data & add attachments
+              </button>
+              <button
+                onClick={() => handleClearFormChoice(true)}
+                className="w-full py-2.5 rounded-xl text-[13px] font-semibold bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors"
+              >
+                Clear form data (upload only)
+              </button>
+              <button
+                onClick={() => { setShowClearFormPrompt(false); setClearFormTarget(null) }}
+                className="w-full py-2 rounded-xl text-[12px] text-[var(--mid-gray)] hover:text-[var(--charcoal)] transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* QR Capture Received Popup */}
       {captureReceived && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center animate-fade-up" onClick={() => setCaptureReceived(null)}>
@@ -571,11 +633,11 @@ export default function SessionDetailPage() {
               Use Form
             </button>
             <button
-              onClick={() => setPsychEditUseForm(false)}
+              onClick={() => handlePsychSwitchToUpload('edit')}
               className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors"
             >
               <Upload size={14} className="inline mr-1.5 -mt-0.5" />
-              Upload / QR / Write
+              Upload / QR
             </button>
           </div>
 
@@ -615,7 +677,7 @@ export default function SessionDetailPage() {
                 className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--teal)] text-white"
               >
                 <Upload size={14} className="inline mr-1.5 -mt-0.5" />
-                Upload / QR / Write
+                Upload / QR
               </button>
             </div>
           )}
@@ -744,11 +806,11 @@ export default function SessionDetailPage() {
               Use Form
             </button>
             <button
-              onClick={() => setPsychUseForm(false)}
+              onClick={() => handlePsychSwitchToUpload('complete')}
               className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors"
             >
               <Upload size={14} className="inline mr-1.5 -mt-0.5" />
-              Upload / QR / Write
+              Upload / QR
             </button>
           </div>
 
@@ -804,7 +866,7 @@ export default function SessionDetailPage() {
                 className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--teal)] text-white"
               >
                 <Upload size={14} className="inline mr-1.5 -mt-0.5" />
-                Upload / QR / Write
+                Upload / QR
               </button>
             </div>
           )}
