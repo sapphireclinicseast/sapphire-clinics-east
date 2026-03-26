@@ -91,15 +91,28 @@ export async function PATCH(req: NextRequest) {
   }
 
   const body = await req.json()
-  const { id, isActive } = body
+  const { id, isActive, newPassword } = body
 
-  if (!id || typeof isActive !== 'boolean') {
+  if (!id) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
+  }
+
+  const updateData: Record<string, unknown> = {}
+
+  if (typeof isActive === 'boolean') {
+    updateData.isActive = isActive
+  }
+
+  if (newPassword) {
+    if (newPassword.length < 6) {
+      return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 })
+    }
+    updateData.passwordHash = await bcrypt.hash(newPassword, 12)
   }
 
   const updated = await prisma.therapistAccount.update({
     where: { id },
-    data: { isActive },
+    data: updateData,
   })
 
   return NextResponse.json({ account: updated })

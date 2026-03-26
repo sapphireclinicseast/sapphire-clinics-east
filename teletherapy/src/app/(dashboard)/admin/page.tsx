@@ -9,6 +9,7 @@ import {
   Loader2,
   Eye,
   EyeOff,
+  KeyRound,
   Shield,
   ToggleLeft,
   ToggleRight,
@@ -55,6 +56,10 @@ export default function AdminPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [role, setRole] = useState<'THERAPIST' | 'ADMIN'>('THERAPIST')
   const [toast, setToast] = useState<string | null>(null)
+  const [changingPasswordId, setChangingPasswordId] = useState<string | null>(null)
+  const [newPassword, setNewPassword] = useState('')
+  const [showNewPassword, setShowNewPassword] = useState(false)
+  const [savingPassword, setSavingPassword] = useState(false)
 
   useEffect(() => {
     if (session?.user?.role !== 'ADMIN') { router.push('/'); return }
@@ -108,6 +113,26 @@ export default function AdminPage() {
       })
       if (res.ok) { fetchData(); showToast(currentlyActive ? 'Account deactivated' : 'Account activated') }
     } catch { showToast('Failed to update') }
+  }
+
+  async function handleChangePassword(accountId: string) {
+    if (!newPassword || newPassword.length < 6) { showToast('Password must be at least 6 characters'); return }
+    setSavingPassword(true)
+    try {
+      const res = await fetch('/api/therapist-accounts', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: accountId, newPassword }),
+      })
+      if (res.ok) {
+        showToast('Password changed successfully')
+        setChangingPasswordId(null)
+        setNewPassword('')
+      } else {
+        showToast((await res.json()).error ?? 'Failed')
+      }
+    } catch { showToast('Failed to change password') }
+    setSavingPassword(false)
   }
 
   function showToast(msg: string) {
@@ -251,12 +276,48 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                <button onClick={() => toggleActive(acct.id, acct.isActive)}
-                  className={cn('flex items-center gap-1.5 text-[12px] font-semibold px-3 py-2 rounded-xl transition-all active:scale-95',
-                    acct.isActive ? 'text-green-700 hover:bg-green-50' : 'text-red-600 hover:bg-red-50')}>
-                  {acct.isActive ? <><ToggleRight size={20} className="text-green-500" /> Active</> : <><ToggleLeft size={20} className="text-red-400" /> Inactive</>}
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button onClick={() => { setChangingPasswordId(changingPasswordId === acct.id ? null : acct.id); setNewPassword('') }}
+                    className="flex items-center gap-1 text-[12px] font-semibold px-2.5 py-2 rounded-xl text-[var(--teal)] hover:bg-[var(--pale-teal)] transition-all active:scale-95"
+                    title="Change password">
+                    <KeyRound size={15} />
+                  </button>
+                  <button onClick={() => toggleActive(acct.id, acct.isActive)}
+                    className={cn('flex items-center gap-1.5 text-[12px] font-semibold px-3 py-2 rounded-xl transition-all active:scale-95',
+                      acct.isActive ? 'text-green-700 hover:bg-green-50' : 'text-red-600 hover:bg-red-50')}>
+                    {acct.isActive ? <><ToggleRight size={20} className="text-green-500" /> Active</> : <><ToggleLeft size={20} className="text-red-400" /> Inactive</>}
+                  </button>
+                </div>
               </div>
+
+              {/* Change password inline form */}
+              {changingPasswordId === acct.id && (
+                <div className="mt-3 p-3 bg-[var(--off-white)] rounded-xl border border-[var(--light-gray)] flex items-center gap-3">
+                  <KeyRound size={16} className="text-[var(--teal)] shrink-0" />
+                  <div className="relative flex-1">
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="New password (min 6 chars)"
+                      className="input !rounded-lg !py-2 !pr-10 text-[13px]"
+                      autoFocus
+                    />
+                    <button type="button" onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--mid-gray)] hover:text-[var(--charcoal)]">
+                      {showNewPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                  <button onClick={() => handleChangePassword(acct.id)} disabled={savingPassword || newPassword.length < 6}
+                    className="btn-primary !py-2 !px-4 !text-[12px] !rounded-lg">
+                    {savingPassword ? <Loader2 size={14} className="animate-spin" /> : 'Save'}
+                  </button>
+                  <button onClick={() => { setChangingPasswordId(null); setNewPassword('') }}
+                    className="text-[var(--mid-gray)] hover:text-[var(--charcoal)] text-[12px] font-medium">
+                    Cancel
+                  </button>
+                </div>
+              )}
             ))}
           </div>
         )}
