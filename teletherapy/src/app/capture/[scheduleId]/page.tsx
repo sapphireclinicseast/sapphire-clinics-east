@@ -54,11 +54,11 @@ export default function CapturePage() {
         body: formData,
       })
 
+      const responseData = await uploadRes.json()
       if (uploadRes.ok) {
         setStatus('done')
       } else {
-        const data = await uploadRes.json()
-        setError(data.error ?? 'Upload failed')
+        setError(responseData.error ?? 'Upload failed')
         setStatus('error')
       }
     } catch {
@@ -171,11 +171,14 @@ export default function CapturePage() {
         {status === 'done' && (
           <div className="text-center">
             <CheckCircle2 className="w-16 h-16 text-green-400 mx-auto mb-3" />
-            <h2 className="text-white font-semibold text-lg mb-1">Uploaded!</h2>
-            <p className="text-white/60 text-sm">
+            <h2 className="text-white font-semibold text-lg mb-1">Uploaded Successfully!</h2>
+            <p className="text-white/60 text-sm mb-1">
               The photo has been attached to the session notes.
             </p>
-            <p className="text-white/40 text-xs mt-4">You can close this page.</p>
+            <p className="text-white/50 text-xs mb-6">
+              The clinician will see a confirmation on their screen.
+            </p>
+            <p className="text-white/40 text-xs">You can close this page.</p>
           </div>
         )}
       </div>
