@@ -116,7 +116,7 @@ export default function AdminPage() {
   }
 
   async function handleChangePassword(accountId: string) {
-    if (!newPassword || newPassword.length < 6) { showToast('Password must be at least 6 characters'); return }
+    if (!newPassword || newPassword.length < 8) { showToast('Password must be at least 8 characters'); return }
     setSavingPassword(true)
     try {
       const res = await fetch('/api/therapist-accounts', {
@@ -304,7 +304,7 @@ export default function AdminPage() {
                       type={showNewPassword ? 'text' : 'password'}
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="New password (min 6 chars)"
+                      placeholder="New password (min 8 chars)"
                       className="input !rounded-lg !py-2 !pr-10 text-[13px]"
                       autoFocus
                     />
@@ -313,7 +313,7 @@ export default function AdminPage() {
                       {showNewPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                     </button>
                   </div>
-                  <button onClick={() => handleChangePassword(acct.id)} disabled={savingPassword || newPassword.length < 6}
+                  <button onClick={() => handleChangePassword(acct.id)} disabled={savingPassword || newPassword.length < 8}
                     className="btn-primary !py-2 !px-4 !text-[12px] !rounded-lg">
                     {savingPassword ? <Loader2 size={14} className="animate-spin" /> : 'Save'}
                   </button>

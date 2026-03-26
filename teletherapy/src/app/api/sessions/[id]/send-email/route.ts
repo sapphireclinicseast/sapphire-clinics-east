@@ -3,6 +3,15 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
 import { readFile } from 'fs/promises'
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
 import { existsSync } from 'fs'
 import path from 'path'
 
@@ -67,7 +76,7 @@ export async function POST(
           <p style="color: rgba(255,255,255,0.7); margin: 4px 0 0; font-size: 14px;">Sapphire Clinics East, Inc.</p>
         </div>
         <div style="background: white; padding: 24px; border: 1px solid #EDE8E3; border-top: none; border-radius: 0 0 12px 12px;">
-          <p>Dear <strong>${patientName}</strong>,</p>
+          <p>Dear <strong>${escapeHtml(patientName)}</strong>,</p>
           <p>Here are the notes from your teletherapy session:</p>
           <div style="background: #FDFAF7; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
             <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
@@ -79,7 +88,7 @@ export async function POST(
           </div>
           ${schedule.sessionNote.notes ? `
             <h3 style="font-size: 14px; color: #A09383;">Session Notes</h3>
-            <div style="background: #FDFAF7; padding: 12px; border-radius: 8px; font-size: 14px; white-space: pre-wrap;">${schedule.sessionNote.notes}</div>
+            <div style="background: #FDFAF7; padding: 12px; border-radius: 8px; font-size: 14px; white-space: pre-wrap;">${escapeHtml(schedule.sessionNote.notes)}</div>
           ` : ''}
           ${attachmentListHtml}
           <p style="font-size: 13px; color: #A09383; margin-top: 24px;">

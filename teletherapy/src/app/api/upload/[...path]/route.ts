@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { auth } from '@/lib/auth'
 import { readFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import path from 'path'
@@ -17,6 +18,12 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
+  // Require authentication to access any uploaded file
+  const session = await auth()
+  if (!session?.user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const { path: segments } = await params
   const filePath = path.join(UPLOAD_DIR, ...segments)
 
@@ -39,8 +46,9 @@ export async function GET(
   return new NextResponse(buffer, {
     headers: {
       'Content-Type': contentType,
-      'Content-Disposition': contentType === 'application/pdf' ? 'inline' : 'inline',
-      'Cache-Control': 'public, max-age=31536000, immutable',
+      'Content-Disposition': 'inline',
+      'Cache-Control': 'private, max-age=3600',
+      'X-Content-Type-Options': 'nosniff',
     },
   })
 }

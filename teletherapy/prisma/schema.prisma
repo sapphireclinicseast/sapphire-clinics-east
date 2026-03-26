@@ -102,6 +102,13 @@ model Schedule {
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   sessionNote SessionNote?
+
+  @@index([staffId])
+  @@index([patientId])
+  @@index([date])
+  @@index([status])
+  @@index([staffId, date])
+  @@index([patientId, status])
 }
 
 // ── Gmail account (read from marketing DB for email sending) ──────────────────

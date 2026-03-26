@@ -39,8 +39,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Staff member, email, and password are required' }, { status: 400 })
   }
 
-  if (password.length < 6) {
-    return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 })
+  if (password.length < 8) {
+    return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 })
   }
 
   // Check if staff exists
@@ -104,8 +104,8 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (newPassword) {
-    if (newPassword.length < 6) {
-      return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 })
+    if (newPassword.length < 8) {
+      return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 })
     }
     updateData.passwordHash = await bcrypt.hash(newPassword, 12)
   }

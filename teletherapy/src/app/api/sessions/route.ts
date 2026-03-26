@@ -55,6 +55,7 @@ export async function GET(req: NextRequest) {
       },
     },
     orderBy: { startTime: 'asc' },
+    take: 200,
   })
 
   return NextResponse.json({ sessions: schedules })

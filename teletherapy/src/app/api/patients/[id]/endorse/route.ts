@@ -32,6 +32,11 @@ export async function POST(
     return NextResponse.json({ error: 'Target clinician not found or inactive' }, { status: 404 })
   }
 
+  // Enforce same department for endorsement (admin can bypass)
+  if (session.user.role !== 'ADMIN' && targetAccount.staff.department !== session.user.department) {
+    return NextResponse.json({ error: 'Can only endorse to clinicians in the same department' }, { status: 403 })
+  }
+
   // Create/update assignment for the current clinician as ENDORSED
   await prisma.patientAssignment.upsert({
     where: {

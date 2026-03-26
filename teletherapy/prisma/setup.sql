@@ -96,6 +96,12 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 
--- Indexes
+-- Indexes for performance
 CREATE INDEX IF NOT EXISTS "SessionNote_therapistAccountId_idx" ON "SessionNote"("therapistAccountId");
 CREATE INDEX IF NOT EXISTS "CaptureToken_scheduleId_idx" ON "CaptureToken"("scheduleId");
+CREATE INDEX IF NOT EXISTS "Schedule_staffId_idx" ON "Schedule"("staffId");
+CREATE INDEX IF NOT EXISTS "Schedule_patientId_idx" ON "Schedule"("patientId");
+CREATE INDEX IF NOT EXISTS "Schedule_date_idx" ON "Schedule"("date");
+CREATE INDEX IF NOT EXISTS "Schedule_status_idx" ON "Schedule"("status");
+CREATE INDEX IF NOT EXISTS "Schedule_staffId_date_idx" ON "Schedule"("staffId", "date");
+CREATE INDEX IF NOT EXISTS "Schedule_patientId_status_idx" ON "Schedule"("patientId", "status");
