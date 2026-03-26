@@ -20,6 +20,8 @@ import {
   FileText,
   Pencil,
   ExternalLink,
+  Info,
+  ShieldAlert,
 } from 'lucide-react'
 import { formatTime, formatDate } from '@/lib/utils'
 import PsychologyNoteDisplay from '@/components/PsychologyNoteDisplay'
@@ -69,6 +71,7 @@ export default function PatientDetailPage() {
 
   const [patient, setPatient] = useState<PatientDetail | null>(null)
   const [sessions, setSessions] = useState<SessionItem[]>([])
+  const [otherServices, setOtherServices] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedSession, setExpandedSession] = useState<string | null>(null)
 
@@ -95,6 +98,7 @@ export default function PatientDetailPage() {
         const data = await res.json()
         setPatient(data.patient)
         setSessions(data.sessions)
+        setOtherServices(data.otherServices ?? [])
       }
     } catch {}
     setLoading(false)
@@ -344,6 +348,23 @@ export default function PatientDetailPage() {
               Confirm Discharge
             </button>
             <button onClick={() => { setShowDischarge(false); setDischargeRemarks('') }} className="btn-secondary px-5 rounded-xl">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Other Services Notice — patient confidentiality */}
+      {otherServices.length > 0 && (
+        <div className="mb-6 animate-fade-up stagger-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
+          <div className="flex gap-3">
+            <ShieldAlert size={20} className="text-blue-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-[13px] font-semibold text-blue-800 mb-1">
+                Other Services Availed in the Clinic: {otherServices.join(', ')}
+              </p>
+              <p className="text-[12px] text-blue-600 leading-relaxed">
+                This patient is also receiving services from other departments. For patient confidentiality, only your sessions are displayed here. Coordinate with the front desk for information if needed for interprofessional collaboration.
+              </p>
+            </div>
           </div>
         </div>
       )}

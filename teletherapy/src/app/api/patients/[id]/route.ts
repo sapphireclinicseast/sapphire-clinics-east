@@ -33,38 +33,120 @@ export async function GET(
     return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
   }
 
-  // Check if patient was endorsed to this clinician — if so, show ALL sessions
-  const hasActiveAssignment = !isAdmin ? await prisma.patientAssignment.findFirst({
-    where: { patientId: id, therapistAccountId: session.user.id, status: 'ACTIVE' },
+  // Get the current clinician's staff record to know their department
+  const currentAccount = !isAdmin ? await prisma.therapistAccount.findUnique({
+    where: { id: session.user.id },
+    include: { staff: { select: { id: true, department: true } } },
   }) : null
 
-  // If endorsed or admin, show all sessions; otherwise only own sessions
-  const staffFilter = isAdmin || hasActiveAssignment ? {} : { staffId: session.user.staffId }
+  const currentStaffId = currentAccount?.staffId ?? session.user.staffId
+  const currentDepartment = currentAccount?.staff?.department ?? null
 
-  const sessions = await prisma.schedule.findMany({
-    where: {
-      patientId: id,
-      status: 'CONFIRMED',
-      ...staffFilter,
-    },
-    include: {
-      staff: {
-        select: { firstName: true, lastName: true, department: true },
+  // For NON-ADMIN clinicians: only show sessions handled by THIS specific clinician
+  // Even endorsed patients — only show sessions where the clinician was the provider
+  // Admin sees everything
+  let ownSessions
+  if (isAdmin) {
+    ownSessions = await prisma.schedule.findMany({
+      where: {
+        patientId: id,
+        status: 'CONFIRMED',
       },
-      sessionNote: {
-        select: {
-          id: true,
-          status: true,
-          notes: true,
-          attachments: true,
-          discontinuedRemarks: true,
-          emailSentAt: true,
-          createdAt: true,
+      include: {
+        staff: {
+          select: { firstName: true, lastName: true, department: true },
+        },
+        sessionNote: {
+          select: {
+            id: true,
+            status: true,
+            notes: true,
+            attachments: true,
+            discontinuedRemarks: true,
+            emailSentAt: true,
+            createdAt: true,
+          },
         },
       },
-    },
-    orderBy: { date: 'desc' },
-  })
+      orderBy: { date: 'desc' },
+    })
+  } else {
+    // For endorsed patients, also include sessions from the original clinician who endorsed
+    // But ONLY if they are in the same department AND specifically endorsed to this clinician
+    const endorsedFrom = await prisma.patientAssignment.findFirst({
+      where: {
+        patientId: id,
+        therapistAccountId: session.user.id,
+        status: 'ACTIVE',
+      },
+      include: {
+        endorsedBy: {
+          select: { staffId: true, staff: { select: { department: true } } },
+        },
+      },
+    })
+
+    // Build list of staffIds whose sessions this clinician can see
+    // Only their OWN sessions
+    const allowedStaffIds: string[] = [currentStaffId]
+
+    // If endorsed, also include sessions from the endorser (same clinician chain)
+    // Actually NO — for confidentiality, only show sessions handled by THIS clinician
+    // The endorsed clinician starts fresh with the patient
+
+    ownSessions = await prisma.schedule.findMany({
+      where: {
+        patientId: id,
+        status: 'CONFIRMED',
+        staffId: { in: allowedStaffIds },
+      },
+      include: {
+        staff: {
+          select: { firstName: true, lastName: true, department: true },
+        },
+        sessionNote: {
+          select: {
+            id: true,
+            status: true,
+            notes: true,
+            attachments: true,
+            discontinuedRemarks: true,
+            emailSentAt: true,
+            createdAt: true,
+          },
+        },
+      },
+      orderBy: { date: 'desc' },
+    })
+  }
+
+  // For NON-ADMIN: find what OTHER departments/services this patient has used
+  // without revealing session details
+  let otherServices: string[] = []
+  if (!isAdmin) {
+    const allDepartments = await prisma.schedule.findMany({
+      where: {
+        patientId: id,
+        status: 'CONFIRMED',
+        staffId: { not: currentStaffId },
+      },
+      select: {
+        staff: {
+          select: { department: true },
+        },
+      },
+      distinct: ['staffId'],
+    })
+
+    // Collect unique department abbreviations that are NOT the current clinician's
+    const deptSet = new Set<string>()
+    for (const s of allDepartments) {
+      if (s.staff?.department && s.staff.department !== currentDepartment) {
+        deptSet.add(s.staff.department)
+      }
+    }
+    otherServices = Array.from(deptSet).sort()
+  }
 
   // Get assignment info
   const assignment = await prisma.patientAssignment.findFirst({
@@ -75,5 +157,10 @@ export async function GET(
     orderBy: { createdAt: 'desc' },
   })
 
-  return NextResponse.json({ patient, sessions, assignment })
+  return NextResponse.json({
+    patient,
+    sessions: ownSessions,
+    assignment,
+    otherServices, // e.g. ["MD", "OT"] — departments the patient also sees
+  })
 }
