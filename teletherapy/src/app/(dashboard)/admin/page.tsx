@@ -14,6 +14,7 @@ import {
   ToggleLeft,
   ToggleRight,
   Clock,
+  Mail,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -60,6 +61,9 @@ export default function AdminPage() {
   const [newPassword, setNewPassword] = useState('')
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [savingPassword, setSavingPassword] = useState(false)
+  const [editingEmailId, setEditingEmailId] = useState<string | null>(null)
+  const [newEmail, setNewEmail] = useState('')
+  const [savingEmail, setSavingEmail] = useState(false)
 
   useEffect(() => {
     if (session?.user?.role !== 'ADMIN') { router.push('/'); return }
@@ -133,6 +137,27 @@ export default function AdminPage() {
       }
     } catch { showToast('Failed to change password') }
     setSavingPassword(false)
+  }
+
+  async function handleChangeEmail(accountId: string) {
+    if (!newEmail || !newEmail.includes('@')) { showToast('Please enter a valid email'); return }
+    setSavingEmail(true)
+    try {
+      const res = await fetch('/api/therapist-accounts', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: accountId, newEmail }),
+      })
+      if (res.ok) {
+        showToast('Email updated successfully')
+        setEditingEmailId(null)
+        setNewEmail('')
+        fetchData()
+      } else {
+        showToast((await res.json()).error ?? 'Failed')
+      }
+    } catch { showToast('Failed to update email') }
+    setSavingEmail(false)
   }
 
   function showToast(msg: string) {
@@ -278,7 +303,12 @@ export default function AdminPage() {
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                  <button onClick={() => { setChangingPasswordId(changingPasswordId === acct.id ? null : acct.id); setNewPassword('') }}
+                  <button onClick={() => { setEditingEmailId(editingEmailId === acct.id ? null : acct.id); setNewEmail(acct.email); setChangingPasswordId(null) }}
+                    className="flex items-center gap-1 text-[12px] font-semibold px-2.5 py-2 rounded-xl text-[var(--sand-dark)] hover:bg-[var(--sand-light)] transition-all active:scale-95"
+                    title="Edit email">
+                    <Mail size={15} />
+                  </button>
+                  <button onClick={() => { setChangingPasswordId(changingPasswordId === acct.id ? null : acct.id); setNewPassword(''); setEditingEmailId(null) }}
                     className="flex items-center gap-1 text-[12px] font-semibold px-2.5 py-2 rounded-xl text-[var(--teal)] hover:bg-[var(--pale-teal)] transition-all active:scale-95"
                     title="Change password">
                     <KeyRound size={15} />
@@ -294,6 +324,30 @@ export default function AdminPage() {
                   </button>
                 </div>
               </div> {/* end flex row */}
+
+              {/* Change password inline form */}
+              {/* Edit email inline form */}
+              {editingEmailId === acct.id && (
+                <div className="mt-3 p-3 bg-[var(--off-white)] rounded-xl border border-[var(--light-gray)] flex items-center gap-3">
+                  <Mail size={16} className="text-[var(--sand-dark)] shrink-0" />
+                  <input
+                    type="email"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    placeholder="New email address"
+                    className="input !rounded-lg !py-2 text-[13px] flex-1"
+                    autoFocus
+                  />
+                  <button onClick={() => handleChangeEmail(acct.id)} disabled={savingEmail || !newEmail.includes('@')}
+                    className="btn-primary !py-2 !px-4 !text-[12px] !rounded-lg">
+                    {savingEmail ? <Loader2 size={14} className="animate-spin" /> : 'Save'}
+                  </button>
+                  <button onClick={() => { setEditingEmailId(null); setNewEmail('') }}
+                    className="text-[var(--mid-gray)] hover:text-[var(--charcoal)] text-[12px] font-medium">
+                    Cancel
+                  </button>
+                </div>
+              )}
 
               {/* Change password inline form */}
               {changingPasswordId === acct.id && (

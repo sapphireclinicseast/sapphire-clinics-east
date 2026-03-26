@@ -91,7 +91,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   const body = await req.json()
-  const { id, isActive, newPassword } = body
+  const { id, isActive, newPassword, newEmail } = body
 
   if (!id) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
@@ -108,6 +108,17 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 })
     }
     updateData.passwordHash = await bcrypt.hash(newPassword, 12)
+  }
+
+  if (newEmail) {
+    // Check if email is already in use by another account
+    const existingByEmail = await prisma.therapistAccount.findFirst({
+      where: { email: newEmail, NOT: { id } },
+    })
+    if (existingByEmail) {
+      return NextResponse.json({ error: 'Email already in use by another account' }, { status: 400 })
+    }
+    updateData.email = newEmail
   }
 
   const updated = await prisma.therapistAccount.update({
