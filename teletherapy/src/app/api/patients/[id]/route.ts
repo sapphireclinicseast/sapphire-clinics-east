@@ -73,32 +73,13 @@ export async function GET(
   } else {
     // For endorsed patients, also include sessions from the original clinician who endorsed
     // But ONLY if they are in the same department AND specifically endorsed to this clinician
-    const endorsedFrom = await prisma.patientAssignment.findFirst({
-      where: {
-        patientId: id,
-        therapistAccountId: session.user.id,
-        status: 'ACTIVE',
-      },
-      include: {
-        endorsedBy: {
-          select: { staffId: true, staff: { select: { department: true } } },
-        },
-      },
-    })
-
-    // Build list of staffIds whose sessions this clinician can see
-    // Only their OWN sessions
-    const allowedStaffIds: string[] = [currentStaffId]
-
-    // If endorsed, also include sessions from the endorser (same clinician chain)
-    // Actually NO — for confidentiality, only show sessions handled by THIS clinician
-    // The endorsed clinician starts fresh with the patient
-
+    // For confidentiality: only show sessions handled by THIS clinician
+    // Even if endorsed, the new clinician starts fresh — no access to previous notes
     ownSessions = await prisma.schedule.findMany({
       where: {
         patientId: id,
         status: 'CONFIRMED',
-        staffId: { in: allowedStaffIds },
+        staffId: currentStaffId,
       },
       include: {
         staff: {

@@ -84,6 +84,7 @@ export default function SessionDetailPage() {
   const isPsychDept = authSession?.user?.department === 'PSYCHOLOGY'
   const [isFirstSession, setIsFirstSession] = useState(true)
   const [overrideToProgress, setOverrideToProgress] = useState(false)
+  const [psychUseForm, setPsychUseForm] = useState(true) // true = structured form, false = upload/QR/write
 
   useEffect(() => { fetchSession() }, [scheduleId])
 
@@ -617,12 +618,30 @@ export default function SessionDetailPage() {
       )}
 
       {/* Complete form */}
-      {actionMode === 'complete' && isPsychDept && session.patient && (
+      {actionMode === 'complete' && isPsychDept && session.patient && psychUseForm && (
         <div className="card-static animate-gate">
           <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <CheckCircle2 size={20} className="text-green-500" />
             Complete Session — Psychology
           </h2>
+
+          {/* Mode toggle: Form vs Upload/QR */}
+          <div className="flex rounded-xl overflow-hidden border border-[var(--light-gray)] mb-5">
+            <button
+              onClick={() => setPsychUseForm(true)}
+              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--teal)] text-white"
+            >
+              <FileText size={14} className="inline mr-1.5 -mt-0.5" />
+              Use Form
+            </button>
+            <button
+              onClick={() => setPsychUseForm(false)}
+              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors"
+            >
+              <Upload size={14} className="inline mr-1.5 -mt-0.5" />
+              Upload / QR / Write
+            </button>
+          </div>
 
           {/* Override toggle for first session */}
           {isFirstSession && (
@@ -648,17 +667,38 @@ export default function SessionDetailPage() {
             sessionDate={formatDate(session.date)}
             onSubmit={handlePsychComplete}
             submitting={submitting}
-            onCancel={() => { setActionMode(null); setFiles([]); setOverrideToProgress(false) }}
+            onCancel={() => { setActionMode(null); setFiles([]); setOverrideToProgress(false); setPsychUseForm(true) }}
           />
         </div>
       )}
 
-      {actionMode === 'complete' && !isPsychDept && (
+      {/* Upload/QR/Write mode — shown for non-psych OR psych when they chose Upload mode */}
+      {actionMode === 'complete' && (!isPsychDept || !psychUseForm) && (
         <div className="card-static animate-gate">
           <h2 className="font-bold text-[var(--charcoal)] mb-5 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <CheckCircle2 size={20} className="text-green-500" />
             Complete Session
           </h2>
+
+          {/* Psych toggle — so they can switch back to form */}
+          {isPsychDept && (
+            <div className="flex rounded-xl overflow-hidden border border-[var(--light-gray)] mb-5">
+              <button
+                onClick={() => setPsychUseForm(true)}
+                className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors"
+              >
+                <FileText size={14} className="inline mr-1.5 -mt-0.5" />
+                Use Form
+              </button>
+              <button
+                onClick={() => setPsychUseForm(false)}
+                className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--teal)] text-white"
+              >
+                <Upload size={14} className="inline mr-1.5 -mt-0.5" />
+                Upload / QR / Write
+              </button>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
             {[
