@@ -211,3 +211,109 @@ jobs:
           echo ""
           echo "✅ Teletherapy deployed."
           REMOTE_SCRIPT
+
+      # ── 8. Setup automated database backups ──
+      - name: Setup Database Backups
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            BACKUP_DIR="/var/backups/sapphire-db"
+            mkdir -p "$BACKUP_DIR"
+
+            echo "→ Setting up daily database backup script..."
+            cat > /usr/local/bin/sapphire-db-backup.sh << 'BACKUP_SCRIPT'
+            #!/bin/bash
+            set -e
+            BACKUP_DIR="/var/backups/sapphire-db"
+            TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+            BACKUP_FILE="$BACKUP_DIR/sapphire_marketing_$TIMESTAMP.sql.gz"
+
+            # Dump the database from the Docker container and compress
+            docker exec sapphire_db pg_dump -U sapphire -d sapphire_marketing --no-owner --no-acl 2>/dev/null | gzip > "$BACKUP_FILE"
+
+            if [ -s "$BACKUP_FILE" ]; then
+              echo "$(date): Backup created: $BACKUP_FILE ($(du -h "$BACKUP_FILE" | cut -f1))"
+
+              # Also backup uploaded files (session note attachments)
+              UPLOADS_BACKUP="$BACKUP_DIR/uploads_$TIMESTAMP.tar.gz"
+              if [ -d "/var/www/sapphireclinicseast.org/teletherapy/uploads" ]; then
+                tar -czf "$UPLOADS_BACKUP" -C /var/www/sapphireclinicseast.org/teletherapy uploads/ 2>/dev/null || true
+                echo "$(date): Uploads backup: $UPLOADS_BACKUP ($(du -h "$UPLOADS_BACKUP" | cut -f1))"
+              fi
+
+              # Keep only the last 30 days of backups (rotate old ones)
+              find "$BACKUP_DIR" -name "sapphire_marketing_*.sql.gz" -mtime +30 -delete 2>/dev/null || true
+              find "$BACKUP_DIR" -name "uploads_*.tar.gz" -mtime +30 -delete 2>/dev/null || true
+
+              echo "$(date): Cleanup done. Current backups:"
+              ls -lh "$BACKUP_DIR"/*.gz 2>/dev/null | tail -5
+            else
+              echo "$(date): ERROR - Backup file is empty!"
+              rm -f "$BACKUP_FILE"
+              exit 1
+            fi
+            BACKUP_SCRIPT
+
+            chmod +x /usr/local/bin/sapphire-db-backup.sh
+
+            # Setup daily cron job at 2:00 AM (if not already set)
+            CRON_LINE="0 2 * * * /usr/local/bin/sapphire-db-backup.sh >> /var/log/sapphire-backup.log 2>&1"
+            if ! crontab -l 2>/dev/null | grep -q "sapphire-db-backup"; then
+              (crontab -l 2>/dev/null; echo "$CRON_LINE") | crontab -
+              echo "✅ Daily backup cron job installed (2:00 AM)"
+            else
+              echo "✅ Backup cron job already exists"
+            fi
+
+            # Run an immediate backup now
+            echo "→ Running immediate backup..."
+            /usr/local/bin/sapphire-db-backup.sh 2>&1
+            echo "✅ Database backup setup complete."
+
+      # ── 9. Configure UFW Firewall ──
+      - name: Configure Firewall
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            echo "→ Configuring UFW firewall..."
+
+            # Install ufw if not present
+            which ufw >/dev/null 2>&1 || apt-get install -y ufw >/dev/null 2>&1
+
+            # Reset to defaults (deny incoming, allow outgoing)
+            ufw default deny incoming 2>/dev/null || true
+            ufw default allow outgoing 2>/dev/null || true
+
+            # Allow SSH (critical — don't lock yourself out)
+            ufw allow 22/tcp comment "SSH"
+
+            # Allow HTTP/HTTPS for web traffic
+            ufw allow 80/tcp comment "HTTP"
+            ufw allow 443/tcp comment "HTTPS"
+
+            # Block direct access to app ports from outside (only nginx should reach them)
+            # Port 3000 (marketing hub), 3001 (accounting), 3002 (teletherapy), 5432 (postgres)
+            # These are NOT allowed through UFW — only accessible via localhost/Docker network
+            ufw deny 3000/tcp comment "Block direct marketing-hub access" 2>/dev/null || true
+            ufw deny 3001/tcp comment "Block direct accounting-hub access" 2>/dev/null || true
+            ufw deny 3002/tcp comment "Block direct teletherapy access" 2>/dev/null || true
+            ufw deny 5432/tcp comment "Block direct PostgreSQL access" 2>/dev/null || true
+
+            # Enable UFW (non-interactive)
+            echo "y" | ufw enable 2>/dev/null || true
+
+            # Rate limit SSH to prevent brute force
+            ufw limit 22/tcp comment "Rate limit SSH" 2>/dev/null || true
+
+            echo "→ Firewall status:"
+            ufw status verbose 2>&1
+
+            echo "✅ Firewall configured."
