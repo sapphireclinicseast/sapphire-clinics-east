@@ -150,7 +150,7 @@ export default function SessionDetailPage() {
         const res = await fetch(`/api/sessions/${scheduleId}`)
         if (!res.ok) return
         const data = await res.json()
-        const newAttachments = (data.sessionNote?.attachments as any[]) ?? []
+        const newAttachments = (data.session?.sessionNote?.attachments as any[]) ?? []
         if (newAttachments.length > attachmentCountRef.current) {
           // New attachment detected!
           const latest = newAttachments[newAttachments.length - 1]
