@@ -154,10 +154,19 @@ export default function SessionDetailPage() {
         const data = await res.json()
         const newAttachments = (data.session?.sessionNote?.attachments as any[]) ?? []
         if (newAttachments.length > attachmentCountRef.current) {
-          // New attachment detected!
-          const latest = newAttachments[newAttachments.length - 1]
+          // New attachment(s) detected — find what was added
+          const addedAttachments = newAttachments.slice(attachmentCountRef.current)
+          const latest = addedAttachments[addedAttachments.length - 1]
           setCaptureReceived(latest?.fileName ?? 'Photo')
           attachmentCountRef.current = newAttachments.length
+
+          // CRITICAL: Update keptAttachments to include the new QR capture
+          // This prevents handleEdit from overwriting the DB with stale data
+          setKeptAttachments((prev) => {
+            const existingPaths = new Set(prev.map((a) => a.filePath))
+            const newOnes = addedAttachments.filter((a: any) => !existingPaths.has(a.filePath))
+            return [...prev, ...newOnes]
+          })
 
           // Refresh session data to show the new attachment
           fetchSession()

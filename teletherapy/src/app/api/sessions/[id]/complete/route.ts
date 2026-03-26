@@ -23,14 +23,35 @@ export async function POST(
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })
   }
 
-  if (schedule.sessionNote) {
-    return NextResponse.json({ error: 'Session already has a note' }, { status: 400 })
-  }
-
   if (session.user.role !== 'ADMIN' && schedule.staffId !== session.user.staffId) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
+  // If a session note already exists (e.g. created by QR capture), update it
+  // Merge new attachments with existing ones from QR capture
+  if (schedule.sessionNote) {
+    const existingAttachments = Array.isArray(schedule.sessionNote.attachments)
+      ? (schedule.sessionNote.attachments as any[])
+      : []
+    const newAttachments = Array.isArray(body.attachments) ? body.attachments : []
+
+    // Merge: keep existing (from QR capture) + add new (from file upload)
+    const mergedAttachments = [...existingAttachments, ...newAttachments]
+
+    const note = await prisma.sessionNote.update({
+      where: { id: schedule.sessionNote.id },
+      data: {
+        status: 'COMPLETED',
+        notes: body.notes || schedule.sessionNote.notes || null,
+        attachments: mergedAttachments.length > 0 ? mergedAttachments : null,
+        therapistAccountId: session.user.id,
+      },
+    })
+
+    return NextResponse.json({ note })
+  }
+
+  // No existing note — create new
   const note = await prisma.sessionNote.create({
     data: {
       scheduleId: id,
