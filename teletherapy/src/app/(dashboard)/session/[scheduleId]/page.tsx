@@ -887,11 +887,11 @@ export default function SessionDetailPage() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+          <div className={`grid grid-cols-1 ${isPsychDept ? 'sm:grid-cols-2' : 'sm:grid-cols-3'} gap-3 mb-6`}>
             {[
               { icon: Upload, label: 'Upload Photo/PDF', onClick: () => fileInputRef.current?.click() },
               { icon: QrCode, label: 'QR Camera Capture', onClick: generateQR },
-              { icon: FileText, label: 'Write Notes', onClick: () => document.getElementById('notes-area')?.focus() },
+              ...(!isPsychDept ? [{ icon: FileText, label: 'Write Notes', onClick: () => document.getElementById('notes-area')?.focus() }] : []),
             ].map((opt) => (
               <button key={opt.label} onClick={opt.onClick}
                 className="flex flex-col items-center gap-3 p-5 rounded-xl border-2 border-dashed border-[var(--light-gray)] hover:border-[var(--teal)] hover:bg-[var(--pale-teal)] transition-all active:scale-97 group">
