@@ -49,6 +49,7 @@ interface OrderLineItem {
   hasDoctorFee?: boolean
   pwdDiscountClinicOnly?: boolean
   noPwdDiscount?: boolean
+  priceType?: string
   doctorFee?: number
   clinicFee?: number
 }
@@ -772,6 +773,7 @@ function OrderFormModal({
       hasDoctorFee: svc.hasDoctorFee,
       pwdDiscountClinicOnly: svc.pwdDiscountClinicOnly,
       noPwdDiscount: svc.noPwdDiscount,
+      priceType: svc.priceType as string | undefined,
       doctorFee: svc.doctorFee != null ? toNum(svc.doctorFee) : undefined,
       clinicFee: svc.clinicFee != null ? toNum(svc.clinicFee) : undefined,
     }])
@@ -1337,7 +1339,20 @@ function OrderFormModal({
                         <input type="number" min={1} value={it.quantity} onChange={e => updateItemQty(idx, parseInt(e.target.value) || 1)}
                           className="w-16 px-2 py-1 rounded-lg border text-sm text-center outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                       </td>
-                      <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(it.unitPrice)}</td>
+                      <td className="px-3 py-2">
+                        {it.priceType === 'ADJUSTABLE' ? (
+                          <input type="number" min={0} step="0.01" value={it.unitPrice}
+                            onChange={e => {
+                              const p = parseFloat(e.target.value) || 0
+                              setItems(prev => prev.map((x, i) => i === idx ? { ...x, unitPrice: p, lineTotal: p * x.quantity } : x))
+                            }}
+                            className="w-28 px-2 py-1 rounded-lg border text-sm text-right outline-none"
+                            style={{ borderColor: 'var(--teal)', background: '#f0fdfa' }}
+                            placeholder="Enter price" />
+                        ) : (
+                          <span style={{ color: 'var(--mid-gray)' }}>{formatCurrency(it.unitPrice)}</span>
+                        )}
+                      </td>
                       <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(it.lineTotal)}</td>
                       <td className="px-3 py-2">
                         <button onClick={() => removeItem(idx)} className="p-1 rounded hover:bg-red-50">
