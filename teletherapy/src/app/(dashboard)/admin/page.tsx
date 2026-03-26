@@ -247,10 +247,11 @@ export default function AdminPage() {
             {accounts.map((acct, i) => (
               <div key={acct.id}
                 className={cn(
-                  'flex items-center justify-between p-4 rounded-xl border transition-all animate-fade-up',
+                  'p-4 rounded-xl border transition-all animate-fade-up',
                   `stagger-${Math.min(i + 3, 10)}`,
                   acct.isActive ? 'border-[var(--light-gray)] bg-white hover:border-[var(--teal)]/20 hover:shadow-sm' : 'border-red-100 bg-red-50/30'
                 )}>
+                <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className={cn(
                     'w-10 h-10 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0',
@@ -285,10 +286,14 @@ export default function AdminPage() {
                   <button onClick={() => toggleActive(acct.id, acct.isActive)}
                     className={cn('flex items-center gap-1.5 text-[12px] font-semibold px-3 py-2 rounded-xl transition-all active:scale-95',
                       acct.isActive ? 'text-green-700 hover:bg-green-50' : 'text-red-600 hover:bg-red-50')}>
-                    {acct.isActive ? <><ToggleRight size={20} className="text-green-500" /> Active</> : <><ToggleLeft size={20} className="text-red-400" /> Inactive</>}
+                    {acct.isActive ? (
+                      <><ToggleRight size={20} className="text-green-500" /> Active</>
+                    ) : (
+                      <><ToggleLeft size={20} className="text-red-400" /> Inactive</>
+                    )}
                   </button>
                 </div>
-              </div>
+              </div> {/* end flex row */}
 
               {/* Change password inline form */}
               {changingPasswordId === acct.id && (
@@ -318,6 +323,7 @@ export default function AdminPage() {
                   </button>
                 </div>
               )}
+              </div>
             ))}
           </div>
         )}
