@@ -43,7 +43,7 @@ export async function POST(
       data: {
         status: 'COMPLETED',
         notes: body.notes || schedule.sessionNote.notes || null,
-        attachments: mergedAttachments.length > 0 ? mergedAttachments : null,
+        attachments: mergedAttachments.length > 0 ? (mergedAttachments as any) : undefined,
         therapistAccountId: session.user.id,
       },
     })
