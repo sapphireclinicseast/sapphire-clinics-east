@@ -2907,39 +2907,46 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
             {/* Wallet Logs */}
             <div>
               <h4 className="text-sm font-semibold mb-2" style={{ color: 'var(--charcoal)' }}>Activity Logs</h4>
-              {(walletDetail.logs || []).length === 0 ? (
-                <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>No activity yet.</p>
-              ) : (
-                <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr style={{ background: 'var(--off-white)' }}>
-                        {['Date', 'Action', 'Description', 'Sessions', 'Points'].map(h => (
-                          <th key={h} className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--mid-gray)' }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(walletDetail.logs || []).map(log => {
-                        const badge = WALLET_ACTION_BADGE[log.action] || { bg: '#f3f4f6', color: '#374151' }
-                        return (
-                          <tr key={log.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                            <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{formatDate(log.createdAt)}</td>
-                            <td className="px-3 py-2">
-                              <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: badge.bg, color: badge.color }}>
-                                {log.action}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{log.description}</td>
-                            <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{log.sessions ?? '—'}</td>
-                            <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{log.pointsChange ? `${log.pointsChange > 0 ? '+' : ''}${log.pointsChange}` : '—'}</td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              {(() => {
+                const isRewardEligible = ['VIP', 'PREPAID_CARD'].includes(walletDetail.walletType)
+                const headers = isRewardEligible ? ['Date', 'Action', 'Description', 'Sessions', 'Points'] : ['Date', 'Action', 'Description', 'Sessions']
+                const logs = (walletDetail.logs || []).filter(log => !isRewardEligible ? log.action !== 'REWARD_EARN' : true)
+                return logs.length === 0 ? (
+                  <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>No activity yet.</p>
+                ) : (
+                  <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr style={{ background: 'var(--off-white)' }}>
+                          {headers.map(h => (
+                            <th key={h} className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--mid-gray)' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {logs.map(log => {
+                          const badge = WALLET_ACTION_BADGE[log.action] || { bg: '#f3f4f6', color: '#374151' }
+                          return (
+                            <tr key={log.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                              <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{formatDate(log.createdAt)}</td>
+                              <td className="px-3 py-2">
+                                <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: badge.bg, color: badge.color }}>
+                                  {log.action}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{log.description}</td>
+                              <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{log.sessions ?? '—'}</td>
+                              {isRewardEligible && (
+                                <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{log.pointsChange ? `${log.pointsChange > 0 ? '+' : ''}${log.pointsChange}` : '—'}</td>
+                              )}
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              })()}
             </div>
           </div>
         </div>
