@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft,
@@ -86,6 +86,9 @@ export default function SessionDetailPage() {
   const [overrideToProgress, setOverrideToProgress] = useState(false)
   const [psychUseForm, setPsychUseForm] = useState(true) // true = structured form, false = upload/QR/write
   const [psychEditUseForm, setPsychEditUseForm] = useState(true) // same toggle for edit mode
+  const [captureReceived, setCaptureReceived] = useState<string | null>(null) // filename of received capture
+  const qrPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const attachmentCountRef = useRef<number>(0) // track attachment count before QR
 
   useEffect(() => { fetchSession() }, [scheduleId])
 
@@ -130,8 +133,46 @@ export default function SessionDetailPage() {
       const res = await fetch(`/api/sessions/${scheduleId}/qr`, { method: 'POST' })
       const data = await res.json()
       setQrUrl(data.qrDataUrl)
+
+      // Record current attachment count and start polling for new captures
+      const currentAttachments = session?.sessionNote?.attachments as any[] | null
+      attachmentCountRef.current = currentAttachments?.length ?? 0
+      startCapturePoll()
     } catch { showToast('Failed to generate QR code') }
   }
+
+  function startCapturePoll() {
+    // Clear any existing poll
+    if (qrPollRef.current) clearInterval(qrPollRef.current)
+
+    qrPollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/sessions/${scheduleId}`)
+        if (!res.ok) return
+        const data = await res.json()
+        const newAttachments = (data.sessionNote?.attachments as any[]) ?? []
+        if (newAttachments.length > attachmentCountRef.current) {
+          // New attachment detected!
+          const latest = newAttachments[newAttachments.length - 1]
+          setCaptureReceived(latest?.fileName ?? 'Photo')
+          attachmentCountRef.current = newAttachments.length
+
+          // Refresh session data to show the new attachment
+          fetchSession()
+
+          // Auto-dismiss after 6 seconds
+          setTimeout(() => setCaptureReceived(null), 6000)
+        }
+      } catch {}
+    }, 3000)
+  }
+
+  // Cleanup polling on unmount or when QR is dismissed
+  useEffect(() => {
+    return () => {
+      if (qrPollRef.current) clearInterval(qrPollRef.current)
+    }
+  }, [])
 
   async function handleComplete() {
     setSubmitting(true)
@@ -340,6 +381,32 @@ export default function SessionDetailPage() {
   return (
     <div className="max-w-3xl mx-auto">
       {toast && <div className="toast">{toast}</div>}
+
+      {/* QR Capture Received Popup */}
+      {captureReceived && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center animate-fade-up" onClick={() => setCaptureReceived(null)}>
+          <div className="bg-white rounded-2xl p-8 max-w-sm mx-4 text-center shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle2 size={36} className="text-green-600" />
+            </div>
+            <h3 className="text-lg font-bold text-[var(--charcoal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>
+              Photo Received!
+            </h3>
+            <p className="text-[13px] text-[var(--mid-gray)] mb-1">
+              The captured photo has been successfully attached to this session.
+            </p>
+            <p className="text-[12px] text-[var(--teal)] font-medium mb-5 truncate">
+              {captureReceived}
+            </p>
+            <button
+              onClick={() => setCaptureReceived(null)}
+              className="btn-primary py-2.5 px-8 rounded-xl text-[13px]"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Back */}
       <button
@@ -575,7 +642,7 @@ export default function SessionDetailPage() {
                 <div className="mb-6 text-center bg-[var(--off-white)] p-6 rounded-xl border border-[var(--light-gray)]">
                   <p className="text-[13px] text-[var(--mid-gray)] mb-3 font-medium">Scan to photograph handwritten notes</p>
                   <img src={qrUrl} alt="QR Code" className="mx-auto w-48 h-48 rounded-xl" />
-                  <button onClick={() => setQrUrl(null)} className="mt-3 text-[12px] text-[var(--mid-gray)] hover:text-[var(--charcoal)] font-medium">Dismiss</button>
+                  <button onClick={() => { setQrUrl(null); if (qrPollRef.current) clearInterval(qrPollRef.current) }} className="mt-3 text-[12px] text-[var(--mid-gray)] hover:text-[var(--charcoal)] font-medium">Dismiss</button>
                 </div>
               )}
 
@@ -615,11 +682,14 @@ export default function SessionDetailPage() {
                 </div>
               )}
 
-              <div className="mb-6">
-                <label className="block text-[13px] font-semibold text-[var(--charcoal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>Session Notes</label>
-                <textarea id="notes-area" value={notes} onChange={(e) => setNotes(e.target.value)} rows={6} placeholder="Enter session notes here..."
-                  className="input resize-y !rounded-xl" />
-              </div>
+              {/* Hide Session Notes textarea for psychology (they use the form) */}
+              {!isPsychDept && (
+                <div className="mb-6">
+                  <label className="block text-[13px] font-semibold text-[var(--charcoal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>Session Notes</label>
+                  <textarea id="notes-area" value={notes} onChange={(e) => setNotes(e.target.value)} rows={6} placeholder="Enter session notes here..."
+                    className="input resize-y !rounded-xl" />
+                </div>
+              )}
             </>
           ) : (
             <div className="mb-6">
@@ -637,7 +707,7 @@ export default function SessionDetailPage() {
               {submitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
               Save Changes
             </button>
-            <button onClick={() => { setActionMode(null); setFiles([]); setNotes(''); setRemarks(''); setQrUrl(null) }} className="btn-secondary px-6 rounded-xl">Cancel</button>
+            <button onClick={() => { setActionMode(null); setFiles([]); setNotes(''); setRemarks(''); { setQrUrl(null); if (qrPollRef.current) clearInterval(qrPollRef.current) } }} className="btn-secondary px-6 rounded-xl">Cancel</button>
           </div>
         </div>
       )}
@@ -759,7 +829,7 @@ export default function SessionDetailPage() {
             <div className="mb-6 text-center bg-[var(--off-white)] p-6 rounded-xl border border-[var(--light-gray)]">
               <p className="text-[13px] text-[var(--mid-gray)] mb-3 font-medium">Scan to photograph handwritten notes</p>
               <img src={qrUrl} alt="QR Code" className="mx-auto w-48 h-48 rounded-xl" />
-              <button onClick={() => setQrUrl(null)} className="mt-3 text-[12px] text-[var(--mid-gray)] hover:text-[var(--charcoal)] font-medium">Dismiss</button>
+              <button onClick={() => { setQrUrl(null); if (qrPollRef.current) clearInterval(qrPollRef.current) }} className="mt-3 text-[12px] text-[var(--mid-gray)] hover:text-[var(--charcoal)] font-medium">Dismiss</button>
             </div>
           )}
 
@@ -780,19 +850,22 @@ export default function SessionDetailPage() {
             </div>
           )}
 
-          <div className="mb-6">
-            <label className="block text-[13px] font-semibold text-[var(--charcoal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>Session Notes</label>
-            <textarea id="notes-area" value={notes} onChange={(e) => setNotes(e.target.value)} rows={6} placeholder="Enter session notes here..."
-              className="input resize-y !rounded-xl" />
-          </div>
+          {/* Hide Session Notes textarea for psychology (they use the form) */}
+          {!isPsychDept && (
+            <div className="mb-6">
+              <label className="block text-[13px] font-semibold text-[var(--charcoal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>Session Notes</label>
+              <textarea id="notes-area" value={notes} onChange={(e) => setNotes(e.target.value)} rows={6} placeholder="Enter session notes here..."
+                className="input resize-y !rounded-xl" />
+            </div>
+          )}
 
           <div className="flex gap-3">
-            <button onClick={handleComplete} disabled={submitting || (!notes.trim() && files.length === 0)}
+            <button onClick={handleComplete} disabled={submitting || (!isPsychDept && !notes.trim() && files.length === 0)}
               className="btn-primary flex-1 py-3 rounded-xl !bg-gradient-to-r !from-green-600 !to-green-700 !shadow-[0_2px_8px_rgba(22,163,74,0.3)]">
               {submitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
               Save & Complete
             </button>
-            <button onClick={() => { setActionMode(null); setFiles([]); setNotes(''); setQrUrl(null) }} className="btn-secondary px-6 rounded-xl">Cancel</button>
+            <button onClick={() => { setActionMode(null); setFiles([]); setNotes(''); { setQrUrl(null); if (qrPollRef.current) clearInterval(qrPollRef.current) } }} className="btn-secondary px-6 rounded-xl">Cancel</button>
           </div>
         </div>
       )}
