@@ -43,6 +43,7 @@ interface OrderLineItem {
   serviceId?: string
   inventoryItemId?: string
   name: string
+  department?: string
   quantity: number
   unitPrice: number
   lineTotal: number
@@ -767,6 +768,7 @@ function OrderFormModal({
     setItems(prev => [...prev, {
       serviceId: svc.id,
       name: svc.name,
+      department: svc.department,
       quantity: 1,
       unitPrice: price,
       lineTotal: price,
@@ -1117,7 +1119,9 @@ function OrderFormModal({
       }
 
       // 2. Explicit WALLET payment lines (walletId on the payment)
-      const walletPayments = payments.filter(p => p.walletId && toNum(p.amount) > 0 && p.walletId !== activeWallet?.id)
+      // Exclude HMO and GL — those are accounts receivable, credited on the backend (not deducted)
+      const RECEIVABLE_METHODS = ['HMO', 'GL']
+      const walletPayments = payments.filter(p => p.walletId && toNum(p.amount) > 0 && p.walletId !== activeWallet?.id && !RECEIVABLE_METHODS.includes(p.method))
       for (const wp of walletPayments) {
         try {
           await fetch(`/api/pos/wallets/${wp.walletId}/deduct`, {
@@ -1334,7 +1338,10 @@ function OrderFormModal({
                 <tbody>
                   {items.map((it, idx) => (
                     <tr key={idx} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                      <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{it.name}</td>
+                      <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>
+                        {it.name}
+                        {it.department && <span className="ml-1 text-xs font-medium" style={{ color: 'var(--mid-gray)' }}>({it.department})</span>}
+                      </td>
                       <td className="px-3 py-2">
                         <input type="number" min={1} value={it.quantity} onChange={e => updateItemQty(idx, parseInt(e.target.value) || 1)}
                           className="w-16 px-2 py-1 rounded-lg border text-sm text-center outline-none" style={{ borderColor: 'var(--light-gray)' }} />
@@ -3026,6 +3033,52 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
 
             {/* Wallet Logs */}
             <div>
+              {['HMO', 'GL'].includes(walletDetail.walletType) ? (
+                <>
+                  <h4 className="text-sm font-semibold mb-2" style={{ color: 'var(--charcoal)' }}>Transactions</h4>
+                  {(walletDetail as unknown as { orders?: { id: string; orderNumber: number; transactionDate: string; patientName: string; clinicianName: string; items: { name: string }[]; payments: { method: string; amount: string | number; walletId?: string }[] }[] }).orders?.length ? (
+                    <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr style={{ background: 'var(--off-white)' }}>
+                            {['Date', 'Patient', 'Clinician', 'Service', 'Amount'].map(h => (
+                              <th key={h} className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--mid-gray)' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {((walletDetail as unknown as { orders?: { id: string; orderNumber: number; transactionDate: string; patientName: string; clinicianName: string; items: { name: string }[]; payments: { method: string; amount: string | number; walletId?: string }[] }[] }).orders || []).map(o => {
+                            const pay = o.payments.find(p => p.walletId === walletDetail.id)
+                            return (
+                              <tr key={o.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                                <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{formatDate(o.transactionDate)}</td>
+                                <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{o.patientName || '—'}</td>
+                                <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{o.clinicianName || '—'}</td>
+                                <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{o.items.map(it => it.name).join(', ')}</td>
+                                <td className="px-3 py-2 font-semibold text-right" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(pay ? toNum(pay.amount) : 0)}</td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                        <tfoot>
+                          <tr style={{ background: '#f0fdf4' }}>
+                            <td colSpan={4} className="px-3 py-2 text-right font-bold text-xs">TOTAL RECEIVABLE</td>
+                            <td className="px-3 py-2 text-right font-bold text-sm" style={{ color: '#166534' }}>
+                              {formatCurrency(((walletDetail as unknown as { orders?: { payments: { amount: string | number; walletId?: string }[] }[] }).orders || []).reduce((s, o) => {
+                                const pay = o.payments.find(p => p.walletId === walletDetail.id)
+                                return s + (pay ? toNum(pay.amount) : 0)
+                              }, 0))}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>No transactions yet.</p>
+                  )}
+                </>
+              ) : (
+                <>
               <h4 className="text-sm font-semibold mb-2" style={{ color: 'var(--charcoal)' }}>Activity Logs</h4>
               {(() => {
                 const isRewardEligible = ['VIP', 'PREPAID_CARD'].includes(walletDetail.walletType)
@@ -3067,6 +3120,8 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                   </div>
                 )
               })()}
+                </>
+              )}
             </div>
           </div>
         </div>

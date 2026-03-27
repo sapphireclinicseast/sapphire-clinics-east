@@ -36,6 +36,28 @@ export async function GET(
       return NextResponse.json({ error: 'Wallet not found' }, { status: 404 })
     }
 
+    // For HMO/GL wallets, also fetch orders that used this wallet as payment
+    if (['HMO', 'GL'].includes(wallet.walletType)) {
+      const orders = await prisma.order.findMany({
+        where: {
+          payments: { some: { walletId: id } },
+          status: { not: 'VOIDED' },
+        },
+        orderBy: { transactionDate: 'desc' },
+        select: {
+          id: true,
+          orderNumber: true,
+          transactionDate: true,
+          patientName: true,
+          clinicianName: true,
+          items: { select: { name: true } },
+          payments: { select: { method: true, amount: true, walletId: true } },
+        },
+        take: 100,
+      })
+      return NextResponse.json({ ...wallet, orders })
+    }
+
     return NextResponse.json(wallet)
   } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
