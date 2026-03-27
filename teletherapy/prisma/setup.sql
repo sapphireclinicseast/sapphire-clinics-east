@@ -90,6 +90,20 @@ CREATE TABLE IF NOT EXISTS "PatientAssignment" (
 CREATE INDEX IF NOT EXISTS "PatientAssignment_patientId_idx" ON "PatientAssignment"("patientId");
 CREATE INDEX IF NOT EXISTS "PatientAssignment_therapistAccountId_idx" ON "PatientAssignment"("therapistAccountId");
 
+-- ClinicianSettings table (Lic No, PTR No, Signature)
+CREATE TABLE IF NOT EXISTS "ClinicianSettings" (
+  "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+  "therapistAccountId" TEXT NOT NULL,
+  "licenseNo" TEXT,
+  "ptrNo" TEXT,
+  "signatureDataUrl" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "ClinicianSettings_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "ClinicianSettings_therapistAccountId_key" UNIQUE ("therapistAccountId"),
+  CONSTRAINT "ClinicianSettings_therapistAccountId_fkey" FOREIGN KEY ("therapistAccountId") REFERENCES "TherapistAccount"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
 -- Add meetLink column to Schedule if it doesn't exist
 DO $$ BEGIN
   ALTER TABLE "Schedule" ADD COLUMN "meetLink" TEXT;

@@ -150,6 +150,7 @@ model TherapistAccount {
   sessionNotes        SessionNote[]
   patientAssignments  PatientAssignment[]
   endorsedPatients    PatientAssignment[] @relation("EndorsedTo")
+  clinicianSettings   ClinicianSettings?
 }
 
 model SessionNote {
@@ -199,4 +200,15 @@ model CaptureToken {
   expiresAt  DateTime
   used       Boolean  @default(false)
   createdAt  DateTime @default(now())
+}
+
+model ClinicianSettings {
+  id                  String           @id @default(cuid())
+  therapistAccountId  String           @unique
+  therapistAccount    TherapistAccount @relation(fields: [therapistAccountId], references: [id])
+  licenseNo           String?
+  ptrNo               String?
+  signatureDataUrl    String?          @db.Text // base64 signature image
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
 }

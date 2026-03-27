@@ -110,17 +110,25 @@ export default function OTNoteDisplay({ data }: { data: OTFormData }) {
         )}
       </Section>
 
-      {/* Clinician Info */}
-      {(data.clinicianInfo?.licNo || data.clinicianInfo?.ptrNo) && (
+      {/* Clinician Info & Signature */}
+      {(data.clinicianInfo?.licNo || data.clinicianInfo?.ptrNo || data.clinicianInfo?.signatureDataUrl) && (
         <Section title="Clinician Information">
-          <div className="flex gap-4 text-[13px]">
+          <div className="flex gap-4 text-[13px] mb-2">
             {data.clinicianInfo?.licNo && (
-              <span><strong>Lic No:</strong> {data.clinicianInfo.licNo}</span>
+              <span><strong>PRC Lic No:</strong> {data.clinicianInfo.licNo}</span>
             )}
             {data.clinicianInfo?.ptrNo && (
               <span><strong>PTR No:</strong> {data.clinicianInfo.ptrNo}</span>
             )}
           </div>
+          {data.clinicianInfo?.signatureDataUrl && (
+            <div>
+              <p className="text-[11px] text-[var(--mid-gray)] uppercase font-semibold tracking-wider mb-1">Signature</p>
+              <div className="bg-white border border-[var(--light-gray)] rounded-lg p-2 inline-block">
+                <img src={data.clinicianInfo.signatureDataUrl} alt="Clinician Signature" className="max-h-20" />
+              </div>
+            </div>
+          )}
         </Section>
       )}
     </div>

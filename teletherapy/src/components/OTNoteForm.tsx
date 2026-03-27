@@ -65,7 +65,14 @@ export interface OTFormData {
   clinicianInfo: {
     licNo: string
     ptrNo: string
+    signatureDataUrl?: string | null
   }
+}
+
+interface ClinicianSettingsData {
+  licenseNo?: string | null
+  ptrNo?: string | null
+  signatureDataUrl?: string | null
 }
 
 interface Props {
@@ -75,6 +82,7 @@ interface Props {
   submitting: boolean
   onCancel: () => void
   initialData?: OTFormData | null
+  clinicianSettings?: ClinicianSettingsData | null
 }
 
 // ── Collapsible Section ─────────────────────────────────────────────────────
@@ -163,7 +171,7 @@ function RadioGroup({
 
 // ── Main OT Form ────────────────────────────────────────────────────────────
 
-export default function OTNoteForm({ patientName, sessionDate, onSubmit, submitting, onCancel, initialData }: Props) {
+export default function OTNoteForm({ patientName, sessionDate, onSubmit, submitting, onCancel, initialData, clinicianSettings }: Props) {
   const init = initialData
 
   const [sessionType, setSessionType] = useState<string[]>(init?.subjective?.sessionType ?? [])
@@ -184,8 +192,11 @@ export default function OTNoteForm({ patientName, sessionDate, onSubmit, submitt
   const [modifyActivitiesDetails, setModifyActivitiesDetails] = useState(init?.plan?.modifyActivitiesDetails ?? '')
   const [othersDetails, setOthersDetails] = useState(init?.plan?.othersDetails ?? '')
 
-  const [licNo, setLicNo] = useState(init?.clinicianInfo?.licNo ?? '')
-  const [ptrNo, setPtrNo] = useState(init?.clinicianInfo?.ptrNo ?? '')
+  const [licNo, setLicNo] = useState(init?.clinicianInfo?.licNo ?? clinicianSettings?.licenseNo ?? '')
+  const [ptrNo, setPtrNo] = useState(init?.clinicianInfo?.ptrNo ?? clinicianSettings?.ptrNo ?? '')
+  const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(
+    init?.clinicianInfo?.signatureDataUrl ?? clinicianSettings?.signatureDataUrl ?? null
+  )
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -196,7 +207,7 @@ export default function OTNoteForm({ patientName, sessionDate, onSubmit, submitt
       activitiesAndPerformance,
       assessment: { taskExecution, overallParticipation, didWellIn, needsImprovementIn },
       plan: { selectedPlans, continueManagementDetails, modifyActivitiesDetails, othersDetails },
-      clinicianInfo: { licNo, ptrNo },
+      clinicianInfo: { licNo, ptrNo, signatureDataUrl },
     }
     await onSubmit(data)
   }
@@ -295,19 +306,51 @@ export default function OTNoteForm({ patientName, sessionDate, onSubmit, submitt
         </div>
       </CollapsibleSection>
 
-      {/* Section 6: Clinician Info */}
-      <CollapsibleSection title="Clinician Information" defaultOpen={false}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {/* Section 6: Clinician Info & Signature */}
+      <CollapsibleSection title="Clinician Information & Signature" defaultOpen={false}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
           <div>
-            <label className="block text-[12px] font-semibold text-[var(--charcoal)] mb-1">License No.</label>
+            <label className="block text-[12px] font-semibold text-[var(--charcoal)] mb-1">PRC License No.</label>
             <input value={licNo} onChange={(e) => setLicNo(e.target.value)}
-              className="input text-[13px]" placeholder="Lic No." />
+              className="input text-[13px]" placeholder="PRC License No." />
+            {clinicianSettings?.licenseNo && !init?.clinicianInfo?.licNo && (
+              <p className="text-[10px] text-green-600 mt-0.5">Auto-filled from Settings</p>
+            )}
           </div>
           <div>
             <label className="block text-[12px] font-semibold text-[var(--charcoal)] mb-1">PTR No.</label>
             <input value={ptrNo} onChange={(e) => setPtrNo(e.target.value)}
               className="input text-[13px]" placeholder="PTR No." />
+            {clinicianSettings?.ptrNo && !init?.clinicianInfo?.ptrNo && (
+              <p className="text-[10px] text-green-600 mt-0.5">Auto-filled from Settings</p>
+            )}
           </div>
+        </div>
+
+        {/* Signature */}
+        <div>
+          <label className="block text-[12px] font-semibold text-[var(--charcoal)] uppercase tracking-wider mb-2">Signature</label>
+          {signatureDataUrl ? (
+            <div className="border border-[var(--light-gray)] rounded-xl p-3 bg-white">
+              <img src={signatureDataUrl} alt="Signature" className="max-h-24 mx-auto" />
+              <div className="flex justify-center gap-3 mt-2">
+                {clinicianSettings?.signatureDataUrl && (
+                  <p className="text-[10px] text-green-600">Auto-filled from Settings</p>
+                )}
+                <button type="button" onClick={() => setSignatureDataUrl(null)}
+                  className="text-[11px] text-red-500 hover:text-red-700 font-medium">
+                  Remove Signature
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="border-2 border-dashed border-[var(--light-gray)] rounded-xl p-6 text-center">
+              <p className="text-[12px] text-[var(--mid-gray)] mb-2">No signature set</p>
+              <p className="text-[11px] text-[var(--mid-gray)]">
+                Go to <strong>Settings</strong> in the sidebar to set up your digital signature
+              </p>
+            </div>
+          )}
         </div>
       </CollapsibleSection>
 

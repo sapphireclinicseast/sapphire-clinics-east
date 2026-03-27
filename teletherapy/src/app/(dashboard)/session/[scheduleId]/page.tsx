@@ -80,6 +80,7 @@ export default function SessionDetailPage() {
   const [sendingEmail, setSendingEmail] = useState(false)
   const [qrUrl, setQrUrl] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [clinicianSettings, setClinicianSettings] = useState<{ licenseNo?: string | null; ptrNo?: string | null; signatureDataUrl?: string | null } | null>(null)
 
   // Department detection — based on the SESSION's staff dept, not logged-in user
   // This way admin can also see the correct form for each session
@@ -98,7 +99,17 @@ export default function SessionDetailPage() {
   const qrPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const attachmentCountRef = useRef<number>(0) // track attachment count before QR
 
-  useEffect(() => { fetchSession() }, [scheduleId])
+  useEffect(() => { fetchSession(); fetchClinicianSettings() }, [scheduleId])
+
+  async function fetchClinicianSettings() {
+    try {
+      const res = await fetch('/api/clinician-settings')
+      if (res.ok) {
+        const data = await res.json()
+        setClinicianSettings(data.settings ?? null)
+      }
+    } catch {}
+  }
 
   // Auto-enter edit mode when navigated with ?edit=true
   useEffect(() => {
@@ -742,6 +753,7 @@ export default function SessionDetailPage() {
             submitting={submitting}
             onCancel={() => { setActionMode(null); setFiles([]); setPsychEditUseForm(true) }}
             initialData={getOTData()}
+            clinicianSettings={clinicianSettings}
           />
         </div>
       )}

@@ -17,6 +17,81 @@ import path from 'path'
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR ?? './uploads'
 
+function renderNotesHtml(notesStr: string): string {
+  try {
+    const data = JSON.parse(notesStr)
+
+    // OT Daily Notes
+    if (data.formType === 'OT_DAILY_NOTES') {
+      const s = (label: string, content: string) => `
+        <h3 style="font-size: 13px; color: #C06A1F; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 0.5px;">${label}</h3>
+        <div style="background: #FDFAF7; padding: 10px; border-radius: 6px; font-size: 13px; margin-bottom: 8px;">${content}</div>`
+      const pills = (items: string[]) => items.map(i => `<span style="display:inline-block;background:#FFF3E0;color:#E65100;padding:2px 8px;border-radius:4px;font-size:11px;margin:2px;">${escapeHtml(i)}</span>`).join(' ')
+
+      let html = '<h3 style="font-size: 14px; color: #A09383; margin-bottom: 8px;">OT Daily Notes</h3>'
+      if (data.subjective?.sessionType?.length) html += s('Subjective — Session Type', pills(data.subjective.sessionType) + (data.subjective.sessionTypeOther ? `<br/>Other: ${escapeHtml(data.subjective.sessionTypeOther)}` : ''))
+      if (data.objective?.targets?.length) html += s('Objective — Targeted Areas', pills(data.objective.targets) + (data.objective.targetsOther ? `<br/>Other: ${escapeHtml(data.objective.targetsOther)}` : ''))
+      if (data.activitiesAndPerformance) html += s('Activities and Performance', escapeHtml(data.activitiesAndPerformance))
+      if (data.assessment) {
+        let assess = ''
+        if (data.assessment.taskExecution) assess += `<strong>Task/Skills Execution:</strong> ${escapeHtml(data.assessment.taskExecution)}<br/>`
+        if (data.assessment.overallParticipation) assess += `<strong>Overall Participation:</strong> ${escapeHtml(data.assessment.overallParticipation)}<br/>`
+        if (data.assessment.didWellIn) assess += `<strong>Did well in:</strong> ${escapeHtml(data.assessment.didWellIn)}<br/>`
+        if (data.assessment.needsImprovementIn) assess += `<strong>Needs improvement in:</strong> ${escapeHtml(data.assessment.needsImprovementIn)}`
+        if (assess) html += s('Assessment', assess)
+      }
+      if (data.plan?.selectedPlans?.length) {
+        let planHtml = pills(data.plan.selectedPlans)
+        if (data.plan.continueManagementDetails) planHtml += `<br/><strong>Continue mgmt:</strong> ${escapeHtml(data.plan.continueManagementDetails)}`
+        if (data.plan.modifyActivitiesDetails) planHtml += `<br/><strong>Modify activities:</strong> ${escapeHtml(data.plan.modifyActivitiesDetails)}`
+        if (data.plan.othersDetails) planHtml += `<br/><strong>Others:</strong> ${escapeHtml(data.plan.othersDetails)}`
+        html += s('Plan', planHtml)
+      }
+      if (data.clinicianInfo?.licNo || data.clinicianInfo?.ptrNo) {
+        let info = ''
+        if (data.clinicianInfo.licNo) info += `<strong>PRC Lic No:</strong> ${escapeHtml(data.clinicianInfo.licNo)} `
+        if (data.clinicianInfo.ptrNo) info += `<strong>PTR No:</strong> ${escapeHtml(data.clinicianInfo.ptrNo)}`
+        html += s('Clinician Information', info)
+      }
+      return html
+    }
+
+    // Psychology notes
+    if (data.formType?.startsWith('PSYCH_')) {
+      const s = (label: string, content: string) => `
+        <h3 style="font-size: 13px; color: #1a6b5a; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 0.5px;">${label}</h3>
+        <div style="background: #FDFAF7; padding: 10px; border-radius: 6px; font-size: 13px; margin-bottom: 8px;">${content}</div>`
+      const pills = (items: string[]) => items.map(i => `<span style="display:inline-block;background:#E0F2F1;color:#00695C;padding:2px 8px;border-radius:4px;font-size:11px;margin:2px;">${escapeHtml(i)}</span>`).join(' ')
+
+      let html = `<h3 style="font-size: 14px; color: #A09383; margin-bottom: 8px;">${data.formType === 'PSYCH_INITIAL' ? 'Initial Assessment' : 'Progress Notes'}</h3>`
+      if (data.section1) {
+        let info = ''
+        if (data.section1.modality) info += `<strong>Modality:</strong> ${escapeHtml(data.section1.modality)}<br/>`
+        if (data.section1.emergencyContact) info += `<strong>Emergency Contact:</strong> ${escapeHtml(data.section1.emergencyContact)}`
+        if (info) html += s('Client Information', info)
+      }
+      if (data.section2) {
+        if (data.section2.presentingConcerns?.length) html += s('Presenting Concerns', pills(data.section2.presentingConcerns))
+        if (data.section2.treatmentPlan) html += s('Treatment Plan', escapeHtml(data.section2.treatmentPlan))
+        if (data.section2.goals) html += s('Goals', escapeHtml(data.section2.goals))
+        if (data.section2.plansAndRecommendations) html += s('Plans & Recommendations', escapeHtml(data.section2.plansAndRecommendations))
+      }
+      if (data.section3) {
+        if (data.section3.subjectiveData) html += s('Subjective Data', escapeHtml(data.section3.subjectiveData))
+        if (data.section3.psychoEmotionalFunctioning) html += s('Psycho-Emotional Functioning', escapeHtml(data.section3.psychoEmotionalFunctioning))
+        if (data.section3.recommendations) html += s('Recommendations', escapeHtml(data.section3.recommendations))
+      }
+      return html
+    }
+  } catch {}
+
+  // Fallback: plain text notes
+  return `
+    <h3 style="font-size: 14px; color: #A09383;">Session Notes</h3>
+    <div style="background: #FDFAF7; padding: 12px; border-radius: 8px; font-size: 14px; white-space: pre-wrap;">${escapeHtml(notesStr)}</div>
+  `
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -86,10 +161,7 @@ export async function POST(
               <tr><td style="padding: 4px 0; color: #A09383;">Clinician</td><td>${therapistName} (${schedule.staff.department})</td></tr>
             </table>
           </div>
-          ${schedule.sessionNote.notes ? `
-            <h3 style="font-size: 14px; color: #A09383;">Session Notes</h3>
-            <div style="background: #FDFAF7; padding: 12px; border-radius: 8px; font-size: 14px; white-space: pre-wrap;">${escapeHtml(schedule.sessionNote.notes)}</div>
-          ` : ''}
+          ${schedule.sessionNote.notes ? renderNotesHtml(schedule.sessionNote.notes) : ''}
           ${attachmentListHtml}
           <p style="font-size: 13px; color: #A09383; margin-top: 24px;">
             This is an automated message from SCEI Teletherapy. Please contact your clinician directly if you have questions.

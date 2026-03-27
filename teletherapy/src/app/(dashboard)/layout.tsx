@@ -13,6 +13,7 @@ import {
   Menu,
   X,
   ChevronRight,
+  Settings,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -27,6 +28,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
   const navItems = [
     { href: '/', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/patients', label: 'Patients', icon: Users },
+    { href: '/settings', label: 'Settings', icon: Settings },
     ...(isAdmin
       ? [{ href: '/admin', label: 'Admin Panel', icon: Shield }]
       : []),
