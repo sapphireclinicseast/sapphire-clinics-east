@@ -1,13 +1,13 @@
 'use client'
 
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { Plus, Pencil, Trash2, Mail, MailCheck, MessageSquare, ChevronDown, ChevronUp, X, Smartphone } from 'lucide-react'
+import { Plus, Pencil, Trash2, Mail, MailCheck, MessageSquare, ChevronDown, ChevronUp, X, Smartphone, Video } from 'lucide-react'
 
 // ─── Session types per department ────────────────────────────────────────────
 const SESSION_TYPES: Record<string, string[]> = {
-  PT:         ['IE', 'Basic Session', 'Specialized Session', 'Group Session', 'PTC', 'Aquatherapy'],
-  OT:         ['IE', 'Basic Session', 'Specialized Session', 'Group Session', 'PTC', 'Aquatherapy'],
-  SLP:        ['IE', 'Basic Session', 'Specialized Session', 'Group Session', 'PTC', 'Aquatherapy'],
+  OT:         ['IE', 'Basic Session', 'Specialized Session', 'Group Session', 'PTC', 'Aquatherapy', 'IE Intern', 'Session Intern'],
+  PT:         ['IE', 'Basic Session', 'Specialized Session', 'Group Session', 'PTC', 'Aquatherapy', 'IE Intern', 'Session Intern'],
+  SLP:        ['IE', 'Basic Session', 'Specialized Session', 'Group Session', 'PTC', 'Aquatherapy', 'IE Intern', 'Session Intern'],
   SPED:       ['IE', '1-on-1', 'PTC', 'Group Session'],
   MD:         ['Initial Consult', 'Follow Up'],
   PSYCHOLOGY: ['Individual', 'Couple', 'Family', 'Testing'],
@@ -49,12 +49,14 @@ interface Schedule {
   id: string; staffId: string; patientId: string | null; patient: Patient | null
   date: string; startTime: string; endTime: string; duration: string
   sessionType: string; status: string; notes: string | null
+  isTeletherapy: boolean; meetLink: string | null
 }
 
 const EMPTY_FORM = {
   patientId: '', patientLabel: '', date: '',
   startTime: '08:00', duration: '1h', endTime: '09:00',
   sessionType: '', status: 'PENDING', notes: '',
+  isTeletherapy: false,
 }
 
 const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
@@ -245,6 +247,20 @@ function ScheduleForm({ dept, values, onChange, onSubmit, onCancel, error, submi
           </select>
         </div>
         <div className="col-span-2">
+          <label style={labelStyle}>Mode</label>
+          <button type="button" onClick={() => onChange({ ...values, isTeletherapy: !values.isTeletherapy })}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold w-full justify-center"
+            style={{
+              background: values.isTeletherapy ? '#EFF6FF' : '#F8FAFC',
+              color: values.isTeletherapy ? '#1D4ED8' : '#9ca3af',
+              border: `1.5px solid ${values.isTeletherapy ? '#93C5FD' : '#E2E8F0'}`,
+              cursor: 'pointer',
+            }}>
+            <Video size={15} />
+            {values.isTeletherapy ? 'Teletherapy (Jitsi Meet link will be generated)' : 'In-Person (click to switch to Teletherapy)'}
+          </button>
+        </div>
+        <div className="col-span-2">
           <label style={labelStyle}>Notes (optional)</label>
           <textarea style={{ ...inputStyle, resize: 'vertical', minHeight: '60px' }}
             value={values.notes} onChange={e => onChange({ ...values, notes: e.target.value })} />
@@ -282,6 +298,7 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
   const [sendingSmsId, setSendingSmsId] = useState<string | null>(null)
   const [sendingSmsAll, setSendingSmsAll] = useState(false)
   const [sendingClinicianSms, setSendingClinicianSms] = useState(false)
+  const [sendingClinicianEmail, setSendingClinicianEmail] = useState(false)
   const [toast, setToast] = useState('')
   // Last-week suggestions
   const [lastWeekSuggestions, setLastWeekSuggestions] = useState<Schedule[]>([])
@@ -348,6 +365,7 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
       sessionType: s.sessionType,
       status: 'PENDING',
       notes: '',
+      isTeletherapy: s.isTeletherapy || false,
     })
   }
 
@@ -359,7 +377,7 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
     const res = await fetch('/api/clinic-schedule', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ staffId: staff.id, ...form }),
+      body: JSON.stringify({ staffId: staff.id, ...form, isTeletherapy: form.isTeletherapy }),
     })
     setSaving(false)
     if (res.ok) { closeAddForm(); loadSchedules() }
@@ -374,6 +392,7 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
       date: s.date.split('T')[0],
       startTime: s.startTime, endTime: s.endTime, duration: s.duration,
       sessionType: s.sessionType, status: s.status, notes: s.notes ?? '',
+      isTeletherapy: s.isTeletherapy || false,
     })
     setEditError('')
   }
@@ -479,6 +498,22 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
     }
   }
 
+  async function sendClinicianEmail() {
+    setSendingClinicianEmail(true)
+    const res = await fetch('/api/clinic-schedule/send-clinician-email', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ staffId: staff.id, date: selectedDate }),
+    })
+    setSendingClinicianEmail(false)
+    if (res.ok) {
+      const d = await res.json()
+      showToast(`Email sent to ${staff.firstName} (${d.patients} patient${d.patients !== 1 ? 's' : ''})`)
+    } else {
+      const d = await res.json()
+      showToast(d.error ?? 'Failed to send email to clinician')
+    }
+  }
+
   const isSBEA = staff.branch === 'SBEA'
 
   return (
@@ -578,6 +613,7 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
                           sessionType: '',
                           status: 'PENDING',
                           notes: '',
+                          isTeletherapy: false,
                         })}
                         className="px-3 py-1 rounded-full text-xs font-medium transition-colors hover:opacity-80"
                         style={{ background: '#ED6823', color: '#fff' }}
@@ -622,7 +658,16 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
                         <td className="px-3 py-2" style={{ color: 'var(--charcoal)', whiteSpace: 'nowrap' }}>
                           {formatTime(s.startTime)} – {formatTime(s.endTime)}
                         </td>
-                        <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{s.sessionType}</td>
+                        <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>
+                          <span className="flex items-center gap-1.5">
+                            {s.sessionType}
+                            {s.isTeletherapy && (
+                              s.meetLink
+                                ? <a href={s.meetLink} target="_blank" rel="noopener noreferrer" title="Join Meeting" className="hover:opacity-70"><Video size={13} style={{ color: '#1D4ED8' }} /></a>
+                                : <Video size={13} style={{ color: '#93C5FD' }} title="Teletherapy (no link yet)" />
+                            )}
+                          </span>
+                        </td>
                         <td className="px-3 py-2">
                           <span className="px-2 py-0.5 rounded-full font-semibold"
                             style={STATUS_COLORS[s.status] ?? { bg: '#f3f4f6', color: '#374151' }}>
@@ -687,6 +732,13 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
                   style={{ background: '#ED6823', color: '#fff', opacity: (sendingClinicianSms || !staff.phone) ? 0.5 : 1 }}>
                   <Smartphone size={13} />
                   {sendingClinicianSms ? 'Sending…' : 'Send Mobile Text to Clinician on Schedule'}
+                </button>
+                <button onClick={sendClinicianEmail} disabled={sendingClinicianEmail}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                  title={`Email schedule to ${staff.firstName}`}
+                  style={{ background: '#EA580C', color: '#fff', opacity: sendingClinicianEmail ? 0.5 : 1 }}>
+                  <Mail size={13} />
+                  {sendingClinicianEmail ? 'Sending…' : 'Send Email to Clinician on Schedule'}
                 </button>
               </div>
             </div>

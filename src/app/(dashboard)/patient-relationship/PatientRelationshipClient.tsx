@@ -1,0 +1,864 @@
+'use client'
+
+import { useEffect, useState, useCallback, Fragment } from 'react'
+import {
+  HeartHandshake, Phone, Mail, Clock, AlertTriangle, CheckCircle,
+  Calendar, Filter, Users, XCircle, ChevronDown, ChevronRight,
+  Upload, Eye, Trash2, FileText, QrCode, Loader2, X,
+} from 'lucide-react'
+
+type Tab = 'waitlist' | 'followup' | 'cancellation'
+
+const BRANCHES = [
+  { value: 'SANDBOX_EAST', label: 'Sandbox East' },
+  { value: 'SANDBOX_GREENHILLS', label: 'Sandbox Greenhills' },
+]
+
+function branchLabel(b?: string | null) {
+  return BRANCHES.find(x => x.value === b)?.label ?? b ?? '\u2014'
+}
+
+const selectStyle: React.CSSProperties = {
+  padding: '6px 10px', borderRadius: 8, border: '1px solid #d1d5db',
+  fontSize: '0.8rem', color: '#374151', background: '#fff', cursor: 'pointer',
+}
+
+const PAGE_OPTIONS = [25, 50, 75, 100]
+
+function Pagination({ total, page, perPage, onPage, onPerPage }: {
+  total: number; page: number; perPage: number; onPage: (p: number) => void; onPerPage: (n: number) => void
+}) {
+  const pages = Math.ceil(total / perPage)
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-xs" style={{ color: '#6B7280', borderTop: '1px solid #F3F4F6' }}>
+      <div className="flex items-center gap-2">
+        <span>Show</span>
+        <select value={perPage} onChange={e => { onPerPage(Number(e.target.value)); onPage(1) }} style={{ ...selectStyle, padding: '3px 6px', fontSize: '0.75rem' }}>
+          {PAGE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
+        </select>
+        <span>of {total}</span>
+      </div>
+      {pages > 1 && (
+        <div className="flex items-center gap-1">
+          {Array.from({ length: Math.min(pages, 10) }, (_, i) => i + 1).map(p => (
+            <button key={p} onClick={() => onPage(p)}
+              style={{
+                padding: '2px 8px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
+                background: page === p ? 'var(--teal)' : '#F3F4F6', color: page === p ? '#fff' : '#6B7280',
+              }}>{p}</button>
+          ))}
+          {pages > 10 && <span>...</span>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WAITLIST TAB
+// ══════════════════════════════════════════════════════════════════════════════
+
+const WAITLIST_FORMS = [
+  { key: 'registration', label: 'Registration Form' },
+  { key: 'group-therapy', label: 'Group Therapy' },
+  { key: 'sip', label: 'SIP Registration' },
+  { key: 'psych', label: 'Psych Registration' },
+]
+
+function WaitlistTab({ branch }: { branch: string }) {
+  const [formKey, setFormKey] = useState('registration')
+  const [responses, setResponses] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState(25)
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const [converting, setConverting] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [patientNames, setPatientNames] = useState<Set<string>>(new Set())
+
+  // Fetch existing patients to check if already converted
+  useEffect(() => {
+    fetch('/api/patients?limit=10000').then(r => r.json()).then(d => {
+      const names = new Set<string>()
+      for (const p of (d.patients || [])) {
+        const n = `${p.firstName || ''} ${p.lastName || ''}`.trim().toLowerCase()
+        if (n) names.add(n)
+      }
+      setPatientNames(names)
+    }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    setLoading(true); setExpanded(null); setPage(1)
+    const params = new URLSearchParams({ tab: 'waitlist', formKey })
+    if (branch) params.set('branch', branch)
+    fetch(`/api/patient-relationship?${params}`)
+      .then(r => r.json())
+      .then(d => { setResponses(d.responses || []); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [branch, formKey])
+
+  function isConverted(item: any): boolean {
+    const name = getName(item).toLowerCase().trim()
+    return name !== 'unknown' && patientNames.has(name)
+  }
+
+  async function deleteResponse(item: any) {
+    if (!confirm('Are you sure you want to remove this waitlist entry?')) return
+    setDeleting(item.landing_id)
+    try {
+      const res = await fetch(`/api/patient-relationship?tab=waitlist-delete&formId=${item._formId}&submissionId=${item.landing_id}`, { method: 'DELETE' })
+      if (res.ok) {
+        setResponses(prev => prev.filter(r => r.landing_id !== item.landing_id))
+      } else {
+        alert('Failed to delete')
+      }
+    } catch { alert('Failed to delete') }
+    finally { setDeleting(null) }
+  }
+
+  // Extract name from response answers
+  // HR forms store answers with field as object {id, ref, type} and contact info as {contact: {first_name, last_name}}
+  function getFieldTitle(item: any, answer: any): string {
+    const fields = item.fields || []
+    const match = fields.find((f: any) => f.id === answer?.field?.id)
+    return match?.title || ''
+  }
+  function getFieldTitleLower(item: any, answer: any): string {
+    return getFieldTitle(item, answer).toLowerCase()
+  }
+
+  function getName(item: any) {
+    if (!item.answers) return 'Unknown'
+    // Try to find the patient name contact field
+    for (const a of item.answers) {
+      const title = getFieldTitleLower(item, a)
+      if ((title.includes('name') && title.includes('patient')) || title.includes('name of')) {
+        if (a.contact) return `${a.contact.first_name || ''} ${a.contact.last_name || ''}`.trim()
+        if (a.text) return a.text
+      }
+    }
+    // Fallback: first contact_info field
+    const contactAnswer = item.answers.find((a: any) => a.field?.type === 'contact_info' || a.contact)
+    if (contactAnswer?.contact) return `${contactAnswer.contact.first_name || ''} ${contactAnswer.contact.last_name || ''}`.trim()
+    if (contactAnswer?.text) return contactAnswer.text
+    return 'Unknown'
+  }
+
+  const filtered = search
+    ? responses.filter(r => getName(r).toLowerCase().includes(search.toLowerCase()))
+    : responses
+
+  const paginated = filtered.slice((page - 1) * perPage, page * perPage)
+
+  async function convertToPatient(item: any) {
+    setConverting(item.landing_id)
+    try {
+      // Extract fields from the form response
+      const answers = item.answers || []
+      const findByTitle = (keywords: string[]) => {
+        for (const a of answers) {
+          const title = getFieldTitleLower(item, a)
+          if (keywords.some(k => title.includes(k))) return a
+        }
+        return null
+      }
+
+      // Patient name from contact_info field
+      const patientNameAnswer = findByTitle(['name of', 'patient'])
+      const contactAnswer = patientNameAnswer || answers.find((a: any) => a.contact)
+      const firstName = contactAnswer?.contact?.first_name || ''
+      const lastName = contactAnswer?.contact?.last_name || ''
+      const email = contactAnswer?.contact?.email || ''
+      const phone = contactAnswer?.contact?.phone_number || ''
+
+      // Try birthday field
+      const dobAnswer = findByTitle(['birthday', 'birth', 'dob'])
+      const dob = dobAnswer?.text || ''
+
+      // Try diagnosis
+      const diagAnswer = findByTitle(['diagnosis'])
+      const diagnosis = diagAnswer?.text || ''
+
+      const patientData: any = {
+        firstName, lastName, email, phone,
+        patientType: 'PEDIATRIC',
+        branches: branch ? [branch] : (item._branch === 'SBEA' ? ['SANDBOX_EAST'] : item._branch === 'SBGH' ? ['SANDBOX_GREENHILLS'] : []),
+      }
+      if (dob) patientData.dob = dob
+      if (diagnosis) patientData.diagnosis = diagnosis
+
+      const res = await fetch('/api/patients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patientData),
+      })
+      if (res.ok) {
+        alert('Patient converted successfully! They are now in the Patient CRM.')
+        setResponses(prev => prev.filter(r => r.landing_id !== item.landing_id))
+      } else {
+        const d = await res.json()
+        alert(d.error || 'Failed to convert')
+      }
+    } catch (e) {
+      alert('Failed to convert patient')
+    } finally {
+      setConverting(null)
+    }
+  }
+
+  if (loading) return <Loading />
+
+  return (
+    <div className="space-y-4">
+      {/* Sub-tabs for form types */}
+      <div className="flex gap-1 p-1 rounded-lg" style={{ background: '#F1F5F9' }}>
+        {WAITLIST_FORMS.map(f => (
+          <button key={f.key} onClick={() => setFormKey(f.key)}
+            className="px-3 py-1.5 rounded-md text-xs font-semibold"
+            style={{
+              background: formKey === f.key ? '#fff' : 'transparent',
+              color: formKey === f.key ? 'var(--teal)' : '#64748B',
+              border: 'none', cursor: 'pointer', flex: 1,
+              boxShadow: formKey === f.key ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+            }}>{f.label}</button>
+        ))}
+      </div>
+
+      <input type="text" placeholder="Search by name..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ ...selectStyle, width: '100%', maxWidth: 400 }} />
+
+      <div className="rounded-xl overflow-hidden" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+        <table className="w-full text-left" style={{ fontSize: '0.82rem' }}>
+          <thead>
+            <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+              {['', 'Name', 'Form', 'Date'].map(h => (
+                <th key={h} className="px-4 py-3 font-semibold" style={{ color: 'var(--mid-gray)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {paginated.length === 0 ? (
+              <tr><td colSpan={4} className="text-center py-10" style={{ color: '#9ca3af' }}>No responses found.</td></tr>
+            ) : paginated.map((item: any) => {
+              const converted = isConverted(item)
+              return (
+              <Fragment key={item.landing_id}>
+                <tr style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer', background: converted ? '#F0FDF4' : undefined }}
+                  onClick={() => setExpanded(expanded === item.landing_id ? null : item.landing_id)}>
+                  <td className="px-4 py-3" style={{ width: 30 }}>
+                    {expanded === item.landing_id ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  </td>
+                  <td className="px-4 py-3 font-semibold" style={{ color: converted ? '#15803D' : 'var(--charcoal)' }}>
+                    {getName(item)}
+                    {converted && <span className="ml-2 text-xs px-2 py-0.5 rounded-full" style={{ background: '#DCFCE7', color: '#15803D', fontWeight: 600, fontSize: '0.65rem' }}>Converted</span>}
+                  </td>
+                  <td className="px-4 py-3" style={{ color: '#6B7280' }}>{item._formTitle}</td>
+                  <td className="px-4 py-3 flex items-center gap-2" style={{ color: '#374151' }}>
+                    {new Date(item.submitted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    <button onClick={(e) => { e.stopPropagation(); deleteResponse(item) }} disabled={deleting === item.landing_id}
+                      className="ml-auto p-1.5 rounded-lg hover:opacity-80" title="Remove from waitlist"
+                      style={{ background: '#FEE2E2', color: '#DC2626', border: 'none', cursor: 'pointer', lineHeight: 0 }}>
+                      {deleting === item.landing_id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                    </button>
+                  </td>
+                </tr>
+                {expanded === item.landing_id && (
+                  <tr key={item.landing_id + '-detail'}>
+                    <td colSpan={4} className="px-6 py-4" style={{ background: '#F8FAFC' }}>
+                      <div className="space-y-2">
+                        <p className="text-xs font-bold uppercase" style={{ color: 'var(--teal)', letterSpacing: '0.05em' }}>Form Responses</p>
+                        {(item.answers || []).map((a: any, i: number) => {
+                          const title = getFieldTitle(item, a) || `Question ${i + 1}`
+                          let value = a.text || ''
+                          if (a.contact) value = `${a.contact.first_name || ''} ${a.contact.last_name || ''} ${a.contact.phone_number ? '| ' + a.contact.phone_number : ''} ${a.contact.email ? '| ' + a.contact.email : ''}`.trim()
+                          if (a.choices?.labels) value = a.choices.labels.join(', ')
+                          if (a.choice?.label) value = a.choice.label
+                          return (
+                            <div key={i} className="flex gap-2 text-xs">
+                              <span style={{ color: '#6B7280', fontWeight: 600, minWidth: 200 }}>{title}:</span>
+                              <span style={{ color: '#111827' }}>{value || '\u2014'}</span>
+                            </div>
+                          )
+                        })}
+                        <div className="mt-3 flex gap-2">
+                          {!converted && (
+                            <button onClick={() => convertToPatient(item)} disabled={converting === item.landing_id}
+                              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold"
+                              style={{ background: 'var(--teal)', color: '#fff', border: 'none', cursor: 'pointer', opacity: converting === item.landing_id ? 0.6 : 1 }}>
+                              {converting === item.landing_id ? <Loader2 size={13} className="animate-spin" /> : <Users size={13} />}
+                              Convert to Patient
+                            </button>
+                          )}
+                          <button onClick={() => deleteResponse(item)} disabled={deleting === item.landing_id}
+                            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold"
+                            style={{ background: '#FEE2E2', color: '#DC2626', border: 'none', cursor: 'pointer' }}>
+                            {deleting === item.landing_id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                            Remove from Waitlist
+                          </button>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+              )
+            })}
+          </tbody>
+        </table>
+        <Pagination total={filtered.length} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// FOLLOW UP TAB
+// ══════════════════════════════════════════════════════════════════════════════
+
+const DEPT_TABS = [
+  { key: 'PT', label: 'PT' },
+  { key: 'OT', label: 'OT' },
+  { key: 'SLP', label: 'SLP' },
+  { key: 'SPED', label: 'SPED' },
+  { key: 'PSYCHOLOGY', label: 'Psych' },
+  { key: 'MD', label: 'MD' },
+]
+
+const DEPT_NOTES: Record<string, string> = {
+  PSYCHOLOGY: 'Psychology: 3 months of no consult',
+  PT: 'PT: Should consult with MD after 2 months',
+  OT: 'OT: Reconsult with Developmental Pediatrician after 6 months',
+  SLP: 'SLP: Reconsult with Developmental Pediatrician after 6 months',
+  SPED: 'SPED: Reconsult with Developmental Pediatrician after 6 months',
+  MD: 'MD: Follow up as needed',
+}
+
+const statusConfig: Record<string, { bg: string; color: string; border: string; label: string; icon: any }> = {
+  due:     { bg: '#FEF2F2', color: '#DC2626', border: '#FECACA', label: 'Due Now',  icon: AlertTriangle },
+  overdue: { bg: '#FEF2F2', color: '#991B1B', border: '#FCA5A5', label: 'Overdue',  icon: AlertTriangle },
+  upcoming:{ bg: '#FFFBEB', color: '#D97706', border: '#FDE68A', label: 'Upcoming', icon: Clock },
+  ok:      { bg: '#F0FDF4', color: '#15803D', border: '#BBF7D0', label: 'On Track', icon: CheckCircle },
+}
+
+function FollowUpTab({ branch }: { branch: string }) {
+  const [dept, setDept] = useState('PT')
+  const [patients, setPatients] = useState<any[]>([])
+  const [summary, setSummary] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState(25)
+
+  useEffect(() => {
+    setLoading(true); setPage(1)
+    const params = new URLSearchParams({ tab: 'followup', dept })
+    if (branch) params.set('branch', branch)
+    fetch(`/api/patient-relationship?${params}`)
+      .then(r => r.json())
+      .then(d => { setPatients(d.patients || []); setSummary(d.summary); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [branch, dept])
+
+  const filtered = search
+    ? patients.filter((p: any) => `${p.firstName} ${p.lastName}`.toLowerCase().includes(search.toLowerCase()))
+    : patients
+  const paginated = filtered.slice((page - 1) * perPage, page * perPage)
+
+  return (
+    <div className="space-y-4">
+      {/* Dept sub-tabs */}
+      <div className="flex gap-1 p-1 rounded-lg" style={{ background: '#F1F5F9' }}>
+        {DEPT_TABS.map(d => (
+          <button key={d.key} onClick={() => setDept(d.key)}
+            className="px-3 py-1.5 rounded-md text-xs font-semibold"
+            style={{
+              background: dept === d.key ? '#fff' : 'transparent',
+              color: dept === d.key ? 'var(--teal)' : '#64748B',
+              border: 'none', cursor: 'pointer', flex: 1,
+              boxShadow: dept === d.key ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+            }}>{d.label}</button>
+        ))}
+      </div>
+
+      {/* Reminder note */}
+      <div className="rounded-lg p-3 flex items-start gap-2" style={{ background: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+        <Calendar size={16} style={{ color: '#1D4ED8', marginTop: 1, flexShrink: 0 }} />
+        <p className="text-xs" style={{ color: '#1E40AF', fontWeight: 500 }}>{DEPT_NOTES[dept] || ''}</p>
+      </div>
+
+      {summary && (
+        <div className="flex gap-3">
+          {[
+            { label: 'Due', value: summary.due, color: '#DC2626' },
+            { label: 'Overdue', value: summary.overdue, color: '#991B1B' },
+            { label: 'Upcoming', value: summary.upcoming, color: '#D97706' },
+            { label: 'On Track', value: summary.ok, color: '#15803D' },
+          ].map(c => (
+            <div key={c.label} className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: c.color }}>
+              <span className="text-lg font-bold">{c.value}</span> {c.label}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <input type="text" placeholder="Search by name..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ ...selectStyle, width: '100%', maxWidth: 400 }} />
+
+      {loading ? <Loading /> : (
+        <div className="rounded-xl overflow-hidden" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="w-full text-left" style={{ fontSize: '0.82rem' }}>
+              <thead>
+                <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+                  {['Patient', 'Clinician', 'First Session', 'Reference', 'Days', 'Status', 'Contact'].map(h => (
+                    <th key={h} className="px-4 py-3 font-semibold" style={{ color: 'var(--mid-gray)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {paginated.length === 0 ? (
+                  <tr><td colSpan={7} className="text-center py-10" style={{ color: '#9ca3af' }}>No patients in this department.</td></tr>
+                ) : paginated.map((p: any) => {
+                  const sc = statusConfig[p.status] || statusConfig.ok
+                  const Icon = sc.icon
+                  return (
+                    <tr key={p.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
+                      <td className="px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>{p.lastName}, {p.firstName}</td>
+                      <td className="px-4 py-3" style={{ color: '#374151' }}>{p.clinicianName}</td>
+                      <td className="px-4 py-3" style={{ color: '#374151' }}>{new Date(p.firstSessionDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                      <td className="px-4 py-3">
+                        <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: p.referenceSource === 'consult' ? '#EFF6FF' : '#F0FDF4', color: p.referenceSource === 'consult' ? '#1D4ED8' : '#15803D' }}>
+                          {p.referenceSource === 'consult' ? 'Dr. Consult' : '1st Session'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-semibold" style={{ color: '#374151' }}>{p.daysSince}d</td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-semibold" style={{ background: sc.bg, color: sc.color, border: `1px solid ${sc.border}` }}>
+                          <Icon size={12} />{sc.label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3"><ContactBtns phone={p.phone} email={p.email} /></td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <Pagination total={filtered.length} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CANCELLATION TAB
+// ══════════════════════════════════════════════════════════════════════════════
+
+const CANCELLATION_TYPES = [
+  'Cancellation >24 hrs (VALID)',
+  'Cancellation >24 hrs (INVALID)',
+  'Late Cancellation <24 hrs (VALID)',
+  'Late Cancellation <24 hrs (INVALID)',
+  'Retainer (VALID)',
+  'Retainer (INVALID)',
+]
+
+function CancellationTab({ branch }: { branch: string }) {
+  const [patients, setPatients] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState(25)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [logForm, setLogForm] = useState<{ patientId: string; type: string; remarks: string } | null>(null)
+  const [logSaving, setLogSaving] = useState(false)
+  const [uploading, setUploading] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<{ logId: string; reason: string } | null>(null)
+  const [qrModal, setQrModal] = useState<{ logId: string; url: string } | null>(null)
+  const [qrUploaded, setQrUploaded] = useState(false)
+
+  const fetchData = useCallback(() => {
+    setLoading(true)
+    const params = new URLSearchParams({ tab: 'cancellation' })
+    if (branch) params.set('branch', branch)
+    fetch(`/api/patient-relationship?${params}`)
+      .then(r => r.json())
+      .then(d => { setPatients(d.patients || []); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [branch])
+
+  useEffect(() => { fetchData() }, [fetchData])
+
+  const filtered = search
+    ? patients.filter((p: any) => `${p.firstName} ${p.lastName}`.toLowerCase().includes(search.toLowerCase()))
+    : patients
+  const paginated = filtered.slice((page - 1) * perPage, page * perPage)
+
+  async function saveLog() {
+    if (!logForm) return
+    setLogSaving(true)
+    try {
+      const res = await fetch('/api/patient-relationship', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...logForm, branch: branch || patients.find((p: any) => p.id === logForm.patientId)?.branch || '' }),
+      })
+      if (res.ok) { setLogForm(null); fetchData() }
+      else alert('Failed to save')
+    } catch { alert('Failed to save') }
+    finally { setLogSaving(false) }
+  }
+
+  async function uploadProof(logId: string, file: File) {
+    setUploading(logId)
+    const form = new FormData()
+    form.append('logId', logId)
+    form.append('file', file)
+    try {
+      const res = await fetch('/api/patient-relationship', { method: 'POST', body: form })
+      if (res.ok) fetchData()
+      else alert('Upload failed')
+    } catch { alert('Upload failed') }
+    finally { setUploading(null) }
+  }
+
+  async function deleteLog() {
+    if (!deleting) return
+    const params = new URLSearchParams({ logId: deleting.logId, reason: deleting.reason })
+    const res = await fetch(`/api/patient-relationship?${params}`, { method: 'DELETE' })
+    if (res.ok) { setDeleting(null); fetchData() }
+    else alert('Failed to delete')
+  }
+
+  function openQrUpload(logId: string) {
+    const uploadUrl = `${window.location.origin}/upload-proof/${logId}`
+    setQrUploaded(false)
+    setQrModal({ logId, url: uploadUrl })
+  }
+
+  // Poll for proof upload while QR modal is open
+  useEffect(() => {
+    if (!qrModal || qrUploaded) return
+    const interval = setInterval(async () => {
+      try {
+        const params = new URLSearchParams({ tab: 'cancellation' })
+        if (branch) params.set('branch', branch)
+        const res = await fetch(`/api/patient-relationship?${params}`)
+        const data = await res.json()
+        const allLogs = (data.patients || []).flatMap((p: any) => p.logs || [])
+        const log = allLogs.find((l: any) => l.id === qrModal.logId)
+        if (log?.proofUrl) {
+          setQrUploaded(true)
+          fetchData()
+        }
+      } catch {}
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [qrModal, qrUploaded, branch, fetchData])
+
+  if (loading) return <Loading />
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg p-3 text-xs" style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
+        Each patient is allowed a maximum of <strong>2 cancellations</strong> per 6-month window (from first session date). Yellow = 1 remaining, Red = none remaining.
+      </div>
+
+      <input type="text" placeholder="Search by name..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ ...selectStyle, width: '100%', maxWidth: 400 }} />
+
+      <div className="rounded-xl overflow-hidden" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+        <table className="w-full text-left" style={{ fontSize: '0.82rem' }}>
+          <thead>
+            <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+              {['', 'Patient', 'Branch', 'Cancellations Left'].map(h => (
+                <th key={h} className="px-4 py-3 font-semibold" style={{ color: 'var(--mid-gray)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {paginated.length === 0 ? (
+              <tr><td colSpan={4} className="text-center py-10" style={{ color: '#9ca3af' }}>No patients found.</td></tr>
+            ) : paginated.map((p: any) => {
+              const isExpanded = expandedId === p.id
+              const rowColor = p.cancellationsRemaining === 0 ? '#FEF2F2' : p.cancellationsRemaining === 1 ? '#FFFBEB' : undefined
+              const textColor = p.cancellationsRemaining === 0 ? '#DC2626' : p.cancellationsRemaining === 1 ? '#D97706' : 'var(--charcoal)'
+              return (
+                <Fragment key={p.id}>
+                  <tr style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer', background: rowColor }}
+                    onClick={() => setExpandedId(isExpanded ? null : p.id)}>
+                    <td className="px-4 py-3" style={{ width: 30 }}>
+                      {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    </td>
+                    <td className="px-4 py-3 font-semibold" style={{ color: textColor }}>{p.lastName}, {p.firstName}</td>
+                    <td className="px-4 py-3" style={{ color: '#6B7280' }}>{branchLabel(p.branch)}</td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm font-bold" style={{ color: textColor }}>{p.cancellationsRemaining}</span>
+                      <span className="text-xs ml-1" style={{ color: '#9ca3af' }}>/ 2</span>
+                    </td>
+                  </tr>
+                  {isExpanded && (
+                    <tr key={p.id + '-detail'}>
+                      <td colSpan={4} className="px-6 py-4" style={{ background: '#FAFBFC' }}>
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-bold uppercase" style={{ color: 'var(--teal)', letterSpacing: '0.05em' }}>Cancellation Logs</p>
+                            <button onClick={() => setLogForm({ patientId: p.id, type: CANCELLATION_TYPES[0], remarks: '' })}
+                              className="text-xs px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1"
+                              style={{ background: 'var(--teal)', color: '#fff', border: 'none', cursor: 'pointer' }}>
+                              + Log Cancellation
+                            </button>
+                          </div>
+
+                          {/* New log form */}
+                          {logForm?.patientId === p.id && (
+                            <div className="rounded-lg p-3 space-y-2" style={{ background: '#fff', border: '1px solid #E2E8F0' }}>
+                              <select value={logForm.type} onChange={e => setLogForm({ ...logForm, type: e.target.value })} style={{ ...selectStyle, width: '100%' }}>
+                                {CANCELLATION_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                              </select>
+                              <input type="text" placeholder="Remarks (optional)" value={logForm.remarks} onChange={e => setLogForm({ ...logForm, remarks: e.target.value })} style={{ ...selectStyle, width: '100%' }} />
+                              <div className="flex gap-2">
+                                <button onClick={saveLog} disabled={logSaving} className="text-xs px-3 py-1.5 rounded-lg font-semibold"
+                                  style={{ background: 'var(--teal)', color: '#fff', border: 'none', cursor: 'pointer' }}>
+                                  {logSaving ? 'Saving...' : 'Save'}
+                                </button>
+                                <button onClick={() => setLogForm(null)} className="text-xs px-3 py-1.5 rounded-lg font-semibold"
+                                  style={{ background: '#fff', color: '#6B7280', border: '1px solid #d1d5db', cursor: 'pointer' }}>Cancel</button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Existing logs */}
+                          {p.logs.length === 0 ? (
+                            <p className="text-xs" style={{ color: '#9ca3af' }}>No cancellation logs yet.</p>
+                          ) : (
+                            <div className="space-y-2">
+                              {p.logs.map((log: any) => (
+                                <div key={log.id} className="rounded-lg p-3 flex flex-wrap items-center gap-3 text-xs"
+                                  style={{
+                                    background: log.deletedAt ? '#F9FAFB' : '#fff',
+                                    border: `1px solid ${log.deletedAt ? '#E5E7EB' : '#E2E8F0'}`,
+                                    opacity: log.deletedAt ? 0.6 : 1,
+                                  }}>
+                                  <div className="flex-1 min-w-0">
+                                    <span className="font-semibold px-2 py-0.5 rounded-full" style={{
+                                      background: log.isValid ? '#F0FDF4' : '#FEF2F2',
+                                      color: log.isValid ? '#15803D' : '#DC2626',
+                                    }}>{log.type}</span>
+                                    <span className="ml-2" style={{ color: '#6B7280' }}>
+                                      {new Date(log.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                    </span>
+                                    {log.remarks && <span className="ml-2" style={{ color: '#9ca3af' }}>- {log.remarks}</span>}
+                                    {log.deletedAt && (
+                                      <span className="ml-2 text-xs" style={{ color: '#DC2626' }}>
+                                        DELETED by {log.deletedBy} ({log.deleteReason || 'no reason'})
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex gap-1.5 items-center">
+                                    {/* View proof */}
+                                    {log.proofUrl && (
+                                      <a href={log.proofUrl} target="_blank" rel="noreferrer" title="View proof"
+                                        className="inline-flex items-center justify-center w-7 h-7 rounded-lg"
+                                        style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}>
+                                        <Eye size={13} />
+                                      </a>
+                                    )}
+                                    {/* Upload proof (only for valid, no proof yet, not deleted) */}
+                                    {log.isValid && !log.proofUrl && !log.deletedAt && (
+                                      <>
+                                        <label className="inline-flex items-center justify-center w-7 h-7 rounded-lg cursor-pointer"
+                                          style={{ background: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0' }}>
+                                          {uploading === log.id ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                                          <input type="file" accept="image/*,application/pdf" className="hidden"
+                                            onChange={e => { const f = e.target.files?.[0]; if (f) uploadProof(log.id, f) }} />
+                                        </label>
+                                        <button onClick={() => openQrUpload(log.id)} title="Take photo with camera"
+                                          className="inline-flex items-center justify-center w-7 h-7 rounded-lg"
+                                          style={{ background: '#FFF', color: 'var(--charcoal)', border: '1px solid #CBD5E1', cursor: 'pointer' }}>
+                                          <QrCode size={13} />
+                                        </button>
+                                      </>
+                                    )}
+                                    {/* Delete (soft) */}
+                                    {!log.deletedAt && (
+                                      <button onClick={(e) => { e.stopPropagation(); setDeleting({ logId: log.id, reason: '' }) }}
+                                        className="inline-flex items-center justify-center w-7 h-7 rounded-lg"
+                                        style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', cursor: 'pointer' }}>
+                                        <Trash2 size={13} />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })}
+          </tbody>
+        </table>
+        <Pagination total={filtered.length} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+      </div>
+
+      {/* QR code modal */}
+      {qrModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setQrModal(null)}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 24, maxWidth: 360, width: '90%', textAlign: 'center' }}
+            onClick={e => e.stopPropagation()}>
+            {qrUploaded ? (
+              <>
+                <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#F0FDF4', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                  <CheckCircle size={32} style={{ color: '#15803D' }} />
+                </div>
+                <h3 className="text-base font-bold mb-2" style={{ color: '#15803D' }}>Proof Uploaded!</h3>
+                <p className="text-xs mb-4" style={{ color: '#6B7280' }}>The proof document has been successfully received from the scanned device.</p>
+                <button onClick={() => setQrModal(null)}
+                  className="text-sm px-5 py-2 rounded-lg font-semibold"
+                  style={{ background: 'var(--teal)', color: '#fff', border: 'none', cursor: 'pointer' }}>
+                  Done
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Scan to Upload Proof</h3>
+                  <button onClick={() => setQrModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}><X size={18} /></button>
+                </div>
+                <div className="flex justify-center mb-3">
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrModal.url)}`}
+                    alt="QR Code"
+                    width={200} height={200}
+                    style={{ borderRadius: 8, border: '1px solid #E2E8F0' }}
+                  />
+                </div>
+                <p className="text-xs mb-1" style={{ color: '#6B7280' }}>Scan this QR code with a tablet or phone to upload proof.</p>
+                <div className="flex items-center justify-center gap-1.5 mt-3">
+                  <div className="animate-spin w-3 h-3 border-2 border-t-transparent rounded-full" style={{ borderColor: 'var(--teal)', borderTopColor: 'transparent' }} />
+                  <p className="text-xs" style={{ color: '#9ca3af' }}>Waiting for upload...</p>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleting && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 24, maxWidth: 400, width: '90%' }}>
+            <h3 className="text-sm font-bold mb-3" style={{ color: 'var(--charcoal)' }}>Delete Cancellation Log</h3>
+            <p className="text-xs mb-3" style={{ color: '#6B7280' }}>Please provide a reason for deletion. This will be tracked.</p>
+            <textarea value={deleting.reason} onChange={e => setDeleting({ ...deleting, reason: e.target.value })}
+              placeholder="Reason for deletion..." rows={3}
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: '0.83rem', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+            <div className="flex gap-2 mt-3 justify-end">
+              <button onClick={() => setDeleting(null)} className="text-xs px-3 py-1.5 rounded-lg font-semibold"
+                style={{ background: '#fff', color: '#6B7280', border: '1px solid #d1d5db', cursor: 'pointer' }}>Cancel</button>
+              <button onClick={deleteLog} disabled={!deleting.reason.trim()} className="text-xs px-3 py-1.5 rounded-lg font-semibold"
+                style={{ background: deleting.reason.trim() ? '#DC2626' : '#ccc', color: '#fff', border: 'none', cursor: deleting.reason.trim() ? 'pointer' : 'not-allowed' }}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Shared Components ────────────────────────────────────────────────────────
+
+function ContactBtns({ phone, email }: { phone?: string | null; email?: string | null }) {
+  return (
+    <div className="flex gap-1.5">
+      {phone && (
+        <a href={`tel:${phone}`} title={phone} className="inline-flex items-center justify-center w-7 h-7 rounded-lg"
+          style={{ background: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0' }}><Phone size={13} /></a>
+      )}
+      {email && (
+        <a href={`mailto:${email}`} title={email} className="inline-flex items-center justify-center w-7 h-7 rounded-lg"
+          style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}><Mail size={13} /></a>
+      )}
+    </div>
+  )
+}
+
+function Loading() {
+  return (
+    <div className="text-center py-12">
+      <div className="animate-spin inline-block w-6 h-6 border-2 border-t-transparent rounded-full" style={{ borderColor: 'var(--teal)', borderTopColor: 'transparent' }} />
+      <p className="text-sm mt-2" style={{ color: '#9ca3af' }}>Loading...</p>
+    </div>
+  )
+}
+
+// ── Main Component ───────────────────────────────────────────────────────────
+
+const TABS: { key: Tab; label: string; icon: any }[] = [
+  { key: 'waitlist',     label: 'Waitlist',      icon: Users },
+  { key: 'followup',     label: 'Follow Up',     icon: Clock },
+  { key: 'cancellation', label: 'Cancellations', icon: XCircle },
+]
+
+export default function PatientRelationshipClient({ role }: { role: string }) {
+  const [activeTab, setActiveTab] = useState<Tab>('waitlist')
+  const [filterBranch, setFilterBranch] = useState('')
+
+  // Auto-set branch for branch-specific roles
+  const isSBEA = role.startsWith('SBEA')
+  const isSBGH = role.startsWith('SBGH')
+  const effectiveBranch = isSBEA ? 'SANDBOX_EAST' : isSBGH ? 'SANDBOX_GREENHILLS' : filterBranch
+  const isAdmin = !isSBEA && !isSBGH
+
+  return (
+    <div className="max-w-7xl space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--teal)' }}>Clinic Tools</p>
+          <h1 className="text-2xl font-bold flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            <HeartHandshake size={24} style={{ color: 'var(--teal)' }} />
+            Patient Relationship
+          </h1>
+        </div>
+        {isAdmin && (
+          <div className="flex items-center gap-2">
+            <Filter size={14} style={{ color: '#9ca3af' }} />
+            <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)} style={selectStyle}>
+              <option value="">All Branches</option>
+              {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+            </select>
+          </div>
+        )}
+      </div>
+
+      <div className="flex gap-1 p-1 rounded-xl" style={{ background: '#F1F5F9' }}>
+        {TABS.map(t => {
+          const Icon = t.icon
+          const active = activeTab === t.key
+          return (
+            <button key={t.key} onClick={() => setActiveTab(t.key)}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all"
+              style={{
+                background: active ? '#fff' : 'transparent',
+                color: active ? 'var(--teal)' : '#64748B',
+                border: 'none', cursor: 'pointer',
+                boxShadow: active ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                flex: 1, justifyContent: 'center',
+              }}>
+              <Icon size={15} />{t.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {activeTab === 'waitlist' && <WaitlistTab branch={effectiveBranch} />}
+      {activeTab === 'followup' && <FollowUpTab branch={effectiveBranch} />}
+      {activeTab === 'cancellation' && <CancellationTab branch={effectiveBranch} />}
+    </div>
+  )
+}

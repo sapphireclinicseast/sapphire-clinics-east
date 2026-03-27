@@ -7,6 +7,18 @@
       "runtimeArgs": ["run", "dev"],
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "accounting-hub",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd accounting-hub && npm run dev -- --port 3001"],
+      "port": 3001
+    },
+    {
+      "name": "verdana-store",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd verdana-store && npm run dev"],
+      "port": 3002
     }
   ]
 }

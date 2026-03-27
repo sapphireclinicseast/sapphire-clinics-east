@@ -1,0 +1,143 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── Store Collections ──────────────────────────────────────
+
+model StoreCollection {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  imageUrl    String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  products StoreProduct[]
+
+  @@index([slug])
+  @@index([isActive])
+}
+
+// ── Store Products ─────────────────────────────────────────
+
+model StoreProduct {
+  id           String  @id @default(cuid())
+  slug         String  @unique
+  title        String
+  description  String?
+  detailsHtml  String?
+  shippingHtml String?
+  price        Decimal
+  comparePrice Decimal?
+  isFeatured   Boolean @default(false)
+  isPublished  Boolean @default(true)
+  sortOrder    Int     @default(0)
+  collectionId String?
+  collection   StoreCollection? @relation(fields: [collectionId], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  images   StoreProductImage[]
+  variants StoreProductVariant[]
+  orderItems StoreOrderItem[]
+
+  @@index([slug])
+  @@index([collectionId])
+  @@index([isPublished])
+}
+
+model StoreProductImage {
+  id        String       @id @default(cuid())
+  productId String
+  product   StoreProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  altText   String?
+  sortOrder Int          @default(0)
+  createdAt DateTime     @default(now())
+
+  @@index([productId])
+}
+
+model StoreProductVariant {
+  id           String       @id @default(cuid())
+  productId    String
+  product      StoreProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantType  String       @default("Color")
+  variantLabel String
+  colorHex     String?
+  price        Decimal?
+  quantity     Int          @default(100)
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([productId])
+}
+
+// ── Store Orders ───────────────────────────────────────────
+
+model StoreOrder {
+  id                  String    @id @default(cuid())
+  orderNumber         String    @unique @default(cuid())
+  email               String
+  firstName           String?
+  lastName            String?
+  phone               String?
+  subtotal            Decimal
+  shippingCost        Decimal   @default(0)
+  total               Decimal
+  currency            String    @default("PHP")
+  status              String    @default("PENDING")
+  stripeSessionId     String?   @unique
+  stripePaymentIntent String?
+  shippingAddress     Json?
+  notes               String?
+  paidAt              DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  items    StoreOrderItem[]
+  payments StorePayment[]
+
+  @@index([email])
+  @@index([status])
+  @@index([stripeSessionId])
+}
+
+model StoreOrderItem {
+  id             String       @id @default(cuid())
+  orderId        String
+  order          StoreOrder   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  storeProductId String
+  storeProduct   StoreProduct @relation(fields: [storeProductId], references: [id])
+  variantLabel   String?
+  name           String
+  quantity       Int
+  unitPrice      Decimal
+  lineTotal      Decimal
+  createdAt      DateTime     @default(now())
+
+  @@index([orderId])
+}
+
+model StorePayment {
+  id                  String     @id @default(cuid())
+  orderId             String
+  order               StoreOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  stripePaymentIntent String?
+  amount              Decimal
+  currency            String     @default("PHP")
+  status              String
+  method              String     @default("card")
+  createdAt           DateTime   @default(now())
+
+  @@index([orderId])
+}

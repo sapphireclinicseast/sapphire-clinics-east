@@ -142,6 +142,7 @@ model Patient {
   surveyAssignments   SurveyAssignment[]
   deckingSlots        DeckingSlot[]
   referralTokens      ReferralUploadToken[]
+  cancellationLogs    CancellationLog[]
 }
 
 model ReferralUploadToken {
@@ -349,8 +350,9 @@ model Schedule {
   sessionType String
   status      ScheduleStatus @default(PENDING)
   notes       String?
-  meetLink    String?
-  createdAt   DateTime       @default(now())
+  isTeletherapy Boolean @default(false)
+  meetLink      String?
+  createdAt     DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   surveyAssignments SurveyAssignment[]
 }
@@ -455,6 +457,28 @@ model PeerEvalResponse {
 
   assessor Staff @relation("PeerEvalRespAssor", fields: [assessorId], references: [id], onDelete: Cascade)
   assessee Staff @relation("PeerEvalRespAssee", fields: [assesseeId], references: [id], onDelete: Cascade)
+}
+
+// ── Patient Cancellation Logs ─────────────────────────────────────────────────
+
+model CancellationLog {
+  id              String    @id @default(cuid())
+  patientId       String
+  patient         Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  staffId         String?
+  branch          String    // "SANDBOX_EAST" | "SANDBOX_GREENHILLS"
+  type            String    // e.g. "Cancellation >24 hrs (VALID)"
+  isValid         Boolean   @default(false)
+  proofUrl        String?
+  remarks         String?
+  deletedAt       DateTime?
+  deletedBy       String?
+  deleteReason    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([patientId])
+  @@index([createdAt])
 }
 
 // ── Peer Eval Admin Config (work-day schedule for admin/front-desk staff) ─────

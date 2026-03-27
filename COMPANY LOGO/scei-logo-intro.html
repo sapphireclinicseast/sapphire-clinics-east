@@ -75,14 +75,17 @@
 
     /* ─── Path Animation Engine ─────────────────────────────────── */
 
-    /* Outer Diamond — perimeter ≈ 4 × (88√2) ≈ 498 */
+    /* Outer Diamond — perimeter ≈ 4 × (88√2) ≈ 497.8
+       dasharray is set to 512 (14-unit overdraw past start point) so the
+       closing stroke at the top vertex is fully covered with no gap. */
     #outer-diamond {
       fill: none;
       stroke: #1A7B8A;
       stroke-width: 5.5;
       stroke-linejoin: miter;
-      stroke-dasharray: 500;
-      stroke-dashoffset: 500;
+      stroke-linecap: square;
+      stroke-dasharray: 512;
+      stroke-dashoffset: 512;
       filter: drop-shadow(0 0 4px rgba(26,123,138,0.6));
       animation: drawPath 1.4s cubic-bezier(0.4,0,0.2,1) forwards;
       animation-delay: 0.3s;

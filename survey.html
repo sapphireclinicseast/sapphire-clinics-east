@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <style>
 :root {
   --teal-950: #042f2e; --teal-900: #134e4a; --teal-800: #115e59;
@@ -226,6 +227,22 @@ body {
 }
 .staff-badge strong { font-weight: 700; }
 
+/* QR Code */
+.qr-wrapper {
+  display: flex; flex-direction: column; align-items: center;
+  margin: 20px 0 8px;
+}
+.qr-wrapper .qr-box {
+  padding: 12px; border-radius: var(--radius);
+  border: 3px solid var(--teal-600);
+  background: var(--white);
+  display: inline-block;
+}
+.qr-wrapper .qr-label {
+  font-size: 11px; color: var(--slate-400);
+  margin-top: 8px; font-weight: 500;
+}
+
 /* Variant badge */
 .variant-badge {
   display: inline-block;
@@ -316,9 +333,20 @@ function showWelcome() {
       ${surveyData.staffName ? `<div class="staff-badge">Assessing: <strong>${esc(surveyData.staffName)}</strong> (${esc(surveyData.staffRole)})</div>` : ''}
       ${schema.variant ? `<div class="variant-badge">${esc(schema.variant)}</div>` : ''}
       ${schema.privacy ? `<div class="privacy">${esc(schema.privacy)}</div>` : ''}
+      <div class="qr-wrapper">
+        <div class="qr-box" id="welcomeQr"></div>
+        <span class="qr-label">Scan to open on your phone</span>
+      </div>
       <button class="btn-start" onclick="renderForm()">Start Survey</button>
     </div>
   `;
+
+  // Render QR code of current survey URL
+  const qrEl = document.getElementById('welcomeQr');
+  if (qrEl && typeof QRCode !== 'undefined') {
+    new QRCode(qrEl, { text: window.location.href, width: 200, height: 200, colorDark: '#0f766e', colorLight: '#ffffff' });
+  }
+
   updateProgress(0);
 }
 

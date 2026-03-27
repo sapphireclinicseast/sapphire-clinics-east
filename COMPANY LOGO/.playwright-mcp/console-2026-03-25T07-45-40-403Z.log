@@ -1,0 +1,149 @@
+[  511524ms] [ERROR] WebSocket connection to 'ws://localhost:3003/_next/webpack-hmr?id=NiunkcFfsaZMN3AL-JxI8' failed:  @ http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[  511548ms] [ERROR] Failed to fetch RSC payload for http://localhost:3003/about. Falling back to browser navigation. TypeError: Failed to fetch
+    at createFetch (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:8084:21)
+    at fetchServerResponse (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:7928:27)
+    at navigateToUnknownRoute (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:10094:90)
+    at navigateImpl (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:9989:12)
+    at navigate (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:9953:12)
+    at navigateReducer (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:10530:37)
+    at clientReducer (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11382:61)
+    at Object.action (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11631:55)
+    at runAction (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11536:38)
+    at dispatchAction (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11611:9)
+    at Object.dispatch (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11629:40)
+    at http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:963:29
+    at startTransition (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:5469:31)
+    at nextDispatch (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:962:13)
+    at dispatchAppRouterAction (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:922:5)
+    at dispatchNavigateAction (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11688:49)
+    at http://localhost:3003/_next/static/chunks/node_modules_00p9pr1._.js:845:13
+    at Object.startTransition (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_0rpq4pf._.js:1279:31)
+    at linkClicked (http://localhost:3003/_next/static/chunks/node_modules_00p9pr1._.js:844:24)
+    at onClick (http://localhost:3003/_next/static/chunks/node_modules_00p9pr1._.js:1084:13)
+    at executeDispatch (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:10329:13)
+    at runWithFiberInDEV (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:965:74)
+    at processDispatchQueue (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:10355:41)
+    at http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:10633:13
+    at batchedUpdates$1 (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:2253:44)
+    at dispatchEventForPluginEventSystem (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:10431:9)
+    at dispatchEvent (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:13002:37)
+    at dispatchDiscreteEvent (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:12984:64) @ http://localhost:3003/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[  511568ms] [ERROR] Failed to fetch RSC payload for http://localhost:3003/collections/books-manuals. Falling back to browser navigation. TypeError: Failed to fetch
+    at createFetch (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:8084:21)
+    at fetchServerResponse (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:7928:27)
+    at navigateToUnknownRoute (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:10094:90)
+    at navigateImpl (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:9989:12)
+    at navigate (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:9953:12)
+    at navigateReducer (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:10530:37)
+    at clientReducer (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11382:61)
+    at Object.action (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11631:55)
+    at runAction (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11536:38)
+    at dispatchAction (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11611:9)
+    at Object.dispatch (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11629:40)
+    at http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:963:29
+    at startTransition (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:5469:31)
+    at nextDispatch (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:962:13)
+    at dispatchAppRouterAction (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:922:5)
+    at dispatchNavigateAction (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11688:49)
+    at http://localhost:3003/_next/static/chunks/node_modules_00p9pr1._.js:845:13
+    at Object.startTransition (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_0rpq4pf._.js:1279:31)
+    at linkClicked (http://localhost:3003/_next/static/chunks/node_modules_00p9pr1._.js:844:24)
+    at onClick (http://localhost:3003/_next/static/chunks/node_modules_00p9pr1._.js:1084:13)
+    at executeDispatch (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:10329:13)
+    at runWithFiberInDEV (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:965:74)
+    at processDispatchQueue (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:10355:41)
+    at http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:10633:13
+    at batchedUpdates$1 (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:2253:44)
+    at dispatchEventForPluginEventSystem (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:10431:9)
+    at dispatchEvent (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:13002:37)
+    at dispatchDiscreteEvent (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:12984:64) @ http://localhost:3003/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[  511570ms] [ERROR] Failed to fetch RSC payload for http://localhost:3003/collections/books-manuals. Falling back to browser navigation. TypeError: Failed to fetch
+    at createFetch (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:8084:21)
+    at fetchServerResponse (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:7928:27)
+    at navigateToUnknownRoute (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:10094:90)
+    at navigateImpl (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:9989:12)
+    at navigate (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:9953:12)
+    at navigateReducer (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:10530:37)
+    at clientReducer (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11382:61)
+    at Object.action (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11631:55)
+    at runAction (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11536:38)
+    at dispatchAction (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11599:9)
+    at Object.dispatch (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11629:40)
+    at http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:963:29
+    at startTransition (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:5469:31)
+    at nextDispatch (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:962:13)
+    at dispatchAppRouterAction (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:922:5)
+    at dispatchNavigateAction (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11688:49)
+    at http://localhost:3003/_next/static/chunks/node_modules_00p9pr1._.js:845:13
+    at Object.startTransition (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_0rpq4pf._.js:1279:31)
+    at linkClicked (http://localhost:3003/_next/static/chunks/node_modules_00p9pr1._.js:844:24)
+    at onClick (http://localhost:3003/_next/static/chunks/node_modules_00p9pr1._.js:1084:13)
+    at executeDispatch (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:10329:13)
+    at runWithFiberInDEV (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:965:74)
+    at processDispatchQueue (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:10355:41)
+    at http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:10633:13
+    at batchedUpdates$1 (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:2253:44)
+    at dispatchEventForPluginEventSystem (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:10431:9)
+    at dispatchEvent (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:13002:37)
+    at dispatchDiscreteEvent (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:12984:64) @ http://localhost:3003/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[  511572ms] [ERROR] Failed to fetch RSC payload for http://localhost:3003/about. Falling back to browser navigation. TypeError: Failed to fetch
+    at createFetch (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:8084:21)
+    at fetchServerResponse (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:7928:27)
+    at navigateToUnknownRoute (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:10094:90)
+    at navigateImpl (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:9989:12)
+    at navigate (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:9953:12)
+    at navigateReducer (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:10530:37)
+    at clientReducer (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11382:61)
+    at Object.action (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11631:55)
+    at runAction (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11536:38)
+    at dispatchAction (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11611:9)
+    at Object.dispatch (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11629:40)
+    at http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:963:29
+    at startTransition (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:5469:31)
+    at nextDispatch (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:962:13)
+    at dispatchAppRouterAction (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:922:5)
+    at dispatchNavigateAction (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11688:49)
+    at http://localhost:3003/_next/static/chunks/node_modules_00p9pr1._.js:845:13
+    at Object.startTransition (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_0rpq4pf._.js:1279:31)
+    at linkClicked (http://localhost:3003/_next/static/chunks/node_modules_00p9pr1._.js:844:24)
+    at onClick (http://localhost:3003/_next/static/chunks/node_modules_00p9pr1._.js:1084:13)
+    at executeDispatch (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:10329:13)
+    at runWithFiberInDEV (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:965:74)
+    at processDispatchQueue (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:10355:41)
+    at http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:10633:13
+    at batchedUpdates$1 (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:2253:44)
+    at dispatchEventForPluginEventSystem (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:10431:9)
+    at dispatchEvent (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:13002:37)
+    at dispatchDiscreteEvent (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:12984:64) @ http://localhost:3003/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[  511573ms] [ERROR] Failed to fetch RSC payload for http://localhost:3003/. Falling back to browser navigation. TypeError: Failed to fetch
+    at createFetch (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:8084:21)
+    at fetchServerResponse (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:7928:27)
+    at navigateToUnknownRoute (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:10094:90)
+    at navigateImpl (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:9989:12)
+    at navigate (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:9953:12)
+    at navigateReducer (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:10530:37)
+    at clientReducer (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11382:61)
+    at Object.action (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11631:55)
+    at runAction (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11536:38)
+    at dispatchAction (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11611:9)
+    at Object.dispatch (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11629:40)
+    at http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:963:29
+    at startTransition (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:5469:31)
+    at nextDispatch (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:962:13)
+    at dispatchAppRouterAction (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:922:5)
+    at dispatchNavigateAction (http://localhost:3003/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:11688:49)
+    at http://localhost:3003/_next/static/chunks/node_modules_00p9pr1._.js:845:13
+    at Object.startTransition (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_0rpq4pf._.js:1279:31)
+    at linkClicked (http://localhost:3003/_next/static/chunks/node_modules_00p9pr1._.js:844:24)
+    at onClick (http://localhost:3003/_next/static/chunks/node_modules_00p9pr1._.js:1084:13)
+    at executeDispatch (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:10329:13)
+    at runWithFiberInDEV (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:965:74)
+    at processDispatchQueue (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:10355:41)
+    at http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:10633:13
+    at batchedUpdates$1 (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:2253:44)
+    at dispatchEventForPluginEventSystem (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:10431:9)
+    at dispatchEvent (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:13002:37)
+    at dispatchDiscreteEvent (http://localhost:3003/_next/static/chunks/node_modules_next_dist_compiled_react-dom_058-ah~._.js:12984:64) @ http://localhost:3003/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[  511631ms] [ERROR] WebSocket is already in CLOSING or CLOSED state. @ http://localhost:3003/_next/static/chunks/node_modules_next_dist_115brz8._.js:2790
+[  512637ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3003/__nextjs_original-stack-frames:0
+[  523680ms] [WARNING] Image with src "/logo/logo-teal-transparent.png" has either width or height modified, but not the other. If you use CSS to change the size of your image, also include the styles 'width: "auto"' or 'height: "auto"' to maintain the aspect ratio. @ http://localhost:3003/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431

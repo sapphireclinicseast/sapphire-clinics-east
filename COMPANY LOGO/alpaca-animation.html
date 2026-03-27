@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SCEI Alpaca Animation</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    background: #f0f4f8;
+  }
+
+  @keyframes breathe {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-5px); }
+  }
+  @keyframes earWiggleL {
+    0%, 75%, 100% { transform: rotate(0deg); }
+    82% { transform: rotate(-10deg); }
+    90% { transform: rotate(5deg); }
+  }
+  @keyframes earWiggleR {
+    0%, 77%, 100% { transform: rotate(0deg); }
+    84% { transform: rotate(10deg); }
+    92% { transform: rotate(-5deg); }
+  }
+  @keyframes blink {
+    0%, 90%, 100% { transform: scaleY(1); }
+    94% { transform: scaleY(0.08); }
+  }
+  @keyframes tailWag {
+    0%, 100% { transform: rotate(0deg); }
+    35% { transform: rotate(14deg); }
+    65% { transform: rotate(-8deg); }
+  }
+  @keyframes cheekGlow {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 0.55; }
+  }
+  @keyframes shadowPulse {
+    0%, 100% { transform: scaleX(1); opacity: 0.12; }
+    50% { transform: scaleX(0.94); opacity: 0.07; }
+  }
+  @keyframes bowPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.06); }
+  }
+
+  .breathe  { animation: breathe 3s ease-in-out infinite; }
+  .shadow   { animation: shadowPulse 3s ease-in-out infinite; transform-origin: center; }
+  .ear-l    { animation: earWiggleL 5s ease-in-out infinite; transform-origin: 115px 70px; }
+  .ear-r    { animation: earWiggleR 5s ease-in-out 0.3s infinite; transform-origin: 185px 70px; }
+  .eye-l    { animation: blink 5s ease-in-out infinite; transform-origin: 138px 138px; }
+  .eye-r    { animation: blink 5s ease-in-out 0.15s infinite; transform-origin: 162px 138px; }
+  .tail     { animation: tailWag 2.8s ease-in-out infinite; transform-origin: 234px 280px; }
+  .cheek    { animation: cheekGlow 3s ease-in-out infinite; }
+  .bow      { animation: bowPulse 3s ease-in-out infinite; transform-origin: 150px 198px; }
+</style>
+</head>
+<body>
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400" width="400" height="533">
+  <defs>
+    <filter id="ol" x="-5%" y="-5%" width="110%" height="110%">
+      <feMorphology in="SourceAlpha" operator="dilate" radius="2.2" result="d"/>
+      <feFlood flood-color="#6B3518" result="c"/>
+      <feComposite in="c" in2="d" operator="in" result="s"/>
+      <feMerge>
+        <feMergeNode in="s"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <radialGradient id="fur" cx="50%" cy="40%" r="55%">
+      <stop offset="0%" stop-color="#F4873E"/>
+      <stop offset="100%" stop-color="#ED6823"/>
+    </radialGradient>
+    <radialGradient id="face" cx="50%" cy="45%" r="50%">
+      <stop offset="0%" stop-color="#FDDCB5"/>
+      <stop offset="100%" stop-color="#F5C89A"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Ground shadow -->
+  <ellipse class="shadow" cx="150" cy="378" rx="60" ry="10" fill="#7a6050" opacity="0.12"/>
+
+  <g class="breathe">
+
+    <!-- LEGS (behind body) -->
+    <rect x="110" y="332" width="16" height="36" rx="8" fill="#C85A1E" stroke="#6B3518" stroke-width="2.5"/>
+    <rect x="174" y="332" width="16" height="36" rx="8" fill="#C85A1E" stroke="#6B3518" stroke-width="2.5"/>
+    <rect x="122" y="335" width="14" height="33" rx="7" fill="#D46020" stroke="#6B3518" stroke-width="2.5"/>
+    <rect x="164" y="335" width="14" height="33" rx="7" fill="#D46020" stroke="#6B3518" stroke-width="2.5"/>
+    <ellipse cx="118" cy="367" rx="9" ry="4.5" fill="#6B3518"/>
+    <ellipse cx="129" cy="367" rx="8" ry="4.5" fill="#6B3518"/>
+    <ellipse cx="171" cy="367" rx="8" ry="4.5" fill="#6B3518"/>
+    <ellipse cx="182" cy="367" rx="9" ry="4.5" fill="#6B3518"/>
+
+    <!-- FUR (outline filter — 3 overlapping shapes, no internal lines) -->
+    <g filter="url(#ol)">
+      <!-- Head (round) -->
+      <circle cx="150" cy="135" r="54" fill="url(#fur)"/>
+      <!-- Connector (huge ellipse bridging head to body seamlessly) -->
+      <ellipse cx="150" cy="212" rx="72" ry="80" fill="url(#fur)"/>
+      <!-- Body (wide round blob) -->
+      <ellipse cx="150" cy="288" rx="82" ry="62" fill="url(#fur)"/>
+      <!-- Head fluff cloud bumps -->
+      <circle cx="108" cy="118" r="15" fill="url(#fur)"/>
+      <circle cx="192" cy="118" r="15" fill="url(#fur)"/>
+      <circle cx="120" cy="100" r="13" fill="url(#fur)"/>
+      <circle cx="180" cy="100" r="13" fill="url(#fur)"/>
+      <circle cx="150" cy="87" r="14" fill="url(#fur)"/>
+      <circle cx="136" cy="88" r="11" fill="url(#fur)"/>
+      <circle cx="164" cy="88" r="11" fill="url(#fur)"/>
+    </g>
+
+    <!-- TAIL -->
+    <g class="tail">
+      <ellipse cx="234" cy="278" rx="16" ry="13" fill="url(#fur)" stroke="#6B3518" stroke-width="2.5"/>
+      <circle cx="244" cy="270" r="7" fill="url(#fur)" stroke="#6B3518" stroke-width="2.5"/>
+      <ellipse cx="231" cy="279" rx="11" ry="9" fill="url(#fur)"/>
+    </g>
+
+    <!-- EARS -->
+    <g class="ear-l">
+      <ellipse cx="115" cy="68" rx="9" ry="17" transform="rotate(-12 115 68)" fill="url(#fur)" stroke="#6B3518" stroke-width="2.5"/>
+      <ellipse cx="115" cy="68" rx="4.5" ry="10" transform="rotate(-12 115 68)" fill="#F5C89A" opacity="0.5"/>
+    </g>
+    <g class="ear-r">
+      <ellipse cx="185" cy="68" rx="9" ry="17" transform="rotate(12 185 68)" fill="url(#fur)" stroke="#6B3518" stroke-width="2.5"/>
+      <ellipse cx="185" cy="68" rx="4.5" ry="10" transform="rotate(12 185 68)" fill="#F5C89A" opacity="0.5"/>
+    </g>
+
+    <!-- FACE -->
+    <ellipse cx="150" cy="148" rx="34" ry="30" fill="url(#face)" stroke="#6B3518" stroke-width="2"/>
+
+    <!-- EYES -->
+    <g class="eye-l" style="transform-origin:138px 138px">
+      <circle cx="138" cy="138" r="4.5" fill="#3D2215"/>
+      <circle cx="136.5" cy="136" r="1.7" fill="#fff"/>
+    </g>
+    <g class="eye-r" style="transform-origin:162px 138px">
+      <circle cx="162" cy="138" r="4.5" fill="#3D2215"/>
+      <circle cx="160.5" cy="136" r="1.7" fill="#fff"/>
+    </g>
+
+    <!-- NOSE -->
+    <ellipse cx="150" cy="152" rx="2.8" ry="2" fill="#6B3518"/>
+
+    <!-- MOUTH -->
+    <path d="M143,157 Q146,162 150,157" fill="none" stroke="#6B3518" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M150,157 Q154,162 157,157" fill="none" stroke="#6B3518" stroke-width="1.5" stroke-linecap="round"/>
+
+    <!-- CHEEKS -->
+    <ellipse class="cheek" cx="124" cy="153" rx="7" ry="5" fill="#F28B82" opacity="0.3"/>
+    <ellipse class="cheek" cx="176" cy="153" rx="7" ry="5" fill="#F28B82" opacity="0.3" style="animation-delay:0.5s"/>
+
+    <!-- BOW TIE -->
+    <g class="bow">
+      <path d="M137,192 L148,199 L137,206 Z" fill="#E8636A" stroke="#A33A40" stroke-width="1.3"/>
+      <path d="M163,192 L152,199 L163,206 Z" fill="#E8636A" stroke="#A33A40" stroke-width="1.3"/>
+      <circle cx="150" cy="199" r="3.8" fill="#D14D55" stroke="#A33A40" stroke-width="1"/>
+    </g>
+
+  </g>
+</svg>
+
+</body>
+</html>

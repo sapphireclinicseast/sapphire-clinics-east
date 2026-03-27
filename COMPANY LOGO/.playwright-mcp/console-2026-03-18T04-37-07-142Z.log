@@ -1,0 +1,4 @@
+[    2427ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://hr.sapphireclinicseast.org/favicon.ico:0
+[   18755ms] TypeError: Cannot destructure property 'jsPDF' of 'window.jspdf' as it is undefined.
+    at generate2307PDF (https://hr.sapphireclinicseast.org/modules/service-invoices/app.js?v=10:916:11)
+    at HTMLButtonElement.onclick (https://hr.sapphireclinicseast.org/modules/service-invoices/index.html:303:73)

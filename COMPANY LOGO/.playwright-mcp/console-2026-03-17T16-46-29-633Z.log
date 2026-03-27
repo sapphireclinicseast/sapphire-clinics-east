@@ -1,0 +1,6 @@
+[    2068ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://hr.sapphireclinicseast.org/favicon.ico:0
+[    3300ms] [ERROR] Dashboard load error: TypeError: Failed to fetch
+    at Object.authFetch (https://hr.sapphireclinicseast.org/js/shared.js?v=4:78:30)
+    at loadDashboard (https://hr.sapphireclinicseast.org/index.html:1499:30)
+    at initStaffDashboard (https://hr.sapphireclinicseast.org/index.html:1532:7)
+    at https://hr.sapphireclinicseast.org/index.html:1692:34 @ https://hr.sapphireclinicseast.org/index.html:1512

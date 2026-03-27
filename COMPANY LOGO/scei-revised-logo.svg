@@ -74,7 +74,7 @@
     font-weight="400"
     letter-spacing="3.2">CLINICS EAST, INC.</text>
 
-  <!-- Thin rule between mark and wordmark -->
-  <line x1="55" y1="204" x2="165" y2="204" stroke="#1A7B8A" stroke-width="0.8" opacity="0.5"/>
+  <!-- Thin rule equally spaced between SAPPHIRE and CLINICS EAST, INC. -->
+  <line x1="55" y1="224" x2="165" y2="224" stroke="#1A7B8A" stroke-width="0.8" opacity="0.5"/>
 
 </svg>

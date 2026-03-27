@@ -196,11 +196,16 @@ export async function POST(req: Request) {
       if (RECEIVABLE_METHODS.includes(p.method) && p.walletId) {
         console.log(`[WALLET-CREDIT] Incrementing wallet ${p.walletId} by ${p.amount} for ${p.method}`)
         try {
-          await prisma.digitalWallet.update({
+          const beforeWallet = await prisma.digitalWallet.findUnique({ where: { id: p.walletId }, select: { balance: true } })
+          console.log(`[WALLET-CREDIT] Before balance: ${beforeWallet?.balance}`)
+          const updatedWallet = await prisma.digitalWallet.update({
             where: { id: p.walletId },
             data: { balance: { increment: Number(p.amount) } },
           })
-          console.log(`[WALLET-CREDIT] Success: wallet ${p.walletId} credited`)
+          console.log(`[WALLET-CREDIT] After balance: ${updatedWallet.balance} (expected ${Number(beforeWallet?.balance || 0) + Number(p.amount)})`)
+          // Verify with a direct read
+          const verifyWallet = await prisma.digitalWallet.findUnique({ where: { id: p.walletId }, select: { balance: true } })
+          console.log(`[WALLET-CREDIT] Verify read: ${verifyWallet?.balance}`)
         } catch (walletErr) {
           console.error(`[WALLET-CREDIT] Failed to credit wallet ${p.walletId}:`, walletErr)
         }

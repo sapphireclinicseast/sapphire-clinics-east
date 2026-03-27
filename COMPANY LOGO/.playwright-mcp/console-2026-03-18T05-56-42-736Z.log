@@ -1,0 +1,3 @@
+[    1036ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://hr.sapphireclinicseast.org/favicon.ico:0
+[   21550ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://hr.sapphireclinicseast.org/api/invoices?month=2026-03:0
+[   27444ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://hr.sapphireclinicseast.org/api/invoices?month=2026-03:0
