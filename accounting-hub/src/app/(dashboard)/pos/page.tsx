@@ -2953,7 +2953,8 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
               </div>
             )}
 
-            {/* Packages */}
+            {/* Packages — hidden for HMO/GL wallets */}
+            {!['HMO', 'GL'].includes(walletDetail.walletType) && (<>
             <div className="mb-4">
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Packages</h4>
@@ -3030,6 +3031,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 </div>
               </div>
             )}
+            </>)}
 
             {/* Wallet Logs */}
             <div>
