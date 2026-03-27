@@ -1010,6 +1010,7 @@ export default function SessionDetailPage() {
             }}
             submitting={submitting}
             onCancel={() => { setActionMode(null); setFiles([]); setPsychUseForm(true) }}
+            clinicianSettings={clinicianSettings}
           />
         </div>
       )}
