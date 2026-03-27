@@ -112,6 +112,49 @@ function renderNotesHtml(notesStr: string): string {
       }
       return html
     }
+
+    // SPED16 / SPED18
+    if (data.formType === 'SPED16' || data.formType === 'SPED18') {
+      const s = (label: string, content: string) => `
+        <h3 style="font-size: 13px; color: #7B1FA2; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 0.5px;">${label}</h3>
+        <div style="background: #FDFAF7; padding: 10px; border-radius: 6px; font-size: 13px; margin-bottom: 8px;">${content}</div>`
+      const pills = (items: string[]) => items.map(i => `<span style="display:inline-block;background:#F3E5F5;color:#7B1FA2;padding:2px 8px;border-radius:4px;font-size:11px;margin:2px;">${escapeHtml(i)}</span>`).join(' ')
+
+      let html = `<h3 style="font-size: 14px; color: #A09383; margin-bottom: 8px;">${data.formType === 'SPED16' ? 'SPED16' : 'SPED18'} — Daily Notes</h3>`
+      const d = data.data
+      if (d.sessionType?.length) html += s('Subjective — Session Type', pills(d.sessionType) + (d.sessionTypeOther ? `<br/>Other: ${escapeHtml(d.sessionTypeOther)}` : ''))
+
+      if (data.formType === 'SPED16') {
+        if (d.strengths || d.challenges) {
+          let perf = ''
+          if (d.strengths) perf += `<strong>Strengths:</strong> ${escapeHtml(d.strengths)}<br/>`
+          if (d.challenges) perf += `<strong>Challenges:</strong> ${escapeHtml(d.challenges)}`
+          html += s('Present Level of Performance', perf)
+        }
+        if (d.observedBehavior) html += s('Observed Behavior', escapeHtml(d.observedBehavior))
+        if (d.recommendations) html += s('Recommendations', escapeHtml(d.recommendations))
+        if (d.selectedPlans?.length) {
+          let planHtml = pills(d.selectedPlans)
+          if (d.othersDetails) planHtml += `<br/><strong>Others:</strong> ${escapeHtml(d.othersDetails)}`
+          html += s('Plan', planHtml)
+        }
+      } else {
+        // SPED18
+        if (d.circleTime?.length) html += s('Circle Time', pills(d.circleTime))
+        if (d.skillAreas?.length) html += s('Skill Areas', pills(d.skillAreas))
+        if (d.activities) html += s('Activities', escapeHtml(d.activities))
+        if (d.observations?.length) html += s('Observation', pills(d.observations) + (d.observationOther ? `<br/>Other: ${escapeHtml(d.observationOther)}` : ''))
+        if (d.remarks) html += s('Remarks', escapeHtml(d.remarks))
+      }
+
+      if (data.clinicianInfo?.licNo || data.clinicianInfo?.ptrNo) {
+        let info = ''
+        if (data.clinicianInfo.licNo) info += `<strong>PRC Lic No:</strong> ${escapeHtml(data.clinicianInfo.licNo)} `
+        if (data.clinicianInfo.ptrNo) info += `<strong>PTR No:</strong> ${escapeHtml(data.clinicianInfo.ptrNo)}`
+        html += s('Clinician Information', info)
+      }
+      return html
+    }
   } catch {}
 
   // Fallback: plain text notes
