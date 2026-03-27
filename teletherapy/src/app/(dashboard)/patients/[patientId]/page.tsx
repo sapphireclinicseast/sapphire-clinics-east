@@ -28,6 +28,7 @@ import PsychologyNoteDisplay from '@/components/PsychologyNoteDisplay'
 import OTNoteDisplay from '@/components/OTNoteDisplay'
 import SLPNoteDisplay from '@/components/SLPNoteDisplay'
 import SPEDNoteDisplay from '@/components/SPEDNoteDisplay'
+import PTNoteDisplay from '@/components/PTNoteDisplay'
 
 interface PatientDetail {
   id: string
@@ -467,6 +468,9 @@ export default function PatientDetailPage() {
                             }
                             if (parsed.formType === 'SPED16' || parsed.formType === 'SPED18') {
                               return <div className="mb-3"><SPEDNoteDisplay data={parsed} /></div>
+                            }
+                            if (parsed.formType === 'PT_SESSION_NOTES') {
+                              return <div className="mb-3"><PTNoteDisplay data={parsed} /></div>
                             }
                           } catch {}
                           return (

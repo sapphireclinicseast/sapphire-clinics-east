@@ -155,6 +155,59 @@ function renderNotesHtml(notesStr: string): string {
       }
       return html
     }
+
+    // PT Session Notes
+    if (data.formType === 'PT_SESSION_NOTES') {
+      const s = (label: string, content: string) => `
+        <h3 style="font-size: 13px; color: #1565C0; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 0.5px;">${label}</h3>
+        <div style="background: #FDFAF7; padding: 10px; border-radius: 6px; font-size: 13px; margin-bottom: 8px;">${content}</div>`
+
+      let html = `<h3 style="font-size: 14px; color: #A09383; margin-bottom: 8px;">PT Session Notes</h3>`
+      if (data.branch) html += `<p style="font-size:12px;color:#666;margin-bottom:8px;">Branch: <strong>${escapeHtml(data.branch)}</strong></p>`
+
+      // Patient info
+      let patientInfo = ''
+      if (data.diagnosis) patientInfo += `<strong>Diagnosis:</strong> ${escapeHtml(data.diagnosis)}<br/>`
+      if (data.sessionNumber) patientInfo += `<strong>Session #:</strong> ${escapeHtml(data.sessionNumber)}<br/>`
+      if (data.precautions) patientInfo += `<strong>Precautions:</strong> ${escapeHtml(data.precautions)}<br/>`
+      if (data.patientSituation) patientInfo += `<strong>Patient Situation:</strong> ${escapeHtml(data.patientSituation)}`
+      if (patientInfo) html += s('Patient Information', patientInfo)
+
+      // Subjective
+      let subj = ''
+      if (data.subjective) subj += `<strong>S:</strong> ${escapeHtml(data.subjective)}<br/>`
+      if (data.chiefComplaint) subj += `<strong>C/c:</strong> ${escapeHtml(data.chiefComplaint)}`
+      if (subj) html += s('Subjective (S)', subj)
+
+      // Objective
+      const o = data.objective
+      if (o?.bp || o?.hr || o?.o2sat || o?.ps) {
+        let vitals = ''
+        if (o.bp) vitals += `<strong>BP:</strong> ${escapeHtml(o.bp)} &nbsp;`
+        if (o.hr) vitals += `<strong>HR:</strong> ${escapeHtml(o.hr)} &nbsp;`
+        if (o.o2sat) vitals += `<strong>O2sat:</strong> ${escapeHtml(o.o2sat)} &nbsp;`
+        if (o.ps) vitals += `<strong>PS:</strong> ${escapeHtml(o.ps)}`
+        html += s('Objective (O) — Vital Signs', vitals)
+      }
+
+      // Assessment
+      if (data.assessment) html += s('Assessment (A)', escapeHtml(data.assessment))
+
+      // PT Management
+      if (data.ptManagement?.length) {
+        const mgmt = data.ptManagement.map((m: string, i: number) => `${i + 1}. ${escapeHtml(m)}`).join('<br/>')
+        html += s('PT Management', mgmt)
+      }
+
+      // Clinician info
+      if (data.clinicianInfo?.licNo || data.clinicianInfo?.ptrNo) {
+        let info = ''
+        if (data.clinicianInfo.licNo) info += `<strong>PRC Lic No:</strong> ${escapeHtml(data.clinicianInfo.licNo)} `
+        if (data.clinicianInfo.ptrNo) info += `<strong>PTR No:</strong> ${escapeHtml(data.clinicianInfo.ptrNo)}`
+        html += s('Clinician Information', info)
+      }
+      return html
+    }
   } catch {}
 
   // Fallback: plain text notes
