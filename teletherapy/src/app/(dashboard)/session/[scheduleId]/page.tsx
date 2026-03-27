@@ -642,20 +642,31 @@ export default function SessionDetailPage() {
             </div>
           )}
 
-          {/* Send email */}
-          {session.sessionNote!.status === 'COMPLETED' && session.patient?.email && (
+          {/* Send email — hidden for Psychology (internal monitoring only) */}
+          {session.sessionNote!.status === 'COMPLETED' && session.patient?.email && !isPsychDept && (
             <div className="pt-4 border-t border-[var(--light-gray)]">
-              {session.sessionNote!.emailSentAt ? (
-                <p className="text-sm text-green-600 flex items-center gap-2 font-medium">
+              {session.sessionNote!.emailSentAt && (
+                <p className="text-sm text-green-600 flex items-center gap-2 font-medium mb-3">
                   <Mail size={15} />
                   Sent to {session.sessionNote!.emailSentTo} on {new Date(session.sessionNote!.emailSentAt).toLocaleDateString()}
                 </p>
-              ) : (
-                <button onClick={handleSendEmail} disabled={sendingEmail} className="btn-primary w-full py-3 rounded-xl">
-                  {sendingEmail ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                  Send Notes to Patient&apos;s Email
-                </button>
               )}
+              <button
+                onClick={() => {
+                  if (session.sessionNote!.emailSentAt) {
+                    if (confirm('This email was already sent. Do you want to resend it to the patient?')) {
+                      handleSendEmail()
+                    }
+                  } else {
+                    handleSendEmail()
+                  }
+                }}
+                disabled={sendingEmail}
+                className="btn-primary w-full py-3 rounded-xl"
+              >
+                {sendingEmail ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                {session.sessionNote!.emailSentAt ? 'Resend Notes to Patient\'s Email' : 'Send Notes to Patient\'s Email'}
+              </button>
             </div>
           )}
         </div>

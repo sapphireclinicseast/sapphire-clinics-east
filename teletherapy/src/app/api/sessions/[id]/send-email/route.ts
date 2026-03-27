@@ -115,7 +115,7 @@ export async function POST(
   if (!schedule) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
   if (!schedule.sessionNote) return NextResponse.json({ error: 'No session note to send' }, { status: 400 })
   if (!schedule.patient?.email) return NextResponse.json({ error: 'Patient has no email address' }, { status: 400 })
-  if (schedule.sessionNote.emailSentAt) return NextResponse.json({ error: 'Email already sent' }, { status: 400 })
+  // Allow resending — no longer block if already sent
 
   try {
     const patientName = `${schedule.patient.firstName} ${schedule.patient.lastName}`
