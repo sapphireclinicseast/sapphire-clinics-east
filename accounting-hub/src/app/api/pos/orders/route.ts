@@ -191,12 +191,19 @@ export async function POST(req: Request) {
 
     // Credit HMO/GL wallet balances (accounts receivable — money owed by HMO/GL provider)
     const RECEIVABLE_METHODS = ['HMO', 'GL']
+    console.log('[WALLET-CREDIT] Checking payments for HMO/GL credit:', JSON.stringify(payments.map((p: Record<string, unknown>) => ({ method: p.method, walletId: p.walletId, amount: p.amount }))))
     for (const p of payments) {
       if (RECEIVABLE_METHODS.includes(p.method) && p.walletId) {
-        await prisma.digitalWallet.update({
-          where: { id: p.walletId },
-          data: { balance: { increment: Number(p.amount) } },
-        })
+        console.log(`[WALLET-CREDIT] Incrementing wallet ${p.walletId} by ${p.amount} for ${p.method}`)
+        try {
+          await prisma.digitalWallet.update({
+            where: { id: p.walletId },
+            data: { balance: { increment: Number(p.amount) } },
+          })
+          console.log(`[WALLET-CREDIT] Success: wallet ${p.walletId} credited`)
+        } catch (walletErr) {
+          console.error(`[WALLET-CREDIT] Failed to credit wallet ${p.walletId}:`, walletErr)
+        }
       }
     }
 
