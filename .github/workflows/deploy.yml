@@ -177,16 +177,22 @@ jobs:
           docker exec sapphire_db psql -U sapphire -d sapphire_marketing -c "
             ALTER TABLE \"TherapistAccount\" ADD COLUMN IF NOT EXISTS \"resetToken\" TEXT;
             ALTER TABLE \"TherapistAccount\" ADD COLUMN IF NOT EXISTS \"resetTokenExpiry\" TIMESTAMP(3);
-            DELETE FROM \"SessionNote\" WHERE \"therapistAccountId\" = 'clmainadmin01';
-            DELETE FROM \"PatientAssignment\" WHERE \"therapistAccountId\" = 'clmainadmin01' OR \"endorsedToId\" = 'clmainadmin01';
-            DELETE FROM \"TherapistAccount\" WHERE id = 'clmainadmin01' OR email IN ('admin@sapphireclinicseast.org', 'main@sapphireclinicseast.org');
+
+            -- Create a system admin staff record if it doesn't exist
+            INSERT INTO \"Staff\" (id, \"firstName\", \"lastName\", department, branch, status, \"createdAt\", \"updatedAt\")
+            VALUES ('system-admin-staff', 'System', 'Administrator', 'ADMINISTRATION', 'SBEA', 'Active', NOW(), NOW())
+            ON CONFLICT (id) DO NOTHING;
+
+            -- Free Hannah Jara's staffId if the admin was previously linked to her
+            UPDATE \"TherapistAccount\" SET \"staffId\" = 'system-admin-staff'
+            WHERE id = 'clmainadmin01' AND \"staffId\" != 'system-admin-staff';
+
+            -- Create admin account if it doesn't exist
             INSERT INTO \"TherapistAccount\" (id, \"staffId\", email, \"passwordHash\", role, \"isActive\", \"createdAt\", \"updatedAt\")
-            SELECT 'clmainadmin01', s.id, 'main@sapphireclinicseast.org',
+            VALUES ('clmainadmin01', 'system-admin-staff', 'main@sapphireclinicseast.org',
                    '\$2b\$12\$CzbS0M/M1L9Fj7EaChT0jO6d56oL.wFiGwaw5ayPlgjKzqBtd/64.',
-                   'ADMIN', true, NOW(), NOW()
-            FROM \"Staff\" s
-            WHERE UPPER(s.\"lastName\") LIKE '%JARA%' AND UPPER(s.\"firstName\") LIKE '%HANNAH%'
-            LIMIT 1
+                   'ADMIN', true, NOW(), NOW())
+            ON CONFLICT (id) DO UPDATE SET email = 'main@sapphireclinicseast.org', role = 'ADMIN', \"isActive\" = true
             ON CONFLICT (email) DO NOTHING;
           " && echo "✅ Main admin seeded." || echo "⚠ Admin seed failed."
 

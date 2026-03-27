@@ -81,10 +81,12 @@ export default function SessionDetailPage() {
   const [qrUrl, setQrUrl] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
 
-  // Department detection
+  // Department detection — based on the SESSION's staff dept, not logged-in user
+  // This way admin can also see the correct form for each session
   const { data: authSession } = useSession()
-  const isPsychDept = authSession?.user?.department === 'PSYCHOLOGY'
-  const isOTDept = authSession?.user?.department === 'OT' || authSession?.user?.department === 'OCCUPATIONAL THERAPY'
+  const sessionDept = session?.staff?.department?.toUpperCase() ?? authSession?.user?.department?.toUpperCase() ?? ''
+  const isPsychDept = sessionDept === 'PSYCHOLOGY'
+  const isOTDept = sessionDept === 'OT' || sessionDept === 'OCCUPATIONAL THERAPY'
   const hasStructuredForm = isPsychDept || isOTDept // departments with structured note forms
   const [isFirstSession, setIsFirstSession] = useState(true)
   const [overrideToProgress, setOverrideToProgress] = useState(false)
