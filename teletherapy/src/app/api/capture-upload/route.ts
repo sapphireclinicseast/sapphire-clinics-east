@@ -25,9 +25,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 403 })
     }
 
-    if (captureToken.used) {
-      return NextResponse.json({ error: 'Token already used' }, { status: 400 })
-    }
+    // Allow multiple captures per QR token (user may want to upload multiple photos)
+    // Token is still invalidated after expiry
 
     if (new Date() > captureToken.expiresAt) {
       return NextResponse.json({ error: 'Token expired' }, { status: 400 })
