@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 import { formatTime, formatDate } from '@/lib/utils'
 import PsychologyNoteDisplay from '@/components/PsychologyNoteDisplay'
+import OTNoteDisplay from '@/components/OTNoteDisplay'
 
 interface PatientDetail {
   id: string
@@ -455,6 +456,9 @@ export default function PatientDetailPage() {
                             const parsed = JSON.parse(s.sessionNote.notes!)
                             if (parsed.formType?.startsWith('PSYCH_')) {
                               return <div className="mb-3"><PsychologyNoteDisplay data={parsed} /></div>
+                            }
+                            if (parsed.formType === 'OT_DAILY_NOTES') {
+                              return <div className="mb-3"><OTNoteDisplay data={parsed} /></div>
                             }
                           } catch {}
                           return (

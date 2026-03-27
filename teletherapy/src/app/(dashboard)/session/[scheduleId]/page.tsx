@@ -24,6 +24,8 @@ import { formatTime, formatDate } from '@/lib/utils'
 import { useSession } from 'next-auth/react'
 import PsychologyForm, { type PsychFormData } from '@/components/PsychologyForm'
 import PsychologyNoteDisplay from '@/components/PsychologyNoteDisplay'
+import OTNoteForm, { type OTFormData } from '@/components/OTNoteForm'
+import OTNoteDisplay from '@/components/OTNoteDisplay'
 
 interface SessionDetail {
   id: string
@@ -79,9 +81,11 @@ export default function SessionDetailPage() {
   const [qrUrl, setQrUrl] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
 
-  // Psychology form state
+  // Department detection
   const { data: authSession } = useSession()
   const isPsychDept = authSession?.user?.department === 'PSYCHOLOGY'
+  const isOTDept = authSession?.user?.department === 'OT' || authSession?.user?.department === 'OCCUPATIONAL THERAPY'
+  const hasStructuredForm = isPsychDept || isOTDept // departments with structured note forms
   const [isFirstSession, setIsFirstSession] = useState(true)
   const [overrideToProgress, setOverrideToProgress] = useState(false)
   const [psychUseForm, setPsychUseForm] = useState(true) // true = structured form, false = upload/QR/write
@@ -320,6 +324,16 @@ export default function SessionDetailPage() {
     try {
       const parsed = JSON.parse(session.sessionNote.notes)
       if (parsed.formType?.startsWith('PSYCH_')) return parsed
+    } catch {}
+    return null
+  }
+
+  // Check if existing notes are structured OT JSON
+  function getOTData(): OTFormData | null {
+    if (!session?.sessionNote?.notes) return null
+    try {
+      const parsed = JSON.parse(session.sessionNote.notes)
+      if (parsed.formType === 'OT_DAILY_NOTES') return parsed
     } catch {}
     return null
   }
@@ -585,6 +599,9 @@ export default function SessionDetailPage() {
               if (parsed.formType?.startsWith('PSYCH_')) {
                 return <div className="mb-4"><PsychologyNoteDisplay data={parsed} /></div>
               }
+              if (parsed.formType === 'OT_DAILY_NOTES') {
+                return <div className="mb-4"><OTNoteDisplay data={parsed} /></div>
+              }
             } catch {}
             return (
               <div className="mb-4">
@@ -670,16 +687,73 @@ export default function SessionDetailPage() {
         </div>
       )}
 
-      {/* Edit form — Generic notes (or psych in upload mode) */}
-      {actionMode === 'edit' && session.sessionNote && (!isPsychDept || !psychEditUseForm) && (
+      {/* Edit form — OT structured notes (with toggle) */}
+      {actionMode === 'edit' && session.sessionNote && isOTDept && psychEditUseForm && (
+        <div className="card-static mb-6 animate-gate">
+          <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+            <Pencil size={20} className="text-[var(--teal)]" />
+            Edit Session Notes — OT
+          </h2>
+
+          {/* Mode toggle */}
+          <div className="flex rounded-xl overflow-hidden border border-[var(--light-gray)] mb-5">
+            <button
+              onClick={() => setPsychEditUseForm(true)}
+              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--teal)] text-white"
+            >
+              <FileText size={14} className="inline mr-1.5 -mt-0.5" />
+              Use Form
+            </button>
+            <button
+              onClick={() => handlePsychSwitchToUpload('edit')}
+              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors"
+            >
+              <Upload size={14} className="inline mr-1.5 -mt-0.5" />
+              Upload / QR
+            </button>
+          </div>
+
+          <OTNoteForm
+            patientName={patientName}
+            sessionDate={formatDate(session.date)}
+            onSubmit={async (data) => {
+              setSubmitting(true)
+              try {
+                const attachments: { fileName: string; filePath: string; mimeType: string }[] = []
+                for (const file of files) {
+                  const formData = new FormData()
+                  formData.append('file', file)
+                  formData.append('scheduleId', scheduleId)
+                  const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData })
+                  if (uploadRes.ok) attachments.push(await uploadRes.json())
+                }
+                const res = await fetch(`/api/sessions/${scheduleId}/edit`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ notes: JSON.stringify(data), existingAttachments: keptAttachments, attachments }),
+                })
+                if (res.ok) { showToast('Notes updated'); setActionMode(null); setFiles([]); fetchSession() }
+                else { const d = await res.json(); showToast(d.error ?? 'Failed') }
+              } catch { showToast('Failed to update') }
+              setSubmitting(false)
+            }}
+            submitting={submitting}
+            onCancel={() => { setActionMode(null); setFiles([]); setPsychEditUseForm(true) }}
+            initialData={getOTData()}
+          />
+        </div>
+      )}
+
+      {/* Edit form — Generic notes (or structured form depts in upload mode) */}
+      {actionMode === 'edit' && session.sessionNote && (!hasStructuredForm || !psychEditUseForm) && (
         <div className="card-static mb-6 animate-gate">
           <h2 className="font-bold text-[var(--charcoal)] mb-5 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <Pencil size={20} className="text-[var(--teal)]" />
             Edit {session.sessionNote.status === 'COMPLETED' ? 'Session Notes' : 'Discontinuation Remarks'}
           </h2>
 
-          {/* Psych toggle — so they can switch back to form */}
-          {isPsychDept && session.sessionNote.status === 'COMPLETED' && (
+          {/* Structured form toggle — so they can switch back to form */}
+          {hasStructuredForm && session.sessionNote.status === 'COMPLETED' && (
             <div className="flex rounded-xl overflow-hidden border border-[var(--light-gray)] mb-5">
               <button
                 onClick={() => setPsychEditUseForm(true)}
@@ -760,8 +834,8 @@ export default function SessionDetailPage() {
                 </div>
               )}
 
-              {/* Hide Session Notes textarea for psychology (they use the form) */}
-              {!isPsychDept && (
+              {/* Hide Session Notes textarea for structured form depts (they use the form) */}
+              {!hasStructuredForm && (
                 <div className="mb-6">
                   <label className="block text-[13px] font-semibold text-[var(--charcoal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>Session Notes</label>
                   <textarea id="notes-area" value={notes} onChange={(e) => setNotes(e.target.value)} rows={6} placeholder="Enter session notes here..."
@@ -859,16 +933,72 @@ export default function SessionDetailPage() {
         </div>
       )}
 
-      {/* Upload/QR/Write mode — shown for non-psych OR psych when they chose Upload mode */}
-      {actionMode === 'complete' && (!isPsychDept || !psychUseForm) && (
+      {/* OT Complete form */}
+      {actionMode === 'complete' && isOTDept && session.patient && psychUseForm && (
+        <div className="card-static animate-gate">
+          <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+            <CheckCircle2 size={20} className="text-green-500" />
+            Complete Session — OT Daily Notes
+          </h2>
+
+          {/* Mode toggle: Form vs Upload/QR */}
+          <div className="flex rounded-xl overflow-hidden border border-[var(--light-gray)] mb-5">
+            <button
+              onClick={() => setPsychUseForm(true)}
+              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--teal)] text-white"
+            >
+              <FileText size={14} className="inline mr-1.5 -mt-0.5" />
+              Use Form
+            </button>
+            <button
+              onClick={() => handlePsychSwitchToUpload('complete')}
+              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors"
+            >
+              <Upload size={14} className="inline mr-1.5 -mt-0.5" />
+              Upload / QR
+            </button>
+          </div>
+
+          <OTNoteForm
+            patientName={`${session.patient.firstName} ${session.patient.lastName}`}
+            sessionDate={formatDate(session.date)}
+            onSubmit={async (data) => {
+              setSubmitting(true)
+              try {
+                const attachments: { fileName: string; filePath: string; mimeType: string }[] = []
+                for (const file of files) {
+                  const formData = new FormData()
+                  formData.append('file', file)
+                  formData.append('scheduleId', scheduleId)
+                  const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData })
+                  if (uploadRes.ok) attachments.push(await uploadRes.json())
+                }
+                const res = await fetch(`/api/sessions/${scheduleId}/complete`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ notes: JSON.stringify(data), attachments }),
+                })
+                if (res.ok) { showToast('Session completed'); setActionMode(null); setFiles([]); setNotes(''); fetchSession() }
+                else { const d = await res.json(); showToast(d.error ?? 'Failed') }
+              } catch { showToast('Failed to complete session') }
+              setSubmitting(false)
+            }}
+            submitting={submitting}
+            onCancel={() => { setActionMode(null); setFiles([]); setPsychUseForm(true) }}
+          />
+        </div>
+      )}
+
+      {/* Upload/QR/Write mode — shown for non-structured-form depts OR structured-form depts when they chose Upload mode */}
+      {actionMode === 'complete' && (!hasStructuredForm || !psychUseForm) && (
         <div className="card-static animate-gate">
           <h2 className="font-bold text-[var(--charcoal)] mb-5 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <CheckCircle2 size={20} className="text-green-500" />
             Complete Session
           </h2>
 
-          {/* Psych toggle — so they can switch back to form */}
-          {isPsychDept && (
+          {/* Structured form toggle — so they can switch back to form */}
+          {hasStructuredForm && (
             <div className="flex rounded-xl overflow-hidden border border-[var(--light-gray)] mb-5">
               <button
                 onClick={() => setPsychUseForm(true)}
@@ -887,11 +1017,11 @@ export default function SessionDetailPage() {
             </div>
           )}
 
-          <div className={`grid grid-cols-1 ${isPsychDept ? 'sm:grid-cols-2' : 'sm:grid-cols-3'} gap-3 mb-6`}>
+          <div className={`grid grid-cols-1 ${hasStructuredForm ? 'sm:grid-cols-2' : 'sm:grid-cols-3'} gap-3 mb-6`}>
             {[
               { icon: Upload, label: 'Upload Photo/PDF', onClick: () => fileInputRef.current?.click() },
               { icon: QrCode, label: 'QR Camera Capture', onClick: generateQR },
-              ...(!isPsychDept ? [{ icon: FileText, label: 'Write Notes', onClick: () => document.getElementById('notes-area')?.focus() }] : []),
+              ...(!hasStructuredForm ? [{ icon: FileText, label: 'Write Notes', onClick: () => document.getElementById('notes-area')?.focus() }] : []),
             ].map((opt) => (
               <button key={opt.label} onClick={opt.onClick}
                 className="flex flex-col items-center gap-3 p-5 rounded-xl border-2 border-dashed border-[var(--light-gray)] hover:border-[var(--teal)] hover:bg-[var(--pale-teal)] transition-all active:scale-97 group">
@@ -928,8 +1058,8 @@ export default function SessionDetailPage() {
             </div>
           )}
 
-          {/* Hide Session Notes textarea for psychology (they use the form) */}
-          {!isPsychDept && (
+          {/* Hide Session Notes textarea for structured form depts (they use the form) */}
+          {!hasStructuredForm && (
             <div className="mb-6">
               <label className="block text-[13px] font-semibold text-[var(--charcoal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>Session Notes</label>
               <textarea id="notes-area" value={notes} onChange={(e) => setNotes(e.target.value)} rows={6} placeholder="Enter session notes here..."
@@ -938,7 +1068,7 @@ export default function SessionDetailPage() {
           )}
 
           <div className="flex gap-3">
-            <button onClick={handleComplete} disabled={submitting || (!isPsychDept && !notes.trim() && files.length === 0)}
+            <button onClick={handleComplete} disabled={submitting || (!hasStructuredForm && !notes.trim() && files.length === 0)}
               className="btn-primary flex-1 py-3 rounded-xl !bg-gradient-to-r !from-green-600 !to-green-700 !shadow-[0_2px_8px_rgba(22,163,74,0.3)]">
               {submitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
               Save & Complete
