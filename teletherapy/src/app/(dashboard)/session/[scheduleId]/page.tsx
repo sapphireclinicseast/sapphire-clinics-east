@@ -26,6 +26,8 @@ import PsychologyForm, { type PsychFormData } from '@/components/PsychologyForm'
 import PsychologyNoteDisplay from '@/components/PsychologyNoteDisplay'
 import OTNoteForm, { type OTFormData } from '@/components/OTNoteForm'
 import OTNoteDisplay from '@/components/OTNoteDisplay'
+import SLPNoteForm, { type SLPFormData } from '@/components/SLPNoteForm'
+import SLPNoteDisplay from '@/components/SLPNoteDisplay'
 
 interface SessionDetail {
   id: string
@@ -88,7 +90,8 @@ export default function SessionDetailPage() {
   const sessionDept = session?.staff?.department?.toUpperCase() ?? authSession?.user?.department?.toUpperCase() ?? ''
   const isPsychDept = sessionDept === 'PSYCHOLOGY'
   const isOTDept = sessionDept === 'OT' || sessionDept === 'OCCUPATIONAL THERAPY'
-  const hasStructuredForm = isPsychDept || isOTDept // departments with structured note forms
+  const isSLPDept = sessionDept === 'SLP' || sessionDept === 'SPEECH LANGUAGE PATHOLOGY' || sessionDept === 'ST'
+  const hasStructuredForm = isPsychDept || isOTDept || isSLPDept // departments with structured note forms
   const [isFirstSession, setIsFirstSession] = useState(true)
   const [overrideToProgress, setOverrideToProgress] = useState(false)
   const [psychUseForm, setPsychUseForm] = useState(true) // true = structured form, false = upload/QR/write
@@ -347,6 +350,16 @@ export default function SessionDetailPage() {
     try {
       const parsed = JSON.parse(session.sessionNote.notes)
       if (parsed.formType === 'OT_DAILY_NOTES') return parsed
+    } catch {}
+    return null
+  }
+
+  // Check if existing notes are structured SLP JSON
+  function getSLPData(): SLPFormData | null {
+    if (!session?.sessionNote?.notes) return null
+    try {
+      const parsed = JSON.parse(session.sessionNote.notes)
+      if (parsed.formType === 'SLP_DAILY_NOTES') return parsed
     } catch {}
     return null
   }
@@ -615,6 +628,9 @@ export default function SessionDetailPage() {
               if (parsed.formType === 'OT_DAILY_NOTES') {
                 return <div className="mb-4"><OTNoteDisplay data={parsed} /></div>
               }
+              if (parsed.formType === 'SLP_DAILY_NOTES') {
+                return <div className="mb-4"><SLPNoteDisplay data={parsed} /></div>
+              }
             } catch {}
             return (
               <div className="mb-4">
@@ -764,6 +780,60 @@ export default function SessionDetailPage() {
             submitting={submitting}
             onCancel={() => { setActionMode(null); setFiles([]); setPsychEditUseForm(true) }}
             initialData={getOTData()}
+            clinicianSettings={clinicianSettings}
+          />
+        </div>
+      )}
+
+      {/* Edit form — SLP structured notes (with toggle) */}
+      {actionMode === 'edit' && session.sessionNote && isSLPDept && psychEditUseForm && (
+        <div className="card-static mb-6 animate-gate">
+          <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+            <Pencil size={20} className="text-[var(--teal)]" />
+            Edit Session Notes — SLP
+          </h2>
+
+          {/* Mode toggle */}
+          <div className="flex rounded-xl overflow-hidden border border-[var(--light-gray)] mb-5">
+            <button onClick={() => setPsychEditUseForm(true)}
+              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--teal)] text-white">
+              <FileText size={14} className="inline mr-1.5 -mt-0.5" />
+              Use Form
+            </button>
+            <button onClick={() => handlePsychSwitchToUpload('edit')}
+              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors">
+              <Upload size={14} className="inline mr-1.5 -mt-0.5" />
+              Upload / QR
+            </button>
+          </div>
+
+          <SLPNoteForm
+            patientName={patientName}
+            sessionDate={formatDate(session.date)}
+            onSubmit={async (data) => {
+              setSubmitting(true)
+              try {
+                const attachments: { fileName: string; filePath: string; mimeType: string }[] = []
+                for (const file of files) {
+                  const formData = new FormData()
+                  formData.append('file', file)
+                  formData.append('scheduleId', scheduleId)
+                  const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData })
+                  if (uploadRes.ok) attachments.push(await uploadRes.json())
+                }
+                const res = await fetch(`/api/sessions/${scheduleId}/edit`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ notes: JSON.stringify(data), existingAttachments: keptAttachments, attachments }),
+                })
+                if (res.ok) { showToast('Notes updated'); setActionMode(null); setFiles([]); fetchSession() }
+                else { const d = await res.json(); showToast(d.error ?? 'Failed') }
+              } catch { showToast('Failed to update') }
+              setSubmitting(false)
+            }}
+            submitting={submitting}
+            onCancel={() => { setActionMode(null); setFiles([]); setPsychEditUseForm(true) }}
+            initialData={getSLPData()}
             clinicianSettings={clinicianSettings}
           />
         </div>
@@ -985,6 +1055,59 @@ export default function SessionDetailPage() {
           </div>
 
           <OTNoteForm
+            patientName={`${session.patient.firstName} ${session.patient.lastName}`}
+            sessionDate={formatDate(session.date)}
+            onSubmit={async (data) => {
+              setSubmitting(true)
+              try {
+                const attachments: { fileName: string; filePath: string; mimeType: string }[] = []
+                for (const file of files) {
+                  const formData = new FormData()
+                  formData.append('file', file)
+                  formData.append('scheduleId', scheduleId)
+                  const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData })
+                  if (uploadRes.ok) attachments.push(await uploadRes.json())
+                }
+                const res = await fetch(`/api/sessions/${scheduleId}/complete`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ notes: JSON.stringify(data), attachments }),
+                })
+                if (res.ok) { showToast('Session completed'); setActionMode(null); setFiles([]); setNotes(''); fetchSession() }
+                else { const d = await res.json(); showToast(d.error ?? 'Failed') }
+              } catch { showToast('Failed to complete session') }
+              setSubmitting(false)
+            }}
+            submitting={submitting}
+            onCancel={() => { setActionMode(null); setFiles([]); setPsychUseForm(true) }}
+            clinicianSettings={clinicianSettings}
+          />
+        </div>
+      )}
+
+      {/* SLP Complete form */}
+      {actionMode === 'complete' && isSLPDept && session.patient && psychUseForm && (
+        <div className="card-static animate-gate">
+          <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+            <CheckCircle2 size={20} className="text-green-500" />
+            Complete Session — SLP Daily Notes
+          </h2>
+
+          {/* Mode toggle: Form vs Upload/QR */}
+          <div className="flex rounded-xl overflow-hidden border border-[var(--light-gray)] mb-5">
+            <button onClick={() => setPsychUseForm(true)}
+              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--teal)] text-white">
+              <FileText size={14} className="inline mr-1.5 -mt-0.5" />
+              Use Form
+            </button>
+            <button onClick={() => handlePsychSwitchToUpload('complete')}
+              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors">
+              <Upload size={14} className="inline mr-1.5 -mt-0.5" />
+              Upload / QR
+            </button>
+          </div>
+
+          <SLPNoteForm
             patientName={`${session.patient.firstName} ${session.patient.lastName}`}
             sessionDate={formatDate(session.date)}
             onSubmit={async (data) => {

@@ -26,6 +26,7 @@ import {
 import { formatTime, formatDate } from '@/lib/utils'
 import PsychologyNoteDisplay from '@/components/PsychologyNoteDisplay'
 import OTNoteDisplay from '@/components/OTNoteDisplay'
+import SLPNoteDisplay from '@/components/SLPNoteDisplay'
 
 interface PatientDetail {
   id: string
@@ -459,6 +460,9 @@ export default function PatientDetailPage() {
                             }
                             if (parsed.formType === 'OT_DAILY_NOTES') {
                               return <div className="mb-3"><OTNoteDisplay data={parsed} /></div>
+                            }
+                            if (parsed.formType === 'SLP_DAILY_NOTES') {
+                              return <div className="mb-3"><SLPNoteDisplay data={parsed} /></div>
                             }
                           } catch {}
                           return (

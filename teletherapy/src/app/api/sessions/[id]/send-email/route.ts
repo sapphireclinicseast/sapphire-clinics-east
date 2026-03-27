@@ -83,6 +83,35 @@ function renderNotesHtml(notesStr: string): string {
       }
       return html
     }
+
+    // SLP Daily Notes
+    if (data.formType === 'SLP_DAILY_NOTES') {
+      const s = (label: string, content: string) => `
+        <h3 style="font-size: 13px; color: #1565C0; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 0.5px;">${label}</h3>
+        <div style="background: #FDFAF7; padding: 10px; border-radius: 6px; font-size: 13px; margin-bottom: 8px;">${content}</div>`
+      const pills = (items: string[]) => items.map(i => `<span style="display:inline-block;background:#E3F2FD;color:#1565C0;padding:2px 8px;border-radius:4px;font-size:11px;margin:2px;">${escapeHtml(i)}</span>`).join(' ')
+
+      let html = '<h3 style="font-size: 14px; color: #A09383; margin-bottom: 8px;">SLP Daily Notes</h3>'
+      if (data.subjective?.branch) html += `<p style="font-size:12px;color:#666;margin-bottom:8px;">Branch: <strong>${escapeHtml(data.subjective.branch)}</strong></p>`
+      if (data.subjective?.sessionType?.length) html += s('Subjective (S) — Session Type', pills(data.subjective.sessionType) + (data.subjective.sessionTypeOther ? `<br/>Other: ${escapeHtml(data.subjective.sessionTypeOther)}` : ''))
+      if (data.subjective?.additionalNotes) html += s('Subjective Notes', escapeHtml(data.subjective.additionalNotes))
+      if (data.objective?.targets?.length) html += s('Objective (O) — Targeted Areas', pills(data.objective.targets) + (data.objective.targetsOther ? `<br/>Other: ${escapeHtml(data.objective.targetsOther)}` : ''))
+      if (data.patientAssessment) html += s('Patient Assessment / Performance (A)', escapeHtml(data.patientAssessment))
+      if (data.plan?.selectedPlans?.length) {
+        let planHtml = pills(data.plan.selectedPlans)
+        if (data.plan.continueManagementDetails) planHtml += `<br/><strong>Continue mgmt:</strong> ${escapeHtml(data.plan.continueManagementDetails)}`
+        if (data.plan.modifyActivitiesDetails) planHtml += `<br/><strong>Modify activities:</strong> ${escapeHtml(data.plan.modifyActivitiesDetails)}`
+        if (data.plan.othersDetails) planHtml += `<br/><strong>Others:</strong> ${escapeHtml(data.plan.othersDetails)}`
+        html += s('Plan (P)', planHtml)
+      }
+      if (data.clinicianInfo?.licNo || data.clinicianInfo?.ptrNo) {
+        let info = ''
+        if (data.clinicianInfo.licNo) info += `<strong>PRC Lic No:</strong> ${escapeHtml(data.clinicianInfo.licNo)} `
+        if (data.clinicianInfo.ptrNo) info += `<strong>PTR No:</strong> ${escapeHtml(data.clinicianInfo.ptrNo)}`
+        html += s('Clinician Information', info)
+      }
+      return html
+    }
   } catch {}
 
   // Fallback: plain text notes
