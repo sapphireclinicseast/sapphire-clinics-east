@@ -3236,6 +3236,8 @@ interface DiscountSettingFull {
   value: string | number
   branch?: string | null
   walletType?: string | null
+  accountId?: string | null
+  account?: { id: string; accountNumber: string; accountTitle: string } | null
   isActive?: boolean
   rules?: WalletDiscountRuleItem[]
   [key: string]: unknown
@@ -3248,8 +3250,10 @@ function DiscountSettingsPanel() {
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState({
-    name: '', type: 'PERCENTAGE' as string, value: 0, branch: '', walletType: '',
+    name: '', type: 'PERCENTAGE' as string, value: 0, branch: '', walletType: '', accountId: '',
   })
+  const [accountSearch, setAccountSearch] = useState('')
+  const [discountAccounts, setDiscountAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string; normalBalance: string }[]>([])
   const [rules, setRules] = useState<{ serviceId: string; department: string; discountPercent: number }[]>([])
   const [error, setError] = useState('')
 
@@ -3273,11 +3277,26 @@ function DiscountSettingsPanel() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
+  // Fetch REVENUE accounts with DEBIT normal balance (contra-revenue / discount accounts)
+  useEffect(() => {
+    fetch('/api/chart-of-accounts?accountType=REVENUE&pageSize=500')
+      .then(r => r.json())
+      .then(d => setDiscountAccounts(
+        (d.data || [])
+          .filter((a: { normalBalance: string }) => a.normalBalance === 'DEBIT')
+          .map((a: { id: string; accountNumber: string; accountTitle: string; normalBalance: string }) => ({
+            id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle, normalBalance: a.normalBalance,
+          }))
+      ))
+      .catch(() => {})
+  }, [])
+
   const DEPARTMENTS = ['OT', 'SLP', 'PT', 'SPED', 'PSYCHOLOGY', 'MD']
 
   const openCreate = () => {
     setEditingId(null)
-    setForm({ name: '', type: 'PERCENTAGE', value: 0, branch: '', walletType: '' })
+    setForm({ name: '', type: 'PERCENTAGE', value: 0, branch: '', walletType: '', accountId: '' })
+    setAccountSearch('')
     setRules([])
     setShowForm(true)
     setError('')
@@ -3291,7 +3310,9 @@ function DiscountSettingsPanel() {
       value: toNum(ds.value),
       branch: ds.branch || '',
       walletType: ds.walletType || '',
+      accountId: ds.accountId || '',
     })
+    setAccountSearch(ds.account ? `${ds.account.accountNumber} ${ds.account.accountTitle}` : '')
     setRules((ds.rules || []).map(r => ({
       serviceId: r.serviceId || '',
       department: r.department || '',
@@ -3309,6 +3330,7 @@ function DiscountSettingsPanel() {
         ...form,
         walletType: form.walletType || null,
         branch: form.branch || null,
+        accountId: form.accountId || null,
         rules: rules.filter(r => r.discountPercent > 0 && (r.serviceId || r.department)),
       }
 
@@ -3381,6 +3403,9 @@ function DiscountSettingsPanel() {
                     {ds.type === 'PERCENTAGE' ? `${toNum(ds.value)}%` : formatCurrency(toNum(ds.value))} off
                     {ds.branch ? ` · ${ds.branch}` : ''}
                   </p>
+                  {ds.account && (
+                    <p className="text-xs" style={{ color: 'var(--teal)' }}>{ds.account.accountNumber} {ds.account.accountTitle}</p>
+                  )}
                 </div>
                 <div className="flex gap-1">
                   <button onClick={() => openEdit(ds)} className="p-1.5 rounded-lg hover:bg-blue-50"><FileText size={13} className="text-blue-600" /></button>
@@ -3490,6 +3515,38 @@ function DiscountSettingsPanel() {
                   <option value="">None — General Discount</option>
                   {WALLET_TYPES.map(wt => <option key={wt.value} value={wt.value}>{wt.label}</option>)}
                 </select>
+              </div>
+
+              {/* COA Account — searchable (contra-revenue accounts with DEBIT normal balance) */}
+              <div className="relative">
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
+                  Chart of Account <span className="font-normal">(Debit normal balance — discount/contra-revenue)</span>
+                </label>
+                <input
+                  type="text"
+                  value={accountSearch}
+                  onChange={(e) => { setAccountSearch(e.target.value); if (!e.target.value) setForm({ ...form, accountId: '' }) }}
+                  placeholder="Search discount account..."
+                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                  style={{ borderColor: form.accountId ? 'var(--teal)' : 'var(--light-gray)', background: form.accountId ? '#f0fdfa' : 'white' }}
+                />
+                {form.accountId && (
+                  <button type="button" onClick={() => { setForm({ ...form, accountId: '' }); setAccountSearch('') }}
+                    className="absolute right-2 top-7 p-0.5 rounded hover:bg-gray-100"><X size={14} style={{ color: 'var(--mid-gray)' }} /></button>
+                )}
+                {accountSearch && !form.accountId && (
+                  <div className="absolute z-20 left-0 right-0 mt-1 bg-white border rounded-xl shadow-lg max-h-40 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                    {discountAccounts.filter(a => `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(accountSearch.toLowerCase())).slice(0, 10).map(a => (
+                      <button key={a.id} type="button" onClick={() => { setForm({ ...form, accountId: a.id }); setAccountSearch(`${a.accountNumber} ${a.accountTitle}`) }}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50" style={{ color: 'var(--charcoal)' }}>
+                        <span className="font-mono font-medium" style={{ color: 'var(--teal)' }}>{a.accountNumber}</span> {a.accountTitle}
+                      </button>
+                    ))}
+                    {discountAccounts.filter(a => `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(accountSearch.toLowerCase())).length === 0 && (
+                      <p className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>No matching accounts (must be REVENUE with DEBIT normal balance)</p>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Per-Service / Per-Department Discount Rules */}

@@ -186,7 +186,7 @@ export async function GET(req: Request) {
 
     /* ── Group accounts ────────────────────────────────────────── */
 
-    const groupedAccounts: Record<string, Record<string, { accountNumber: string; accountTitle: string; subSubType: string | null; currency: string }[]>> = {}
+    const groupedAccounts: Record<string, Record<string, { accountNumber: string; accountTitle: string; subSubType: string | null; normalBalance: string; currency: string }[]>> = {}
     for (const acct of accounts) {
       const t = acct.accountType
       if (!groupedAccounts[t]) groupedAccounts[t] = {}
@@ -196,6 +196,7 @@ export async function GET(req: Request) {
         accountNumber: acct.accountNumber,
         accountTitle: acct.accountTitle,
         subSubType: acct.subSubType,
+        normalBalance: acct.normalBalance,
         currency: acct.currency,
       })
     }

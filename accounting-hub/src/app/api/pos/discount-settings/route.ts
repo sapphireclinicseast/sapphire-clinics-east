@@ -27,6 +27,7 @@ export async function GET(req: Request) {
       orderBy: { name: 'asc' },
       include: {
         createdBy: { select: { id: true, name: true } },
+        account: { select: { id: true, accountNumber: true, accountTitle: true } },
         rules: {
           include: {
             service: { select: { id: true, name: true } },
@@ -48,7 +49,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { name, type, value, branch, walletType, rules } = await req.json()
+    const { name, type, value, branch, walletType, accountId, rules } = await req.json()
 
     if (!name?.trim() || !type || value === undefined) {
       return NextResponse.json(
@@ -78,6 +79,7 @@ export async function POST(req: Request) {
       value: Number(value),
       branch: branch || null,
       walletType: walletType || null,
+      accountId: accountId || null,
       createdById: session.user.id,
     }
 
@@ -94,6 +96,7 @@ export async function POST(req: Request) {
     const setting = await prisma.discountSetting.create({
       data: createData,
       include: {
+        account: { select: { id: true, accountNumber: true, accountTitle: true } },
         rules: {
           include: {
             service: { select: { id: true, name: true } },
@@ -125,7 +128,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, name, type, value, branch, walletType, rules } = await req.json()
+    const { id, name, type, value, branch, walletType, accountId, rules } = await req.json()
 
     if (!id) {
       return NextResponse.json({ error: 'id is required' }, { status: 400 })
@@ -152,6 +155,7 @@ export async function PUT(req: Request) {
     if (value !== undefined) data.value = Number(value)
     if (branch !== undefined) data.branch = branch || null
     if (walletType !== undefined) data.walletType = walletType || null
+    if (accountId !== undefined) data.accountId = accountId || null
 
     // If rules provided, delete existing and recreate
     if (rules !== undefined && Array.isArray(rules)) {
@@ -174,6 +178,7 @@ export async function PUT(req: Request) {
       where: { id },
       data,
       include: {
+        account: { select: { id: true, accountNumber: true, accountTitle: true } },
         rules: {
           include: {
             service: { select: { id: true, name: true } },

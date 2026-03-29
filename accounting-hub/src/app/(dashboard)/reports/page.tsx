@@ -29,6 +29,7 @@ interface AccountEntry {
   accountNumber: string
   accountTitle: string
   subSubType: string | null
+  normalBalance: string
   currency: string
 }
 
@@ -511,162 +512,123 @@ function BalanceSheet({ data, viewMode }: { data: ReportData; viewMode: ViewMode
    ═══════════════════════════════════════════════════════════════ */
 
 function IncomeStatement({ data, viewMode }: { data: ReportData; viewMode: ViewMode }) {
-  const { monthly } = data
+  const { monthly, accounts } = data
 
-  // Collect all departments that have revenue
-  const allDepts = new Set<string>()
-  const allBranches = new Set<string>()
-  const allAccounts = new Set<string>()
+  // COA-driven: Revenue accounts (CREDIT normal balance = gross revenue, DEBIT = discounts)
+  const revenueAccounts = [
+    ...(accounts.REVENUE?.OPERATING_REVENUE || []),
+    ...(accounts.REVENUE?.NON_OPERATING_REVENUE || []),
+  ]
+  const grossRevenueAccts = revenueAccounts.filter(a => a.normalBalance !== 'DEBIT')
+  const discountAccts = revenueAccounts.filter(a => a.normalBalance === 'DEBIT')
+
+  // COA-driven: Expense accounts by subType
+  const directExpenseAccts = accounts.EXPENSE?.DIRECT_EXPENSES || []
+  const cogsAccts = accounts.EXPENSE?.COGS || []
+  const costOfSalesAccts = [...directExpenseAccts, ...cogsAccts]
+  const indirectExpenseAccts = accounts.EXPENSE?.INDIRECT_EXPENSES || []
+  const nonOpExpenseAccts = accounts.EXPENSE?.NON_OPERATING_EXPENSES || []
+
+  // Collect revenue by account keys from monthly data
+  const allAccounts2 = new Set<string>()
   for (let m = 1; m <= 12; m++) {
-    for (const d of Object.keys(monthly[m].revenueByDept)) allDepts.add(d)
-    for (const b of Object.keys(monthly[m].revenueByBranch)) allBranches.add(b)
-    for (const a of Object.keys(monthly[m].revenueByAccount || {})) allAccounts.add(a)
+    for (const a of Object.keys(monthly[m].revenueByAccount || {})) allAccounts2.add(a)
   }
-  const depts = Array.from(allDepts).sort()
-  const branches = Array.from(allBranches).sort()
-  const accountKeys = Array.from(allAccounts).sort()
 
-  // Collect all COGS departments
-  const cogsDepts = new Set<string>()
-  for (let m = 1; m <= 12; m++) {
-    for (const d of Object.keys(monthly[m].cogsByDept)) cogsDepts.add(d)
+  // Helper: get amount for a COA account from revenueByAccount
+  const acctAmount = (acctNum: string, acctTitle: string) => {
+    const key = `${acctNum} ${acctTitle}`
+    return sumMonths(monthly, (m) => (m.revenueByAccount || {})[key] || 0)
   }
-  const cogsDeptsArr = Array.from(cogsDepts).sort()
 
-  // Annual totals
-  const totalServiceRevenue = sumMonths(monthly, (m) => m.serviceRevenue)
-  const totalProductRevenue = sumMonths(monthly, (m) => m.productRevenue)
-  const totalUnearnedRevenue = sumMonths(monthly, (m) => m.unearnedRevenue)
-  const totalRevenue = totalServiceRevenue + totalProductRevenue
-  const totalGrossRevenue = totalRevenue + totalUnearnedRevenue
+  // Gross Revenue = sum of all CREDIT revenue accounts
+  const totalGrossRevenue = grossRevenueAccts.reduce((s, a) => s + acctAmount(a.accountNumber, a.accountTitle), 0)
+  // If no COA-tagged transactions yet, fall back to computed totals
+  const fallbackGrossRevenue = sumMonths(monthly, (m) => m.serviceRevenue + m.productRevenue)
+  const effectiveGrossRevenue = totalGrossRevenue > 0 ? totalGrossRevenue : fallbackGrossRevenue
+
+  // Discounts = sum of DEBIT revenue accounts (shown as negative)
+  const totalDiscounts = discountAccts.reduce((s, a) => s + acctAmount(a.accountNumber, a.accountTitle), 0)
+
+  // Net Sales
+  const netSales = effectiveGrossRevenue - totalDiscounts
+
+  // Cost of Sales (currently from COGS computation)
   const totalCOGS = sumMonths(monthly, (m) => m.cogs)
-  const grossProfit = totalRevenue - totalCOGS
-  const operatingExpenses = 0 // No journal entries for expenses yet
-  const operatingIncome = grossProfit - operatingExpenses
-  const netIncome = operatingIncome
+
+  // Gross Profit
+  const grossProfit = netSales - totalCOGS
+
+  // Operating Expenses (indirect) — placeholder 0 until journal entries exist
+  const totalOpex = 0
+
+  // EBITDA
+  const ebitda = grossProfit - totalOpex
+
+  // Net Income
+  const netIncome = ebitda
 
   if (viewMode === 'annual') {
     return (
       <div>
-        {/* REVENUE */}
-        <SectionHeader label="Revenue" />
-
-        <SubSectionHeader label="Service Revenue (Clinic)" />
-        <AnnualRow label="Earned Service Revenue" amount={totalServiceRevenue} indent={2} />
-
-        {/* Revenue by branch */}
-        {branches.length > 0 && (
-          <>
-            <div className="py-1 px-4 pl-10 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>
-              By Branch
-            </div>
-            {branches.map((b) => {
-              const branchTotal = sumMonths(monthly, (m) => m.revenueByBranch[b] || 0)
-              return <AnnualRow key={b} label={BRANCH_LABELS[b] || b} amount={branchTotal} indent={3} />
-            })}
-          </>
-        )}
-
-        <SubSectionHeader label="Product Revenue (Verdana Store)" />
-        <AnnualRow label="Earned Product Revenue" amount={totalProductRevenue} indent={2} />
-
-        {/* Revenue by department */}
-        {depts.length > 0 && (
-          <>
-            <div className="py-1 px-4 pl-10 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>
-              By Department
-            </div>
-            {depts.map((d) => {
-              const deptTotal = sumMonths(monthly, (m) => m.revenueByDept[d] || 0)
-              return <AnnualRow key={d} label={DEPT_LABELS[d] || d} amount={deptTotal} indent={3} />
-            })}
-          </>
-        )}
-
-        {/* Revenue by COA Account */}
-        {accountKeys.length > 0 && (
-          <>
-            <SubSectionHeader label="Revenue by Account (Chart of Accounts)" />
-            {accountKeys.map((a) => {
-              const acctTotal = sumMonths(monthly, (m) => (m.revenueByAccount || {})[a] || 0)
-              return <AnnualRow key={a} label={a} amount={acctTotal} indent={2} />
-            })}
-          </>
-        )}
-
-        <SubSectionHeader label="Unearned Revenue (Packages, VIP, Prepaid)" />
-        <AnnualRow label="Unearned Revenue Collected" amount={totalUnearnedRevenue} indent={2} />
-
-        <AnnualRow label="Total Revenue (Earned)" amount={totalRevenue} indent={0} isTotal bold />
-        <AnnualRow label="Total Revenue (Including Unearned)" amount={totalGrossRevenue} indent={0} isTotal />
+        {/* 7000 GROSS REVENUE */}
+        <SectionHeader label="7000 Gross Revenue" />
+        {grossRevenueAccts.map((a) => (
+          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={acctAmount(a.accountNumber, a.accountTitle)} indent={1} />
+        ))}
+        <AnnualRow label="Total for 7000 Gross Revenue" amount={effectiveGrossRevenue} indent={0} isTotal bold />
 
         <div className="h-3" />
 
-        {/* COST OF GOODS SOLD */}
-        <SectionHeader label="Cost of Goods Sold" />
-        {cogsDeptsArr.length > 0 ? (
-          cogsDeptsArr.map((d) => {
-            const deptCogs = sumMonths(monthly, (m) => m.cogsByDept[d] || 0)
-            return <AnnualRow key={d} label={`COGS — ${DEPT_LABELS[d] || d}`} amount={deptCogs} indent={1} />
-          })
-        ) : (
-          <AnnualRow label="(No product cost data recorded)" amount={0} indent={1} />
-        )}
-        <AnnualRow label="Total Cost of Goods Sold" amount={totalCOGS} indent={0} isTotal bold />
+        {/* 7002 DISCOUNTS AND REFUNDS */}
+        <SectionHeader label="7002 Discounts and Refunds" />
+        {discountAccts.map((a) => (
+          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={-acctAmount(a.accountNumber, a.accountTitle)} indent={1} negative />
+        ))}
+        <AnnualRow label="Total for 7002 Discounts and Refunds" amount={-totalDiscounts} indent={0} isTotal bold negative />
 
         <div className="h-3" />
 
-        {/* GROSS PROFIT */}
-        <AnnualRow label="GROSS PROFIT" amount={grossProfit} isGrandTotal />
+        <AnnualRow label="Total for Net Sales" amount={netSales} isGrandTotal />
 
         <div className="h-3" />
 
-        {/* OPERATING EXPENSES — Direct */}
-        <SectionHeader label="Operating Expenses" />
-
-        <SubSectionHeader label="Direct Expenses (Patient Treatment)" />
-        {data.accounts.EXPENSE?.DIRECT_EXPENSES?.map((a) => (
-          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={0} indent={2} />
+        {/* COST OF SALES */}
+        <SectionHeader label="Cost of Sales" />
+        {costOfSalesAccts.map((a) => (
+          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={0} indent={1} />
         ))}
-        {/* Backward compat: old OPERATING_EXPENSES accounts shown under direct if no new ones */}
-        {data.accounts.EXPENSE?.OPERATING_EXPENSES?.map((a) => (
-          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={0} indent={2} />
-        ))}
-        {(!data.accounts.EXPENSE?.DIRECT_EXPENSES || data.accounts.EXPENSE.DIRECT_EXPENSES.length === 0) &&
-         (!data.accounts.EXPENSE?.OPERATING_EXPENSES || data.accounts.EXPENSE.OPERATING_EXPENSES.length === 0) && (
-          <AnnualRow label="(No direct expense accounts set up)" amount={0} indent={2} />
+        {costOfSalesAccts.length === 0 && totalCOGS > 0 && (
+          <AnnualRow label="Cost of Goods Sold (computed)" amount={totalCOGS} indent={1} />
         )}
-        <AnnualRow label="Total Direct Expenses" amount={0} indent={1} isTotal />
-
-        <SubSectionHeader label="Indirect Expenses (Administrative & Support)" />
-        {data.accounts.EXPENSE?.INDIRECT_EXPENSES?.map((a) => (
-          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={0} indent={2} />
-        ))}
-        {(!data.accounts.EXPENSE?.INDIRECT_EXPENSES || data.accounts.EXPENSE.INDIRECT_EXPENSES.length === 0) && (
-          <AnnualRow label="(No indirect expense accounts set up)" amount={0} indent={2} />
-        )}
-        <AnnualRow label="Total Indirect Expenses" amount={0} indent={1} isTotal />
-
-        <AnnualRow label="Total Operating Expenses" amount={operatingExpenses} indent={0} isTotal bold />
+        <AnnualRow label="Total for Cost of Sales" amount={totalCOGS} indent={0} isTotal bold />
 
         <div className="h-3" />
 
-        <AnnualRow label="OPERATING INCOME" amount={operatingIncome} isGrandTotal />
+        <AnnualRow label="Gross Profit" amount={grossProfit} isGrandTotal />
 
         <div className="h-3" />
 
-        {/* NON-OPERATING */}
-        <SectionHeader label="Non-Operating Items" />
-        {data.accounts.REVENUE?.NON_OPERATING_REVENUE?.map((a) => (
-          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={0} indent={1} />
+        {/* EXPENSES (Indirect) */}
+        <SectionHeader label="Expenses" />
+        {indirectExpenseAccts.map((a) => (
+          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={0} indent={1} />
         ))}
-        {data.accounts.EXPENSE?.NON_OPERATING_EXPENSES?.map((a) => (
-          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={0} indent={1} negative />
-        ))}
-        {(!data.accounts.REVENUE?.NON_OPERATING_REVENUE || data.accounts.REVENUE.NON_OPERATING_REVENUE.length === 0) &&
-         (!data.accounts.EXPENSE?.NON_OPERATING_EXPENSES || data.accounts.EXPENSE.NON_OPERATING_EXPENSES.length === 0) && (
-          <AnnualRow label="(No non-operating accounts set up)" amount={0} indent={1} />
+        {indirectExpenseAccts.length === 0 && (
+          <AnnualRow label="(No expense accounts set up)" amount={0} indent={1} />
         )}
+        <AnnualRow label="Total for Expenses" amount={totalOpex} indent={0} isTotal bold />
+
+        <div className="h-3" />
+
+        <AnnualRow label="EBITDA" amount={ebitda} isGrandTotal />
+
+        <div className="h-3" />
+
+        {/* NON-OPERATING EXPENSES (Depreciation, Interest) */}
+        {nonOpExpenseAccts.map((a) => (
+          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={0} indent={1} />
+        ))}
 
         <div className="h-3" />
 
@@ -675,133 +637,91 @@ function IncomeStatement({ data, viewMode }: { data: ReportData; viewMode: ViewM
     )
   }
 
+  // Monthly helper for COA account
+  const acctMonthly = (acctNum: string, acctTitle: string) =>
+    getMonthlyArray(monthly, (m) => (m.revenueByAccount || {})[`${acctNum} ${acctTitle}`] || 0)
+
   /* ── Monthly view ──────────────────────────────────────────── */
   return (
     <div className="overflow-x-auto">
       <MonthlyHeader />
 
-      <SectionHeader label="Revenue" />
-
-      {/* Service revenue */}
-      <MonthlyRow
-        label="Service Revenue (Clinic)"
-        values={getMonthlyArray(monthly, (m) => m.serviceRevenue)}
-        total={totalServiceRevenue}
-        indent={1}
-      />
-
-      {/* Revenue by branch */}
-      {branches.map((b) => (
-        <MonthlyRow
-          key={b}
-          label={BRANCH_LABELS[b] || b}
-          values={getMonthlyArray(monthly, (m) => m.revenueByBranch[b] || 0)}
-          total={sumMonths(monthly, (m) => m.revenueByBranch[b] || 0)}
-          indent={2}
-        />
+      {/* 7000 GROSS REVENUE */}
+      <SectionHeader label="7000 Gross Revenue" />
+      {grossRevenueAccts.map((a) => (
+        <MonthlyRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`}
+          values={acctMonthly(a.accountNumber, a.accountTitle)}
+          total={acctAmount(a.accountNumber, a.accountTitle)} indent={1} />
       ))}
-
-      {/* Product revenue */}
-      <MonthlyRow
-        label="Product Revenue (Store)"
-        values={getMonthlyArray(monthly, (m) => m.productRevenue)}
-        total={totalProductRevenue}
-        indent={1}
-      />
-
-      {/* Revenue by department */}
-      {depts.map((d) => (
-        <MonthlyRow
-          key={d}
-          label={DEPT_LABELS[d] || d}
-          values={getMonthlyArray(monthly, (m) => m.revenueByDept[d] || 0)}
-          total={sumMonths(monthly, (m) => m.revenueByDept[d] || 0)}
-          indent={2}
-        />
-      ))}
-
-      {/* Revenue by COA Account */}
-      {accountKeys.length > 0 && (
-        <>
-          <MonthlyRow label="Revenue by Account (COA)" values={[]} total={0} indent={0} bold />
-          {accountKeys.map((a) => (
-            <MonthlyRow
-              key={a}
-              label={a}
-              values={getMonthlyArray(monthly, (m) => (m.revenueByAccount || {})[a] || 0)}
-              total={sumMonths(monthly, (m) => (m.revenueByAccount || {})[a] || 0)}
-              indent={2}
-            />
-          ))}
-        </>
-      )}
-
-      {/* Unearned revenue */}
-      <MonthlyRow
-        label="Unearned Revenue"
-        values={getMonthlyArray(monthly, (m) => m.unearnedRevenue)}
-        total={totalUnearnedRevenue}
-        indent={1}
-      />
-
-      {/* Total Revenue */}
-      <MonthlyRow
-        label="Total Revenue (Earned)"
+      <MonthlyRow label="Total for 7000 Gross Revenue"
         values={getMonthlyArray(monthly, (m) => m.serviceRevenue + m.productRevenue)}
-        total={totalRevenue}
-        bold
-        isTotal
-      />
+        total={effectiveGrossRevenue} bold isTotal />
 
       <div className="h-2" />
-      <SectionHeader label="Cost of Goods Sold" />
 
-      {cogsDeptsArr.map((d) => (
-        <MonthlyRow
-          key={d}
-          label={`COGS — ${DEPT_LABELS[d] || d}`}
-          values={getMonthlyArray(monthly, (m) => m.cogsByDept[d] || 0)}
-          total={sumMonths(monthly, (m) => m.cogsByDept[d] || 0)}
-          indent={1}
-        />
+      {/* 7002 DISCOUNTS AND REFUNDS */}
+      <SectionHeader label="7002 Discounts and Refunds" />
+      {discountAccts.map((a) => (
+        <MonthlyRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`}
+          values={acctMonthly(a.accountNumber, a.accountTitle).map(v => -v)}
+          total={-acctAmount(a.accountNumber, a.accountTitle)} indent={1} />
+      ))}
+      <MonthlyRow label="Total for 7002 Discounts and Refunds"
+        values={Array(12).fill(-totalDiscounts / 12)} total={-totalDiscounts} bold isTotal />
+
+      <div className="h-2" />
+
+      <MonthlyRow label="Total for Net Sales"
+        values={getMonthlyArray(monthly, (m) => m.serviceRevenue + m.productRevenue)}
+        total={netSales} isGrandTotal />
+
+      <div className="h-2" />
+
+      {/* COST OF SALES */}
+      <SectionHeader label="Cost of Sales" />
+      {costOfSalesAccts.map((a) => (
+        <MonthlyRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`}
+          values={Array(12).fill(0)} total={0} indent={1} />
+      ))}
+      <MonthlyRow label="Total for Cost of Sales"
+        values={getMonthlyArray(monthly, (m) => m.cogs)} total={totalCOGS} bold isTotal />
+
+      <div className="h-2" />
+
+      <MonthlyRow label="Gross Profit"
+        values={getMonthlyArray(monthly, (m) => m.serviceRevenue + m.productRevenue - m.cogs)}
+        total={grossProfit} isGrandTotal />
+
+      <div className="h-2" />
+
+      {/* EXPENSES */}
+      <SectionHeader label="Expenses" />
+      {indirectExpenseAccts.map((a) => (
+        <MonthlyRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`}
+          values={Array(12).fill(0)} total={0} indent={1} />
+      ))}
+      <MonthlyRow label="Total for Expenses"
+        values={Array(12).fill(0)} total={totalOpex} bold isTotal />
+
+      <div className="h-2" />
+
+      <MonthlyRow label="EBITDA"
+        values={getMonthlyArray(monthly, (m) => m.serviceRevenue + m.productRevenue - m.cogs)}
+        total={ebitda} isGrandTotal />
+
+      <div className="h-2" />
+
+      {/* NON-OPERATING */}
+      {nonOpExpenseAccts.map((a) => (
+        <MonthlyRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`}
+          values={Array(12).fill(0)} total={0} indent={1} />
       ))}
 
-      <MonthlyRow
-        label="Total COGS"
-        values={getMonthlyArray(monthly, (m) => m.cogs)}
-        total={totalCOGS}
-        bold
-        isTotal
-      />
-
       <div className="h-2" />
 
-      <MonthlyRow
-        label="GROSS PROFIT"
+      <MonthlyRow label="NET INCOME"
         values={getMonthlyArray(monthly, (m) => m.serviceRevenue + m.productRevenue - m.cogs)}
-        total={grossProfit}
-        isGrandTotal
-      />
-
-      <div className="h-2" />
-      <SectionHeader label="Operating Expenses" />
-
-      <MonthlyRow
-        label="Total Operating Expenses"
-        values={Array(12).fill(0)}
-        total={0}
-        bold
-        isTotal
-      />
-
-      <div className="h-2" />
-
-      <MonthlyRow
-        label="NET INCOME"
-        values={getMonthlyArray(monthly, (m) => m.serviceRevenue + m.productRevenue - m.cogs)}
-        total={netIncome}
-        isGrandTotal
-      />
+        total={netIncome} isGrandTotal />
     </div>
   )
 }

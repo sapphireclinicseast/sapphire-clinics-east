@@ -114,6 +114,7 @@ model Account {
   services              Service[]
   inventoryItems        InventoryItem[] @relation("InventoryRevenueAccount")
   inventorySourceItems  InventoryItem[] @relation("InventorySourceAccount")
+  discountSettings      DiscountSetting[]
 
   @@index([accountType])
   @@index([isActive])
@@ -579,6 +580,8 @@ model DiscountSetting {
   value       Decimal
   branch      String?
   walletType  String?  // If set, links this discount to a wallet type (VIP, PREPAID_CARD, etc.)
+  accountId   String?  // COA account for this discount (REVENUE accounts with DEBIT normal balance = contra-revenue)
+  account     Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
   isActive    Boolean  @default(true)
   createdById String
   createdBy   User     @relation("DiscountCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -590,6 +593,7 @@ model DiscountSetting {
   @@index([isActive])
   @@index([branch])
   @@index([walletType])
+  @@index([accountId])
 }
 
 model WalletDiscountRule {
