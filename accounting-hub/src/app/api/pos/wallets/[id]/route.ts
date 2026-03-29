@@ -19,6 +19,7 @@ export async function GET(
     const wallet = await prisma.digitalWallet.findUnique({
       where: { id },
       include: {
+        account: { select: { id: true, accountNumber: true, accountTitle: true } },
         packages: {
           orderBy: { createdAt: 'desc' },
           include: {
@@ -76,7 +77,7 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await req.json()
-    const { patientName, patientEmail, patientId, isActive, deleteReason } = body
+    const { patientName, patientEmail, patientId, isActive, deleteReason, accountId } = body
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = {}
@@ -84,6 +85,7 @@ export async function PUT(
     if (patientEmail !== undefined) data.patientEmail = patientEmail?.trim() || null
     if (patientId !== undefined) data.patientId = patientId?.trim() || null
     if (isActive !== undefined) data.isActive = isActive
+    if (accountId !== undefined) data.accountId = accountId || null
 
     const wallet = await prisma.digitalWallet.update({ where: { id }, data })
 

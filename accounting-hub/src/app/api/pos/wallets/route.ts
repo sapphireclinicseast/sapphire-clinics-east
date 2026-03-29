@@ -77,7 +77,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { patientId, patientName, patientEmail, walletType } = await req.json()
+    const { patientId, patientName, patientEmail, walletType, accountId } = await req.json()
 
     if (!patientName?.trim()) {
       return NextResponse.json({ error: 'Patient name is required' }, { status: 400 })
@@ -137,6 +137,7 @@ export async function POST(req: Request) {
         patientId: patientId?.trim() || `${walletType}-${patientName.trim().replace(/\s+/g, '-').toUpperCase()}`,
         patientName: patientName.trim(),
         patientEmail: patientEmail?.trim() || null,
+        accountId: accountId || null,
       },
     })
 

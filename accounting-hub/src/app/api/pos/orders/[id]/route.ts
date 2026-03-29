@@ -73,6 +73,19 @@ export async function PUT(
         include: { items: true, payments: true },
       })
 
+      // When voiding, reverse HMO/GL wallet credits (accounts receivable)
+      if (body.action === 'void') {
+        const RECEIVABLE_METHODS = ['HMO', 'GL']
+        for (const p of updated.payments) {
+          if (RECEIVABLE_METHODS.includes(p.method) && p.walletId && Number(p.amount) > 0) {
+            await prisma.digitalWallet.update({
+              where: { id: p.walletId },
+              data: { balance: { decrement: Number(p.amount) } },
+            })
+          }
+        }
+      }
+
       await prisma.auditLog.create({
         data: {
           userId: session.user.id,

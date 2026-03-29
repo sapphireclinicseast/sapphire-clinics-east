@@ -1026,12 +1026,18 @@ function OrderFormModal({
       const walletType = getWalletType()
       if (walletType && patientId) {
         try {
+          // For PACKAGE wallets, use service-specific patientId so different packages get separate wallets
+          const firstItem = items[0]
+          const svc = services.find(s => s.id === firstItem.serviceId)
+          const walletPatientId = walletType === 'PACKAGE' && svc
+            ? `${patientId}-${svc.department || 'GEN'}-${firstItem.name.replace(/\s+/g, '-').toUpperCase()}`
+            : patientId
           const walletRes = await fetch('/api/pos/wallets', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               patientName: patientName.trim(),
-              patientId,
+              patientId: walletPatientId,
               walletType,
             }),
           })
@@ -1041,9 +1047,7 @@ function OrderFormModal({
           }
           // Reload wallet with the payment amount
           if (walletData.id) {
-            const firstItem = items[0]
             // Use packageSessions from the service if available, otherwise fall back to item quantity
-            const svc = services.find(s => s.id === firstItem.serviceId)
             const sessionCount = (svc as Record<string, unknown>)?.packageSessions
               ? Number((svc as Record<string, unknown>).packageSessions)
               : items.reduce((s, it) => s + it.quantity, 0)
@@ -2341,7 +2345,16 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   const [wallets, setWallets] = useState<DigitalWallet[]>([])
   const [loading, setLoading] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
-  const [createForm, setCreateForm] = useState({ patientName: '', patientId: '', patientEmail: '' })
+  const [createForm, setCreateForm] = useState({ patientName: '', patientId: '', patientEmail: '', accountId: '' })
+  const [createAccountSearch, setCreateAccountSearch] = useState('')
+  const [arAccounts, setArAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
+  // Fetch ASSET accounts for AR classification (HMO/GL)
+  useEffect(() => {
+    fetch('/api/chart-of-accounts?accountType=ASSET&pageSize=500')
+      .then(r => r.json())
+      .then(d => setArAccounts((d.data || []).map((a: { id: string; accountNumber: string; accountTitle: string }) => ({ id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle }))))
+      .catch(() => {})
+  }, [])
   const [selectedWallet, setSelectedWallet] = useState<DigitalWallet | null>(null)
   const [walletDetail, setWalletDetail] = useState<DigitalWallet | null>(null)
   const [showAddPackage, setShowAddPackage] = useState(false)
@@ -2404,7 +2417,8 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         return
       }
       setShowCreate(false)
-      setCreateForm({ patientName: '', patientId: '', patientEmail: '' })
+      setCreateForm({ patientName: '', patientId: '', patientEmail: '', accountId: '' })
+      setCreateAccountSearch('')
       fetchWallets()
     } catch (e) {
       setCreateError(`Network error: ${e}`)
@@ -2902,6 +2916,33 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 <input value={createForm.patientEmail} onChange={e => setCreateForm({ ...createForm, patientEmail: e.target.value })}
                   className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
               </div>
+              {/* COA Account for HMO/GL — Accounts Receivable classification */}
+              {(walletTypeFilter === 'HMO' || walletTypeFilter === 'GL') && (
+                <div className="relative">
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
+                    Chart of Account <span className="font-normal">(Accounts Receivable)</span>
+                  </label>
+                  <input type="text" value={createAccountSearch}
+                    onChange={e => { setCreateAccountSearch(e.target.value); if (!e.target.value) setCreateForm({ ...createForm, accountId: '' }) }}
+                    placeholder="Search account..."
+                    className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                    style={{ borderColor: createForm.accountId ? 'var(--teal)' : 'var(--light-gray)', background: createForm.accountId ? '#f0fdfa' : 'white' }} />
+                  {createForm.accountId && (
+                    <button type="button" onClick={() => { setCreateForm({ ...createForm, accountId: '' }); setCreateAccountSearch('') }}
+                      className="absolute right-2 top-7 p-0.5 rounded hover:bg-gray-100"><X size={14} style={{ color: 'var(--mid-gray)' }} /></button>
+                  )}
+                  {createAccountSearch && !createForm.accountId && (
+                    <div className="absolute z-20 left-0 right-0 mt-1 bg-white border rounded-xl shadow-lg max-h-36 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                      {arAccounts.filter(a => `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(createAccountSearch.toLowerCase())).slice(0, 8).map(a => (
+                        <button key={a.id} type="button" onClick={() => { setCreateForm({ ...createForm, accountId: a.id }); setCreateAccountSearch(`${a.accountNumber} ${a.accountTitle}`) }}
+                          className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50" style={{ color: 'var(--charcoal)' }}>
+                          <span className="font-mono font-medium" style={{ color: 'var(--teal)' }}>{a.accountNumber}</span> {a.accountTitle}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               {createError && <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle size={12} />{createError}</p>}
               <button onClick={createWallet} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>
                 {walletTypeFilter === 'HMO' ? 'Add HMO' : walletTypeFilter === 'GL' ? 'Add Agency' : 'Create Wallet'}
@@ -3037,7 +3078,13 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
             <div>
               {['HMO', 'GL'].includes(walletDetail.walletType) ? (
                 <>
-                  <h4 className="text-sm font-semibold mb-2" style={{ color: 'var(--charcoal)' }}>Transactions</h4>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Transactions</h4>
+                    <a href={`/accounts-receivable?type=${walletDetail.walletType}&wallet=${walletDetail.id}`}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
+                      See Accounts Receivables
+                    </a>
+                  </div>
                   {(walletDetail as unknown as { orders?: { id: string; orderNumber: number; transactionDate: string; patientName: string; clinicianName: string; items: { name: string }[]; payments: { method: string; amount: string | number; walletId?: string }[] }[] }).orders?.length ? (
                     <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
                       <table className="w-full text-xs">

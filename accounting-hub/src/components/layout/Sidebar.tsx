@@ -15,6 +15,7 @@ import {
   Users,
   Calculator,
   Stethoscope,
+  FileCheck,
   X,
 } from 'lucide-react'
 
@@ -56,6 +57,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/inventory', icon: Package, label: 'Inventory & Procurement', roles: FULL_ACCESS },
       { href: '/services', icon: Stethoscope, label: 'Services', roles: SERVICES_POS_ACCESS },
       { href: '/pos', icon: ShoppingCart, label: 'Point of Sale', roles: SERVICES_POS_ACCESS },
+      { href: '/accounts-receivable', icon: FileCheck, label: 'Accounts Receivable', roles: FULL_ACCESS },
       { href: '/payroll', icon: BadgeDollarSign, label: 'Payroll', roles: FULL_ACCESS },
     ],
   },

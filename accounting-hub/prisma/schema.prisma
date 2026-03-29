@@ -70,6 +70,7 @@ model User {
   walletLogs            WalletLog[]             @relation("WalletLogBy")
   ordersCreated         Order[]                 @relation("OrderCreatedBy")
   discountSettings      DiscountSetting[]       @relation("DiscountCreatedBy")
+  arPayments            ARPayment[]             @relation("ARPaymentCreatedBy")
 
   @@index([email])
   @@index([role])
@@ -115,6 +116,8 @@ model Account {
   inventoryItems        InventoryItem[] @relation("InventoryRevenueAccount")
   inventorySourceItems  InventoryItem[] @relation("InventorySourceAccount")
   discountSettings      DiscountSetting[]
+  wallets               DigitalWallet[] @relation("WalletAccount")
+  arPaymentDiscounts    ARPayment[]     @relation("ARPaymentDiscountAccount")
 
   @@index([accountType])
   @@index([isActive])
@@ -406,6 +409,7 @@ enum WalletAction {
   RELOAD
   REWARD_EARN
   REWARD_SPEND
+  AR_PAYMENT
 }
 
 enum WalletType {
@@ -445,18 +449,22 @@ model DigitalWallet {
   vipTier      String?    // PLATINUM, GOLD, SILVER — only for VIP wallets
   balance      Decimal    @default(0)
   rewardPoints Int        @default(0)
+  accountId    String?    // COA account (e.g., Accounts Receivable for HMO/GL)
+  account      Account?   @relation("WalletAccount", fields: [accountId], references: [id], onDelete: SetNull)
   isActive     Boolean    @default(true)
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  packages WalletPackage[]
-  logs     WalletLog[]
-  payments OrderPayment[]
+  packages    WalletPackage[]
+  logs        WalletLog[]
+  payments    OrderPayment[]
+  arPayments  ARPayment[]
 
-  @@unique([patientId, walletType])
+  @@index([patientId, walletType])
   @@index([patientName])
   @@index([barcode])
   @@index([walletType])
+  @@index([accountId])
 }
 
 model WalletPackage {
@@ -526,8 +534,9 @@ model Order {
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
-  items    OrderItem[]
-  payments OrderPayment[]
+  items          OrderItem[]
+  payments       OrderPayment[]
+  arPaymentItems ARPaymentItem[]
 
   @@index([orderType])
   @@index([branch])
@@ -609,4 +618,42 @@ model WalletDiscountRule {
   @@index([discountSettingId])
   @@index([serviceId])
   @@index([department])
+}
+
+// ── Accounts Receivable Payments ─────────────────────────
+
+model ARPayment {
+  id                String        @id @default(cuid())
+  walletId          String
+  wallet            DigitalWallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  paymentDate       DateTime
+  amount            Decimal
+  discount          Decimal       @default(0)
+  discountAccountId String?
+  discountAccount   Account?      @relation("ARPaymentDiscountAccount", fields: [discountAccountId], references: [id], onDelete: SetNull)
+  proofUrl          String?       // URL or file path to payment proof
+  notes             String?
+  branch            String?
+  createdById       String
+  createdBy         User          @relation("ARPaymentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt         DateTime      @default(now())
+
+  items ARPaymentItem[]
+
+  @@index([walletId])
+  @@index([paymentDate])
+  @@index([branch])
+  @@index([createdById])
+}
+
+model ARPaymentItem {
+  id        String    @id @default(cuid())
+  paymentId String
+  payment   ARPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  orderId   String
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  createdAt DateTime  @default(now())
+
+  @@index([paymentId])
+  @@index([orderId])
 }
