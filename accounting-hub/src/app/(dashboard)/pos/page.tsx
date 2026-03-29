@@ -79,6 +79,7 @@ interface Order {
   status: string
   items: { id: string; name: string; quantity: number; unitPrice: string | number; lineTotal: string | number; serviceId?: string; inventoryItemId?: string; service?: { department?: string; revenueType?: string } | null }[]
   payments: { id: string; method: string; amount: string | number; walletId?: string; reference?: string }[]
+  arPaymentItems?: { paymentId: string }[]
   referrer?: { id: string; name: string } | null
   createdBy?: { name: string }
   [key: string]: unknown
@@ -791,9 +792,10 @@ function OrderFormModal({
     setItems(prev => prev.filter((_, i) => i !== idx))
   }
 
-  // Check if any item blocks PWD discount
-  const pwdBlocked = items.some(it => it.noPwdDiscount)
+  // Check if ALL items block PWD discount (only fully block if nothing is eligible)
+  const pwdBlocked = items.length > 0 && items.every(it => it.noPwdDiscount)
   const pwdBlockedItems = items.filter(it => it.noPwdDiscount).map(it => it.name)
+  const hasMixedPwdItems = items.some(it => it.noPwdDiscount) && !pwdBlocked
 
   // Calculate totals
   const subtotal = items.reduce((s, it) => s + it.lineTotal, 0)
@@ -806,21 +808,22 @@ function OrderFormModal({
   if (pwdDiscount) {
     discountType = 'PWD_SC'
     discountLabel = 'PWD/Senior Citizen (20%)'
-    // Check if any item has pwdDiscountClinicOnly
-    const hasClinicOnly = items.some(it => it.hasDoctorFee && it.pwdDiscountClinicOnly)
+    // Apply 20% only to items that allow PWD discount (skip noPwdDiscount items)
+    const eligibleItems = items.filter(it => !it.noPwdDiscount)
+    const hasClinicOnly = eligibleItems.some(it => it.hasDoctorFee && it.pwdDiscountClinicOnly)
+    if (hasMixedPwdItems) {
+      pwdNote = `Discount excludes: ${pwdBlockedItems.join(', ')}`
+    }
     if (hasClinicOnly) {
-      pwdNote = 'Discount on clinic fee only (doctor fee excluded)'
-      // Only apply 20% to the clinic fee portion, not doctor fee
-      discountAmount = items.reduce((sum, it) => {
+      pwdNote = (pwdNote ? pwdNote + ' | ' : '') + 'Discount on clinic fee only (doctor fee excluded)'
+      discountAmount = eligibleItems.reduce((sum, it) => {
         if (it.hasDoctorFee && it.pwdDiscountClinicOnly && it.clinicFee != null) {
-          // Discount only on clinic fee * quantity
           return sum + (it.clinicFee * it.quantity * 0.2)
         }
-        // For items without clinic-only restriction, discount entire line
         return sum + (it.lineTotal * 0.2)
       }, 0)
     } else {
-      discountAmount = subtotal * 0.2
+      discountAmount = eligibleItems.reduce((sum, it) => sum + (it.lineTotal * 0.2), 0)
     }
   } else if (walletDiscountApplied && walletDiscountRules.length > 0 && customDiscountId) {
     // Apply per-service wallet discount rules
@@ -1394,10 +1397,15 @@ function OrderFormModal({
             </div>
             {pwdBlocked && (
               <p className="text-xs px-2 py-1 rounded-lg" style={{ background: '#fef2f2', color: '#991b1b' }}>
-                PWD/SC discount is not available — {pwdBlockedItems.join(', ')} {pwdBlockedItems.length === 1 ? 'does' : 'do'} not accept PWD discount
+                PWD/SC discount is not available — all items do not accept PWD discount
               </p>
             )}
-            {pwdNote && !pwdBlocked && (
+            {hasMixedPwdItems && !pwdDiscount && (
+              <p className="text-xs px-2 py-1 rounded-lg" style={{ background: '#eff6ff', color: '#1e40af' }}>
+                Note: {pwdBlockedItems.join(', ')} {pwdBlockedItems.length === 1 ? 'does' : 'do'} not accept PWD discount — discount will apply to eligible items only
+              </p>
+            )}
+            {pwdNote && (
               <p className="text-xs px-2 py-1 rounded-lg" style={{ background: '#fef3c7', color: '#92400e' }}>{pwdNote}</p>
             )}
             {!pwdDiscount && (
@@ -2649,12 +2657,16 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       const r = await fetch(`/api/pos/orders?${params}`)
       const d = await r.json()
       const allOrders = normalize(d) as Order[]
-      // Filter: orders with HMO/GL payment referencing this provider
+      // Filter: orders with HMO/GL payment referencing this provider, exclude paid (AR settled)
       const providerName = showSOA.patientName
       const walletMethod = showSOA.walletType // HMO or GL
       const filtered = allOrders.filter(o =>
         o.status !== 'VOIDED' &&
-        o.payments.some(p => p.method === walletMethod && p.reference && p.reference.trim().toLowerCase() === providerName.toLowerCase())
+        !(o.arPaymentItems || []).length &&
+        o.payments.some(p => p.method === walletMethod && (
+          (p.walletId === showSOA.id) ||
+          (p.reference && p.reference.trim().toLowerCase() === providerName.toLowerCase())
+        ))
       )
       setSoaOrders(filtered)
     } catch { setSoaOrders([]) }
@@ -3090,14 +3102,15 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                       <table className="w-full text-xs">
                         <thead>
                           <tr style={{ background: 'var(--off-white)' }}>
-                            {['Date', 'Patient', 'Clinician', 'Service', 'Amount'].map(h => (
+                            {['Date', 'Patient', 'Clinician', 'Service', 'Amount', 'Status'].map(h => (
                               <th key={h} className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--mid-gray)' }}>{h}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
-                          {((walletDetail as unknown as { orders?: { id: string; orderNumber: number; transactionDate: string; patientName: string; clinicianName: string; items: { name: string }[]; payments: { method: string; amount: string | number; walletId?: string }[] }[] }).orders || []).map(o => {
+                          {((walletDetail as unknown as { orders?: { id: string; orderNumber: number; transactionDate: string; patientName: string; clinicianName: string; items: { name: string }[]; payments: { method: string; amount: string | number; walletId?: string }[]; arPaymentItems?: { paymentId: string }[] }[] }).orders || []).map(o => {
                             const pay = o.payments.find(p => p.walletId === walletDetail.id)
+                            const isPaid = (o.arPaymentItems || []).length > 0
                             return (
                               <tr key={o.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                                 <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{formatDate(o.transactionDate)}</td>
@@ -3105,15 +3118,21 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                                 <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{o.clinicianName || '—'}</td>
                                 <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{o.items.map(it => it.name).join(', ')}</td>
                                 <td className="px-3 py-2 font-semibold text-right" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(pay ? toNum(pay.amount) : 0)}</td>
+                                <td className="px-3 py-2 text-center">
+                                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                                    style={isPaid ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>
+                                    {isPaid ? 'Paid' : 'Unpaid'}
+                                  </span>
+                                </td>
                               </tr>
                             )
                           })}
                         </tbody>
                         <tfoot>
                           <tr style={{ background: '#f0fdf4' }}>
-                            <td colSpan={4} className="px-3 py-2 text-right font-bold text-xs">TOTAL RECEIVABLE</td>
+                            <td colSpan={5} className="px-3 py-2 text-right font-bold text-xs">TOTAL RECEIVABLE</td>
                             <td className="px-3 py-2 text-right font-bold text-sm" style={{ color: '#166534' }}>
-                              {formatCurrency(((walletDetail as unknown as { orders?: { payments: { amount: string | number; walletId?: string }[] }[] }).orders || []).reduce((s, o) => {
+                              {formatCurrency(((walletDetail as unknown as { orders?: { payments: { amount: string | number; walletId?: string }[]; arPaymentItems?: { paymentId: string }[] }[] }).orders || []).filter(o => !(o.arPaymentItems || []).length).reduce((s, o) => {
                                 const pay = o.payments.find(p => p.walletId === walletDetail.id)
                                 return s + (pay ? toNum(pay.amount) : 0)
                               }, 0))}

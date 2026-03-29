@@ -84,6 +84,7 @@ export default function AccountsReceivablePage() {
   const [payDiscountSearch, setPayDiscountSearch] = useState('')
   const [payNotes, setPayNotes] = useState('')
   const [payProofUrl, setPayProofUrl] = useState('')
+  const [payProofUploading, setPayProofUploading] = useState(false)
   const [paySelectedOrders, setPaySelectedOrders] = useState<string[]>([])
   const [payError, setPayError] = useState('')
   const [paySaving, setPaySaving] = useState(false)
@@ -455,12 +456,40 @@ export default function AccountsReceivablePage() {
                 </div>
               )}
 
-              {/* Proof of payment */}
+              {/* Proof of payment — file upload */}
               <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Proof of Payment (URL)</label>
-                <input type="text" value={payProofUrl} onChange={e => setPayProofUrl(e.target.value)}
-                  placeholder="Paste link to proof..."
-                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Proof of Payment</label>
+                {payProofUrl ? (
+                  <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm" style={{ borderColor: 'var(--teal)', background: '#f0fdfa' }}>
+                    <Upload size={14} style={{ color: 'var(--teal)' }} />
+                    <a href={payProofUrl} target="_blank" rel="noopener noreferrer" className="flex-1 truncate underline text-xs" style={{ color: 'var(--teal)' }}>
+                      {payProofUrl.split('/').pop()}
+                    </a>
+                    <button type="button" onClick={() => setPayProofUrl('')} className="p-0.5 rounded hover:bg-gray-100">
+                      <X size={14} style={{ color: 'var(--mid-gray)' }} />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex items-center justify-center gap-2 px-3 py-3 rounded-xl border-2 border-dashed text-sm cursor-pointer hover:bg-gray-50 transition-colors"
+                    style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                    <Upload size={16} />
+                    {payProofUploading ? 'Uploading...' : 'Upload file (JPG, PNG, PDF — max 10MB)'}
+                    <input type="file" accept="image/*,.pdf" className="hidden" onChange={async (e) => {
+                      const file = e.target.files?.[0]
+                      if (!file) return
+                      setPayProofUploading(true)
+                      try {
+                        const formData = new FormData()
+                        formData.append('file', file)
+                        const res = await fetch('/api/upload', { method: 'POST', body: formData })
+                        const data = await res.json()
+                        if (res.ok && data.url) setPayProofUrl(data.url)
+                        else setPayError(data.error || 'Upload failed')
+                      } catch { setPayError('Upload failed') }
+                      finally { setPayProofUploading(false) }
+                    }} />
+                  </label>
+                )}
               </div>
 
               {/* Notes */}

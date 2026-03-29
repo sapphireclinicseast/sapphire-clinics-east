@@ -53,6 +53,7 @@ export async function GET(
           clinicianName: true,
           items: { select: { name: true } },
           payments: { select: { method: true, amount: true, walletId: true } },
+          arPaymentItems: { select: { paymentId: true } },
         },
         take: 100,
       })

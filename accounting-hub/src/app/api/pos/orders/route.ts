@@ -46,6 +46,7 @@ export async function GET(req: Request) {
             },
           },
           payments: true,
+          arPaymentItems: { select: { paymentId: true } },
           referrer: true,
           createdBy: { select: { id: true, name: true } },
         },
