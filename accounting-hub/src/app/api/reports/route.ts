@@ -55,8 +55,8 @@ export async function GET(req: Request) {
               inventoryItemId: true,
               quantity: true,
               lineTotal: true,
-              service: { select: { department: true } },
-              inventoryItem: { select: { unitCost: true, skuDepartment: true } },
+              service: { select: { department: true, revenueAccount: { select: { accountNumber: true, accountTitle: true } } } },
+              inventoryItem: { select: { unitCost: true, skuDepartment: true, revenueAccount: { select: { accountNumber: true, accountTitle: true } } } },
             },
           },
           payments: {
@@ -89,6 +89,7 @@ export async function GET(req: Request) {
       unearnedRevenue: number
       cogs: number
       revenueByDept: Record<string, number>
+      revenueByAccount: Record<string, number>
       revenueByBranch: Record<string, number>
       cogsByDept: Record<string, number>
       cashReceived: number
@@ -99,8 +100,8 @@ export async function GET(req: Request) {
     for (let m = 1; m <= 12; m++) {
       monthly[m] = {
         serviceRevenue: 0, productRevenue: 0, unearnedRevenue: 0,
-        cogs: 0, revenueByDept: {}, revenueByBranch: {},
-        cogsByDept: {}, cashReceived: 0, paymentsByMethod: {},
+        cogs: 0, revenueByDept: {}, revenueByAccount: {},
+        revenueByBranch: {}, cogsByDept: {}, cashReceived: 0, paymentsByMethod: {},
       }
     }
 
@@ -121,10 +122,16 @@ export async function GET(req: Request) {
       // Revenue by branch
       m.revenueByBranch[order.branch] = (m.revenueByBranch[order.branch] || 0) + net
 
-      // Revenue by department + COGS from product items
+      // Revenue by department, by COA account + COGS from product items
       for (const item of order.items) {
         const dept = item.service?.department || item.inventoryItem?.skuDepartment || 'OTHER'
-        m.revenueByDept[dept] = (m.revenueByDept[dept] || 0) + Number(item.lineTotal)
+        const lineAmt = Number(item.lineTotal)
+        m.revenueByDept[dept] = (m.revenueByDept[dept] || 0) + lineAmt
+
+        // Group by assigned COA revenue account
+        const acct = item.service?.revenueAccount || item.inventoryItem?.revenueAccount
+        const acctKey = acct ? `${acct.accountNumber} ${acct.accountTitle}` : 'Unclassified Revenue'
+        m.revenueByAccount[acctKey] = (m.revenueByAccount[acctKey] || 0) + lineAmt
 
         if (item.inventoryItemId && item.inventoryItem) {
           const cost = Number(item.inventoryItem.unitCost) * item.quantity

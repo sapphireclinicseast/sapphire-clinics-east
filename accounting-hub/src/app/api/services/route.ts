@@ -54,6 +54,7 @@ export async function GET(req: Request) {
       skip: (params.page - 1) * params.pageSize,
       take: params.pageSize,
       include: {
+        revenueAccount: { select: { id: true, accountNumber: true, accountTitle: true } },
         eligibleFor: {
           include: {
             eligibleService: { select: { id: true, name: true, department: true, price: true } },
@@ -77,7 +78,7 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { name, department, branch, price, priceType, revenueType, walletType, packageSessions,
             hasDoctorFee, doctorFee, clinicFee, pwdDiscountClinicOnly, noPwdDiscount, description,
-            eligibleServices } = body
+            revenueAccountId, eligibleServices } = body
 
     if (!name?.trim() || !department || !branch || price == null) {
       return NextResponse.json({ error: 'Name, department, branch, and price are required' }, { status: 400 })
@@ -108,6 +109,7 @@ export async function POST(req: Request) {
         pwdDiscountClinicOnly: hasDoctorFee ? (pwdDiscountClinicOnly || false) : false,
         noPwdDiscount: noPwdDiscount || false,
         description: description?.trim() || null,
+        revenueAccountId: revenueAccountId || null,
         createdById: session.user.id,
       },
     })
@@ -150,7 +152,7 @@ export async function PUT(req: Request) {
     const body = await req.json()
     const { id, name, department, branch, price, priceType, revenueType, walletType, packageSessions,
             hasDoctorFee, doctorFee, clinicFee, pwdDiscountClinicOnly, noPwdDiscount, description,
-            eligibleServices } = body
+            revenueAccountId, eligibleServices } = body
 
     if (!id) {
       return NextResponse.json({ error: 'Service ID is required' }, { status: 400 })
@@ -182,6 +184,7 @@ export async function PUT(req: Request) {
     if (pwdDiscountClinicOnly !== undefined) data.pwdDiscountClinicOnly = pwdDiscountClinicOnly
     if (noPwdDiscount !== undefined) data.noPwdDiscount = noPwdDiscount
     if (description !== undefined) data.description = description?.trim() || null
+    if (revenueAccountId !== undefined) data.revenueAccountId = revenueAccountId || null
 
     const service = await prisma.service.update({ where: { id }, data })
 
@@ -200,10 +203,11 @@ export async function PUT(req: Request) {
       }
     }
 
-    // Re-fetch with eligibility
+    // Re-fetch with eligibility + revenue account
     const result = await prisma.service.findUnique({
       where: { id },
       include: {
+        revenueAccount: { select: { id: true, accountNumber: true, accountTitle: true } },
         eligibleFor: {
           include: { eligibleService: { select: { id: true, name: true, department: true, price: true } } },
         },

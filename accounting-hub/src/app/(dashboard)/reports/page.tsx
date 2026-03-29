@@ -18,6 +18,7 @@ interface MonthData {
   unearnedRevenue: number
   cogs: number
   revenueByDept: Record<string, number>
+  revenueByAccount: Record<string, number>
   revenueByBranch: Record<string, number>
   cogsByDept: Record<string, number>
   cashReceived: number
@@ -492,12 +493,15 @@ function IncomeStatement({ data, viewMode }: { data: ReportData; viewMode: ViewM
   // Collect all departments that have revenue
   const allDepts = new Set<string>()
   const allBranches = new Set<string>()
+  const allAccounts = new Set<string>()
   for (let m = 1; m <= 12; m++) {
     for (const d of Object.keys(monthly[m].revenueByDept)) allDepts.add(d)
     for (const b of Object.keys(monthly[m].revenueByBranch)) allBranches.add(b)
+    for (const a of Object.keys(monthly[m].revenueByAccount || {})) allAccounts.add(a)
   }
   const depts = Array.from(allDepts).sort()
   const branches = Array.from(allBranches).sort()
+  const accountKeys = Array.from(allAccounts).sort()
 
   // Collect all COGS departments
   const cogsDepts = new Set<string>()
@@ -552,6 +556,17 @@ function IncomeStatement({ data, viewMode }: { data: ReportData; viewMode: ViewM
             {depts.map((d) => {
               const deptTotal = sumMonths(monthly, (m) => m.revenueByDept[d] || 0)
               return <AnnualRow key={d} label={DEPT_LABELS[d] || d} amount={deptTotal} indent={3} />
+            })}
+          </>
+        )}
+
+        {/* Revenue by COA Account */}
+        {accountKeys.length > 0 && (
+          <>
+            <SubSectionHeader label="Revenue by Account (Chart of Accounts)" />
+            {accountKeys.map((a) => {
+              const acctTotal = sumMonths(monthly, (m) => (m.revenueByAccount || {})[a] || 0)
+              return <AnnualRow key={a} label={a} amount={acctTotal} indent={2} />
             })}
           </>
         )}
@@ -681,6 +696,22 @@ function IncomeStatement({ data, viewMode }: { data: ReportData; viewMode: ViewM
           indent={2}
         />
       ))}
+
+      {/* Revenue by COA Account */}
+      {accountKeys.length > 0 && (
+        <>
+          <MonthlyRow label="Revenue by Account (COA)" values={[]} total={0} indent={0} bold />
+          {accountKeys.map((a) => (
+            <MonthlyRow
+              key={a}
+              label={a}
+              values={getMonthlyArray(monthly, (m) => (m.revenueByAccount || {})[a] || 0)}
+              total={sumMonths(monthly, (m) => (m.revenueByAccount || {})[a] || 0)}
+              indent={2}
+            />
+          ))}
+        </>
+      )}
 
       {/* Unearned revenue */}
       <MonthlyRow

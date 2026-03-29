@@ -426,6 +426,8 @@ interface InventoryItem {
   supplierId: string | null
   supplier?: { id: string; supplierName: string; isForeign: boolean; currency: string } | null
   supplierExchangeRate: number | null
+  revenueAccountId?: string | null
+  revenueAccount?: { id: string; accountNumber: string; accountTitle: string } | null
   variants?: { id: string; variantType: string; variantLabel: string; color?: string; quantity: number; variantSku: string; barcode?: string | null }[]
   isBundle?: boolean
   bundleComponents?: { id: string; quantity: number; component: { id: string; name: string; sku: string; quantity: number } }[]
@@ -532,6 +534,8 @@ export default function InventoryPage() {
   const [fReorderLevel, setFReorderLevel] = useState('')
   const [fSupplierId, setFSupplierId] = useState('')
   const [fExchangeRate, setFExchangeRate] = useState('')
+  const [fRevenueAccountId, setFRevenueAccountId] = useState('')
+  const [revenueAccounts, setRevenueAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
   // Variants (color, size, material, etc.)
   const [variants, setVariants] = useState<{ id?: string; variantType: string; variantLabel: string; quantity: number; variantSku?: string; barcode?: string }[]>([])
   const [newVariantType, setNewVariantType] = useState('Color')
@@ -718,6 +722,15 @@ export default function InventoryPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionUserId])
 
+  // Fetch revenue accounts for COA dropdown
+  useEffect(() => {
+    if (!sessionUserId) return
+    fetch('/api/chart-of-accounts?accountType=REVENUE&pageSize=500')
+      .then(r => r.json())
+      .then(d => setRevenueAccounts((d.data || []).map((a: { id: string; accountNumber: string; accountTitle: string }) => ({ id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle }))))
+      .catch(() => {})
+  }, [sessionUserId])
+
   // Re-fetch items when search/filter changes (debounced)
   useEffect(() => {
     if (!initialLoaded.current) return
@@ -788,7 +801,7 @@ export default function InventoryPage() {
     setEditingItem(null)
     setFName(''); setFSkuDept(''); setFSkuCat(''); setFSkuSub(''); setFSkuValue('')
     setFBranch('SANDBOX_EAST'); setFSubType(''); setFUnitCost(''); setFSellingPrice(''); setFRewardPointsPrice('')
-    setFInitialQty(''); setFReorderLevel(''); setFSupplierId(''); setFExchangeRate('')
+    setFInitialQty(''); setFReorderLevel(''); setFSupplierId(''); setFExchangeRate(''); setFRevenueAccountId('')
     setVariants([]); setNewVariantType('Color'); setNewVariantLabel(''); setNewVariantQty(0)
     setIsBundle(false); setBundleComponents([]); setBundleComponentId(''); setBundleComponentQty(1)
     setShowInlineSupplier(false); setError('')
@@ -810,6 +823,7 @@ export default function InventoryPage() {
     setFReorderLevel(item.reorderLevel != null ? String(item.reorderLevel) : '')
     setFSupplierId(item.supplierId || '')
     setFExchangeRate(item.supplierExchangeRate != null ? String(item.supplierExchangeRate) : '')
+    setFRevenueAccountId(item.revenueAccountId || '')
     // Load variants
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setVariants((item.variants || []).map((v: any) => ({
@@ -928,6 +942,7 @@ export default function InventoryPage() {
       quantity: fInitialQty || '0',
       reorderLevel: fReorderLevel || null,
       supplierId: fSupplierId || null,
+      revenueAccountId: fRevenueAccountId || null,
     }
     if (editingItem) body.id = editingItem.id
     try {
@@ -1303,6 +1318,9 @@ setTimeout(()=>window.print(),500);
                       <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>
                         {item.name}
                         {item.isBundle && <span className="ml-2 px-1.5 py-0.5 rounded text-xs font-semibold" style={{ background: '#fef3c7', color: '#92400e' }}>Bundle</span>}
+                        {item.revenueAccount && (
+                          <p className="text-xs mt-0.5" style={{ color: 'var(--teal)' }}>{item.revenueAccount.accountNumber} {item.revenueAccount.accountTitle}</p>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{BRANCH_LABELS[item.branch] || item.branch}</td>
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
@@ -1534,6 +1552,21 @@ setTimeout(()=>window.print(),500);
                         </button>
                       </div>
                     )}
+                  </div>
+
+                  {/* Revenue Account (COA) */}
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                      Revenue Account <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(Chart of Accounts)</span>
+                    </label>
+                    <select value={fRevenueAccountId} onChange={(e) => setFRevenueAccountId(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                      style={{ borderColor: 'var(--light-gray)' }}>
+                      <option value="">— Not assigned —</option>
+                      {revenueAccounts.map(a => (
+                        <option key={a.id} value={a.id}>{a.accountNumber} {a.accountTitle}</option>
+                      ))}
+                    </select>
                   </div>
 
                   {/* Color Variants */}
