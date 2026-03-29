@@ -71,7 +71,7 @@ export async function GET(req: Request) {
           isActive: true,
           ...(branch !== 'ALL' ? { branch: branch as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | 'VERDANA_STORE' } : {}),
         },
-        select: { quantity: true, unitCost: true, skuDepartment: true, branch: true },
+        select: { quantity: true, unitCost: true, skuDepartment: true, branch: true, sourceAccountId: true, sourceAccount: { select: { accountNumber: true, accountTitle: true } } },
       }),
 
       // Digital wallets — unearned revenue (liability)
@@ -158,6 +158,22 @@ export async function GET(req: Request) {
       inventoryByDept[item.skuDepartment] = (inventoryByDept[item.skuDepartment] || 0) + val
     }
 
+    /* ── Inventory source account balances (Accounts Payable / Cash) ── */
+    const inventoryBySourceAccount: Record<string, { accountNumber: string; accountTitle: string; amount: number }> = {}
+    let unclassifiedAP = 0
+    for (const item of inventoryItems) {
+      const val = Number(item.unitCost) * item.quantity
+      if (item.sourceAccountId && item.sourceAccount) {
+        const key = item.sourceAccountId
+        if (!inventoryBySourceAccount[key]) {
+          inventoryBySourceAccount[key] = { accountNumber: item.sourceAccount.accountNumber, accountTitle: item.sourceAccount.accountTitle, amount: 0 }
+        }
+        inventoryBySourceAccount[key].amount += val
+      } else {
+        unclassifiedAP += val
+      }
+    }
+
     /* ── Wallet / unearned revenue ─────────────────────────────── */
 
     const walletByType: Record<string, number> = {}
@@ -191,6 +207,8 @@ export async function GET(req: Request) {
       monthly,
       inventory: { total: totalInventory, byDepartment: inventoryByDept },
       wallets: { total: totalWalletBalance, byType: walletByType },
+      inventorySourceAccounts: Object.values(inventoryBySourceAccount),
+      unclassifiedAP,
     })
   } catch (err) {
     console.error('Reports API error:', err)

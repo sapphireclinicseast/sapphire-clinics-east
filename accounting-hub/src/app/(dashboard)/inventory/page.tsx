@@ -428,6 +428,8 @@ interface InventoryItem {
   supplierExchangeRate: number | null
   revenueAccountId?: string | null
   revenueAccount?: { id: string; accountNumber: string; accountTitle: string } | null
+  sourceAccountId?: string | null
+  sourceAccount?: { id: string; accountNumber: string; accountTitle: string } | null
   variants?: { id: string; variantType: string; variantLabel: string; color?: string; quantity: number; variantSku: string; barcode?: string | null }[]
   isBundle?: boolean
   bundleComponents?: { id: string; quantity: number; component: { id: string; name: string; sku: string; quantity: number } }[]
@@ -535,7 +537,11 @@ export default function InventoryPage() {
   const [fSupplierId, setFSupplierId] = useState('')
   const [fExchangeRate, setFExchangeRate] = useState('')
   const [fRevenueAccountId, setFRevenueAccountId] = useState('')
+  const [fRevenueAccountSearch, setFRevenueAccountSearch] = useState('')
   const [revenueAccounts, setRevenueAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
+  const [fSourceAccountId, setFSourceAccountId] = useState('')
+  const [fSourceAccountSearch, setFSourceAccountSearch] = useState('')
+  const [sourceAccounts, setSourceAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
   // Variants (color, size, material, etc.)
   const [variants, setVariants] = useState<{ id?: string; variantType: string; variantLabel: string; quantity: number; variantSku?: string; barcode?: string }[]>([])
   const [newVariantType, setNewVariantType] = useState('Color')
@@ -722,13 +728,21 @@ export default function InventoryPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionUserId])
 
-  // Fetch revenue accounts for COA dropdown
+  // Fetch COA accounts for dropdowns
   useEffect(() => {
     if (!sessionUserId) return
-    fetch('/api/chart-of-accounts?accountType=REVENUE&pageSize=500')
-      .then(r => r.json())
-      .then(d => setRevenueAccounts((d.data || []).map((a: { id: string; accountNumber: string; accountTitle: string }) => ({ id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle }))))
-      .catch(() => {})
+    const mapAccounts = (d: { data?: { id: string; accountNumber: string; accountTitle: string }[] }) =>
+      (d.data || []).map((a) => ({ id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle }))
+    // Revenue + Liability accounts (for revenue account — includes Unearned Revenue for packages)
+    Promise.all([
+      fetch('/api/chart-of-accounts?accountType=REVENUE&pageSize=500').then(r => r.json()),
+      fetch('/api/chart-of-accounts?accountType=LIABILITY&pageSize=500').then(r => r.json()),
+    ]).then(([rev, liab]) => setRevenueAccounts([...mapAccounts(rev), ...mapAccounts(liab)])).catch(() => {})
+    // Asset + Liability accounts (for source/paid-from account)
+    Promise.all([
+      fetch('/api/chart-of-accounts?accountType=ASSET&pageSize=500').then(r => r.json()),
+      fetch('/api/chart-of-accounts?accountType=LIABILITY&pageSize=500').then(r => r.json()),
+    ]).then(([asset, liab]) => setSourceAccounts([...mapAccounts(asset), ...mapAccounts(liab)])).catch(() => {})
   }, [sessionUserId])
 
   // Re-fetch items when search/filter changes (debounced)
@@ -801,7 +815,8 @@ export default function InventoryPage() {
     setEditingItem(null)
     setFName(''); setFSkuDept(''); setFSkuCat(''); setFSkuSub(''); setFSkuValue('')
     setFBranch('SANDBOX_EAST'); setFSubType(''); setFUnitCost(''); setFSellingPrice(''); setFRewardPointsPrice('')
-    setFInitialQty(''); setFReorderLevel(''); setFSupplierId(''); setFExchangeRate(''); setFRevenueAccountId('')
+    setFInitialQty(''); setFReorderLevel(''); setFSupplierId(''); setFExchangeRate('')
+    setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFSourceAccountId(''); setFSourceAccountSearch('')
     setVariants([]); setNewVariantType('Color'); setNewVariantLabel(''); setNewVariantQty(0)
     setIsBundle(false); setBundleComponents([]); setBundleComponentId(''); setBundleComponentQty(1)
     setShowInlineSupplier(false); setError('')
@@ -824,6 +839,9 @@ export default function InventoryPage() {
     setFSupplierId(item.supplierId || '')
     setFExchangeRate(item.supplierExchangeRate != null ? String(item.supplierExchangeRate) : '')
     setFRevenueAccountId(item.revenueAccountId || '')
+    setFRevenueAccountSearch(item.revenueAccount ? `${item.revenueAccount.accountNumber} ${item.revenueAccount.accountTitle}` : '')
+    setFSourceAccountId(item.sourceAccountId || '')
+    setFSourceAccountSearch(item.sourceAccount ? `${item.sourceAccount.accountNumber} ${item.sourceAccount.accountTitle}` : '')
     // Load variants
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setVariants((item.variants || []).map((v: any) => ({
@@ -943,6 +961,7 @@ export default function InventoryPage() {
       reorderLevel: fReorderLevel || null,
       supplierId: fSupplierId || null,
       revenueAccountId: fRevenueAccountId || null,
+      sourceAccountId: fSourceAccountId || null,
     }
     if (editingItem) body.id = editingItem.id
     try {
@@ -1319,7 +1338,10 @@ setTimeout(()=>window.print(),500);
                         {item.name}
                         {item.isBundle && <span className="ml-2 px-1.5 py-0.5 rounded text-xs font-semibold" style={{ background: '#fef3c7', color: '#92400e' }}>Bundle</span>}
                         {item.revenueAccount && (
-                          <p className="text-xs mt-0.5" style={{ color: 'var(--teal)' }}>{item.revenueAccount.accountNumber} {item.revenueAccount.accountTitle}</p>
+                          <p className="text-xs mt-0.5" style={{ color: 'var(--teal)' }}>Rev: {item.revenueAccount.accountNumber} {item.revenueAccount.accountTitle}</p>
+                        )}
+                        {item.sourceAccount && (
+                          <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>Src: {item.sourceAccount.accountNumber} {item.sourceAccount.accountTitle}</p>
                         )}
                       </td>
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{BRANCH_LABELS[item.branch] || item.branch}</td>
@@ -1554,19 +1576,70 @@ setTimeout(()=>window.print(),500);
                     )}
                   </div>
 
-                  {/* Revenue Account (COA) */}
-                  <div>
+                  {/* Revenue Account (COA) — searchable */}
+                  <div className="relative">
                     <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
-                      Revenue Account <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(Chart of Accounts)</span>
+                      Revenue Account <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(Credit on checkout)</span>
                     </label>
-                    <select value={fRevenueAccountId} onChange={(e) => setFRevenueAccountId(e.target.value)}
+                    <input
+                      type="text"
+                      value={fRevenueAccountSearch}
+                      onChange={(e) => { setFRevenueAccountSearch(e.target.value); if (!e.target.value) setFRevenueAccountId('') }}
+                      onFocus={() => setFRevenueAccountSearch(fRevenueAccountSearch || '')}
+                      placeholder="Search account..."
                       className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
-                      style={{ borderColor: 'var(--light-gray)' }}>
-                      <option value="">— Not assigned —</option>
-                      {revenueAccounts.map(a => (
-                        <option key={a.id} value={a.id}>{a.accountNumber} {a.accountTitle}</option>
-                      ))}
-                    </select>
+                      style={{ borderColor: fRevenueAccountId ? 'var(--teal)' : 'var(--light-gray)', background: fRevenueAccountId ? '#f0fdfa' : 'white' }}
+                    />
+                    {fRevenueAccountId && (
+                      <button type="button" onClick={() => { setFRevenueAccountId(''); setFRevenueAccountSearch('') }}
+                        className="absolute right-2 top-8 p-0.5 rounded hover:bg-gray-100"><X size={14} style={{ color: 'var(--mid-gray)' }} /></button>
+                    )}
+                    {fRevenueAccountSearch && !fRevenueAccountId && (
+                      <div className="absolute z-20 left-0 right-0 mt-1 bg-white border rounded-xl shadow-lg max-h-40 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                        {revenueAccounts.filter(a => `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(fRevenueAccountSearch.toLowerCase())).slice(0, 10).map(a => (
+                          <button key={a.id} type="button" onClick={() => { setFRevenueAccountId(a.id); setFRevenueAccountSearch(`${a.accountNumber} ${a.accountTitle}`) }}
+                            className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50" style={{ color: 'var(--charcoal)' }}>
+                            <span className="font-mono font-medium" style={{ color: 'var(--teal)' }}>{a.accountNumber}</span> {a.accountTitle}
+                          </button>
+                        ))}
+                        {revenueAccounts.filter(a => `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(fRevenueAccountSearch.toLowerCase())).length === 0 && (
+                          <p className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>No matching accounts</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Source Account (Paid From) — searchable */}
+                  <div className="relative">
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                      Source Account <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(Paid from / Debit)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={fSourceAccountSearch}
+                      onChange={(e) => { setFSourceAccountSearch(e.target.value); if (!e.target.value) setFSourceAccountId('') }}
+                      onFocus={() => setFSourceAccountSearch(fSourceAccountSearch || '')}
+                      placeholder="Search account..."
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                      style={{ borderColor: fSourceAccountId ? 'var(--teal)' : 'var(--light-gray)', background: fSourceAccountId ? '#f0fdfa' : 'white' }}
+                    />
+                    {fSourceAccountId && (
+                      <button type="button" onClick={() => { setFSourceAccountId(''); setFSourceAccountSearch('') }}
+                        className="absolute right-2 top-8 p-0.5 rounded hover:bg-gray-100"><X size={14} style={{ color: 'var(--mid-gray)' }} /></button>
+                    )}
+                    {fSourceAccountSearch && !fSourceAccountId && (
+                      <div className="absolute z-20 left-0 right-0 mt-1 bg-white border rounded-xl shadow-lg max-h-40 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                        {sourceAccounts.filter(a => `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(fSourceAccountSearch.toLowerCase())).slice(0, 10).map(a => (
+                          <button key={a.id} type="button" onClick={() => { setFSourceAccountId(a.id); setFSourceAccountSearch(`${a.accountNumber} ${a.accountTitle}`) }}
+                            className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50" style={{ color: 'var(--charcoal)' }}>
+                            <span className="font-mono font-medium" style={{ color: 'var(--teal)' }}>{a.accountNumber}</span> {a.accountTitle}
+                          </button>
+                        ))}
+                        {sourceAccounts.filter(a => `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(fSourceAccountSearch.toLowerCase())).length === 0 && (
+                          <p className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>No matching accounts</p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Color Variants */}

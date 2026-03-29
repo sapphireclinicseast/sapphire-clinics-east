@@ -39,6 +39,8 @@ interface ReportData {
   monthly: Record<number, MonthData>
   inventory: { total: number; byDepartment: Record<string, number> }
   wallets: { total: number; byType: Record<string, number> }
+  inventorySourceAccounts?: { accountNumber: string; accountTitle: string; amount: number }[]
+  unclassifiedAP?: number
 }
 
 type ReportTab = 'balance-sheet' | 'income-statement' | 'cash-flow'
@@ -309,7 +311,7 @@ function MonthlyHeader() {
    ═══════════════════════════════════════════════════════════════ */
 
 function BalanceSheet({ data, viewMode }: { data: ReportData; viewMode: ViewMode }) {
-  const { accounts, inventory, wallets, monthly } = data
+  const { accounts, inventory, wallets, monthly, inventorySourceAccounts = [], unclassifiedAP = 0 } = data
 
   // Calculate totals from available data
   const totalCashReceived = sumMonths(monthly, (m) => m.cashReceived)
@@ -329,7 +331,6 @@ function BalanceSheet({ data, viewMode }: { data: ReportData; viewMode: ViewMode
     const dept = st.replace('INV_', '')
     inventoryAccounts.push({ label: SUB_TYPE_LABELS[st] || st, dept })
   }
-  // Also check for new INVENTORY subType with subSubType
   if (accounts.ASSET?.INVENTORY) {
     for (const acct of accounts.ASSET.INVENTORY) {
       if (acct.subSubType && !inventoryAccounts.find((a) => a.dept === acct.subSubType)) {
@@ -340,7 +341,6 @@ function BalanceSheet({ data, viewMode }: { data: ReportData; viewMode: ViewMode
       }
     }
   }
-  // If no inventory accounts but we have inventory data, show by department
   if (inventoryAccounts.length === 0) {
     for (const dept of Object.keys(invByDept)) {
       inventoryAccounts.push({
@@ -360,10 +360,12 @@ function BalanceSheet({ data, viewMode }: { data: ReportData; viewMode: ViewMode
 
   // Computed totals
   const totalCurrentAssets = totalCashReceived + invTotal
-  const totalNonCurrentAssets = 0 // No data yet for PPE, etc.
+  const totalNonCurrentAssets = 0
   const totalAssets = totalCurrentAssets + totalNonCurrentAssets
 
-  const totalCurrentLiabilities = wallets.total
+  // Source account balances (inventory payables) + unclassified AP + wallet liabilities
+  const sourceAccountTotal = inventorySourceAccounts.reduce((s, a) => s + a.amount, 0) + unclassifiedAP
+  const totalCurrentLiabilities = wallets.total + sourceAccountTotal
   const totalNonCurrentLiabilities = 0
   const totalLiabilities = totalCurrentLiabilities + totalNonCurrentLiabilities
 
@@ -371,8 +373,11 @@ function BalanceSheet({ data, viewMode }: { data: ReportData; viewMode: ViewMode
   const totalRevenue = sumMonths(monthly, (m) => m.serviceRevenue + m.productRevenue)
   const totalCOGS = sumMonths(monthly, (m) => m.cogs)
   const netIncome = totalRevenue - totalCOGS
-  const totalEquity = netIncome // Simplified — real retained earnings would be cumulative
+  const totalEquity = netIncome
   const totalLiabilitiesAndEquity = totalLiabilities + totalEquity
+
+  // Balance sheet equation check
+  const isBalanced = Math.abs(totalAssets - totalLiabilitiesAndEquity) < 0.01
 
   if (viewMode === 'monthly') {
     // Monthly balance sheet doesn't apply the same way — show annual with note
@@ -442,7 +447,14 @@ function BalanceSheet({ data, viewMode }: { data: ReportData; viewMode: ViewMode
         {Object.entries(wallets.byType).map(([type, bal]) => (
           <AnnualRow key={type} label={`Unearned Revenue — ${WALLET_LABELS[type] || type}`} amount={bal} indent={2} />
         ))}
-        {wallets.total === 0 && currentLiabAccounts.length === 0 && (
+        {/* Inventory source accounts (payables) */}
+        {inventorySourceAccounts.length > 0 && inventorySourceAccounts.map((a) => (
+          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={a.amount} indent={2} />
+        ))}
+        {unclassifiedAP > 0 && (
+          <AnnualRow label="Unclassified Accounts Payable" amount={unclassifiedAP} indent={2} />
+        )}
+        {wallets.total === 0 && currentLiabAccounts.length === 0 && sourceAccountTotal === 0 && (
           <AnnualRow label="(No current liabilities recorded)" amount={0} indent={2} />
         )}
         <AnnualRow label="Total Current Liabilities" amount={totalCurrentLiabilities} indent={1} isTotal bold />
@@ -478,6 +490,17 @@ function BalanceSheet({ data, viewMode }: { data: ReportData; viewMode: ViewMode
           amount={totalLiabilitiesAndEquity}
           isGrandTotal
         />
+
+        {/* Balance Sheet Equation Check */}
+        <div className="mt-4 px-4">
+          <div className={`rounded-xl px-4 py-3 text-sm font-medium flex items-center justify-between ${isBalanced ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
+            <span>{isBalanced ? 'Balanced' : 'Not Balanced'}: Assets = Liabilities + Equity</span>
+            <span className="font-mono text-xs">
+              {formatCurrency(totalAssets)} {isBalanced ? '=' : '≠'} {formatCurrency(totalLiabilitiesAndEquity)}
+              {!isBalanced && ` (diff: ${formatCurrency(Math.abs(totalAssets - totalLiabilitiesAndEquity))})`}
+            </span>
+          </div>
+        </div>
       </div>
     )
   }

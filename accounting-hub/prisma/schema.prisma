@@ -111,8 +111,9 @@ model Account {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  services       Service[]
-  inventoryItems InventoryItem[]
+  services              Service[]
+  inventoryItems        InventoryItem[] @relation("InventoryRevenueAccount")
+  inventorySourceItems  InventoryItem[] @relation("InventorySourceAccount")
 
   @@index([accountType])
   @@index([isActive])
@@ -247,7 +248,9 @@ model InventoryItem {
   supplier             Supplier? @relation(fields: [supplierId], references: [id])
   supplierExchangeRate Decimal?
   revenueAccountId     String?
-  revenueAccount       Account?  @relation(fields: [revenueAccountId], references: [id], onDelete: SetNull)
+  revenueAccount       Account?  @relation("InventoryRevenueAccount", fields: [revenueAccountId], references: [id], onDelete: SetNull)
+  sourceAccountId      String?
+  sourceAccount        Account?  @relation("InventorySourceAccount", fields: [sourceAccountId], references: [id], onDelete: SetNull)
   isBundle             Boolean   @default(false)
   isActive             Boolean   @default(true)
   createdById          String
@@ -269,6 +272,7 @@ model InventoryItem {
   @@index([createdById])
   @@index([isBundle])
   @@index([revenueAccountId])
+  @@index([sourceAccountId])
 }
 
 model BundleComponent {
