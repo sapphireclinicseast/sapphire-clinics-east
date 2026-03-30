@@ -5,7 +5,7 @@ WORKDIR /app
 # ── Dependencies ──────────────────────────────────────────────
 FROM base AS deps
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --legacy-peer-deps
 
 # ── Builder ───────────────────────────────────────────────────
 FROM base AS builder

@@ -2,7 +2,7 @@ import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   output: 'standalone',
-  serverExternalPackages: ['bcryptjs'],
+  serverExternalPackages: ['bcryptjs', 'jspdf', 'jspdf-autotable', 'fflate', 'nodemailer'],
   turbopack: {
     root: __dirname,
   },

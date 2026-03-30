@@ -119,6 +119,11 @@ model Account {
   discountSettings      DiscountSetting[]
   wallets               DigitalWallet[] @relation("WalletAccount")
   arPaymentDiscounts    ARPayment[]     @relation("ARPaymentDiscountAccount")
+  unitPaysExpense       UnitPay[]         @relation("UnitPayExpense")
+  taxPaymentsFrom       TaxPayment[]      @relation("TaxPaymentFrom")
+  taxSettings           PayrollTaxSettings[] @relation("TaxLiability")
+  paymentModes          PaymentMode[]           @relation("PaymentModeAccount")
+  paymentModeDeductions PaymentModeDeduction[]  @relation("DeductionAccount")
 
   @@index([accountType])
   @@index([isActive])
@@ -444,20 +449,23 @@ model Referrer {
 }
 
 model DigitalWallet {
-  id           String     @id @default(cuid())
-  patientId    String
-  patientName  String
-  patientEmail String?
-  barcode      String     @unique
-  walletType   WalletType
-  vipTier      String?    // PLATINUM, GOLD, SILVER — only for VIP wallets
-  balance      Decimal    @default(0)
-  rewardPoints Int        @default(0)
-  accountId    String?    // COA account (e.g., Accounts Receivable for HMO/GL)
-  account      Account?   @relation("WalletAccount", fields: [accountId], references: [id], onDelete: SetNull)
-  isActive     Boolean    @default(true)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  id            String      @id @default(cuid())
+  patientId     String
+  patientName   String
+  patientEmail  String?
+  barcode       String      @unique
+  walletType    WalletType
+  vipTier       String?     // PLATINUM, GOLD, SILVER — only for VIP wallets
+  balance       Decimal     @default(0)
+  rewardPoints  Int         @default(0)
+  accountId     String?     // COA account (e.g., Accounts Receivable for HMO/GL)
+  account       Account?    @relation("WalletAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  dateObtained  DateTime?   // Date patient originally obtained the wallet/card
+  paymentModeId String?     // How the initial load was paid
+  paymentMode   PaymentMode? @relation("WalletPaymentMode", fields: [paymentModeId], references: [id], onDelete: SetNull)
+  isActive      Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   packages    WalletPackage[]
   logs        WalletLog[]
@@ -469,6 +477,7 @@ model DigitalWallet {
   @@index([barcode])
   @@index([walletType])
   @@index([accountId])
+  @@index([paymentModeId])
 }
 
 model WalletPackage {
@@ -573,19 +582,22 @@ model OrderItem {
 }
 
 model OrderPayment {
-  id        String        @id @default(cuid())
-  orderId   String
-  order     Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  method    PaymentMethod
-  amount    Decimal
-  walletId  String?
-  wallet    DigitalWallet? @relation(fields: [walletId], references: [id])
-  reference String?
-  createdAt DateTime      @default(now())
+  id            String         @id @default(cuid())
+  orderId       String
+  order         Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  method        PaymentMethod
+  amount        Decimal
+  walletId      String?
+  wallet        DigitalWallet? @relation(fields: [walletId], references: [id])
+  reference     String?
+  paymentModeId String?        // Configured PaymentMode (carries deduction rules)
+  paymentMode   PaymentMode?   @relation("OrderPaymentMode", fields: [paymentModeId], references: [id], onDelete: SetNull)
+  createdAt     DateTime       @default(now())
 
   @@index([orderId])
   @@index([method])
   @@index([walletId])
+  @@index([paymentModeId])
 }
 
 model DiscountSetting {
@@ -624,6 +636,37 @@ model WalletDiscountRule {
   @@index([discountSettingId])
   @@index([serviceId])
   @@index([department])
+}
+
+// ── Payment Mode Settings ─────────────────────────────────
+
+model PaymentMode {
+  id         String   @id @default(cuid())
+  name       String   // "Cash", "GCash", "Credit Card", etc.
+  isActive   Boolean  @default(true)
+  accountId  String?  // COA where NET amount is lodged (usually an asset account)
+  account    Account? @relation("PaymentModeAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  deductions    PaymentModeDeduction[]
+  orderPayments OrderPayment[]          @relation("OrderPaymentMode")
+  wallets       DigitalWallet[]         @relation("WalletPaymentMode")
+
+  @@index([isActive])
+}
+
+model PaymentModeDeduction {
+  id            String      @id @default(cuid())
+  paymentModeId String
+  paymentMode   PaymentMode @relation(fields: [paymentModeId], references: [id], onDelete: Cascade)
+  name          String      // "Merchant Discount Rate", "Creditable Withholding Tax"
+  rate          Decimal     // percentage — e.g. 2.2 means 2.2%
+  accountId     String?     // COA where this deduction is lodged (expense or liability)
+  account       Account?    @relation("DeductionAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  createdAt     DateTime    @default(now())
+
+  @@index([paymentModeId])
 }
 
 // ── Accounts Receivable Payments ─────────────────────────
@@ -687,17 +730,20 @@ model Consultant {
 }
 
 model UnitPay {
-  id          String   @id @default(cuid())
-  name        String   // e.g. "Basic PF", "Assessment PF"
-  departments Json     @default("[]") // JSON array of dept codes, or empty for all
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               String   @id @default(cuid())
+  name             String   // e.g. "Basic PF", "Assessment PF"
+  departments      Json     @default("[]") // JSON array of dept codes, or empty for all
+  isActive         Boolean  @default(true)
+  expenseAccountId String?
+  expenseAccount   Account? @relation("UnitPayExpense", fields: [expenseAccountId], references: [id], onDelete: SetNull)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   consultantRates ConsultantUnitPay[]
   services        Service[]
 
   @@index([isActive])
+  @@index([expenseAccountId])
 }
 
 model ConsultantUnitPay {
@@ -725,14 +771,57 @@ model PayrollEntry {
   taxAmount       Decimal    @default(0)
   netPay          Decimal
   status          String     @default("DRAFT") // DRAFT, FINAL
+  taxRemitted     Boolean    @default(false)
   createdById     String
   createdBy       User       @relation("PayrollCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
+
+  taxPaymentEntries TaxPaymentEntry[]
 
   @@unique([consultantId, cutoffPeriod, branch])
   @@index([consultantId])
   @@index([cutoffPeriod])
   @@index([branch])
   @@index([status])
+  @@index([taxRemitted])
+}
+
+model TaxPayment {
+  id            String   @id @default(cuid())
+  paymentDate   DateTime
+  totalAmount   Decimal
+  fromAccountId String
+  fromAccount   Account  @relation("TaxPaymentFrom", fields: [fromAccountId], references: [id], onDelete: Restrict)
+  proofUrl      String?
+  notes         String?
+  paymentType   String   @default("CONSULTANT")
+  status        String   @default("COMPLETED")
+  createdById   String
+  createdAt     DateTime @default(now())
+
+  entries TaxPaymentEntry[]
+
+  @@index([paymentDate])
+  @@index([paymentType])
+  @@index([createdById])
+}
+
+model TaxPaymentEntry {
+  id             String       @id @default(cuid())
+  taxPaymentId   String
+  taxPayment     TaxPayment   @relation(fields: [taxPaymentId], references: [id], onDelete: Cascade)
+  payrollEntryId String
+  payrollEntry   PayrollEntry @relation(fields: [payrollEntryId], references: [id], onDelete: Restrict)
+  taxAmount      Decimal
+
+  @@index([taxPaymentId])
+  @@index([payrollEntryId])
+}
+
+model PayrollTaxSettings {
+  id                 String   @id @default(cuid())
+  liabilityAccountId String?
+  liabilityAccount   Account? @relation("TaxLiability", fields: [liabilityAccountId], references: [id], onDelete: SetNull)
+  updatedAt          DateTime @updatedAt
 }

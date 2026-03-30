@@ -15,6 +15,7 @@ export async function GET() {
     orderBy: { name: 'asc' },
     include: {
       _count: { select: { consultantRates: true, services: true } },
+      expenseAccount: { select: { id: true, accountNumber: true, accountTitle: true } },
     },
   })
 
@@ -28,7 +29,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { name, departments } = await req.json()
+    const { name, departments, expenseAccountId } = await req.json()
     if (!name?.trim()) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 })
     }
@@ -37,6 +38,7 @@ export async function POST(req: Request) {
       data: {
         name: name.trim(),
         departments: departments || [],
+        expenseAccountId: expenseAccountId || null,
       },
     })
 
@@ -53,7 +55,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, name, departments, isActive } = await req.json()
+    const { id, name, departments, isActive, expenseAccountId } = await req.json()
     if (!id) return NextResponse.json({ error: 'ID is required' }, { status: 400 })
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -61,6 +63,7 @@ export async function PUT(req: Request) {
     if (name !== undefined) data.name = name.trim()
     if (departments !== undefined) data.departments = departments
     if (isActive !== undefined) data.isActive = isActive
+    if (expenseAccountId !== undefined) data.expenseAccountId = expenseAccountId || null
 
     const unitPay = await prisma.unitPay.update({ where: { id }, data })
     return NextResponse.json(unitPay)

@@ -7,6 +7,7 @@ import {
   CreditCard, Wallet, FileText, Download, Printer,
   RefreshCw, Ban, Star, Filter,
   Loader2, AlertCircle, ScanLine, UserPlus,
+  Pencil, PlusCircle, ToggleLeft, ToggleRight,
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import Pagination from '@/components/ui/Pagination'
@@ -129,6 +130,23 @@ interface WalletLog {
   pointsChange?: number | null
   createdAt: string
   [key: string]: unknown
+}
+
+interface PaymentModeDeductionType {
+  id: string
+  name: string
+  rate: number
+  accountId?: string | null
+  account?: { id: string; accountNumber: string; accountTitle: string } | null
+}
+
+interface PaymentModeType {
+  id: string
+  name: string
+  isActive: boolean
+  accountId?: string | null
+  account?: { id: string; accountNumber: string; accountTitle: string } | null
+  deductions: PaymentModeDeductionType[]
 }
 
 interface DiscountSetting {
@@ -358,7 +376,7 @@ export default function POSPage() {
   // ── Top-level tab: Services | Orders | Products | Sales Summary
   const [mainTab, setMainTab] = useState<'services' | 'orders' | 'products' | 'sales'>('services')
   // ── Services sub-tab
-  const [serviceTab, setServiceTab] = useState<'cashier' | 'wallet' | 'discounts'>('cashier')
+  const [serviceTab, setServiceTab] = useState<'cashier' | 'wallet' | 'discounts' | 'payment-modes'>('cashier')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -443,14 +461,15 @@ function ServicesSection({
 }: {
   branch: string
   canSelectBranch: boolean
-  serviceTab: 'cashier' | 'wallet' | 'discounts'
-  setServiceTab: (t: 'cashier' | 'wallet' | 'discounts') => void
+  serviceTab: 'cashier' | 'wallet' | 'discounts' | 'payment-modes'
+  setServiceTab: (t: 'cashier' | 'wallet' | 'discounts' | 'payment-modes') => void
   session: { user?: Record<string, unknown> } | null
 }) {
   const subTabs = [
     { key: 'cashier' as const, label: 'Cashier' },
     { key: 'wallet' as const, label: 'Digital Wallet' },
     { key: 'discounts' as const, label: 'Discount Settings' },
+    { key: 'payment-modes' as const, label: 'Payment Mode Settings' },
   ]
 
   return (
@@ -480,6 +499,9 @@ function ServicesSection({
       )}
       {serviceTab === 'discounts' && (
         <DiscountSettingsPanel />
+      )}
+      {serviceTab === 'payment-modes' && (
+        <PaymentModeSettingsPanel />
       )}
     </div>
   )
@@ -2383,9 +2405,14 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   const [wallets, setWallets] = useState<DigitalWallet[]>([])
   const [loading, setLoading] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
-  const [createForm, setCreateForm] = useState({ patientName: '', patientId: '', patientEmail: '', accountId: '' })
+  const [createForm, setCreateForm] = useState({ patientName: '', patientId: '', patientEmail: '', accountId: '', dateObtained: '', paymentModeId: '' })
   const [createAccountSearch, setCreateAccountSearch] = useState('')
   const [arAccounts, setArAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
+  const [crmSearch, setCrmSearch] = useState('')
+  const [crmPatients, setCrmPatients] = useState<Patient[]>([])
+  const [showCrmDrop, setShowCrmDrop] = useState(false)
+  const crmTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const [walletPaymentModes, setWalletPaymentModes] = useState<PaymentModeType[]>([])
   // Fetch ASSET accounts for AR classification (HMO/GL)
   useEffect(() => {
     fetch('/api/chart-of-accounts?accountType=ASSET&pageSize=500')
@@ -2393,6 +2420,26 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       .then(d => setArAccounts((d.data || []).map((a: { id: string; accountNumber: string; accountTitle: string }) => ({ id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle }))))
       .catch(() => {})
   }, [])
+  // Fetch payment modes for wallet creation form
+  useEffect(() => {
+    fetch('/api/pos/payment-modes')
+      .then(r => r.json())
+      .then(d => setWalletPaymentModes(Array.isArray(d) ? d.filter((m: PaymentModeType) => m.isActive) : []))
+      .catch(() => {})
+  }, [])
+  // CRM patient search
+  useEffect(() => {
+    if (crmSearch.length < 2) { setCrmPatients([]); setShowCrmDrop(false); return }
+    clearTimeout(crmTimer.current)
+    crmTimer.current = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/pos/patients?search=${encodeURIComponent(crmSearch)}`)
+        const d = await r.json()
+        setCrmPatients(Array.isArray(d) ? d : [])
+        setShowCrmDrop(true)
+      } catch { setCrmPatients([]) }
+    }, 300)
+  }, [crmSearch])
   const [selectedWallet, setSelectedWallet] = useState<DigitalWallet | null>(null)
   const [walletDetail, setWalletDetail] = useState<DigitalWallet | null>(null)
   const [showAddPackage, setShowAddPackage] = useState(false)
@@ -2455,8 +2502,10 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         return
       }
       setShowCreate(false)
-      setCreateForm({ patientName: '', patientId: '', patientEmail: '', accountId: '' })
+      setCreateForm({ patientName: '', patientId: '', patientEmail: '', accountId: '', dateObtained: '', paymentModeId: '' })
       setCreateAccountSearch('')
+      setCrmSearch('')
+      setCrmPatients([])
       fetchWallets()
     } catch (e) {
       setCreateError(`Network error: ${e}`)
@@ -2936,18 +2985,56 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
               {walletTypeFilter === 'HMO' ? 'Add HMO Provider' : walletTypeFilter === 'GL' ? 'Add Agency (GL)' : 'Create Digital Wallet'}
             </h3>
             <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
-                  {walletTypeFilter === 'HMO' ? 'HMO Provider Name *' : walletTypeFilter === 'GL' ? 'Agency Name *' : 'Patient Name *'}
-                </label>
-                <input value={createForm.patientName} onChange={e => setCreateForm({ ...createForm, patientName: e.target.value })}
-                  placeholder={walletTypeFilter === 'HMO' ? 'e.g. Intellicare, Avega, Maxicare' : walletTypeFilter === 'GL' ? 'e.g. DSWD, PhilHealth' : ''}
-                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-              </div>
-              {walletTypeFilter !== 'HMO' && walletTypeFilter !== 'GL' && (
+              {/* Patient Name — CRM search for patient wallets, plain input for HMO/GL */}
+              {walletTypeFilter !== 'HMO' && walletTypeFilter !== 'GL' ? (
+                <div className="relative">
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Patient Name *</label>
+                  <input
+                    value={createForm.patientId ? createForm.patientName : crmSearch}
+                    onChange={e => {
+                      setCrmSearch(e.target.value)
+                      setShowCrmDrop(true)
+                      if (!e.target.value) setCreateForm({ ...createForm, patientName: '', patientId: '' })
+                    }}
+                    placeholder="Search patient from CRM..."
+                    className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                    style={{ borderColor: createForm.patientId ? 'var(--teal)' : 'var(--light-gray)', background: createForm.patientId ? '#f0fdfa' : 'white' }}
+                  />
+                  {createForm.patientId && (
+                    <button type="button" onClick={() => { setCreateForm({ ...createForm, patientName: '', patientId: '' }); setCrmSearch('') }}
+                      className="absolute right-2 top-7 p-0.5 rounded hover:bg-gray-100"><X size={14} style={{ color: 'var(--mid-gray)' }} /></button>
+                  )}
+                  {showCrmDrop && crmPatients.length > 0 && !createForm.patientId && (
+                    <div className="absolute z-20 left-0 right-0 mt-1 bg-white border rounded-xl shadow-lg max-h-40 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                      {crmPatients.slice(0, 8).map((pt: Patient) => (
+                        <button key={pt.id} type="button"
+                          onClick={() => { setCreateForm({ ...createForm, patientName: pt.name, patientId: pt.id }); setCrmSearch(pt.name); setShowCrmDrop(false) }}
+                          className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50" style={{ color: 'var(--charcoal)' }}>
+                          <span className="font-medium">{pt.name}</span>
+                          {pt.email && <span className="text-gray-400 ml-1">— {pt.email}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {crmSearch.length >= 2 && crmPatients.length === 0 && !createForm.patientId && (
+                    <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>No patients found — type name manually below</p>
+                  )}
+                  {/* Allow manual entry if not found in CRM */}
+                  {crmSearch.length >= 2 && !createForm.patientId && (
+                    <button type="button"
+                      onClick={() => { setCreateForm({ ...createForm, patientName: crmSearch, patientId: '' }); setShowCrmDrop(false) }}
+                      className="text-xs mt-1 underline" style={{ color: 'var(--teal)' }}>
+                      Use "{crmSearch}" as name (not in CRM)
+                    </button>
+                  )}
+                </div>
+              ) : (
                 <div>
-                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Patient ID</label>
-                  <input value={createForm.patientId} onChange={e => setCreateForm({ ...createForm, patientId: e.target.value })}
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
+                    {walletTypeFilter === 'HMO' ? 'HMO Provider Name *' : 'Agency Name *'}
+                  </label>
+                  <input value={createForm.patientName} onChange={e => setCreateForm({ ...createForm, patientName: e.target.value })}
+                    placeholder={walletTypeFilter === 'HMO' ? 'e.g. Intellicare, Avega, Maxicare' : 'e.g. DSWD, PhilHealth'}
                     className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                 </div>
               )}
@@ -2983,6 +3070,29 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                       ))}
                     </div>
                   )}
+                </div>
+              )}
+              {/* Date Obtained */}
+              {walletTypeFilter !== 'HMO' && walletTypeFilter !== 'GL' && (
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Date Obtained</label>
+                  <input type="date" value={createForm.dateObtained}
+                    onChange={e => setCreateForm({ ...createForm, dateObtained: e.target.value })}
+                    className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                </div>
+              )}
+              {/* Form of Payment */}
+              {walletTypeFilter !== 'HMO' && walletTypeFilter !== 'GL' && (
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Form of Payment</label>
+                  <select value={createForm.paymentModeId}
+                    onChange={e => setCreateForm({ ...createForm, paymentModeId: e.target.value })}
+                    className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+                    <option value="">— Select payment mode —</option>
+                    {walletPaymentModes.map(m => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
                 </div>
               )}
               {createError && <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle size={12} />{createError}</p>}
@@ -4619,6 +4729,302 @@ Signature:    _________________________
             </button>
           </div>
         </>
+      )}
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PAYMENT MODE SETTINGS PANEL
+   ══════════════════════════════════════════════════════════════ */
+
+function PaymentModeSettingsPanel() {
+  const [modes, setModes] = useState<PaymentModeType[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [form, setForm] = useState({ name: '', accountId: '', isActive: true })
+  const [accountSearch, setAccountSearch] = useState('')
+  const [allAccounts, setAllAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string; accountType: string }[]>([])
+  const [deductions, setDeductions] = useState<{ name: string; rate: number; accountId: string; accountSearch: string }[]>([])
+  const [error, setError] = useState('')
+
+  const fetchModes = useCallback(async () => {
+    setLoading(true)
+    try {
+      const r = await fetch('/api/pos/payment-modes')
+      const d = await r.json()
+      setModes(Array.isArray(d) ? d : [])
+    } catch { setModes([]) }
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { fetchModes() }, [fetchModes])
+
+  useEffect(() => {
+    fetch('/api/chart-of-accounts?pageSize=1000')
+      .then(r => r.json())
+      .then(d => setAllAccounts((d.data || []).map((a: { id: string; accountNumber: string; accountTitle: string; accountType: string }) => ({
+        id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle, accountType: a.accountType,
+      })))
+      )
+      .catch(() => {})
+  }, [])
+
+  const filteredAccounts = (q: string) =>
+    allAccounts.filter(a => `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(q.toLowerCase())).slice(0, 8)
+
+  const openCreate = () => {
+    setEditingId(null)
+    setForm({ name: '', accountId: '', isActive: true })
+    setAccountSearch('')
+    setDeductions([])
+    setError('')
+    setShowForm(true)
+  }
+
+  const openEdit = (m: PaymentModeType) => {
+    setEditingId(m.id)
+    setForm({ name: m.name, accountId: m.accountId || '', isActive: m.isActive })
+    setAccountSearch(m.account ? `${m.account.accountNumber} ${m.account.accountTitle}` : '')
+    setDeductions((m.deductions || []).map(d => ({
+      name: d.name,
+      rate: Number(d.rate),
+      accountId: d.accountId || '',
+      accountSearch: d.account ? `${d.account.accountNumber} ${d.account.accountTitle}` : '',
+    })))
+    setError('')
+    setShowForm(true)
+  }
+
+  const addDeduction = () => setDeductions([...deductions, { name: '', rate: 0, accountId: '', accountSearch: '' }])
+  const removeDeduction = (i: number) => setDeductions(deductions.filter((_, idx) => idx !== i))
+  const updateDeduction = (i: number, field: string, value: string | number) =>
+    setDeductions(deductions.map((d, idx) => idx === i ? { ...d, [field]: value } : d))
+
+  const save = async () => {
+    if (!form.name.trim()) { setError('Name is required'); return }
+    setError('')
+    const body = {
+      id: editingId,
+      name: form.name,
+      accountId: form.accountId || null,
+      isActive: form.isActive,
+      deductions: deductions.filter(d => d.name.trim() && d.rate > 0).map(d => ({
+        name: d.name.trim(),
+        rate: d.rate,
+        accountId: d.accountId || null,
+      })),
+    }
+    const res = await fetch('/api/pos/payment-modes', {
+      method: editingId ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (res.ok) { setShowForm(false); fetchModes() }
+    else { const d = await res.json(); setError(d.error || 'Failed to save') }
+  }
+
+  const deleteMode = async (id: string) => {
+    if (!window.confirm('Deactivate this payment mode?')) return
+    await fetch('/api/pos/payment-modes', {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    fetchModes()
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)' }}>Payment Mode Settings</h2>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+            Configure payment methods, the asset account where net proceeds are lodged, and any applicable deductions (e.g. credit card fees).
+          </p>
+        </div>
+        <button onClick={openCreate} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>
+          <Plus size={14} /> Add Mode
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center gap-2 py-8" style={{ color: 'var(--mid-gray)' }}><Loader2 className="animate-spin" size={16} /> Loading...</div>
+      ) : modes.length === 0 ? (
+        <div className="py-12 text-center" style={{ color: 'var(--mid-gray)' }}>No payment modes configured yet.</div>
+      ) : (
+        <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ background: 'var(--pale-teal)' }}>
+                {['Mode', 'Net Proceeds Account', 'Deductions', 'Status', ''].map(h => (
+                  <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {modes.map(m => (
+                <tr key={m.id} className="border-t" style={{ borderColor: 'var(--light-gray)', opacity: m.isActive ? 1 : 0.5 }}>
+                  <td className="px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>{m.name}</td>
+                  <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                    {m.account ? <span><span className="font-mono" style={{ color: 'var(--teal)' }}>{m.account.accountNumber}</span> {m.account.accountTitle}</span> : <span className="italic">Not set</span>}
+                  </td>
+                  <td className="px-4 py-3">
+                    {m.deductions.length === 0 ? (
+                      <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>None</span>
+                    ) : (
+                      <div className="space-y-0.5">
+                        {m.deductions.map(d => (
+                          <div key={d.id} className="text-xs" style={{ color: 'var(--charcoal)' }}>
+                            <span className="font-medium">{d.name}</span>
+                            <span className="ml-1" style={{ color: 'var(--mid-gray)' }}>{Number(d.rate)}%</span>
+                            {d.account && <span className="ml-1 font-mono text-xs" style={{ color: 'var(--teal)' }}>→ {d.account.accountNumber}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${m.isActive ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                      {m.isActive ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex gap-1">
+                      <button onClick={() => openEdit(m)} className="p-1.5 rounded-lg hover:bg-gray-100"><Pencil size={13} style={{ color: 'var(--teal)' }} /></button>
+                      <button onClick={() => deleteMode(m.id)} className="p-1.5 rounded-lg hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Form Modal */}
+      {showForm && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-10 overflow-y-auto">
+          <div className="bg-white rounded-2xl p-6 shadow-xl w-full max-w-lg mb-10 relative">
+            <button onClick={() => setShowForm(false)} className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-gray-100">
+              <X size={18} style={{ color: 'var(--mid-gray)' }} />
+            </button>
+            <h3 className="text-base font-bold mb-4" style={{ color: 'var(--charcoal)' }}>
+              {editingId ? 'Edit Payment Mode' : 'Add Payment Mode'}
+            </h3>
+
+            <div className="space-y-4">
+              {/* Name */}
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Mode Name *</label>
+                <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
+                  placeholder="e.g. Cash, GCash, Credit Card"
+                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+
+              {/* Net proceeds account */}
+              <div className="relative">
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
+                  Net Proceeds Account <span className="font-normal">(asset account where net cash is deposited)</span>
+                </label>
+                <input type="text" value={accountSearch}
+                  onChange={e => { setAccountSearch(e.target.value); if (!e.target.value) setForm({ ...form, accountId: '' }) }}
+                  placeholder="Search account..."
+                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                  style={{ borderColor: form.accountId ? 'var(--teal)' : 'var(--light-gray)', background: form.accountId ? '#f0fdfa' : 'white' }} />
+                {form.accountId && (
+                  <button type="button" onClick={() => { setForm({ ...form, accountId: '' }); setAccountSearch('') }}
+                    className="absolute right-2 top-7 p-0.5 rounded hover:bg-gray-100"><X size={14} style={{ color: 'var(--mid-gray)' }} /></button>
+                )}
+                {accountSearch && !form.accountId && (
+                  <div className="absolute z-20 left-0 right-0 mt-1 bg-white border rounded-xl shadow-lg max-h-36 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                    {filteredAccounts(accountSearch).map(a => (
+                      <button key={a.id} type="button"
+                        onClick={() => { setForm({ ...form, accountId: a.id }); setAccountSearch(`${a.accountNumber} ${a.accountTitle}`) }}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50">
+                        <span className="font-mono font-medium" style={{ color: 'var(--teal)' }}>{a.accountNumber}</span> {a.accountTitle}
+                        <span className="ml-1 text-gray-400">({a.accountType})</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Deductions */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Deductions</label>
+                  <button type="button" onClick={addDeduction} className="flex items-center gap-1 text-xs font-medium" style={{ color: 'var(--teal)' }}>
+                    <PlusCircle size={13} /> Add Deduction
+                  </button>
+                </div>
+                {deductions.length === 0 && (
+                  <p className="text-xs italic" style={{ color: 'var(--mid-gray)' }}>No deductions — e.g. add Merchant Discount Rate for credit cards</p>
+                )}
+                <div className="space-y-3">
+                  {deductions.map((d, i) => (
+                    <div key={i} className="rounded-xl border p-3 space-y-2" style={{ borderColor: 'var(--light-gray)' }}>
+                      <div className="flex gap-2">
+                        <input value={d.name} onChange={e => updateDeduction(i, 'name', e.target.value)}
+                          placeholder="e.g. Merchant Discount Rate"
+                          className="flex-1 px-2.5 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                        <div className="flex items-center gap-1">
+                          <input type="number" value={d.rate} min={0} max={100} step={0.01}
+                            onChange={e => updateDeduction(i, 'rate', parseFloat(e.target.value) || 0)}
+                            className="w-16 px-2 py-1.5 rounded-lg border text-xs outline-none text-right" style={{ borderColor: 'var(--light-gray)' }} />
+                          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>%</span>
+                        </div>
+                        <button type="button" onClick={() => removeDeduction(i)} className="p-1 rounded hover:bg-red-50">
+                          <X size={13} className="text-red-400" />
+                        </button>
+                      </div>
+                      {/* Deduction COA */}
+                      <div className="relative">
+                        <input type="text" value={d.accountSearch}
+                          onChange={e => { updateDeduction(i, 'accountSearch', e.target.value); if (!e.target.value) updateDeduction(i, 'accountId', '') }}
+                          placeholder="COA — expense or liability account..."
+                          className="w-full px-2.5 py-1.5 rounded-lg border text-xs outline-none"
+                          style={{ borderColor: d.accountId ? 'var(--teal)' : 'var(--light-gray)', background: d.accountId ? '#f0fdfa' : 'white' }} />
+                        {d.accountId && (
+                          <button type="button" onClick={() => { updateDeduction(i, 'accountId', ''); updateDeduction(i, 'accountSearch', '') }}
+                            className="absolute right-2 top-1.5 p-0.5 rounded hover:bg-gray-100"><X size={11} style={{ color: 'var(--mid-gray)' }} /></button>
+                        )}
+                        {d.accountSearch && !d.accountId && (
+                          <div className="absolute z-30 left-0 right-0 mt-1 bg-white border rounded-xl shadow-lg max-h-28 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                            {filteredAccounts(d.accountSearch).map(a => (
+                              <button key={a.id} type="button"
+                                onClick={() => { updateDeduction(i, 'accountId', a.id); updateDeduction(i, 'accountSearch', `${a.accountNumber} ${a.accountTitle}`) }}
+                                className="w-full text-left px-2.5 py-1.5 text-xs hover:bg-gray-50">
+                                <span className="font-mono font-medium" style={{ color: 'var(--teal)' }}>{a.accountNumber}</span> {a.accountTitle}
+                                <span className="ml-1 text-gray-400">({a.accountType})</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Active toggle */}
+              {editingId && (
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => setForm({ ...form, isActive: !form.isActive })}>
+                    {form.isActive ? <ToggleRight size={22} style={{ color: 'var(--teal)' }} /> : <ToggleLeft size={22} style={{ color: 'var(--mid-gray)' }} />}
+                  </button>
+                  <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{form.isActive ? 'Active' : 'Inactive'}</span>
+                </div>
+              )}
+
+              {error && <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle size={12} />{error}</p>}
+
+              <button onClick={save} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>
+                {editingId ? 'Save Changes' : 'Create Payment Mode'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

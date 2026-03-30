@@ -45,7 +45,12 @@ export async function GET(req: Request) {
   }
 
   try {
-    const { start, end } = getCutoffDates(cutoffPeriod)
+    // Allow client to pass custom date range (overrides default cutoff calculation)
+    const dateFromParam = searchParams.get('dateFrom')
+    const dateToParam = searchParams.get('dateTo')
+    const { start, end } = dateFromParam && dateToParam
+      ? { start: new Date(dateFromParam), end: new Date(dateToParam) }
+      : getCutoffDates(cutoffPeriod)
 
     // Get consultants
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
