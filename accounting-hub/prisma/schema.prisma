@@ -530,7 +530,9 @@ model Order {
   queueItemId     String?
   referrerId      String?
   referrer        Referrer?   @relation(fields: [referrerId], references: [id])
-  notes           String?
+  notes                  String?
+  issuedOfficialInvoice  Boolean  @default(false)
+  salesInvoiceNumber     String?
   status          OrderStatus @default(COMPLETED)
   transactionDate DateTime
   createdById     String

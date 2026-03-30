@@ -707,6 +707,8 @@ function OrderFormModal({
   const [activeWallet, setActiveWallet] = useState<DigitalWallet | null>(null) // wallet being used for payment
   const [walletDiscountApplied, setWalletDiscountApplied] = useState(false)
   const [walletDiscountRules, setWalletDiscountRules] = useState<WalletDiscountRuleItem[]>([])
+  const [issuedOfficialInvoice, setIssuedOfficialInvoice] = useState(false)
+  const [salesInvoiceNumber, setSalesInvoiceNumber] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const patientTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -1098,6 +1100,8 @@ function OrderFormModal({
         discountLabel: discountLabel || null,
         revenueType: effectiveRevenueType,
         referrerId: referrerId || null,
+        issuedOfficialInvoice,
+        salesInvoiceNumber: issuedOfficialInvoice ? salesInvoiceNumber.trim() : null,
       }
       const res = await fetch('/api/pos/orders', {
         method: 'POST',
@@ -1755,6 +1759,32 @@ function OrderFormModal({
               </p>
             </div>
           )}
+
+          {/* Official Sales Invoice */}
+          <div className="rounded-xl p-3 border" style={{ borderColor: 'var(--light-gray)' }}>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={issuedOfficialInvoice}
+                onChange={e => { setIssuedOfficialInvoice(e.target.checked); if (!e.target.checked) setSalesInvoiceNumber('') }}
+                className="w-4 h-4 rounded accent-teal-600"
+              />
+              <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Issued Official Sales Invoice</span>
+            </label>
+            {issuedOfficialInvoice && (
+              <div className="mt-2">
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Sales Invoice Number</label>
+                <input
+                  type="text"
+                  value={salesInvoiceNumber}
+                  onChange={e => setSalesInvoiceNumber(e.target.value)}
+                  placeholder="e.g. SI-2026-001234"
+                  className="w-full px-3 py-2 rounded-xl border text-sm outline-none"
+                  style={{ borderColor: 'var(--light-gray)' }}
+                />
+              </div>
+            )}
+          </div>
 
           {/* Totals */}
           <div className="rounded-xl p-4 space-y-1" style={{ background: 'var(--off-white)' }}>

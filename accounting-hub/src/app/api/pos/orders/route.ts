@@ -84,6 +84,8 @@ export async function POST(req: Request) {
       queueItemId,
       referrerId,
       notes,
+      issuedOfficialInvoice,
+      salesInvoiceNumber,
     } = body
 
     if (!orderType || !branch || !items?.length || !payments?.length) {
@@ -118,6 +120,8 @@ export async function POST(req: Request) {
         queueItemId: queueItemId || null,
         referrerId: referrerId || null,
         notes: notes || null,
+        issuedOfficialInvoice: issuedOfficialInvoice || false,
+        salesInvoiceNumber: (issuedOfficialInvoice && salesInvoiceNumber) ? salesInvoiceNumber.trim() : null,
         createdById: session.user.id,
         items: {
           createMany: {
