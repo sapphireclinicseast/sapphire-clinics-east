@@ -30,6 +30,8 @@ interface Service {
   description: string | null
   revenueAccountId: string | null
   revenueAccount?: { id: string; accountNumber: string; accountTitle: string } | null
+  unitPayId?: string | null
+  unitPay?: { id: string; name: string } | null
   isActive: boolean
   createdAt: string
   eligibleFor?: { eligibleService: { id: string; name: string; department: string; price: string | number }; discountPercent?: number | string | null }[]
@@ -112,6 +114,8 @@ export default function ServicesPage() {
   const [fRevenueAccountId, setFRevenueAccountId] = useState('')
   const [fRevenueAccountSearch, setFRevenueAccountSearch] = useState('')
   const [revenueAccounts, setRevenueAccounts] = useState<RevenueAccount[]>([])
+  const [fUnitPayId, setFUnitPayId] = useState('')
+  const [unitPays, setUnitPays] = useState<{ id: string; name: string }[]>([])
   const [fEligibleServices, setFEligibleServices] = useState<{ serviceId: string; discountPercent: number }[]>([])
   const [eligibleSearch, setEligibleSearch] = useState('')
 
@@ -147,6 +151,10 @@ export default function ServicesPage() {
       fetch('/api/chart-of-accounts?accountType=REVENUE&pageSize=500').then(r => r.json()),
       fetch('/api/chart-of-accounts?accountType=LIABILITY&pageSize=500').then(r => r.json()),
     ]).then(([rev, liab]) => setRevenueAccounts([...mapAccounts(rev), ...mapAccounts(liab)])).catch(() => {})
+    // Fetch unit pay types for payroll tagging
+    fetch('/api/payroll/unit-pay').then(r => r.json())
+      .then(d => setUnitPays((d || []).map((u: { id: string; name: string }) => ({ id: u.id, name: u.name }))))
+      .catch(() => {})
   }, [sessionUserId])
 
   // Refetch on filter/sort changes (debounced, only after initial load)
@@ -178,7 +186,7 @@ export default function ServicesPage() {
     setFName(''); setFDept('PT'); setFBranch('ALL'); setFPrice('')
     setFPriceType('FIXED'); setFRevenueType('EARNED'); setFHasDoctorFee(false); setFDoctorFee('')
     setFClinicFee(''); setFPwdClinicOnly(false); setFNoPwdDiscount(false); setFDescription('')
-    setFWalletType(''); setFVipTier(''); setFPackageSessions(''); setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFEligibleServices([]); setEligibleSearch('')
+    setFWalletType(''); setFVipTier(''); setFPackageSessions(''); setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFUnitPayId(''); setFEligibleServices([]); setEligibleSearch('')
     setError(''); setModalOpen(true)
   }
 
@@ -197,6 +205,7 @@ export default function ServicesPage() {
     setFPackageSessions(s.packageSessions != null ? String(s.packageSessions) : '')
     setFRevenueAccountId(s.revenueAccountId || '')
     setFRevenueAccountSearch(s.revenueAccount ? `${s.revenueAccount.accountNumber} ${s.revenueAccount.accountTitle}` : '')
+    setFUnitPayId(s.unitPayId || '')
     setFEligibleServices(
       (s.eligibleFor || []).map((e: { eligibleService: { id: string }; discountPercent?: number | string | null }) => ({
         serviceId: e.eligibleService.id,
@@ -232,6 +241,7 @@ export default function ServicesPage() {
       noPwdDiscount: fNoPwdDiscount,
       description: fDescription,
       revenueAccountId: fRevenueAccountId || null,
+      unitPayId: fUnitPayId || null,
     }
     if (editing) body.id = editing.id
     try {
@@ -394,6 +404,9 @@ export default function ServicesPage() {
                       {s.name}
                       {s.revenueAccount && (
                         <p className="text-xs mt-0.5" style={{ color: 'var(--teal)' }}>{s.revenueAccount.accountNumber} {s.revenueAccount.accountTitle}</p>
+                      )}
+                      {s.unitPay && (
+                        <p className="text-xs mt-0.5" style={{ color: '#7c3aed' }}>Unit Pay: {s.unitPay.name}</p>
                       )}
                       {s.description && <p className="text-xs mt-0.5 truncate max-w-[200px]" style={{ color: 'var(--mid-gray)' }}>{s.description}</p>}
                     </td>
@@ -796,6 +809,21 @@ export default function ServicesPage() {
                     )}
                   </div>
                 )}
+              </div>
+
+              {/* Unit Pay (for payroll tagging) */}
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                  Unit Pay <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(Payroll — links to consultant fee)</span>
+                </label>
+                <select value={fUnitPayId} onChange={(e) => setFUnitPayId(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                  style={{ borderColor: fUnitPayId ? 'var(--teal)' : 'var(--light-gray)', background: fUnitPayId ? '#f0fdfa' : 'white' }}>
+                  <option value="">— No unit pay assigned —</option>
+                  {unitPays.map(u => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
               </div>
 
               <div>

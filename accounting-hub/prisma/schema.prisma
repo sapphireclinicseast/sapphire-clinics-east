@@ -71,6 +71,7 @@ model User {
   ordersCreated         Order[]                 @relation("OrderCreatedBy")
   discountSettings      DiscountSetting[]       @relation("DiscountCreatedBy")
   arPayments            ARPayment[]             @relation("ARPaymentCreatedBy")
+  payrollEntries        PayrollEntry[]          @relation("PayrollCreatedBy")
 
   @@index([email])
   @@index([role])
@@ -161,6 +162,8 @@ model Service {
   description           String?
   revenueAccountId      String?
   revenueAccount        Account?      @relation(fields: [revenueAccountId], references: [id], onDelete: SetNull)
+  unitPayId             String?
+  unitPay               UnitPay?      @relation(fields: [unitPayId], references: [id], onDelete: SetNull)
   isActive              Boolean       @default(true)
   createdById           String
   createdBy             User          @relation("ServiceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -177,6 +180,7 @@ model Service {
   @@index([isActive])
   @@index([createdById])
   @@index([revenueAccountId])
+  @@index([unitPayId])
 }
 
 // Links a package/VIP service to the earned services it covers
@@ -656,4 +660,77 @@ model ARPaymentItem {
 
   @@index([paymentId])
   @@index([orderId])
+}
+
+// ── Payroll ──────────────────────────────────────────────
+
+model Consultant {
+  id              String    @id @default(cuid())
+  externalStaffId String?   @unique // Marketing site Staff.id
+  name            String    // "LASTNAME, FIRSTNAME"
+  department      String    // OT, PT, SLP, SPED, MD, PSYCHOLOGY, etc.
+  branch          String    // SBEA, SBGH
+  taxDeduction    String    @default("NONE") // "FIVE_PERCENT" or "NONE"
+  monthlyRetainer Decimal   @default(0)
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  unitPayRates    ConsultantUnitPay[]
+  payrollEntries  PayrollEntry[]
+
+  @@index([department])
+  @@index([branch])
+  @@index([isActive])
+}
+
+model UnitPay {
+  id          String   @id @default(cuid())
+  name        String   // e.g. "Basic PF", "Assessment PF"
+  departments Json     @default("[]") // JSON array of dept codes, or empty for all
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  consultantRates ConsultantUnitPay[]
+  services        Service[]
+
+  @@index([isActive])
+}
+
+model ConsultantUnitPay {
+  id           String     @id @default(cuid())
+  consultantId String
+  consultant   Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
+  unitPayId    String
+  unitPay      UnitPay    @relation(fields: [unitPayId], references: [id], onDelete: Cascade)
+  amount       Decimal    // Per-unit amount for this consultant
+
+  @@unique([consultantId, unitPayId])
+  @@index([consultantId])
+  @@index([unitPayId])
+}
+
+model PayrollEntry {
+  id              String     @id @default(cuid())
+  consultantId    String
+  consultant      Consultant @relation(fields: [consultantId], references: [id], onDelete: Restrict)
+  cutoffPeriod    String     // e.g. "2026-03-1" or "2026-03-2"
+  branch          String
+  items           Json       // [{unitPayName, unitAmount, quantity, lineTotal}]
+  grossPay        Decimal
+  retainerAmount  Decimal    @default(0)
+  taxAmount       Decimal    @default(0)
+  netPay          Decimal
+  status          String     @default("DRAFT") // DRAFT, FINAL
+  createdById     String
+  createdBy       User       @relation("PayrollCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@unique([consultantId, cutoffPeriod, branch])
+  @@index([consultantId])
+  @@index([cutoffPeriod])
+  @@index([branch])
+  @@index([status])
 }
