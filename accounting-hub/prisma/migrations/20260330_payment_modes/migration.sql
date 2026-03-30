@@ -19,6 +19,9 @@ ALTER TABLE "PaymentMode"
 
 CREATE INDEX IF NOT EXISTS "PaymentMode_isActive_idx" ON "PaymentMode"("isActive");
 
+-- Add paymentMethod column (added after initial migration)
+ALTER TABLE "PaymentMode" ADD COLUMN IF NOT EXISTS "paymentMethod" TEXT;
+
 -- ── PaymentModeDeduction ──────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS "PaymentModeDeduction" (
   "id"            TEXT          NOT NULL,

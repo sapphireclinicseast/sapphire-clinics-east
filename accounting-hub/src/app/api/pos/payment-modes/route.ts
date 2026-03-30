@@ -39,7 +39,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { name, accountId, deductions = [] } = await req.json()
+    const { name, paymentMethod, accountId, deductions = [] } = await req.json()
 
     if (!name?.trim()) {
       return NextResponse.json({ error: 'Payment mode name is required' }, { status: 400 })
@@ -48,6 +48,7 @@ export async function POST(req: Request) {
     const mode = await prisma.paymentMode.create({
       data: {
         name: name.trim(),
+        paymentMethod: paymentMethod || null,
         accountId: accountId || null,
         deductions: {
           create: deductions
@@ -84,7 +85,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, name, accountId, isActive, deductions = [] } = await req.json()
+    const { id, name, paymentMethod, accountId, isActive, deductions = [] } = await req.json()
 
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
     if (!name?.trim()) return NextResponse.json({ error: 'Name is required' }, { status: 400 })
@@ -96,6 +97,7 @@ export async function PUT(req: Request) {
       where: { id },
       data: {
         name: name.trim(),
+        paymentMethod: paymentMethod || null,
         accountId: accountId || null,
         isActive: isActive !== undefined ? Boolean(isActive) : undefined,
         deductions: {

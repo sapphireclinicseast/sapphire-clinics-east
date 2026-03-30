@@ -59,6 +59,7 @@ interface OrderLineItem {
 interface PaymentLine {
   method: string
   amount: number
+  paymentModeId?: string  // configured PaymentMode id (carries deduction rules + account routing)
   walletId?: string
   reference?: string
 }
@@ -143,6 +144,7 @@ interface PaymentModeDeductionType {
 interface PaymentModeType {
   id: string
   name: string
+  paymentMethod?: string | null  // e.g. 'CASH', 'GCASH', 'CREDIT_CARD'
   isActive: boolean
   accountId?: string | null
   account?: { id: string; accountNumber: string; accountTitle: string } | null
@@ -694,6 +696,7 @@ function OrderFormModal({
   const [services, setServices] = useState<ServiceItem[]>([])
   const [showServiceDrop, setShowServiceDrop] = useState(false)
   const [payments, setPayments] = useState<PaymentLine[]>([{ method: 'CASH', amount: 0 }])
+  const [configuredModes, setConfiguredModes] = useState<PaymentModeType[]>([])
   const [pwdDiscount, setPwdDiscount] = useState(false)
   const [customDiscountId, setCustomDiscountId] = useState('')
   const [freeformDiscountAmt, setFreeformDiscountAmt] = useState(0)
@@ -737,10 +740,11 @@ function OrderFormModal({
   const clinicianTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const serviceTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
-  // Fetch discount settings + referrers on mount
+  // Fetch discount settings + referrers + payment modes on mount
   useEffect(() => {
     fetch('/api/pos/discount-settings').then(r => r.json()).then(d => setDiscountSettings(normalize(d) as DiscountSetting[])).catch(() => {})
     fetch('/api/referrers?all=true').then(r => r.json()).then(d => setReferrers(normalize(d) as Referrer[])).catch(() => {})
+    fetch('/api/pos/payment-modes').then(r => r.json()).then(d => setConfiguredModes(Array.isArray(d) ? d.filter((m: PaymentModeType) => m.isActive) : [])).catch(() => {})
   }, [])
 
   // Patient search
@@ -1113,6 +1117,7 @@ function OrderFormModal({
         })),
         payments: payments.filter(p => toNum(p.amount) > 0 || p.method === 'PACKAGE').map(p => ({
           method: p.method,
+          paymentModeId: p.paymentModeId || null,
           amount: p.method === 'PACKAGE' ? netAmount : toNum(p.amount),
           walletId: p.walletId || null,
           reference: p.reference || null,
@@ -1526,9 +1531,37 @@ function OrderFormModal({
             {payments.map((p, idx) => (
               <div key={idx} className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <select value={p.method} onChange={e => setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, method: e.target.value } : pp))}
+                  <select
+                    value={p.paymentModeId || p.method}
+                    onChange={e => {
+                      const val = e.target.value
+                      // Check if user picked a configured payment mode (cuid starts with 'c' and is long)
+                      const cm = configuredModes.find(m => m.id === val)
+                      if (cm) {
+                        setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, method: cm.paymentMethod || 'CASH', paymentModeId: cm.id } : pp))
+                      } else {
+                        setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, method: val, paymentModeId: undefined } : pp))
+                      }
+                    }}
                     className="px-3 py-2.5 rounded-xl border text-sm outline-none flex-1" style={{ borderColor: 'var(--light-gray)' }}>
-                    {paymentMethods.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                    {configuredModes.length > 0 ? (
+                      <>
+                        {configuredModes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                        <optgroup label="────────────────">
+                          <option value="VIP_CARD">VIP Card</option>
+                          <option value="PREPAID_CARD">Prepaid Card</option>
+                          <option value="DOWNPAYMENT">Downpayment</option>
+                          <option value="PACKAGE">Package</option>
+                          <option value="HMO">HMO</option>
+                          <option value="GL">Guarantee Letter (GL)</option>
+                          <option value="REWARD_POINTS">Reward Points</option>
+                        </optgroup>
+                      </>
+                    ) : (
+                      <>
+                        {paymentMethods.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                      </>
+                    )}
                     {p.method === 'WALLET' && <option value="WALLET">VIP/Prepaid Card</option>}
                   </select>
                   {p.method === 'PACKAGE' ? (
@@ -1549,6 +1582,29 @@ function OrderFormModal({
                     </button>
                   )}
                 </div>
+              {/* Deduction preview for configured payment modes */}
+              {(() => {
+                const cm = configuredModes.find(m => m.id === p.paymentModeId)
+                if (!cm || cm.deductions.length === 0) return null
+                const base = toNum(p.amount)
+                return (
+                  <div className="ml-1 pl-3 border-l-2 space-y-0.5" style={{ borderColor: 'var(--light-gray)' }}>
+                    {cm.deductions.map(d => {
+                      const amt = base * (Number(d.rate) / 100)
+                      return (
+                        <div key={d.id} className="flex justify-between text-xs" style={{ color: 'var(--mid-gray)' }}>
+                          <span>{d.name} ({Number(d.rate)}%){d.account ? ` → ${d.account.accountNumber}` : ''}</span>
+                          <span className="font-medium text-red-500">-{formatCurrency(amt)}</span>
+                        </div>
+                      )
+                    })}
+                    <div className="flex justify-between text-xs font-semibold pt-0.5" style={{ color: 'var(--teal)' }}>
+                      <span>Net to {cm.account ? cm.account.accountNumber : 'account'}</span>
+                      <span>{formatCurrency(base - cm.deductions.reduce((s, d) => s + base * (Number(d.rate) / 100), 0))}</span>
+                    </div>
+                  </div>
+                )
+              })()}
                 {(p.method === 'HMO' || p.method === 'GL') && (
                   <input value={p.reference || ''} placeholder={p.method === 'HMO' ? 'HMO Provider (e.g. Intellicare, Avega)' : 'GL Provider / Reference'}
                     onChange={e => setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, reference: e.target.value } : pp))}
@@ -4743,7 +4799,7 @@ function PaymentModeSettingsPanel() {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [form, setForm] = useState({ name: '', accountId: '', isActive: true })
+  const [form, setForm] = useState({ name: '', paymentMethod: '', accountId: '', isActive: true })
   const [accountSearch, setAccountSearch] = useState('')
   const [allAccounts, setAllAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string; accountType: string }[]>([])
   const [deductions, setDeductions] = useState<{ name: string; rate: number; accountId: string; accountSearch: string }[]>([])
@@ -4776,7 +4832,7 @@ function PaymentModeSettingsPanel() {
 
   const openCreate = () => {
     setEditingId(null)
-    setForm({ name: '', accountId: '', isActive: true })
+    setForm({ name: '', paymentMethod: '', accountId: '', isActive: true })
     setAccountSearch('')
     setDeductions([])
     setError('')
@@ -4785,7 +4841,7 @@ function PaymentModeSettingsPanel() {
 
   const openEdit = (m: PaymentModeType) => {
     setEditingId(m.id)
-    setForm({ name: m.name, accountId: m.accountId || '', isActive: m.isActive })
+    setForm({ name: m.name, paymentMethod: m.paymentMethod || '', accountId: m.accountId || '', isActive: m.isActive })
     setAccountSearch(m.account ? `${m.account.accountNumber} ${m.account.accountTitle}` : '')
     setDeductions((m.deductions || []).map(d => ({
       name: d.name,
@@ -4808,6 +4864,7 @@ function PaymentModeSettingsPanel() {
     const body = {
       id: editingId,
       name: form.name,
+      paymentMethod: form.paymentMethod || null,
       accountId: form.accountId || null,
       isActive: form.isActive,
       deductions: deductions.filter(d => d.name.trim() && d.rate > 0).map(d => ({
@@ -4918,8 +4975,27 @@ function PaymentModeSettingsPanel() {
               <div>
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Mode Name *</label>
                 <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
-                  placeholder="e.g. Cash, GCash, Credit Card"
+                  placeholder="e.g. Cash - SBEA, GCash, Credit Card"
                   className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+
+              {/* Payment Method Type */}
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
+                  Payment Method Type <span className="font-normal">(determines journal entry category)</span>
+                </label>
+                <select value={form.paymentMethod} onChange={e => setForm({ ...form, paymentMethod: e.target.value })}
+                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+                  <option value="">— Select type —</option>
+                  <option value="CASH">Cash</option>
+                  <option value="GCASH">GCash</option>
+                  <option value="PAYMAYA">PayMaya</option>
+                  <option value="DEBIT">Debit Card</option>
+                  <option value="CREDIT_CARD">Credit Card</option>
+                  <option value="SHOPEE">Shopee</option>
+                  <option value="LAZADA">Lazada</option>
+                  <option value="TIKTOK">TikTok Shop</option>
+                </select>
               </div>
 
               {/* Net proceeds account */}

@@ -149,11 +149,13 @@ export async function POST(req: Request) {
               amount: number
               walletId?: string
               reference?: string
+              paymentModeId?: string
             }) => ({
               method: p.method,
               amount: Number(p.amount),
               walletId: p.walletId || null,
               reference: p.reference || null,
+              paymentModeId: p.paymentModeId || null,
             })),
           },
         },
