@@ -641,9 +641,9 @@ export default function PayrollPage() {
 
   const fetchAllAccounts = useCallback(async () => {
     try {
-      const res = await fetch('/api/chart-of-accounts?limit=500')
+      const res = await fetch('/api/chart-of-accounts?pageSize=500')
       const data = await res.json()
-      setAllAccounts(data.accounts || data || [])
+      setAllAccounts(data.data || [])
     } catch { setAllAccounts([]) }
   }, [])
 
