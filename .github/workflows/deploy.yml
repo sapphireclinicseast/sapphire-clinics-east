@@ -256,8 +256,11 @@ jobs:
             fi
             echo "   .env.production status: $([ -f .env.production ] && echo 'found' || echo 'MISSING')"
 
+            echo "→ Removing any stale accounting_app container not managed by compose..."
+            docker stop accounting_app 2>/dev/null || true
+            docker rm accounting_app 2>/dev/null || true
+
             echo "→ Rebuilding and restarting via docker compose..."
-            # Build without --no-cache only if we need speed; use compose so network/env are correct
             docker compose --env-file .env.production build app 2>&1
             echo "   Image built successfully."
             docker compose --env-file .env.production up -d --force-recreate app 2>&1
