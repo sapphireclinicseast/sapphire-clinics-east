@@ -72,6 +72,7 @@ model User {
   discountSettings      DiscountSetting[]       @relation("DiscountCreatedBy")
   arPayments            ARPayment[]             @relation("ARPaymentCreatedBy")
   payrollEntries        PayrollEntry[]          @relation("PayrollCreatedBy")
+  incentiveRules        IncentiveRule[]         @relation("IncentiveCreatedBy")
 
   @@index([email])
   @@index([role])
@@ -758,6 +759,26 @@ model ConsultantUnitPay {
   @@unique([consultantId, unitPayId])
   @@index([consultantId])
   @@index([unitPayId])
+}
+
+// ── Incentive Rules ───────────────────────────────────────────
+
+model IncentiveRule {
+  id           String   @id @default(cuid())
+  name         String   // e.g. "Daily Patient Threshold Bonus"
+  description  String?
+  threshold    Int      // Minimum patients per day to trigger (e.g. 7)
+  bonusPerUnit Decimal  // Bonus amount per patient when triggered (e.g. 20)
+  departments  Json     @default("[]") // JSON array of dept codes; empty = all
+  branch       String?  // null = all branches
+  isActive     Boolean  @default(true)
+  createdById  String
+  createdBy    User     @relation("IncentiveCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([branch])
 }
 
 model PayrollEntry {

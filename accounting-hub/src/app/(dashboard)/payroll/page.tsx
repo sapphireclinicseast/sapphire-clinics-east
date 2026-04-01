@@ -52,6 +52,8 @@ interface PayrollPreview {
   items: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number }[]
   unitPayTotal: number
   retainerAmount: number
+  incentives: IncentiveLine[]
+  incentiveTotal: number
   grossPay: number
   taxAmount: number
   netPay: number
@@ -74,6 +76,26 @@ interface AdjustmentLine {
   isAddition: boolean  // true = +, false = deduction
   isTaxed: boolean
   remarks: string
+}
+
+interface IncentiveLine {
+  ruleId: string
+  ruleName: string
+  date: string         // YYYY-MM-DD
+  patientCount: number
+  bonusPerUnit: number
+  bonus: number
+}
+
+interface IncentiveRule {
+  id: string
+  name: string
+  description?: string | null
+  threshold: number
+  bonusPerUnit: number
+  departments: string[]
+  branch?: string | null
+  isActive: boolean
 }
 
 interface PayrollSettings {
@@ -408,6 +430,46 @@ async function buildPayslipPdf(
   y = (doc as any).lastAutoTable?.finalY ?? y
   y += 8
 
+  /* ══ INCENTIVES TABLE ══
+     Shows daily threshold bonuses                              */
+  if (p.incentives && p.incentives.length > 0) {
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(...DARK)
+    doc.text('INCENTIVES', margin, y)
+    y += 2
+
+    const incBody = p.incentives.map(line => {
+      const d = new Date(line.date + 'T00:00:00+08:00')
+      const dateStr = d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })
+      return [
+        `${line.ruleName} — ${dateStr}`,
+        String(line.patientCount),
+        fmtPHP(line.bonusPerUnit),
+        fmtPHP(line.bonus),
+      ]
+    })
+
+    autoTable(doc, {
+      startY: y,
+      head: [['Description', 'Patients', 'Rate / Patient', 'Total']],
+      body: incBody,
+      theme: 'grid',
+      headStyles: tableHeadStyles,
+      bodyStyles: tableBodyStyles,
+      columnStyles: {
+        0: { cellWidth: 'auto' },
+        1: { halign: 'center', cellWidth: 20 },
+        2: { halign: 'right', cellWidth: 36 },
+        3: { halign: 'right', cellWidth: 36 },
+      },
+      margin: { left: margin, right: margin },
+    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    y = (doc as any).lastAutoTable?.finalY ?? y
+    y += 8
+  }
+
   /* ══ ADJUSTMENTS TABLE ══
      Columns: Description | Amount | Remarks                    */
   if (adjs.length > 0) {
@@ -454,6 +516,7 @@ async function buildPayslipPdf(
   const summaryRows: SummaryRow[] = [
     { label: 'Unit Pay Total', value: fmtPHP(totals.totalUnitPay) },
     ...(p.retainerAmount > 0 ? [{ label: 'Retainer (\u00bd cutoff)', value: fmtPHP(p.retainerAmount) }] : []),
+    ...((p.incentiveTotal ?? 0) > 0 ? [{ label: 'Incentive Bonus', value: fmtPHP(p.incentiveTotal ?? 0) }] : []),
     ...(adjs.length > 0 ? [{
       label: 'Adjustments (net)',
       value: (totals.taxedAdj + totals.nonTaxedAdj >= 0 ? '+ ' : '- ') + fmtPHP(Math.abs(totals.taxedAdj + totals.nonTaxedAdj)),
@@ -554,6 +617,13 @@ export default function PayrollPage() {
   const [upDepts, setUpDepts] = useState<string[]>([])
   const [savingUP, setSavingUP] = useState(false)
 
+  /* ── Incentive Rules ── */
+  const [incentiveRules, setIncentiveRules] = useState<IncentiveRule[]>([])
+  const [showIncentiveForm, setShowIncentiveForm] = useState(false)
+  const [editingIncentive, setEditingIncentive] = useState<IncentiveRule | null>(null)
+  const [incForm, setIncForm] = useState({ name: '', description: '', threshold: 7, bonusPerUnit: 20, departments: [] as string[], branch: '', isActive: true })
+  const [savingInc, setSavingInc] = useState(false)
+
   /* ── Payslip generation — base ── */
   const [genDept, setGenDept] = useState('')
   const [genConsultantId, setGenConsultantId] = useState('')
@@ -647,6 +717,14 @@ export default function PayrollPage() {
     } catch { setAllAccounts([]) }
   }, [])
 
+  const fetchIncentiveRules = useCallback(async () => {
+    try {
+      const res = await fetch('/api/payroll/incentives')
+      const data = await res.json()
+      setIncentiveRules(Array.isArray(data) ? data : [])
+    } catch { setIncentiveRules([]) }
+  }, [])
+
   const fetchTaxPayable = useCallback(async () => {
     setLoadingTax(true)
     try {
@@ -699,7 +777,8 @@ export default function PayrollPage() {
 
   useEffect(() => {
     fetchAllAccounts()
-  }, [fetchAllAccounts])
+    fetchIncentiveRules()
+  }, [fetchAllAccounts, fetchIncentiveRules])
 
   /* ── Sync ── */
   const syncConsultants = async () => {
@@ -761,6 +840,65 @@ export default function PayrollPage() {
 
   /* ── Unit Pay CRUD ── */
   const openUPCreate = () => { setEditingUnitPay(null); setUpName(''); setUpDepts([]); setUpExpenseAccountId(''); setUpExpenseSearch(''); setShowUnitPayForm(true); setError('') }
+  const saveIncentiveRule = async () => {
+    if (!incForm.name.trim()) { setError('Name is required'); return }
+    if (incForm.threshold < 1) { setError('Threshold must be at least 1'); return }
+    if (incForm.bonusPerUnit <= 0) { setError('Bonus per unit must be greater than 0'); return }
+    setSavingInc(true); setError('')
+    try {
+      const body = {
+        ...incForm,
+        ...(editingIncentive ? { id: editingIncentive.id } : {}),
+      }
+      const res = await fetch('/api/payroll/incentives', {
+        method: editingIncentive ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (res.ok) {
+        setShowIncentiveForm(false)
+        setEditingIncentive(null)
+        fetchIncentiveRules()
+      } else {
+        const d = await res.json()
+        setError(d.error || 'Failed to save')
+      }
+    } catch { setError('Network error') }
+    finally { setSavingInc(false) }
+  }
+
+  const deleteIncentiveRule = async (id: string) => {
+    if (!window.confirm('Delete this incentive rule?')) return
+    await fetch('/api/payroll/incentives', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    fetchIncentiveRules()
+  }
+
+  const openIncCreate = () => {
+    setEditingIncentive(null)
+    setIncForm({ name: '', description: '', threshold: 7, bonusPerUnit: 20, departments: [], branch: '', isActive: true })
+    setShowIncentiveForm(true)
+    setError('')
+  }
+
+  const openIncEdit = (rule: IncentiveRule) => {
+    setEditingIncentive(rule)
+    setIncForm({
+      name: rule.name,
+      description: rule.description || '',
+      threshold: rule.threshold,
+      bonusPerUnit: Number(rule.bonusPerUnit),
+      departments: rule.departments || [],
+      branch: rule.branch || '',
+      isActive: rule.isActive,
+    })
+    setShowIncentiveForm(true)
+    setError('')
+  }
+
   const openUPEdit = (up: UnitPayType) => { setEditingUnitPay(up); setUpName(up.name); setUpDepts(up.departments || []); setUpExpenseAccountId(up.expenseAccount?.id || ''); setUpExpenseSearch(up.expenseAccount ? `${up.expenseAccount.accountNumber} — ${up.expenseAccount.accountTitle}` : ''); setShowUnitPayForm(true); setError('') }
   const saveUnitPay = async () => {
     if (!upName.trim()) { setError('Name required'); return }
@@ -1622,6 +1760,168 @@ export default function PayrollPage() {
                   ))}
                 </div>
               )}
+              {/* ══ INCENTIVES SECTION ══ */}
+              <div className="mt-8 pt-6 border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Incentives</h3>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                      Rules that grant additional pay when a clinician reaches a daily patient threshold
+                    </p>
+                  </div>
+                  {canWrite && (
+                    <button onClick={openIncCreate} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white" style={{ background: 'var(--teal)' }}>
+                      <Plus size={13} /> Add Incentive
+                    </button>
+                  )}
+                </div>
+
+                {incentiveRules.length === 0 ? (
+                  <p className="text-sm italic py-4 text-center" style={{ color: 'var(--mid-gray)' }}>No incentive rules yet.</p>
+                ) : (
+                  <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr style={{ background: 'var(--pale-teal)' }}>
+                          {['Rule', 'Trigger', 'Bonus', 'Applies To', 'Status', ''].map(h => (
+                            <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {incentiveRules.map(rule => (
+                          <tr key={rule.id} className="border-t" style={{ borderColor: 'var(--light-gray)', opacity: rule.isActive ? 1 : 0.5 }}>
+                            <td className="px-4 py-3">
+                              <p className="font-semibold" style={{ color: 'var(--charcoal)' }}>{rule.name}</p>
+                              {rule.description && <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{rule.description}</p>}
+                            </td>
+                            <td className="px-4 py-3 text-xs" style={{ color: 'var(--charcoal)' }}>
+                              ≥ <span className="font-bold">{rule.threshold}</span> patients/day
+                            </td>
+                            <td className="px-4 py-3 text-xs font-semibold" style={{ color: 'var(--teal)' }}>
+                              +{formatCurrency(Number(rule.bonusPerUnit))} / patient
+                            </td>
+                            <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                              {rule.departments && rule.departments.length > 0 ? rule.departments.join(', ') : 'All depts'}
+                              {rule.branch ? ` · ${rule.branch}` : ''}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${rule.isActive ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                                {rule.isActive ? 'Active' : 'Inactive'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              {canWrite && (
+                                <div className="flex gap-1">
+                                  <button onClick={() => openIncEdit(rule)} className="p-1.5 rounded-lg hover:bg-gray-100">
+                                    <Pencil size={13} style={{ color: 'var(--teal)' }} />
+                                  </button>
+                                  <button onClick={() => deleteIncentiveRule(rule.id)} className="p-1.5 rounded-lg hover:bg-red-50">
+                                    <Trash2 size={13} className="text-red-400" />
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Incentive Rule Form Modal */}
+              {showIncentiveForm && (
+                <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+                  <div className="bg-white rounded-2xl p-6 shadow-xl w-full max-w-md relative">
+                    <button onClick={() => setShowIncentiveForm(false)} className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-gray-100">
+                      <X size={18} style={{ color: 'var(--mid-gray)' }} />
+                    </button>
+                    <h3 className="text-lg font-bold mb-4" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                      {editingIncentive ? 'Edit Incentive Rule' : 'Add Incentive Rule'}
+                    </h3>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Rule Name *</label>
+                        <input value={incForm.name} onChange={e => setIncForm({ ...incForm, name: e.target.value })}
+                          placeholder="e.g. Daily Patient Threshold Bonus"
+                          className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Description (optional)</label>
+                        <input value={incForm.description} onChange={e => setIncForm({ ...incForm, description: e.target.value })}
+                          placeholder="e.g. Bonus for high-volume days"
+                          className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Min. Patients / Day *</label>
+                          <input type="number" min={1} value={incForm.threshold}
+                            onChange={e => setIncForm({ ...incForm, threshold: parseInt(e.target.value) || 1 })}
+                            className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                          <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Trigger threshold</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Bonus per Patient (₱) *</label>
+                          <input type="number" min={0.01} step={0.01} value={incForm.bonusPerUnit}
+                            onChange={e => setIncForm({ ...incForm, bonusPerUnit: parseFloat(e.target.value) || 0 })}
+                            className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                          <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Per all patients that day</p>
+                        </div>
+                      </div>
+                      {/* Preview calculation */}
+                      <div className="rounded-xl p-3 text-xs" style={{ background: 'var(--pale-teal)' }}>
+                        <p style={{ color: 'var(--deep-teal)' }}>
+                          <span className="font-semibold">Preview: </span>
+                          {incForm.threshold} patients → {incForm.threshold} × ₱{incForm.bonusPerUnit.toFixed(2)} = <span className="font-bold">₱{(incForm.threshold * incForm.bonusPerUnit).toFixed(2)}</span> bonus for that day
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Applicable Departments (empty = all)</label>
+                        <div className="flex flex-wrap gap-2">
+                          {DEPARTMENTS.filter(d => d.value).map(d => (
+                            <label key={d.value} className="flex items-center gap-1.5 text-xs cursor-pointer px-2 py-1 rounded-lg border"
+                              style={{ borderColor: incForm.departments.includes(d.value) ? 'var(--teal)' : 'var(--light-gray)', background: incForm.departments.includes(d.value) ? '#f0fdfa' : 'white' }}>
+                              <input type="checkbox" checked={incForm.departments.includes(d.value)}
+                                onChange={e => setIncForm({ ...incForm, departments: e.target.checked ? [...incForm.departments, d.value] : incForm.departments.filter(x => x !== d.value) }) } />
+                              {d.label}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Branch (empty = all branches)</label>
+                        <select value={incForm.branch} onChange={e => setIncForm({ ...incForm, branch: e.target.value })}
+                          className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+                          <option value="">All branches</option>
+                          <option value="SBEA">Sandbox East (SBEA)</option>
+                          <option value="SBGH">Sandbox Greenhills (SBGH)</option>
+                        </select>
+                      </div>
+                      {editingIncentive && (
+                        <div className="flex items-center gap-2">
+                          <button type="button" onClick={() => setIncForm({ ...incForm, isActive: !incForm.isActive })}>
+                            {incForm.isActive
+                              ? <ToggleRight size={22} style={{ color: 'var(--teal)' }} />
+                              : <ToggleLeft size={22} style={{ color: 'var(--mid-gray)' }} />}
+                          </button>
+                          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{incForm.isActive ? 'Active' : 'Inactive'}</span>
+                        </div>
+                      )}
+                      {error && <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle size={12} />{error}</p>}
+                      <div className="flex gap-3 pt-2">
+                        <button onClick={() => setShowIncentiveForm(false)}
+                          className="flex-1 py-2.5 rounded-xl border text-sm font-medium" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>Cancel</button>
+                        <button onClick={saveIncentiveRule} disabled={savingInc}
+                          className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+                          {savingInc ? 'Saving...' : editingIncentive ? 'Save Changes' : 'Add Rule'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {showUnitPayForm && (
                 <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
                   <div className="bg-white rounded-2xl p-6 shadow-xl w-full max-w-md relative">

@@ -102,6 +102,9 @@ export async function GET(req: Request) {
     })
     const existingMap = new Map(existingEntries.map(e => [e.consultantId, e.status]))
 
+    // Load active incentive rules
+    const incentiveRules = await prisma.incentiveRule.findMany({ where: { isActive: true } })
+
     // Generate payroll preview for each consultant
     const payrollPreviews = consultants.map(c => {
       // Find orders for this consultant (match by name)
@@ -135,8 +138,46 @@ export async function GET(req: Request) {
       }
 
       const unitPayTotal = unitPayBreakdown.reduce((s, b) => s + b.lineTotal, 0)
-      const retainerAmount = Number(c.monthlyRetainer) / 2 // Half per cutoff
-      const grossPay = unitPayTotal + retainerAmount
+      const retainerAmount = Number(c.monthlyRetainer) / 2
+
+      // ── Incentive calculation ────────────────────────────────
+      // Count distinct orders (patients) per calendar day (Asia/Manila)
+      const ordersByDay = new Map<string, number>()
+      for (const order of consultantOrders) {
+        const dayKey = new Date(order.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }) // YYYY-MM-DD
+        ordersByDay.set(dayKey, (ordersByDay.get(dayKey) || 0) + 1)
+      }
+
+      const incentiveLines: {
+        ruleId: string; ruleName: string; date: string
+        patientCount: number; bonusPerUnit: number; bonus: number
+      }[] = []
+
+      for (const rule of incentiveRules) {
+        // Department filter — empty array means all departments
+        const depts = Array.isArray(rule.departments) ? rule.departments as string[] : []
+        if (depts.length > 0 && !depts.includes(c.department)) continue
+        // Branch filter — null means all branches
+        if (rule.branch && rule.branch !== c.branch) continue
+
+        for (const [dayKey, count] of ordersByDay) {
+          if (count >= rule.threshold) {
+            incentiveLines.push({
+              ruleId: rule.id,
+              ruleName: rule.name,
+              date: dayKey,
+              patientCount: count,
+              bonusPerUnit: Number(rule.bonusPerUnit),
+              bonus: Number(rule.bonusPerUnit) * count,
+            })
+          }
+        }
+      }
+
+      const incentiveTotal = incentiveLines.reduce((s, l) => s + l.bonus, 0)
+      // ─────────────────────────────────────────────────────────
+
+      const grossPay = unitPayTotal + retainerAmount + incentiveTotal
       const taxAmount = c.taxDeduction === 'FIVE_PERCENT' ? grossPay * 0.05 : 0
       const netPay = grossPay - taxAmount
 
@@ -149,6 +190,8 @@ export async function GET(req: Request) {
         items: unitPayBreakdown,
         unitPayTotal,
         retainerAmount,
+        incentives: incentiveLines,
+        incentiveTotal,
         grossPay,
         taxAmount,
         netPay,
