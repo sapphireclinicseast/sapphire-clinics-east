@@ -226,31 +226,64 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            set -e
+            set -eo pipefail
             ACCT_DIR="/opt/sapphire-marketing-hub"
+            DOCKER_DIR="$ACCT_DIR/accounting-hub/docker"
+
             echo "→ Pulling latest accounting-hub code..."
             cd "$ACCT_DIR"
             git fetch origin main
             git reset --hard origin/main
+            echo "   Repo is now at: $(git log -1 --oneline)"
 
             echo "→ Running DB migrations on accounting_db..."
             MIGRATION_DIR="$ACCT_DIR/accounting-hub/prisma/migrations"
             for sql_file in "$MIGRATION_DIR"/*/migration.sql; do
-              docker exec -i accounting_db psql -U sapphire -d sapphire_accounting < "$sql_file" 2>&1 || true
+              [ -f "$sql_file" ] && docker exec -i accounting_db psql -U sapphire -d sapphire_accounting < "$sql_file" 2>&1 || true
             done
 
-            echo "→ Rebuilding accounting-hub Docker image..."
-            cd "$ACCT_DIR/accounting-hub/docker"
-            docker compose --env-file .env.production build --no-cache app 2>&1 | tail -10
+            echo "→ Checking docker compose env file..."
+            cd "$DOCKER_DIR"
+            if [ ! -f ".env.production" ]; then
+              echo "⚠ .env.production not found — checking parent directories..."
+              if [ -f "$ACCT_DIR/.env.production" ]; then
+                cp "$ACCT_DIR/.env.production" .env.production
+              elif [ -f "/opt/sapphire/docker/.env.production" ]; then
+                cp "/opt/sapphire/docker/.env.production" .env.production
+              else
+                echo "❌ Could not find .env.production — build may fail"
+              fi
+            fi
+            echo "   .env.production status: $([ -f .env.production ] && echo 'found' || echo 'MISSING')"
+
+            echo "→ Rebuilding accounting-hub Docker image (this takes a few minutes)..."
+            docker build --no-cache -t accounting_hub_app -f Dockerfile .. 2>&1
+            echo "   Image built successfully."
 
             echo "→ Restarting accounting-hub container..."
-            docker compose --env-file .env.production up -d --force-recreate app 2>&1 | tail -5
+            docker stop accounting_app 2>/dev/null || true
+            docker rm accounting_app 2>/dev/null || true
+            ENV_FILE="$DOCKER_DIR/.env.production"
+            docker run -d \
+              --name accounting_app \
+              --restart always \
+              --network accounting_default \
+              -p 127.0.0.1:3001:3001 \
+              --env-file "$ENV_FILE" \
+              -e DATABASE_URL="postgresql://sapphire:$(grep POSTGRES_PASSWORD "$ENV_FILE" | cut -d= -f2-)@accounting_db:5432/sapphire_accounting" \
+              accounting_hub_app
+            echo "   Container started."
 
-            echo "→ Waiting 15s for container to stabilize..."
-            sleep 15
+            echo "→ Waiting 20s for app to stabilize..."
+            sleep 20
 
             echo "→ Checking accounting-hub health..."
-            curl -s -o /dev/null -w "HTTP %{http_code}" http://localhost:3001/ 2>&1 || echo "curl failed"
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/ 2>&1 || echo "000")
+            echo "   HTTP $HTTP_CODE"
+            if [ "$HTTP_CODE" = "000" ]; then
+              echo "⚠ Health check failed — showing container logs:"
+              docker logs accounting_app --tail 30 2>&1 || true
+            fi
 
             echo ""
             echo "✅ Accounting Hub deployed."
