@@ -1000,6 +1000,26 @@ export default function PayrollPage() {
     finally { setGenerating(false) }
   }
 
+  const exportSalesCsv = async () => {
+    try {
+      const customDates = computeCustomDates(payrollSettings, cutoffYear, cutoffMonth, cutoffHalf)
+      const params = new URLSearchParams()
+      params.set('dateFrom', customDates.start.toISOString())
+      params.set('dateTo', customDates.end.toISOString())
+      if (branch) params.set('branch', branch)
+      const res = await fetch(`/api/payroll/sales-csv?${params}`)
+      if (!res.ok) { alert('Failed to export CSV'); return }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const label = getCutoffLabel(cutoffPeriod).replace(/[^a-zA-Z0-9-]/g, '_')
+      a.download = `sales_summary_${label}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch { alert('Failed to export CSV') }
+  }
+
   const savePayslips = async () => {
     setSaving(true)
     try {
@@ -1687,19 +1707,27 @@ export default function PayrollPage() {
                                   <label className="block text-xs font-semibold mb-2" style={{ color: 'var(--charcoal)' }}>Unit Pay Rates</label>
                                   {unitPays.length === 0 ? (
                                     <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>No unit pay types. Create them in Unit Pay Settings tab first.</p>
-                                  ) : (
-                                    <div className="space-y-2">
-                                      {unitPays.map(up => (
-                                        <div key={up.id} className="flex items-center gap-3">
-                                          <span className="text-xs font-medium w-40" style={{ color: 'var(--charcoal)' }}>{up.name}</span>
-                                          <input type="number" min={0} step="0.01" value={editingRates[up.id] || ''}
-                                            onChange={e => setEditingRates({ ...editingRates, [up.id]: parseFloat(e.target.value) || 0 })}
-                                            placeholder="0.00" className="px-3 py-1.5 rounded-lg border text-sm outline-none w-32" style={{ borderColor: 'var(--light-gray)' }} />
-                                          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>per unit</span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
+                                  ) : (() => {
+                                    // Only show unit pays applicable to this consultant's department
+                                    const applicableUPs = unitPays.filter(up =>
+                                      !up.departments || up.departments.length === 0 || up.departments.includes(c.department)
+                                    )
+                                    return applicableUPs.length === 0 ? (
+                                      <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>No unit pay types assigned to the {DEPT_LABELS[c.department] || c.department} department.</p>
+                                    ) : (
+                                      <div className="space-y-2">
+                                        {applicableUPs.map(up => (
+                                          <div key={up.id} className="flex items-center gap-3">
+                                            <span className="text-xs font-medium w-40" style={{ color: 'var(--charcoal)' }}>{up.name}</span>
+                                            <input type="number" min={0} step="0.01" value={editingRates[up.id] || ''}
+                                              onChange={e => setEditingRates({ ...editingRates, [up.id]: parseFloat(e.target.value) || 0 })}
+                                              placeholder="0.00" className="px-3 py-1.5 rounded-lg border text-sm outline-none w-32" style={{ borderColor: 'var(--light-gray)' }} />
+                                            <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>per unit</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )
+                                  })()}
                                 </div>
                                 {canWrite && (
                                   <button onClick={() => saveConsultantConfig(c)} disabled={savingConsultant}
@@ -2022,15 +2050,24 @@ export default function PayrollPage() {
                   )}
                 </div>
 
-                {/* Download ALL PDFs */}
-                {payrollPreviews.some(p => p.grossPay > 0 || p.orderCount > 0) && (
-                  <button onClick={downloadAllPdfs} disabled={downloadingAll}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border disabled:opacity-50"
-                    style={{ borderColor: 'var(--charcoal)', color: 'var(--charcoal)' }}>
-                    {downloadingAll ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                    {downloadingAll ? 'Generating PDFs...' : 'Download ALL PDFs'}
+                <div className="flex items-center gap-2">
+                  {/* Export Sales CSV */}
+                  <button onClick={exportSalesCsv}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border"
+                    style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                    <Download size={14} /> Sales CSV
                   </button>
-                )}
+
+                  {/* Download ALL PDFs */}
+                  {payrollPreviews.some(p => p.grossPay > 0 || p.orderCount > 0) && (
+                    <button onClick={downloadAllPdfs} disabled={downloadingAll}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border disabled:opacity-50"
+                      style={{ borderColor: 'var(--charcoal)', color: 'var(--charcoal)' }}>
+                      {downloadingAll ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                      {downloadingAll ? 'Generating PDFs...' : 'Download ALL PDFs'}
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Preview cards */}
