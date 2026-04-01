@@ -218,7 +218,44 @@ jobs:
           echo "✅ Teletherapy deployed."
           REMOTE_SCRIPT
 
-      # ── 8. Setup automated database backups ──
+      # ── 8. Deploy Accounting Hub (Docker) ────────────────────────
+      - name: Deploy Accounting Hub
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            ACCT_DIR="/opt/sapphire-marketing-hub"
+            echo "→ Pulling latest accounting-hub code..."
+            cd "$ACCT_DIR"
+            git fetch origin main
+            git reset --hard origin/main
+
+            echo "→ Running DB migrations on accounting_db..."
+            MIGRATION_DIR="$ACCT_DIR/accounting-hub/prisma/migrations"
+            for sql_file in "$MIGRATION_DIR"/*/migration.sql; do
+              docker exec -i accounting_db psql -U sapphire -d sapphire_accounting < "$sql_file" 2>&1 || true
+            done
+
+            echo "→ Rebuilding accounting-hub Docker image..."
+            cd "$ACCT_DIR/accounting-hub/docker"
+            docker compose --env-file .env.production build --no-cache app 2>&1 | tail -10
+
+            echo "→ Restarting accounting-hub container..."
+            docker compose --env-file .env.production up -d --force-recreate app 2>&1 | tail -5
+
+            echo "→ Waiting 15s for container to stabilize..."
+            sleep 15
+
+            echo "→ Checking accounting-hub health..."
+            curl -s -o /dev/null -w "HTTP %{http_code}" http://localhost:3001/ 2>&1 || echo "curl failed"
+
+            echo ""
+            echo "✅ Accounting Hub deployed."
+
+      # ── 9. Setup automated database backups ──
       - name: Setup Database Backups
         uses: appleboy/ssh-action@v1
         with:
