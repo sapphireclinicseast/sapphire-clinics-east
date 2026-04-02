@@ -5258,10 +5258,10 @@ function PaymentModeSettingsPanel() {
     setShowForm(true)
   }
 
-  const addDeduction = () => setDeductions([...deductions, { name: '', rate: 0, accountId: '', accountSearch: '' }])
-  const removeDeduction = (i: number) => setDeductions(deductions.filter((_, idx) => idx !== i))
-  const updateDeduction = (i: number, field: string, value: string | number) =>
-    setDeductions(deductions.map((d, idx) => idx === i ? { ...d, [field]: value } : d))
+  const addDeduction = () => setDeductions(prev => [...prev, { name: '', rate: 0, accountId: '', accountSearch: '' }])
+  const removeDeduction = (i: number) => setDeductions(prev => prev.filter((_, idx) => idx !== i))
+  const updateDeduction = (i: number, updates: Record<string, string | number>) =>
+    setDeductions(prev => prev.map((d, idx) => idx === i ? { ...d, ...updates } : d))
 
   const save = async () => {
     if (!form.name.trim()) { setError('Name is required'); return }
@@ -5470,12 +5470,12 @@ function PaymentModeSettingsPanel() {
                   {deductions.map((d, i) => (
                     <div key={i} className="rounded-xl border p-3 space-y-2" style={{ borderColor: 'var(--light-gray)' }}>
                       <div className="flex gap-2">
-                        <input value={d.name} onChange={e => updateDeduction(i, 'name', e.target.value)}
+                        <input value={d.name} onChange={e => updateDeduction(i, { name: e.target.value })}
                           placeholder="e.g. Merchant Discount Rate"
                           className="flex-1 px-2.5 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                         <div className="flex items-center gap-1">
                           <input type="number" value={d.rate} min={0} max={100} step={0.01}
-                            onChange={e => updateDeduction(i, 'rate', parseFloat(e.target.value) || 0)}
+                            onChange={e => updateDeduction(i, { rate: parseFloat(e.target.value) || 0 })}
                             className="w-16 px-2 py-1.5 rounded-lg border text-xs outline-none text-right" style={{ borderColor: 'var(--light-gray)' }} />
                           <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>%</span>
                         </div>
@@ -5486,19 +5486,19 @@ function PaymentModeSettingsPanel() {
                       {/* Deduction COA */}
                       <div className="relative">
                         <input type="text" value={d.accountSearch}
-                          onChange={e => { updateDeduction(i, 'accountSearch', e.target.value); if (!e.target.value) updateDeduction(i, 'accountId', '') }}
+                          onChange={e => updateDeduction(i, { accountSearch: e.target.value, ...(!e.target.value ? { accountId: '' } : {}) })}
                           placeholder="COA — expense or liability account..."
                           className="w-full px-2.5 py-1.5 rounded-lg border text-xs outline-none"
                           style={{ borderColor: d.accountId ? 'var(--teal)' : 'var(--light-gray)', background: d.accountId ? '#f0fdfa' : 'white' }} />
                         {d.accountId && (
-                          <button type="button" onClick={() => { updateDeduction(i, 'accountId', ''); updateDeduction(i, 'accountSearch', '') }}
+                          <button type="button" onClick={() => updateDeduction(i, { accountId: '', accountSearch: '' })}
                             className="absolute right-2 top-1.5 p-0.5 rounded hover:bg-gray-100"><X size={11} style={{ color: 'var(--mid-gray)' }} /></button>
                         )}
                         {d.accountSearch && !d.accountId && (
                           <div className="absolute z-30 left-0 right-0 mt-1 bg-white border rounded-xl shadow-lg max-h-28 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
                             {filteredAccounts(d.accountSearch).map(a => (
                               <button key={a.id} type="button"
-                                onClick={() => { updateDeduction(i, 'accountId', a.id); updateDeduction(i, 'accountSearch', `${a.accountNumber} ${a.accountTitle}`) }}
+                                onClick={() => updateDeduction(i, { accountId: a.id, accountSearch: `${a.accountNumber} ${a.accountTitle}` })}
                                 className="w-full text-left px-2.5 py-1.5 text-xs hover:bg-gray-50">
                                 <span className="font-mono font-medium" style={{ color: 'var(--teal)' }}>{a.accountNumber}</span> {a.accountTitle}
                                 <span className="ml-1 text-gray-400">({a.accountType})</span>
