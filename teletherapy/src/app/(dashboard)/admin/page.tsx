@@ -281,7 +281,7 @@ export default function AdminPage() {
                   <div className={cn(
                     'w-10 h-10 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0',
                     acct.isActive
-                      ? 'bg-gradient-to-br from-[var(--teal)] to-[var(--bright-teal)] text-white'
+                      ? 'bg-gradient-to-br from-[#ED6823] to-[#FFA235] text-white'
                       : 'bg-gray-200 text-gray-500'
                   )}>
                     {acct.staff.firstName[0]}{acct.staff.lastName[0]}

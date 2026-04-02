@@ -241,7 +241,7 @@ h4, h5, h6 {
 }
 
 .badge-teal {
-  background: linear-gradient(135deg, var(--teal), var(--bright-teal));
+  background: linear-gradient(135deg, var(--gold), var(--gold-light));
   color: white;
 }
 

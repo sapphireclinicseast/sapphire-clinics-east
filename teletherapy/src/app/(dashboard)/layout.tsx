@@ -88,16 +88,16 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
                 href={item.href}
                 onClick={() => setSidebarOpen(false)}
                 className={cn(
-                  'flex items-center gap-3 px-4 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-200',
+                  'flex items-center gap-3 px-4 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-200 relative',
                   active
-                    ? 'text-white shadow-[0_2px_8px_rgba(26,123,138,0.3)]'
+                    ? 'text-white shadow-[0_2px_8px_rgba(46,94,90,0.3)]'
                     : 'text-white/50 hover:text-white/80 hover:bg-white/5'
                 )}
-                style={active ? { background: 'linear-gradient(135deg, var(--teal), var(--deep-teal))' } : {}}
+                style={active ? { background: 'linear-gradient(135deg, var(--teal), var(--deep-teal))', borderLeft: '3px solid #ED6823' } : {}}
               >
-                <Icon size={18} />
+                <Icon size={18} style={active ? { color: '#FFA235' } : {}} />
                 {item.label}
-                {active && <ChevronRight size={14} className="ml-auto opacity-60" />}
+                {active && <ChevronRight size={14} className="ml-auto" style={{ color: '#FFA235' }} />}
               </Link>
             )
           })}
@@ -106,7 +106,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
         {/* User card */}
         <div className="mx-3 mb-4 p-4 rounded-xl bg-white/5 border border-white/8">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[var(--teal)] to-[var(--bright-teal)] flex items-center justify-center text-white text-[12px] font-bold shrink-0">
+            <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-[12px] font-bold shrink-0" style={{ background: 'linear-gradient(135deg, #ED6823, #FFA235)' }}>
               {session?.user?.name?.split(' ').map(n => n[0]).join('').slice(0, 2) ?? '?'}
             </div>
             <div className="flex-1 min-w-0">
