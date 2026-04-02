@@ -2474,7 +2474,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   const [wallets, setWallets] = useState<DigitalWallet[]>([])
   const [loading, setLoading] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
-  const [createForm, setCreateForm] = useState({ patientName: '', patientId: '', patientEmail: '', accountId: '', dateObtained: '', paymentModeId: '' })
+  const [createForm, setCreateForm] = useState({ patientName: '', patientId: '', patientEmail: '', accountId: '', dateObtained: '', paymentModeId: '', glAmount: '', attachmentUrl: '' })
   const [createAccountSearch, setCreateAccountSearch] = useState('')
   const [arAccounts, setArAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
   const [crmSearch, setCrmSearch] = useState('')
@@ -2554,7 +2554,11 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     if (!createForm.patientName.trim()) { setCreateError('Name is required'); return }
     setCreateError('')
     try {
-      const payload = { ...createForm, walletType: walletTypeFilter }
+      const payload = {
+        ...createForm,
+        walletType: walletTypeFilter,
+        initialBalance: walletTypeFilter === 'GL' && createForm.glAmount ? parseFloat(createForm.glAmount) : undefined,
+      }
       const r = await fetch('/api/pos/wallets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2566,12 +2570,12 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         return
       }
       if (data.existingWallet) {
-        setCreateError(`Already exists — ${walletTypeFilter === 'HMO' ? 'HMO' : walletTypeFilter === 'GL' ? 'Agency' : 'Wallet'} "${createForm.patientName}" already registered.`)
+        setCreateError(`Already exists — ${walletTypeFilter === 'HMO' ? 'HMO' : 'Wallet'} "${createForm.patientName}" already registered.`)
         fetchWallets()
         return
       }
       setShowCreate(false)
-      setCreateForm({ patientName: '', patientId: '', patientEmail: '', accountId: '', dateObtained: '', paymentModeId: '' })
+      setCreateForm({ patientName: '', patientId: '', patientEmail: '', accountId: '', dateObtained: '', paymentModeId: '', glAmount: '', attachmentUrl: '' })
       setCreateAccountSearch('')
       setCrmSearch('')
       setCrmPatients([])
@@ -2942,11 +2946,11 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         <div className="relative flex-1">
           <Search size={14} className="absolute left-3 top-3" style={{ color: 'var(--mid-gray)' }} />
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder={walletTypeFilter === 'HMO' ? 'Search HMO provider...' : walletTypeFilter === 'GL' ? 'Search agency...' : `Search ${WALLET_TYPE_LABELS[walletTypeFilter] || ''} wallets by patient name...`}
+            placeholder={walletTypeFilter === 'HMO' ? 'Search HMO provider...' : walletTypeFilter === 'GL' ? 'Search GL wallets by patient name...' : `Search ${WALLET_TYPE_LABELS[walletTypeFilter] || ''} wallets by patient name...`}
             className="w-full pl-9 pr-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
         </div>
         <button onClick={() => { setShowCreate(true); setCreateError('') }} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium text-white" style={{ background: 'var(--teal)' }}>
-          <Plus size={16} /> {walletTypeFilter === 'HMO' ? 'Add HMO' : walletTypeFilter === 'GL' ? 'Add Agency' : 'Create Wallet'}
+          <Plus size={16} /> {walletTypeFilter === 'HMO' ? 'Add HMO' : walletTypeFilter === 'GL' ? 'Create GL Wallet' : 'Create Wallet'}
         </button>
       </div>
 
@@ -2960,8 +2964,10 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b" style={{ borderColor: 'var(--light-gray)' }}>
-                {(walletTypeFilter === 'HMO' || walletTypeFilter === 'GL'
-                  ? [walletTypeFilter === 'HMO' ? 'HMO Provider' : 'Agency', 'Type', 'Receivable Balance', 'Transactions', '']
+                {(walletTypeFilter === 'HMO'
+                  ? ['HMO Provider', 'Type', 'Receivable Balance', 'Transactions', '']
+                  : walletTypeFilter === 'GL'
+                  ? ['Patient Name', 'Type', 'GL Balance', 'Attachment', '']
                   : ['Patient Name', 'Type', 'Balance', 'Barcode', 'Packages', 'Reward Points', '']
                 ).map(h => (
                   <th key={h} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>{h}</th>
@@ -2986,19 +2992,36 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                       </span>
                     </td>
                     <td className="px-5 py-3 font-semibold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(toNum(w.balance))}</td>
-                    {walletTypeFilter === 'HMO' || walletTypeFilter === 'GL' ? (
+                    {walletTypeFilter === 'HMO' ? (
                       <>
                         <td className="px-5 py-3" style={{ color: 'var(--mid-gray)' }}>{w._count?.packages || 0}</td>
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-1.5">
                             <button onClick={(e) => { e.stopPropagation(); setShowSOA(w) }}
-                              className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={{ color: walletTypeFilter === 'HMO' ? '#c2410c' : '#15803d' }}>
+                              className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={{ color: '#c2410c' }}>
                               Print SOA
                             </button>
                             <button className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
                               View
                             </button>
                           </div>
+                        </td>
+                      </>
+                    ) : walletTypeFilter === 'GL' ? (
+                      <>
+                        <td className="px-5 py-3">
+                          {(w as unknown as { attachmentUrl?: string }).attachmentUrl ? (
+                            <a href={(w as unknown as { attachmentUrl: string }).attachmentUrl} target="_blank" rel="noopener noreferrer"
+                              onClick={e => e.stopPropagation()} className="text-xs underline" style={{ color: 'var(--teal)' }}>
+                              View File
+                            </a>
+                          ) : <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>—</span>}
+                        </td>
+                        <td className="px-5 py-3">
+                          <button onClick={(e) => { e.stopPropagation(); setShowSOA(w) }}
+                            className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={{ color: '#15803d' }}>
+                            Print SOA
+                          </button>
                         </td>
                       </>
                     ) : (
@@ -3051,11 +3074,11 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
               <X size={18} style={{ color: 'var(--mid-gray)' }} />
             </button>
             <h3 className="text-lg font-bold mb-4" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-              {walletTypeFilter === 'HMO' ? 'Add HMO Provider' : walletTypeFilter === 'GL' ? 'Add Agency (GL)' : 'Create Digital Wallet'}
+              {walletTypeFilter === 'HMO' ? 'Add HMO Provider' : walletTypeFilter === 'GL' ? 'Create GL Wallet' : 'Create Digital Wallet'}
             </h3>
             <div className="space-y-3">
               {/* Patient Name — CRM search for patient wallets, plain input for HMO/GL */}
-              {walletTypeFilter !== 'HMO' && walletTypeFilter !== 'GL' ? (
+              {walletTypeFilter !== 'HMO' ? (
                 <div className="relative">
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Patient Name *</label>
                   <input
@@ -3142,7 +3165,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 </div>
               )}
               {/* Date Obtained */}
-              {walletTypeFilter !== 'HMO' && walletTypeFilter !== 'GL' && (
+              {walletTypeFilter !== 'HMO' && (
                 <div>
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Date Obtained</label>
                   <input type="date" value={createForm.dateObtained}
@@ -3151,7 +3174,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 </div>
               )}
               {/* Form of Payment */}
-              {walletTypeFilter !== 'HMO' && walletTypeFilter !== 'GL' && (
+              {walletTypeFilter !== 'HMO' && (
                 <div>
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Form of Payment</label>
                   <select value={createForm.paymentModeId}
@@ -3164,9 +3187,53 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                   </select>
                 </div>
               )}
+              {/* GL-specific: Amount and Attachment */}
+              {walletTypeFilter === 'GL' && (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>GL Amount (Accounts Receivable) *</label>
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm" style={{ color: 'var(--mid-gray)' }}>&#8369;</span>
+                      <input type="number" min={0} step="0.01" value={createForm.glAmount || ''}
+                        onChange={e => setCreateForm({ ...createForm, glAmount: e.target.value })}
+                        placeholder="e.g. 5000"
+                        className="flex-1 px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Attach Proof of GL</label>
+                    <div className="flex items-center gap-2">
+                      {createForm.attachmentUrl ? (
+                        <>
+                          <a href={createForm.attachmentUrl} target="_blank" rel="noopener noreferrer" className="text-xs underline" style={{ color: 'var(--teal)' }}>
+                            File uploaded
+                          </a>
+                          <button type="button" onClick={() => setCreateForm({ ...createForm, attachmentUrl: '' })}
+                            className="p-1 rounded hover:bg-red-50"><X size={12} className="text-red-400" /></button>
+                        </>
+                      ) : (
+                        <label className="px-3 py-2 rounded-xl text-xs font-medium border cursor-pointer" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
+                          Upload File
+                          <input type="file" accept="image/*,.pdf" className="hidden" onChange={async (e) => {
+                            const file = e.target.files?.[0]
+                            if (!file) return
+                            const formData = new FormData()
+                            formData.append('file', file)
+                            try {
+                              const res = await fetch('/api/upload', { method: 'POST', body: formData })
+                              const data = await res.json()
+                              if (data.url) setCreateForm({ ...createForm, attachmentUrl: data.url })
+                            } catch { setCreateError('File upload failed') }
+                          }} />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
               {createError && <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle size={12} />{createError}</p>}
               <button onClick={createWallet} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>
-                {walletTypeFilter === 'HMO' ? 'Add HMO' : walletTypeFilter === 'GL' ? 'Add Agency' : 'Create Wallet'}
+                {walletTypeFilter === 'HMO' ? 'Add HMO' : walletTypeFilter === 'GL' ? 'Create GL Wallet' : 'Create Wallet'}
               </button>
             </div>
           </div>

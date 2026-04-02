@@ -77,7 +77,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { patientId, patientName, patientEmail, walletType, accountId, dateObtained, paymentModeId } = await req.json()
+    const { patientId, patientName, patientEmail, walletType, accountId, dateObtained, paymentModeId, initialBalance, attachmentUrl } = await req.json()
 
     if (!patientName?.trim()) {
       return NextResponse.json({ error: 'Patient name is required' }, { status: 400 })
@@ -140,6 +140,8 @@ export async function POST(req: Request) {
         accountId: accountId || null,
         dateObtained: dateObtained ? new Date(dateObtained) : null,
         paymentModeId: paymentModeId || null,
+        balance: walletType === 'GL' && initialBalance ? Number(initialBalance) : 0,
+        attachmentUrl: attachmentUrl || null,
       },
     })
 

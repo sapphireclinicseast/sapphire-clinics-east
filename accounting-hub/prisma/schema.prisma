@@ -462,6 +462,7 @@ model DigitalWallet {
   rewardPoints  Int         @default(0)
   accountId     String?     // COA account (e.g., Accounts Receivable for HMO/GL)
   account       Account?    @relation("WalletAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  attachmentUrl String?     // Uploaded proof (e.g., GL document)
   dateObtained  DateTime?   // Date patient originally obtained the wallet/card
   paymentModeId String?     // How the initial load was paid
   paymentMode   PaymentMode? @relation("WalletPaymentMode", fields: [paymentModeId], references: [id], onDelete: SetNull)
