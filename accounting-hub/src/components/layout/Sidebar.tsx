@@ -117,12 +117,12 @@ export default function Sidebar({ userRole, open, onClose }: SidebarProps) {
             </div>
             <div>
               <h1
-                className="text-sm font-bold text-white tracking-wide"
-                style={{ fontFamily: 'var(--font-display)' }}
+                className="text-sm text-white tracking-wider"
+                style={{ fontFamily: 'var(--font-display)', fontWeight: 300, letterSpacing: '0.12em' }}
               >
                 SAPPHIRE
               </h1>
-              <p className="text-[10px] text-white/50 uppercase tracking-widest">
+              <p className="text-[10px] text-white/50 uppercase tracking-widest" style={{ fontFamily: 'var(--font-display)', fontWeight: 300 }}>
                 Accounting Hub
               </p>
             </div>

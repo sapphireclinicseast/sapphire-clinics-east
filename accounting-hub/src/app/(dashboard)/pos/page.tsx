@@ -1824,8 +1824,8 @@ function OrderFormModal({
 
           {/* Unearned Revenue Notice */}
           {(hasUnearnedItems || isAdvancePayment) && (
-            <div className="rounded-xl border p-3" style={{ borderColor: '#c084fc', background: '#faf5ff' }}>
-              <div className="flex items-center gap-2 text-sm font-medium" style={{ color: '#7c3aed' }}>
+            <div className="rounded-xl border p-3" style={{ borderColor: '#FFBA6B', background: '#FFF8F0' }}>
+              <div className="flex items-center gap-2 text-sm font-medium" style={{ color: '#ED6823' }}>
                 <Wallet size={14} />
                 Unearned Revenue — Digital Wallet
               </div>
@@ -1879,8 +1879,8 @@ function OrderFormModal({
             )}
             {(hasUnearnedItems || isAdvancePayment) && (
               <div className="flex justify-between text-sm mt-1 pt-1 border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                <span className="font-medium" style={{ color: '#7c3aed' }}>Revenue Type</span>
-                <span className="font-medium" style={{ color: '#7c3aed' }}>Unearned Revenue</span>
+                <span className="font-medium" style={{ color: '#ED6823' }}>Revenue Type</span>
+                <span className="font-medium" style={{ color: '#ED6823' }}>Unearned Revenue</span>
               </div>
             )}
           </div>
@@ -3813,12 +3813,12 @@ function DiscountSettingsPanel() {
 
               {/* Per-Service / Per-Department Discount Rules */}
               {form.walletType && (
-                <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: '#c084fc', background: '#faf5ff' }}>
+                <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: '#FFBA6B', background: '#FFF8F0' }}>
                   <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#7c3aed' }}>
+                    <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#ED6823' }}>
                       Service-Specific Discount Rules
                     </h4>
-                    <button onClick={addRule} className="text-xs font-medium px-3 py-1 rounded-lg" style={{ background: '#e9d5ff', color: '#7c3aed' }}>
+                    <button onClick={addRule} className="text-xs font-medium px-3 py-1 rounded-lg" style={{ background: '#FFF0E6', color: '#ED6823' }}>
                       + Add Rule
                     </button>
                   </div>
@@ -4343,8 +4343,8 @@ function ProductsSection({
 
           {/* Reward Points Wallet Selection */}
           {hasRewardPointsPayment && (
-            <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: '#c084fc', background: '#faf5ff' }}>
-              <h4 className="text-xs font-semibold flex items-center gap-1" style={{ color: '#7c3aed' }}>
+            <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: '#FFBA6B', background: '#FFF8F0' }}>
+              <h4 className="text-xs font-semibold flex items-center gap-1" style={{ color: '#ED6823' }}>
                 <Star size={12} /> Select Wallet for Reward Points
               </h4>
               {rpSelectedWallet ? (
@@ -4355,7 +4355,7 @@ function ProductsSection({
                       <Star size={10} className="inline" /> {rpSelectedWallet.rewardPoints?.toLocaleString() || 0} pts available
                     </p>
                   </div>
-                  <button onClick={() => setRpSelectedWallet(null)} className="text-xs px-2 py-1 rounded-lg" style={{ color: '#7c3aed' }}>Change</button>
+                  <button onClick={() => setRpSelectedWallet(null)} className="text-xs px-2 py-1 rounded-lg" style={{ color: '#ED6823' }}>Change</button>
                 </div>
               ) : (
                 <>
@@ -4381,7 +4381,7 @@ function ProductsSection({
                 </>
               )}
               {cart.length > 0 && (
-                <p className="text-xs font-medium" style={{ color: '#7c3aed' }}>
+                <p className="text-xs font-medium" style={{ color: '#ED6823' }}>
                   Points needed: {rewardPointsTotal.toLocaleString()} pts
                   {rpSelectedWallet && (rpSelectedWallet.rewardPoints || 0) < rewardPointsTotal && (
                     <span className="text-red-600 ml-2">Insufficient points!</span>
@@ -4397,7 +4397,7 @@ function ProductsSection({
             {discountAmount > 0 && <div className="flex justify-between text-xs"><span style={{ color: 'var(--mid-gray)' }}>Discount</span><span className="text-red-600">-{formatCurrency(discountAmount)}</span></div>}
             <div className="flex justify-between text-sm font-bold"><span style={{ color: 'var(--charcoal)' }}>Net</span><span style={{ color: 'var(--deep-teal)' }}>{formatCurrency(netAmount)}</span></div>
             {hasRewardPointsPayment && rewardPointsTotal > 0 && (
-              <div className="flex justify-between text-xs"><span style={{ color: '#7c3aed' }}><Star size={10} className="inline" /> Reward Points</span><span style={{ color: '#7c3aed' }}>{rewardPointsTotal.toLocaleString()} pts</span></div>
+              <div className="flex justify-between text-xs"><span style={{ color: '#ED6823' }}><Star size={10} className="inline" /> Reward Points</span><span style={{ color: '#ED6823' }}>{rewardPointsTotal.toLocaleString()} pts</span></div>
             )}
             {!hasRewardPointsPayment && <div className="flex justify-between text-xs"><span style={{ color: 'var(--mid-gray)' }}>Paid</span><span>{formatCurrency(totalPayments)}</span></div>}
             {!hasRewardPointsPayment && totalPayments >= netAmount && netAmount > 0 && (

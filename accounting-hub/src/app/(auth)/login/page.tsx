@@ -102,12 +102,12 @@ export default function LoginPage() {
             <Calculator size={32} style={{ color: 'var(--teal)' }} />
           </div>
           <h1
-            className="text-2xl font-bold tracking-tight"
-            style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}
+            className="text-3xl tracking-wide"
+            style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)', fontWeight: 300, letterSpacing: '0.15em' }}
           >
             SAPPHIRE
           </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>
+          <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)', fontWeight: 300 }}>
             Accounting Hub
           </p>
         </div>

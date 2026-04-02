@@ -1,17 +1,25 @@
 import type { Metadata } from 'next'
-import { Montserrat, Open_Sans } from 'next/font/google'
+import { Comfortaa, DM_Sans, Cormorant_Garamond } from 'next/font/google'
 import Providers from '@/components/Providers'
 import './globals.css'
 
-const montserrat = Montserrat({
+const comfortaa = Comfortaa({
   subsets: ['latin'],
-  variable: '--font-montserrat',
+  weight: ['300', '400', '500', '600', '700'],
+  variable: '--font-comfortaa',
   display: 'swap',
 })
 
-const openSans = Open_Sans({
+const dmSans = DM_Sans({
   subsets: ['latin'],
-  variable: '--font-open-sans',
+  variable: '--font-dm-sans',
+  display: 'swap',
+})
+
+const cormorant = Cormorant_Garamond({
+  subsets: ['latin'],
+  weight: ['300', '400', '500', '600', '700'],
+  variable: '--font-cormorant',
   display: 'swap',
 })
 
@@ -33,7 +41,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={`${montserrat.variable} ${openSans.variable}`}>
+    <html lang="en" className={`${comfortaa.variable} ${dmSans.variable} ${cormorant.variable}`}>
       <body><Providers>{children}</Providers></body>
     </html>
   )

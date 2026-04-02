@@ -270,7 +270,7 @@ function computeTotals(p: PayrollPreview, extras: ExtraUnitPayLine[], adjs: Adju
 
 /* ═══════════════════════════════════════════════════════════════
    PDF GENERATION (async — called only in browser)
-   Template brand: Orange #FF9300, Net Pay green #E2EFD9
+   Template brand: Primary #2E5E5A, Accent #ED6823, Net Pay green #E2EFD9
    Layout matches the Sandbox Clinic Word payslip template.
    ═══════════════════════════════════════════════════════════════ */
 async function buildPayslipPdf(
@@ -296,7 +296,7 @@ async function buildPayslipPdf(
     : getCutoffLabel(cutoffPeriod)
 
   // Brand colors
-  const ORANGE: [number, number, number] = [255, 147, 0]   // #FF9300
+  const ORANGE: [number, number, number] = [237, 104, 35]  // #ED6823
   const NET_GREEN: [number, number, number] = [226, 239, 217] // #E2EFD9
   const WHITE: [number, number, number] = [255, 255, 255]
   const DARK: [number, number, number] = [30, 30, 30]

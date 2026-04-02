@@ -410,7 +410,7 @@ export default function ServicesPage() {
                         <p className="text-xs mt-0.5" style={{ color: 'var(--teal)' }}>{s.revenueAccount.accountNumber} {s.revenueAccount.accountTitle}</p>
                       )}
                       {s.unitPay && (
-                        <p className="text-xs mt-0.5" style={{ color: s.unitPayEnabled === false ? 'var(--mid-gray)' : '#7c3aed' }}>
+                        <p className="text-xs mt-0.5" style={{ color: s.unitPayEnabled === false ? 'var(--mid-gray)' : '#ED6823' }}>
                           Unit Pay: {s.unitPay.name}{s.unitPayEnabled === false ? ' (disabled)' : ''}
                         </p>
                       )}
@@ -627,8 +627,8 @@ export default function ServicesPage() {
 
                     {/* Eligible Services Picker (PACKAGE + VIP) */}
                     {(fWalletType === 'PACKAGE' || fWalletType === 'VIP') && (
-                      <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: fWalletType === 'VIP' ? '#c084fc' : 'var(--teal)', background: fWalletType === 'VIP' ? '#faf5ff' : 'var(--pale-teal)' }}>
-                        <label className="block text-xs font-semibold" style={{ color: fWalletType === 'VIP' ? '#7c3aed' : 'var(--deep-teal)' }}>
+                      <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: fWalletType === 'VIP' ? '#FFBA6B' : 'var(--teal)', background: fWalletType === 'VIP' ? '#FFF8F0' : 'var(--pale-teal)' }}>
+                        <label className="block text-xs font-semibold" style={{ color: fWalletType === 'VIP' ? '#ED6823' : 'var(--deep-teal)' }}>
                           {fWalletType === 'PACKAGE' ? 'Eligible Services (which services can use this package)' : 'Included Services (with discount per service)'}
                         </label>
 
