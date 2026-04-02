@@ -125,17 +125,29 @@ export async function GET(req: Request) {
       for (const order of consultantOrders) {
         const orderNet = Number(order.netAmount) || 0
 
+        // For threshold: subtract revenue of items that have their own (non-threshold) unit pay,
+        // since those are already paid separately and shouldn't count toward the threshold basis
+        let thresholdDeductions = 0
+        for (const item of order.items) {
+          if (!item.service?.unitPayId || item.service.unitPayEnabled === false) continue
+          const r = c.unitPayRates.find(r => r.unitPayId === item.service!.unitPayId)
+          if (r && !r.thresholdEnabled) {
+            thresholdDeductions += Number(item.lineTotal) || 0
+          }
+        }
+        const thresholdBasis = orderNet - thresholdDeductions
+
         for (const item of order.items) {
           if (!item.service?.unitPayId) continue
           if (item.service.unitPayEnabled === false) continue
           const rate = c.unitPayRates.find(r => r.unitPayId === item.service!.unitPayId)
           if (!rate) continue
 
-          // Determine effective rate: check threshold rule
+          // Determine effective rate: check threshold rule using adjusted basis
           let effectiveAmount = Number(rate.amount)
           let isReduced = false
           if (rate.thresholdEnabled && rate.thresholdAmount != null && rate.reducedAmount != null) {
-            if (orderNet < Number(rate.thresholdAmount)) {
+            if (thresholdBasis < Number(rate.thresholdAmount)) {
               effectiveAmount = Number(rate.reducedAmount)
               isReduced = true
             }
