@@ -85,6 +85,25 @@ jobs:
                echo "✅ SSL cert already exists."
              fi'
 
+      # ── 6. Provision SSL for accounting subdomain (if needed) ───
+      - name: Setup accounting SSL
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            'if [ ! -d /etc/letsencrypt/live/accounting.sapphireclinicseast.org ]; then
+               echo "→ Provisioning SSL for accounting.sapphireclinicseast.org..."
+               certbot certonly --standalone --preferred-challenges http \
+                 -d accounting.sapphireclinicseast.org \
+                 --non-interactive --agree-tos \
+                 -m admin@sapphireclinicseast.org \
+                 --pre-hook "systemctl stop nginx" \
+                 --post-hook "systemctl start nginx" \
+                 && echo "✅ SSL cert obtained." \
+                 || echo "⚠ SSL cert failed — will retry next deploy."
+             else
+               echo "✅ SSL cert already exists for accounting."
+             fi'
+
       # ── 6. Update Nginx config & reload ─────────────────────────
       - name: Update Nginx config
         run: |
@@ -93,7 +112,10 @@ jobs:
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/etc/nginx/sites-available/sapphireclinicseast.org
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
-            "ln -sf /etc/nginx/sites-available/sapphireclinicseast.org /etc/nginx/sites-enabled/ && nginx -t && systemctl reload nginx"
+            "ln -sf /etc/nginx/sites-available/sapphireclinicseast.org /etc/nginx/sites-enabled/ && \
+             rm -f /etc/nginx/sites-enabled/accounting.sapphireclinicseast.org && \
+             rm -f /etc/nginx/sites-enabled/accounting && \
+             nginx -t && systemctl reload nginx && echo '✅ Nginx reloaded.'"
 
       # ── 6. Install survey API deps & start/restart ─────────────────
       - name: Setup & Restart Survey API
