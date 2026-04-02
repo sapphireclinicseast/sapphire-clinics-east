@@ -610,6 +610,13 @@ export default function PayrollPage() {
   const [editingRetainer, setEditingRetainer] = useState('')
   const [savingConsultant, setSavingConsultant] = useState(false)
 
+  /* ── Bulk unit pay ── */
+  const [bulkDept, setBulkDept] = useState('')
+  const [bulkUnitPayId, setBulkUnitPayId] = useState('')
+  const [bulkAmount, setBulkAmount] = useState('')
+  const [bulkApplying, setBulkApplying] = useState(false)
+  const [bulkResult, setBulkResult] = useState<string | null>(null)
+
   /* ── Unit Pay form ── */
   const [showUnitPayForm, setShowUnitPayForm] = useState(false)
   const [editingUnitPay, setEditingUnitPay] = useState<UnitPayType | null>(null)
@@ -802,6 +809,10 @@ export default function PayrollPage() {
       return cSortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av)
     })
 
+  const bulkApplicableUPs = unitPays.filter(up =>
+    bulkDept && ((up.departments as string[])?.length === 0 || (up.departments as string[])?.includes(bulkDept))
+  )
+
   function toggleCSort(field: string) {
     if (cSortField === field) setCSortDir(p => p === 'asc' ? 'desc' : 'asc')
     else { setCSortField(field); setCSortDir('asc') }
@@ -836,6 +847,26 @@ export default function PayrollPage() {
       await fetchConsultants()
     } catch { setError('Failed to save') }
     finally { setSavingConsultant(false) }
+  }
+
+  async function applyBulkUnitPay() {
+    if (!bulkDept || !bulkUnitPayId || !bulkAmount) return
+    const numAmount = parseFloat(bulkAmount)
+    if (!Number.isFinite(numAmount) || numAmount < 0) { setError('Amount must be a non-negative number'); return }
+    setBulkApplying(true); setError(''); setBulkResult(null)
+    try {
+      const res = await fetch('/api/payroll/consultants/bulk-unit-pay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ department: bulkDept, unitPayId: bulkUnitPayId, amount: numAmount }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed')
+      setBulkResult(`Updated ${data.updated} clinician(s)`)
+      setBulkAmount('')
+      await fetchConsultants()
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Failed to apply bulk rate') }
+    finally { setBulkApplying(false) }
   }
 
   /* ── Unit Pay CRUD ── */
@@ -1641,6 +1672,38 @@ export default function PayrollPage() {
                   </button>
                 )}
               </div>
+
+              {canWrite && (
+                <div className="flex items-center gap-3 px-4 py-3 rounded-xl border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                  <span className="text-xs font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>Bulk Set Rate:</span>
+                  <select value={bulkDept} onChange={e => { setBulkDept(e.target.value); setBulkUnitPayId(''); setBulkResult(null) }}
+                    className="px-3 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                    <option value="">Select Department</option>
+                    {DEPARTMENTS.filter(d => d.value).map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+                  </select>
+                  <select value={bulkUnitPayId} onChange={e => { setBulkUnitPayId(e.target.value); setBulkResult(null) }}
+                    disabled={!bulkDept} className="px-3 py-1.5 rounded-lg border text-xs outline-none disabled:opacity-40" style={{ borderColor: 'var(--light-gray)' }}>
+                    <option value="">Select Unit Pay Type</option>
+                    {bulkApplicableUPs.map(up => <option key={up.id} value={up.id}>{up.name}</option>)}
+                  </select>
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>&#8369;</span>
+                    <input type="number" min="0" step="any" value={bulkAmount} onChange={e => { setBulkAmount(e.target.value); setBulkResult(null) }}
+                      disabled={!bulkUnitPayId} placeholder="Amount" className="w-28 px-2 py-1.5 rounded-lg border text-xs outline-none disabled:opacity-40" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                  <button onClick={applyBulkUnitPay} disabled={!bulkDept || !bulkUnitPayId || !bulkAmount || bulkApplying}
+                    className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-40"
+                    style={{ background: 'var(--teal)' }}>
+                    {bulkApplying ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                    Apply to All
+                  </button>
+                  {bulkResult && (
+                    <span className="flex items-center gap-1 text-xs font-medium" style={{ color: 'var(--teal)' }}>
+                      <CheckCircle2 size={12} /> {bulkResult}
+                    </span>
+                  )}
+                </div>
+              )}
 
               <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
                 <table className="w-full text-sm">
