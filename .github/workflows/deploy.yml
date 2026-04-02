@@ -296,6 +296,16 @@ jobs:
             fi
             echo "   NEXTAUTH_URL=$(grep NEXTAUTH_URL .env.production)"
 
+            echo "→ Syncing postgres password to match .env.production..."
+            PG_PASS=$(grep "^POSTGRES_PASSWORD" .env.production 2>/dev/null | cut -d= -f2-)
+            if [ -n "$PG_PASS" ]; then
+              docker exec accounting_db psql -U sapphire -d sapphire_accounting -c "ALTER USER sapphire WITH PASSWORD '${PG_PASS}';" 2>&1 \
+                && echo "   Postgres password synced OK" \
+                || echo "   ⚠ Postgres password sync failed (non-fatal)"
+            else
+              echo "   ⚠ POSTGRES_PASSWORD not found in .env.production"
+            fi
+
             echo "→ Removing any stale accounting_app container not managed by compose..."
             docker stop accounting_app 2>/dev/null || true
             docker rm accounting_app 2>/dev/null || true
