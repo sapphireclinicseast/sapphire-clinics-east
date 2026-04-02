@@ -265,13 +265,13 @@ jobs:
               [ -f "$sql_file" ] && docker exec -i accounting_db psql -U sapphire -d sapphire_accounting < "$sql_file" 2>&1 || true
             done
 
-            echo "→ Ensuring admin password is set correctly..."
+            echo "→ Ensuring admin password is set correctly (password: SCEI)..."
             docker exec accounting_db psql -U sapphire -d sapphire_accounting -c "
               UPDATE \"User\"
-              SET \"passwordHash\" = '\$2b\$12\$rMMbor3QloYWPTs0bobNouyNSoTibEWVzIbJuXUdOcPQgNpYU13RW',
+              SET \"passwordHash\" = '\$2b\$12\$pvRG7Pt7vNui/r5QQGTn7uZfaqlqNBUloSe8NSKBhqXHOr423JRcO',
                   \"updatedAt\" = NOW()
               WHERE email IN ('main@sapphireclinicseast.org', 'admin@sapphireclinicseast.org');
-            " 2>&1 && echo "   Password updated OK" || echo "   Password update failed"
+            " 2>&1 && echo "   Password updated OK (SCEI)" || echo "   Password update failed"
 
             echo "→ Checking docker compose env file..."
             cd "$DOCKER_DIR"
