@@ -257,6 +257,15 @@ jobs:
             fi
             echo "   .env.production status: $([ -f .env.production ] && echo 'found' || echo 'MISSING')"
 
+            echo "→ Ensuring NEXTAUTH_URL is correct for accounting hub..."
+            # The env file may have been copied from the marketing hub — fix the URL
+            if grep -q "NEXTAUTH_URL" .env.production 2>/dev/null; then
+              sed -i 's|NEXTAUTH_URL=.*|NEXTAUTH_URL=https://accounting.sapphireclinicseast.org|' .env.production
+            else
+              echo "NEXTAUTH_URL=https://accounting.sapphireclinicseast.org" >> .env.production
+            fi
+            echo "   NEXTAUTH_URL=$(grep NEXTAUTH_URL .env.production)"
+
             echo "→ Removing any stale accounting_app container not managed by compose..."
             docker stop accounting_app 2>/dev/null || true
             docker rm accounting_app 2>/dev/null || true
