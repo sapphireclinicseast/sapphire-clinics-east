@@ -1050,6 +1050,28 @@ function OrderFormModal({
       return
     }
 
+    // Validate clinician has no disabled unit pays for the services in this order
+    if (clinicianName.trim() && effectiveRevenueType !== 'UNEARNED' && !isAdvancePayment) {
+      const serviceIds = items.filter(i => i.serviceId).map(i => i.serviceId!)
+      if (serviceIds.length > 0) {
+        try {
+          const vRes = await fetch('/api/pos/validate-clinician-services', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clinicianName: clinicianName.trim(), serviceIds }),
+          })
+          const vData = await vRes.json()
+          if (!vData.valid && vData.blockedServices?.length > 0) {
+            const serviceList = vData.blockedServices.map((b: { serviceName: string; unitPayName: string }) =>
+              `\u2022 ${b.serviceName} (${b.unitPayName})`
+            ).join('\n')
+            alert(`Cannot complete order.\n\nThe following services have unit pay disabled for ${clinicianName.trim()}:\n\n${serviceList}\n\nPlease remove the service(s) or change the clinician.`)
+            return
+          }
+        } catch { /* validation failed silently — allow checkout */ }
+      }
+    }
+
     setSubmitting(true)
     setError('')
     try {

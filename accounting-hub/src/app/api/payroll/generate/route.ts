@@ -131,7 +131,7 @@ export async function GET(req: Request) {
         for (const item of order.items) {
           if (!item.service?.unitPayId || item.service.unitPayEnabled === false) continue
           const r = c.unitPayRates.find(r => r.unitPayId === item.service!.unitPayId)
-          if (r && !r.thresholdEnabled) {
+          if (r && !r.disabled && !r.thresholdEnabled) {
             thresholdDeductions += Number(item.lineTotal) || 0
           }
         }
@@ -141,7 +141,7 @@ export async function GET(req: Request) {
           if (!item.service?.unitPayId) continue
           if (item.service.unitPayEnabled === false) continue
           const rate = c.unitPayRates.find(r => r.unitPayId === item.service!.unitPayId)
-          if (!rate) continue
+          if (!rate || rate.disabled) continue
 
           // Determine effective rate: check threshold rule using adjusted basis
           let effectiveAmount = Number(rate.amount)

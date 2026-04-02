@@ -31,7 +31,7 @@ interface Consultant {
   taxDeduction: string
   monthlyRetainer: number | string
   isActive: boolean
-  unitPayRates: { id: string; unitPayId: string; unitPay: { id: string; name: string }; amount: number | string; thresholdEnabled?: boolean; thresholdAmount?: number | string | null; reducedAmount?: number | string | null }[]
+  unitPayRates: { id: string; unitPayId: string; unitPay: { id: string; name: string }; amount: number | string; disabled?: boolean; thresholdEnabled?: boolean; thresholdAmount?: number | string | null; reducedAmount?: number | string | null }[]
 }
 
 interface UnitPayType {
@@ -604,7 +604,7 @@ export default function PayrollPage() {
   const [cSortField, setCSortField] = useState('name')
   const [cSortDir, setCSortDir] = useState<'asc' | 'desc'>('asc')
   const [expandedConsultant, setExpandedConsultant] = useState<string | null>(null)
-  const [editingRates, setEditingRates] = useState<Record<string, number>>({})
+  const [editingRates, setEditingRates] = useState<Record<string, { amount: number; disabled: boolean }>>({})
   const [editingTax, setEditingTax] = useState('')
   const [editingRetainer, setEditingRetainer] = useState('')
   const [savingConsultant, setSavingConsultant] = useState(false)
@@ -836,8 +836,8 @@ export default function PayrollPage() {
   const expandConsultant = (c: Consultant) => {
     if (expandedConsultant === c.id) { setExpandedConsultant(null); return }
     setExpandedConsultant(c.id)
-    const rateMap: Record<string, number> = {}
-    for (const r of c.unitPayRates) rateMap[r.unitPayId] = toNum(r.amount)
+    const rateMap: Record<string, { amount: number; disabled: boolean }> = {}
+    for (const r of c.unitPayRates) rateMap[r.unitPayId] = { amount: toNum(r.amount), disabled: r.disabled || false }
     setEditingRates(rateMap)
     setEditingTax(c.taxDeduction)
     setEditingRetainer(String(toNum(c.monthlyRetainer)))
@@ -847,8 +847,8 @@ export default function PayrollPage() {
     setSavingConsultant(true)
     try {
       const unitPayRates = Object.entries(editingRates)
-        .filter(([, amt]) => amt > 0)
-        .map(([unitPayId, amount]) => ({ unitPayId, amount }))
+        .filter(([, r]) => r.amount > 0 || r.disabled)
+        .map(([unitPayId, r]) => ({ unitPayId, amount: r.amount, disabled: r.disabled }))
       await fetch('/api/payroll/consultants', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -1832,15 +1832,29 @@ export default function PayrollPage() {
                                       <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>No unit pay types assigned to the {DEPT_LABELS[c.department] || c.department} department.</p>
                                     ) : (
                                       <div className="space-y-2">
-                                        {applicableUPs.map(up => (
-                                          <div key={up.id} className="flex items-center gap-3">
-                                            <span className="text-xs font-medium w-40" style={{ color: 'var(--charcoal)' }}>{up.name}</span>
-                                            <input type="number" min={0} step="0.01" value={editingRates[up.id] || ''}
-                                              onChange={e => setEditingRates({ ...editingRates, [up.id]: parseFloat(e.target.value) || 0 })}
-                                              placeholder="0.00" className="px-3 py-1.5 rounded-lg border text-sm outline-none w-32" style={{ borderColor: 'var(--light-gray)' }} />
-                                            <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>per unit</span>
-                                          </div>
-                                        ))}
+                                        {applicableUPs.map(up => {
+                                          const r = editingRates[up.id] || { amount: 0, disabled: false }
+                                          return (
+                                            <div key={up.id} className="flex items-center gap-3">
+                                              <label className="flex items-center gap-1.5 w-40 cursor-pointer">
+                                                <input type="checkbox" checked={!r.disabled}
+                                                  onChange={e => setEditingRates({ ...editingRates, [up.id]: { ...r, disabled: !e.target.checked } })}
+                                                  className="rounded" />
+                                                <span className="text-xs font-medium" style={{ color: r.disabled ? 'var(--mid-gray)' : 'var(--charcoal)', textDecoration: r.disabled ? 'line-through' : 'none' }}>{up.name}</span>
+                                              </label>
+                                              {r.disabled ? (
+                                                <span className="text-xs px-2 py-1 rounded-lg" style={{ color: '#dc2626', background: '#fef2f2' }}>Disabled</span>
+                                              ) : (
+                                                <>
+                                                  <input type="number" min={0} step="0.01" value={r.amount || ''}
+                                                    onChange={e => setEditingRates({ ...editingRates, [up.id]: { ...r, amount: parseFloat(e.target.value) || 0 } })}
+                                                    placeholder="0.00" className="px-3 py-1.5 rounded-lg border text-sm outline-none w-32" style={{ borderColor: 'var(--light-gray)' }} />
+                                                  <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>per unit</span>
+                                                </>
+                                              )}
+                                            </div>
+                                          )
+                                        })}
                                       </div>
                                     )
                                   })()}
