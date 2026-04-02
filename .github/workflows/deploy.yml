@@ -420,8 +420,15 @@ jobs:
         run: |
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} '
-            echo "=== accounting_app last 50 lines ==="
-            docker logs accounting_app --tail 50 2>&1
+            echo "=== accounting_app last 80 lines ==="
+            docker logs accounting_app --tail 80 2>&1
+
             echo "=== env vars (masked) ==="
-            docker exec accounting_app env 2>/dev/null | grep -E "NEXTAUTH_URL|AUTH_TRUST|DATABASE_URL" | sed "s|postgresql://[^@]*@|postgresql://***@|g"
+            docker exec accounting_app env 2>/dev/null | grep -E "NEXTAUTH|AUTH_TRUST|DATABASE_URL|NODE_ENV" | sed "s|postgresql://[^@]*@|postgresql://***@|g"
+
+            echo "=== Users in accounting DB ==="
+            docker exec accounting_db psql -U sapphire -d sapphire_accounting -c "SELECT id, name, email, role, \"createdAt\" FROM \"User\" ORDER BY \"createdAt\" LIMIT 10;" 2>&1 || echo "DB query failed"
+
+            echo "=== Recent auth errors (nginx) ==="
+            tail -20 /var/log/nginx/error.log 2>/dev/null | grep -i "accounting" || echo "no nginx errors"
           '
