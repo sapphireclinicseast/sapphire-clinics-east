@@ -646,6 +646,7 @@ model PaymentMode {
   id            String   @id @default(cuid())
   name          String   // "Cash - SBEA", "GCash", "Credit Card", etc.
   paymentMethod String?  // PaymentMethod enum key: CASH, GCASH, PAYMAYA, DEBIT, CREDIT_CARD, SHOPEE, LAZADA, TIKTOK
+  branch        String?  // null = all branches, "SANDBOX_EAST", "SANDBOX_GREENHILLS"
   isActive      Boolean  @default(true)
   accountId     String?  // COA where NET amount is lodged (usually an asset account)
   account       Account? @relation("PaymentModeAccount", fields: [accountId], references: [id], onDelete: SetNull)

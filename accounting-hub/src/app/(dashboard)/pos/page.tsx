@@ -145,6 +145,7 @@ interface PaymentModeType {
   id: string
   name: string
   paymentMethod?: string | null  // e.g. 'CASH', 'GCASH', 'CREDIT_CARD'
+  branch?: string | null  // null = all branches
   isActive: boolean
   accountId?: string | null
   account?: { id: string; accountNumber: string; accountTitle: string } | null
@@ -378,7 +379,7 @@ export default function POSPage() {
   // ── Top-level tab: Services | Orders | Products | Sales Summary
   const [mainTab, setMainTab] = useState<'services' | 'orders' | 'products' | 'sales'>('services')
   // ── Services sub-tab
-  const [serviceTab, setServiceTab] = useState<'cashier' | 'wallet' | 'discounts' | 'payment-modes'>('cashier')
+  const [serviceTab, setServiceTab] = useState<'cashier' | 'wallet' | 'discounts' | 'payment-modes' | 'referrers'>('cashier')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -463,8 +464,8 @@ function ServicesSection({
 }: {
   branch: string
   canSelectBranch: boolean
-  serviceTab: 'cashier' | 'wallet' | 'discounts' | 'payment-modes'
-  setServiceTab: (t: 'cashier' | 'wallet' | 'discounts' | 'payment-modes') => void
+  serviceTab: 'cashier' | 'wallet' | 'discounts' | 'payment-modes' | 'referrers'
+  setServiceTab: (t: 'cashier' | 'wallet' | 'discounts' | 'payment-modes' | 'referrers') => void
   session: { user?: Record<string, unknown> } | null
 }) {
   const subTabs = [
@@ -472,6 +473,7 @@ function ServicesSection({
     { key: 'wallet' as const, label: 'Digital Wallet' },
     { key: 'discounts' as const, label: 'Discount Settings' },
     { key: 'payment-modes' as const, label: 'Payment Mode Settings' },
+    { key: 'referrers' as const, label: 'Doctor Referrers' },
   ]
 
   return (
@@ -504,6 +506,9 @@ function ServicesSection({
       )}
       {serviceTab === 'payment-modes' && (
         <PaymentModeSettingsPanel />
+      )}
+      {serviceTab === 'referrers' && (
+        <ReferrerSettingsPanel />
       )}
     </div>
   )
@@ -4813,6 +4818,201 @@ Signature:    _________________________
 }
 
 /* ══════════════════════════════════════════════════════════════
+   REFERRER SETTINGS PANEL
+   ══════════════════════════════════════════════════════════════ */
+function ReferrerSettingsPanel() {
+  const [referrers, setReferrers] = useState<{ id: string; name: string; affiliation?: string | null; specialization?: string | null }[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [form, setForm] = useState({ name: '', affiliation: '', specialization: '' })
+  const [search, setSearch] = useState('')
+  const [error, setError] = useState('')
+  const [uploading, setUploading] = useState(false)
+
+  const fetchReferrers = useCallback(async () => {
+    setLoading(true)
+    try {
+      const r = await fetch('/api/referrers?all=true')
+      const d = await r.json()
+      setReferrers(Array.isArray(d) ? d : d.data || [])
+    } catch { setReferrers([]) }
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { fetchReferrers() }, [fetchReferrers])
+
+  const filtered = referrers.filter(r =>
+    !search || r.name.toLowerCase().includes(search.toLowerCase()) ||
+    r.affiliation?.toLowerCase().includes(search.toLowerCase()) ||
+    r.specialization?.toLowerCase().includes(search.toLowerCase())
+  )
+
+  const openCreate = () => { setEditingId(null); setForm({ name: '', affiliation: '', specialization: '' }); setError(''); setShowForm(true) }
+  const openEdit = (r: typeof referrers[0]) => { setEditingId(r.id); setForm({ name: r.name, affiliation: r.affiliation || '', specialization: r.specialization || '' }); setError(''); setShowForm(true) }
+
+  const save = async () => {
+    if (!form.name.trim()) { setError('Name is required'); return }
+    setError('')
+    const body = { id: editingId, name: form.name.trim(), affiliation: form.affiliation.trim() || null, specialization: form.specialization.trim() || null }
+    const res = await fetch('/api/referrers', { method: editingId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    if (res.ok) { setShowForm(false); fetchReferrers() }
+    else { const d = await res.json(); setError(d.error || 'Failed to save') }
+  }
+
+  const deleteReferrer = async (id: string) => {
+    if (!window.confirm('Remove this referrer?')) return
+    await fetch('/api/referrers', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })
+    fetchReferrers()
+  }
+
+  const handleCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true); setError('')
+    try {
+      const text = await file.text()
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
+      const header = lines[0].toLowerCase()
+      const hasHeader = header.includes('name') || header.includes('affiliation')
+      const dataLines = hasHeader ? lines.slice(1) : lines
+      let created = 0
+      for (const line of dataLines) {
+        const cols = line.split(',').map(c => c.trim().replace(/^["']|["']$/g, ''))
+        if (!cols[0]) continue
+        const res = await fetch('/api/referrers', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: cols[0], affiliation: cols[1] || null, specialization: cols[2] || null }),
+        })
+        if (res.ok) created++
+      }
+      alert(`Uploaded ${created} referrer(s).`)
+      fetchReferrers()
+    } catch { setError('Failed to parse CSV') }
+    finally { setUploading(false); e.target.value = '' }
+  }
+
+  const downloadCsv = () => {
+    const rows = [['Name', 'Affiliation', 'Specialization'], ...referrers.map(r => [r.name, r.affiliation || '', r.specialization || ''])]
+    const csv = rows.map(r => r.map(c => `"${(c || '').replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'doctor_referrers.csv'; a.click(); URL.revokeObjectURL(a.href)
+  }
+
+  const downloadPdf = async () => {
+    const { jsPDF } = await import('jspdf')
+    const { default: autoTable } = await import('jspdf-autotable')
+    const doc = new jsPDF()
+    doc.setFontSize(14); doc.text('Doctor Referrers', 14, 16)
+    doc.setFontSize(8); doc.setTextColor(120); doc.text(`Generated ${new Date().toLocaleDateString('en-PH')}`, 14, 22); doc.setTextColor(0)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    autoTable(doc as any, {
+      startY: 28,
+      head: [['#', 'Name', 'Affiliation', 'Specialization']],
+      body: referrers.map((r, i) => [i + 1, r.name, r.affiliation || '', r.specialization || '']),
+      styles: { fontSize: 8 }, headStyles: { fillColor: [46, 94, 90] },
+    })
+    doc.save('doctor_referrers.pdf')
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)' }}>Doctor Referrers</h2>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>Manage referring doctors. Upload CSV (Name, Affiliation, Specialization) or add individually.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={downloadCsv} className="px-3 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>CSV</button>
+          <button onClick={downloadPdf} className="px-3 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>PDF</button>
+          <label className="px-3 py-2 rounded-xl text-xs font-medium border cursor-pointer" style={{ borderColor: 'var(--light-gray)', color: uploading ? 'var(--mid-gray)' : 'var(--gold)' }}>
+            {uploading ? 'Uploading...' : 'Upload CSV'}
+            <input type="file" accept=".csv,.txt" onChange={handleCsvUpload} className="hidden" disabled={uploading} />
+          </label>
+          <button onClick={openCreate} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
+            <Plus size={14} /> Add Referrer
+          </button>
+        </div>
+      </div>
+
+      <div className="relative w-60">
+        <Search size={14} className="absolute left-3 top-2.5" style={{ color: 'var(--mid-gray)' }} />
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search referrers..."
+          className="pl-9 pr-3 py-2 rounded-xl border text-sm outline-none w-full" style={{ borderColor: 'var(--light-gray)' }} />
+      </div>
+
+      {error && <p className="text-xs text-red-600">{error}</p>}
+
+      {loading ? (
+        <div className="py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</div>
+      ) : filtered.length === 0 ? (
+        <div className="py-12 text-center" style={{ color: 'var(--mid-gray)' }}>No referrers found.</div>
+      ) : (
+        <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ background: 'var(--pale-teal)' }}>
+                {['Name', 'Affiliation', 'Specialization', ''].map(h => (
+                  <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(r => (
+                <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                  <td className="px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>{r.name}</td>
+                  <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.affiliation || '—'}</td>
+                  <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.specialization || '—'}</td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <button onClick={() => openEdit(r)} className="p-1.5 rounded-lg hover:bg-gray-100"><Pencil size={13} style={{ color: 'var(--teal)' }} /></button>
+                      <button onClick={() => deleteReferrer(r.id)} className="p-1.5 rounded-lg hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Add/Edit Form Modal */}
+      {showForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="w-full max-w-md rounded-2xl p-6 space-y-4" style={{ background: 'white' }}>
+            <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>{editingId ? 'Edit Referrer' : 'Add Referrer'}</h3>
+            {error && <p className="text-xs text-red-600">{error}</p>}
+            <div>
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Name *</label>
+              <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Affiliation</label>
+              <input value={form.affiliation} onChange={e => setForm({ ...form, affiliation: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Specialization</label>
+              <input value={form.specialization} onChange={e => setForm({ ...form, specialization: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button onClick={save} className="px-4 py-2 rounded-xl text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
+                {editingId ? 'Update' : 'Add'}
+              </button>
+              <button onClick={() => setShowForm(false)} className="px-4 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════
    PAYMENT MODE SETTINGS PANEL
    ══════════════════════════════════════════════════════════════ */
 
@@ -4821,7 +5021,7 @@ function PaymentModeSettingsPanel() {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [form, setForm] = useState({ name: '', paymentMethod: '', accountId: '', isActive: true })
+  const [form, setForm] = useState({ name: '', paymentMethod: '', branch: '', accountId: '', isActive: true })
   const [accountSearch, setAccountSearch] = useState('')
   const [allAccounts, setAllAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string; accountType: string }[]>([])
   const [deductions, setDeductions] = useState<{ name: string; rate: number; accountId: string; accountSearch: string }[]>([])
@@ -4854,7 +5054,7 @@ function PaymentModeSettingsPanel() {
 
   const openCreate = () => {
     setEditingId(null)
-    setForm({ name: '', paymentMethod: '', accountId: '', isActive: true })
+    setForm({ name: '', paymentMethod: '', branch: '', accountId: '', isActive: true })
     setAccountSearch('')
     setDeductions([])
     setError('')
@@ -4863,7 +5063,7 @@ function PaymentModeSettingsPanel() {
 
   const openEdit = (m: PaymentModeType) => {
     setEditingId(m.id)
-    setForm({ name: m.name, paymentMethod: m.paymentMethod || '', accountId: m.accountId || '', isActive: m.isActive })
+    setForm({ name: m.name, paymentMethod: m.paymentMethod || '', branch: m.branch || '', accountId: m.accountId || '', isActive: m.isActive })
     setAccountSearch(m.account ? `${m.account.accountNumber} ${m.account.accountTitle}` : '')
     setDeductions((m.deductions || []).map(d => ({
       name: d.name,
@@ -4887,6 +5087,7 @@ function PaymentModeSettingsPanel() {
       id: editingId,
       name: form.name,
       paymentMethod: form.paymentMethod || null,
+      branch: form.branch || null,
       accountId: form.accountId || null,
       isActive: form.isActive,
       deductions: deductions.filter(d => d.name.trim() && d.rate > 0).map(d => ({
@@ -4944,7 +5145,16 @@ function PaymentModeSettingsPanel() {
             <tbody>
               {modes.map(m => (
                 <tr key={m.id} className="border-t" style={{ borderColor: 'var(--light-gray)', opacity: m.isActive ? 1 : 0.5 }}>
-                  <td className="px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>{m.name}</td>
+                  <td className="px-4 py-3">
+                    <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{m.name}</span>
+                    {m.branch ? (
+                      <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+                        {m.branch === 'SANDBOX_EAST' ? 'SBEA' : m.branch === 'SANDBOX_GREENHILLS' ? 'SBGH' : m.branch}
+                      </span>
+                    ) : (
+                      <span className="ml-2 text-[10px]" style={{ color: 'var(--mid-gray)' }}>All</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
                     {m.account ? <span><span className="font-mono" style={{ color: 'var(--teal)' }}>{m.account.accountNumber}</span> {m.account.accountTitle}</span> : <span className="italic">Not set</span>}
                   </td>
@@ -5017,6 +5227,19 @@ function PaymentModeSettingsPanel() {
                   <option value="SHOPEE">Shopee</option>
                   <option value="LAZADA">Lazada</option>
                   <option value="TIKTOK">TikTok Shop</option>
+                </select>
+              </div>
+
+              {/* Branch */}
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
+                  Branch <span className="font-normal">(leave blank for all branches)</span>
+                </label>
+                <select value={form.branch} onChange={e => setForm({ ...form, branch: e.target.value })}
+                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+                  <option value="">All Branches</option>
+                  <option value="SANDBOX_EAST">Sandbox East</option>
+                  <option value="SANDBOX_GREENHILLS">Sandbox Greenhills</option>
                 </select>
               </div>
 

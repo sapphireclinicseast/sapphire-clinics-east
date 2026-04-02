@@ -49,7 +49,7 @@ interface PayrollPreview {
   department: string
   branch: string
   taxDeduction: string
-  items: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean }[]
+  items: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean; sessions?: { date: string; patientName: string; serviceName: string; orderNetAmount: number }[] }[]
   unitPayTotal: number
   retainerAmount: number
   incentives: IncentiveLine[]
@@ -646,6 +646,8 @@ export default function PayrollPage() {
   const [genConsultantId, setGenConsultantId] = useState('')
   const [generating, setGenerating] = useState(false)
   const [saving, setSaving] = useState(false)
+
+  const [sessionBreakdown, setSessionBreakdown] = useState<{ unitPayName: string; sessions: { date: string; patientName: string; serviceName: string; orderNetAmount: number }[] } | null>(null)
 
   /* ── Payslip generation — per-consultant extras ── */
   const [extraUnitPays, setExtraUnitPays] = useState<Record<string, ExtraUnitPayLine[]>>({})
@@ -2384,7 +2386,9 @@ export default function PayrollPage() {
                                     <tr key={idx} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                                       <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{item.unitPayName}</td>
                                       <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(item.unitAmount)}</td>
-                                      <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{item.quantity}</td>
+                                      <td className="px-3 py-2 cursor-pointer underline" style={{ color: 'var(--teal)' }}
+                                        onClick={() => item.sessions?.length ? setSessionBreakdown({ unitPayName: item.unitPayName, sessions: item.sessions }) : undefined}
+                                        title="Click to view session details">{item.quantity}</td>
                                       <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(item.lineTotal)}</td>
                                     </tr>
                                   ))}
@@ -2877,6 +2881,41 @@ export default function PayrollPage() {
                 style={{ background: 'var(--teal)' }}>
                 Save Settings
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Session Breakdown Modal */}
+      {sessionBreakdown && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setSessionBreakdown(null)}>
+          <div className="w-full max-w-2xl max-h-[80vh] overflow-auto rounded-2xl p-6 space-y-3" style={{ background: 'white' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Session Details: {sessionBreakdown.unitPayName}</h3>
+              <button onClick={() => setSessionBreakdown(null)} className="p-1 rounded-lg hover:bg-gray-100"><X size={16} /></button>
+            </div>
+            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{sessionBreakdown.sessions.length} session(s) counted</p>
+            <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr style={{ background: 'var(--pale-teal)' }}>
+                    <th className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--deep-teal)' }}>Date</th>
+                    <th className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--deep-teal)' }}>Patient</th>
+                    <th className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--deep-teal)' }}>Service</th>
+                    <th className="px-3 py-2 text-right font-semibold" style={{ color: 'var(--deep-teal)' }}>Order Net</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sessionBreakdown.sessions.map((s, i) => (
+                    <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                      <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{new Date(s.date + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}</td>
+                      <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{s.patientName}</td>
+                      <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{s.serviceName}</td>
+                      <td className="px-3 py-2 text-right font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(s.orderNetAmount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

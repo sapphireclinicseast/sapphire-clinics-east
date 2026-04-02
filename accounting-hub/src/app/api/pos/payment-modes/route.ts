@@ -5,14 +5,18 @@ import { prisma } from '@/lib/prisma'
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
 // GET — list all payment modes with deductions and accounts
-export async function GET() {
+export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
+    const { searchParams } = new URL(req.url)
+    const branch = searchParams.get('branch')
+
     const modes = await prisma.paymentMode.findMany({
+      where: branch ? { OR: [{ branch: null }, { branch }] } : undefined,
       orderBy: { name: 'asc' },
       include: {
         account: { select: { id: true, accountNumber: true, accountTitle: true } },
@@ -39,7 +43,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { name, paymentMethod, accountId, deductions = [] } = await req.json()
+    const { name, paymentMethod, branch, accountId, deductions = [] } = await req.json()
 
     if (!name?.trim()) {
       return NextResponse.json({ error: 'Payment mode name is required' }, { status: 400 })
@@ -49,6 +53,7 @@ export async function POST(req: Request) {
       data: {
         name: name.trim(),
         paymentMethod: paymentMethod || null,
+        branch: branch || null,
         accountId: accountId || null,
         deductions: {
           create: deductions
@@ -85,7 +90,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, name, paymentMethod, accountId, isActive, deductions = [] } = await req.json()
+    const { id, name, paymentMethod, branch, accountId, isActive, deductions = [] } = await req.json()
 
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
     if (!name?.trim()) return NextResponse.json({ error: 'Name is required' }, { status: 400 })
@@ -98,6 +103,7 @@ export async function PUT(req: Request) {
       data: {
         name: name.trim(),
         paymentMethod: paymentMethod || null,
+        branch: branch !== undefined ? (branch || null) : undefined,
         accountId: accountId || null,
         isActive: isActive !== undefined ? Boolean(isActive) : undefined,
         deductions: {

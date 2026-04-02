@@ -88,6 +88,7 @@ export async function GET(req: Request) {
       select: {
         id: true,
         clinicianName: true,
+        patientName: true,
         branch: true,
         transactionDate: true,
         netAmount: true,
@@ -120,10 +121,11 @@ export async function GET(req: Request) {
       )
 
       // Group by unit pay — with threshold logic per order
-      const unitPayBreakdown: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean }[] = []
+      const unitPayBreakdown: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean; sessions: { date: string; patientName: string; serviceName: string; orderNetAmount: number }[] }[] = []
 
       for (const order of consultantOrders) {
         const orderNet = Number(order.netAmount) || 0
+        const orderDate = new Date(order.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
 
         // For threshold: subtract revenue of items that have their own (non-threshold) unit pay,
         // since those are already paid separately and shouldn't count toward the threshold basis
@@ -153,6 +155,8 @@ export async function GET(req: Request) {
             }
           }
 
+          const sessionEntry = { date: orderDate, patientName: order.patientName || 'N/A', serviceName: item.name, orderNetAmount: orderNet }
+
           // Aggregate by unitPayId + effectiveRate (so normal and reduced show separately)
           const existing = unitPayBreakdown.find(b =>
             b.unitPayId === item.service!.unitPayId && b.unitAmount === effectiveAmount
@@ -160,6 +164,7 @@ export async function GET(req: Request) {
           if (existing) {
             existing.quantity += item.quantity
             existing.lineTotal = existing.quantity * existing.unitAmount
+            existing.sessions.push(sessionEntry)
           } else {
             unitPayBreakdown.push({
               unitPayId: item.service.unitPayId,
@@ -168,6 +173,7 @@ export async function GET(req: Request) {
               quantity: item.quantity,
               lineTotal: effectiveAmount * item.quantity,
               isReduced,
+              sessions: [sessionEntry],
             })
           }
         }
