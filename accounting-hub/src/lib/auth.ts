@@ -34,33 +34,45 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null
+        try {
+          if (!credentials?.email || !credentials?.password) {
+            console.log('[auth] Missing credentials')
+            return null
+          }
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email as string },
-        })
+          console.log('[auth] Attempt:', credentials.email)
 
-        if (!user) return null
+          const user = await prisma.user.findUnique({
+            where: { email: credentials.email as string },
+          })
 
-        const valid = await bcrypt.compare(
-          credentials.password as string,
-          user.passwordHash
-        )
+          console.log('[auth] User found:', !!user)
+          if (!user) return null
 
-        if (!valid) return null
+          const valid = await bcrypt.compare(
+            credentials.password as string,
+            user.passwordHash
+          )
 
-        // Update last login
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { lastLoginAt: new Date() },
-        })
+          console.log('[auth] Password valid:', valid)
+          if (!valid) return null
 
-        return {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role as string,
-          branch: user.branch as string | null,
+          // Update last login (non-fatal — don't block login if this fails)
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { lastLoginAt: new Date() },
+          }).catch((e: unknown) => console.error('[auth] lastLoginAt update failed:', e))
+
+          return {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role as string,
+            branch: user.branch as string | null,
+          }
+        } catch (e: unknown) {
+          console.error('[auth] authorize threw:', e)
+          return null
         }
       },
     }),
