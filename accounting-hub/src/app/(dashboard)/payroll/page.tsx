@@ -588,7 +588,7 @@ export default function PayrollPage() {
   const cutoffPeriod = `${cutoffYear}-${String(cutoffMonth).padStart(2, '0')}-${cutoffHalf}`
 
   const [mainTab, setMainTab] = useState<'consultants' | 'employees' | 'tax-payable'>('consultants')
-  const [subTab, setSubTab] = useState<'list' | 'unit-pay' | 'payslips'>('list')
+  const [subTab, setSubTab] = useState<'list' | 'unit-pay' | 'pay-rules' | 'payslips'>('list')
 
   /* ── Core data ── */
   const [consultants, setConsultants] = useState<Consultant[]>([])
@@ -604,7 +604,7 @@ export default function PayrollPage() {
   const [cSortField, setCSortField] = useState('name')
   const [cSortDir, setCSortDir] = useState<'asc' | 'desc'>('asc')
   const [expandedConsultant, setExpandedConsultant] = useState<string | null>(null)
-  const [editingRates, setEditingRates] = useState<Record<string, { amount: number; thresholdEnabled: boolean; thresholdAmount: number; reducedAmount: number }>>({})
+  const [editingRates, setEditingRates] = useState<Record<string, number>>({})
   const [editingTax, setEditingTax] = useState('')
   const [editingRetainer, setEditingRetainer] = useState('')
   const [savingConsultant, setSavingConsultant] = useState(false)
@@ -615,6 +615,17 @@ export default function PayrollPage() {
   const [bulkAmount, setBulkAmount] = useState('')
   const [bulkApplying, setBulkApplying] = useState(false)
   const [bulkResult, setBulkResult] = useState<string | null>(null)
+
+  /* ── Threshold rules ── */
+  interface ThresholdRule { unitPayId: string; unitPayName: string; thresholdAmount: number; reducedAmount: number; consultants: { id: string; name: string; department: string; branch: string }[] }
+  const [thresholdRules, setThresholdRules] = useState<ThresholdRule[]>([])
+  const [trLoading, setTrLoading] = useState(false)
+  const [trFormOpen, setTrFormOpen] = useState(false)
+  const [trUnitPayId, setTrUnitPayId] = useState('')
+  const [trThreshold, setTrThreshold] = useState('')
+  const [trReduced, setTrReduced] = useState('')
+  const [trSelectedConsultants, setTrSelectedConsultants] = useState<string[]>([])
+  const [trSaving, setTrSaving] = useState(false)
 
   /* ── Unit Pay form ── */
   const [showUnitPayForm, setShowUnitPayForm] = useState(false)
@@ -825,13 +836,8 @@ export default function PayrollPage() {
   const expandConsultant = (c: Consultant) => {
     if (expandedConsultant === c.id) { setExpandedConsultant(null); return }
     setExpandedConsultant(c.id)
-    const rateMap: Record<string, { amount: number; thresholdEnabled: boolean; thresholdAmount: number; reducedAmount: number }> = {}
-    for (const r of c.unitPayRates) rateMap[r.unitPayId] = {
-      amount: toNum(r.amount),
-      thresholdEnabled: r.thresholdEnabled || false,
-      thresholdAmount: toNum(r.thresholdAmount),
-      reducedAmount: toNum(r.reducedAmount),
-    }
+    const rateMap: Record<string, number> = {}
+    for (const r of c.unitPayRates) rateMap[r.unitPayId] = toNum(r.amount)
     setEditingRates(rateMap)
     setEditingTax(c.taxDeduction)
     setEditingRetainer(String(toNum(c.monthlyRetainer)))
@@ -841,13 +847,8 @@ export default function PayrollPage() {
     setSavingConsultant(true)
     try {
       const unitPayRates = Object.entries(editingRates)
-        .filter(([, r]) => r.amount > 0)
-        .map(([unitPayId, r]) => ({
-          unitPayId, amount: r.amount,
-          thresholdEnabled: r.thresholdEnabled,
-          thresholdAmount: r.thresholdEnabled ? r.thresholdAmount : null,
-          reducedAmount: r.thresholdEnabled ? r.reducedAmount : null,
-        }))
+        .filter(([, amt]) => amt > 0)
+        .map(([unitPayId, amount]) => ({ unitPayId, amount }))
       await fetch('/api/payroll/consultants', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -876,6 +877,48 @@ export default function PayrollPage() {
       await fetchConsultants()
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Failed to apply bulk rate') }
     finally { setBulkApplying(false) }
+  }
+
+  /* ── Threshold rules ── */
+  const fetchThresholdRules = useCallback(async () => {
+    setTrLoading(true)
+    try {
+      const res = await fetch('/api/payroll/threshold-rules')
+      const data = await res.json()
+      setThresholdRules(data.rules || [])
+    } catch { /* ignore */ }
+    finally { setTrLoading(false) }
+  }, [])
+
+  useEffect(() => { if (subTab === 'pay-rules') fetchThresholdRules() }, [subTab, fetchThresholdRules])
+
+  const saveThresholdRule = async () => {
+    if (!trUnitPayId || !trThreshold || !trReduced || !trSelectedConsultants.length) { setError('All fields and at least one clinician are required'); return }
+    setTrSaving(true); setError('')
+    try {
+      const res = await fetch('/api/payroll/threshold-rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ unitPayId: trUnitPayId, thresholdAmount: parseFloat(trThreshold), reducedAmount: parseFloat(trReduced), consultantIds: trSelectedConsultants }),
+      })
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed') }
+      setTrFormOpen(false); setTrUnitPayId(''); setTrThreshold(''); setTrReduced(''); setTrSelectedConsultants([])
+      await fetchThresholdRules()
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Failed to save rule') }
+    finally { setTrSaving(false) }
+  }
+
+  const deleteThresholdRule = async (unitPayId: string, consultantIds?: string[]) => {
+    if (!confirm('Remove this threshold rule?')) return
+    try {
+      const res = await fetch('/api/payroll/threshold-rules', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ unitPayId, consultantIds }),
+      })
+      if (!res.ok) throw new Error('Failed')
+      await fetchThresholdRules()
+    } catch { setError('Failed to remove rule') }
   }
 
   /* ── Unit Pay CRUD ── */
@@ -1645,6 +1688,7 @@ export default function PayrollPage() {
             {[
               { key: 'list' as const, label: 'Clinician List', icon: Users },
               { key: 'unit-pay' as const, label: 'Unit Pay Settings', icon: Settings },
+              { key: 'pay-rules' as const, label: 'Clinician Pay Rules', icon: BadgeDollarSign },
               { key: 'payslips' as const, label: 'Payslip Generation', icon: FileText },
             ].map(t => (
               <button key={t.key} onClick={() => setSubTab(t.key)}
@@ -1787,51 +1831,16 @@ export default function PayrollPage() {
                                     return applicableUPs.length === 0 ? (
                                       <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>No unit pay types assigned to the {DEPT_LABELS[c.department] || c.department} department.</p>
                                     ) : (
-                                      <div className="space-y-3">
-                                        {applicableUPs.map(up => {
-                                          const r = editingRates[up.id] || { amount: 0, thresholdEnabled: false, thresholdAmount: 0, reducedAmount: 0 }
-                                          const updateRate = (patch: Partial<typeof r>) => setEditingRates({ ...editingRates, [up.id]: { ...r, ...patch } })
-                                          return (
-                                            <div key={up.id} className="space-y-1.5">
-                                              <div className="flex items-center gap-3">
-                                                <span className="text-xs font-medium w-40" style={{ color: 'var(--charcoal)' }}>{up.name}</span>
-                                                <input type="number" min={0} step="0.01" value={r.amount || ''}
-                                                  onChange={e => updateRate({ amount: parseFloat(e.target.value) || 0 })}
-                                                  placeholder="0.00" className="px-3 py-1.5 rounded-lg border text-sm outline-none w-32" style={{ borderColor: 'var(--light-gray)' }} />
-                                                <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>per unit</span>
-                                              </div>
-                                              {r.amount > 0 && (
-                                                <div className="ml-40 pl-3 space-y-1.5">
-                                                  <label className="flex items-center gap-2 cursor-pointer">
-                                                    <input type="checkbox" checked={r.thresholdEnabled}
-                                                      onChange={e => updateRate({ thresholdEnabled: e.target.checked })}
-                                                      className="rounded" />
-                                                    <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>Threshold rule (reduced rate if order net is below threshold)</span>
-                                                  </label>
-                                                  {r.thresholdEnabled && (
-                                                    <div className="flex items-center gap-2 flex-wrap">
-                                                      <span className="text-xs" style={{ color: 'var(--charcoal)' }}>If order net &lt;</span>
-                                                      <div className="flex items-center gap-1">
-                                                        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>&#8369;</span>
-                                                        <input type="number" min={0} step="0.01" value={r.thresholdAmount || ''}
-                                                          onChange={e => updateRate({ thresholdAmount: parseFloat(e.target.value) || 0 })}
-                                                          placeholder="1800" className="px-2 py-1 rounded-lg border text-xs outline-none w-24" style={{ borderColor: 'var(--light-gray)' }} />
-                                                      </div>
-                                                      <span className="text-xs" style={{ color: 'var(--charcoal)' }}>, pay</span>
-                                                      <div className="flex items-center gap-1">
-                                                        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>&#8369;</span>
-                                                        <input type="number" min={0} step="0.01" value={r.reducedAmount || ''}
-                                                          onChange={e => updateRate({ reducedAmount: parseFloat(e.target.value) || 0 })}
-                                                          placeholder="500" className="px-2 py-1 rounded-lg border text-xs outline-none w-24" style={{ borderColor: 'var(--light-gray)' }} />
-                                                      </div>
-                                                      <span className="text-xs" style={{ color: 'var(--charcoal)' }}>instead</span>
-                                                    </div>
-                                                  )}
-                                                </div>
-                                              )}
-                                            </div>
-                                          )
-                                        })}
+                                      <div className="space-y-2">
+                                        {applicableUPs.map(up => (
+                                          <div key={up.id} className="flex items-center gap-3">
+                                            <span className="text-xs font-medium w-40" style={{ color: 'var(--charcoal)' }}>{up.name}</span>
+                                            <input type="number" min={0} step="0.01" value={editingRates[up.id] || ''}
+                                              onChange={e => setEditingRates({ ...editingRates, [up.id]: parseFloat(e.target.value) || 0 })}
+                                              placeholder="0.00" className="px-3 py-1.5 rounded-lg border text-sm outline-none w-32" style={{ borderColor: 'var(--light-gray)' }} />
+                                            <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>per unit</span>
+                                          </div>
+                                        ))}
                                       </div>
                                     )
                                   })()}
@@ -2127,7 +2136,129 @@ export default function PayrollPage() {
             </div>
           )}
 
-          {/* ══ TAB 3: Payslip Generation ══ */}
+          {/* ══ TAB: Clinician Pay Rules ══ */}
+          {subTab === 'pay-rules' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Threshold-Based Pay Rules</h3>
+                {canWrite && (
+                  <button onClick={() => { setTrFormOpen(true); setTrUnitPayId(''); setTrThreshold(''); setTrReduced(''); setTrSelectedConsultants([]); setError('') }}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white"
+                    style={{ background: 'var(--teal)' }}>
+                    <Plus size={14} /> Add Rule
+                  </button>
+                )}
+              </div>
+
+              <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                Set rules where a clinician&apos;s unit pay rate depends on the order&apos;s net sales amount. If the adjusted order net is below the threshold, the reduced rate is used instead of the normal rate.
+              </p>
+
+              {trLoading ? (
+                <div className="flex justify-center py-8"><Loader2 size={20} className="animate-spin" style={{ color: 'var(--teal)' }} /></div>
+              ) : thresholdRules.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>No threshold rules configured yet.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {thresholdRules.map((rule, idx) => (
+                    <div key={idx} className="rounded-xl border p-4 space-y-2" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{rule.unitPayName}</span>
+                          <span className="ml-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                            If order net &lt; &#8369;{rule.thresholdAmount.toLocaleString()} → pay &#8369;{rule.reducedAmount.toLocaleString()} instead
+                          </span>
+                        </div>
+                        {canWrite && (
+                          <button onClick={() => deleteThresholdRule(rule.unitPayId, rule.consultants.map(c => c.id))}
+                            className="text-xs px-3 py-1 rounded-lg border hover:bg-red-50" style={{ borderColor: 'var(--light-gray)', color: '#dc2626' }}>
+                            <Trash2 size={12} className="inline mr-1" />Remove
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {rule.consultants.map(c => (
+                          <span key={c.id} className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+                            {c.name} <span className="opacity-60">({c.branch})</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add Rule Form */}
+              {trFormOpen && (
+                <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: 'var(--teal)', background: '#f0fdfa' }}>
+                  <h4 className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>New Threshold Rule</h4>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Unit Pay Type</label>
+                      <select value={trUnitPayId} onChange={e => setTrUnitPayId(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                        <option value="">Select...</option>
+                        {unitPays.map(up => <option key={up.id} value={up.id}>{up.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Threshold (min order net)</label>
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>&#8369;</span>
+                        <input type="number" min={0} step="0.01" value={trThreshold} onChange={e => setTrThreshold(e.target.value)}
+                          placeholder="1800" className="w-full px-2 py-2 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Reduced rate (if below threshold)</label>
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>&#8369;</span>
+                        <input type="number" min={0} step="0.01" value={trReduced} onChange={e => setTrReduced(e.target.value)}
+                          placeholder="500" className="w-full px-2 py-2 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>
+                      Assign to clinicians <span className="opacity-60">(only showing those with a rate set for the selected unit pay)</span>
+                    </label>
+                    <div className="max-h-40 overflow-y-auto rounded-lg border p-2 space-y-1" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+                      {consultants
+                        .filter(c => c.isActive && (!trUnitPayId || c.unitPayRates.some(r => r.unitPayId === trUnitPayId)))
+                        .map(c => (
+                          <label key={c.id} className="flex items-center gap-2 cursor-pointer py-0.5">
+                            <input type="checkbox" checked={trSelectedConsultants.includes(c.id)}
+                              onChange={e => setTrSelectedConsultants(prev =>
+                                e.target.checked ? [...prev, c.id] : prev.filter(id => id !== c.id)
+                              )} className="rounded" />
+                            <span className="text-xs" style={{ color: 'var(--charcoal)' }}>{c.name}</span>
+                            <span className="text-xs opacity-50">({c.branch})</span>
+                          </label>
+                        ))}
+                      {trUnitPayId && consultants.filter(c => c.isActive && c.unitPayRates.some(r => r.unitPayId === trUnitPayId)).length === 0 && (
+                        <p className="text-xs py-2" style={{ color: 'var(--mid-gray)' }}>No clinicians have a rate set for this unit pay type. Set rates in the Clinician List tab first.</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={saveThresholdRule} disabled={trSaving}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium text-white disabled:opacity-50"
+                      style={{ background: 'var(--teal)' }}>
+                      {trSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Save Rule
+                    </button>
+                    <button onClick={() => setTrFormOpen(false)}
+                      className="px-4 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ══ TAB 4: Payslip Generation ══ */}
           {subTab === 'payslips' && (
             <div className="space-y-4">
               {/* Controls row */}
