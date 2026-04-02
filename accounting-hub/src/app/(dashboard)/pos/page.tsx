@@ -4535,7 +4535,7 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
   const byDate = new Map<string, Map<string, number>>()
 
   for (const o of activeOrders) {
-    const day = new Date(o.transactionDate || o.createdAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+    const day = new Date(String(o.transactionDate || o.createdAt)).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
     if (!byDate.has(day)) byDate.set(day, new Map())
     const methods = byDate.get(day)!
     for (const p of o.payments) {
