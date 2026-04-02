@@ -31,7 +31,7 @@ interface Consultant {
   taxDeduction: string
   monthlyRetainer: number | string
   isActive: boolean
-  unitPayRates: { id: string; unitPayId: string; unitPay: { id: string; name: string }; amount: number | string }[]
+  unitPayRates: { id: string; unitPayId: string; unitPay: { id: string; name: string }; amount: number | string; thresholdEnabled?: boolean; thresholdAmount?: number | string | null; reducedAmount?: number | string | null }[]
 }
 
 interface UnitPayType {
@@ -49,7 +49,7 @@ interface PayrollPreview {
   department: string
   branch: string
   taxDeduction: string
-  items: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number }[]
+  items: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean }[]
   unitPayTotal: number
   retainerAmount: number
   incentives: IncentiveLine[]
@@ -604,7 +604,7 @@ export default function PayrollPage() {
   const [cSortField, setCSortField] = useState('name')
   const [cSortDir, setCSortDir] = useState<'asc' | 'desc'>('asc')
   const [expandedConsultant, setExpandedConsultant] = useState<string | null>(null)
-  const [editingRates, setEditingRates] = useState<Record<string, number>>({})
+  const [editingRates, setEditingRates] = useState<Record<string, { amount: number; thresholdEnabled: boolean; thresholdAmount: number; reducedAmount: number }>>({})
   const [editingTax, setEditingTax] = useState('')
   const [editingRetainer, setEditingRetainer] = useState('')
   const [savingConsultant, setSavingConsultant] = useState(false)
@@ -825,8 +825,13 @@ export default function PayrollPage() {
   const expandConsultant = (c: Consultant) => {
     if (expandedConsultant === c.id) { setExpandedConsultant(null); return }
     setExpandedConsultant(c.id)
-    const rateMap: Record<string, number> = {}
-    for (const r of c.unitPayRates) rateMap[r.unitPayId] = toNum(r.amount)
+    const rateMap: Record<string, { amount: number; thresholdEnabled: boolean; thresholdAmount: number; reducedAmount: number }> = {}
+    for (const r of c.unitPayRates) rateMap[r.unitPayId] = {
+      amount: toNum(r.amount),
+      thresholdEnabled: r.thresholdEnabled || false,
+      thresholdAmount: toNum(r.thresholdAmount),
+      reducedAmount: toNum(r.reducedAmount),
+    }
     setEditingRates(rateMap)
     setEditingTax(c.taxDeduction)
     setEditingRetainer(String(toNum(c.monthlyRetainer)))
@@ -836,8 +841,13 @@ export default function PayrollPage() {
     setSavingConsultant(true)
     try {
       const unitPayRates = Object.entries(editingRates)
-        .filter(([, amt]) => amt > 0)
-        .map(([unitPayId, amount]) => ({ unitPayId, amount }))
+        .filter(([, r]) => r.amount > 0)
+        .map(([unitPayId, r]) => ({
+          unitPayId, amount: r.amount,
+          thresholdEnabled: r.thresholdEnabled,
+          thresholdAmount: r.thresholdEnabled ? r.thresholdAmount : null,
+          reducedAmount: r.thresholdEnabled ? r.reducedAmount : null,
+        }))
       await fetch('/api/payroll/consultants', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -1777,16 +1787,51 @@ export default function PayrollPage() {
                                     return applicableUPs.length === 0 ? (
                                       <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>No unit pay types assigned to the {DEPT_LABELS[c.department] || c.department} department.</p>
                                     ) : (
-                                      <div className="space-y-2">
-                                        {applicableUPs.map(up => (
-                                          <div key={up.id} className="flex items-center gap-3">
-                                            <span className="text-xs font-medium w-40" style={{ color: 'var(--charcoal)' }}>{up.name}</span>
-                                            <input type="number" min={0} step="0.01" value={editingRates[up.id] || ''}
-                                              onChange={e => setEditingRates({ ...editingRates, [up.id]: parseFloat(e.target.value) || 0 })}
-                                              placeholder="0.00" className="px-3 py-1.5 rounded-lg border text-sm outline-none w-32" style={{ borderColor: 'var(--light-gray)' }} />
-                                            <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>per unit</span>
-                                          </div>
-                                        ))}
+                                      <div className="space-y-3">
+                                        {applicableUPs.map(up => {
+                                          const r = editingRates[up.id] || { amount: 0, thresholdEnabled: false, thresholdAmount: 0, reducedAmount: 0 }
+                                          const updateRate = (patch: Partial<typeof r>) => setEditingRates({ ...editingRates, [up.id]: { ...r, ...patch } })
+                                          return (
+                                            <div key={up.id} className="space-y-1.5">
+                                              <div className="flex items-center gap-3">
+                                                <span className="text-xs font-medium w-40" style={{ color: 'var(--charcoal)' }}>{up.name}</span>
+                                                <input type="number" min={0} step="0.01" value={r.amount || ''}
+                                                  onChange={e => updateRate({ amount: parseFloat(e.target.value) || 0 })}
+                                                  placeholder="0.00" className="px-3 py-1.5 rounded-lg border text-sm outline-none w-32" style={{ borderColor: 'var(--light-gray)' }} />
+                                                <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>per unit</span>
+                                              </div>
+                                              {r.amount > 0 && (
+                                                <div className="ml-40 pl-3 space-y-1.5">
+                                                  <label className="flex items-center gap-2 cursor-pointer">
+                                                    <input type="checkbox" checked={r.thresholdEnabled}
+                                                      onChange={e => updateRate({ thresholdEnabled: e.target.checked })}
+                                                      className="rounded" />
+                                                    <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>Threshold rule (reduced rate if order net is below threshold)</span>
+                                                  </label>
+                                                  {r.thresholdEnabled && (
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                      <span className="text-xs" style={{ color: 'var(--charcoal)' }}>If order net &lt;</span>
+                                                      <div className="flex items-center gap-1">
+                                                        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>&#8369;</span>
+                                                        <input type="number" min={0} step="0.01" value={r.thresholdAmount || ''}
+                                                          onChange={e => updateRate({ thresholdAmount: parseFloat(e.target.value) || 0 })}
+                                                          placeholder="1800" className="px-2 py-1 rounded-lg border text-xs outline-none w-24" style={{ borderColor: 'var(--light-gray)' }} />
+                                                      </div>
+                                                      <span className="text-xs" style={{ color: 'var(--charcoal)' }}>, pay</span>
+                                                      <div className="flex items-center gap-1">
+                                                        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>&#8369;</span>
+                                                        <input type="number" min={0} step="0.01" value={r.reducedAmount || ''}
+                                                          onChange={e => updateRate({ reducedAmount: parseFloat(e.target.value) || 0 })}
+                                                          placeholder="500" className="px-2 py-1 rounded-lg border text-xs outline-none w-24" style={{ borderColor: 'var(--light-gray)' }} />
+                                                      </div>
+                                                      <span className="text-xs" style={{ color: 'var(--charcoal)' }}>instead</span>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              )}
+                                            </div>
+                                          )
+                                        })}
                                       </div>
                                     )
                                   })()}

@@ -170,6 +170,7 @@ model Service {
   revenueAccount        Account?      @relation(fields: [revenueAccountId], references: [id], onDelete: SetNull)
   unitPayId             String?
   unitPay               UnitPay?      @relation(fields: [unitPayId], references: [id], onDelete: SetNull)
+  unitPayEnabled        Boolean       @default(true)
   isActive              Boolean       @default(true)
   createdById           String
   createdBy             User          @relation("ServiceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -754,7 +755,10 @@ model ConsultantUnitPay {
   consultant   Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
   unitPayId    String
   unitPay      UnitPay    @relation(fields: [unitPayId], references: [id], onDelete: Cascade)
-  amount       Decimal    // Per-unit amount for this consultant
+  amount           Decimal    // Per-unit amount for this consultant
+  thresholdEnabled Boolean    @default(false)
+  thresholdAmount  Decimal?   // Min order netAmount to qualify for full rate
+  reducedAmount    Decimal?   // Rate used when order netAmount is below threshold
 
   @@unique([consultantId, unitPayId])
   @@index([consultantId])

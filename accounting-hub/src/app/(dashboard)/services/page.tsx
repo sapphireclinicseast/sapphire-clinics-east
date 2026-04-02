@@ -32,6 +32,7 @@ interface Service {
   revenueAccount?: { id: string; accountNumber: string; accountTitle: string } | null
   unitPayId?: string | null
   unitPay?: { id: string; name: string } | null
+  unitPayEnabled?: boolean
   isActive: boolean
   createdAt: string
   eligibleFor?: { eligibleService: { id: string; name: string; department: string; price: string | number }; discountPercent?: number | string | null }[]
@@ -115,6 +116,7 @@ export default function ServicesPage() {
   const [fRevenueAccountSearch, setFRevenueAccountSearch] = useState('')
   const [revenueAccounts, setRevenueAccounts] = useState<RevenueAccount[]>([])
   const [fUnitPayId, setFUnitPayId] = useState('')
+  const [fUnitPayEnabled, setFUnitPayEnabled] = useState(true)
   const [unitPays, setUnitPays] = useState<{ id: string; name: string }[]>([])
   const [fEligibleServices, setFEligibleServices] = useState<{ serviceId: string; discountPercent: number }[]>([])
   const [eligibleSearch, setEligibleSearch] = useState('')
@@ -186,7 +188,7 @@ export default function ServicesPage() {
     setFName(''); setFDept('PT'); setFBranch('ALL'); setFPrice('')
     setFPriceType('FIXED'); setFRevenueType('EARNED'); setFHasDoctorFee(false); setFDoctorFee('')
     setFClinicFee(''); setFPwdClinicOnly(false); setFNoPwdDiscount(false); setFDescription('')
-    setFWalletType(''); setFVipTier(''); setFPackageSessions(''); setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFUnitPayId(''); setFEligibleServices([]); setEligibleSearch('')
+    setFWalletType(''); setFVipTier(''); setFPackageSessions(''); setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFUnitPayId(''); setFUnitPayEnabled(true); setFEligibleServices([]); setEligibleSearch('')
     setError(''); setModalOpen(true)
   }
 
@@ -206,6 +208,7 @@ export default function ServicesPage() {
     setFRevenueAccountId(s.revenueAccountId || '')
     setFRevenueAccountSearch(s.revenueAccount ? `${s.revenueAccount.accountNumber} ${s.revenueAccount.accountTitle}` : '')
     setFUnitPayId(s.unitPayId || '')
+    setFUnitPayEnabled(s.unitPayEnabled !== false)
     setFEligibleServices(
       (s.eligibleFor || []).map((e: { eligibleService: { id: string }; discountPercent?: number | string | null }) => ({
         serviceId: e.eligibleService.id,
@@ -242,6 +245,7 @@ export default function ServicesPage() {
       description: fDescription,
       revenueAccountId: fRevenueAccountId || null,
       unitPayId: fUnitPayId || null,
+      unitPayEnabled: fUnitPayId ? fUnitPayEnabled : true,
     }
     if (editing) body.id = editing.id
     try {
@@ -406,7 +410,9 @@ export default function ServicesPage() {
                         <p className="text-xs mt-0.5" style={{ color: 'var(--teal)' }}>{s.revenueAccount.accountNumber} {s.revenueAccount.accountTitle}</p>
                       )}
                       {s.unitPay && (
-                        <p className="text-xs mt-0.5" style={{ color: '#7c3aed' }}>Unit Pay: {s.unitPay.name}</p>
+                        <p className="text-xs mt-0.5" style={{ color: s.unitPayEnabled === false ? 'var(--mid-gray)' : '#7c3aed' }}>
+                          Unit Pay: {s.unitPay.name}{s.unitPayEnabled === false ? ' (disabled)' : ''}
+                        </p>
                       )}
                       {s.description && <p className="text-xs mt-0.5 truncate max-w-[200px]" style={{ color: 'var(--mid-gray)' }}>{s.description}</p>}
                     </td>
@@ -816,7 +822,7 @@ export default function ServicesPage() {
                 <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
                   Unit Pay <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(Payroll — links to consultant fee)</span>
                 </label>
-                <select value={fUnitPayId} onChange={(e) => setFUnitPayId(e.target.value)}
+                <select value={fUnitPayId} onChange={(e) => { setFUnitPayId(e.target.value); if (!e.target.value) setFUnitPayEnabled(true) }}
                   className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
                   style={{ borderColor: fUnitPayId ? 'var(--teal)' : 'var(--light-gray)', background: fUnitPayId ? '#f0fdfa' : 'white' }}>
                   <option value="">— No unit pay assigned —</option>
@@ -824,6 +830,13 @@ export default function ServicesPage() {
                     <option key={u.id} value={u.id}>{u.name}</option>
                   ))}
                 </select>
+                {fUnitPayId && (
+                  <label className="flex items-center gap-2 mt-1.5 cursor-pointer">
+                    <input type="checkbox" checked={fUnitPayEnabled}
+                      onChange={e => setFUnitPayEnabled(e.target.checked)} className="rounded" />
+                    <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>Generate unit pay for this service in payroll</span>
+                  </label>
+                )}
               </div>
 
               <div>

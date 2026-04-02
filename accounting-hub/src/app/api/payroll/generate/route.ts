@@ -90,12 +90,13 @@ export async function GET(req: Request) {
         clinicianName: true,
         branch: true,
         transactionDate: true,
+        netAmount: true,
         items: {
           select: {
             name: true,
             quantity: true,
             lineTotal: true,
-            service: { select: { id: true, name: true, department: true, unitPayId: true } },
+            service: { select: { id: true, name: true, department: true, unitPayId: true, unitPayEnabled: true } },
           },
         },
       },
@@ -118,26 +119,43 @@ export async function GET(req: Request) {
         o.clinicianName && o.clinicianName.trim().toUpperCase() === c.name.trim().toUpperCase()
       )
 
-      // Group by unit pay
-      const unitPayBreakdown: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number }[] = []
+      // Group by unit pay — with threshold logic per order
+      const unitPayBreakdown: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean }[] = []
 
       for (const order of consultantOrders) {
+        const orderNet = Number(order.netAmount) || 0
+
         for (const item of order.items) {
           if (!item.service?.unitPayId) continue
+          if (item.service.unitPayEnabled === false) continue
           const rate = c.unitPayRates.find(r => r.unitPayId === item.service!.unitPayId)
           if (!rate) continue
 
-          const existing = unitPayBreakdown.find(b => b.unitPayId === item.service!.unitPayId)
+          // Determine effective rate: check threshold rule
+          let effectiveAmount = Number(rate.amount)
+          let isReduced = false
+          if (rate.thresholdEnabled && rate.thresholdAmount != null && rate.reducedAmount != null) {
+            if (orderNet < Number(rate.thresholdAmount)) {
+              effectiveAmount = Number(rate.reducedAmount)
+              isReduced = true
+            }
+          }
+
+          // Aggregate by unitPayId + effectiveRate (so normal and reduced show separately)
+          const existing = unitPayBreakdown.find(b =>
+            b.unitPayId === item.service!.unitPayId && b.unitAmount === effectiveAmount
+          )
           if (existing) {
             existing.quantity += item.quantity
             existing.lineTotal = existing.quantity * existing.unitAmount
           } else {
             unitPayBreakdown.push({
               unitPayId: item.service.unitPayId,
-              unitPayName: rate.unitPay.name,
-              unitAmount: Number(rate.amount),
+              unitPayName: rate.unitPay.name + (isReduced ? ' (reduced)' : ''),
+              unitAmount: effectiveAmount,
               quantity: item.quantity,
-              lineTotal: Number(rate.amount) * item.quantity,
+              lineTotal: effectiveAmount * item.quantity,
+              isReduced,
             })
           }
         }

@@ -117,10 +117,13 @@ export async function PUT(req: Request) {
       await prisma.consultantUnitPay.deleteMany({ where: { consultantId: id } })
       if (unitPayRates.length > 0) {
         await prisma.consultantUnitPay.createMany({
-          data: unitPayRates.map((r: { unitPayId: string; amount: number }) => ({
+          data: unitPayRates.map((r: { unitPayId: string; amount: number; thresholdEnabled?: boolean; thresholdAmount?: number; reducedAmount?: number }) => ({
             consultantId: id,
             unitPayId: r.unitPayId,
             amount: Number(r.amount),
+            thresholdEnabled: r.thresholdEnabled || false,
+            thresholdAmount: r.thresholdAmount != null ? Number(r.thresholdAmount) : null,
+            reducedAmount: r.reducedAmount != null ? Number(r.reducedAmount) : null,
           })),
           skipDuplicates: true,
         })
