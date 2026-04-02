@@ -4509,9 +4509,17 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
   const [dateFrom, setDateFrom] = useState(today())
   const [dateTo, setDateTo] = useState(today())
   const [orders, setOrders] = useState<Order[]>([])
+  const [modes, setModes] = useState<PaymentModeType[]>([])
   const [loading, setLoading] = useState(false)
   const [actualAmounts, setActualAmounts] = useState<Record<string, Record<string, number>>>({}) // { date: { method: amount } }
   const [confirmed, setConfirmed] = useState<Record<string, Record<string, boolean>>>({}) // { date: { method: bool } }
+
+  useEffect(() => {
+    fetch('/api/pos/payment-modes').then(r => r.json()).then(d => setModes(Array.isArray(d) ? d : [])).catch(() => {})
+  }, [])
+
+  const modeNameMap = new Map(modes.map(m => [m.id, m.name]))
+  const getPaymentLabel = (p: { method: string }) => modeNameMap.get(p.method) || p.method || 'Unknown'
 
   const fetchOrders = useCallback(async () => {
     setLoading(true)
@@ -4539,7 +4547,7 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
     if (!byDate.has(day)) byDate.set(day, new Map())
     const methods = byDate.get(day)!
     for (const p of o.payments) {
-      const label = p.paymentMode?.name || p.method || 'Unknown'
+      const label = getPaymentLabel(p)
       methods.set(label, (methods.get(label) || 0) + toNum(p.amount))
     }
   }
