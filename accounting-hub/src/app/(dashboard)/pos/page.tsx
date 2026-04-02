@@ -197,12 +197,8 @@ const PAYMENT_METHODS_SERVICE = [
   { value: 'PAYMAYA', label: 'PayMaya' },
   { value: 'DEBIT', label: 'Debit Card' },
   { value: 'CREDIT_CARD', label: 'Credit Card' },
-  { value: 'VIP_CARD', label: 'VIP Card' },
-  { value: 'PREPAID_CARD', label: 'Prepaid Card' },
-  { value: 'DOWNPAYMENT', label: 'Downpayment' },
   { value: 'HMO', label: 'HMO' },
   { value: 'GL', label: 'Guarantee Letter (GL)' },
-  { value: 'PACKAGE', label: 'Package' },
 ]
 
 const PAYMENT_METHODS_PRODUCT = [
@@ -210,7 +206,6 @@ const PAYMENT_METHODS_PRODUCT = [
   { value: 'SHOPEE', label: 'Shopee' },
   { value: 'LAZADA', label: 'Lazada' },
   { value: 'TIKTOK', label: 'TikTok Shop' },
-  { value: 'REWARD_POINTS', label: 'Reward Points' },
 ]
 
 const ORDER_STATUS_BADGE: Record<string, { bg: string; color: string }> = {
@@ -449,7 +444,7 @@ export default function POSPage() {
         <ProductsSection branch={branch} canSelectBranch={canSelectBranch} session={session} />
       )}
       {mainTab === 'sales' && (
-        <SalesSummarySection branch={branch} canSelectBranch={canSelectBranch} />
+        <SalesSection branch={branch} canSelectBranch={canSelectBranch} />
       )}
     </div>
   )
@@ -1574,15 +1569,6 @@ function OrderFormModal({
                     {configuredModes.length > 0 ? (
                       <>
                         {configuredModes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                        <optgroup label="────────────────">
-                          <option value="VIP_CARD">VIP Card</option>
-                          <option value="PREPAID_CARD">Prepaid Card</option>
-                          <option value="DOWNPAYMENT">Downpayment</option>
-                          <option value="PACKAGE">Package</option>
-                          <option value="HMO">HMO</option>
-                          <option value="GL">Guarantee Letter (GL)</option>
-                          <option value="REWARD_POINTS">Reward Points</option>
-                        </optgroup>
                       </>
                     ) : (
                       <>
@@ -3924,6 +3910,7 @@ function ProductsSection({
   const [newDiscountAmtType, setNewDiscountAmtType] = useState<'PERCENTAGE' | 'FIXED'>('FIXED')
   const [newDiscountRemarks, setNewDiscountRemarks] = useState('')
   const [payments, setPayments] = useState<PaymentLine[]>([{ method: 'CASH', amount: 0 }])
+  const [configuredModes, setConfiguredModes] = useState<PaymentModeType[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   // Reward points wallet state
@@ -3935,6 +3922,10 @@ function ProductsSection({
 
   // Check if any payment is reward points
   const hasRewardPointsPayment = payments.some(p => p.method === 'REWARD_POINTS')
+
+  useEffect(() => {
+    fetch('/api/pos/payment-modes').then(r => r.json()).then(d => setConfiguredModes(Array.isArray(d) ? d.filter((m: PaymentModeType) => m.isActive) : [])).catch(() => {})
+  }, [])
 
   useEffect(() => {
     fetch('/api/inventory?all=true&branch=VERDANA_STORE')
@@ -4350,7 +4341,11 @@ function ProductsSection({
               <div key={idx} className="flex items-center gap-1">
                 <select value={p.method} onChange={e => setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, method: e.target.value } : pp))}
                   className="px-2 py-2 rounded-xl border text-xs outline-none flex-1" style={{ borderColor: 'var(--light-gray)' }}>
-                  {PAYMENT_METHODS_PRODUCT.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                  {configuredModes.length > 0 ? (
+                    configuredModes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)
+                  ) : (
+                    PAYMENT_METHODS_PRODUCT.map(m => <option key={m.value} value={m.value}>{m.label}</option>)
+                  )}
                 </select>
                 <input type="number" min={0} step="0.01" value={p.amount || ''} placeholder="Amt"
                   onChange={e => setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, amount: parseFloat(e.target.value) || 0 } : pp))}
@@ -4484,6 +4479,179 @@ function ProductsSection({
    SALES SUMMARY SECTION
    ══════════════════════════════════════════════════════════════ */
 
+function SalesSection({ branch, canSelectBranch }: { branch: string; canSelectBranch: boolean }) {
+  const [salesTab, setSalesTab] = useState<'summary' | 'checking'>('summary')
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-1">
+        {[
+          { key: 'summary' as const, label: 'Sales Summary' },
+          { key: 'checking' as const, label: 'Sales Checking' },
+        ].map(t => (
+          <button key={t.key} onClick={() => setSalesTab(t.key)}
+            className="px-4 py-2 text-sm rounded-xl font-medium transition-colors"
+            style={{ background: salesTab === t.key ? 'var(--pale-teal)' : 'transparent', color: salesTab === t.key ? 'var(--deep-teal)' : 'var(--mid-gray)' }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {salesTab === 'summary' && <SalesSummarySection branch={branch} canSelectBranch={canSelectBranch} />}
+      {salesTab === 'checking' && <SalesCheckingPanel branch={branch} canSelectBranch={canSelectBranch} />}
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SALES CHECKING PANEL
+   ══════════════════════════════════════════════════════════════ */
+function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSelectBranch: boolean }) {
+  const [selectedBranch, setSelectedBranch] = useState(canSelectBranch ? '' : branch)
+  const [dateFrom, setDateFrom] = useState(today())
+  const [dateTo, setDateTo] = useState(today())
+  const [orders, setOrders] = useState<Order[]>([])
+  const [loading, setLoading] = useState(false)
+  const [actualAmounts, setActualAmounts] = useState<Record<string, Record<string, number>>>({}) // { date: { method: amount } }
+  const [confirmed, setConfirmed] = useState<Record<string, Record<string, boolean>>>({}) // { date: { method: bool } }
+
+  const fetchOrders = useCallback(async () => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (selectedBranch) params.set('branch', selectedBranch)
+      if (dateFrom) params.set('dateFrom', dateFrom)
+      if (dateTo) params.set('dateTo', dateTo)
+      params.set('pageSize', '500')
+      const r = await fetch(`/api/pos/orders?${params}`)
+      const d = await r.json()
+      setOrders(normalize(d) as Order[])
+    } catch { setOrders([]) }
+    finally { setLoading(false) }
+  }, [selectedBranch, dateFrom, dateTo])
+
+  useEffect(() => { fetchOrders() }, [fetchOrders])
+
+  // Group orders by date and payment method
+  const activeOrders = orders.filter(o => o.status !== 'VOIDED')
+  const byDate = new Map<string, Map<string, number>>()
+
+  for (const o of activeOrders) {
+    const day = new Date(o.transactionDate || o.createdAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+    if (!byDate.has(day)) byDate.set(day, new Map())
+    const methods = byDate.get(day)!
+    for (const p of o.payments) {
+      const label = p.paymentMode?.name || p.method || 'Unknown'
+      methods.set(label, (methods.get(label) || 0) + toNum(p.amount))
+    }
+  }
+
+  const sortedDates = Array.from(byDate.keys()).sort()
+  const allMethods = new Set<string>()
+  byDate.forEach(m => m.forEach((_, k) => allMethods.add(k)))
+  const sortedMethods = Array.from(allMethods).sort()
+
+  const getActual = (day: string, method: string) => actualAmounts[day]?.[method] ?? ''
+  const setActual = (day: string, method: string, val: number) => {
+    setActualAmounts(prev => ({ ...prev, [day]: { ...prev[day], [method]: val } }))
+  }
+  const isConfirmed = (day: string, method: string) => confirmed[day]?.[method] || false
+  const toggleConfirm = (day: string, method: string) => {
+    setConfirmed(prev => ({ ...prev, [day]: { ...prev[day], [method]: !prev[day]?.[method] } }))
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)' }}>Sales Checking</h2>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+          Compare system sales against actual bank/account deposits per day and payment method.
+        </p>
+      </div>
+
+      {/* Filters */}
+      <div className="flex items-center gap-3 flex-wrap">
+        {canSelectBranch && (
+          <select value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)}
+            className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+            <option value="">All Branches</option>
+            <option value="SANDBOX_EAST">Sandbox East</option>
+            <option value="SANDBOX_GREENHILLS">Sandbox Greenhills</option>
+          </select>
+        )}
+        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+          className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</span>
+        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+          className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+      </div>
+
+      {loading ? (
+        <div className="py-12 text-center"><Loader2 size={20} className="animate-spin mx-auto" style={{ color: 'var(--teal)' }} /></div>
+      ) : sortedDates.length === 0 ? (
+        <div className="py-12 text-center" style={{ color: 'var(--mid-gray)' }}>No sales data for this period.</div>
+      ) : (
+        <div className="space-y-4">
+          {sortedDates.map(day => {
+            const methods = byDate.get(day)!
+            const dayLabel = new Date(day + 'T00:00:00').toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+            return (
+              <div key={day} className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+                <div className="px-4 py-2.5 font-semibold text-xs" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{dayLabel}</div>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr style={{ background: 'var(--off-white)' }}>
+                      <th className="px-4 py-2 text-left font-semibold" style={{ color: 'var(--charcoal)' }}>Payment Method</th>
+                      <th className="px-4 py-2 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>System Amount</th>
+                      <th className="px-4 py-2 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>Actual Amount</th>
+                      <th className="px-4 py-2 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>Difference</th>
+                      <th className="px-4 py-2 text-center font-semibold" style={{ color: 'var(--charcoal)' }}>OK</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedMethods.filter(m => methods.has(m)).map(method => {
+                      const systemAmt = methods.get(method) || 0
+                      const actualAmt = typeof getActual(day, method) === 'number' ? getActual(day, method) as number : 0
+                      const diff = actualAmt - systemAmt
+                      const diffColor = diff === 0 ? '#166534' : diff > 0 ? '#ED6823' : '#dc2626'
+                      return (
+                        <tr key={method} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                          <td className="px-4 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{method}</td>
+                          <td className="px-4 py-2 text-right font-mono" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(systemAmt)}</td>
+                          <td className="px-4 py-2 text-right">
+                            <input type="number" step="0.01" value={getActual(day, method)}
+                              onChange={e => setActual(day, method, parseFloat(e.target.value) || 0)}
+                              placeholder="0.00"
+                              className="w-28 px-2 py-1 rounded-lg border text-xs text-right outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                          </td>
+                          <td className="px-4 py-2 text-right font-mono font-medium" style={{ color: actualAmt ? diffColor : 'var(--mid-gray)' }}>
+                            {actualAmt ? (diff >= 0 ? '+' : '') + formatCurrency(diff) : '—'}
+                          </td>
+                          <td className="px-4 py-2 text-center">
+                            {diff === 0 && actualAmt > 0 ? (
+                              <label className="cursor-pointer">
+                                <input type="checkbox" checked={isConfirmed(day, method)}
+                                  onChange={() => toggleConfirm(day, method)} className="rounded" />
+                              </label>
+                            ) : (
+                              <span className="text-xs" style={{ color: 'var(--light-gray)' }}>—</span>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SALES SUMMARY
+   ══════════════════════════════════════════════════════════════ */
 function SalesSummarySection({ branch, canSelectBranch }: { branch: string; canSelectBranch: boolean }) {
   const [selectedBranch, setSelectedBranch] = useState(canSelectBranch ? '' : branch)
   const [dateFrom, setDateFrom] = useState(today())
@@ -4925,6 +5093,13 @@ function ReferrerSettingsPanel() {
         <div className="flex items-center gap-2">
           <button onClick={downloadCsv} className="px-3 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>CSV</button>
           <button onClick={downloadPdf} className="px-3 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>PDF</button>
+          <button onClick={() => {
+            const csv = 'Name,Affiliation,Specialization\nDr. Juan Dela Cruz,Manila Medical Center,Orthopedics\n'
+            const blob = new Blob([csv], { type: 'text/csv' })
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'referrer_template.csv'; a.click(); URL.revokeObjectURL(a.href)
+          }} className="px-3 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+            Template
+          </button>
           <label className="px-3 py-2 rounded-xl text-xs font-medium border cursor-pointer" style={{ borderColor: 'var(--light-gray)', color: uploading ? 'var(--mid-gray)' : 'var(--gold)' }}>
             {uploading ? 'Uploading...' : 'Upload CSV'}
             <input type="file" accept=".csv,.txt" onChange={handleCsvUpload} className="hidden" disabled={uploading} />
@@ -5149,7 +5324,7 @@ function PaymentModeSettingsPanel() {
                     <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{m.name}</span>
                     {m.branch ? (
                       <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
-                        {m.branch === 'SANDBOX_EAST' ? 'SBEA' : m.branch === 'SANDBOX_GREENHILLS' ? 'SBGH' : m.branch}
+                        {m.branch === 'SANDBOX_EAST' ? 'SBEA' : m.branch === 'SANDBOX_GREENHILLS' ? 'SBGH' : m.branch === 'VERDANA_STORE' ? 'Verdana' : m.branch}
                       </span>
                     ) : (
                       <span className="ml-2 text-[10px]" style={{ color: 'var(--mid-gray)' }}>All</span>
@@ -5240,6 +5415,7 @@ function PaymentModeSettingsPanel() {
                   <option value="">All Branches</option>
                   <option value="SANDBOX_EAST">Sandbox East</option>
                   <option value="SANDBOX_GREENHILLS">Sandbox Greenhills</option>
+                  <option value="VERDANA_STORE">Verdana Store</option>
                 </select>
               </div>
 
