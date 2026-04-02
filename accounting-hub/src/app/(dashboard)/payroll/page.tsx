@@ -215,7 +215,7 @@ const DEFAULT_SETTINGS: PayrollSettings = {
    ═══════════════════════════════════════════════════════════════ */
 function getCutoffLabel(period: string) {
   const [y, m, h] = period.split('-')
-  return `${MONTHS[parseInt(m) - 1]} ${y} — ${h === '1' ? '1st Half (1–15)' : '2nd Half (16–End)'}`
+  return `${MONTHS[parseInt(m) - 1]} ${y} — ${h === '1' ? '1st Cutoff' : '2nd Cutoff'}`
 }
 
 function uid() { return Math.random().toString(36).slice(2, 10) }
@@ -288,7 +288,12 @@ async function buildPayslipPdf(
   const branchInfo = BRANCH_INFO[p.branch] || BRANCH_INFO['']
   const position = POSITION_LABELS[p.department] || p.department
   const deptLabel = DEPT_LABELS[p.department] || p.department
-  const cutoffLabel = getCutoffLabel(cutoffPeriod)
+  // Build cutoff period label — use custom date range if available, otherwise generic label
+  const fmtDate = (iso: string) =>
+    new Date(iso).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })
+  const cutoffLabel = dateRange
+    ? `${fmtDate(dateRange.start)} \u2013 ${fmtDate(dateRange.end)}`
+    : getCutoffLabel(cutoffPeriod)
 
   // Brand colors
   const ORANGE: [number, number, number] = [255, 147, 0]   // #FF9300
@@ -297,11 +302,6 @@ async function buildPayslipPdf(
   const DARK: [number, number, number] = [30, 30, 30]
   const MID: [number, number, number] = [80, 80, 80]
   const LIGHT_BORDER: [number, number, number] = [210, 210, 210]
-
-  // Build covered-dates label for the payslip
-  const fmtDate = (iso: string) =>
-    new Date(iso).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })
-  const coveredDates = dateRange ? `${fmtDate(dateRange.start)} \u2013 ${fmtDate(dateRange.end)}` : null
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   const pageW = doc.internal.pageSize.getWidth()
@@ -360,7 +360,6 @@ async function buildPayslipPdf(
     ['Department', deptLabel],
     ['Branch', branchInfo.name],
     ['Cutoff Period', cutoffLabel],
-    ...(coveredDates ? [['Covered Dates', coveredDates] as [string, string]] : []),
   ]
   const labelColW = 42
   for (const [label, value] of details) {

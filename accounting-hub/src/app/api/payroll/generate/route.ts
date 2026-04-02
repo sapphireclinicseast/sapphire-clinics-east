@@ -4,6 +4,12 @@ import { prisma } from '@/lib/prisma'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
+// Consultants store branch as SBEA/SBGH, but orders store SANDBOX_EAST/SANDBOX_GREENHILLS
+const BRANCH_TO_ORDER: Record<string, string> = {
+  SBEA: 'SANDBOX_EAST',
+  SBGH: 'SANDBOX_GREENHILLS',
+}
+
 // Parse cutoff period "2026-03-1" → { year: 2026, month: 3, half: 1 }
 function parseCutoff(period: string) {
   const parts = period.split('-')
@@ -75,7 +81,7 @@ export async function GET(req: Request) {
       status: 'COMPLETED',
       transactionDate: { gte: start, lte: end },
     }
-    if (branch) orderWhere.branch = branch
+    if (branch) orderWhere.branch = BRANCH_TO_ORDER[branch] || branch
 
     const orders = await prisma.order.findMany({
       where: orderWhere,
