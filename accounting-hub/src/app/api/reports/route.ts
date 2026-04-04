@@ -83,20 +83,21 @@ export async function GET(req: Request) {
       // Payment modes with deduction rates (MDR, CWT) — include name + COA for reporting
       prisma.paymentMode.findMany({
         where: { isActive: true },
-        select: { id: true, deductions: { select: { name: true, rate: true, accountId: true, account: { select: { accountNumber: true, accountTitle: true } } } } },
+        select: { id: true, deductions: { select: { name: true, rate: true, accountId: true, account: { select: { accountNumber: true, accountTitle: true, accountType: true } } } } },
       }),
     ])
 
     // Build deduction rate map: paymentModeId → total deduction %
     const modeDeductionRate: Record<string, number> = {}
-    // Build per-deduction-type breakdown: paymentModeId → [{ name, rate, accountKey }]
-    const modeDeductionBreakdown: Record<string, { name: string; rate: number; accountKey: string }[]> = {}
+    // Build per-deduction-type breakdown: paymentModeId → [{ name, rate, accountKey, accountType }]
+    const modeDeductionBreakdown: Record<string, { name: string; rate: number; accountKey: string | null; accountType: string | null }[]> = {}
     for (const pm of paymentModes) {
       modeDeductionRate[pm.id] = pm.deductions.reduce((s, d) => s + Number(d.rate), 0)
       modeDeductionBreakdown[pm.id] = pm.deductions.map(d => ({
         name: d.name,
         rate: Number(d.rate),
-        accountKey: d.account ? `${d.account.accountNumber} ${d.account.accountTitle}` : d.name,
+        accountKey: d.account ? `${d.account.accountNumber} ${d.account.accountTitle}` : null,
+        accountType: d.account?.accountType || null,
       }))
     }
 
@@ -179,16 +180,22 @@ export async function GET(req: Request) {
         if (CASH_METHODS.has(p.method)) m.cashReceived += net
 
         // Track per-deduction-type amounts (MDR, CWT individually)
-        // Route to COA accounts: revenue-type accounts (e.g. 7140 MDR) go to revenueByAccount,
-        // asset-type accounts (e.g. 1140 CWT) go to deductionsByAccount
+        // Route to COA accounts based on account type:
+        //   REVENUE (e.g. 7140 MDR) → revenueByAccount (shows in Income Statement discounts)
+        //   ASSET (e.g. 1140 CWT) → deductionsByAccount (shows in Balance Sheet current assets)
         if (p.paymentModeId && modeDeductionBreakdown[p.paymentModeId]) {
           for (const ded of modeDeductionBreakdown[p.paymentModeId]) {
             const dedAmt = gross * (ded.rate / 100)
-            if (dedAmt > 0) {
+            if (dedAmt > 0 && ded.accountKey) {
               m.deductionsByType[ded.name] = (m.deductionsByType[ded.name] || 0) + dedAmt
-              // Route to the deduction's assigned COA account
-              m.revenueByAccount[ded.accountKey] = (m.revenueByAccount[ded.accountKey] || 0) + dedAmt
-              m.deductionsByAccount[ded.accountKey] = (m.deductionsByAccount[ded.accountKey] || 0) + dedAmt
+              if (ded.accountType === 'REVENUE') {
+                // MDR → Income Statement under Discounts & Refunds
+                m.revenueByAccount[ded.accountKey] = (m.revenueByAccount[ded.accountKey] || 0) + dedAmt
+              }
+              if (ded.accountType === 'ASSET') {
+                // CWT → Balance Sheet under Current Assets
+                m.deductionsByAccount[ded.accountKey] = (m.deductionsByAccount[ded.accountKey] || 0) + dedAmt
+              }
             }
           }
         }
