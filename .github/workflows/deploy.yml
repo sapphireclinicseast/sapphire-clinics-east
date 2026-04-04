@@ -298,6 +298,7 @@ jobs:
 
             echo "→ Syncing postgres password to match .env.production..."
             PG_PASS=$(grep "^POSTGRES_PASSWORD" .env.production 2>/dev/null | cut -d= -f2-)
+            echo "   POSTGRES_PASSWORD length: ${#PG_PASS}"
             if [ -n "$PG_PASS" ]; then
               docker exec accounting_db psql -U sapphire -d sapphire_accounting -c "ALTER USER sapphire WITH PASSWORD '${PG_PASS}';" 2>&1 \
                 && echo "   Postgres password synced OK" \
@@ -322,6 +323,17 @@ jobs:
             echo "→ Checking accounting-hub health..."
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/ 2>&1 || echo "000")
             echo "   HTTP $HTTP_CODE"
+
+            echo "→ Testing DB connectivity from app container..."
+            DB_TEST=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:3001/api/auth/providers" 2>&1 || echo "000")
+            echo "   Providers endpoint: HTTP $DB_TEST"
+            # Quick DB connectivity check via a simple query
+            docker exec accounting_app node -e "
+              const { PrismaClient } = require('@prisma/client');
+              const p = new PrismaClient();
+              p.user.count().then(c => { console.log('DB OK, user count:', c); process.exit(0) })
+                .catch(e => { console.error('DB FAIL:', e.message); process.exit(1) })
+            " 2>&1 || echo "   ⚠ DB connectivity test failed — may need container restart"
 
             echo "→ Container logs (last 40 lines):"
             docker logs accounting_app --tail 40 2>&1 || true
