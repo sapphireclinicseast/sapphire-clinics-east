@@ -244,17 +244,6 @@ function getCustomCutoffLabel(s: PayrollSettings, year: number, month: number, h
   return `${fmt(start)} \u2013 ${fmt(end)}`
 }
 
-async function fetchImageAsBase64(url: string): Promise<string> {
-  const res = await fetch(url)
-  const blob = await res.blob()
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onloadend = () => resolve(reader.result as string)
-    reader.onerror = reject
-    reader.readAsDataURL(blob)
-  })
-}
-
 function computeTotals(p: PayrollPreview, extras: ExtraUnitPayLine[], adjs: AdjustmentLine[]) {
   const extraTotal = extras.reduce((s, e) => s + e.unitAmount * e.qty, 0)
   const totalUnitPay = p.unitPayTotal + extraTotal
@@ -309,29 +298,14 @@ async function buildPayslipPdf(
   const contentW = pageW - margin * 2
   let y = margin
 
-  /* ══ HEADER: Logo centered — height computed from natural aspect ratio ══ */
-  const logoW = 56.7
-  let logoH = 14 // default fallback height; overridden below from image dimensions
-  const logoX = (pageW - logoW) / 2
-  try {
-    const logoB64 = await fetchImageAsBase64('/brand/sandbox-clinic-logo.png')
-    // Preserve natural aspect ratio — never stretch the logo
-    const props = doc.getImageProperties(logoB64)
-    logoH = (props.height / props.width) * logoW
-    doc.addImage(logoB64, 'PNG', logoX, y, logoW, logoH)
-  } catch {
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(16)
-    doc.setTextColor(...ORANGE)
-    doc.text('SANDBOX CLINIC', pageW / 2, y + 8, { align: 'center' })
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(8)
-    doc.setTextColor(...MID)
-    doc.text('Multi-Specialty Clinic and Rehabilitation Center', pageW / 2, y + 13, { align: 'center' })
-  }
-  y += logoH + 5
+  /* ══ HEADER: Brand title centered ══ */
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(16)
+  doc.setTextColor(...ORANGE)
+  doc.text('SAPPHIRE CLINICS EAST INC.', pageW / 2, y + 8, { align: 'center' })
+  y += 14
 
-  /* ══ Branch info — left-aligned below logo ══ */
+  /* ══ Branch info — left-aligned below header ══ */
   doc.setFontSize(9)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(...DARK)
