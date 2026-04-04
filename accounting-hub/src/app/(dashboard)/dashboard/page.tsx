@@ -9,10 +9,14 @@ import {
   BarChart3,
   Target,
   Users,
+  Stethoscope,
 } from 'lucide-react'
 import { auth } from '@/lib/auth'
+import PendingQueueWidget from '@/components/dashboard/PendingQueueWidget'
 
-const MODULES = [
+const FRONT_DESK_ROLES = ['SBEA_FRONTDESK', 'SBGH_FRONTDESK']
+
+const ALL_MODULES = [
   {
     href: '/chart-of-accounts',
     icon: BookOpen,
@@ -39,7 +43,8 @@ const MODULES = [
     icon: ShoppingCart,
     title: 'Point of Sale',
     description: 'Process sales transactions',
-    status: 'coming-soon' as const,
+    status: 'active' as const,
+    frontDesk: true,
   },
   {
     href: '/payroll',
@@ -70,6 +75,14 @@ const MODULES = [
     status: 'coming-soon' as const,
   },
   {
+    href: '/services',
+    icon: Stethoscope,
+    title: 'Services',
+    description: 'View and manage clinic services',
+    status: 'active' as const,
+    frontDesk: true,
+  },
+  {
     href: '/users',
     icon: Users,
     title: 'Users',
@@ -81,9 +94,14 @@ const MODULES = [
 
 export default async function DashboardPage() {
   const session = await auth()
-  const isAdmin = session?.user?.role === 'ADMIN'
+  const role = session?.user?.role || ''
+  const isAdmin = role === 'ADMIN'
+  const isFrontDesk = FRONT_DESK_ROLES.includes(role)
 
-  const visibleModules = MODULES.filter((m) => !m.adminOnly || isAdmin)
+  // Front desk users only see Services + POS (active, clickable)
+  const visibleModules = isFrontDesk
+    ? ALL_MODULES.filter((m) => m.frontDesk)
+    : ALL_MODULES.filter((m) => !m.adminOnly || isAdmin)
 
   return (
     <div>
@@ -98,6 +116,13 @@ export default async function DashboardPage() {
           SAPPHIRE Accounting Hub — Module Overview
         </p>
       </div>
+
+      {/* Pending Queue Widget — shown to front desk users */}
+      {isFrontDesk && (
+        <div className="mb-6">
+          <PendingQueueWidget branch={session?.user?.branch} />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {visibleModules.map((mod) => {

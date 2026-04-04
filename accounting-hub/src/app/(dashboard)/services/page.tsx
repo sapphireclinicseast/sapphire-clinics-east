@@ -83,6 +83,8 @@ export default function ServicesPage() {
   const initialLoaded = useRef(false)
   const [search, setSearch] = useState('')
   const [filterDept, setFilterDept] = useState('')
+  const isFrontDesk = session?.user?.role && ['SBEA_FRONTDESK', 'SBGH_FRONTDESK'].includes(session.user.role as string)
+  const userBranch = session?.user?.branch as string | undefined
   const [filterBranch, setFilterBranch] = useState('')
   const [sortField, setSortField] = useState('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
@@ -138,13 +140,23 @@ export default function ServicesPage() {
     finally { setLoading(false) }
   }, [search, filterDept, filterBranch, sortField, sortDir])
 
+  // Lock branch filter for front desk users
+  useEffect(() => {
+    if (isFrontDesk && userBranch && filterBranch !== userBranch) {
+      setFilterBranch(userBranch)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFrontDesk, userBranch])
+
   // Initial load
   useEffect(() => {
     if (!sessionUserId || initialLoaded.current) return
+    // Wait for branch to be set for front desk before first fetch
+    if (isFrontDesk && userBranch && !filterBranch) return
     initialLoaded.current = true
     fetchServices()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionUserId])
+  }, [sessionUserId, filterBranch])
 
   // Fetch revenue + liability accounts for COA dropdown (liability for unearned revenue / packages)
   useEffect(() => {
@@ -366,12 +378,19 @@ export default function ServicesPage() {
           <option value="">All Departments</option>
           {DEPARTMENTS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
         </select>
-        <select value={filterBranch} onChange={(e) => setFilterBranch(e.target.value)}
-          className="px-3 py-2.5 rounded-xl border text-sm outline-none"
-          style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-          <option value="">All Branches</option>
-          {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
-        </select>
+        {isFrontDesk ? (
+          <span className="px-3 py-2.5 rounded-xl border text-sm"
+            style={{ borderColor: 'var(--light-gray)', background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+            {BRANCHES.find(b => b.value === filterBranch)?.label || filterBranch}
+          </span>
+        ) : (
+          <select value={filterBranch} onChange={(e) => setFilterBranch(e.target.value)}
+            className="px-3 py-2.5 rounded-xl border text-sm outline-none"
+            style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+            <option value="">All Branches</option>
+            {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+          </select>
+        )}
       </div>
 
       {/* Error */}
