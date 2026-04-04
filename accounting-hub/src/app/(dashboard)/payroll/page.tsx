@@ -593,6 +593,7 @@ export default function PayrollPage() {
   /* ── Core data ── */
   const [consultants, setConsultants] = useState<Consultant[]>([])
   const [unitPays, setUnitPays] = useState<UnitPayType[]>([])
+  const [unitPaySearch, setUnitPaySearch] = useState('')
   const [payrollPreviews, setPayrollPreviews] = useState<PayrollPreview[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
@@ -1883,8 +1884,17 @@ export default function PayrollPage() {
           {/* ══ TAB 2: Unit Pay Settings ══ */}
           {subTab === 'unit-pay' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Unit Pay Types</h3>
+              <div className="flex items-center justify-between gap-3">
+                <div className="relative flex-1">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
+                  <input
+                    placeholder="Search unit pay types..."
+                    value={unitPaySearch}
+                    onChange={e => setUnitPaySearch(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2.5 rounded-xl border text-sm outline-none"
+                    style={{ borderColor: 'var(--light-gray)' }}
+                  />
+                </div>
                 {canWrite && (
                   <button onClick={openUPCreate} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium text-white" style={{ background: 'var(--teal)' }}>
                     <Plus size={16} /> Add Unit Pay
@@ -1895,7 +1905,7 @@ export default function PayrollPage() {
                 <p className="text-sm py-8 text-center" style={{ color: 'var(--mid-gray)' }}>No unit pay types created yet.</p>
               ) : (
                 <div className="grid gap-3">
-                  {unitPays.map(up => (
+                  {unitPays.filter(up => !unitPaySearch || up.name.toLowerCase().includes(unitPaySearch.toLowerCase())).map(up => (
                     <div key={up.id} className="flex items-center justify-between p-4 rounded-xl border" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
                       <div>
                         <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{up.name}</p>

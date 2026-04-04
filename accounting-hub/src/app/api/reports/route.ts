@@ -21,7 +21,7 @@ export async function GET(req: Request) {
   const branchFilter: any = branch !== 'ALL' ? { branch } : {}
 
   try {
-    const [accounts, orders, inventoryItems, wallets] = await Promise.all([
+    const [accounts, orders, inventoryItems, wallets, paymentModes] = await Promise.all([
       // Chart of Accounts — structure for report line items
       prisma.account.findMany({
         where: { isActive: true },
@@ -60,7 +60,7 @@ export async function GET(req: Request) {
             },
           },
           payments: {
-            select: { method: true, amount: true },
+            select: { method: true, amount: true, paymentModeId: true },
           },
         },
       }),
@@ -79,9 +79,23 @@ export async function GET(req: Request) {
         where: { isActive: true },
         select: { walletType: true, balance: true },
       }),
+
+      // Payment modes with deduction rates (MDR, CWT)
+      prisma.paymentMode.findMany({
+        where: { isActive: true },
+        select: { id: true, deductions: { select: { rate: true } } },
+      }),
     ])
 
+    // Build deduction rate map: paymentModeId → total deduction %
+    const modeDeductionRate: Record<string, number> = {}
+    for (const pm of paymentModes) {
+      modeDeductionRate[pm.id] = pm.deductions.reduce((s, d) => s + Number(d.rate), 0)
+    }
+
     /* ── Aggregate monthly data ────────────────────────────────── */
+
+    const CASH_METHODS = new Set(['CASH', 'GCASH', 'PAYMAYA', 'DEBIT', 'CREDIT_CARD', 'SHOPEE', 'LAZADA', 'TIKTOK'])
 
     interface MonthData {
       serviceRevenue: number
@@ -94,6 +108,7 @@ export async function GET(req: Request) {
       cogsByDept: Record<string, number>
       cashReceived: number
       paymentsByMethod: Record<string, number>
+      deductionsByMethod: Record<string, number>
     }
 
     const monthly: Record<number, MonthData> = {}
@@ -101,7 +116,8 @@ export async function GET(req: Request) {
       monthly[m] = {
         serviceRevenue: 0, productRevenue: 0, unearnedRevenue: 0,
         cogs: 0, revenueByDept: {}, revenueByAccount: {},
-        revenueByBranch: {}, cogsByDept: {}, cashReceived: 0, paymentsByMethod: {},
+        revenueByBranch: {}, cogsByDept: {}, cashReceived: 0,
+        paymentsByMethod: {}, deductionsByMethod: {},
       }
     }
 
@@ -140,11 +156,17 @@ export async function GET(req: Request) {
         }
       }
 
-      // Payments by method
+      // Payments by method — net of deductions (MDR, CWT)
       for (const p of order.payments) {
-        const amt = Number(p.amount)
-        m.paymentsByMethod[p.method] = (m.paymentsByMethod[p.method] || 0) + amt
-        if (p.method === 'CASH') m.cashReceived += amt
+        const gross = Number(p.amount)
+        const rate = p.paymentModeId ? (modeDeductionRate[p.paymentModeId] || 0) : 0
+        const net = gross * (1 - rate / 100)
+        const deduction = gross - net
+        m.paymentsByMethod[p.method] = (m.paymentsByMethod[p.method] || 0) + net
+        if (deduction > 0) {
+          m.deductionsByMethod[p.method] = (m.deductionsByMethod[p.method] || 0) + deduction
+        }
+        if (CASH_METHODS.has(p.method)) m.cashReceived += net
       }
     }
 

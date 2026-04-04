@@ -51,6 +51,7 @@ export async function GET(req: Request) {
       { patientName: { contains: search, mode: 'insensitive' } },
       { barcode: { contains: search, mode: 'insensitive' } },
       { patientEmail: { contains: search, mode: 'insensitive' } },
+      { agency: { contains: search, mode: 'insensitive' } },
     ]
   }
 
@@ -77,7 +78,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { patientId, patientName, patientEmail, walletType, accountId, dateObtained, paymentModeId, initialBalance, attachmentUrl } = await req.json()
+    const { patientId, patientName, patientEmail, walletType, accountId, dateObtained, paymentModeId, initialBalance, attachmentUrl, agency } = await req.json()
 
     if (!patientName?.trim()) {
       return NextResponse.json({ error: 'Patient name is required' }, { status: 400 })
@@ -142,6 +143,7 @@ export async function POST(req: Request) {
         paymentModeId: paymentModeId || null,
         balance: walletType === 'GL' && initialBalance ? Number(initialBalance) : 0,
         attachmentUrl: attachmentUrl || null,
+        agency: walletType === 'GL' ? (agency?.trim() || null) : null,
       },
     })
 

@@ -120,6 +120,8 @@ export default function ServicesPage() {
   const [unitPays, setUnitPays] = useState<{ id: string; name: string }[]>([])
   const [fEligibleServices, setFEligibleServices] = useState<{ serviceId: string; discountPercent: number }[]>([])
   const [eligibleSearch, setEligibleSearch] = useState('')
+  const [eligibleResults, setEligibleResults] = useState<Service[]>([])
+  const [eligibleLoading, setEligibleLoading] = useState(false)
 
   const canWrite = session?.user?.role && ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN'].includes(session.user.role as string)
 
@@ -167,6 +169,22 @@ export default function ServicesPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, filterDept, filterBranch, sortField, sortDir])
 
+  // Search earned services for eligible services picker (independent of table filters)
+  useEffect(() => {
+    if (eligibleSearch.length < 2) { setEligibleResults([]); return }
+    setEligibleLoading(true)
+    const timeout = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/services?revenueType=EARNED&search=${encodeURIComponent(eligibleSearch)}&pageSize=20&sortField=name&sortDir=asc`)
+        const data = await res.json()
+        setEligibleResults((data.data || []).filter((s: Service) => !fEligibleServices.some(es => es.serviceId === s.id)))
+      } catch { setEligibleResults([]) }
+      finally { setEligibleLoading(false) }
+    }, 250)
+    return () => clearTimeout(timeout)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eligibleSearch])
+
   // Sort toggle
   function toggleSort(field: string) {
     if (sortField === field) {
@@ -188,7 +206,7 @@ export default function ServicesPage() {
     setFName(''); setFDept('PT'); setFBranch('ALL'); setFPrice('')
     setFPriceType('FIXED'); setFRevenueType('EARNED'); setFHasDoctorFee(false); setFDoctorFee('')
     setFClinicFee(''); setFPwdClinicOnly(false); setFNoPwdDiscount(false); setFDescription('')
-    setFWalletType(''); setFVipTier(''); setFPackageSessions(''); setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFUnitPayId(''); setFUnitPayEnabled(false); setFEligibleServices([]); setEligibleSearch('')
+    setFWalletType(''); setFVipTier(''); setFPackageSessions(''); setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFUnitPayId(''); setFUnitPayEnabled(false); setFEligibleServices([]); setEligibleSearch(''); setEligibleResults([])
     setError(''); setModalOpen(true)
   }
 
@@ -639,22 +657,21 @@ export default function ServicesPage() {
                             className="w-full px-3 py-2 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                           {eligibleSearch.length >= 2 && (
                             <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-36 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
-                              {services
-                                .filter(s => s.revenueType === 'EARNED' && s.name.toLowerCase().includes(eligibleSearch.toLowerCase()) && !fEligibleServices.some(es => es.serviceId === s.id))
-                                .slice(0, 15)
-                                .map(s => (
+                              {eligibleLoading ? (
+                                <p className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>Searching...</p>
+                              ) : eligibleResults.length === 0 ? (
+                                <p className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>No matching earned services found</p>
+                              ) : eligibleResults.map(s => (
                                   <button key={s.id} type="button" onClick={() => {
                                     setFEligibleServices(prev => [...prev, { serviceId: s.id, discountPercent: 0 }])
                                     setEligibleSearch('')
+                                    setEligibleResults([])
                                   }}
                                     className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex justify-between" style={{ color: 'var(--charcoal)' }}>
                                     <span>{s.name} <span className="text-xs px-1 py-0.5 rounded" style={{ background: '#f3e8ff', color: '#6b21a8' }}>{s.department}</span></span>
                                     <span style={{ color: 'var(--teal)' }}>{formatCurrency(Number(s.price))}</span>
                                   </button>
                                 ))}
-                              {services.filter(s => s.revenueType === 'EARNED' && s.name.toLowerCase().includes(eligibleSearch.toLowerCase()) && !fEligibleServices.some(es => es.serviceId === s.id)).length === 0 && (
-                                <p className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>No matching earned services found</p>
-                              )}
                             </div>
                           )}
                         </div>

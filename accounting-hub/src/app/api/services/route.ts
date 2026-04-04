@@ -20,6 +20,7 @@ export async function GET(req: Request) {
   const search = searchParams.get('search') || ''
   const department = searchParams.get('department') || ''
   const branch = searchParams.get('branch') || ''
+  const revenueType = searchParams.get('revenueType') || ''
   const sortField = searchParams.get('sortField') || 'name'
   const sortDir = searchParams.get('sortDir') === 'desc' ? 'desc' : 'asc'
 
@@ -36,6 +37,10 @@ export async function GET(req: Request) {
 
   if (branch && VALID_BRANCHES.includes(branch) && branch !== 'ALL') {
     where.branch = { in: [branch, 'ALL'] }
+  }
+
+  if (revenueType && VALID_REVENUE_TYPES.includes(revenueType)) {
+    where.revenueType = revenueType
   }
 
   // Build orderBy

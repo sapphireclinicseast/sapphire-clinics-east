@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import {
   FileText, Download, Printer, Loader2, ChevronDown,
-  Calendar, Building2, LayoutList, BarChart3,
+  Calendar, Building2, LayoutList, BarChart3, X,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
@@ -23,6 +23,7 @@ interface MonthData {
   cogsByDept: Record<string, number>
   cashReceived: number
   paymentsByMethod: Record<string, number>
+  deductionsByMethod: Record<string, number>
 }
 
 interface AccountEntry {
@@ -46,6 +47,20 @@ interface ReportData {
 
 type ReportTab = 'balance-sheet' | 'income-statement' | 'cash-flow'
 type ViewMode = 'annual' | 'monthly'
+type OnDrillDown = (label: string, category: string, month: number) => void
+
+interface DrillDownState {
+  label: string
+  category: string
+  month: number
+}
+
+interface DrillDownItem {
+  date: string
+  type: string
+  branch: string
+  amount: number
+}
 
 /* ═══════════════════════════════════════════════════════════════
    CONSTANTS
@@ -225,10 +240,10 @@ function SubSectionHeader({ label }: { label: string }) {
 /* ── Annual row (label + amount) ──────────────────────────────── */
 
 function AnnualRow({
-  label, amount, indent = 0, bold = false, isTotal = false, isGrandTotal = false, negative = false,
+  label, amount, indent = 0, bold = false, isTotal = false, isGrandTotal = false, negative = false, onDrillDown,
 }: {
   label: string; amount: number; indent?: number; bold?: boolean
-  isTotal?: boolean; isGrandTotal?: boolean; negative?: boolean
+  isTotal?: boolean; isGrandTotal?: boolean; negative?: boolean; onDrillDown?: () => void
 }) {
   return (
     <div
@@ -244,7 +259,13 @@ function AnnualRow({
       }}
     >
       <span>{label}</span>
-      <span className="text-right font-mono text-sm">{negative ? fmtSigned(amount) : fmt(amount)}</span>
+      <span
+        className={`text-right font-mono text-sm${onDrillDown ? ' cursor-pointer hover:underline' : ''}`}
+        style={{ color: onDrillDown && amount !== 0 ? 'var(--teal)' : undefined }}
+        onClick={onDrillDown}
+      >
+        {negative ? fmtSigned(amount) : fmt(amount)}
+      </span>
     </div>
   )
 }
@@ -252,10 +273,11 @@ function AnnualRow({
 /* ── Monthly row (label + 12 months + total) ──────────────────── */
 
 function MonthlyRow({
-  label, values, total, indent = 0, bold = false, isTotal = false, isGrandTotal = false, negative = false,
+  label, values, total, indent = 0, bold = false, isTotal = false, isGrandTotal = false, negative = false, onClickCell,
 }: {
   label: string; values: number[]; total: number; indent?: number; bold?: boolean
   isTotal?: boolean; isGrandTotal?: boolean; negative?: boolean
+  onClickCell?: (month: number | null) => void
 }) {
   return (
     <div
@@ -275,11 +297,20 @@ function MonthlyRow({
     >
       <span className="truncate pr-2">{label}</span>
       {values.map((v, i) => (
-        <span key={i} className="text-right font-mono pr-1">
+        <span
+          key={i}
+          className={`text-right font-mono pr-1${onClickCell && v !== 0 ? ' cursor-pointer hover:underline' : ''}`}
+          style={{ color: onClickCell && v !== 0 ? 'var(--teal)' : undefined }}
+          onClick={() => onClickCell?.(i + 1)}
+        >
           {negative ? fmtSigned(v) : fmt(v)}
         </span>
       ))}
-      <span className="text-right font-mono font-semibold">
+      <span
+        className={`text-right font-mono font-semibold${onClickCell && total !== 0 ? ' cursor-pointer hover:underline' : ''}`}
+        style={{ color: onClickCell && total !== 0 ? 'var(--teal)' : undefined }}
+        onClick={() => onClickCell?.(null)}
+      >
         {negative ? fmtSigned(total) : fmt(total)}
       </span>
     </div>
@@ -308,10 +339,114 @@ function MonthlyHeader() {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   DRILL-DOWN PANEL
+   ═══════════════════════════════════════════════════════════════ */
+
+function DrillDownPanel({
+  target, year, branch, onClose,
+}: {
+  target: DrillDownState
+  year: number
+  branch: string
+  onClose: () => void
+}) {
+  const [loading, setLoading] = useState(true)
+  const [items, setItems] = useState<DrillDownItem[]>([])
+  const [total, setTotal] = useState(0)
+
+  useEffect(() => {
+    setLoading(true)
+    const params = new URLSearchParams({
+      year: String(year),
+      branch,
+      month: String(target.month),
+      category: target.category,
+    })
+    fetch(`/api/reports/drill-down?${params}`)
+      .then((r) => r.json())
+      .then((data) => {
+        setItems(data.items || [])
+        setTotal(data.total || 0)
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [target, year, branch])
+
+  const monthLabel = target.month > 0 ? FULL_MONTHS[target.month - 1] : String(year)
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-stretch justify-end print:hidden"
+      style={{ background: 'rgba(0,0,0,0.3)' }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div className="w-full max-w-xl flex flex-col" style={{ background: 'white', boxShadow: '-4px 0 32px rgba(0,0,0,0.12)' }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+          <div>
+            <h3 className="font-semibold text-base" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
+              {target.label}
+            </h3>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+              {monthLabel} &bull; {branch === 'ALL' ? 'All Branches' : branch}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100">
+            <X size={18} style={{ color: 'var(--mid-gray)' }} />
+          </button>
+        </div>
+
+        {/* Table */}
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} />
+            </div>
+          ) : items.length === 0 ? (
+            <p className="text-sm text-center py-12" style={{ color: 'var(--mid-gray)' }}>No transactions found</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ background: 'var(--pale-teal)', borderBottom: '1px solid var(--light-gray)' }}>
+                  <th className="text-left px-4 py-2.5 font-semibold text-xs uppercase tracking-wide" style={{ color: 'var(--deep-teal)' }}>Date</th>
+                  <th className="text-left px-4 py-2.5 font-semibold text-xs uppercase tracking-wide" style={{ color: 'var(--deep-teal)' }}>Type of Transaction</th>
+                  <th className="text-right px-4 py-2.5 font-semibold text-xs uppercase tracking-wide" style={{ color: 'var(--deep-teal)' }}>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item, i) => (
+                  <tr key={i} style={{ borderBottom: '1px solid var(--light-gray)' }}>
+                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: 'var(--mid-gray)' }}>{item.date}</td>
+                    <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--charcoal)' }}>{item.type}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-xs font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(item.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Footer */}
+        {!loading && items.length > 0 && (
+          <div className="flex items-center justify-between px-5 py-3" style={{ borderTop: '2px solid var(--teal)', background: 'var(--pale-teal)' }}>
+            <span className="text-sm font-semibold" style={{ color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }}>
+              Total ({items.length} transaction{items.length !== 1 ? 's' : ''})
+            </span>
+            <span className="font-mono font-bold text-base" style={{ color: 'var(--deep-teal)' }}>
+              {formatCurrency(total)}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════
    BALANCE SHEET
    ═══════════════════════════════════════════════════════════════ */
 
-function BalanceSheet({ data, viewMode }: { data: ReportData; viewMode: ViewMode }) {
+function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewMode: ViewMode; onDrillDown: OnDrillDown }) {
   const { accounts, inventory, wallets, monthly, inventorySourceAccounts = [], unclassifiedAP = 0 } = data
 
   // Calculate totals from available data
@@ -400,7 +535,7 @@ function BalanceSheet({ data, viewMode }: { data: ReportData; viewMode: ViewMode
         {/* ASSETS */}
         <SectionHeader label="Assets" />
         <SubSectionHeader label="Current Assets" />
-        <AnnualRow label="Cash and Cash Equivalents" amount={totalCashReceived} indent={2} />
+        <AnnualRow label="Cash and Cash Equivalents" amount={totalCashReceived} indent={2} onDrillDown={() => onDrillDown('Cash and Cash Equivalents', 'CASH_BALANCE', 0)} />
         {currentAssetAccounts.map((a) => (
           <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={0} indent={2} />
         ))}
@@ -511,7 +646,7 @@ function BalanceSheet({ data, viewMode }: { data: ReportData; viewMode: ViewMode
    INCOME STATEMENT
    ═══════════════════════════════════════════════════════════════ */
 
-function IncomeStatement({ data, viewMode }: { data: ReportData; viewMode: ViewMode }) {
+function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; viewMode: ViewMode; onDrillDown: OnDrillDown }) {
   const { monthly, accounts } = data
 
   // COA-driven: Revenue accounts (CREDIT normal balance = gross revenue, DEBIT = discounts)
@@ -574,9 +709,11 @@ function IncomeStatement({ data, viewMode }: { data: ReportData; viewMode: ViewM
         {/* 7000 GROSS REVENUE */}
         <SectionHeader label="7000 Gross Revenue" />
         {grossRevenueAccts.map((a) => (
-          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={acctAmount(a.accountNumber, a.accountTitle)} indent={1} />
+          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={acctAmount(a.accountNumber, a.accountTitle)} indent={1}
+            onDrillDown={() => onDrillDown(a.accountTitle, 'REVENUE', 0)} />
         ))}
-        <AnnualRow label="Total for 7000 Gross Revenue" amount={effectiveGrossRevenue} indent={0} isTotal bold />
+        <AnnualRow label="Total for 7000 Gross Revenue" amount={effectiveGrossRevenue} indent={0} isTotal bold
+          onDrillDown={() => onDrillDown('Total Gross Revenue', 'REVENUE', 0)} />
 
         <div className="h-3" />
 
@@ -589,7 +726,7 @@ function IncomeStatement({ data, viewMode }: { data: ReportData; viewMode: ViewM
 
         <div className="h-3" />
 
-        <AnnualRow label="Total for Net Sales" amount={netSales} isGrandTotal />
+        <AnnualRow label="Total for Net Sales" amount={netSales} isGrandTotal onDrillDown={() => onDrillDown('Net Sales', 'REVENUE', 0)} />
 
         <div className="h-3" />
 
@@ -599,9 +736,11 @@ function IncomeStatement({ data, viewMode }: { data: ReportData; viewMode: ViewM
           <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={0} indent={1} />
         ))}
         {costOfSalesAccts.length === 0 && totalCOGS > 0 && (
-          <AnnualRow label="Cost of Goods Sold (computed)" amount={totalCOGS} indent={1} />
+          <AnnualRow label="Cost of Goods Sold (computed)" amount={totalCOGS} indent={1}
+            onDrillDown={() => onDrillDown('Cost of Goods Sold', 'COGS', 0)} />
         )}
-        <AnnualRow label="Total for Cost of Sales" amount={totalCOGS} indent={0} isTotal bold />
+        <AnnualRow label="Total for Cost of Sales" amount={totalCOGS} indent={0} isTotal bold
+          onDrillDown={() => onDrillDown('Cost of Sales', 'COGS', 0)} />
 
         <div className="h-3" />
 
@@ -651,11 +790,13 @@ function IncomeStatement({ data, viewMode }: { data: ReportData; viewMode: ViewM
       {grossRevenueAccts.map((a) => (
         <MonthlyRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`}
           values={acctMonthly(a.accountNumber, a.accountTitle)}
-          total={acctAmount(a.accountNumber, a.accountTitle)} indent={1} />
+          total={acctAmount(a.accountNumber, a.accountTitle)} indent={1}
+          onClickCell={(m) => onDrillDown(a.accountTitle, 'REVENUE', m ?? 0)} />
       ))}
       <MonthlyRow label="Total for 7000 Gross Revenue"
         values={getMonthlyArray(monthly, (m) => m.serviceRevenue + m.productRevenue)}
-        total={effectiveGrossRevenue} bold isTotal />
+        total={effectiveGrossRevenue} bold isTotal
+        onClickCell={(m) => onDrillDown('Total Gross Revenue', 'REVENUE', m ?? 0)} />
 
       <div className="h-2" />
 
@@ -684,7 +825,8 @@ function IncomeStatement({ data, viewMode }: { data: ReportData; viewMode: ViewM
           values={Array(12).fill(0)} total={0} indent={1} />
       ))}
       <MonthlyRow label="Total for Cost of Sales"
-        values={getMonthlyArray(monthly, (m) => m.cogs)} total={totalCOGS} bold isTotal />
+        values={getMonthlyArray(monthly, (m) => m.cogs)} total={totalCOGS} bold isTotal
+        onClickCell={(m) => onDrillDown('Cost of Sales', 'COGS', m ?? 0)} />
 
       <div className="h-2" />
 
@@ -730,7 +872,7 @@ function IncomeStatement({ data, viewMode }: { data: ReportData; viewMode: ViewM
    CASH FLOW STATEMENT
    ═══════════════════════════════════════════════════════════════ */
 
-function CashFlowStatement({ data, viewMode }: { data: ReportData; viewMode: ViewMode }) {
+function CashFlowStatement({ data, viewMode, onDrillDown }: { data: ReportData; viewMode: ViewMode; onDrillDown: OnDrillDown }) {
   const { monthly } = data
 
   // Collect all payment methods used
@@ -773,12 +915,14 @@ function CashFlowStatement({ data, viewMode }: { data: ReportData; viewMode: Vie
         <SubSectionHeader label="Cash Receipts from Customers" />
         {cashMethodsUsed.map((method) => {
           const methodTotal = sumMonths(monthly, (m) => m.paymentsByMethod[method] || 0)
-          return <AnnualRow key={method} label={PAYMENT_LABELS[method] || method} amount={methodTotal} indent={2} />
+          return <AnnualRow key={method} label={PAYMENT_LABELS[method] || method} amount={methodTotal} indent={2}
+            onDrillDown={() => onDrillDown(PAYMENT_LABELS[method] || method, method, 0)} />
         })}
         {cashMethodsUsed.length === 0 && (
           <AnnualRow label="(No cash receipts recorded)" amount={0} indent={2} />
         )}
-        <AnnualRow label="Total Cash Receipts" amount={totalCashFromOps} indent={1} isTotal bold />
+        <AnnualRow label="Total Cash Receipts" amount={totalCashFromOps} indent={1} isTotal bold
+          onDrillDown={() => onDrillDown('Total Cash Receipts', 'CASH_BALANCE', 0)} />
 
         {nonCashMethodsUsed.length > 0 && (
           <>
@@ -817,7 +961,8 @@ function CashFlowStatement({ data, viewMode }: { data: ReportData; viewMode: Vie
 
         <div className="h-2" />
         <AnnualRow label="Beginning Cash Balance" amount={0} indent={0} />
-        <AnnualRow label="ENDING CASH BALANCE" amount={netChange} isGrandTotal />
+        <AnnualRow label="ENDING CASH BALANCE" amount={netChange} isGrandTotal
+          onDrillDown={() => onDrillDown('Ending Cash Balance', 'CASH_BALANCE', 0)} />
       </div>
     )
   }
@@ -836,6 +981,7 @@ function CashFlowStatement({ data, viewMode }: { data: ReportData; viewMode: Vie
           values={getMonthlyArray(monthly, (m) => m.paymentsByMethod[method] || 0)}
           total={sumMonths(monthly, (m) => m.paymentsByMethod[method] || 0)}
           indent={1}
+          onClickCell={(m) => onDrillDown(PAYMENT_LABELS[method] || method, method, m ?? 0)}
         />
       ))}
 
@@ -909,6 +1055,11 @@ export default function ReportsPage() {
   const [branch, setBranch] = useState('ALL')
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<ReportData | null>(null)
+  const [drillDown, setDrillDown] = useState<DrillDownState | null>(null)
+
+  const handleDrillDown: OnDrillDown = (label, category, month) => {
+    setDrillDown({ label, category, month })
+  }
 
   const currentYear = new Date().getFullYear()
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i)
@@ -1105,13 +1256,13 @@ export default function ReportsPage() {
         {!loading && data && (
           <div className="py-2">
             {activeTab === 'balance-sheet' && (
-              <BalanceSheet data={data} viewMode={viewMode} />
+              <BalanceSheet data={data} viewMode={viewMode} onDrillDown={handleDrillDown} />
             )}
             {activeTab === 'income-statement' && (
-              <IncomeStatement data={data} viewMode={viewMode} />
+              <IncomeStatement data={data} viewMode={viewMode} onDrillDown={handleDrillDown} />
             )}
             {activeTab === 'cash-flow' && (
-              <CashFlowStatement data={data} viewMode={viewMode} />
+              <CashFlowStatement data={data} viewMode={viewMode} onDrillDown={handleDrillDown} />
             )}
           </div>
         )}
@@ -1124,6 +1275,16 @@ export default function ReportsPage() {
           Generated on {new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })} &bull; SCEI Accounting Hub
         </div>
       </div>
+
+      {/* Drill-down panel */}
+      {drillDown && (
+        <DrillDownPanel
+          target={drillDown}
+          year={year}
+          branch={branch}
+          onClose={() => setDrillDown(null)}
+        />
+      )}
 
       {/* Print styles */}
       <style jsx global>{`

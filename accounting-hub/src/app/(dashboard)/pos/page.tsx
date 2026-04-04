@@ -2474,7 +2474,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   const [wallets, setWallets] = useState<DigitalWallet[]>([])
   const [loading, setLoading] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
-  const [createForm, setCreateForm] = useState({ patientName: '', patientId: '', patientEmail: '', accountId: '', dateObtained: '', paymentModeId: '', glAmount: '', attachmentUrl: '' })
+  const [createForm, setCreateForm] = useState({ patientName: '', patientId: '', patientEmail: '', accountId: '', dateObtained: '', paymentModeId: '', glAmount: '', attachmentUrl: '', agency: '' })
   const [createAccountSearch, setCreateAccountSearch] = useState('')
   const [arAccounts, setArAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
   const [crmSearch, setCrmSearch] = useState('')
@@ -2575,7 +2575,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         return
       }
       setShowCreate(false)
-      setCreateForm({ patientName: '', patientId: '', patientEmail: '', accountId: '', dateObtained: '', paymentModeId: '', glAmount: '', attachmentUrl: '' })
+      setCreateForm({ patientName: '', patientId: '', patientEmail: '', accountId: '', dateObtained: '', paymentModeId: '', glAmount: '', attachmentUrl: '', agency: '' })
       setCreateAccountSearch('')
       setCrmSearch('')
       setCrmPatients([])
@@ -2967,7 +2967,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 {(walletTypeFilter === 'HMO'
                   ? ['HMO Provider', 'Type', 'Receivable Balance', 'Transactions', '']
                   : walletTypeFilter === 'GL'
-                  ? ['Patient Name', 'Type', 'GL Balance', 'Attachment', '']
+                  ? ['Patient Name', 'Agency', 'GL Balance', 'Attachment', '']
                   : ['Patient Name', 'Type', 'Balance', 'Barcode', 'Packages', 'Reward Points', '']
                 ).map(h => (
                   <th key={h} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>{h}</th>
@@ -2987,9 +2987,15 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                       {w.isActive === false && <span className="ml-2 text-xs font-normal text-red-600">(Deleted)</span>}
                     </td>
                     <td className="px-5 py-3">
-                      <span className="px-2.5 py-1 rounded-full text-xs font-semibold" style={{ background: typeBadge.bg, color: typeBadge.color }}>
-                        {WALLET_TYPE_LABELS[w.walletType] || w.walletType}
-                      </span>
+                      {walletTypeFilter === 'GL' ? (
+                        <span className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>
+                          {(w as unknown as { agency?: string }).agency || <span style={{ color: 'var(--mid-gray)' }}>—</span>}
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-1 rounded-full text-xs font-semibold" style={{ background: typeBadge.bg, color: typeBadge.color }}>
+                          {WALLET_TYPE_LABELS[w.walletType] || w.walletType}
+                        </span>
+                      )}
                     </td>
                     <td className="px-5 py-3 font-semibold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(toNum(w.balance))}</td>
                     {walletTypeFilter === 'HMO' ? (
@@ -3018,10 +3024,18 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                           ) : <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>—</span>}
                         </td>
                         <td className="px-5 py-3">
-                          <button onClick={(e) => { e.stopPropagation(); setShowSOA(w) }}
-                            className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={{ color: '#15803d' }}>
-                            Print SOA
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <button onClick={(e) => { e.stopPropagation(); setShowSOA(w) }}
+                              className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={{ color: '#15803d' }}>
+                              Print SOA
+                            </button>
+                            {w.isActive !== false && (
+                              <button onClick={(e) => { e.stopPropagation(); deleteWallet(w) }}
+                                className="p-1.5 rounded-lg hover:bg-red-50" title="Delete GL Wallet">
+                                <Trash2 size={13} className="text-red-500" />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </>
                     ) : (
@@ -3187,9 +3201,16 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                   </select>
                 </div>
               )}
-              {/* GL-specific: Amount and Attachment */}
+              {/* GL-specific: Agency, Amount and Attachment */}
               {walletTypeFilter === 'GL' && (
                 <>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Agency *</label>
+                    <input value={createForm.agency} onChange={e => setCreateForm({ ...createForm, agency: e.target.value })}
+                      placeholder="e.g. DSWD, PhilHealth, OWWA, GSIS"
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                    <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>The issuing agency of this Guarantee Letter</p>
+                  </div>
                   <div>
                     <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>GL Amount (Accounts Receivable) *</label>
                     <div className="flex items-center gap-1">
