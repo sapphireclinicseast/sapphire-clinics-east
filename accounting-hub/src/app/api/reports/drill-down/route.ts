@@ -68,14 +68,16 @@ export async function GET(req: Request) {
       // Load deduction type breakdown for each payment mode
       const allModes = await prisma.paymentMode.findMany({
         where: { isActive: true },
-        select: { id: true, name: true, deductions: { select: { name: true, rate: true } } },
+        select: { id: true, name: true, deductions: { select: { name: true, rate: true, account: { select: { accountNumber: true, accountTitle: true } } } } },
       })
       // Map: paymentModeId → { name, rate } for the matching deduction type
-      const modeMatch: Record<string, { modeName: string; rate: number }> = {}
+      // Match by deduction name OR by COA account key (e.g. "1140 Creditable Withholding Tax")
+      const modeMatch: Record<string, { modeName: string; rate: number; dedName: string }> = {}
       for (const pm of allModes) {
         for (const d of pm.deductions) {
-          if (d.name === accountKey) {
-            modeMatch[pm.id] = { modeName: pm.name, rate: Number(d.rate) }
+          const coaKey = d.account ? `${d.account.accountNumber} ${d.account.accountTitle}` : ''
+          if (d.name === accountKey || coaKey === accountKey || d.account?.accountTitle === accountKey) {
+            modeMatch[pm.id] = { modeName: pm.name, rate: Number(d.rate), dedName: d.name }
           }
         }
       }

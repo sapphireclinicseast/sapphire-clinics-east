@@ -25,6 +25,7 @@ interface MonthData {
   paymentsByMethod: Record<string, number>
   deductionsByMethod: Record<string, number>
   deductionsByType: Record<string, number>  // "Merchant Discount Rate" → amount, "Creditable Withholding Tax" → amount
+  deductionsByAccount: Record<string, number>  // COA account key → amount (for balance sheet assets like CWT)
 }
 
 interface AccountEntry {
@@ -457,6 +458,14 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
   const invByDept = inventory.byDepartment
   const invTotal = inventory.total
 
+  // Aggregate deduction amounts by COA account across all months (for CWT etc.)
+  const deductionAccountTotals: Record<string, number> = {}
+  for (let m = 1; m <= 12; m++) {
+    for (const [key, val] of Object.entries(monthly[m].deductionsByAccount || {})) {
+      deductionAccountTotals[key] = (deductionAccountTotals[key] || 0) + val
+    }
+  }
+
   // Asset accounts from CoA
   const currentAssetAccounts = accounts.ASSET?.CURRENT_ASSETS || []
   const ppeAccounts = accounts.ASSET?.PPE || []
@@ -497,8 +506,14 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
   const ownersEquityAccounts = accounts.EQUITY?.OWNERS_EQUITY || []
   const retainedEarningsAccounts = accounts.EQUITY?.RETAINED_EARNINGS || []
 
+  // Sum deduction-sourced current asset amounts (CWT, etc.)
+  const deductionAssetTotal = currentAssetAccounts.reduce((s, a) => {
+    const key = `${a.accountNumber} ${a.accountTitle}`
+    return s + (deductionAccountTotals[key] || 0)
+  }, 0)
+
   // Computed totals
-  const totalCurrentAssets = totalCashReceived + invTotal
+  const totalCurrentAssets = totalCashReceived + invTotal + deductionAssetTotal
   const totalNonCurrentAssets = 0
   const totalAssets = totalCurrentAssets + totalNonCurrentAssets
 
@@ -539,9 +554,14 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
         <SectionHeader label="Assets" />
         <SubSectionHeader label="Current Assets" />
         <AnnualRow label="Cash and Cash Equivalents" amount={totalCashReceived} indent={2} onDrillDown={() => onDrillDown('Cash and Cash Equivalents', 'CASH_BALANCE', 0)} />
-        {currentAssetAccounts.map((a) => (
-          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={0} indent={2} />
-        ))}
+        {currentAssetAccounts.map((a) => {
+          const acctKey = `${a.accountNumber} ${a.accountTitle}`
+          const computedAmt = deductionAccountTotals[acctKey] || 0
+          return (
+            <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={computedAmt} indent={2}
+              onDrillDown={computedAmt > 0 ? () => onDrillDown(a.accountTitle, 'DEDUCTION', 0, acctKey.split(' ').slice(1).join(' ')) : undefined} />
+          )
+        })}
 
         {/* Inventory breakdown */}
         {inventoryAccounts.length > 0 && (
@@ -673,6 +693,14 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
     for (const a of Object.keys(monthly[m].revenueByAccount || {})) allAccounts2.add(a)
   }
 
+  // Aggregate deduction amounts by COA account (to identify deduction-sourced accounts like MDR)
+  const deductionAccountTotals: Record<string, number> = {}
+  for (let m = 1; m <= 12; m++) {
+    for (const [key, val] of Object.entries(monthly[m].deductionsByAccount || {})) {
+      deductionAccountTotals[key] = (deductionAccountTotals[key] || 0) + val
+    }
+  }
+
   // Helper: get amount for a COA account from revenueByAccount
   const acctAmount = (acctNum: string, acctTitle: string) => {
     const key = `${acctNum} ${acctTitle}`
@@ -697,22 +725,8 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
   // Gross Profit
   const grossProfit = netSales - totalCOGS
 
-  // Collect all deduction type names across all months (MDR, CWT, etc.)
-  const deductionTypes = new Set<string>()
-  for (let m = 1; m <= 12; m++) {
-    for (const dt of Object.keys(monthly[m].deductionsByType || {})) deductionTypes.add(dt)
-  }
-  const deductionTypeList = Array.from(deductionTypes).sort()
-
-  // Total deductions per type (full year)
-  const deductionTotals: Record<string, number> = {}
-  for (const dt of deductionTypeList) {
-    deductionTotals[dt] = sumMonths(monthly, (m) => (m.deductionsByType || {})[dt] || 0)
-  }
-  const totalDeductions = Object.values(deductionTotals).reduce((s, v) => s + v, 0)
-
-  // Operating Expenses (indirect COA accounts + computed deductions)
-  const totalOpex = totalDeductions
+  // Operating Expenses (indirect) — placeholder 0 until journal entries exist
+  const totalOpex = 0
 
   // EBITDA
   const ebitda = grossProfit - totalOpex
@@ -736,9 +750,16 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
 
         {/* 7002 DISCOUNTS AND REFUNDS */}
         <SectionHeader label="7002 Discounts and Refunds" />
-        {discountAccts.map((a) => (
-          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={-acctAmount(a.accountNumber, a.accountTitle)} indent={1} negative />
-        ))}
+        {discountAccts.map((a) => {
+          const amt = acctAmount(a.accountNumber, a.accountTitle)
+          const acctKey = `${a.accountNumber} ${a.accountTitle}`
+          // If this is a deduction-sourced account (like MDR), drill-down as DEDUCTION; otherwise as REVENUE
+          const isDeductionSourced = Object.keys(deductionAccountTotals).includes(acctKey)
+          return (
+            <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={-amt} indent={1} negative
+              onDrillDown={amt > 0 ? () => onDrillDown(a.accountTitle, isDeductionSourced ? 'DEDUCTION' : 'REVENUE', 0, isDeductionSourced ? a.accountTitle : acctKey) : undefined} />
+          )
+        })}
         <AnnualRow label="Total for 7002 Discounts and Refunds" amount={-totalDiscounts} indent={0} isTotal bold negative />
 
         <div className="h-3" />
@@ -765,16 +786,12 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
 
         <div className="h-3" />
 
-        {/* EXPENSES (Indirect + Deductions) */}
+        {/* EXPENSES (Indirect) */}
         <SectionHeader label="Expenses" />
         {indirectExpenseAccts.map((a) => (
           <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={0} indent={1} />
         ))}
-        {deductionTypeList.map((dt) => (
-          <AnnualRow key={dt} label={dt} amount={deductionTotals[dt]} indent={1}
-            onDrillDown={() => onDrillDown(dt, 'DEDUCTION', 0, dt)} />
-        ))}
-        {indirectExpenseAccts.length === 0 && deductionTypeList.length === 0 && (
+        {indirectExpenseAccts.length === 0 && (
           <AnnualRow label="(No expense accounts set up)" amount={0} indent={1} />
         )}
         <AnnualRow label="Total for Expenses" amount={totalOpex} indent={0} isTotal bold />
@@ -823,13 +840,26 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
 
       {/* 7002 DISCOUNTS AND REFUNDS */}
       <SectionHeader label="7002 Discounts and Refunds" />
-      {discountAccts.map((a) => (
-        <MonthlyRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`}
-          values={acctMonthly(a.accountNumber, a.accountTitle).map(v => -v)}
-          total={-acctAmount(a.accountNumber, a.accountTitle)} indent={1} />
-      ))}
+      {discountAccts.map((a) => {
+        const acctKey = `${a.accountNumber} ${a.accountTitle}`
+        const isDeductionSourced = Object.keys(deductionAccountTotals).includes(acctKey)
+        return (
+          <MonthlyRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`}
+            values={acctMonthly(a.accountNumber, a.accountTitle).map(v => -v)}
+            total={-acctAmount(a.accountNumber, a.accountTitle)} indent={1}
+            onClickCell={(m) => onDrillDown(a.accountTitle, isDeductionSourced ? 'DEDUCTION' : 'REVENUE', m ?? 0, isDeductionSourced ? a.accountTitle : acctKey)} />
+        )
+      })}
       <MonthlyRow label="Total for 7002 Discounts and Refunds"
-        values={Array(12).fill(-totalDiscounts / 12)} total={-totalDiscounts} bold isTotal />
+        values={getMonthlyArray(monthly, (m) => {
+          // Sum all DEBIT revenue accounts monthly
+          let total = 0
+          for (const a of discountAccts) {
+            total += (m.revenueByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0
+          }
+          return -total
+        })}
+        total={-totalDiscounts} bold isTotal />
 
       <div className="h-2" />
 
@@ -863,20 +893,13 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
         <MonthlyRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`}
           values={Array(12).fill(0)} total={0} indent={1} />
       ))}
-      {deductionTypeList.map((dt) => (
-        <MonthlyRow key={dt} label={dt}
-          values={getMonthlyArray(monthly, (m) => (m.deductionsByType || {})[dt] || 0)}
-          total={deductionTotals[dt]} indent={1}
-          onClickCell={(m) => onDrillDown(dt, 'DEDUCTION', m ?? 0, dt)} />
-      ))}
       <MonthlyRow label="Total for Expenses"
-        values={getMonthlyArray(monthly, (m) => Object.values(m.deductionsByType || {}).reduce((s, v) => s + v, 0))}
-        total={totalOpex} bold isTotal />
+        values={Array(12).fill(0)} total={totalOpex} bold isTotal />
 
       <div className="h-2" />
 
       <MonthlyRow label="EBITDA"
-        values={getMonthlyArray(monthly, (m) => m.serviceRevenue + m.productRevenue - m.cogs - Object.values(m.deductionsByType || {}).reduce((s, v) => s + v, 0))}
+        values={getMonthlyArray(monthly, (m) => m.serviceRevenue + m.productRevenue - m.cogs)}
         total={ebitda} isGrandTotal />
 
       <div className="h-2" />
@@ -890,7 +913,7 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
       <div className="h-2" />
 
       <MonthlyRow label="NET INCOME"
-        values={getMonthlyArray(monthly, (m) => m.serviceRevenue + m.productRevenue - m.cogs - Object.values(m.deductionsByType || {}).reduce((s, v) => s + v, 0))}
+        values={getMonthlyArray(monthly, (m) => m.serviceRevenue + m.productRevenue - m.cogs)}
         total={netIncome} isGrandTotal />
     </div>
   )

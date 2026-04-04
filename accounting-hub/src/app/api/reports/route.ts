@@ -117,6 +117,7 @@ export async function GET(req: Request) {
       paymentsByMethod: Record<string, number>
       deductionsByMethod: Record<string, number>
       deductionsByType: Record<string, number>  // e.g. "Merchant Discount Rate" → total ₱ amount
+      deductionsByAccount: Record<string, number>  // COA account key → total ₱ amount (for balance sheet assets like CWT)
     }
 
     const monthly: Record<number, MonthData> = {}
@@ -126,6 +127,7 @@ export async function GET(req: Request) {
         cogs: 0, revenueByDept: {}, revenueByAccount: {},
         revenueByBranch: {}, cogsByDept: {}, cashReceived: 0,
         paymentsByMethod: {}, deductionsByMethod: {}, deductionsByType: {},
+        deductionsByAccount: {},
       }
     }
 
@@ -177,11 +179,16 @@ export async function GET(req: Request) {
         if (CASH_METHODS.has(p.method)) m.cashReceived += net
 
         // Track per-deduction-type amounts (MDR, CWT individually)
+        // Route to COA accounts: revenue-type accounts (e.g. 7140 MDR) go to revenueByAccount,
+        // asset-type accounts (e.g. 1140 CWT) go to deductionsByAccount
         if (p.paymentModeId && modeDeductionBreakdown[p.paymentModeId]) {
           for (const ded of modeDeductionBreakdown[p.paymentModeId]) {
             const dedAmt = gross * (ded.rate / 100)
             if (dedAmt > 0) {
               m.deductionsByType[ded.name] = (m.deductionsByType[ded.name] || 0) + dedAmt
+              // Route to the deduction's assigned COA account
+              m.revenueByAccount[ded.accountKey] = (m.revenueByAccount[ded.accountKey] || 0) + dedAmt
+              m.deductionsByAccount[ded.accountKey] = (m.deductionsByAccount[ded.accountKey] || 0) + dedAmt
             }
           }
         }
