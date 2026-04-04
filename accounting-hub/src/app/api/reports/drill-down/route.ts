@@ -38,6 +38,7 @@ export async function GET(req: Request) {
   const branch = searchParams.get('branch') || 'ALL'
   const month = parseInt(searchParams.get('month') || '0')
   const category = searchParams.get('category') || ''
+  const accountKey = searchParams.get('accountKey') || '' // e.g. "7020 Occupational Therapy Services Revenue"
 
   const startDate = month > 0
     ? new Date(Date.UTC(year, month - 1, 1))
@@ -117,7 +118,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ items, total: items.reduce((s, i) => s + i.amount, 0) })
     }
 
-    // Revenue / COGS drill-down — order-level
+    // Revenue / COGS drill-down
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const orderFilter: any = {
       status: 'COMPLETED',
@@ -130,6 +131,51 @@ export async function GET(req: Request) {
     else if (category === 'COGS') orderFilter.orderType = 'PRODUCT'
     else if (category === 'REVENUE') orderFilter.revenueType = { not: 'UNEARNED' }
 
+    // When an accountKey is provided (e.g. "7020 Occupational Therapy Services Revenue"),
+    // drill down to item-level and filter by matching revenue account
+    if (accountKey && category === 'REVENUE') {
+      const orders = await prisma.order.findMany({
+        where: orderFilter,
+        select: {
+          transactionDate: true,
+          orderType: true,
+          branch: true,
+          patientName: true,
+          items: {
+            select: {
+              lineTotal: true,
+              quantity: true,
+              service: { select: { name: true, department: true, revenueAccount: { select: { accountNumber: true, accountTitle: true } } } },
+              inventoryItem: { select: { name: true, skuDepartment: true, revenueAccount: { select: { accountNumber: true, accountTitle: true } } } },
+            },
+          },
+        },
+        orderBy: { transactionDate: 'asc' },
+      })
+
+      // Flatten to item-level, keeping only items matching the requested account
+      const items: { date: string; type: string; branch: string; amount: number }[] = []
+      for (const o of orders) {
+        for (const item of o.items) {
+          const acct = item.service?.revenueAccount || item.inventoryItem?.revenueAccount
+          const itemKey = acct ? `${acct.accountNumber} ${acct.accountTitle}` : 'Unclassified Revenue'
+          if (itemKey !== accountKey) continue
+
+          const dept = item.service?.department || item.inventoryItem?.skuDepartment || 'OTHER'
+          const name = item.service?.name || item.inventoryItem?.name || ''
+          items.push({
+            date: o.transactionDate.toISOString().split('T')[0],
+            type: `${o.orderType === 'SERVICE' ? 'Service' : 'Product'} — ${DEPT_LABELS[dept] || dept}${name ? ` (${name})` : ''}`,
+            branch: BRANCH_LABELS[o.branch] || o.branch,
+            amount: Number(item.lineTotal),
+          })
+        }
+      }
+
+      return NextResponse.json({ items, total: items.reduce((s, i) => s + i.amount, 0) })
+    }
+
+    // Default: order-level drill-down (for totals or COGS)
     const orders = await prisma.order.findMany({
       where: orderFilter,
       select: {

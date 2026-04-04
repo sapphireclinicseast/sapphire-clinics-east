@@ -47,12 +47,13 @@ interface ReportData {
 
 type ReportTab = 'balance-sheet' | 'income-statement' | 'cash-flow'
 type ViewMode = 'annual' | 'monthly'
-type OnDrillDown = (label: string, category: string, month: number) => void
+type OnDrillDown = (label: string, category: string, month: number, accountKey?: string) => void
 
 interface DrillDownState {
   label: string
   category: string
   month: number
+  accountKey?: string  // e.g. "7020 Occupational Therapy Services Revenue"
 }
 
 interface DrillDownItem {
@@ -362,6 +363,7 @@ function DrillDownPanel({
       month: String(target.month),
       category: target.category,
     })
+    if (target.accountKey) params.set('accountKey', target.accountKey)
     fetch(`/api/reports/drill-down?${params}`)
       .then((r) => r.json())
       .then((data) => {
@@ -710,7 +712,7 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
         <SectionHeader label="7000 Gross Revenue" />
         {grossRevenueAccts.map((a) => (
           <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={acctAmount(a.accountNumber, a.accountTitle)} indent={1}
-            onDrillDown={() => onDrillDown(a.accountTitle, 'REVENUE', 0)} />
+            onDrillDown={() => onDrillDown(a.accountTitle, 'REVENUE', 0, `${a.accountNumber} ${a.accountTitle}`)} />
         ))}
         <AnnualRow label="Total for 7000 Gross Revenue" amount={effectiveGrossRevenue} indent={0} isTotal bold
           onDrillDown={() => onDrillDown('Total Gross Revenue', 'REVENUE', 0)} />
@@ -791,7 +793,7 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
         <MonthlyRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`}
           values={acctMonthly(a.accountNumber, a.accountTitle)}
           total={acctAmount(a.accountNumber, a.accountTitle)} indent={1}
-          onClickCell={(m) => onDrillDown(a.accountTitle, 'REVENUE', m ?? 0)} />
+          onClickCell={(m) => onDrillDown(a.accountTitle, 'REVENUE', m ?? 0, `${a.accountNumber} ${a.accountTitle}`)} />
       ))}
       <MonthlyRow label="Total for 7000 Gross Revenue"
         values={getMonthlyArray(monthly, (m) => m.serviceRevenue + m.productRevenue)}
@@ -1057,8 +1059,8 @@ export default function ReportsPage() {
   const [data, setData] = useState<ReportData | null>(null)
   const [drillDown, setDrillDown] = useState<DrillDownState | null>(null)
 
-  const handleDrillDown: OnDrillDown = (label, category, month) => {
-    setDrillDown({ label, category, month })
+  const handleDrillDown: OnDrillDown = (label, category, month, accountKey) => {
+    setDrillDown({ label, category, month, accountKey })
   }
 
   const currentYear = new Date().getFullYear()
