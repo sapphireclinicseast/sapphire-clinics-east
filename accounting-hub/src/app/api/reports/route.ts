@@ -132,6 +132,17 @@ export async function GET(req: Request) {
       }
     }
 
+    // Debug: log product order item details
+    const productOrders = orders.filter(o => o.orderType === 'PRODUCT')
+    if (productOrders.length > 0) {
+      console.log(`[Reports] Found ${productOrders.length} PRODUCT orders`)
+      for (const po of productOrders.slice(0, 5)) {
+        for (const item of po.items) {
+          console.log(`[Reports] Product item: inventoryItemId=${item.inventoryItemId}, lineTotal=${item.lineTotal}, inventoryItem=${JSON.stringify(item.inventoryItem ? { sku: item.inventoryItem.skuDepartment, revenueAccount: item.inventoryItem.revenueAccount } : null)}`)
+        }
+      }
+    }
+
     for (const order of orders) {
       const month = new Date(order.transactionDate).getMonth() + 1
       const net = Number(order.netAmount)

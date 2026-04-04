@@ -696,7 +696,7 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
     ...discountAccts.map(a => `${a.accountNumber} ${a.accountTitle}`),
   ])
   const unmatchedRevenueKeys = Array.from(allRevenueKeys)
-    .filter(k => !knownAcctKeys.has(k) && k !== 'Unclassified Revenue')
+    .filter(k => !knownAcctKeys.has(k))
     .sort()
 
   // Aggregate deduction amounts by COA account (to identify deduction-sourced accounts like MDR)
