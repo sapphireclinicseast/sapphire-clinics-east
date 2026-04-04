@@ -4111,7 +4111,7 @@ function ProductsSection({
       const body = {
         orderType: 'PRODUCT',
         branch: 'VERDANA_STORE',
-        transactionDate: today(),
+        transactionDate: txDate,
         items: cart.map(c => ({
           inventoryItemId: c.inventoryItemId || null,
           name: c.name,
@@ -4198,6 +4198,7 @@ function ProductsSection({
   const barcodeInputRef = useRef<HTMLInputElement>(null)
   const [barcodeInput, setBarcodeInput] = useState('')
   const [scanSuccess, setScanSuccess] = useState('')
+  const [txDate, setTxDate] = useState(today())
 
   const handleBarcodeScan = (barcode: string) => {
     const trimmed = barcode.trim()
@@ -4304,9 +4305,21 @@ function ProductsSection({
       {/* Cart */}
       <div className="space-y-4">
         <div className="rounded-2xl border bg-white p-4 space-y-4" style={{ borderColor: 'var(--light-gray)' }}>
-          <h3 className="text-sm font-semibold flex items-center gap-1.5" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
-            <ShoppingCart size={16} /> Cart ({cart.length})
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold flex items-center gap-1.5" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
+              <ShoppingCart size={16} /> Cart ({cart.length})
+            </h3>
+            <div className="flex items-center gap-1.5">
+              <label className="text-xs font-medium" style={{ color: 'var(--mid-gray)' }}>Date</label>
+              <input
+                type="date"
+                value={txDate}
+                onChange={e => setTxDate(e.target.value)}
+                className="px-2 py-1 rounded-lg border text-xs outline-none"
+                style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
+              />
+            </div>
+          </div>
 
           {error && (
             <div className="px-3 py-2 rounded-xl text-xs bg-red-50 text-red-700 flex items-center gap-1">
