@@ -24,6 +24,7 @@ interface MonthData {
   cashReceived: number
   paymentsByMethod: Record<string, number>
   deductionsByMethod: Record<string, number>
+  deductionsByType: Record<string, number>  // "Merchant Discount Rate" → amount, "Creditable Withholding Tax" → amount
 }
 
 interface AccountEntry {
@@ -696,8 +697,22 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
   // Gross Profit
   const grossProfit = netSales - totalCOGS
 
-  // Operating Expenses (indirect) — placeholder 0 until journal entries exist
-  const totalOpex = 0
+  // Collect all deduction type names across all months (MDR, CWT, etc.)
+  const deductionTypes = new Set<string>()
+  for (let m = 1; m <= 12; m++) {
+    for (const dt of Object.keys(monthly[m].deductionsByType || {})) deductionTypes.add(dt)
+  }
+  const deductionTypeList = Array.from(deductionTypes).sort()
+
+  // Total deductions per type (full year)
+  const deductionTotals: Record<string, number> = {}
+  for (const dt of deductionTypeList) {
+    deductionTotals[dt] = sumMonths(monthly, (m) => (m.deductionsByType || {})[dt] || 0)
+  }
+  const totalDeductions = Object.values(deductionTotals).reduce((s, v) => s + v, 0)
+
+  // Operating Expenses (indirect COA accounts + computed deductions)
+  const totalOpex = totalDeductions
 
   // EBITDA
   const ebitda = grossProfit - totalOpex
@@ -750,12 +765,16 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
 
         <div className="h-3" />
 
-        {/* EXPENSES (Indirect) */}
+        {/* EXPENSES (Indirect + Deductions) */}
         <SectionHeader label="Expenses" />
         {indirectExpenseAccts.map((a) => (
           <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={0} indent={1} />
         ))}
-        {indirectExpenseAccts.length === 0 && (
+        {deductionTypeList.map((dt) => (
+          <AnnualRow key={dt} label={dt} amount={deductionTotals[dt]} indent={1}
+            onDrillDown={() => onDrillDown(dt, 'DEDUCTION', 0, dt)} />
+        ))}
+        {indirectExpenseAccts.length === 0 && deductionTypeList.length === 0 && (
           <AnnualRow label="(No expense accounts set up)" amount={0} indent={1} />
         )}
         <AnnualRow label="Total for Expenses" amount={totalOpex} indent={0} isTotal bold />
@@ -844,13 +863,20 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
         <MonthlyRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`}
           values={Array(12).fill(0)} total={0} indent={1} />
       ))}
+      {deductionTypeList.map((dt) => (
+        <MonthlyRow key={dt} label={dt}
+          values={getMonthlyArray(monthly, (m) => (m.deductionsByType || {})[dt] || 0)}
+          total={deductionTotals[dt]} indent={1}
+          onClickCell={(m) => onDrillDown(dt, 'DEDUCTION', m ?? 0, dt)} />
+      ))}
       <MonthlyRow label="Total for Expenses"
-        values={Array(12).fill(0)} total={totalOpex} bold isTotal />
+        values={getMonthlyArray(monthly, (m) => Object.values(m.deductionsByType || {}).reduce((s, v) => s + v, 0))}
+        total={totalOpex} bold isTotal />
 
       <div className="h-2" />
 
       <MonthlyRow label="EBITDA"
-        values={getMonthlyArray(monthly, (m) => m.serviceRevenue + m.productRevenue - m.cogs)}
+        values={getMonthlyArray(monthly, (m) => m.serviceRevenue + m.productRevenue - m.cogs - Object.values(m.deductionsByType || {}).reduce((s, v) => s + v, 0))}
         total={ebitda} isGrandTotal />
 
       <div className="h-2" />
@@ -864,7 +890,7 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
       <div className="h-2" />
 
       <MonthlyRow label="NET INCOME"
-        values={getMonthlyArray(monthly, (m) => m.serviceRevenue + m.productRevenue - m.cogs)}
+        values={getMonthlyArray(monthly, (m) => m.serviceRevenue + m.productRevenue - m.cogs - Object.values(m.deductionsByType || {}).reduce((s, v) => s + v, 0))}
         total={netIncome} isGrandTotal />
     </div>
   )

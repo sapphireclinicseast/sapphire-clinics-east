@@ -80,17 +80,24 @@ export async function GET(req: Request) {
         select: { walletType: true, balance: true },
       }),
 
-      // Payment modes with deduction rates (MDR, CWT)
+      // Payment modes with deduction rates (MDR, CWT) — include name + COA for reporting
       prisma.paymentMode.findMany({
         where: { isActive: true },
-        select: { id: true, deductions: { select: { rate: true } } },
+        select: { id: true, deductions: { select: { name: true, rate: true, accountId: true, account: { select: { accountNumber: true, accountTitle: true } } } } },
       }),
     ])
 
     // Build deduction rate map: paymentModeId → total deduction %
     const modeDeductionRate: Record<string, number> = {}
+    // Build per-deduction-type breakdown: paymentModeId → [{ name, rate, accountKey }]
+    const modeDeductionBreakdown: Record<string, { name: string; rate: number; accountKey: string }[]> = {}
     for (const pm of paymentModes) {
       modeDeductionRate[pm.id] = pm.deductions.reduce((s, d) => s + Number(d.rate), 0)
+      modeDeductionBreakdown[pm.id] = pm.deductions.map(d => ({
+        name: d.name,
+        rate: Number(d.rate),
+        accountKey: d.account ? `${d.account.accountNumber} ${d.account.accountTitle}` : d.name,
+      }))
     }
 
     /* ── Aggregate monthly data ────────────────────────────────── */
@@ -109,6 +116,7 @@ export async function GET(req: Request) {
       cashReceived: number
       paymentsByMethod: Record<string, number>
       deductionsByMethod: Record<string, number>
+      deductionsByType: Record<string, number>  // e.g. "Merchant Discount Rate" → total ₱ amount
     }
 
     const monthly: Record<number, MonthData> = {}
@@ -117,7 +125,7 @@ export async function GET(req: Request) {
         serviceRevenue: 0, productRevenue: 0, unearnedRevenue: 0,
         cogs: 0, revenueByDept: {}, revenueByAccount: {},
         revenueByBranch: {}, cogsByDept: {}, cashReceived: 0,
-        paymentsByMethod: {}, deductionsByMethod: {},
+        paymentsByMethod: {}, deductionsByMethod: {}, deductionsByType: {},
       }
     }
 
@@ -167,6 +175,16 @@ export async function GET(req: Request) {
           m.deductionsByMethod[p.method] = (m.deductionsByMethod[p.method] || 0) + deduction
         }
         if (CASH_METHODS.has(p.method)) m.cashReceived += net
+
+        // Track per-deduction-type amounts (MDR, CWT individually)
+        if (p.paymentModeId && modeDeductionBreakdown[p.paymentModeId]) {
+          for (const ded of modeDeductionBreakdown[p.paymentModeId]) {
+            const dedAmt = gross * (ded.rate / 100)
+            if (dedAmt > 0) {
+              m.deductionsByType[ded.name] = (m.deductionsByType[ded.name] || 0) + dedAmt
+            }
+          }
+        }
       }
     }
 

@@ -63,6 +63,74 @@ export async function GET(req: Request) {
 
     const isPaymentCategory = CASH_METHODS.includes(category) || category === 'CASH_BALANCE'
 
+    // Deduction drill-down (MDR, CWT per transaction)
+    if (category === 'DEDUCTION' && accountKey) {
+      // Load deduction type breakdown for each payment mode
+      const allModes = await prisma.paymentMode.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true, deductions: { select: { name: true, rate: true } } },
+      })
+      // Map: paymentModeId → { name, rate } for the matching deduction type
+      const modeMatch: Record<string, { modeName: string; rate: number }> = {}
+      for (const pm of allModes) {
+        for (const d of pm.deductions) {
+          if (d.name === accountKey) {
+            modeMatch[pm.id] = { modeName: pm.name, rate: Number(d.rate) }
+          }
+        }
+      }
+      const matchingModeIds = Object.keys(modeMatch)
+      if (matchingModeIds.length === 0) {
+        return NextResponse.json({ items: [], total: 0 })
+      }
+
+      const payments = await prisma.orderPayment.findMany({
+        where: {
+          paymentModeId: { in: matchingModeIds },
+          order: {
+            status: 'COMPLETED',
+            transactionDate: { gte: startDate, lt: endDate },
+            ...branchFilter,
+          },
+        },
+        select: {
+          amount: true,
+          paymentModeId: true,
+          method: true,
+          order: {
+            select: {
+              transactionDate: true,
+              patientName: true,
+              branch: true,
+              items: {
+                take: 1,
+                select: {
+                  service: { select: { department: true } },
+                  inventoryItem: { select: { skuDepartment: true } },
+                },
+              },
+            },
+          },
+        },
+        orderBy: { order: { transactionDate: 'asc' } },
+      })
+
+      const items = payments.map((p) => {
+        const gross = Number(p.amount)
+        const info = modeMatch[p.paymentModeId!]
+        const dedAmt = gross * (info.rate / 100)
+        const dept = p.order.items[0]?.service?.department || p.order.items[0]?.inventoryItem?.skuDepartment || 'OTHER'
+        return {
+          date: p.order.transactionDate.toISOString().split('T')[0],
+          type: `${info.modeName} — ${PAYMENT_LABELS[p.method] || p.method} (${DEPT_LABELS[dept] || dept})${p.order.patientName ? ` · ${p.order.patientName}` : ''}`,
+          branch: BRANCH_LABELS[p.order.branch] || p.order.branch,
+          amount: dedAmt,
+        }
+      }).filter(i => i.amount > 0)
+
+      return NextResponse.json({ items, total: items.reduce((s, i) => s + i.amount, 0) })
+    }
+
     if (isPaymentCategory) {
       // Return individual payment rows
       const methodFilter = category === 'CASH_BALANCE'
