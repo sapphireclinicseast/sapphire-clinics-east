@@ -672,13 +672,10 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
 function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; viewMode: ViewMode; onDrillDown: OnDrillDown }) {
   const { monthly, accounts } = data
 
-  // COA-driven: Revenue accounts (CREDIT normal balance = gross revenue, DEBIT = discounts)
-  const revenueAccounts = [
-    ...(accounts.REVENUE?.OPERATING_REVENUE || []),
-    ...(accounts.REVENUE?.NON_OPERATING_REVENUE || []),
-  ]
-  const grossRevenueAccts = revenueAccounts.filter(a => a.normalBalance !== 'DEBIT')
-  const discountAccts = revenueAccounts.filter(a => a.normalBalance === 'DEBIT')
+  // COA-driven: Revenue accounts — gather from ALL revenue subTypes, not just OPERATING/NON_OPERATING
+  const allRevenueSubTypes = accounts.REVENUE ? Object.values(accounts.REVENUE).flat() : []
+  const grossRevenueAccts = allRevenueSubTypes.filter(a => a.normalBalance !== 'DEBIT')
+  const discountAccts = allRevenueSubTypes.filter(a => a.normalBalance === 'DEBIT')
 
   // COA-driven: Expense accounts by subType
   const directExpenseAccts = accounts.EXPENSE?.DIRECT_EXPENSES || []
@@ -688,10 +685,19 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
   const nonOpExpenseAccts = accounts.EXPENSE?.NON_OPERATING_EXPENSES || []
 
   // Collect revenue by account keys from monthly data
-  const allAccounts2 = new Set<string>()
+  const allRevenueKeys = new Set<string>()
   for (let m = 1; m <= 12; m++) {
-    for (const a of Object.keys(monthly[m].revenueByAccount || {})) allAccounts2.add(a)
+    for (const a of Object.keys(monthly[m].revenueByAccount || {})) allRevenueKeys.add(a)
   }
+
+  // Find revenue keys that have data but aren't in any COA account list (gross or discount)
+  const knownAcctKeys = new Set([
+    ...grossRevenueAccts.map(a => `${a.accountNumber} ${a.accountTitle}`),
+    ...discountAccts.map(a => `${a.accountNumber} ${a.accountTitle}`),
+  ])
+  const unmatchedRevenueKeys = Array.from(allRevenueKeys)
+    .filter(k => !knownAcctKeys.has(k) && k !== 'Unclassified Revenue')
+    .sort()
 
   // Aggregate deduction amounts by COA account (to identify deduction-sourced accounts like MDR)
   const deductionAccountTotals: Record<string, number> = {}
@@ -707,11 +713,12 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
     return sumMonths(monthly, (m) => (m.revenueByAccount || {})[key] || 0)
   }
 
-  // Gross Revenue = sum of all CREDIT revenue accounts
+  // Gross Revenue = sum of all CREDIT revenue accounts + unmatched revenue keys
   const totalGrossRevenue = grossRevenueAccts.reduce((s, a) => s + acctAmount(a.accountNumber, a.accountTitle), 0)
+  const unmatchedRevenueTotal = unmatchedRevenueKeys.reduce((s, key) => s + sumMonths(monthly, (m) => (m.revenueByAccount || {})[key] || 0), 0)
   // If no COA-tagged transactions yet, fall back to computed totals
   const fallbackGrossRevenue = sumMonths(monthly, (m) => m.serviceRevenue + m.productRevenue)
-  const effectiveGrossRevenue = totalGrossRevenue > 0 ? totalGrossRevenue : fallbackGrossRevenue
+  const effectiveGrossRevenue = (totalGrossRevenue + unmatchedRevenueTotal) > 0 ? totalGrossRevenue + unmatchedRevenueTotal : fallbackGrossRevenue
 
   // Discounts = sum of DEBIT revenue accounts (shown as negative)
   const totalDiscounts = discountAccts.reduce((s, a) => s + acctAmount(a.accountNumber, a.accountTitle), 0)
@@ -743,6 +750,13 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
           <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={acctAmount(a.accountNumber, a.accountTitle)} indent={1}
             onDrillDown={() => onDrillDown(a.accountTitle, 'REVENUE', 0, `${a.accountNumber} ${a.accountTitle}`)} />
         ))}
+        {unmatchedRevenueKeys.map((key) => {
+          const amt = sumMonths(monthly, (m) => (m.revenueByAccount || {})[key] || 0)
+          return amt > 0 ? (
+            <AnnualRow key={key} label={key} amount={amt} indent={1}
+              onDrillDown={() => onDrillDown(key, 'REVENUE', 0, key)} />
+          ) : null
+        })}
         <AnnualRow label="Total for 7000 Gross Revenue" amount={effectiveGrossRevenue} indent={0} isTotal bold
           onDrillDown={() => onDrillDown('Total Gross Revenue', 'REVENUE', 0)} />
 
@@ -831,6 +845,15 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
           total={acctAmount(a.accountNumber, a.accountTitle)} indent={1}
           onClickCell={(m) => onDrillDown(a.accountTitle, 'REVENUE', m ?? 0, `${a.accountNumber} ${a.accountTitle}`)} />
       ))}
+      {unmatchedRevenueKeys.map((key) => {
+        const total = sumMonths(monthly, (m) => (m.revenueByAccount || {})[key] || 0)
+        return total > 0 ? (
+          <MonthlyRow key={key} label={key}
+            values={getMonthlyArray(monthly, (m) => (m.revenueByAccount || {})[key] || 0)}
+            total={total} indent={1}
+            onClickCell={(m) => onDrillDown(key, 'REVENUE', m ?? 0, key)} />
+        ) : null
+      })}
       <MonthlyRow label="Total for 7000 Gross Revenue"
         values={getMonthlyArray(monthly, (m) => m.serviceRevenue + m.productRevenue)}
         total={effectiveGrossRevenue} bold isTotal
