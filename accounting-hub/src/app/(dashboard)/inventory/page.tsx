@@ -520,6 +520,21 @@ export default function InventoryPage() {
   const [itemModalOpen, setItemModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null)
   const [deleteItemConfirm, setDeleteItemConfirm] = useState<string | null>(null)
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
+  const [bulkEditOpen, setBulkEditOpen] = useState(false)
+  const [bulkField, setBulkField] = useState('')
+  const [bulkRevenueAccountId, setBulkRevenueAccountId] = useState('')
+  const [bulkRevenueSearch, setBulkRevenueSearch] = useState('')
+  const [bulkSourceAccountId, setBulkSourceAccountId] = useState('')
+  const [bulkSourceSearch, setBulkSourceSearch] = useState('')
+  const [bulkSupplierId, setBulkSupplierId] = useState('')
+  const [bulkBranch, setBulkBranch] = useState('')
+  const [bulkUnitCost, setBulkUnitCost] = useState('')
+  const [bulkSellingPrice, setBulkSellingPrice] = useState('')
+  const [bulkRewardPoints, setBulkRewardPoints] = useState('')
+  const [bulkReorderLevel, setBulkReorderLevel] = useState('')
+  const [bulkSubType, setBulkSubType] = useState('')
+  const [bulkSaving, setBulkSaving] = useState(false)
 
   // Item form
   const [fName, setFName] = useState('')
@@ -986,6 +1001,72 @@ export default function InventoryPage() {
   }
 
   /* ═══════════════════════════════════════════════════════
+     BULK EDIT HANDLERS
+     ═══════════════════════════════════════════════════════ */
+
+  function toggleSelectItem(id: string) {
+    setSelectedItems(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    const pageItems = items.slice((invPage - 1) * invPageSize, invPage * invPageSize)
+    const allSelected = pageItems.every(i => selectedItems.has(i.id))
+    if (allSelected) {
+      setSelectedItems(prev => {
+        const next = new Set(prev)
+        pageItems.forEach(i => next.delete(i.id))
+        return next
+      })
+    } else {
+      setSelectedItems(prev => {
+        const next = new Set(prev)
+        pageItems.forEach(i => next.add(i.id))
+        return next
+      })
+    }
+  }
+
+  function openBulkEdit() {
+    setBulkField('')
+    setBulkRevenueAccountId(''); setBulkRevenueSearch('')
+    setBulkSourceAccountId(''); setBulkSourceSearch('')
+    setBulkSupplierId(''); setBulkBranch(''); setBulkUnitCost('')
+    setBulkSellingPrice(''); setBulkRewardPoints(''); setBulkReorderLevel('')
+    setBulkSubType(''); setError('')
+    setBulkEditOpen(true)
+  }
+
+  async function handleBulkEdit() {
+    if (selectedItems.size === 0) return
+    setBulkSaving(true); setError('')
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body: any = { ids: Array.from(selectedItems) }
+      if (bulkField === 'revenueAccountId') body.revenueAccountId = bulkRevenueAccountId
+      else if (bulkField === 'sourceAccountId') body.sourceAccountId = bulkSourceAccountId
+      else if (bulkField === 'supplierId') body.supplierId = bulkSupplierId
+      else if (bulkField === 'branch') body.branch = bulkBranch
+      else if (bulkField === 'unitCost') body.unitCost = bulkUnitCost
+      else if (bulkField === 'sellingPrice') body.sellingPrice = bulkSellingPrice
+      else if (bulkField === 'rewardPointsPrice') body.rewardPointsPrice = bulkRewardPoints
+      else if (bulkField === 'reorderLevel') body.reorderLevel = bulkReorderLevel
+      else if (bulkField === 'accountSubType') body.accountSubType = bulkSubType
+
+      const res = await fetch('/api/inventory', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Bulk update failed'); return }
+      setBulkEditOpen(false)
+      setSelectedItems(new Set())
+      fetchItems(); fetchAllItems()
+    } catch { setError('Network error') }
+    finally { setBulkSaving(false) }
+  }
+
+  /* ═══════════════════════════════════════════════════════
      SUPPLIER TAB HANDLERS
      ═══════════════════════════════════════════════════════ */
 
@@ -1109,7 +1190,7 @@ export default function InventoryPage() {
      RENDER
      ═══════════════════════════════════════════════════════ */
 
-  const anyModalOpen = itemModalOpen || supplierModalOpen || adjModalOpen || conModalOpen || pdfModalOpen
+  const anyModalOpen = itemModalOpen || supplierModalOpen || adjModalOpen || conModalOpen || pdfModalOpen || bulkEditOpen
 
   // Print bulk barcodes — A6 pages, 10 barcodes per product per page
   const printBulkBarcodes = () => {
@@ -1307,12 +1388,40 @@ setTimeout(()=>window.print(),500);
             </select>
           </div>
 
+          {/* Bulk Edit Toolbar */}
+          {canWrite && selectedItems.size > 0 && (
+            <div className="mb-3 flex items-center gap-3 px-4 py-3 rounded-xl" style={{ background: 'var(--pale-teal)', border: '1px solid var(--bright-teal)' }}>
+              <span className="text-sm font-semibold" style={{ color: 'var(--deep-teal)' }}>
+                {selectedItems.size} item{selectedItems.size !== 1 ? 's' : ''} selected
+              </span>
+              <button onClick={openBulkEdit}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white"
+                style={{ background: 'var(--teal)' }}>
+                <Pencil size={14} /> Bulk Edit
+              </button>
+              <button onClick={() => setSelectedItems(new Set())}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm border"
+                style={{ borderColor: 'var(--bright-teal)', color: 'var(--deep-teal)' }}>
+                <X size={14} /> Clear
+              </button>
+            </div>
+          )}
+
           {/* Table */}
           <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr style={{ background: 'var(--off-white)' }}>
+                    {canWrite && (
+                      <th className="px-3 py-3 w-10">
+                        <input type="checkbox"
+                          checked={items.slice((invPage - 1) * invPageSize, invPage * invPageSize).length > 0 &&
+                            items.slice((invPage - 1) * invPageSize, invPage * invPageSize).every(i => selectedItems.has(i.id))}
+                          onChange={toggleSelectAll}
+                          className="rounded" style={{ accentColor: 'var(--teal)' }} />
+                      </th>
+                    )}
                     <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>SKU</th>
                     <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Name</th>
                     <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Branch</th>
@@ -1326,13 +1435,21 @@ setTimeout(()=>window.print(),500);
                 <tbody>
                   {items.length === 0 ? (
                     <tr>
-                      <td colSpan={canWrite ? 8 : 7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
+                      <td colSpan={canWrite ? 9 : 7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
                         <Package size={32} className="mx-auto mb-2 opacity-40" />
                         <p>No inventory items</p>
                       </td>
                     </tr>
                   ) : items.slice((invPage - 1) * invPageSize, invPage * invPageSize).map((item) => (
-                    <tr key={item.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
+                    <tr key={item.id} className={`border-t hover:bg-gray-50/50 transition-colors ${selectedItems.has(item.id) ? 'bg-teal-50/40' : ''}`} style={{ borderColor: 'var(--light-gray)' }}>
+                      {canWrite && (
+                        <td className="px-3 py-3 w-10">
+                          <input type="checkbox"
+                            checked={selectedItems.has(item.id)}
+                            onChange={() => toggleSelectItem(item.id)}
+                            className="rounded" style={{ accentColor: 'var(--teal)' }} />
+                        </td>
+                      )}
                       <td className="px-4 py-3 font-mono text-xs font-medium" style={{ color: 'var(--charcoal)' }}>{item.sku}</td>
                       <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>
                         {item.name}
@@ -1392,6 +1509,165 @@ setTimeout(()=>window.print(),500);
                 <div className="flex gap-3 justify-end">
                   <button onClick={() => setDeleteItemConfirm(null)} className="px-4 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--light-gray)' }}>Cancel</button>
                   <button onClick={() => handleItemDelete(deleteItemConfirm)} className="px-4 py-2 rounded-lg text-sm text-white bg-red-500 hover:bg-red-600">Delete</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Bulk Edit Modal */}
+          {bulkEditOpen && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl max-h-[80vh] overflow-y-auto">
+                <div className="flex items-center justify-between mb-5">
+                  <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
+                    Bulk Edit — {selectedItems.size} item{selectedItems.size !== 1 ? 's' : ''}
+                  </h2>
+                  <button onClick={() => setBulkEditOpen(false)} className="p-1.5 rounded-lg hover:bg-gray-100">
+                    <X size={18} style={{ color: 'var(--mid-gray)' }} />
+                  </button>
+                </div>
+
+                {error && <div className="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-600">{error}</div>}
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>Field to Update</label>
+                    <select value={bulkField} onChange={(e) => setBulkField(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                      style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+                      <option value="">Select a field...</option>
+                      <option value="revenueAccountId">Revenue Account</option>
+                      <option value="sourceAccountId">Source Account</option>
+                      <option value="supplierId">Supplier</option>
+                      <option value="branch">Branch</option>
+                      <option value="unitCost">Unit Cost</option>
+                      <option value="sellingPrice">Selling Price</option>
+                      <option value="rewardPointsPrice">Reward Points Price</option>
+                      <option value="reorderLevel">Reorder Level</option>
+                      <option value="accountSubType">Account Sub Type</option>
+                    </select>
+                  </div>
+
+                  {bulkField === 'revenueAccountId' && (
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>Revenue Account</label>
+                      <input type="text" placeholder="Search accounts..."
+                        value={bulkRevenueSearch} onChange={(e) => setBulkRevenueSearch(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border text-sm outline-none mb-1"
+                        style={{ borderColor: 'var(--light-gray)' }} />
+                      <select value={bulkRevenueAccountId} onChange={(e) => setBulkRevenueAccountId(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                        style={{ borderColor: 'var(--light-gray)' }}>
+                        <option value="">— None —</option>
+                        {revenueAccounts
+                          .filter(a => !bulkRevenueSearch || `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(bulkRevenueSearch.toLowerCase()))
+                          .map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
+                      </select>
+                    </div>
+                  )}
+
+                  {bulkField === 'sourceAccountId' && (
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>Source Account</label>
+                      <input type="text" placeholder="Search accounts..."
+                        value={bulkSourceSearch} onChange={(e) => setBulkSourceSearch(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border text-sm outline-none mb-1"
+                        style={{ borderColor: 'var(--light-gray)' }} />
+                      <select value={bulkSourceAccountId} onChange={(e) => setBulkSourceAccountId(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                        style={{ borderColor: 'var(--light-gray)' }}>
+                        <option value="">— None —</option>
+                        {sourceAccounts
+                          .filter(a => !bulkSourceSearch || `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(bulkSourceSearch.toLowerCase()))
+                          .map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
+                      </select>
+                    </div>
+                  )}
+
+                  {bulkField === 'supplierId' && (
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>Supplier</label>
+                      <select value={bulkSupplierId} onChange={(e) => setBulkSupplierId(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                        style={{ borderColor: 'var(--light-gray)' }}>
+                        <option value="">— None —</option>
+                        {allSuppliers.map(s => <option key={s.id} value={s.id}>{s.supplierName}</option>)}
+                      </select>
+                    </div>
+                  )}
+
+                  {bulkField === 'branch' && (
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>Branch</label>
+                      <select value={bulkBranch} onChange={(e) => setBulkBranch(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                        style={{ borderColor: 'var(--light-gray)' }}>
+                        <option value="">Select...</option>
+                        {Object.entries(BRANCH_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                      </select>
+                    </div>
+                  )}
+
+                  {bulkField === 'unitCost' && (
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>Unit Cost (PHP)</label>
+                      <input type="number" min="0" step="0.01" value={bulkUnitCost} onChange={(e) => setBulkUnitCost(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                        style={{ borderColor: 'var(--light-gray)' }} />
+                    </div>
+                  )}
+
+                  {bulkField === 'sellingPrice' && (
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>Selling Price (PHP)</label>
+                      <input type="number" min="0" step="0.01" value={bulkSellingPrice} onChange={(e) => setBulkSellingPrice(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                        style={{ borderColor: 'var(--light-gray)' }} />
+                    </div>
+                  )}
+
+                  {bulkField === 'rewardPointsPrice' && (
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>Reward Points Price</label>
+                      <input type="number" min="0" step="1" value={bulkRewardPoints} onChange={(e) => setBulkRewardPoints(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                        style={{ borderColor: 'var(--light-gray)' }} />
+                    </div>
+                  )}
+
+                  {bulkField === 'reorderLevel' && (
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>Reorder Level</label>
+                      <input type="number" min="0" step="1" value={bulkReorderLevel} onChange={(e) => setBulkReorderLevel(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                        style={{ borderColor: 'var(--light-gray)' }} />
+                    </div>
+                  )}
+
+                  {bulkField === 'accountSubType' && (
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>Account Sub Type</label>
+                      <select value={bulkSubType} onChange={(e) => setBulkSubType(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                        style={{ borderColor: 'var(--light-gray)' }}>
+                        <option value="">— None —</option>
+                        {INV_SUB_TYPES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-3 justify-end mt-6">
+                  <button onClick={() => setBulkEditOpen(false)}
+                    className="px-4 py-2.5 rounded-xl text-sm border"
+                    style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                    Cancel
+                  </button>
+                  <button onClick={handleBulkEdit} disabled={!bulkField || bulkSaving}
+                    className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+                    style={{ background: 'var(--teal)' }}>
+                    {bulkSaving ? 'Updating...' : `Update ${selectedItems.size} Item${selectedItems.size !== 1 ? 's' : ''}`}
+                  </button>
                 </div>
               </div>
             </div>

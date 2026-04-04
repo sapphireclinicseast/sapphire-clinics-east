@@ -186,6 +186,57 @@ export async function PUT(req: Request) {
   }
 }
 
+export async function PATCH(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+
+  try {
+    const { ids, revenueAccountId, sourceAccountId, supplierId, branch, unitCost,
+            sellingPrice, rewardPointsPrice, reorderLevel, accountSubType } = await req.json()
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return NextResponse.json({ error: 'At least one item ID is required' }, { status: 400 })
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data: any = {}
+    if (revenueAccountId !== undefined) data.revenueAccountId = revenueAccountId || null
+    if (sourceAccountId !== undefined) data.sourceAccountId = sourceAccountId || null
+    if (supplierId !== undefined) data.supplierId = supplierId || null
+    if (branch !== undefined) data.branch = branch
+    if (unitCost !== undefined) data.unitCost = parseFloat(unitCost)
+    if (sellingPrice !== undefined) data.sellingPrice = sellingPrice ? parseFloat(sellingPrice) : null
+    if (rewardPointsPrice !== undefined) data.rewardPointsPrice = rewardPointsPrice ? parseInt(rewardPointsPrice) : null
+    if (reorderLevel !== undefined) data.reorderLevel = reorderLevel ? parseInt(reorderLevel) : null
+    if (accountSubType !== undefined) data.accountSubType = accountSubType || null
+
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
+    }
+
+    const result = await prisma.inventoryItem.updateMany({
+      where: { id: { in: ids }, isActive: true },
+      data,
+    })
+
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: 'BULK_UPDATE',
+        entity: 'inventoryItem',
+        entityId: ids.join(','),
+        details: { count: result.count, fields: Object.keys(data) },
+      },
+    })
+
+    return NextResponse.json({ updated: result.count })
+  } catch {
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
 export async function DELETE(req: Request) {
   const session = await auth()
   if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
