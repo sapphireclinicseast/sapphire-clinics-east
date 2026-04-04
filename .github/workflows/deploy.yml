@@ -324,16 +324,37 @@ jobs:
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/ 2>&1 || echo "000")
             echo "   HTTP $HTTP_CODE"
 
-            echo "→ Testing DB connectivity from app container..."
-            DB_TEST=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:3001/api/auth/providers" 2>&1 || echo "000")
-            echo "   Providers endpoint: HTTP $DB_TEST"
-            # Quick DB connectivity check via a simple query
-            docker exec accounting_app node -e "
-              const { PrismaClient } = require('@prisma/client');
-              const p = new PrismaClient();
-              p.user.count().then(c => { console.log('DB OK, user count:', c); process.exit(0) })
-                .catch(e => { console.error('DB FAIL:', e.message); process.exit(1) })
-            " 2>&1 || echo "   ⚠ DB connectivity test failed — may need container restart"
+            echo "→ Testing DB connectivity via app API..."
+            CSRF_JSON=$(curl -s http://localhost:3001/api/auth/csrf 2>/dev/null || echo '{}')
+            CSRF=$(echo "$CSRF_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('csrfToken',''))" 2>/dev/null || echo "")
+            if [ -n "$CSRF" ]; then
+              LOGIN_RESULT=$(curl -s -X POST http://localhost:3001/api/auth/callback/credentials \
+                -H "Content-Type: application/x-www-form-urlencoded" \
+                -b <(echo "") \
+                -c /tmp/acct_test_cookie \
+                -d "email=main%40sapphireclinicseast.org&password=SCEI&csrfToken=$CSRF" \
+                -w "%{redirect_url}" -o /dev/null 2>&1 || echo "FAIL")
+              if echo "$LOGIN_RESULT" | grep -q "error="; then
+                echo "   ⚠ Login test FAILED — redirect: $LOGIN_RESULT"
+                echo "   → Checking if DB connection works..."
+                docker exec accounting_db psql -U sapphire -d sapphire_accounting -c "SELECT email, LEFT(\"passwordHash\",15) FROM \"User\" WHERE email='main@sapphireclinicseast.org';" 2>&1
+                echo "   → App container DATABASE_URL:"
+                docker exec accounting_app env 2>/dev/null | grep DATABASE_URL | sed "s|://[^:]*:[^@]*@|://USER:PASS@|g"
+                echo "   → Attempting to fix: resetting postgres password from .env.production..."
+                PG_PASS2=$(grep "^POSTGRES_PASSWORD" .env.production 2>/dev/null | cut -d= -f2-)
+                docker exec accounting_db psql -U sapphire -d sapphire_accounting -c "ALTER USER sapphire WITH PASSWORD '${PG_PASS2}';" 2>&1
+                echo "   → Restarting app container..."
+                docker compose --env-file .env.production restart app 2>&1
+                sleep 10
+                echo "   → Retesting..."
+                RETRY_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/ 2>&1 || echo "000")
+                echo "   Retry HTTP: $RETRY_CODE"
+              else
+                echo "   ✅ Login test passed — redirect: $LOGIN_RESULT"
+              fi
+            else
+              echo "   ⚠ Could not get CSRF token"
+            fi
 
             echo "→ Container logs (last 40 lines):"
             docker logs accounting_app --tail 40 2>&1 || true
