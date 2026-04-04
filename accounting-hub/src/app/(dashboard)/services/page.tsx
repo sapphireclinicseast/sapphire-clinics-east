@@ -118,7 +118,7 @@ export default function ServicesPage() {
   const [fUnitPayId, setFUnitPayId] = useState('')
   const [fUnitPayEnabled, setFUnitPayEnabled] = useState(true)
   const [unitPays, setUnitPays] = useState<{ id: string; name: string }[]>([])
-  const [fEligibleServices, setFEligibleServices] = useState<{ serviceId: string; discountPercent: number }[]>([])
+  const [fEligibleServices, setFEligibleServices] = useState<{ serviceId: string; discountPercent: number; name?: string; department?: string }[]>([])
   const [eligibleSearch, setEligibleSearch] = useState('')
   const [eligibleResults, setEligibleResults] = useState<Service[]>([])
   const [eligibleLoading, setEligibleLoading] = useState(false)
@@ -228,8 +228,10 @@ export default function ServicesPage() {
     setFUnitPayId(s.unitPayId || '')
     setFUnitPayEnabled(!!s.unitPayId && s.unitPayEnabled !== false)
     setFEligibleServices(
-      (s.eligibleFor || []).map((e: { eligibleService: { id: string }; discountPercent?: number | string | null }) => ({
+      (s.eligibleFor || []).map((e: { eligibleService: { id: string; name: string; department: string }; discountPercent?: number | string | null }) => ({
         serviceId: e.eligibleService.id,
+        name: e.eligibleService.name,
+        department: e.eligibleService.department,
         discountPercent: Number(e.discountPercent) || 0,
       }))
     )
@@ -663,7 +665,7 @@ export default function ServicesPage() {
                                 <p className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>No matching earned services found</p>
                               ) : eligibleResults.map(s => (
                                   <button key={s.id} type="button" onClick={() => {
-                                    setFEligibleServices(prev => [...prev, { serviceId: s.id, discountPercent: 0 }])
+                                    setFEligibleServices(prev => [...prev, { serviceId: s.id, name: s.name, department: s.department, discountPercent: 0 }])
                                     setEligibleSearch('')
                                     setEligibleResults([])
                                   }}
@@ -684,11 +686,12 @@ export default function ServicesPage() {
                         ) : (
                           <div className="space-y-1.5">
                             {fEligibleServices.map((es, idx) => {
-                              const svc = services.find(s => s.id === es.serviceId)
+                              const svcName = es.name || services.find(s => s.id === es.serviceId)?.name || 'Unknown'
+                              const svcDept = es.department || services.find(s => s.id === es.serviceId)?.department || ''
                               return (
                                 <div key={es.serviceId} className="flex items-center gap-2 p-2 rounded-lg bg-white text-xs">
                                   <span className="flex-1 font-medium" style={{ color: 'var(--charcoal)' }}>
-                                    {svc?.name || 'Unknown'} <span className="px-1 py-0.5 rounded" style={{ background: '#f3e8ff', color: '#6b21a8' }}>{svc?.department}</span>
+                                    {svcName} {svcDept && <span className="px-1 py-0.5 rounded" style={{ background: '#f3e8ff', color: '#6b21a8' }}>{svcDept}</span>}
                                   </span>
                                   {fWalletType === 'VIP' && (
                                     <div className="flex items-center gap-1">
