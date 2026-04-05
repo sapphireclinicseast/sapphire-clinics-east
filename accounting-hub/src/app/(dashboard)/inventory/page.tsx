@@ -72,7 +72,7 @@ function printVerdanaSticker(item: { name: string; sku?: string; barcode?: strin
           <span style="display:flex;align-items:center;gap:2px">${ttIcon} @verdanarehab</span>
         </div>
       </div>
-      <div style="display:flex;flex-direction:column;align-items:center;min-width:60px;padding:3mm">
+      <div style="display:flex;flex-direction:column;align-items:center;min-width:60px;padding:3mm 6mm 3mm 3mm">
         <img src="${logoWordUrl}" style="width:60px;height:70px;object-fit:contain;filter:brightness(0)" />
       </div>
     </div>`
