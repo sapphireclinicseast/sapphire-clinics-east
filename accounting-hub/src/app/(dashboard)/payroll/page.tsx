@@ -9,6 +9,7 @@ import {
   PlusCircle, CheckCircle2, ToggleLeft, ToggleRight, Receipt,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import EmployeePayroll from './EmployeePayroll'
 
 const toNum = (v: unknown) => Number(v) || 0
 
@@ -1297,11 +1298,7 @@ export default function PayrollPage() {
       </div>
 
       {mainTab === 'employees' && (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <Users size={36} className="mb-3 opacity-30" />
-          <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Employee Payroll</p>
-          <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Coming soon — employee salary and payroll management</p>
-        </div>
+        <EmployeePayroll canWrite={!!canWrite} />
       )}
 
       {mainTab === 'tax-payable' && (

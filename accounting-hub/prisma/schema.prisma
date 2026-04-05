@@ -859,3 +859,255 @@ model PayrollTaxSettings {
   liabilityAccount   Account? @relation("TaxLiability", fields: [liabilityAccountId], references: [id], onDelete: SetNull)
   updatedAt          DateTime @updatedAt
 }
+
+// ── Employee Payroll ──────────────────────────────────────
+
+enum RateType {
+  DAILY
+  MONTHLY
+}
+
+enum EmployeeRequestType {
+  LEAVE
+  OVERTIME
+  UNDERTIME
+  CHANGE_SCHEDULE
+  CERTIFICATE_OF_EMPLOYMENT
+}
+
+enum LeaveType {
+  VACATION
+  SICK
+  EMERGENCY
+  MATERNITY
+  PATERNITY
+  BEREAVEMENT
+  UNPAID
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  DENIED
+}
+
+enum TimekeepingSource {
+  BIOMETRIC
+  MANUAL
+}
+
+enum HolidayType {
+  REGULAR
+  SPECIAL_NON_WORKING
+  SPECIAL_WORKING
+}
+
+enum PayslipStatus {
+  DRAFT
+  FINAL
+}
+
+model Employee {
+  id                String    @id @default(cuid())
+  externalStaffId   String?   @unique  // Marketing site Staff.id (from Administration dept)
+  employeeBioId     Int?      @unique  // Biometric device ID (column 1 in .dat file)
+  firstName         String
+  lastName          String
+  email             String?
+  department        String              // ADMIN, OPERATIONS, etc.
+  branch            String              // SBEA, SBGH
+  jobTitle          String?
+  rateType          RateType  @default(DAILY)
+  dailyRate         Decimal   @default(0)
+  monthlyRate       Decimal   @default(0)
+  sssNumber         String?
+  philhealthNumber  String?
+  pagibigNumber     String?
+  tinNumber         String?
+  dateHired         DateTime?
+  regularizationDate DateTime?
+  scheduleIn        String    @default("08:00")  // Default clock-in time HH:mm
+  scheduleOut       String    @default("17:00")  // Default clock-out time HH:mm
+  restDay           String    @default("SUNDAY") // e.g. "SUNDAY", "SATURDAY"
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  timekeepingRecords TimekeepingRecord[]
+  requests           EmployeeRequest[]
+  benefits           EmployeeBenefit[]
+  payslips           EmployeePayslip[]
+
+  @@index([branch])
+  @@index([department])
+  @@index([isActive])
+  @@index([employeeBioId])
+}
+
+model EmployeeSettings {
+  id                  String   @id @default(cuid())
+  // Cutoff configuration
+  cutoff1Start        Int      @default(1)    // Day of month for 1st cutoff start
+  cutoff1End          Int      @default(15)   // Day of month for 1st cutoff end
+  cutoff2Start        Int      @default(16)   // Day of month for 2nd cutoff start
+  cutoff2EndLastDay   Boolean  @default(true) // true = use last day of month
+  cutoff2End          Int      @default(30)   // Day if not using last day
+  // Work hours
+  standardHoursPerDay Decimal  @default(8)
+  overtimeMultiplier  Decimal  @default(1.25) // Regular OT = 125%
+  nightDiffMultiplier Decimal  @default(0.10) // 10% additional for 10pm-6am
+  // Holiday multipliers (DOLE Philippines)
+  regularHolidayRate      Decimal @default(2.0)  // 200% of daily rate
+  specialHolidayRate      Decimal @default(1.3)  // 130% of daily rate
+  regularHolidayOTRate    Decimal @default(2.6)  // 260% for OT on regular holiday
+  specialHolidayOTRate    Decimal @default(1.69) // 169% for OT on special holiday
+  restDayRate             Decimal @default(1.3)  // 130% for rest day
+  restDayRegHolidayRate   Decimal @default(2.6)  // 260% for rest day + regular holiday
+  restDaySpecHolidayRate  Decimal @default(1.5)  // 150% for rest day + special holiday
+  // Deduction toggles
+  sssEnabled          Boolean  @default(true)
+  philhealthEnabled   Boolean  @default(true)
+  pagibigEnabled      Boolean  @default(true)
+  taxEnabled          Boolean  @default(true)
+  updatedAt           DateTime @updatedAt
+}
+
+model EmployeeRequest {
+  id           String              @id @default(cuid())
+  employeeId   String
+  employee     Employee            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  requestType  EmployeeRequestType
+  leaveType    LeaveType?          // Only for LEAVE requests
+  startDate    DateTime?
+  endDate      DateTime?
+  reason       String?
+  attachment   String?             // File URL for supporting docs
+  status       RequestStatus       @default(PENDING)
+  reviewedById String?
+  reviewNotes  String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@index([employeeId])
+  @@index([status])
+  @@index([requestType])
+  @@index([startDate])
+}
+
+model TimekeepingUpload {
+  id           String   @id @default(cuid())
+  fileName     String
+  uploadDate   DateTime @default(now())
+  recordCount  Int      @default(0)
+  branch       String?
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  records TimekeepingRecord[]
+
+  @@index([uploadDate])
+  @@index([branch])
+}
+
+model TimekeepingRecord {
+  id         String            @id @default(cuid())
+  employeeId String
+  employee   Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  uploadId   String?
+  upload     TimekeepingUpload? @relation(fields: [uploadId], references: [id], onDelete: SetNull)
+  date       DateTime          // The calendar date
+  timeIn     DateTime?         // Clock-in timestamp
+  timeOut    DateTime?         // Clock-out timestamp
+  hoursWorked Decimal?         // Computed hours
+  lateMinutes Int      @default(0)
+  undertimeMinutes Int @default(0)
+  overtimeMinutes  Int @default(0)
+  isRestDay  Boolean   @default(false)
+  isHoliday  Boolean   @default(false)
+  holidayType String?  // REGULAR, SPECIAL_NON_WORKING, SPECIAL_WORKING
+  source     TimekeepingSource @default(BIOMETRIC)
+  remarks    String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([employeeId, date])
+  @@index([employeeId])
+  @@index([date])
+  @@index([uploadId])
+}
+
+model EmployeeBenefit {
+  id              String   @id @default(cuid())
+  employeeId      String
+  employee        Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  benefitType     String   // SSS, PHILHEALTH, PAGIBIG, TAX
+  employeeShare   Decimal  @default(0)  // Employee's monthly contribution
+  employerShare   Decimal  @default(0)  // Employer's monthly contribution
+  effectiveDate   DateTime @default(now())
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([employeeId])
+  @@index([benefitType])
+  @@index([isActive])
+}
+
+model Holiday {
+  id          String      @id @default(cuid())
+  name        String
+  date        DateTime
+  holidayType HolidayType
+  branch      String?     // null = all branches
+  isRecurring Boolean     @default(false)  // Repeats yearly
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@unique([date, branch])
+  @@index([date])
+  @@index([holidayType])
+}
+
+model EmployeePayslip {
+  id               String       @id @default(cuid())
+  employeeId       String
+  employee         Employee     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  cutoffPeriod     String       // e.g. "2026-03-1" or "2026-03-2"
+  branch           String
+  // Earnings
+  basicPay         Decimal      @default(0)
+  overtimePay      Decimal      @default(0)
+  holidayPay       Decimal      @default(0)
+  nightDiffPay     Decimal      @default(0)
+  restDayPay       Decimal      @default(0)
+  allowances       Decimal      @default(0)
+  grossPay         Decimal      @default(0)
+  // Deductions
+  sssDeduction     Decimal      @default(0)
+  philhealthDeduction Decimal   @default(0)
+  pagibigDeduction Decimal      @default(0)
+  taxDeduction     Decimal      @default(0)
+  lateDeduction    Decimal      @default(0)
+  undertimeDeduction Decimal    @default(0)
+  otherDeductions  Decimal      @default(0)
+  totalDeductions  Decimal      @default(0)
+  // Net
+  netPay           Decimal      @default(0)
+  // Details
+  daysWorked       Decimal      @default(0)
+  hoursWorked      Decimal      @default(0)
+  overtimeHours    Decimal      @default(0)
+  lateMinutes      Int          @default(0)
+  undertimeMinutes Int          @default(0)
+  details          Json?        // Additional breakdown data
+  status           PayslipStatus @default(DRAFT)
+  createdById      String
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@unique([employeeId, cutoffPeriod, branch])
+  @@index([employeeId])
+  @@index([cutoffPeriod])
+  @@index([branch])
+  @@index([status])
+}

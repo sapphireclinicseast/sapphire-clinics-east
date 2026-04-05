@@ -28,7 +28,7 @@ export async function GET(req: Request) {
         const data = await res.json()
         const staff = data.staff || []
         for (const s of staff) {
-          const name = `${s.lastName}, ${s.firstName}`
+          const name = `${s.firstName} ${s.lastName}`
           const dept = s.department || ''
           const br = s.branch || ''
           // Only sync clinical departments (not admin/front desk)
