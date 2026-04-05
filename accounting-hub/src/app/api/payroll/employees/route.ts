@@ -20,40 +20,15 @@ export async function GET(req: Request) {
   const sync = searchParams.get('sync') === 'true'
   const includeInactive = searchParams.get('includeInactive') === 'true'
 
-  // Sync from marketing hub + HR platform
-  // Marketing hub provides basic staff data; HR platform provides gov IDs and employee ID
+  // Sync from marketing hub (which also fetches gov IDs from HR platform via includeHR)
   if (sync) {
     try {
-      // Fetch from marketing hub (basic staff data)
-      const mktRes = await fetch(`${MARKETING_HUB_URL}/api/staff/external`, {
+      const res = await fetch(`${MARKETING_HUB_URL}/api/staff/external?includeHR=true`, {
         headers: { 'Authorization': `Bearer ${EXTERNAL_API_KEY}` },
         cache: 'no-store',
       })
-
-      // Also fetch directly from HR platform (has gov IDs, employee IDs, readable job titles)
-      let hrStaff: Record<string, unknown>[] = []
-      try {
-        const hrRes = await fetch(`${HR_PLATFORM_URL}/staff/external`, {
-          headers: { 'Authorization': `Bearer ${EXTERNAL_API_KEY}` },
-          cache: 'no-store',
-        })
-        if (hrRes.ok) {
-          const hrData = await hrRes.json()
-          hrStaff = hrData.staff || []
-        }
-      } catch (hrErr) {
-        console.error('HR Platform fetch error (non-fatal):', hrErr)
-      }
-
-      // Build HR lookup by firstName+lastName for matching
-      const hrByName = new Map<string, Record<string, unknown>>()
-      for (const h of hrStaff) {
-        const key = `${((h.firstName as string) || '').toUpperCase()}|${((h.lastName as string) || '').toUpperCase()}`
-        hrByName.set(key, h)
-      }
-
-      if (mktRes.ok) {
-        const data = await mktRes.json()
+      if (res.ok) {
+        const data = await res.json()
         const staff = data.staff || []
         for (const s of staff) {
           const dept = s.department || ''
@@ -61,23 +36,19 @@ export async function GET(req: Request) {
           // Only sync ADMINISTRATION and FRONT_DESK department staff as employees
           if (!['FRONT_DESK', 'ADMINISTRATION'].includes(dept)) continue
 
-          // Look up HR data for this person
-          const hrKey = `${((s.firstName as string) || '').toUpperCase()}|${((s.lastName as string) || '').toUpperCase()}`
-          const hr = hrByName.get(hrKey) || {}
-
           // Build update/create data — always sync basic fields
-          // Use HR job title (human-readable) if available, fall back to marketing hub
+          // Use HR job title (human-readable) if available, fall back to marketing hub slug
           const syncData: Record<string, unknown> = {
             firstName: s.firstName || '',
             lastName: s.lastName || '',
             department: dept,
             branch: br,
-            jobTitle: (hr.jobTitle as string) || s.jobTitle || null,
+            jobTitle: s.hrJobTitle || s.jobTitle || null,
             email: s.email || null,
           }
 
           // Pre-fill employeeId as Biometric ID if not already set
-          const empId = (hr.employeeId as string) || s.employeeId
+          const empId = s.hrEmployeeId || s.employeeId
           if (empId) {
             const existing = await prisma.employee.findUnique({ where: { externalStaffId: s.id } })
             if (!existing || !existing.employeeBioId) {
@@ -88,10 +59,10 @@ export async function GET(req: Request) {
 
           // Pre-fill government IDs from HR platform if not already set
           const existingEmp = await prisma.employee.findUnique({ where: { externalStaffId: s.id } })
-          if (hr.sss && (!existingEmp || !existingEmp.sssNumber)) syncData.sssNumber = hr.sss
-          if (hr.philhealth && (!existingEmp || !existingEmp.philhealthNumber)) syncData.philhealthNumber = hr.philhealth
-          if (hr.pagibig && (!existingEmp || !existingEmp.pagibigNumber)) syncData.pagibigNumber = hr.pagibig
-          if (hr.tin && (!existingEmp || !existingEmp.tinNumber)) syncData.tinNumber = hr.tin
+          if (s.sss && (!existingEmp || !existingEmp.sssNumber)) syncData.sssNumber = s.sss
+          if (s.philhealth && (!existingEmp || !existingEmp.philhealthNumber)) syncData.philhealthNumber = s.philhealth
+          if (s.pagibig && (!existingEmp || !existingEmp.pagibigNumber)) syncData.pagibigNumber = s.pagibig
+          if (s.tin && (!existingEmp || !existingEmp.tinNumber)) syncData.tinNumber = s.tin
 
           await prisma.employee.upsert({
             where: { externalStaffId: s.id },
