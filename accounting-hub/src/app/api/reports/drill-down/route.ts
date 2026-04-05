@@ -62,6 +62,96 @@ export async function GET(req: Request) {
     }
 
     const isPaymentCategory = CASH_METHODS.includes(category) || category === 'CASH_BALANCE'
+    const isARIncrease = category.startsWith('AR_INCREASE_')
+    const isARPayments = category === 'AR_PAYMENTS'
+
+    // AR Payments Received drill-down (collections from HMO/GL via Record Payment)
+    if (isARPayments) {
+      const arPayments = await prisma.aRPayment.findMany({
+        where: {
+          paymentDate: { gte: startDate, lt: endDate },
+          ...(branch !== 'ALL' ? { branch } : {}),
+        },
+        select: {
+          paymentDate: true,
+          amount: true,
+          discount: true,
+          notes: true,
+          branch: true,
+          cashAccount: { select: { accountNumber: true, accountTitle: true } },
+          wallet: { select: { patientName: true, walletType: true } },
+          items: { select: { order: { select: { orderNumber: true, patientName: true } } } },
+        },
+        orderBy: { paymentDate: 'asc' },
+      })
+
+      const items = arPayments.map((p) => {
+        const amt = Number(p.amount)
+        const walletLabel = p.wallet.walletType === 'HMO' ? 'HMO' : 'GL'
+        const cashAcct = p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : ''
+        const orderNums = p.items.map(i => `#${i.order.orderNumber}`).join(', ')
+        return {
+          date: p.paymentDate.toISOString().split('T')[0],
+          type: `${walletLabel} — ${p.wallet.patientName}${orderNums ? ` (${orderNums})` : ''}${cashAcct ? ` → ${cashAcct}` : ''}`,
+          branch: BRANCH_LABELS[p.branch || ''] || p.branch || '—',
+          amount: amt,
+        }
+      })
+
+      return NextResponse.json({ items, total: items.reduce((s, i) => s + i.amount, 0) })
+    }
+
+    // AR Increase drill-down (HMO/GL charges — orders billed to AR)
+    if (isARIncrease) {
+      const arMethod = category.replace('AR_INCREASE_', '') // 'HMO' or 'GL'
+
+      const payments = await prisma.orderPayment.findMany({
+        where: {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          method: arMethod as any,
+          order: {
+            status: 'COMPLETED',
+            transactionDate: { gte: startDate, lt: endDate },
+            ...branchFilter,
+          },
+        },
+        select: {
+          method: true,
+          amount: true,
+          wallet: { select: { patientName: true } },
+          order: {
+            select: {
+              orderNumber: true,
+              transactionDate: true,
+              orderType: true,
+              branch: true,
+              patientName: true,
+              items: {
+                take: 1,
+                select: {
+                  service: { select: { department: true } },
+                  inventoryItem: { select: { skuDepartment: true } },
+                },
+              },
+            },
+          },
+        },
+        orderBy: { order: { transactionDate: 'asc' } },
+      })
+
+      const items = payments.map((p) => {
+        const dept = p.order.items[0]?.service?.department || p.order.items[0]?.inventoryItem?.skuDepartment || 'OTHER'
+        const walletName = p.wallet?.patientName || ''
+        return {
+          date: p.order.transactionDate.toISOString().split('T')[0],
+          type: `#${p.order.orderNumber} — ${p.order.orderType === 'SERVICE' ? 'Service' : 'Product'} (${DEPT_LABELS[dept] || dept})${p.order.patientName ? ` · ${p.order.patientName}` : ''}${walletName ? ` → ${walletName}` : ''}`,
+          branch: BRANCH_LABELS[p.order.branch] || p.order.branch,
+          amount: Number(p.amount),
+        }
+      })
+
+      return NextResponse.json({ items, total: items.reduce((s, i) => s + i.amount, 0) })
+    }
 
     // Deduction drill-down (MDR, CWT per transaction)
     if (category === 'DEDUCTION' && accountKey) {

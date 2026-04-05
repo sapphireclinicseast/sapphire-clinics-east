@@ -965,7 +965,7 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
    ═══════════════════════════════════════════════════════════════ */
 
 function CashFlowStatement({ data, viewMode, onDrillDown }: { data: ReportData; viewMode: ViewMode; onDrillDown: OnDrillDown }) {
-  const { monthly } = data
+  const { monthly, accountsReceivable } = data
 
   // Collect all payment methods used
   const allMethods = new Set<string>()
@@ -976,10 +976,14 @@ function CashFlowStatement({ data, viewMode, onDrillDown }: { data: ReportData; 
 
   // Cash methods (actual cash inflows)
   const cashMethods = ['CASH', 'GCASH', 'PAYMAYA', 'DEBIT', 'CREDIT_CARD', 'SHOPEE', 'LAZADA', 'TIKTOK']
-  const nonCashMethods = ['VIP_CARD', 'PREPAID_CARD', 'REWARD_POINTS', 'DOWNPAYMENT', 'PACKAGE', 'HMO', 'GL']
+  // Non-cash methods excluding HMO/GL (those are AR, handled separately)
+  const nonCashMethods = ['VIP_CARD', 'PREPAID_CARD', 'REWARD_POINTS', 'DOWNPAYMENT', 'PACKAGE']
+  // AR methods (HMO/GL) — these are cash outflows (increase in accounts receivable)
+  const arMethods = ['HMO', 'GL']
 
   const cashMethodsUsed = methods.filter((m) => cashMethods.includes(m))
   const nonCashMethodsUsed = methods.filter((m) => nonCashMethods.includes(m))
+  const arMethodsUsed = methods.filter((m) => arMethods.includes(m))
 
   const totalCashFromOps = sumMonths(monthly, (m) => {
     let total = 0
@@ -993,7 +997,17 @@ function CashFlowStatement({ data, viewMode, onDrillDown }: { data: ReportData; 
     return total
   })
 
-  const netCashFromOperations = totalCashFromOps
+  // AR: HMO/GL charges are cash outflows (increase in receivables)
+  const totalARIncrease = sumMonths(monthly, (m) => {
+    let total = 0
+    for (const method of arMethods) total += m.paymentsByMethod[method] || 0
+    return total
+  })
+
+  // AR payments received (from Record Payment in Accounts Receivable) are cash inflows
+  const totalARPaymentsReceived = accountsReceivable?.paymentsReceived || 0
+
+  const netCashFromOperations = totalCashFromOps + totalARPaymentsReceived - totalARIncrease
   const netCashFromInvesting = 0
   const netCashFromFinancing = 0
   const netChange = netCashFromOperations + netCashFromInvesting + netCashFromFinancing
@@ -1015,6 +1029,28 @@ function CashFlowStatement({ data, viewMode, onDrillDown }: { data: ReportData; 
         )}
         <AnnualRow label="Total Cash Receipts" amount={totalCashFromOps} indent={1} isTotal bold
           onDrillDown={() => onDrillDown('Total Cash Receipts', 'CASH_BALANCE', 0)} />
+
+        {/* AR Payments Received (cash inflow from HMO/GL collections) */}
+        {totalARPaymentsReceived > 0 && (
+          <>
+            <SubSectionHeader label="Collections from Accounts Receivable" />
+            <AnnualRow label="AR Payments Received (HMO/GL)" amount={totalARPaymentsReceived} indent={2}
+              onDrillDown={() => onDrillDown('AR Payments Received', 'AR_PAYMENTS', 0)} />
+          </>
+        )}
+
+        {/* AR Increase (cash outflow — billed to HMO/GL but not yet collected) */}
+        {totalARIncrease > 0 && (
+          <>
+            <SubSectionHeader label="Increase in Accounts Receivable" />
+            {arMethodsUsed.map((method) => {
+              const methodTotal = sumMonths(monthly, (m) => m.paymentsByMethod[method] || 0)
+              return <AnnualRow key={method} label={PAYMENT_LABELS[method] || method} amount={-methodTotal} indent={2}
+                onDrillDown={() => onDrillDown(PAYMENT_LABELS[method] || method, `AR_INCREASE_${method}`, 0)} />
+            })}
+            <AnnualRow label="Total Increase in AR" amount={-totalARIncrease} indent={1} isTotal />
+          </>
+        )}
 
         {nonCashMethodsUsed.length > 0 && (
           <>
@@ -1089,6 +1125,38 @@ function CashFlowStatement({ data, viewMode, onDrillDown }: { data: ReportData; 
         isTotal
       />
 
+      {/* AR Payments Received */}
+      {totalARPaymentsReceived > 0 && (
+        <>
+          <div className="h-2" />
+          <SubSectionHeader label="Collections from Accounts Receivable" />
+          <MonthlyRow
+            label="AR Payments Received (HMO/GL)"
+            values={Array(12).fill(0)}
+            total={totalARPaymentsReceived}
+            indent={1}
+          />
+        </>
+      )}
+
+      {/* AR Increase (outflow) */}
+      {arMethodsUsed.length > 0 && (
+        <>
+          <div className="h-2" />
+          <SubSectionHeader label="Increase in Accounts Receivable" />
+          {arMethodsUsed.map((method) => (
+            <MonthlyRow
+              key={method}
+              label={PAYMENT_LABELS[method] || method}
+              values={getMonthlyArray(monthly, (m) => -(m.paymentsByMethod[method] || 0))}
+              total={-sumMonths(monthly, (m) => m.paymentsByMethod[method] || 0)}
+              indent={1}
+              onClickCell={(m) => onDrillDown(PAYMENT_LABELS[method] || method, `AR_INCREASE_${method}`, m ?? 0)}
+            />
+          ))}
+        </>
+      )}
+
       {nonCashMethodsUsed.length > 0 && (
         <>
           <div className="h-2" />
@@ -1112,6 +1180,7 @@ function CashFlowStatement({ data, viewMode, onDrillDown }: { data: ReportData; 
         values={getMonthlyArray(monthly, (m) => {
           let t = 0
           for (const method of cashMethods) t += m.paymentsByMethod[method] || 0
+          for (const method of arMethods) t -= m.paymentsByMethod[method] || 0
           return t
         })}
         total={netCashFromOperations}
@@ -1126,6 +1195,7 @@ function CashFlowStatement({ data, viewMode, onDrillDown }: { data: ReportData; 
         values={getMonthlyArray(monthly, (m) => {
           let t = 0
           for (const method of cashMethods) t += m.paymentsByMethod[method] || 0
+          for (const method of arMethods) t -= m.paymentsByMethod[method] || 0
           return t
         })}
         total={netChange}
