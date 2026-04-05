@@ -132,17 +132,6 @@ export async function GET(req: Request) {
       }
     }
 
-    // Debug: log product order item details
-    const productOrders = orders.filter(o => o.orderType === 'PRODUCT')
-    if (productOrders.length > 0) {
-      console.log(`[Reports] Found ${productOrders.length} PRODUCT orders`)
-      for (const po of productOrders.slice(0, 5)) {
-        for (const item of po.items) {
-          console.log(`[Reports] Product item: inventoryItemId=${item.inventoryItemId}, lineTotal=${item.lineTotal}, inventoryItem=${JSON.stringify(item.inventoryItem ? { sku: item.inventoryItem.skuDepartment, revenueAccount: item.inventoryItem.revenueAccount } : null)}`)
-        }
-      }
-    }
-
     for (const order of orders) {
       const month = new Date(order.transactionDate).getMonth() + 1
       const net = Number(order.netAmount)
@@ -166,10 +155,12 @@ export async function GET(req: Request) {
         const lineAmt = Number(item.lineTotal)
         m.revenueByDept[dept] = (m.revenueByDept[dept] || 0) + lineAmt
 
-        // Group by assigned COA revenue account
-        const acct = item.service?.revenueAccount || item.inventoryItem?.revenueAccount
-        const acctKey = acct ? `${acct.accountNumber} ${acct.accountTitle}` : 'Unclassified Revenue'
-        m.revenueByAccount[acctKey] = (m.revenueByAccount[acctKey] || 0) + lineAmt
+        // Group by assigned COA revenue account (skip unearned — they go to liabilities, not IS)
+        if (order.revenueType !== 'UNEARNED') {
+          const acct = item.service?.revenueAccount || item.inventoryItem?.revenueAccount
+          const acctKey = acct ? `${acct.accountNumber} ${acct.accountTitle}` : 'Unclassified Revenue'
+          m.revenueByAccount[acctKey] = (m.revenueByAccount[acctKey] || 0) + lineAmt
+        }
 
         if (item.inventoryItemId && item.inventoryItem) {
           const cost = Number(item.inventoryItem.unitCost) * item.quantity
