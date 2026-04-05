@@ -345,17 +345,24 @@ function normalize(data: unknown): unknown[] {
   return []
 }
 
-/** Convert "LASTNAME, FIRSTNAME" → "FIRSTNAME LASTNAME" for display */
+/** Title-case a name: "JOHN SMITH" → "John Smith" */
+function titleCaseName(s: string): string {
+  // If already mixed case (not all upper), return as-is
+  if (s !== s.toUpperCase()) return s
+  return s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+}
+
+/** Convert "LASTNAME, FIRSTNAME" → "Firstname Lastname" for display, also title-cases ALL CAPS */
 function formatClinicianName(name: string | null | undefined): string {
   if (!name) return '—'
   // If name contains a comma, assume "LASTNAME, FIRSTNAME" format
   if (name.includes(',')) {
     const parts = name.split(',').map(p => p.trim())
     if (parts.length === 2 && parts[0] && parts[1]) {
-      return `${parts[1]} ${parts[0]}`
+      return titleCaseName(`${parts[1]} ${parts[0]}`)
     }
   }
-  return name
+  return titleCaseName(name)
 }
 
 function queueBranch(branch: string): string {
@@ -641,7 +648,7 @@ function CashierPanel({
                     <td className="px-5 py-3" style={{ color: 'var(--charcoal)' }}>{q.time}</td>
                     <td className="px-5 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{q.patientName}</td>
                     <td className="px-5 py-3" style={{ color: 'var(--mid-gray)' }}>{q.sessionType}</td>
-                    <td className="px-5 py-3" style={{ color: 'var(--mid-gray)' }}>{q.clinician}</td>
+                    <td className="px-5 py-3" style={{ color: 'var(--mid-gray)' }}>{formatClinicianName(q.clinician)}</td>
                     <td className="px-5 py-3">
                       {q.converted ? (
                         <span className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: '#dcfce7', color: '#166534' }}>
@@ -700,7 +707,7 @@ function OrderFormModal({
   const [patientSearch, setPatientSearch] = useState('')
   const [patients, setPatients] = useState<Patient[]>([])
   const [showPatientDrop, setShowPatientDrop] = useState(false)
-  const [clinicianName, setClinicianName] = useState(prefill?.clinician || '')
+  const [clinicianName, setClinicianName] = useState(prefill?.clinician ? (formatClinicianName(prefill.clinician) === '—' ? '' : formatClinicianName(prefill.clinician)) : '')
   const [clinicianSearch, setClinicianSearch] = useState('')
   const [clinicians, setClinicians] = useState<StaffMember[]>([])
   const [showClinicianDrop, setShowClinicianDrop] = useState(false)

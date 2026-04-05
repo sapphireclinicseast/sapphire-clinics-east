@@ -4,6 +4,11 @@ import { auth } from '@/lib/auth'
 const MARKETING_HUB_URL = process.env.MARKETING_HUB_URL || 'https://marketing.sapphireclinicseast.org'
 const EXTERNAL_API_KEY = process.env.EXTERNAL_API_KEY || ''
 
+/** Convert ALL CAPS name to Title Case: "JOHN SMITH" → "John Smith" */
+function titleCase(s: string): string {
+  return s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+}
+
 export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user) {
@@ -37,7 +42,7 @@ export async function GET(req: Request) {
     // POS expects [{id, name, department, branch}]
     const staff = (data.staff || []).map((s: Record<string, unknown>) => ({
       id: s.id,
-      name: `${s.firstName} ${s.lastName}`,
+      name: titleCase(`${s.firstName} ${s.lastName}`),
       department: s.department || '',
       branch: s.branch || '',
       jobTitle: s.jobTitle || '',
