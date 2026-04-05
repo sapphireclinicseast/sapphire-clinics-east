@@ -1792,20 +1792,24 @@ function OrderFormModal({
                   className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#86efac' }} />
                 {glWallets.length > 0 && (
                   <div className="max-h-32 overflow-y-auto space-y-1">
-                    {glWallets.map(w => (
-                      <button key={w.id} onClick={() => {
-                        setPayments([{ method: 'GL', amount: 0, walletId: w.id, reference: w.patientName }])
-                        setShowGlPay(false)
-                        setGlSearch('')
-                        setGlWallets([])
-                      }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-green-50 rounded-lg flex justify-between">
-                        <span className="font-medium">{w.patientName}</span>
-                        <span className="text-xs" style={{ color: '#15803d' }}>
-                          Receivable: {formatCurrency(toNum(w.balance))}
-                        </span>
-                      </button>
-                    ))}
+                    {glWallets.map(w => {
+                      const agency = (w as unknown as { agency?: string }).agency || ''
+                      const displayName = agency ? `${w.patientName} (${agency})` : w.patientName
+                      return (
+                        <button key={w.id} onClick={() => {
+                          setPayments([{ method: 'GL', amount: 0, walletId: w.id, reference: displayName }])
+                          setShowGlPay(false)
+                          setGlSearch('')
+                          setGlWallets([])
+                        }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-green-50 rounded-lg flex justify-between">
+                          <span className="font-medium">{displayName}</span>
+                          <span className="text-xs" style={{ color: '#15803d' }}>
+                            Remaining: {formatCurrency(toNum(w.balance))}
+                          </span>
+                        </button>
+                      )
+                    })}
                   </div>
                 )}
                 {glWallets.length === 0 && glSearch.length > 0 && (

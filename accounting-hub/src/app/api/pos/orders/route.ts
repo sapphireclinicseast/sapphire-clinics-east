@@ -196,25 +196,27 @@ export async function POST(req: Request) {
       }
     }
 
-    // Credit HMO/GL wallet balances (accounts receivable — money owed by HMO/GL provider)
+    // HMO: increment balance (accumulate charges as AR)
+    // GL: decrement balance (use up the pre-set GL amount)
     const RECEIVABLE_METHODS = ['HMO', 'GL']
-    console.log('[WALLET-CREDIT] Checking payments for HMO/GL credit:', JSON.stringify(payments.map((p: Record<string, unknown>) => ({ method: p.method, walletId: p.walletId, amount: p.amount }))))
     for (const p of payments) {
       if (RECEIVABLE_METHODS.includes(p.method) && p.walletId) {
-        console.log(`[WALLET-CREDIT] Incrementing wallet ${p.walletId} by ${p.amount} for ${p.method}`)
         try {
-          const beforeWallet = await prisma.digitalWallet.findUnique({ where: { id: p.walletId }, select: { balance: true } })
-          console.log(`[WALLET-CREDIT] Before balance: ${beforeWallet?.balance}`)
-          const updatedWallet = await prisma.digitalWallet.update({
-            where: { id: p.walletId },
-            data: { balance: { increment: Number(p.amount) } },
-          })
-          console.log(`[WALLET-CREDIT] After balance: ${updatedWallet.balance} (expected ${Number(beforeWallet?.balance || 0) + Number(p.amount)})`)
-          // Verify with a direct read
-          const verifyWallet = await prisma.digitalWallet.findUnique({ where: { id: p.walletId }, select: { balance: true } })
-          console.log(`[WALLET-CREDIT] Verify read: ${verifyWallet?.balance}`)
+          if (p.method === 'GL') {
+            // GL: deduct from the pre-set GL amount (consuming the guarantee letter)
+            await prisma.digitalWallet.update({
+              where: { id: p.walletId },
+              data: { balance: { decrement: Number(p.amount) } },
+            })
+          } else {
+            // HMO: accumulate charges as accounts receivable
+            await prisma.digitalWallet.update({
+              where: { id: p.walletId },
+              data: { balance: { increment: Number(p.amount) } },
+            })
+          }
         } catch (walletErr) {
-          console.error(`[WALLET-CREDIT] Failed to credit wallet ${p.walletId}:`, walletErr)
+          console.error(`[WALLET] Failed to update wallet ${p.walletId}:`, walletErr)
         }
       }
     }

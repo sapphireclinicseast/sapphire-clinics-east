@@ -73,11 +73,17 @@ export async function PUT(
         include: { items: true, payments: true },
       })
 
-      // When voiding, reverse HMO/GL wallet credits (accounts receivable)
+      // When voiding, reverse wallet changes
+      // HMO: was incremented on creation → decrement to reverse
+      // GL: was decremented on creation → increment to reverse (restore GL balance)
       if (body.action === 'void') {
-        const RECEIVABLE_METHODS = ['HMO', 'GL']
         for (const p of updated.payments) {
-          if (RECEIVABLE_METHODS.includes(p.method) && p.walletId && Number(p.amount) > 0) {
+          if (p.method === 'GL' && p.walletId && Number(p.amount) > 0) {
+            await prisma.digitalWallet.update({
+              where: { id: p.walletId },
+              data: { balance: { increment: Number(p.amount) } },
+            })
+          } else if (p.method === 'HMO' && p.walletId && Number(p.amount) > 0) {
             await prisma.digitalWallet.update({
               where: { id: p.walletId },
               data: { balance: { decrement: Number(p.amount) } },
@@ -176,11 +182,17 @@ export async function PUT(
 
       // Delete and recreate payments if provided
       if (payments?.length) {
-        // Reverse old HMO/GL wallet credits before deleting payments
-        const RECEIVABLE_METHODS = ['HMO', 'GL']
+        // Reverse old wallet changes before deleting payments
+        // HMO: was incremented → decrement to reverse
+        // GL: was decremented → increment to reverse (restore GL balance)
         const oldPayments = await tx.orderPayment.findMany({ where: { orderId: id } })
         for (const op of oldPayments) {
-          if (RECEIVABLE_METHODS.includes(op.method) && op.walletId) {
+          if (op.method === 'GL' && op.walletId) {
+            await tx.digitalWallet.update({
+              where: { id: op.walletId },
+              data: { balance: { increment: Number(op.amount) } },
+            })
+          } else if (op.method === 'HMO' && op.walletId) {
             await tx.digitalWallet.update({
               where: { id: op.walletId },
               data: { balance: { decrement: Number(op.amount) } },
@@ -204,9 +216,16 @@ export async function PUT(
           })),
         })
 
-        // Apply new HMO/GL wallet credits
+        // Apply new wallet changes
+        // HMO: increment (accumulate AR)
+        // GL: decrement (consume GL amount)
         for (const p of payments) {
-          if (RECEIVABLE_METHODS.includes(p.method) && p.walletId) {
+          if (p.method === 'GL' && p.walletId) {
+            await tx.digitalWallet.update({
+              where: { id: p.walletId },
+              data: { balance: { decrement: Number(p.amount) } },
+            })
+          } else if (p.method === 'HMO' && p.walletId) {
             await tx.digitalWallet.update({
               where: { id: p.walletId },
               data: { balance: { increment: Number(p.amount) } },
