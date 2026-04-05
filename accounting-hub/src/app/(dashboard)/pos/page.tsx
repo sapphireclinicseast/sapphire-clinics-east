@@ -2557,7 +2557,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       const payload = {
         ...createForm,
         walletType: walletTypeFilter,
-        initialBalance: walletTypeFilter === 'GL' && createForm.glAmount ? parseFloat(createForm.glAmount) : undefined,
+        initialBalance: createForm.glAmount ? parseFloat(createForm.glAmount) : undefined,
       }
       const r = await fetch('/api/pos/wallets', {
         method: 'POST',
@@ -3199,6 +3199,19 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                       <option key={m.id} value={m.id}>{m.name}</option>
                     ))}
                   </select>
+                </div>
+              )}
+              {/* Initial Balance — for migration of existing wallets (all patient wallet types except HMO) */}
+              {walletTypeFilter !== 'HMO' && walletTypeFilter !== 'GL' && (
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Initial Balance <span className="font-normal">(optional — for migrating existing wallets)</span></label>
+                  <div className="flex items-center gap-1">
+                    <span className="text-sm" style={{ color: 'var(--mid-gray)' }}>&#8369;</span>
+                    <input type="number" min={0} step="0.01" value={createForm.glAmount || ''}
+                      onChange={e => setCreateForm({ ...createForm, glAmount: e.target.value })}
+                      placeholder="0.00"
+                      className="flex-1 px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
                 </div>
               )}
               {/* GL-specific: Agency, Amount and Attachment */}

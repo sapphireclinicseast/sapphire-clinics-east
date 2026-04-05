@@ -141,7 +141,7 @@ export async function POST(req: Request) {
         accountId: accountId || null,
         dateObtained: dateObtained ? new Date(dateObtained) : null,
         paymentModeId: paymentModeId || null,
-        balance: walletType === 'GL' && initialBalance ? Number(initialBalance) : 0,
+        balance: initialBalance ? Number(initialBalance) : 0,
         attachmentUrl: attachmentUrl || null,
         agency: walletType === 'GL' ? (agency?.trim() || null) : null,
       },
