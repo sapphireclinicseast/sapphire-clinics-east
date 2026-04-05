@@ -345,6 +345,19 @@ function normalize(data: unknown): unknown[] {
   return []
 }
 
+/** Convert "LASTNAME, FIRSTNAME" → "FIRSTNAME LASTNAME" for display */
+function formatClinicianName(name: string | null | undefined): string {
+  if (!name) return '—'
+  // If name contains a comma, assume "LASTNAME, FIRSTNAME" format
+  if (name.includes(',')) {
+    const parts = name.split(',').map(p => p.trim())
+    if (parts.length === 2 && parts[0] && parts[1]) {
+      return `${parts[1]} ${parts[0]}`
+    }
+  }
+  return name
+}
+
 function queueBranch(branch: string): string {
   if (branch === 'SANDBOX_EAST') return 'SBEA'
   if (branch === 'SANDBOX_GREENHILLS') return 'SBGH'
@@ -2004,20 +2017,25 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
     }, 300)
   }, [editPatientSearch])
 
-  // useEffect-based search for edit clinician (same pattern as new order)
+  // Edit clinician search — mirrors working new-order pattern exactly
   useEffect(() => {
     if (editClinicianSearch.length < 2) { setEditClinicianResults([]); setEditShowClinicianDrop(false); return }
-    if (editClinicianTimer.current) clearTimeout(editClinicianTimer.current)
+    clearTimeout(editClinicianTimer.current!)
     editClinicianTimer.current = setTimeout(async () => {
       try {
         const qb = branch === 'SANDBOX_EAST' ? 'SBEA' : branch === 'SANDBOX_GREENHILLS' ? 'SBGH' : ''
-        const r = await fetch(`/api/pos/staff?search=${encodeURIComponent(editClinicianSearch)}&branch=${qb}`)
+        const url = `/api/pos/staff?search=${encodeURIComponent(editClinicianSearch)}&branch=${qb}`
+        const r = await fetch(url)
         const d = await r.json()
-        const results = Array.isArray(d) ? d : d.data || []
+        const results = Array.isArray(d) ? d : []
         setEditClinicianResults(results)
-        setEditShowClinicianDrop(results.length > 0)
-      } catch { setEditClinicianResults([]) }
+        setEditShowClinicianDrop(true)
+      } catch (err) {
+        console.error('[edit-clinician-search]', err)
+        setEditClinicianResults([])
+      }
     }, 300)
+    return () => { clearTimeout(editClinicianTimer.current!) }
   }, [editClinicianSearch, branch])
 
   const fetchOrders = useCallback(async () => {
@@ -2063,7 +2081,7 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
   const openEditOrder = (o: Order) => {
     setEditOrder(o)
     setEditPatient(o.patientName || '')
-    setEditClinician(o.clinicianName || '')
+    setEditClinician(formatClinicianName(o.clinicianName) === '—' ? '' : formatClinicianName(o.clinicianName))
     setEditClinicianSearch('')
     setEditClinicianResults([])
     setEditShowClinicianDrop(false)
@@ -2215,7 +2233,7 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                     <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
                       {o.items.map(it => it.name).join(', ')}
                     </td>
-                    <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>{o.clinicianName || '—'}</td>
+                    <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>{formatClinicianName(o.clinicianName)}</td>
                     <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(toNum(o.netAmount))}</td>
                     <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
                       {o.payments.map(p => p.method).join(', ')}
@@ -2323,12 +2341,24 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                 </div>
                 <div className="relative">
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Clinician Name</label>
-                  <input value={editClinician}
-                    onChange={e => { setEditClinician(e.target.value); setEditClinicianSearch(e.target.value) }}
-                    onFocus={() => editClinicianSearch.length >= 2 && editClinicianResults.length > 0 && setEditShowClinicianDrop(true)}
-                    onBlur={() => setTimeout(() => setEditShowClinicianDrop(false), 200)}
-                    placeholder="Search clinician..."
-                    className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  <div className="relative">
+                    <input value={editClinician}
+                      onChange={e => { setEditClinician(e.target.value); setEditClinicianSearch(e.target.value) }}
+                      onFocus={() => {
+                        // If we already have results, show them; otherwise trigger a search if enough chars
+                        if (editClinicianResults.length > 0) setEditShowClinicianDrop(true)
+                        else if (editClinician.length >= 2) setEditClinicianSearch(editClinician)
+                      }}
+                      onBlur={() => setTimeout(() => setEditShowClinicianDrop(false), 200)}
+                      placeholder="Type to search clinician..."
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none pr-8" style={{ borderColor: 'var(--light-gray)' }} />
+                    {editClinician && (
+                      <button type="button" onClick={() => { setEditClinician(''); setEditClinicianSearch(''); setEditClinicianResults([]); setEditShowClinicianDrop(false) }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-gray-100" title="Clear">
+                        <X size={14} style={{ color: 'var(--mid-gray)' }} />
+                      </button>
+                    )}
+                  </div>
                   {editShowClinicianDrop && editClinicianResults.length > 0 && (
                     <div className="absolute z-10 w-full mt-1 bg-white border rounded-xl shadow-lg max-h-40 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
                       {editClinicianResults.map(c => (
@@ -2856,7 +2886,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         <td style="border:1px solid #ddd;padding:6px 8px;font-size:10px">${formatDate(o.transactionDate)}</td>
         <td style="border:1px solid #ddd;padding:6px 8px;font-size:10px">${o.items.map(it => it.name).join(', ')}</td>
         <td style="border:1px solid #ddd;padding:6px 8px;font-size:10px">${o.patientName || '—'}</td>
-        <td style="border:1px solid #ddd;padding:6px 8px;font-size:10px">${o.clinicianName || '—'}</td>
+        <td style="border:1px solid #ddd;padding:6px 8px;font-size:10px">${formatClinicianName(o.clinicianName)}</td>
         <td style="border:1px solid #ddd;padding:6px 8px;font-size:10px;text-align:right;font-weight:600">₱${fmt(hmoPayment ? toNum(hmoPayment.amount) : 0)}</td>
       </tr>`
     }).join('')
@@ -3439,7 +3469,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                               <tr key={o.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                                 <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{formatDate(o.transactionDate)}</td>
                                 <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{o.patientName || '—'}</td>
-                                <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{o.clinicianName || '—'}</td>
+                                <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{formatClinicianName(o.clinicianName)}</td>
                                 <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{o.items.map(it => it.name).join(', ')}</td>
                                 <td className="px-3 py-2 font-semibold text-right" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(pay ? toNum(pay.amount) : 0)}</td>
                                 <td className="px-3 py-2 text-center">
@@ -3574,7 +3604,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                             <td className="px-3 py-2">{formatDate(o.transactionDate)}</td>
                             <td className="px-3 py-2">{o.items.map(it => it.name).join(', ')}</td>
                             <td className="px-3 py-2">{o.patientName || '—'}</td>
-                            <td className="px-3 py-2">{o.clinicianName || '—'}</td>
+                            <td className="px-3 py-2">{formatClinicianName(o.clinicianName)}</td>
                             <td className="px-3 py-2 font-semibold text-right">{formatCurrency(p ? toNum(p.amount) : 0)}</td>
                           </tr>
                         )
