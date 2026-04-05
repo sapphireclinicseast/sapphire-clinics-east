@@ -2003,15 +2003,17 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
     const t = setTimeout(async () => {
       try {
         const raw = editOrder?.branch || branch || ''
-        const qb = raw === 'SANDBOX_EAST' ? 'SBEA' : raw === 'SANDBOX_GREENHILLS' ? 'SBGH' : raw
-        const r = await fetch(`/api/pos/staff?search=${encodeURIComponent(editClinicianSearch)}&branch=${qb}`)
+        const qb = raw === 'SANDBOX_EAST' ? 'SBEA' : raw === 'SANDBOX_GREENHILLS' ? 'SBGH' : raw === 'VERDANA_STORE' ? '' : raw
+        const r = await fetch(`/api/pos/staff?search=${encodeURIComponent(editClinicianSearch)}${qb ? `&branch=${qb}` : ''}`)
         const d = await r.json()
-        setEditClinicianResults(Array.isArray(d) ? d : d.data || [])
-        setEditShowClinicianDrop(true)
+        const results = Array.isArray(d) ? d : d.data || []
+        setEditClinicianResults(results)
+        if (results.length > 0) setEditShowClinicianDrop(true)
       } catch { setEditClinicianResults([]) }
     }, 300)
     return () => clearTimeout(t)
-  }, [editClinicianSearch, branch])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editClinicianSearch, branch, editOrder?.branch])
 
   const fetchOrders = useCallback(async () => {
     setLoading(true)
@@ -2057,6 +2059,9 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
     setEditOrder(o)
     setEditPatient(o.patientName || '')
     setEditClinician(o.clinicianName || '')
+    setEditClinicianSearch('')
+    setEditClinicianResults([])
+    setEditShowClinicianDrop(false)
     setEditItems(o.items.map(it => ({
       name: it.name,
       quantity: it.quantity,
