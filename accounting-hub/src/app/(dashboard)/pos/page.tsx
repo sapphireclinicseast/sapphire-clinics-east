@@ -1468,7 +1468,7 @@ function OrderFormModal({
                   <option value="">No custom discount</option>
                   {discountSettings.map(ds => (
                     <option key={ds.id} value={ds.id}>
-                      {ds.name} ({ds.type === 'PERCENTAGE' ? `${toNum(ds.value)}%` : formatCurrency(toNum(ds.value))})
+                      {ds.name}{toNum(ds.value) > 0 ? ` (${ds.type === 'PERCENTAGE' ? `${toNum(ds.value)}%` : formatCurrency(toNum(ds.value))})` : ''}
                     </option>
                   ))}
                   <option value="__FREEFORM__">Custom (manual entry)</option>
@@ -4417,7 +4417,7 @@ function ProductsSection({
                     className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }}>
                     <option value="">Select discount...</option>
                     {discountSettings.map(ds => (
-                      <option key={ds.id} value={ds.id}>{ds.name} ({ds.type === 'PERCENTAGE' ? `${toNum(ds.value)}%` : formatCurrency(toNum(ds.value))})</option>
+                      <option key={ds.id} value={ds.id}>{ds.name}{toNum(ds.value) > 0 ? ` (${ds.type === 'PERCENTAGE' ? `${toNum(ds.value)}%` : formatCurrency(toNum(ds.value))})` : ''}</option>
                     ))}
                   </select>
                 )}
