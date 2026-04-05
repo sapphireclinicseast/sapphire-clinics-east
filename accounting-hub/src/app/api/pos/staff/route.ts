@@ -37,7 +37,7 @@ export async function GET(req: Request) {
     // POS expects [{id, name, department, branch}]
     const staff = (data.staff || []).map((s: Record<string, unknown>) => ({
       id: s.id,
-      name: `${s.lastName}, ${s.firstName}`,
+      name: `${s.firstName} ${s.lastName}`,
       department: s.department || '',
       branch: s.branch || '',
       jobTitle: s.jobTitle || '',
