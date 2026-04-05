@@ -6,10 +6,9 @@ const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA
 const MARKETING_HUB_URL = process.env.MARKETING_HUB_URL || 'https://marketing.sapphireclinicseast.org'
 const EXTERNAL_API_KEY = process.env.EXTERNAL_API_KEY || ''
 
-/** Title-case ALL CAPS names: "JOHN SMITH" → "John Smith" */
-function titleCase(s: string): string {
-  if (s !== s.toUpperCase()) return s
-  return s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+/** Format name as ALL CAPS: "FIRSTNAME LASTNAME" */
+function formatName(s: string): string {
+  return s.toUpperCase()
 }
 
 export async function GET(req: Request) {
@@ -34,7 +33,7 @@ export async function GET(req: Request) {
         const data = await res.json()
         const staff = data.staff || []
         for (const s of staff) {
-          const name = titleCase(`${s.firstName} ${s.lastName}`)
+          const name = formatName(`${s.firstName} ${s.lastName}`)
           const dept = s.department || ''
           const br = s.branch || ''
           // Only sync clinical departments (not admin/front desk)

@@ -345,24 +345,17 @@ function normalize(data: unknown): unknown[] {
   return []
 }
 
-/** Title-case a name: "JOHN SMITH" → "John Smith" */
-function titleCaseName(s: string): string {
-  // If already mixed case (not all upper), return as-is
-  if (s !== s.toUpperCase()) return s
-  return s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
-}
-
-/** Convert "LASTNAME, FIRSTNAME" → "Firstname Lastname" for display, also title-cases ALL CAPS */
+/** Convert "LASTNAME, FIRSTNAME" → "FIRSTNAME LASTNAME" for display, keeps ALL CAPS */
 function formatClinicianName(name: string | null | undefined): string {
   if (!name) return '—'
-  // If name contains a comma, assume "LASTNAME, FIRSTNAME" format
+  // If name contains a comma, assume "LASTNAME, FIRSTNAME" format → flip to "FIRSTNAME LASTNAME"
   if (name.includes(',')) {
     const parts = name.split(',').map(p => p.trim())
     if (parts.length === 2 && parts[0] && parts[1]) {
-      return titleCaseName(`${parts[1]} ${parts[0]}`)
+      return `${parts[1]} ${parts[0]}`.toUpperCase()
     }
   }
-  return titleCaseName(name)
+  return name.toUpperCase()
 }
 
 function queueBranch(branch: string): string {
