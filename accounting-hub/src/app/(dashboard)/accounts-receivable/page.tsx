@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react'
 import { useSearchParams } from 'next/navigation'
 import {
   FileCheck, Search, ChevronUp, ChevronDown, ArrowUpDown,
-  X, AlertCircle, DollarSign, Calendar, Building2, Upload, Trash2,
+  X, AlertCircle, DollarSign, Calendar, Building2, Upload, Trash2, Pencil,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
@@ -39,6 +39,8 @@ interface ARPaymentRecord {
   proofUrl?: string | null
   notes?: string | null
   branch?: string | null
+  cashAccountId?: string | null
+  cashAccount?: { accountNumber: string; accountTitle: string } | null
   createdBy: { name: string }
   items: { orderId: string }[]
 }
@@ -89,6 +91,10 @@ export default function AccountsReceivablePage() {
   const [payError, setPayError] = useState('')
   const [paySaving, setPaySaving] = useState(false)
   const [discountAccounts, setDiscountAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
+  const [cashAccounts, setCashAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
+  const [payCashAccountId, setPayCashAccountId] = useState('')
+  const [payCashAccountSearch, setPayCashAccountSearch] = useState('')
+  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -126,6 +132,19 @@ export default function AccountsReceivablePage() {
       .catch(() => {})
   }, [])
 
+  // Fetch ASSET-type accounts for cash/bank account selection (Debit Account)
+  useEffect(() => {
+    fetch('/api/chart-of-accounts?accountType=ASSET&pageSize=500')
+      .then(r => r.json())
+      .then(d => setCashAccounts(
+        (d.data || [])
+          .map((a: { id: string; accountNumber: string; accountTitle: string }) => ({
+            id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle,
+          }))
+      ))
+      .catch(() => {})
+  }, [])
+
   function toggleSort(field: string) {
     if (sortField === field) setSortDir(prev => prev === 'asc' ? 'desc' : 'asc')
     else { setSortField(field); setSortDir('desc') }
@@ -140,15 +159,35 @@ export default function AccountsReceivablePage() {
   const unpaidOrders = orders.filter(o => o.arPaymentItems.length === 0)
 
   const openPaymentModal = () => {
+    setEditingPaymentId(null)
     setPayWalletId(walletFilter || '')
     setPayDate(new Date().toISOString().split('T')[0])
     setPayAmount('')
     setPayDiscount('')
     setPayDiscountAccountId('')
     setPayDiscountSearch('')
+    setPayCashAccountId('')
+    setPayCashAccountSearch('')
     setPayNotes('')
     setPayProofUrl('')
     setPaySelectedOrders([])
+    setPayError('')
+    setShowPaymentModal(true)
+  }
+
+  const openEditPaymentModal = (p: ARPaymentRecord) => {
+    setEditingPaymentId(p.id)
+    setPayWalletId(p.walletId)
+    setPayDate(new Date(p.paymentDate).toISOString().split('T')[0])
+    setPayAmount(String(toNum(p.amount)))
+    setPayDiscount(toNum(p.discount) > 0 ? String(toNum(p.discount)) : '')
+    setPayDiscountAccountId('')
+    setPayDiscountSearch('')
+    setPayCashAccountId(p.cashAccountId || '')
+    setPayCashAccountSearch(p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : '')
+    setPayNotes(p.notes || '')
+    setPayProofUrl(p.proofUrl || '')
+    setPaySelectedOrders(p.items.map(i => i.orderId))
     setPayError('')
     setShowPaymentModal(true)
   }
@@ -159,15 +198,18 @@ export default function AccountsReceivablePage() {
     setPaySaving(true)
     setPayError('')
     try {
+      const isEdit = !!editingPaymentId
       const res = await fetch('/api/accounts-receivable/payments', {
-        method: 'POST',
+        method: isEdit ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          ...(isEdit ? { id: editingPaymentId } : {}),
           walletId: payWalletId,
           paymentDate: payDate,
           amount: toNum(payAmount),
           discount: toNum(payDiscount),
           discountAccountId: payDiscountAccountId || null,
+          cashAccountId: payCashAccountId || null,
           orderIds: paySelectedOrders,
           proofUrl: payProofUrl || null,
           notes: payNotes || null,
@@ -355,7 +397,7 @@ export default function AccountsReceivablePage() {
             <table className="w-full text-xs">
               <thead>
                 <tr style={{ background: 'var(--off-white)' }}>
-                  {['Date', 'Provider/Agency', 'Amount', 'Discount', 'Orders', 'Notes', 'Recorded By', ''].map(h => (
+                  {['Date', 'Provider/Agency', 'Amount', 'Discount', 'Debit Account', 'Orders', 'Notes', 'Recorded By', ''].map(h => (
                     <th key={h} className="text-left px-3 py-2 font-semibold" style={{ color: 'var(--mid-gray)' }}>{h}</th>
                   ))}
                 </tr>
@@ -369,10 +411,14 @@ export default function AccountsReceivablePage() {
                       <td className="px-3 py-2">{wallet?.patientName || '—'}</td>
                       <td className="px-3 py-2 font-medium" style={{ color: '#166534' }}>{formatCurrency(toNum(p.amount))}</td>
                       <td className="px-3 py-2">{toNum(p.discount) > 0 ? formatCurrency(toNum(p.discount)) : '—'}</td>
+                      <td className="px-3 py-2" style={{ color: 'var(--teal)' }}>{p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : '—'}</td>
                       <td className="px-3 py-2">{p.items.length} orders</td>
                       <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{p.notes || '—'}</td>
                       <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{p.createdBy.name}</td>
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2 flex items-center gap-1">
+                        <button onClick={() => openEditPaymentModal(p)} className="p-1.5 rounded-lg hover:bg-blue-50" title="Edit payment">
+                          <Pencil size={14} className="text-blue-400" />
+                        </button>
                         <button onClick={() => deletePayment(p)} className="p-1.5 rounded-lg hover:bg-red-50" title="Delete payment">
                           <Trash2 size={14} className="text-red-400" />
                         </button>
@@ -394,7 +440,7 @@ export default function AccountsReceivablePage() {
               <X size={18} style={{ color: 'var(--mid-gray)' }} />
             </button>
             <h3 className="text-lg font-bold mb-4" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-              <DollarSign size={20} className="inline" style={{ color: 'var(--teal)' }} /> Record Payment
+              <DollarSign size={20} className="inline" style={{ color: 'var(--teal)' }} /> {editingPaymentId ? 'Edit Payment' : 'Record Payment'}
             </h3>
 
             <div className="space-y-4">
@@ -458,12 +504,41 @@ export default function AccountsReceivablePage() {
                 </div>
               )}
 
+              {/* Debit Account (Cash/Bank account) */}
+              <div className="relative">
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Debit Account (where payment was received)</label>
+                <input type="text" value={payCashAccountSearch}
+                  onChange={e => { setPayCashAccountSearch(e.target.value); if (!e.target.value) setPayCashAccountId('') }}
+                  placeholder="Search account (e.g. Cash, BDO, BPI)..."
+                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                  style={{ borderColor: payCashAccountId ? 'var(--teal)' : 'var(--light-gray)', background: payCashAccountId ? '#f0fdfa' : 'white' }} />
+                {payCashAccountId && (
+                  <button type="button" onClick={() => { setPayCashAccountId(''); setPayCashAccountSearch('') }}
+                    className="absolute right-2 top-7 p-0.5 rounded hover:bg-gray-100"><X size={14} style={{ color: 'var(--mid-gray)' }} /></button>
+                )}
+                {payCashAccountSearch && !payCashAccountId && (
+                  <div className="absolute z-20 left-0 right-0 mt-1 bg-white border rounded-xl shadow-lg max-h-36 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                    {cashAccounts.filter(a => `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(payCashAccountSearch.toLowerCase())).slice(0, 8).map(a => (
+                      <button key={a.id} type="button" onClick={() => { setPayCashAccountId(a.id); setPayCashAccountSearch(`${a.accountNumber} ${a.accountTitle}`) }}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50" style={{ color: 'var(--charcoal)' }}>
+                        <span className="font-mono font-medium" style={{ color: 'var(--teal)' }}>{a.accountNumber}</span> {a.accountTitle}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Tag transactions */}
-              {payWalletId && unpaidOrders.filter(o => o.payments.some(p => p.walletId === payWalletId)).length > 0 && (
+              {payWalletId && (() => {
+                // When editing, show all orders for this wallet (paid or unpaid); when creating, show only unpaid
+                const eligibleOrders = editingPaymentId
+                  ? orders.filter(o => o.payments.some(p => p.walletId === payWalletId))
+                  : unpaidOrders.filter(o => o.payments.some(p => p.walletId === payWalletId))
+                return eligibleOrders.length > 0 ? (
                 <div>
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Tag Transactions Included</label>
                   <div className="rounded-xl border max-h-40 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
-                    {unpaidOrders.filter(o => o.payments.some(p => p.walletId === payWalletId)).map(o => {
+                    {eligibleOrders.map(o => {
                       const amt = o.payments.find(p => p.walletId === payWalletId)
                       return (
                         <label key={o.id} className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-gray-50 cursor-pointer border-b" style={{ borderColor: 'var(--light-gray)' }}>
@@ -478,7 +553,8 @@ export default function AccountsReceivablePage() {
                     })}
                   </div>
                 </div>
-              )}
+                ) : null
+              })()}
 
               {/* Proof of payment — file upload */}
               <div>
@@ -532,7 +608,7 @@ export default function AccountsReceivablePage() {
                 <button onClick={savePayment} disabled={paySaving}
                   className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50"
                   style={{ background: 'var(--teal)' }}>
-                  {paySaving ? 'Saving...' : 'Record Payment'}
+                  {paySaving ? 'Saving...' : editingPaymentId ? 'Update Payment' : 'Record Payment'}
                 </button>
               </div>
             </div>

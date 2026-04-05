@@ -21,7 +21,7 @@ export async function GET(req: Request) {
   const branchFilter: any = branch !== 'ALL' ? { branch } : {}
 
   try {
-    const [accounts, orders, inventoryItems, wallets, paymentModes] = await Promise.all([
+    const [accounts, orders, inventoryItems, wallets, paymentModes, arPayments] = await Promise.all([
       // Chart of Accounts — structure for report line items
       prisma.account.findMany({
         where: { isActive: true },
@@ -84,6 +84,23 @@ export async function GET(req: Request) {
       prisma.paymentMode.findMany({
         where: { isActive: true },
         select: { id: true, deductions: { select: { name: true, rate: true, accountId: true, account: { select: { accountNumber: true, accountTitle: true, accountType: true } } } } },
+      }),
+
+      // AR Payments — for tracking cash received from HMO/GL and reducing AR balance
+      prisma.aRPayment.findMany({
+        where: {
+          paymentDate: { gte: startDate, lt: endDate },
+          ...(branch !== 'ALL' ? { branch } : {}),
+        },
+        select: {
+          amount: true,
+          discount: true,
+          paymentDate: true,
+          cashAccountId: true,
+          cashAccount: { select: { accountNumber: true, accountTitle: true } },
+          discountAccountId: true,
+          discountAccount: { select: { accountNumber: true, accountTitle: true } },
+        },
       }),
     ])
 
@@ -230,14 +247,43 @@ export async function GET(req: Request) {
       }
     }
 
-    /* ── Wallet / unearned revenue ─────────────────────────────── */
+    /* ── Wallet / unearned revenue + Accounts Receivable ─────── */
 
+    const AR_WALLET_TYPES = new Set(['HMO', 'GL'])
     const walletByType: Record<string, number> = {}
     let totalWalletBalance = 0
+    let totalARBalance = 0
+    const arByType: Record<string, number> = {}
     for (const w of wallets) {
       const bal = Number(w.balance)
-      totalWalletBalance += bal
-      walletByType[w.walletType] = (walletByType[w.walletType] || 0) + bal
+      if (AR_WALLET_TYPES.has(w.walletType)) {
+        // HMO/GL = Accounts Receivable (asset)
+        totalARBalance += bal
+        arByType[w.walletType] = (arByType[w.walletType] || 0) + bal
+      } else {
+        // Package, VIP, Prepaid Card, etc. = Unearned Revenue (liability)
+        totalWalletBalance += bal
+        walletByType[w.walletType] = (walletByType[w.walletType] || 0) + bal
+      }
+    }
+
+    /* ── AR Payment aggregation (cash received from HMO/GL) ──── */
+
+    let totalARPaymentsReceived = 0
+    let totalARDiscounts = 0
+    const arPaymentsByCashAccount: Record<string, { accountNumber: string; accountTitle: string; amount: number }> = {}
+    for (const p of arPayments) {
+      const amt = Number(p.amount)
+      const disc = Number(p.discount)
+      totalARPaymentsReceived += amt
+      totalARDiscounts += disc
+      if (p.cashAccountId && p.cashAccount) {
+        const key = `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}`
+        if (!arPaymentsByCashAccount[key]) {
+          arPaymentsByCashAccount[key] = { accountNumber: p.cashAccount.accountNumber, accountTitle: p.cashAccount.accountTitle, amount: 0 }
+        }
+        arPaymentsByCashAccount[key].amount += amt
+      }
     }
 
     /* ── Group accounts ────────────────────────────────────────── */
@@ -264,6 +310,13 @@ export async function GET(req: Request) {
       monthly,
       inventory: { total: totalInventory, byDepartment: inventoryByDept },
       wallets: { total: totalWalletBalance, byType: walletByType },
+      accountsReceivable: {
+        total: totalARBalance,
+        byType: arByType,
+        paymentsReceived: totalARPaymentsReceived,
+        discounts: totalARDiscounts,
+        byCashAccount: Object.values(arPaymentsByCashAccount),
+      },
       inventorySourceAccounts: Object.values(inventoryBySourceAccount),
       unclassifiedAP,
     })

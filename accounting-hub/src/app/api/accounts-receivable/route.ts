@@ -91,6 +91,8 @@ export async function GET(req: Request) {
         proofUrl: true,
         notes: true,
         branch: true,
+        cashAccountId: true,
+        cashAccount: { select: { accountNumber: true, accountTitle: true } },
         createdBy: { select: { name: true } },
         items: { select: { orderId: true } },
       },

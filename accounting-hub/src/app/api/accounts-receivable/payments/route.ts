@@ -11,7 +11,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { walletId, paymentDate, amount, discount, discountAccountId, orderIds, proofUrl, notes, branch } = await req.json()
+    const { walletId, paymentDate, amount, discount, discountAccountId, cashAccountId, orderIds, proofUrl, notes, branch } = await req.json()
 
     if (!walletId || !paymentDate || amount == null) {
       return NextResponse.json({ error: 'walletId, paymentDate, and amount are required' }, { status: 400 })
@@ -33,6 +33,7 @@ export async function POST(req: Request) {
         amount: paymentAmount,
         discount: discountAmount,
         discountAccountId: discountAccountId || null,
+        cashAccountId: cashAccountId || null,
         proofUrl: proofUrl || null,
         notes: notes?.trim() || null,
         branch: branch || null,
@@ -84,6 +85,111 @@ export async function POST(req: Request) {
     return NextResponse.json(payment, { status: 201 })
   } catch (err) {
     console.error('AR Payment error:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+export async function PUT(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+
+  try {
+    const { id, walletId, paymentDate, amount, discount, discountAccountId, cashAccountId, orderIds, proofUrl, notes, branch } = await req.json()
+
+    if (!id) return NextResponse.json({ error: 'Payment ID is required' }, { status: 400 })
+    if (!walletId || !paymentDate || amount == null) {
+      return NextResponse.json({ error: 'walletId, paymentDate, and amount are required' }, { status: 400 })
+    }
+
+    // Get current payment to calculate balance difference
+    const existing = await prisma.aRPayment.findUnique({
+      where: { id },
+      include: { wallet: true },
+    })
+    if (!existing) return NextResponse.json({ error: 'Payment not found' }, { status: 404 })
+
+    const oldTotal = Number(existing.amount) + Number(existing.discount)
+    const newAmount = Number(amount)
+    const newDiscount = Number(discount) || 0
+    const newTotal = newAmount + newDiscount
+    const balanceDiff = newTotal - oldTotal // positive = more settled, negative = less settled
+
+    // Replace linked orders
+    await prisma.aRPaymentItem.deleteMany({ where: { paymentId: id } })
+
+    // Update the payment
+    const payment = await prisma.aRPayment.update({
+      where: { id },
+      data: {
+        walletId,
+        paymentDate: new Date(paymentDate),
+        amount: newAmount,
+        discount: newDiscount,
+        discountAccountId: discountAccountId || null,
+        cashAccountId: cashAccountId || null,
+        proofUrl: proofUrl || null,
+        notes: notes?.trim() || null,
+        branch: branch || null,
+        items: orderIds?.length ? {
+          create: orderIds.map((orderId: string) => ({ orderId })),
+        } : undefined,
+      },
+      include: {
+        items: true,
+        wallet: { select: { patientName: true, walletType: true } },
+      },
+    })
+
+    // Adjust wallet balance for the difference
+    if (balanceDiff !== 0) {
+      await prisma.digitalWallet.update({
+        where: { id: walletId },
+        data: { balance: { decrement: balanceDiff } },
+      })
+    }
+
+    // If wallet changed, undo the same-wallet adjustment above, then restore old + deduct new
+    if (walletId !== existing.walletId) {
+      // Undo the same-wallet decrement we already did above
+      if (balanceDiff !== 0) {
+        await prisma.digitalWallet.update({
+          where: { id: walletId },
+          data: { balance: { increment: balanceDiff } },
+        })
+      }
+      // Restore old wallet balance fully
+      await prisma.digitalWallet.update({
+        where: { id: existing.walletId },
+        data: { balance: { increment: oldTotal } },
+      })
+      // Deduct new wallet balance fully
+      await prisma.digitalWallet.update({
+        where: { id: walletId },
+        data: { balance: { decrement: newTotal } },
+      })
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: 'AR_PAYMENT_UPDATE',
+        entity: 'arPayment',
+        entityId: id,
+        details: {
+          walletId,
+          amount: newAmount,
+          discount: newDiscount,
+          balanceDiff,
+          orderCount: orderIds?.length || 0,
+        },
+      },
+    })
+
+    return NextResponse.json(payment)
+  } catch (err) {
+    console.error('AR Payment update error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

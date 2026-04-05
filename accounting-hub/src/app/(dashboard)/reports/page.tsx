@@ -43,6 +43,13 @@ interface ReportData {
   monthly: Record<number, MonthData>
   inventory: { total: number; byDepartment: Record<string, number> }
   wallets: { total: number; byType: Record<string, number> }
+  accountsReceivable?: {
+    total: number
+    byType: Record<string, number>
+    paymentsReceived: number
+    discounts: number
+    byCashAccount: { accountNumber: string; accountTitle: string; amount: number }[]
+  }
   inventorySourceAccounts?: { accountNumber: string; accountTitle: string; amount: number }[]
   unclassifiedAP?: number
 }
@@ -451,7 +458,7 @@ function DrillDownPanel({
    ═══════════════════════════════════════════════════════════════ */
 
 function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewMode: ViewMode; onDrillDown: OnDrillDown }) {
-  const { accounts, inventory, wallets, monthly, inventorySourceAccounts = [], unclassifiedAP = 0 } = data
+  const { accounts, inventory, wallets, monthly, inventorySourceAccounts = [], unclassifiedAP = 0, accountsReceivable } = data
 
   // Calculate totals from available data
   const totalCashReceived = sumMonths(monthly, (m) => m.cashReceived)
@@ -512,8 +519,13 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
     return s + (deductionAccountTotals[key] || 0)
   }, 0)
 
+  // Accounts Receivable from HMO/GL wallets
+  const arTotal = accountsReceivable?.total || 0
+  // AR payments received add to cash equivalents
+  const arCashReceived = accountsReceivable?.paymentsReceived || 0
+
   // Computed totals
-  const totalCurrentAssets = totalCashReceived + invTotal + deductionAssetTotal
+  const totalCurrentAssets = totalCashReceived + arCashReceived + invTotal + deductionAssetTotal + arTotal
   const totalNonCurrentAssets = 0
   const totalAssets = totalCurrentAssets + totalNonCurrentAssets
 
@@ -553,8 +565,14 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
         {/* ASSETS */}
         <SectionHeader label="Assets" />
         <SubSectionHeader label="Current Assets" />
-        <AnnualRow label="Cash and Cash Equivalents" amount={totalCashReceived} indent={2} onDrillDown={() => onDrillDown('Cash and Cash Equivalents', 'CASH_BALANCE', 0)} />
-        {currentAssetAccounts.map((a) => {
+        <AnnualRow label="Cash and Cash Equivalents" amount={totalCashReceived + arCashReceived} indent={2} onDrillDown={() => onDrillDown('Cash and Cash Equivalents', 'CASH_BALANCE', 0)} />
+        {arTotal > 0 && (
+          <AnnualRow label="1010 — Accounts Receivable" amount={arTotal} indent={2} />
+        )}
+        {accountsReceivable && Object.entries(accountsReceivable.byType).map(([type, bal]) => (
+          bal > 0 ? <AnnualRow key={type} label={`    ${type === 'HMO' ? 'HMO Receivables' : type === 'GL' ? 'Guarantee Letter Receivables' : type}`} amount={bal} indent={3} /> : null
+        ))}
+        {currentAssetAccounts.filter(a => a.accountNumber !== '1010').map((a) => {
           const acctKey = `${a.accountNumber} ${a.accountTitle}`
           const computedAmt = deductionAccountTotals[acctKey] || 0
           return (

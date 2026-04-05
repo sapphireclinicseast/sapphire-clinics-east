@@ -120,6 +120,7 @@ model Account {
   discountSettings      DiscountSetting[]
   wallets               DigitalWallet[] @relation("WalletAccount")
   arPaymentDiscounts    ARPayment[]     @relation("ARPaymentDiscountAccount")
+  arPaymentCashAccounts ARPayment[]     @relation("ARPaymentCashAccount")
   unitPaysExpense       UnitPay[]         @relation("UnitPayExpense")
   taxPaymentsFrom       TaxPayment[]      @relation("TaxPaymentFrom")
   taxSettings           PayrollTaxSettings[] @relation("TaxLiability")
@@ -421,6 +422,7 @@ enum WalletAction {
   REWARD_EARN
   REWARD_SPEND
   AR_PAYMENT
+  AR_PAYMENT_REVERSED
 }
 
 enum WalletType {
@@ -686,6 +688,8 @@ model ARPayment {
   discount          Decimal       @default(0)
   discountAccountId String?
   discountAccount   Account?      @relation("ARPaymentDiscountAccount", fields: [discountAccountId], references: [id], onDelete: SetNull)
+  cashAccountId     String?       // COA account to debit (cash/bank account)
+  cashAccount       Account?      @relation("ARPaymentCashAccount", fields: [cashAccountId], references: [id], onDelete: SetNull)
   proofUrl          String?       // URL or file path to payment proof
   notes             String?
   branch            String?
