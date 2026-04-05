@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react'
 import { useSearchParams } from 'next/navigation'
 import {
   FileCheck, Search, ChevronUp, ChevronDown, ArrowUpDown,
-  X, AlertCircle, DollarSign, Calendar, Building2, Upload,
+  X, AlertCircle, DollarSign, Calendar, Building2, Upload, Trash2,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
@@ -188,6 +188,25 @@ export default function AccountsReceivablePage() {
     }
   }
 
+  const deletePayment = async (payment: ARPaymentRecord) => {
+    const wallet = wallets.find(w => w.id === payment.walletId)
+    const reason = window.prompt(
+      `Delete payment of ${formatCurrency(toNum(payment.amount))} for "${wallet?.patientName || 'Unknown'}"?\n\nThis will restore the wallet balance.\n\nPlease enter a reason:`
+    )
+    if (!reason?.trim()) return
+    try {
+      const res = await fetch(`/api/accounts-receivable/payments?id=${payment.id}&reason=${encodeURIComponent(reason.trim())}`, { method: 'DELETE' })
+      if (res.ok) {
+        fetchData()
+      } else {
+        const d = await res.json()
+        alert(d.error || 'Failed to delete payment')
+      }
+    } catch {
+      alert('Network error')
+    }
+  }
+
   const toggleOrderSelect = (orderId: string) => {
     setPaySelectedOrders(prev =>
       prev.includes(orderId) ? prev.filter(id => id !== orderId) : [...prev, orderId]
@@ -336,7 +355,7 @@ export default function AccountsReceivablePage() {
             <table className="w-full text-xs">
               <thead>
                 <tr style={{ background: 'var(--off-white)' }}>
-                  {['Date', 'Provider/Agency', 'Amount', 'Discount', 'Orders', 'Notes', 'Recorded By'].map(h => (
+                  {['Date', 'Provider/Agency', 'Amount', 'Discount', 'Orders', 'Notes', 'Recorded By', ''].map(h => (
                     <th key={h} className="text-left px-3 py-2 font-semibold" style={{ color: 'var(--mid-gray)' }}>{h}</th>
                   ))}
                 </tr>
@@ -353,6 +372,11 @@ export default function AccountsReceivablePage() {
                       <td className="px-3 py-2">{p.items.length} orders</td>
                       <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{p.notes || '—'}</td>
                       <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{p.createdBy.name}</td>
+                      <td className="px-3 py-2">
+                        <button onClick={() => deletePayment(p)} className="p-1.5 rounded-lg hover:bg-red-50" title="Delete payment">
+                          <Trash2 size={14} className="text-red-400" />
+                        </button>
+                      </td>
                     </tr>
                   )
                 })}
