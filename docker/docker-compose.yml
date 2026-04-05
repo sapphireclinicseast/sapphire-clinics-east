@@ -81,7 +81,7 @@ services:
       BODY_SIZE_LIMIT: 200mb
       AUTH_TRUST_HOST: "true"
       EXTERNAL_API_KEY: ${EXTERNAL_API_KEY}
-      HR_PLATFORM_URL: http://host.docker.internal:3457
+      HR_PLATFORM_URL: ${HR_PLATFORM_URL:-http://host.docker.internal:3457}
       HR_PLATFORM_API_KEY: ${HR_PLATFORM_API_KEY}
     extra_hosts:
       - "host.docker.internal:172.18.0.1"
