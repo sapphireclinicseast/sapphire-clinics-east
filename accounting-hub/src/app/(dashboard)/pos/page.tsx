@@ -1976,44 +1976,44 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
   const [editFreeformRemarks, setEditFreeformRemarks] = useState('')
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState('')
-  const [editPatientSearch, setEditPatientSearch] = useState('')
   const [editPatientResults, setEditPatientResults] = useState<{ id: string; name: string; email?: string }[]>([])
   const [editShowPatientDrop, setEditShowPatientDrop] = useState(false)
-  const [editClinicianSearch, setEditClinicianSearch] = useState('')
   const [editClinicianResults, setEditClinicianResults] = useState<{ id: string; name: string; department?: string }[]>([])
   const [editShowClinicianDrop, setEditShowClinicianDrop] = useState(false)
+  const editPatientTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const editClinicianTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Edit modal patient search
-  useEffect(() => {
-    if (editPatientSearch.length < 2) { setEditPatientResults([]); return }
-    const t = setTimeout(async () => {
+  // Direct search functions (more reliable than useEffect-based approach)
+  const searchEditPatient = useCallback((query: string) => {
+    if (editPatientTimer.current) clearTimeout(editPatientTimer.current)
+    if (query.length < 2) { setEditPatientResults([]); setEditShowPatientDrop(false); return }
+    editPatientTimer.current = setTimeout(async () => {
       try {
-        const r = await fetch(`/api/pos/patients?search=${encodeURIComponent(editPatientSearch)}`)
+        const r = await fetch(`/api/pos/patients?search=${encodeURIComponent(query)}`)
         const d = await r.json()
-        setEditPatientResults(Array.isArray(d) ? d : d.data || [])
-        setEditShowPatientDrop(true)
+        const results = Array.isArray(d) ? d : d.data || []
+        setEditPatientResults(results)
+        setEditShowPatientDrop(results.length > 0)
       } catch { setEditPatientResults([]) }
     }, 300)
-    return () => clearTimeout(t)
-  }, [editPatientSearch])
+  }, [])
 
-  // Edit modal clinician search — use the order's branch for accurate results
-  useEffect(() => {
-    if (editClinicianSearch.length < 2) { setEditClinicianResults([]); return }
-    const t = setTimeout(async () => {
+  const searchEditClinician = useCallback((query: string) => {
+    if (editClinicianTimer.current) clearTimeout(editClinicianTimer.current)
+    if (query.length < 2) { setEditClinicianResults([]); setEditShowClinicianDrop(false); return }
+    editClinicianTimer.current = setTimeout(async () => {
       try {
         const raw = editOrder?.branch || branch || ''
         const qb = raw === 'SANDBOX_EAST' ? 'SBEA' : raw === 'SANDBOX_GREENHILLS' ? 'SBGH' : raw === 'VERDANA_STORE' ? '' : raw
-        const r = await fetch(`/api/pos/staff?search=${encodeURIComponent(editClinicianSearch)}${qb ? `&branch=${qb}` : ''}`)
+        const r = await fetch(`/api/pos/staff?search=${encodeURIComponent(query)}${qb ? `&branch=${qb}` : ''}`)
         const d = await r.json()
         const results = Array.isArray(d) ? d : d.data || []
         setEditClinicianResults(results)
-        if (results.length > 0) setEditShowClinicianDrop(true)
+        setEditShowClinicianDrop(results.length > 0)
       } catch { setEditClinicianResults([]) }
     }, 300)
-    return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editClinicianSearch, branch, editOrder?.branch])
+  }, [branch, editOrder?.branch])
 
   const fetchOrders = useCallback(async () => {
     setLoading(true)
@@ -2059,9 +2059,10 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
     setEditOrder(o)
     setEditPatient(o.patientName || '')
     setEditClinician(o.clinicianName || '')
-    setEditClinicianSearch('')
     setEditClinicianResults([])
     setEditShowClinicianDrop(false)
+    setEditPatientResults([])
+    setEditShowPatientDrop(false)
     setEditItems(o.items.map(it => ({
       name: it.name,
       quantity: it.quantity,
@@ -2296,8 +2297,8 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                 <div className="relative">
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Patient Name</label>
                   <input value={editPatient}
-                    onChange={e => { setEditPatient(e.target.value); setEditPatientSearch(e.target.value) }}
-                    onFocus={() => editPatientSearch.length >= 2 && setEditShowPatientDrop(true)}
+                    onChange={e => { setEditPatient(e.target.value); searchEditPatient(e.target.value) }}
+                    onFocus={() => editPatient.length >= 2 && editPatientResults.length > 0 && setEditShowPatientDrop(true)}
                     onBlur={() => setTimeout(() => setEditShowPatientDrop(false), 200)}
                     placeholder="Search patient..."
                     className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
@@ -2316,8 +2317,8 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                 <div className="relative">
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Clinician Name</label>
                   <input value={editClinician}
-                    onChange={e => { setEditClinician(e.target.value); setEditClinicianSearch(e.target.value) }}
-                    onFocus={() => editClinicianSearch.length >= 2 && setEditShowClinicianDrop(true)}
+                    onChange={e => { setEditClinician(e.target.value); searchEditClinician(e.target.value) }}
+                    onFocus={() => editClinician.length >= 2 && editClinicianResults.length > 0 && setEditShowClinicianDrop(true)}
                     onBlur={() => setTimeout(() => setEditShowClinicianDrop(false), 200)}
                     placeholder="Search clinician..."
                     className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
