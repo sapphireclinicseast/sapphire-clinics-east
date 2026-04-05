@@ -1763,7 +1763,7 @@ function OrderFormModal({
                   <div className="max-h-32 overflow-y-auto space-y-1">
                     {hmoWallets.map(w => (
                       <button key={w.id} onClick={() => {
-                        setPayments(prev => [...prev, { method: 'HMO', amount: 0, walletId: w.id, reference: w.patientName }])
+                        setPayments([{ method: 'HMO', amount: 0, walletId: w.id, reference: w.patientName }])
                         setShowHmoPay(false)
                         setHmoSearch('')
                         setHmoWallets([])
@@ -1794,7 +1794,7 @@ function OrderFormModal({
                   <div className="max-h-32 overflow-y-auto space-y-1">
                     {glWallets.map(w => (
                       <button key={w.id} onClick={() => {
-                        setPayments(prev => [...prev, { method: 'GL', amount: 0, walletId: w.id, reference: w.patientName }])
+                        setPayments([{ method: 'GL', amount: 0, walletId: w.id, reference: w.patientName }])
                         setShowGlPay(false)
                         setGlSearch('')
                         setGlWallets([])
@@ -2002,7 +2002,8 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
     if (editClinicianSearch.length < 2) { setEditClinicianResults([]); return }
     const t = setTimeout(async () => {
       try {
-        const qb = editOrder?.branch || branch || ''
+        const raw = editOrder?.branch || branch || ''
+        const qb = raw === 'SANDBOX_EAST' ? 'SBEA' : raw === 'SANDBOX_GREENHILLS' ? 'SBGH' : raw
         const r = await fetch(`/api/pos/staff?search=${encodeURIComponent(editClinicianSearch)}&branch=${qb}`)
         const d = await r.json()
         setEditClinicianResults(Array.isArray(d) ? d : d.data || [])
