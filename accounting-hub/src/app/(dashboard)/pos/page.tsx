@@ -3152,8 +3152,8 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 <input value={createForm.patientEmail} onChange={e => setCreateForm({ ...createForm, patientEmail: e.target.value })}
                   className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
               </div>
-              {/* COA Account for HMO/GL — Accounts Receivable classification */}
-              {(walletTypeFilter === 'HMO' || walletTypeFilter === 'GL') && (
+              {/* COA Account for HMO — Accounts Receivable classification (GL auto-uses 1010) */}
+              {walletTypeFilter === 'HMO' && (
                 <div className="relative">
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
                     Chart of Account <span className="font-normal">(Accounts Receivable)</span>
@@ -3188,8 +3188,8 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                     className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                 </div>
               )}
-              {/* Form of Payment */}
-              {walletTypeFilter !== 'HMO' && (
+              {/* Form of Payment (not for HMO or GL — GL is recorded as AR) */}
+              {walletTypeFilter !== 'HMO' && walletTypeFilter !== 'GL' && (
                 <div>
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Form of Payment</label>
                   <select value={createForm.paymentModeId}

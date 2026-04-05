@@ -91,6 +91,16 @@ export async function POST(req: Request) {
       )
     }
 
+    // For GL wallets, auto-assign 1010 Accounts Receivable
+    let resolvedAccountId = accountId || null
+    if (walletType === 'GL' && !resolvedAccountId) {
+      const arAccount = await prisma.account.findFirst({
+        where: { accountNumber: '1010', isActive: true },
+        select: { id: true },
+      })
+      if (arAccount) resolvedAccountId = arAccount.id
+    }
+
     // Check for existing wallet with same patientId/name + walletType
     const lookupId = patientId?.trim() || `${walletType}-${patientName.trim().replace(/\s+/g, '-').toUpperCase()}`
     {
@@ -138,7 +148,7 @@ export async function POST(req: Request) {
         patientId: patientId?.trim() || `${walletType}-${patientName.trim().replace(/\s+/g, '-').toUpperCase()}`,
         patientName: patientName.trim(),
         patientEmail: patientEmail?.trim() || null,
-        accountId: accountId || null,
+        accountId: resolvedAccountId,
         dateObtained: dateObtained ? new Date(dateObtained) : null,
         paymentModeId: paymentModeId || null,
         balance: initialBalance ? Number(initialBalance) : 0,
