@@ -744,8 +744,8 @@ function OrderFormModal({
   useEffect(() => {
     fetch('/api/pos/discount-settings').then(r => r.json()).then(d => setDiscountSettings(normalize(d) as DiscountSetting[])).catch(() => {})
     fetch('/api/referrers?all=true').then(r => r.json()).then(d => setReferrers(normalize(d) as Referrer[])).catch(() => {})
-    fetch('/api/pos/payment-modes').then(r => r.json()).then(d => setConfiguredModes(Array.isArray(d) ? d.filter((m: PaymentModeType) => m.isActive) : [])).catch(() => {})
-  }, [])
+    fetch(`/api/pos/payment-modes?branch=${encodeURIComponent(branch)}`).then(r => r.json()).then(d => setConfiguredModes(Array.isArray(d) ? d.filter((m: PaymentModeType) => m.isActive) : [])).catch(() => {})
+  }, [branch])
 
   // Patient search
   useEffect(() => {
@@ -4025,8 +4025,8 @@ function ProductsSection({
   const hasRewardPointsPayment = payments.some(p => p.method === 'REWARD_POINTS')
 
   useEffect(() => {
-    fetch('/api/pos/payment-modes').then(r => r.json()).then(d => setConfiguredModes(Array.isArray(d) ? d.filter((m: PaymentModeType) => m.isActive) : [])).catch(() => {})
-  }, [])
+    fetch(`/api/pos/payment-modes?branch=${encodeURIComponent(branch)}`).then(r => r.json()).then(d => setConfiguredModes(Array.isArray(d) ? d.filter((m: PaymentModeType) => m.isActive) : [])).catch(() => {})
+  }, [branch])
 
   useEffect(() => {
     fetch('/api/inventory?all=true&branch=VERDANA_STORE')
