@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 const READ_ROLES = [...WRITE_ROLES, 'VIEWER']
 const MARKETING_HUB_URL = process.env.MARKETING_HUB_URL || 'https://marketing.sapphireclinicseast.org'
+const HR_PLATFORM_URL = process.env.HR_PLATFORM_URL || 'http://127.0.0.1:3457'
 const EXTERNAL_API_KEY = process.env.EXTERNAL_API_KEY || ''
 
 export async function GET(req: Request) {
@@ -19,39 +20,89 @@ export async function GET(req: Request) {
   const sync = searchParams.get('sync') === 'true'
   const includeInactive = searchParams.get('includeInactive') === 'true'
 
-  // Sync from marketing hub — only Administration department staff
+  // Sync from marketing hub + HR platform
+  // Marketing hub provides basic staff data; HR platform provides gov IDs and employee ID
   if (sync) {
     try {
-      const res = await fetch(`${MARKETING_HUB_URL}/api/staff/external`, {
+      // Fetch from marketing hub (basic staff data)
+      const mktRes = await fetch(`${MARKETING_HUB_URL}/api/staff/external`, {
         headers: { 'Authorization': `Bearer ${EXTERNAL_API_KEY}` },
         cache: 'no-store',
       })
-      if (res.ok) {
-        const data = await res.json()
+
+      // Also fetch directly from HR platform (has gov IDs, employee IDs, readable job titles)
+      let hrStaff: Record<string, unknown>[] = []
+      try {
+        const hrRes = await fetch(`${HR_PLATFORM_URL}/staff/external`, {
+          headers: { 'Authorization': `Bearer ${EXTERNAL_API_KEY}` },
+          cache: 'no-store',
+        })
+        if (hrRes.ok) {
+          const hrData = await hrRes.json()
+          hrStaff = hrData.staff || []
+        }
+      } catch (hrErr) {
+        console.error('HR Platform fetch error (non-fatal):', hrErr)
+      }
+
+      // Build HR lookup by firstName+lastName for matching
+      const hrByName = new Map<string, Record<string, unknown>>()
+      for (const h of hrStaff) {
+        const key = `${((h.firstName as string) || '').toUpperCase()}|${((h.lastName as string) || '').toUpperCase()}`
+        hrByName.set(key, h)
+      }
+
+      if (mktRes.ok) {
+        const data = await mktRes.json()
         const staff = data.staff || []
         for (const s of staff) {
           const dept = s.department || ''
           const br = s.branch || ''
           // Only sync ADMINISTRATION and FRONT_DESK department staff as employees
           if (!['FRONT_DESK', 'ADMINISTRATION'].includes(dept)) continue
+
+          // Look up HR data for this person
+          const hrKey = `${((s.firstName as string) || '').toUpperCase()}|${((s.lastName as string) || '').toUpperCase()}`
+          const hr = hrByName.get(hrKey) || {}
+
+          // Build update/create data — always sync basic fields
+          // Use HR job title (human-readable) if available, fall back to marketing hub
+          const syncData: Record<string, unknown> = {
+            firstName: s.firstName || '',
+            lastName: s.lastName || '',
+            department: dept,
+            branch: br,
+            jobTitle: (hr.jobTitle as string) || s.jobTitle || null,
+            email: s.email || null,
+          }
+
+          // Pre-fill employeeId as Biometric ID if not already set
+          const empId = (hr.employeeId as string) || s.employeeId
+          if (empId) {
+            const existing = await prisma.employee.findUnique({ where: { externalStaffId: s.id } })
+            if (!existing || !existing.employeeBioId) {
+              const bioId = parseInt(empId)
+              if (!isNaN(bioId)) syncData.employeeBioId = bioId
+            }
+          }
+
+          // Pre-fill government IDs from HR platform if not already set
+          const existingEmp = await prisma.employee.findUnique({ where: { externalStaffId: s.id } })
+          if (hr.sss && (!existingEmp || !existingEmp.sssNumber)) syncData.sssNumber = hr.sss
+          if (hr.philhealth && (!existingEmp || !existingEmp.philhealthNumber)) syncData.philhealthNumber = hr.philhealth
+          if (hr.pagibig && (!existingEmp || !existingEmp.pagibigNumber)) syncData.pagibigNumber = hr.pagibig
+          if (hr.tin && (!existingEmp || !existingEmp.tinNumber)) syncData.tinNumber = hr.tin
+
           await prisma.employee.upsert({
             where: { externalStaffId: s.id },
-            update: {
-              firstName: s.firstName || '',
-              lastName: s.lastName || '',
-              department: dept,
-              branch: br,
-              jobTitle: s.jobTitle || null,
-              email: s.email || null,
-            },
+            update: syncData,
             create: {
               externalStaffId: s.id,
-              firstName: s.firstName || '',
-              lastName: s.lastName || '',
-              department: dept,
-              branch: br,
-              jobTitle: s.jobTitle || null,
-              email: s.email || null,
+              ...syncData,
+              firstName: syncData.firstName as string,
+              lastName: syncData.lastName as string,
+              department: syncData.department as string,
+              branch: syncData.branch as string,
             },
           })
         }
@@ -123,20 +174,7 @@ export async function POST(req: Request) {
   return NextResponse.json(employee)
 }
 
-export async function PUT(req: Request) {
-  const session = await auth()
-  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const body = await req.json()
-  const { id, ...data } = body
-
-  if (!id) {
-    return NextResponse.json({ error: 'Missing employee id' }, { status: 400 })
-  }
-
-  // Clean up fields
+function buildUpdateData(data: Record<string, unknown>): Record<string, unknown> {
   const updateData: Record<string, unknown> = {}
   if (data.firstName !== undefined) updateData.firstName = data.firstName
   if (data.lastName !== undefined) updateData.lastName = data.lastName
@@ -147,18 +185,49 @@ export async function PUT(req: Request) {
   if (data.rateType !== undefined) updateData.rateType = data.rateType
   if (data.dailyRate !== undefined) updateData.dailyRate = data.dailyRate
   if (data.monthlyRate !== undefined) updateData.monthlyRate = data.monthlyRate
-  if (data.employeeBioId !== undefined) updateData.employeeBioId = data.employeeBioId ? parseInt(data.employeeBioId) : null
+  if (data.employeeBioId !== undefined) updateData.employeeBioId = data.employeeBioId ? parseInt(String(data.employeeBioId)) : null
   if (data.sssNumber !== undefined) updateData.sssNumber = data.sssNumber || null
   if (data.philhealthNumber !== undefined) updateData.philhealthNumber = data.philhealthNumber || null
   if (data.pagibigNumber !== undefined) updateData.pagibigNumber = data.pagibigNumber || null
   if (data.tinNumber !== undefined) updateData.tinNumber = data.tinNumber || null
-  if (data.dateHired !== undefined) updateData.dateHired = data.dateHired ? new Date(data.dateHired) : null
-  if (data.regularizationDate !== undefined) updateData.regularizationDate = data.regularizationDate ? new Date(data.regularizationDate) : null
+  if (data.dateHired !== undefined) updateData.dateHired = data.dateHired ? new Date(data.dateHired as string) : null
+  if (data.regularizationDate !== undefined) updateData.regularizationDate = data.regularizationDate ? new Date(data.regularizationDate as string) : null
   if (data.scheduleIn !== undefined) updateData.scheduleIn = data.scheduleIn
   if (data.scheduleOut !== undefined) updateData.scheduleOut = data.scheduleOut
   if (data.restDay !== undefined) updateData.restDay = data.restDay
   if (data.isActive !== undefined) updateData.isActive = data.isActive
+  return updateData
+}
 
+export async function PUT(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const body = await req.json()
+
+  // Support bulk update: { bulk: [{ id, ...fields }, ...] }
+  if (body.bulk && Array.isArray(body.bulk)) {
+    const results = []
+    for (const item of body.bulk) {
+      const { id, ...data } = item
+      if (!id) continue
+      const updateData = buildUpdateData(data)
+      if (Object.keys(updateData).length === 0) continue
+      const emp = await prisma.employee.update({ where: { id }, data: updateData })
+      results.push(emp)
+    }
+    return NextResponse.json(results)
+  }
+
+  // Single update
+  const { id, ...data } = body
+  if (!id) {
+    return NextResponse.json({ error: 'Missing employee id' }, { status: 400 })
+  }
+
+  const updateData = buildUpdateData(data)
   const employee = await prisma.employee.update({
     where: { id },
     data: updateData,

@@ -36,6 +36,29 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json()
+
+  // Bulk upsert: { bulk: [{ employeeId, benefitType, employeeShare, employerShare }, ...] }
+  if (body.bulk && Array.isArray(body.bulk)) {
+    const results = []
+    for (const item of body.bulk) {
+      if (!item.employeeId || !item.benefitType) continue
+      await prisma.employeeBenefit.updateMany({
+        where: { employeeId: item.employeeId, benefitType: item.benefitType, isActive: true },
+        data: { isActive: false },
+      })
+      const b = await prisma.employeeBenefit.create({
+        data: {
+          employeeId: item.employeeId,
+          benefitType: item.benefitType,
+          employeeShare: item.employeeShare || 0,
+          employerShare: item.employerShare || 0,
+        },
+      })
+      results.push(b)
+    }
+    return NextResponse.json(results)
+  }
+
   const { employeeId, benefitType, employeeShare, employerShare } = body
 
   if (!employeeId || !benefitType) {

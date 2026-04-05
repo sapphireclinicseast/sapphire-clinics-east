@@ -56,6 +56,37 @@ const LEAVE_TYPES = [
 
 const BENEFIT_TYPES = ['SSS', 'PHILHEALTH', 'PAGIBIG', 'TAX']
 
+const PH_HOLIDAYS_2026 = [
+  { name: "New Year's Day", date: '2026-01-01', holidayType: 'REGULAR' },
+  { name: 'Araw ng Kagitingan', date: '2026-04-09', holidayType: 'REGULAR' },
+  { name: 'Maundy Thursday', date: '2026-04-02', holidayType: 'REGULAR' },
+  { name: 'Good Friday', date: '2026-04-03', holidayType: 'REGULAR' },
+  { name: 'Black Saturday', date: '2026-04-04', holidayType: 'SPECIAL_NON_WORKING' },
+  { name: 'Labor Day', date: '2026-05-01', holidayType: 'REGULAR' },
+  { name: 'Independence Day', date: '2026-06-12', holidayType: 'REGULAR' },
+  { name: 'Ninoy Aquino Day', date: '2026-08-21', holidayType: 'SPECIAL_NON_WORKING' },
+  { name: 'National Heroes Day', date: '2026-08-31', holidayType: 'REGULAR' },
+  { name: 'Bonifacio Day', date: '2026-11-30', holidayType: 'REGULAR' },
+  { name: 'Christmas Eve', date: '2026-12-24', holidayType: 'SPECIAL_NON_WORKING' },
+  { name: 'Christmas Day', date: '2026-12-25', holidayType: 'REGULAR' },
+  { name: 'Rizal Day', date: '2026-12-30', holidayType: 'REGULAR' },
+  { name: "New Year's Eve", date: '2026-12-31', holidayType: 'SPECIAL_NON_WORKING' },
+  { name: 'Eid al-Fitr', date: '2026-03-20', holidayType: 'REGULAR' },
+  { name: 'Eid al-Adha', date: '2026-05-27', holidayType: 'REGULAR' },
+  { name: 'All Saints Day', date: '2026-11-01', holidayType: 'SPECIAL_NON_WORKING' },
+  { name: 'Immaculate Conception', date: '2026-12-08', holidayType: 'SPECIAL_NON_WORKING' },
+  { name: 'Chinese New Year', date: '2026-02-17', holidayType: 'SPECIAL_NON_WORKING' },
+  { name: 'EDSA People Power Revolution', date: '2026-02-25', holidayType: 'SPECIAL_NON_WORKING' },
+]
+
+function formatJobTitle(jt: string | null | undefined): string {
+  if (!jt) return '—'
+  // If already formatted (contains spaces or starts with uppercase), return as-is
+  if (jt.includes(' ') || /^[A-Z]/.test(jt)) return jt
+  // Convert slug "clinic-aide" to "Clinic Aide"
+  return jt.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+}
+
 /* ═══════════════════════════════════════════════════════════════
    INTERFACES
    ═══════════════════════════════════════════════════════════════ */
@@ -252,6 +283,26 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
   const [cutoffHalf, setCutoffHalf] = useState(now.getDate() <= 15 ? 1 : 2)
   const [generating, setGenerating] = useState(false)
   const [expandedPayslip, setExpandedPayslip] = useState('')
+
+  /* ── Holiday Presets ── */
+  const [showHolidayPresets, setShowHolidayPresets] = useState(false)
+  const [holidayPresetChecks, setHolidayPresetChecks] = useState<Record<string, boolean>>({})
+  const [savingPresets, setSavingPresets] = useState(false)
+
+  /* ── Employee Request QR/Link ── */
+  const [showRequestLink, setShowRequestLink] = useState(false)
+
+  /* ── Bulk Edit Employees ── */
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<string>>(new Set())
+  const [showBulkEditModal, setShowBulkEditModal] = useState(false)
+  const [bulkEditData, setBulkEditData] = useState<Partial<Employee>>({})
+
+  /* ── Bulk Benefits ── */
+  const [selectedBenefitEmpIds, setSelectedBenefitEmpIds] = useState<Set<string>>(new Set())
+  const [showBulkBenefitModal, setShowBulkBenefitModal] = useState(false)
+  const [bulkBenefitType, setBulkBenefitType] = useState('SSS')
+  const [bulkBenefitEmpShare, setBulkBenefitEmpShare] = useState(0)
+  const [bulkBenefitErShare, setBulkBenefitErShare] = useState(0)
 
   const cutoffPeriod = `${cutoffYear}-${String(cutoffMonth).padStart(2, '0')}-${cutoffHalf}`
 
@@ -468,6 +519,117 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
     } catch { setError('Failed to save settings') }
   }
 
+  /* ── Holiday Presets ── */
+  const openHolidayPresets = () => {
+    const existingNames = new Set(holidays.map(h => h.name))
+    const missing = PH_HOLIDAYS_2026.filter(h => !existingNames.has(h.name))
+    const checks: Record<string, boolean> = {}
+    missing.forEach(h => { checks[h.name] = true })
+    setHolidayPresetChecks(checks)
+    setShowHolidayPresets(true)
+  }
+
+  const saveSelectedPresets = async () => {
+    setSavingPresets(true)
+    const existingNames = new Set(holidays.map(h => h.name))
+    const toSave = PH_HOLIDAYS_2026.filter(h => !existingNames.has(h.name) && holidayPresetChecks[h.name])
+    try {
+      for (const h of toSave) {
+        await fetch('/api/payroll/holidays', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: h.name, date: h.date, holidayType: h.holidayType, branch: '', isRecurring: false }),
+        })
+      }
+      setShowHolidayPresets(false)
+      fetchHolidays()
+    } catch { setError('Failed to save preset holidays') }
+    setSavingPresets(false)
+  }
+
+  /* ── Bulk Edit Employees ── */
+  const toggleEmployeeSelection = (id: string) => {
+    setSelectedEmployeeIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  const toggleAllEmployees = () => {
+    if (selectedEmployeeIds.size === filteredEmployees.length) {
+      setSelectedEmployeeIds(new Set())
+    } else {
+      setSelectedEmployeeIds(new Set(filteredEmployees.map(e => e.id)))
+    }
+  }
+
+  const saveBulkEdit = async () => {
+    const ids = Array.from(selectedEmployeeIds)
+    if (ids.length === 0) return
+    const fields: Record<string, unknown> = {}
+    if (bulkEditData.rateType) fields.rateType = bulkEditData.rateType
+    if (bulkEditData.dailyRate && toNum(bulkEditData.dailyRate) > 0) fields.dailyRate = toNum(bulkEditData.dailyRate)
+    if (bulkEditData.monthlyRate && toNum(bulkEditData.monthlyRate) > 0) fields.monthlyRate = toNum(bulkEditData.monthlyRate)
+    if (bulkEditData.scheduleIn) fields.scheduleIn = bulkEditData.scheduleIn
+    if (bulkEditData.scheduleOut) fields.scheduleOut = bulkEditData.scheduleOut
+    if (bulkEditData.restDay) fields.restDay = bulkEditData.restDay
+    if (bulkEditData.department) fields.department = bulkEditData.department
+    if (bulkEditData.branch) fields.branch = bulkEditData.branch
+    if (Object.keys(fields).length === 0) { setError('No fields to update'); return }
+    try {
+      const bulk = ids.map(id => ({ id, ...fields }))
+      const r = await fetch('/api/payroll/employees', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bulk }),
+      })
+      if (!r.ok) throw new Error('Bulk edit failed')
+      setShowBulkEditModal(false)
+      setSelectedEmployeeIds(new Set())
+      setBulkEditData({})
+      fetchEmployees()
+    } catch { setError('Failed to bulk edit employees') }
+  }
+
+  /* ── Bulk Benefits ── */
+  const toggleBenefitEmpSelection = (id: string) => {
+    setSelectedBenefitEmpIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  const toggleAllBenefitEmps = () => {
+    if (selectedBenefitEmpIds.size === filteredEmployees.length) {
+      setSelectedBenefitEmpIds(new Set())
+    } else {
+      setSelectedBenefitEmpIds(new Set(filteredEmployees.map(e => e.id)))
+    }
+  }
+
+  const saveBulkBenefit = async () => {
+    const ids = Array.from(selectedBenefitEmpIds)
+    if (ids.length === 0) return
+    try {
+      const bulk = ids.map(id => ({
+        employeeId: id,
+        benefitType: bulkBenefitType,
+        employeeShare: bulkBenefitEmpShare,
+        employerShare: bulkBenefitErShare,
+      }))
+      await fetch('/api/payroll/employee-benefits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bulk }),
+      })
+      setShowBulkBenefitModal(false)
+      setSelectedBenefitEmpIds(new Set())
+      fetchEmployees()
+    } catch { setError('Failed to bulk set benefits') }
+  }
+
   /* ═══════════════════════════════════════════════════════════════
      FILTERED DATA
      ═══════════════════════════════════════════════════════════════ */
@@ -558,6 +720,13 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                   style={{ background: 'var(--teal)' }}>
                   <Plus size={13} /> Add Employee
                 </button>
+                {selectedEmployeeIds.size > 0 && (
+                  <button onClick={() => { setBulkEditData({}); setShowBulkEditModal(true) }}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-white"
+                    style={{ background: '#7c3aed' }}>
+                    <Pencil size={13} /> Bulk Edit ({selectedEmployeeIds.size})
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -570,6 +739,12 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
               <table className="w-full text-xs">
                 <thead>
                   <tr style={{ background: 'var(--off-white)' }}>
+                    {canWrite && (
+                      <th className="text-center px-2 py-2.5">
+                        <input type="checkbox" checked={filteredEmployees.length > 0 && selectedEmployeeIds.size === filteredEmployees.length}
+                          onChange={toggleAllEmployees} />
+                      </th>
+                    )}
                     <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Name</th>
                     <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Department</th>
                     <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Branch</th>
@@ -583,13 +758,19 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                 </thead>
                 <tbody>
                   {filteredEmployees.length === 0 ? (
-                    <tr><td colSpan={9} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No employees found. Sync from CRM or add manually.</td></tr>
+                    <tr><td colSpan={canWrite ? 11 : 9} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No employees found. Sync from CRM or add manually.</td></tr>
                   ) : filteredEmployees.map(emp => (
                     <tr key={emp.id} className="border-t hover:bg-gray-50" style={{ borderColor: 'var(--light-gray)' }}>
+                      {canWrite && (
+                        <td className="text-center px-2 py-2.5">
+                          <input type="checkbox" checked={selectedEmployeeIds.has(emp.id)}
+                            onChange={() => toggleEmployeeSelection(emp.id)} />
+                        </td>
+                      )}
                       <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{emp.firstName} {emp.lastName}</td>
                       <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{emp.department}</td>
                       <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{emp.branch === 'SBEA' ? 'Sandbox East' : emp.branch === 'SBGH' ? 'Sandbox GH' : emp.branch}</td>
-                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{emp.jobTitle || '—'}</td>
+                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{formatJobTitle(emp.jobTitle)}</td>
                       <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{emp.rateType === 'DAILY' ? 'Daily' : 'Monthly'}</td>
                       <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>
                         {formatCurrency(toNum(emp.rateType === 'DAILY' ? emp.dailyRate : emp.monthlyRate))}
@@ -735,6 +916,82 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
               </div>
             </div>
           )}
+
+          {/* Bulk Edit Modal */}
+          {showBulkEditModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+              <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-y-auto p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Bulk Edit ({selectedEmployeeIds.size} employees)</h3>
+                  <button onClick={() => setShowBulkEditModal(false)}><X size={16} /></button>
+                </div>
+                <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>Only non-empty fields will be applied to all selected employees.</p>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Rate Type</label>
+                    <select value={bulkEditData.rateType || ''} onChange={e => setBulkEditData(p => ({ ...p, rateType: e.target.value as 'DAILY' | 'MONTHLY' || undefined }))}
+                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }}>
+                      <option value="">— No change —</option>
+                      <option value="DAILY">Daily Rate</option>
+                      <option value="MONTHLY">Fixed Monthly</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Daily Rate</label>
+                    <input type="number" value={bulkEditData.dailyRate || ''} onChange={e => setBulkEditData(p => ({ ...p, dailyRate: parseFloat(e.target.value) || 0 }))}
+                      placeholder="No change" className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                  <div>
+                    <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Monthly Rate</label>
+                    <input type="number" value={bulkEditData.monthlyRate || ''} onChange={e => setBulkEditData(p => ({ ...p, monthlyRate: parseFloat(e.target.value) || 0 }))}
+                      placeholder="No change" className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                  <div>
+                    <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Schedule In</label>
+                    <input type="time" value={bulkEditData.scheduleIn || ''} onChange={e => setBulkEditData(p => ({ ...p, scheduleIn: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                  <div>
+                    <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Schedule Out</label>
+                    <input type="time" value={bulkEditData.scheduleOut || ''} onChange={e => setBulkEditData(p => ({ ...p, scheduleOut: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                  <div>
+                    <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Rest Day</label>
+                    <select value={bulkEditData.restDay || ''} onChange={e => setBulkEditData(p => ({ ...p, restDay: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }}>
+                      <option value="">— No change —</option>
+                      {DAYS_OF_WEEK.map(d => <option key={d} value={d}>{d.charAt(0) + d.slice(1).toLowerCase()}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Department</label>
+                    <select value={bulkEditData.department || ''} onChange={e => setBulkEditData(p => ({ ...p, department: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }}>
+                      <option value="">— No change —</option>
+                      {EMP_DEPARTMENTS.filter(d => d.value).map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Branch</label>
+                    <select value={bulkEditData.branch || ''} onChange={e => setBulkEditData(p => ({ ...p, branch: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }}>
+                      <option value="">— No change —</option>
+                      {BRANCHES.filter(b => b.value).map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 mt-5">
+                  <button onClick={() => setShowBulkEditModal(false)}
+                    className="px-4 py-2 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>Cancel</button>
+                  <button onClick={saveBulkEdit}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium text-white" style={{ background: '#7c3aed' }}>
+                    <Save size={13} /> Apply to {selectedEmployeeIds.size} Employees
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -854,7 +1111,47 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
             <button onClick={fetchRequests} className="p-1.5 rounded-lg hover:bg-gray-100">
               <RefreshCw size={14} style={{ color: 'var(--mid-gray)' }} />
             </button>
+            <button onClick={() => setShowRequestLink(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border ml-auto"
+              style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+              <QrCode size={13} /> Request Link / QR
+            </button>
           </div>
+
+          {/* Request Link / QR Modal */}
+          {showRequestLink && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+              <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Employee Request Link</h3>
+                  <button onClick={() => setShowRequestLink(false)}><X size={16} /></button>
+                </div>
+                <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>
+                  Share this link or QR code with employees so they can submit requests (leave, overtime, etc.).
+                </p>
+                <div className="rounded-lg border p-3 mb-3 text-xs font-mono break-all" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)', color: 'var(--charcoal)' }}>
+                  {typeof window !== 'undefined' ? `${window.location.origin}/employee-request` : '/employee-request'}
+                </div>
+                <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/employee-request`); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border mb-4 w-full justify-center"
+                  style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                  Copy Link
+                </button>
+                <div className="flex justify-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}/employee-request` : '')}`}
+                    alt="QR Code for employee request link"
+                    width={200} height={200}
+                  />
+                </div>
+                <div className="flex justify-end mt-4">
+                  <button onClick={() => setShowRequestLink(false)}
+                    className="px-4 py-2 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>Close</button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
             <table className="w-full text-xs">
@@ -1040,10 +1337,19 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Employee Benefits (SSS, PhilHealth, Pag-IBIG, Tax)</p>
             {canWrite && (
-              <button onClick={() => { setShowBenefitForm(true); setBenefitEmpId(''); setBenefitType('SSS'); setBenefitEmpShare(0); setBenefitErShare(0) }}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
-                <Plus size={13} /> Set Benefit
-              </button>
+              <div className="flex items-center gap-2">
+                {selectedBenefitEmpIds.size > 0 && (
+                  <button onClick={() => { setBulkBenefitType('SSS'); setBulkBenefitEmpShare(0); setBulkBenefitErShare(0); setShowBulkBenefitModal(true) }}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-white"
+                    style={{ background: '#7c3aed' }}>
+                    <Shield size={13} /> Set Benefit for Selected ({selectedBenefitEmpIds.size})
+                  </button>
+                )}
+                <button onClick={() => { setShowBenefitForm(true); setBenefitEmpId(''); setBenefitType('SSS'); setBenefitEmpShare(0); setBenefitErShare(0) }}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
+                  <Plus size={13} /> Set Benefit
+                </button>
+              </div>
             )}
           </div>
 
@@ -1051,6 +1357,12 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
             <table className="w-full text-xs">
               <thead>
                 <tr style={{ background: 'var(--off-white)' }}>
+                  {canWrite && (
+                    <th className="text-center px-2 py-2.5">
+                      <input type="checkbox" checked={filteredEmployees.length > 0 && selectedBenefitEmpIds.size === filteredEmployees.length}
+                        onChange={toggleAllBenefitEmps} />
+                    </th>
+                  )}
                   <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Employee</th>
                   <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>SSS (EE / ER)</th>
                   <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>PhilHealth (EE / ER)</th>
@@ -1060,7 +1372,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
               </thead>
               <tbody>
                 {filteredEmployees.length === 0 ? (
-                  <tr><td colSpan={5} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No employees</td></tr>
+                  <tr><td colSpan={canWrite ? 6 : 5} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No employees</td></tr>
                 ) : filteredEmployees.map(emp => {
                   const sss = emp.benefits.find(b => b.benefitType === 'SSS')
                   const phil = emp.benefits.find(b => b.benefitType === 'PHILHEALTH')
@@ -1068,6 +1380,12 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                   const tax = emp.benefits.find(b => b.benefitType === 'TAX')
                   return (
                     <tr key={emp.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                      {canWrite && (
+                        <td className="text-center px-2 py-2.5">
+                          <input type="checkbox" checked={selectedBenefitEmpIds.has(emp.id)}
+                            onChange={() => toggleBenefitEmpSelection(emp.id)} />
+                        </td>
+                      )}
                       <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{emp.firstName} {emp.lastName}</td>
                       <td className="px-3 py-2.5 font-mono" style={{ color: 'var(--mid-gray)' }}>
                         {sss ? `${formatCurrency(toNum(sss.employeeShare))} / ${formatCurrency(toNum(sss.employerShare))}` : '—'}
@@ -1134,6 +1452,45 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
               </div>
             </div>
           )}
+
+          {/* Bulk Benefit Modal */}
+          {showBulkBenefitModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+              <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Set Benefit for {selectedBenefitEmpIds.size} Employees</h3>
+                  <button onClick={() => setShowBulkBenefitModal(false)}><X size={16} /></button>
+                </div>
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Benefit Type</label>
+                    <select value={bulkBenefitType} onChange={e => setBulkBenefitType(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }}>
+                      {BENEFIT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Employee Share (Monthly)</label>
+                    <input type="number" value={bulkBenefitEmpShare} onChange={e => setBulkBenefitEmpShare(parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                  <div>
+                    <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Employer Share (Monthly)</label>
+                    <input type="number" value={bulkBenefitErShare} onChange={e => setBulkBenefitErShare(parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 mt-5">
+                  <button onClick={() => setShowBulkBenefitModal(false)}
+                    className="px-4 py-2 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--light-gray)' }}>Cancel</button>
+                  <button onClick={saveBulkBenefit}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium text-white" style={{ background: '#7c3aed' }}>
+                    <Save size={13} /> Save for {selectedBenefitEmpIds.size} Employees
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1150,10 +1507,17 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
               ))}
             </select>
             {canWrite && (
-              <button onClick={() => { setEditHolidayId(''); setHolidayForm({ name: '', date: '', holidayType: 'REGULAR', branch: '', isRecurring: false }); setShowHolidayForm(true) }}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
-                <Plus size={13} /> Add Holiday
-              </button>
+              <>
+                <button onClick={() => { setEditHolidayId(''); setHolidayForm({ name: '', date: '', holidayType: 'REGULAR', branch: '', isRecurring: false }); setShowHolidayForm(true) }}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
+                  <Plus size={13} /> Add Holiday
+                </button>
+                <button onClick={openHolidayPresets}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border"
+                  style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                  <Calendar size={13} /> Load 2026 PH Holidays
+                </button>
+              </>
             )}
           </div>
 
@@ -1245,6 +1609,69 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                   <button onClick={saveHoliday}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
                     <Save size={13} /> {editHolidayId ? 'Update' : 'Create'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Holiday Presets Modal */}
+          {showHolidayPresets && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+              <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-y-auto p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Load 2026 Philippine Holidays</h3>
+                  <button onClick={() => setShowHolidayPresets(false)}><X size={16} /></button>
+                </div>
+                {(() => {
+                  const existingNames = new Set(holidays.map(h => h.name))
+                  const missing = PH_HOLIDAYS_2026.filter(h => !existingNames.has(h.name))
+                  if (missing.length === 0) return (
+                    <p className="text-xs py-4 text-center" style={{ color: 'var(--mid-gray)' }}>All 2026 PH holidays are already in the database.</p>
+                  )
+                  return (
+                    <>
+                      <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>
+                        {missing.length} holiday(s) not yet added. Select which ones to import:
+                      </p>
+                      <div className="space-y-1.5 max-h-[50vh] overflow-y-auto">
+                        <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>
+                          <input type="checkbox"
+                            checked={missing.every(h => holidayPresetChecks[h.name])}
+                            onChange={e => {
+                              const checked = e.target.checked
+                              setHolidayPresetChecks(prev => {
+                                const next = { ...prev }
+                                missing.forEach(h => { next[h.name] = checked })
+                                return next
+                              })
+                            }} />
+                          Select All
+                        </label>
+                        {missing.map(h => (
+                          <label key={h.name} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer text-xs">
+                            <input type="checkbox" checked={!!holidayPresetChecks[h.name]}
+                              onChange={e => setHolidayPresetChecks(prev => ({ ...prev, [h.name]: e.target.checked }))} />
+                            <span className="flex-1" style={{ color: 'var(--charcoal)' }}>{h.name}</span>
+                            <span className="font-mono text-[10px]" style={{ color: 'var(--mid-gray)' }}>{h.date}</span>
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium"
+                              style={{ background: h.holidayType === 'REGULAR' ? '#fee2e2' : '#fef3c7', color: h.holidayType === 'REGULAR' ? '#dc2626' : '#d97706' }}>
+                              {h.holidayType === 'REGULAR' ? 'Regular' : 'Special'}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </>
+                  )
+                })()}
+                <div className="flex justify-end gap-2 mt-5">
+                  <button onClick={() => setShowHolidayPresets(false)}
+                    className="px-4 py-2 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--light-gray)' }}>Cancel</button>
+                  <button onClick={saveSelectedPresets} disabled={savingPresets || !Object.values(holidayPresetChecks).some(v => v)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium text-white"
+                    style={{ background: savingPresets ? 'var(--mid-gray)' : 'var(--teal)' }}>
+                    {savingPresets ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                    Save Selected
                   </button>
                 </div>
               </div>
