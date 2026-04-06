@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-/** Branch-specific roles see their branch + VERDANA */
+/** Branch-specific roles see their branch + Verdana Store */
 function allowedBranches(role: string): string[] | null {
-  if (role.startsWith('SBEA_')) return ['SBEA', 'VERDANA']
-  if (role.startsWith('SBGH_')) return ['SBGH', 'VERDANA']
+  if (role.startsWith('SBEA_')) return ['SBEA', 'VDNA']
+  if (role.startsWith('SBGH_')) return ['SBGH', 'VDNA']
   return null // ADMIN / MARKETING_ADMIN — no restriction
 }
 
