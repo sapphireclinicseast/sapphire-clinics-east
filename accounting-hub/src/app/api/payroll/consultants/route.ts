@@ -6,6 +6,14 @@ const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA
 const MARKETING_HUB_URL = process.env.MARKETING_HUB_URL || 'https://marketing.sapphireclinicseast.org'
 const EXTERNAL_API_KEY = process.env.EXTERNAL_API_KEY || ''
 
+/** Branch-specific roles can only see their branch + VERDANA */
+function allowedBranches(role: string): string[] | null {
+  if (role === 'SBEA_ADMIN') return ['SBEA', 'VERDANA']
+  if (role === 'SBGH_ADMIN') return ['SBGH', 'VERDANA']
+  if (role === 'VERDANA_ADMIN') return ['VERDANA']
+  return null
+}
+
 /** Format name as ALL CAPS: "FIRSTNAME LASTNAME" */
 function formatName(s: string): string {
   return s.toUpperCase()
@@ -52,8 +60,18 @@ export async function GET(req: Request) {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = { isActive: true }
-  if (branch) where.branch = branch
   if (department) where.department = department
+
+  // Enforce branch restriction based on role
+  const allowed = allowedBranches((session.user as { role?: string }).role || '')
+  if (branch) {
+    if (allowed && !allowed.includes(branch)) {
+      return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
+    }
+    where.branch = branch
+  } else if (allowed) {
+    where.branch = { in: allowed }
+  }
 
   const consultants = await prisma.consultant.findMany({
     where,

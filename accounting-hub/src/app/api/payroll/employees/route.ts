@@ -8,6 +8,14 @@ const MARKETING_HUB_URL = process.env.MARKETING_HUB_URL || 'https://marketing.sa
 const HR_PLATFORM_URL = process.env.HR_PLATFORM_URL || 'http://127.0.0.1:3457'
 const EXTERNAL_API_KEY = process.env.EXTERNAL_API_KEY || ''
 
+/** Branch-specific roles can only see their branch + VERDANA */
+function allowedBranches(role: string): string[] | null {
+  if (role === 'SBEA_ADMIN') return ['SBEA', 'VERDANA']
+  if (role === 'SBGH_ADMIN') return ['SBGH', 'VERDANA']
+  if (role === 'VERDANA_ADMIN') return ['VERDANA']
+  return null // ADMIN, ACCOUNTANT, VIEWER — no restriction
+}
+
 export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user || !READ_ROLES.includes(session.user.role as string)) {
@@ -86,8 +94,20 @@ export async function GET(req: Request) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = {}
   if (!includeInactive) where.isActive = true
-  if (branch) where.branch = branch
   if (department) where.department = department
+
+  // Enforce branch restriction based on role
+  const allowed = allowedBranches(session.user.role as string)
+  if (branch) {
+    // If user requested a specific branch, only allow if within their permitted branches
+    if (allowed && !allowed.includes(branch)) {
+      return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
+    }
+    where.branch = branch
+  } else if (allowed) {
+    // No branch specified — restrict to allowed branches
+    where.branch = { in: allowed }
+  }
 
   const employees = await prisma.employee.findMany({
     where,

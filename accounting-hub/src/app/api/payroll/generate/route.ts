@@ -4,6 +4,13 @@ import { prisma } from '@/lib/prisma'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
+function allowedBranches(role: string): string[] | null {
+  if (role === 'SBEA_ADMIN') return ['SBEA', 'VERDANA']
+  if (role === 'SBGH_ADMIN') return ['SBGH', 'VERDANA']
+  if (role === 'VERDANA_ADMIN') return ['VERDANA']
+  return null
+}
+
 // Consultants store branch as SBEA/SBGH, but orders store SANDBOX_EAST/SANDBOX_GREENHILLS
 const BRANCH_TO_ORDER: Record<string, string> = {
   SBEA: 'SANDBOX_EAST',
@@ -61,7 +68,15 @@ export async function GET(req: Request) {
     // Get consultants
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const consultantWhere: any = { isActive: true }
-    if (branch) consultantWhere.branch = branch
+    const allowed = allowedBranches((session.user as { role?: string }).role || '')
+    if (branch) {
+      if (allowed && !allowed.includes(branch)) {
+        return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
+      }
+      consultantWhere.branch = branch
+    } else if (allowed) {
+      consultantWhere.branch = { in: allowed }
+    }
     if (department) consultantWhere.department = department
     if (consultantId) consultantWhere.id = consultantId
 

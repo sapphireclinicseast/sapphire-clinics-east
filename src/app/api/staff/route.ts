@@ -2,21 +2,22 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-function branchFromRole(role: string): string | null {
-  if (role.startsWith('SBEA_')) return 'SBEA'
-  if (role.startsWith('SBGH_')) return 'SBGH'
-  return null // ADMIN / MARKETING_ADMIN — caller supplies branch in body
+/** Branch-specific roles see their branch + VERDANA */
+function allowedBranches(role: string): string[] | null {
+  if (role.startsWith('SBEA_')) return ['SBEA', 'VERDANA']
+  if (role.startsWith('SBGH_')) return ['SBGH', 'VERDANA']
+  return null // ADMIN / MARKETING_ADMIN — no restriction
 }
 
 export async function GET() {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const role   = (session.user as { role?: string }).role ?? ''
-  const branch = branchFromRole(role)
+  const role    = (session.user as { role?: string }).role ?? ''
+  const allowed = allowedBranches(role)
 
   const staff = await prisma.staff.findMany({
-    where:   branch ? { branch } : {},
+    where:   allowed ? { branch: { in: allowed } } : {},
     orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
   })
   return NextResponse.json(staff)

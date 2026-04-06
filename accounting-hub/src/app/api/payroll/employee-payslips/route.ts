@@ -5,6 +5,13 @@ import { prisma } from '@/lib/prisma'
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 const READ_ROLES = [...WRITE_ROLES, 'VIEWER']
 
+function allowedBranches(role: string): string[] | null {
+  if (role === 'SBEA_ADMIN') return ['SBEA', 'VERDANA']
+  if (role === 'SBGH_ADMIN') return ['SBGH', 'VERDANA']
+  if (role === 'VERDANA_ADMIN') return ['VERDANA']
+  return null
+}
+
 export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user || !READ_ROLES.includes(session.user.role as string)) {
@@ -19,8 +26,18 @@ export async function GET(req: Request) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = {}
   if (cutoffPeriod) where.cutoffPeriod = cutoffPeriod
-  if (branch) where.branch = branch
   if (status) where.status = status
+
+  // Enforce branch restriction based on role
+  const allowed = allowedBranches(session.user.role as string)
+  if (branch) {
+    if (allowed && !allowed.includes(branch)) {
+      return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
+    }
+    where.branch = branch
+  } else if (allowed) {
+    where.branch = { in: allowed }
+  }
 
   const payslips = await prisma.employeePayslip.findMany({
     where,

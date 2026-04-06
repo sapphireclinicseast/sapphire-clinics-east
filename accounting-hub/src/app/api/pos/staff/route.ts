@@ -4,6 +4,13 @@ import { auth } from '@/lib/auth'
 const MARKETING_HUB_URL = process.env.MARKETING_HUB_URL || 'https://marketing.sapphireclinicseast.org'
 const EXTERNAL_API_KEY = process.env.EXTERNAL_API_KEY || ''
 
+function allowedBranches(role: string): string[] | null {
+  if (role === 'SBEA_ADMIN' || role === 'SBEA_FRONTDESK') return ['SBEA', 'VERDANA']
+  if (role === 'SBGH_ADMIN' || role === 'SBGH_FRONTDESK') return ['SBGH', 'VERDANA']
+  if (role === 'VERDANA_ADMIN') return ['VERDANA']
+  return null
+}
+
 /** Format name as "FIRSTNAME LASTNAME" in ALL CAPS */
 function formatName(s: string): string {
   return s.toUpperCase()
@@ -20,6 +27,11 @@ export async function GET(req: Request) {
   const branch = searchParams.get('branch') || ''
 
   try {
+    const allowed = allowedBranches((session.user as { role?: string }).role || '')
+    if (branch && allowed && !allowed.includes(branch)) {
+      return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
+    }
+
     const params = new URLSearchParams()
     if (search.trim()) params.set('search', search)
     if (branch) params.set('branch', branch)
@@ -40,13 +52,18 @@ export async function GET(req: Request) {
     const data = await res.json()
     // Transform: Marketing Hub returns {staff: [{id, firstName, lastName, department, branch, jobTitle}]}
     // POS expects [{id, name, department, branch}]
-    const staff = (data.staff || []).map((s: Record<string, unknown>) => ({
+    let staff = (data.staff || []).map((s: Record<string, unknown>) => ({
       id: s.id,
       name: formatName(`${s.firstName} ${s.lastName}`),
       department: s.department || '',
-      branch: s.branch || '',
+      branch: (s.branch || '') as string,
       jobTitle: s.jobTitle || '',
     }))
+
+    // Filter to allowed branches if role-restricted and no specific branch was requested
+    if (!branch && allowed) {
+      staff = staff.filter((s: { branch: string }) => allowed.includes(s.branch))
+    }
 
     return NextResponse.json(staff)
   } catch (err) {
