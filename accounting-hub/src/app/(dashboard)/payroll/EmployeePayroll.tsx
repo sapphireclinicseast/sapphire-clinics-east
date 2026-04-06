@@ -412,8 +412,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
       employeeBioId: emp.employeeBioId, sssNumber: emp.sssNumber || '',
       philhealthNumber: emp.philhealthNumber || '', pagibigNumber: emp.pagibigNumber || '',
       tinNumber: emp.tinNumber || '', scheduleIn: emp.scheduleIn, scheduleOut: emp.scheduleOut,
-      restDay: emp.restDay, dateHired: emp.dateHired?.split('T')[0] || '',
-      regularizationDate: emp.regularizationDate?.split('T')[0] || '',
+      restDay: emp.restDay,
     })
     setShowForm(true)
   }
@@ -854,11 +853,24 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                       className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                   <div>
-                    <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Rest Day</label>
-                    <select value={formData.restDay || 'SUNDAY'} onChange={e => setFormData(p => ({ ...p, restDay: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }}>
-                      {DAYS_OF_WEEK.map(d => <option key={d} value={d}>{d.charAt(0) + d.slice(1).toLowerCase()}</option>)}
-                    </select>
+                    <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Rest Day(s)</label>
+                    <div className="flex flex-wrap gap-2 px-1 py-1.5">
+                      {DAYS_OF_WEEK.map(d => {
+                        const selectedDays = (formData.restDay || 'SUNDAY').split(',').filter(Boolean)
+                        const isChecked = selectedDays.includes(d)
+                        return (
+                          <label key={d} className="flex items-center gap-1 text-xs cursor-pointer">
+                            <input type="checkbox" checked={isChecked}
+                              onChange={() => {
+                                const days = isChecked ? selectedDays.filter(x => x !== d) : [...selectedDays, d]
+                                setFormData(p => ({ ...p, restDay: days.join(',') || 'SUNDAY' }))
+                              }}
+                              className="rounded" />
+                            {d.charAt(0) + d.slice(1).toLowerCase()}
+                          </label>
+                        )
+                      })}
+                    </div>
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Schedule In</label>
@@ -868,16 +880,6 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Schedule Out</label>
                     <input type="time" value={formData.scheduleOut || '17:00'} onChange={e => setFormData(p => ({ ...p, scheduleOut: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
-                  </div>
-                  <div>
-                    <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Date Hired</label>
-                    <input type="date" value={(formData.dateHired as string) || ''} onChange={e => setFormData(p => ({ ...p, dateHired: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
-                  </div>
-                  <div>
-                    <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Regularization Date</label>
-                    <input type="date" value={(formData.regularizationDate as string) || ''} onChange={e => setFormData(p => ({ ...p, regularizationDate: e.target.value }))}
                       className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
 
@@ -957,12 +959,24 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                       className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                   <div>
-                    <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Rest Day</label>
-                    <select value={bulkEditData.restDay || ''} onChange={e => setBulkEditData(p => ({ ...p, restDay: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }}>
-                      <option value="">— No change —</option>
-                      {DAYS_OF_WEEK.map(d => <option key={d} value={d}>{d.charAt(0) + d.slice(1).toLowerCase()}</option>)}
-                    </select>
+                    <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Rest Day(s)</label>
+                    <div className="flex flex-wrap gap-2 px-1 py-1.5">
+                      {DAYS_OF_WEEK.map(d => {
+                        const selectedDays = (bulkEditData.restDay || '').split(',').filter(Boolean)
+                        const isChecked = selectedDays.includes(d)
+                        return (
+                          <label key={d} className="flex items-center gap-1 text-xs cursor-pointer">
+                            <input type="checkbox" checked={isChecked}
+                              onChange={() => {
+                                const days = isChecked ? selectedDays.filter(x => x !== d) : [...selectedDays, d]
+                                setBulkEditData(p => ({ ...p, restDay: days.join(',') }))
+                              }}
+                              className="rounded" />
+                            {d.charAt(0) + d.slice(1).toLowerCase()}
+                          </label>
+                        )
+                      })}
+                    </div>
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Department</label>

@@ -114,7 +114,8 @@ export async function POST(req: Request) {
 
     const dateObj = new Date(g.date + 'T00:00:00Z')
     const dayOfWeek = DAYS[dateObj.getUTCDay()]
-    const isRestDay = dayOfWeek === emp.restDay
+    const restDays = (emp.restDay || '').split(',').map(d => d.trim())
+    const isRestDay = restDays.includes(dayOfWeek)
 
     const holiday = holidayMap.get(g.date)
     const isHoliday = !!holiday

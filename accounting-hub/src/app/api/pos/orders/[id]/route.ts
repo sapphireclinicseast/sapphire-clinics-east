@@ -73,20 +73,58 @@ export async function PUT(
         include: { items: true, payments: true },
       })
 
-      // When voiding, reverse wallet changes
-      // HMO: was incremented on creation → decrement to reverse
-      // GL: was decremented on creation → increment to reverse (restore GL balance)
+      // When voiding, reverse ALL wallet changes
       if (body.action === 'void') {
         for (const p of updated.payments) {
-          if (p.method === 'GL' && p.walletId && Number(p.amount) > 0) {
+          if (!p.walletId || Number(p.amount) <= 0) continue
+
+          if (p.method === 'GL') {
+            // GL: was decremented on creation → increment to restore
             await prisma.digitalWallet.update({
               where: { id: p.walletId },
               data: { balance: { increment: Number(p.amount) } },
             })
-          } else if (p.method === 'HMO' && p.walletId && Number(p.amount) > 0) {
+          } else if (p.method === 'HMO') {
+            // HMO: was incremented on creation (AR) → decrement to reverse
             await prisma.digitalWallet.update({
               where: { id: p.walletId },
               data: { balance: { decrement: Number(p.amount) } },
+            })
+          } else if (p.method === 'PACKAGE' && p.reference?.startsWith('PKG:')) {
+            // Package: session was incremented → decrement to restore
+            const pkgId = p.reference.replace('PKG:', '')
+            if (pkgId) {
+              const pkg = await prisma.walletPackage.findUnique({ where: { id: pkgId } })
+              if (pkg && pkg.usedSessions > 0) {
+                await prisma.walletPackage.update({
+                  where: { id: pkgId },
+                  data: { usedSessions: { decrement: 1 } },
+                })
+                await prisma.walletLog.create({
+                  data: {
+                    walletId: p.walletId,
+                    packageId: pkgId,
+                    action: 'VOID_REVERSAL',
+                    sessions: -1,
+                    description: `Reversed 1 session (order voided)`,
+                    createdById: session.user.id,
+                  },
+                })
+              }
+            }
+          } else if (['VIP_CARD', 'PREPAID_CARD', 'DOWNPAYMENT'].includes(p.method)) {
+            // Wallet balance was deducted → increment to restore
+            await prisma.digitalWallet.update({
+              where: { id: p.walletId },
+              data: { balance: { increment: Number(p.amount) } },
+            })
+            await prisma.walletLog.create({
+              data: {
+                walletId: p.walletId,
+                action: 'VOID_REVERSAL',
+                description: `Restored ${Number(p.amount).toFixed(2)} (order voided)`,
+                createdById: session.user.id,
+              },
             })
           }
         }

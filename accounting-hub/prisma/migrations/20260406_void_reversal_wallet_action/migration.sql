@@ -1,0 +1,2 @@
+-- Add VOID_REVERSAL to WalletAction enum
+ALTER TYPE "WalletAction" ADD VALUE IF NOT EXISTS 'VOID_REVERSAL';

@@ -428,6 +428,7 @@ enum WalletAction {
   REWARD_SPEND
   AR_PAYMENT
   AR_PAYMENT_REVERSED
+  VOID_REVERSAL
 }
 
 enum WalletType {

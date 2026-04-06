@@ -105,6 +105,9 @@ interface DigitalWallet {
   patientEmail?: string | null
   rewardPoints: number
   isActive?: boolean
+  dateObtained?: string | null
+  agency?: string | null
+  attachmentUrl?: string | null
   _count?: { packages: number }
   packages?: WalletPackage[]
   logs?: WalletLog[]
@@ -2555,6 +2558,9 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   }, [crmSearch])
   const [selectedWallet, setSelectedWallet] = useState<DigitalWallet | null>(null)
   const [walletDetail, setWalletDetail] = useState<DigitalWallet | null>(null)
+  const [walletEditing, setWalletEditing] = useState(false)
+  const [walletEditForm, setWalletEditForm] = useState<Record<string, string>>({})
+  const [walletEditSaving, setWalletEditSaving] = useState(false)
   const [showAddPackage, setShowAddPackage] = useState(false)
   const [showSOA, setShowSOA] = useState<DigitalWallet | null>(null)
   const [soaDateFrom, setSoaDateFrom] = useState(today())
@@ -2638,6 +2644,46 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     } catch {
       setWalletDetail(null)
     }
+  }
+
+  const startWalletEdit = () => {
+    if (!walletDetail) return
+    setWalletEditForm({
+      patientName: walletDetail.patientName || '',
+      patientEmail: walletDetail.patientEmail || '',
+      dateObtained: walletDetail.dateObtained ? String(walletDetail.dateObtained).split('T')[0] : '',
+      agency: (walletDetail.agency as string) || '',
+      vipTier: walletDetail.vipTier || '',
+      balance: String(toNum(walletDetail.balance)),
+      attachmentUrl: (walletDetail.attachmentUrl as string) || '',
+    })
+    setWalletEditing(true)
+  }
+
+  const saveWalletEdit = async () => {
+    if (!walletDetail) return
+    setWalletEditSaving(true)
+    try {
+      const r = await fetch(`/api/pos/wallets/${walletDetail.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patientName: walletEditForm.patientName,
+          patientEmail: walletEditForm.patientEmail,
+          dateObtained: walletEditForm.dateObtained || null,
+          agency: walletEditForm.agency || null,
+          vipTier: walletEditForm.vipTier || null,
+          balance: walletEditForm.balance,
+          attachmentUrl: walletEditForm.attachmentUrl || null,
+        }),
+      })
+      if (r.ok) {
+        setWalletEditing(false)
+        loadWalletDetail(walletDetail)
+        fetchWallets()
+      }
+    } catch {}
+    setWalletEditSaving(false)
   }
 
   const deleteWallet = async (wallet: DigitalWallet) => {
@@ -3322,10 +3368,96 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       {selectedWallet && walletDetail && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-8 overflow-y-auto">
           <div className="bg-white rounded-2xl p-6 shadow-xl w-full max-w-2xl mb-8 relative">
-            <button onClick={() => { setSelectedWallet(null); setWalletDetail(null) }} className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-gray-100">
-              <X size={18} style={{ color: 'var(--mid-gray)' }} />
-            </button>
+            <div className="absolute top-4 right-4 flex items-center gap-1">
+              {!walletEditing && (
+                <button onClick={startWalletEdit} className="p-1.5 rounded-lg hover:bg-gray-100" title="Edit wallet">
+                  <Pencil size={16} style={{ color: 'var(--teal)' }} />
+                </button>
+              )}
+              <button onClick={() => { setSelectedWallet(null); setWalletDetail(null); setWalletEditing(false) }} className="p-1.5 rounded-lg hover:bg-gray-100">
+                <X size={18} style={{ color: 'var(--mid-gray)' }} />
+              </button>
+            </div>
 
+            {walletEditing ? (
+              <div className="mb-4 space-y-3">
+                <h4 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Edit Wallet</h4>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="col-span-2">
+                    <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Name</label>
+                    <input value={walletEditForm.patientName || ''} onChange={e => setWalletEditForm(p => ({ ...p, patientName: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                  <div>
+                    <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Email</label>
+                    <input value={walletEditForm.patientEmail || ''} onChange={e => setWalletEditForm(p => ({ ...p, patientEmail: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                  <div>
+                    <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Date Obtained</label>
+                    <input type="date" value={walletEditForm.dateObtained || ''} onChange={e => setWalletEditForm(p => ({ ...p, dateObtained: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                  <div>
+                    <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Balance</label>
+                    <input type="number" step="0.01" value={walletEditForm.balance || ''} onChange={e => setWalletEditForm(p => ({ ...p, balance: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                  {walletDetail.walletType === 'VIP' && (
+                    <div>
+                      <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>VIP Tier</label>
+                      <select value={walletEditForm.vipTier || ''} onChange={e => setWalletEditForm(p => ({ ...p, vipTier: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+                        <option value="">None</option>
+                        <option value="PLATINUM">Platinum</option>
+                        <option value="GOLD">Gold</option>
+                        <option value="SILVER">Silver</option>
+                      </select>
+                    </div>
+                  )}
+                  {walletDetail.walletType === 'GL' && (
+                    <>
+                      <div>
+                        <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Agency</label>
+                        <input value={walletEditForm.agency || ''} onChange={e => setWalletEditForm(p => ({ ...p, agency: e.target.value }))}
+                          className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      </div>
+                      <div>
+                        <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Attachment</label>
+                        <div className="flex items-center gap-2">
+                          {walletEditForm.attachmentUrl ? (
+                            <>
+                              <a href={walletEditForm.attachmentUrl} target="_blank" rel="noopener noreferrer" className="text-xs underline" style={{ color: 'var(--teal)' }}>View</a>
+                              <button type="button" onClick={() => setWalletEditForm(p => ({ ...p, attachmentUrl: '' }))}
+                                className="p-1 rounded hover:bg-red-50"><X size={12} className="text-red-400" /></button>
+                            </>
+                          ) : (
+                            <label className="px-3 py-1.5 rounded-xl text-xs font-medium border cursor-pointer" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
+                              Upload
+                              <input type="file" accept="image/*,.pdf" className="hidden" onChange={async (ev) => {
+                                const file = ev.target.files?.[0]
+                                if (!file) return
+                                const fd = new FormData(); fd.append('file', file)
+                                try { const res = await fetch('/api/upload', { method: 'POST', body: fd }); const d = await res.json(); if (d.url) setWalletEditForm(p => ({ ...p, attachmentUrl: d.url })) } catch {}
+                              }} />
+                            </label>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button onClick={saveWalletEdit} disabled={walletEditSaving}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+                    {walletEditSaving ? 'Saving...' : 'Save'}
+                  </button>
+                  <button onClick={() => setWalletEditing(false)}
+                    className="px-4 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <>
             <h3 className="text-lg font-bold mb-1" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
               {walletDetail.patientName}
             </h3>
@@ -3344,10 +3476,14 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
             </div>
             <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
               {walletDetail.patientEmail || 'No email'}
+              {walletDetail.dateObtained && <> &middot; Obtained: {formatDate(String(walletDetail.dateObtained))}</>}
               {['VIP', 'PREPAID_CARD'].includes(walletDetail.walletType) && (
                 <> &middot; Reward Points: <Star size={10} className="inline" /> {walletDetail.rewardPoints || 0}</>
               )}
+              {walletDetail.walletType === 'GL' && walletDetail.agency && <> &middot; Agency: {String(walletDetail.agency)}</>}
             </p>
+              </>
+            )}
 
             {/* Barcode — only for VIP and Prepaid Card */}
             {['VIP', 'PREPAID_CARD'].includes(walletDetail.walletType) && (
