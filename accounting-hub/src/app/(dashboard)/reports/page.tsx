@@ -21,6 +21,7 @@ interface MonthData {
   revenueByAccount: Record<string, number>
   revenueByBranch: Record<string, number>
   cogsByDept: Record<string, number>
+  cogsByAccount: Record<string, number>
   cashReceived: number
   paymentsByMethod: Record<string, number>
   deductionsByMethod: Record<string, number>
@@ -800,15 +801,34 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
 
         <div className="h-3" />
 
-        {/* COST OF SALES */}
+        {/* COST OF SALES — broken down by expense account from inventory items */}
         <SectionHeader label="Cost of Sales" />
-        {costOfSalesAccts.map((a) => (
-          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={0} indent={1} />
-        ))}
-        {costOfSalesAccts.length === 0 && totalCOGS > 0 && (
-          <AnnualRow label="Cost of Goods Sold (computed)" amount={totalCOGS} indent={1}
-            onDrillDown={() => onDrillDown('Cost of Goods Sold', 'COGS', 0)} />
-        )}
+        {(() => {
+          const cogsByAcct: Record<string, number> = {}
+          for (let m = 1; m <= 12; m++) {
+            for (const [key, val] of Object.entries(monthly[m]?.cogsByAccount || {})) {
+              cogsByAcct[key] = (cogsByAcct[key] || 0) + val
+            }
+          }
+          const acctKeys = Object.keys(cogsByAcct).sort()
+          if (acctKeys.length > 0) {
+            return acctKeys.map(key => (
+              <AnnualRow key={key} label={key} amount={cogsByAcct[key]} indent={1}
+                onDrillDown={() => onDrillDown(key, 'COGS', 0)} />
+            ))
+          }
+          // Fallback: show COA accounts or computed total
+          if (costOfSalesAccts.length > 0) {
+            return costOfSalesAccts.map((a) => (
+              <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={0} indent={1} />
+            ))
+          }
+          if (totalCOGS > 0) {
+            return <AnnualRow label="Cost of Goods Sold (computed)" amount={totalCOGS} indent={1}
+              onDrillDown={() => onDrillDown('Cost of Goods Sold', 'COGS', 0)} />
+          }
+          return null
+        })()}
         <AnnualRow label="Total for Cost of Sales" amount={totalCOGS} indent={0} isTotal bold
           onDrillDown={() => onDrillDown('Cost of Sales', 'COGS', 0)} />
 
@@ -910,12 +930,29 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
 
       <div className="h-2" />
 
-      {/* COST OF SALES */}
+      {/* COST OF SALES — broken down by expense account */}
       <SectionHeader label="Cost of Sales" />
-      {costOfSalesAccts.map((a) => (
-        <MonthlyRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`}
-          values={Array(12).fill(0)} total={0} indent={1} />
-      ))}
+      {(() => {
+        const cogsByAcct: Record<string, number> = {}
+        for (let m = 1; m <= 12; m++) {
+          for (const [key, val] of Object.entries(monthly[m]?.cogsByAccount || {})) {
+            cogsByAcct[key] = (cogsByAcct[key] || 0) + val
+          }
+        }
+        const acctKeys = Object.keys(cogsByAcct).sort()
+        if (acctKeys.length > 0) {
+          return acctKeys.map(key => (
+            <MonthlyRow key={key} label={key}
+              values={getMonthlyArray(monthly, (m) => (m.cogsByAccount || {})[key] || 0)}
+              total={cogsByAcct[key]} indent={1}
+              onClickCell={(m) => onDrillDown(key, 'COGS', m ?? 0)} />
+          ))
+        }
+        return costOfSalesAccts.map((a) => (
+          <MonthlyRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`}
+            values={Array(12).fill(0)} total={0} indent={1} />
+        ))
+      })()}
       <MonthlyRow label="Total for Cost of Sales"
         values={getMonthlyArray(monthly, (m) => m.cogs)} total={totalCOGS} bold isTotal
         onClickCell={(m) => onDrillDown('Cost of Sales', 'COGS', m ?? 0)} />

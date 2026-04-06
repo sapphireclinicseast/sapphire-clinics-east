@@ -429,6 +429,8 @@ interface InventoryItem {
   revenueAccount?: { id: string; accountNumber: string; accountTitle: string } | null
   sourceAccountId?: string | null
   sourceAccount?: { id: string; accountNumber: string; accountTitle: string } | null
+  expenseAccountId?: string | null
+  expenseAccount?: { id: string; accountNumber: string; accountTitle: string } | null
   variants?: { id: string; variantType: string; variantLabel: string; color?: string; quantity: number; variantSku: string; barcode?: string | null }[]
   isBundle?: boolean
   bundleComponents?: { id: string; quantity: number; component: { id: string; name: string; sku: string; quantity: number } }[]
@@ -526,6 +528,8 @@ export default function InventoryPage() {
   const [bulkRevenueSearch, setBulkRevenueSearch] = useState('')
   const [bulkSourceAccountId, setBulkSourceAccountId] = useState('')
   const [bulkSourceSearch, setBulkSourceSearch] = useState('')
+  const [bulkExpenseAccountId, setBulkExpenseAccountId] = useState('')
+  const [bulkExpenseSearch, setBulkExpenseSearch] = useState('')
   const [bulkSupplierId, setBulkSupplierId] = useState('')
   const [bulkBranch, setBulkBranch] = useState('')
   const [bulkUnitCost, setBulkUnitCost] = useState('')
@@ -556,6 +560,12 @@ export default function InventoryPage() {
   const [fSourceAccountId, setFSourceAccountId] = useState('')
   const [fSourceAccountSearch, setFSourceAccountSearch] = useState('')
   const [sourceAccounts, setSourceAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
+  const [fExpenseAccountId, setFExpenseAccountId] = useState('')
+  const [fExpenseAccountSearch, setFExpenseAccountSearch] = useState('')
+  const [expenseAccounts, setExpenseAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
+  // FIFO lot detail popup
+  const [showLotDetail, setShowLotDetail] = useState<string | null>(null)
+  const [lotData, setLotData] = useState<{ lots: { id: string; adjustmentDate: string; quantityChange: number; remaining: number; costPerUnit: number; foreignCost: number | null; foreignCurrency: string | null; batchId: string | null; remarks: string }[]; summary: { totalLots: number; activeLots: number; totalRemaining: number; weightedAvgCost: number } } | null>(null)
   // Variants (color, size, material, etc.)
   const [variants, setVariants] = useState<{ id?: string; variantType: string; variantLabel: string; quantity: number; variantSku?: string; barcode?: string }[]>([])
   const [newVariantType, setNewVariantType] = useState('Color')
@@ -757,6 +767,9 @@ export default function InventoryPage() {
       fetch('/api/chart-of-accounts?accountType=ASSET&pageSize=500').then(r => r.json()),
       fetch('/api/chart-of-accounts?accountType=LIABILITY&pageSize=500').then(r => r.json()),
     ]).then(([asset, liab]) => setSourceAccounts([...mapAccounts(asset), ...mapAccounts(liab)])).catch(() => {})
+    // Expense accounts (for COGS / expense classification)
+    fetch('/api/chart-of-accounts?accountType=EXPENSE&pageSize=500').then(r => r.json())
+      .then(d => setExpenseAccounts(mapAccounts(d))).catch(() => {})
   }, [sessionUserId])
 
   // Re-fetch items when search/filter changes (debounced)
@@ -830,7 +843,7 @@ export default function InventoryPage() {
     setFName(''); setFSkuDept(''); setFSkuCat(''); setFSkuSub(''); setFSkuValue('')
     setFBranch('SANDBOX_EAST'); setFSubType(''); setFUnitCost(''); setFSellingPrice(''); setFRewardPointsPrice('')
     setFInitialQty(''); setFReorderLevel(''); setFSupplierId(''); setFExchangeRate('')
-    setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFSourceAccountId(''); setFSourceAccountSearch('')
+    setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFSourceAccountId(''); setFSourceAccountSearch(''); setFExpenseAccountId(''); setFExpenseAccountSearch('')
     setVariants([]); setNewVariantType('Color'); setNewVariantLabel(''); setNewVariantQty(0)
     setIsBundle(false); setBundleComponents([]); setBundleComponentId(''); setBundleComponentQty(1)
     setShowInlineSupplier(false); setError('')
@@ -856,6 +869,8 @@ export default function InventoryPage() {
     setFRevenueAccountSearch(item.revenueAccount ? `${item.revenueAccount.accountNumber} ${item.revenueAccount.accountTitle}` : '')
     setFSourceAccountId(item.sourceAccountId || '')
     setFSourceAccountSearch(item.sourceAccount ? `${item.sourceAccount.accountNumber} ${item.sourceAccount.accountTitle}` : '')
+    setFExpenseAccountId(item.expenseAccountId || '')
+    setFExpenseAccountSearch(item.expenseAccount ? `${item.expenseAccount.accountNumber} ${item.expenseAccount.accountTitle}` : '')
     // Load variants
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setVariants((item.variants || []).map((v: any) => ({
@@ -976,6 +991,7 @@ export default function InventoryPage() {
       supplierId: fSupplierId || null,
       revenueAccountId: fRevenueAccountId || null,
       sourceAccountId: fSourceAccountId || null,
+      expenseAccountId: fExpenseAccountId || null,
     }
     if (editingItem) body.id = editingItem.id
     try {
@@ -1047,6 +1063,7 @@ export default function InventoryPage() {
       const body: any = { ids: Array.from(selectedItems) }
       if (bulkField === 'revenueAccountId') body.revenueAccountId = bulkRevenueAccountId
       else if (bulkField === 'sourceAccountId') body.sourceAccountId = bulkSourceAccountId
+      else if (bulkField === 'expenseAccountId') body.expenseAccountId = bulkExpenseAccountId
       else if (bulkField === 'supplierId') body.supplierId = bulkSupplierId
       else if (bulkField === 'branch') body.branch = bulkBranch
       else if (bulkField === 'unitCost') body.unitCost = bulkUnitCost
@@ -1459,6 +1476,9 @@ setTimeout(()=>window.print(),500);
                         {item.sourceAccount && (
                           <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>Src: {item.sourceAccount.accountNumber} {item.sourceAccount.accountTitle}</p>
                         )}
+                        {item.expenseAccount && (
+                          <p className="text-xs mt-0.5" style={{ color: 'var(--coral)' }}>Exp: {item.expenseAccount.accountNumber} {item.expenseAccount.accountTitle}</p>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{BRANCH_LABELS[item.branch] || item.branch}</td>
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
@@ -1467,8 +1487,22 @@ setTimeout(()=>window.print(),500);
                       <td className="px-4 py-3 text-right font-medium" style={{ color: item.reorderLevel && item.quantity <= item.reorderLevel ? '#dc2626' : 'var(--charcoal)' }}>
                         {item.quantity}
                       </td>
-                      <td className="px-4 py-3 text-right" style={{ color: 'var(--mid-gray)' }}>
-                        {formatCurrency(item.unitCost)}
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          onClick={async () => {
+                            setShowLotDetail(item.id)
+                            setLotData(null)
+                            try {
+                              const res = await fetch(`/api/inventory/${item.id}/lots`)
+                              if (res.ok) setLotData(await res.json())
+                            } catch { /* ignore */ }
+                          }}
+                          className="underline decoration-dotted cursor-pointer hover:opacity-70"
+                          style={{ color: 'var(--teal)' }}
+                          title="Click to view purchase lots (FIFO)"
+                        >
+                          {formatCurrency(item.unitCost)}
+                        </button>
                       </td>
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
                         {item.supplier?.supplierName || '—'}
@@ -1500,6 +1534,59 @@ setTimeout(()=>window.print(),500);
           </div>
 
           {/* Delete Confirm */}
+          {/* FIFO Lot Detail Modal */}
+          {showLotDetail && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowLotDetail(null)}>
+              <div className="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-xl max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Purchase Lots (FIFO)</h3>
+                  <button onClick={() => setShowLotDetail(null)} className="p-1 rounded hover:bg-gray-100"><X size={18} /></button>
+                </div>
+                {!lotData ? (
+                  <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>Loading...</p>
+                ) : lotData.lots.length === 0 ? (
+                  <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>No purchase lots recorded yet.</p>
+                ) : (
+                  <>
+                    <div className="flex gap-4 mb-4 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                      <span>Total Lots: <strong>{lotData.summary.totalLots}</strong></span>
+                      <span>Active: <strong>{lotData.summary.activeLots}</strong></span>
+                      <span>Remaining: <strong>{lotData.summary.totalRemaining}</strong></span>
+                      <span>Weighted Avg: <strong style={{ color: 'var(--teal)' }}>{formatCurrency(lotData.summary.weightedAvgCost)}</strong></span>
+                    </div>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-xs uppercase" style={{ color: 'var(--mid-gray)' }}>
+                          <th className="text-left py-2 px-2">Date</th>
+                          <th className="text-right py-2 px-2">Purchased</th>
+                          <th className="text-right py-2 px-2">Remaining</th>
+                          <th className="text-right py-2 px-2">Foreign Cost</th>
+                          <th className="text-right py-2 px-2">Cost/Unit (PHP)</th>
+                          <th className="text-left py-2 px-2">Batch</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {lotData.lots.map((lot) => (
+                          <tr key={lot.id} className="border-b" style={{ opacity: lot.remaining === 0 ? 0.4 : 1 }}>
+                            <td className="py-2 px-2 text-xs">{new Date(lot.adjustmentDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                            <td className="py-2 px-2 text-right">{lot.quantityChange}</td>
+                            <td className="py-2 px-2 text-right font-medium" style={{ color: lot.remaining > 0 ? 'var(--teal)' : 'var(--mid-gray)' }}>{lot.remaining}</td>
+                            <td className="py-2 px-2 text-right text-xs">{lot.foreignCost != null ? `${lot.foreignCost} ${lot.foreignCurrency || ''}` : '—'}</td>
+                            <td className="py-2 px-2 text-right font-mono font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(lot.costPerUnit)}</td>
+                            <td className="py-2 px-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{lot.batchId || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <p className="mt-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                      Oldest lots are consumed first (FIFO). Grayed-out lots are fully consumed.
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
           {deleteItemConfirm && (
             <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl">
@@ -1537,6 +1624,7 @@ setTimeout(()=>window.print(),500);
                       <option value="">Select a field...</option>
                       <option value="revenueAccountId">Revenue Account</option>
                       <option value="sourceAccountId">Source Account</option>
+                      <option value="expenseAccountId">Expense Account (COGS)</option>
                       <option value="supplierId">Supplier</option>
                       <option value="branch">Branch</option>
                       <option value="unitCost">Unit Cost</option>
@@ -1578,6 +1666,24 @@ setTimeout(()=>window.print(),500);
                         <option value="">— None —</option>
                         {sourceAccounts
                           .filter(a => !bulkSourceSearch || `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(bulkSourceSearch.toLowerCase()))
+                          .map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
+                      </select>
+                    </div>
+                  )}
+
+                  {bulkField === 'expenseAccountId' && (
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>Expense Account (COGS)</label>
+                      <input type="text" placeholder="Search accounts..."
+                        value={bulkExpenseSearch} onChange={(e) => setBulkExpenseSearch(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border text-sm outline-none mb-1"
+                        style={{ borderColor: 'var(--light-gray)' }} />
+                      <select value={bulkExpenseAccountId} onChange={(e) => setBulkExpenseAccountId(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                        style={{ borderColor: 'var(--light-gray)' }}>
+                        <option value="">— None —</option>
+                        {expenseAccounts
+                          .filter(a => !bulkExpenseSearch || `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(bulkExpenseSearch.toLowerCase()))
                           .map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
                       </select>
                     </div>
@@ -1911,6 +2017,39 @@ setTimeout(()=>window.print(),500);
                           </button>
                         ))}
                         {sourceAccounts.filter(a => `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(fSourceAccountSearch.toLowerCase())).length === 0 && (
+                          <p className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>No matching accounts</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Expense Account (COGS) — searchable */}
+                  <div className="relative">
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                      Expense Account <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(COGS / Cost of Goods Sold)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={fExpenseAccountSearch}
+                      onChange={(e) => { setFExpenseAccountSearch(e.target.value); if (!e.target.value) setFExpenseAccountId('') }}
+                      onFocus={() => setFExpenseAccountSearch(fExpenseAccountSearch || '')}
+                      placeholder="Search expense account..."
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                      style={{ borderColor: fExpenseAccountId ? 'var(--coral)' : 'var(--light-gray)', background: fExpenseAccountId ? '#fff5f5' : 'white' }}
+                    />
+                    {fExpenseAccountId && (
+                      <button type="button" onClick={() => { setFExpenseAccountId(''); setFExpenseAccountSearch('') }}
+                        className="absolute right-2 top-8 p-0.5 rounded hover:bg-gray-100"><X size={14} style={{ color: 'var(--mid-gray)' }} /></button>
+                    )}
+                    {fExpenseAccountSearch && !fExpenseAccountId && (
+                      <div className="absolute z-20 left-0 right-0 mt-1 bg-white border rounded-xl shadow-lg max-h-40 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                        {expenseAccounts.filter(a => `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(fExpenseAccountSearch.toLowerCase())).slice(0, 10).map(a => (
+                          <button key={a.id} type="button" onClick={() => { setFExpenseAccountId(a.id); setFExpenseAccountSearch(`${a.accountNumber} ${a.accountTitle}`) }}
+                            className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50" style={{ color: 'var(--charcoal)' }}>
+                            <span className="font-mono font-medium" style={{ color: 'var(--coral)' }}>{a.accountNumber}</span> {a.accountTitle}
+                          </button>
+                        ))}
+                        {expenseAccounts.filter(a => `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(fExpenseAccountSearch.toLowerCase())).length === 0 && (
                           <p className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>No matching accounts</p>
                         )}
                       </div>

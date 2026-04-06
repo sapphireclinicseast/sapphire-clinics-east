@@ -117,6 +117,7 @@ model Account {
   services              Service[]
   inventoryItems        InventoryItem[] @relation("InventoryRevenueAccount")
   inventorySourceItems  InventoryItem[] @relation("InventorySourceAccount")
+  inventoryExpenseItems InventoryItem[] @relation("InventoryExpenseAccount")
   discountSettings      DiscountSetting[]
   wallets               DigitalWallet[] @relation("WalletAccount")
   arPaymentDiscounts    ARPayment[]     @relation("ARPaymentDiscountAccount")
@@ -267,6 +268,8 @@ model InventoryItem {
   revenueAccount       Account?  @relation("InventoryRevenueAccount", fields: [revenueAccountId], references: [id], onDelete: SetNull)
   sourceAccountId      String?
   sourceAccount        Account?  @relation("InventorySourceAccount", fields: [sourceAccountId], references: [id], onDelete: SetNull)
+  expenseAccountId     String?
+  expenseAccount       Account?  @relation("InventoryExpenseAccount", fields: [expenseAccountId], references: [id], onDelete: SetNull)
   isBundle             Boolean   @default(false)
   isActive             Boolean   @default(true)
   createdById          String
@@ -289,6 +292,7 @@ model InventoryItem {
   @@index([isBundle])
   @@index([revenueAccountId])
   @@index([sourceAccountId])
+  @@index([expenseAccountId])
 }
 
 model BundleComponent {
@@ -324,25 +328,26 @@ model InventoryVariant {
 }
 
 model InventoryAdjustment {
-  id               String         @id @default(cuid())
-  itemId           String
-  item             InventoryItem  @relation(fields: [itemId], references: [id], onDelete: Restrict)
-  type             AdjustmentType
-  quantityChange   Int
-  previousQuantity Int
-  newQuantity      Int
-  adjustmentDate   DateTime
-  remarks          String
-  batchId          String?        // Groups adjustments from same bulk upload
-  foreignCost      Decimal?       // Cost per unit in foreign currency
-  foreignCurrency  String?        // e.g. CNY, USD
-  exchangeRate     Decimal?       // Computed: localTotal / foreignTotal
-  localCost        Decimal?       // Cost per unit in PHP (after exchange)
-  freightAllocation Decimal?      // Pro-rated freight cost allocated to this item
-  totalLandedCost  Decimal?       // localCost * qty + freightAllocation
-  adjustedById     String
-  adjustedBy       User           @relation("AdjustmentBy", fields: [adjustedById], references: [id], onDelete: Restrict)
-  createdAt        DateTime       @default(now())
+  id                String         @id @default(cuid())
+  itemId            String
+  item              InventoryItem  @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  type              AdjustmentType
+  quantityChange    Int
+  remainingQuantity Int?           // FIFO: units still available (INCREASE lots only)
+  previousQuantity  Int
+  newQuantity       Int
+  adjustmentDate    DateTime
+  remarks           String
+  batchId           String?        // Groups adjustments from same bulk upload
+  foreignCost       Decimal?       // Cost per unit in foreign currency
+  foreignCurrency   String?        // e.g. CNY, USD
+  exchangeRate      Decimal?       // Computed: localTotal / foreignTotal
+  localCost         Decimal?       // Cost per unit in PHP (after exchange)
+  freightAllocation Decimal?       // Pro-rated freight cost allocated to this item
+  totalLandedCost   Decimal?       // localCost * qty + freightAllocation
+  adjustedById      String
+  adjustedBy        User           @relation("AdjustmentBy", fields: [adjustedById], references: [id], onDelete: Restrict)
+  createdAt         DateTime       @default(now())
 
   @@index([itemId])
   @@index([adjustedById])
@@ -580,6 +585,7 @@ model OrderItem {
   quantity        Int            @default(1)
   unitPrice       Decimal
   lineTotal       Decimal
+  cogsCost        Decimal?       // FIFO cost of goods sold for this line item
   createdAt       DateTime       @default(now())
 
   @@index([orderId])

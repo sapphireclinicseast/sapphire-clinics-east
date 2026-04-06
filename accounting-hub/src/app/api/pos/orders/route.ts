@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parsePagination, paginatedResult } from '@/lib/pagination'
+import { consumeFifoLots, recalcWeightedUnitCost } from '@/lib/fifo'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN', 'SBEA_FRONTDESK', 'SBGH_FRONTDESK']
 
@@ -167,7 +168,7 @@ export async function POST(req: Request) {
       },
     })
 
-    // Deduct inventory for product orders (including bundle components)
+    // Deduct inventory for product orders using FIFO lot consumption
     if (orderType === 'PRODUCT') {
       for (const item of items) {
         if (!item.inventoryItemId) continue
@@ -178,20 +179,46 @@ export async function POST(req: Request) {
         if (!invItem) continue
         const orderQty = item.quantity || 1
 
+        // Find the created OrderItem to record COGS
+        const orderItem = order.items.find(oi => oi.inventoryItemId === item.inventoryItemId)
+
         if (invItem.isBundle && invItem.bundleComponents.length > 0) {
-          // Bundle: deduct each component's quantity × order quantity
+          // Bundle: deduct each component using FIFO
+          let bundleCogs = 0
           for (const bc of invItem.bundleComponents) {
+            const consumeQty = bc.quantity * orderQty
+            const fifo = await consumeFifoLots(prisma, bc.componentId, consumeQty)
+            bundleCogs += fifo.totalCost
             await prisma.inventoryItem.update({
               where: { id: bc.componentId },
-              data: { quantity: { decrement: bc.quantity * orderQty } },
+              data: { quantity: { decrement: consumeQty } },
             })
+            // Update weighted-average unitCost on the component
+            const newCost = await recalcWeightedUnitCost(prisma, bc.componentId)
+            if (newCost > 0) {
+              await prisma.inventoryItem.update({ where: { id: bc.componentId }, data: { unitCost: newCost } })
+            }
+          }
+          // Record FIFO COGS on the order item
+          if (orderItem) {
+            await prisma.orderItem.update({ where: { id: orderItem.id }, data: { cogsCost: bundleCogs } })
           }
         } else {
-          // Regular item: deduct directly
+          // Regular item: FIFO consumption
+          const fifo = await consumeFifoLots(prisma, item.inventoryItemId, orderQty)
           await prisma.inventoryItem.update({
             where: { id: item.inventoryItemId },
             data: { quantity: { decrement: orderQty } },
           })
+          // Record FIFO COGS on the order item
+          if (orderItem) {
+            await prisma.orderItem.update({ where: { id: orderItem.id }, data: { cogsCost: fifo.totalCost } })
+          }
+          // Update weighted-average unitCost
+          const newCost = await recalcWeightedUnitCost(prisma, item.inventoryItemId)
+          if (newCost > 0) {
+            await prisma.inventoryItem.update({ where: { id: item.inventoryItemId }, data: { unitCost: newCost } })
+          }
         }
       }
     }

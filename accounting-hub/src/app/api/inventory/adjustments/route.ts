@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parsePagination, paginatedResult } from '@/lib/pagination'
+import { consumeFifoLots } from '@/lib/fifo'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -68,12 +69,13 @@ export async function POST(req: Request) {
     const newQuantity = type === 'INCREASE' ? previousQuantity + change : Math.max(0, previousQuantity - change)
 
     // Create adjustment and update item quantity in one transaction
-    const [adjustment] = await prisma.$transaction([
-      prisma.inventoryAdjustment.create({
+    const adjustment = await prisma.$transaction(async (tx) => {
+      const adj = await tx.inventoryAdjustment.create({
         data: {
           itemId,
           type,
           quantityChange: change,
+          remainingQuantity: type === 'INCREASE' ? change : null,
           previousQuantity,
           newQuantity,
           adjustmentDate: adjustmentDate ? new Date(adjustmentDate) : new Date(),
@@ -84,12 +86,20 @@ export async function POST(req: Request) {
           item: { select: { name: true, sku: true } },
           adjustedBy: { select: { name: true } },
         },
-      }),
-      prisma.inventoryItem.update({
+      })
+
+      await tx.inventoryItem.update({
         where: { id: itemId },
         data: { quantity: newQuantity },
-      }),
-    ])
+      })
+
+      // For SHRINKAGE, consume from oldest FIFO lots
+      if (type === 'SHRINKAGE') {
+        await consumeFifoLots(tx, itemId, change)
+      }
+
+      return adj
+    })
 
     await prisma.auditLog.create({
       data: {

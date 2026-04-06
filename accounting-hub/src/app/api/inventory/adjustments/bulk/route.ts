@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { recalcWeightedUnitCost } from '@/lib/fifo'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -106,6 +107,7 @@ export async function POST(req: Request) {
             itemId: dbItem.id,
             type,
             quantityChange: absQty,
+            remainingQuantity: type === 'INCREASE' ? absQty : null,
             previousQuantity,
             newQuantity,
             adjustmentDate: adjustmentDate ? new Date(`${adjustmentDate}T08:00:00+08:00`) : new Date(),
@@ -149,6 +151,15 @@ export async function POST(req: Request) {
 
     // Execute all in one transaction
     await prisma.$transaction([...adjustmentOps, ...updateOps])
+
+    // Recalculate weighted-average unitCost from FIFO lots for each affected item
+    const affectedItemIds = [...new Set(results.map(r => skuMap.get(r.sku)?.id).filter(Boolean))] as string[]
+    for (const id of affectedItemIds) {
+      const weightedCost = await recalcWeightedUnitCost(prisma, id)
+      if (weightedCost > 0) {
+        await prisma.inventoryItem.update({ where: { id }, data: { unitCost: weightedCost } })
+      }
+    }
 
     // Audit log
     await prisma.auditLog.create({

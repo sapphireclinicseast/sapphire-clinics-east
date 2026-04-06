@@ -56,7 +56,8 @@ export async function GET(req: Request) {
               quantity: true,
               lineTotal: true,
               service: { select: { department: true, revenueAccount: { select: { accountNumber: true, accountTitle: true } } } },
-              inventoryItem: { select: { unitCost: true, skuDepartment: true, revenueAccount: { select: { accountNumber: true, accountTitle: true } } } },
+              cogsCost: true,
+              inventoryItem: { select: { unitCost: true, skuDepartment: true, revenueAccount: { select: { accountNumber: true, accountTitle: true } }, expenseAccount: { select: { accountNumber: true, accountTitle: true } } } },
             },
           },
           payments: {
@@ -131,6 +132,7 @@ export async function GET(req: Request) {
       revenueByAccount: Record<string, number>
       revenueByBranch: Record<string, number>
       cogsByDept: Record<string, number>
+      cogsByAccount: Record<string, number>
       cashReceived: number
       paymentsByMethod: Record<string, number>
       deductionsByMethod: Record<string, number>
@@ -143,7 +145,7 @@ export async function GET(req: Request) {
       monthly[m] = {
         serviceRevenue: 0, productRevenue: 0, unearnedRevenue: 0,
         cogs: 0, revenueByDept: {}, revenueByAccount: {},
-        revenueByBranch: {}, cogsByDept: {}, cashReceived: 0,
+        revenueByBranch: {}, cogsByDept: {}, cogsByAccount: {}, cashReceived: 0,
         paymentsByMethod: {}, deductionsByMethod: {}, deductionsByType: {},
         deductionsByAccount: {},
       }
@@ -180,9 +182,15 @@ export async function GET(req: Request) {
         }
 
         if (item.inventoryItemId && item.inventoryItem) {
-          const cost = Number(item.inventoryItem.unitCost) * item.quantity
+          // Prefer FIFO cogsCost (recorded at order time), fall back to unitCost × qty
+          const cost = item.cogsCost ? Number(item.cogsCost) : Number(item.inventoryItem.unitCost) * item.quantity
           m.cogs += cost
           m.cogsByDept[dept] = (m.cogsByDept[dept] || 0) + cost
+
+          // Group COGS by expense account (e.g., "5010 Cost of Goods Sold")
+          const expAcct = item.inventoryItem.expenseAccount
+          const expKey = expAcct ? `${expAcct.accountNumber} ${expAcct.accountTitle}` : 'Unclassified COGS'
+          m.cogsByAccount[expKey] = (m.cogsByAccount[expKey] || 0) + cost
         }
       }
 

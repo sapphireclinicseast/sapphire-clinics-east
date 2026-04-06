@@ -53,6 +53,7 @@ export async function GET(req: Request) {
         supplier: { select: { id: true, supplierName: true, isForeign: true, currency: true } },
         revenueAccount: { select: { id: true, accountNumber: true, accountTitle: true } },
         sourceAccount: { select: { id: true, accountNumber: true, accountTitle: true } },
+        expenseAccount: { select: { id: true, accountNumber: true, accountTitle: true } },
         variants: { where: { isActive: true }, orderBy: { variantLabel: 'asc' } },
         bundleComponents: { include: { component: { select: { id: true, name: true, sku: true, quantity: true } } } },
       },
@@ -76,7 +77,7 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { name, skuDepartment, skuCategory, skuSubcategory, branch, accountSubType,
             unitCost, sellingPrice, rewardPointsPrice, quantity, reorderLevel, supplierId, supplierExchangeRate,
-            revenueAccountId, sourceAccountId } = body
+            revenueAccountId, sourceAccountId, expenseAccountId } = body
 
     if (!name?.trim() || !skuDepartment || !skuCategory || !skuSubcategory || !branch) {
       return NextResponse.json({ error: 'Name, SKU components, and branch are required' }, { status: 400 })
@@ -118,6 +119,7 @@ export async function POST(req: Request) {
         supplierExchangeRate: supplierExchangeRate ? parseFloat(supplierExchangeRate) : null,
         revenueAccountId: revenueAccountId || null,
         sourceAccountId: sourceAccountId || null,
+        expenseAccountId: expenseAccountId || null,
         createdById: session.user.id,
       },
       include: { supplier: { select: { supplierName: true } } },
@@ -147,7 +149,7 @@ export async function PUT(req: Request) {
 
   try {
     const { id, name, branch, accountSubType, unitCost, sellingPrice, rewardPointsPrice, quantity,
-            reorderLevel, supplierId, supplierExchangeRate, revenueAccountId, sourceAccountId } = await req.json()
+            reorderLevel, supplierId, supplierExchangeRate, revenueAccountId, sourceAccountId, expenseAccountId } = await req.json()
 
     if (!id) {
       return NextResponse.json({ error: 'Item ID is required' }, { status: 400 })
@@ -167,6 +169,7 @@ export async function PUT(req: Request) {
     if (supplierExchangeRate !== undefined) data.supplierExchangeRate = supplierExchangeRate ? parseFloat(supplierExchangeRate) : null
     if (revenueAccountId !== undefined) data.revenueAccountId = revenueAccountId || null
     if (sourceAccountId !== undefined) data.sourceAccountId = sourceAccountId || null
+    if (expenseAccountId !== undefined) data.expenseAccountId = expenseAccountId || null
 
     const item = await prisma.inventoryItem.update({ where: { id }, data })
 
@@ -193,7 +196,7 @@ export async function PATCH(req: Request) {
   }
 
   try {
-    const { ids, revenueAccountId, sourceAccountId, supplierId, branch, unitCost,
+    const { ids, revenueAccountId, sourceAccountId, expenseAccountId, supplierId, branch, unitCost,
             sellingPrice, rewardPointsPrice, reorderLevel, accountSubType } = await req.json()
 
     if (!Array.isArray(ids) || ids.length === 0) {
@@ -204,6 +207,7 @@ export async function PATCH(req: Request) {
     const data: any = {}
     if (revenueAccountId !== undefined) data.revenueAccountId = revenueAccountId || null
     if (sourceAccountId !== undefined) data.sourceAccountId = sourceAccountId || null
+    if (expenseAccountId !== undefined) data.expenseAccountId = expenseAccountId || null
     if (supplierId !== undefined) data.supplierId = supplierId || null
     if (branch !== undefined) data.branch = branch
     if (unitCost !== undefined) data.unitCost = parseFloat(unitCost)
