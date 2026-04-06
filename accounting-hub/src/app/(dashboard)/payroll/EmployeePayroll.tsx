@@ -173,6 +173,8 @@ interface EmpSettings {
   cutoff2Start: number
   cutoff2EndLastDay: boolean
   cutoff2End: number
+  payout1Day: number
+  payout2Day: number
   standardHoursPerDay: number | string
   overtimeMultiplier: number | string
   nightDiffMultiplier: number | string
@@ -506,15 +508,23 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
     fetchPayslips()
   }
 
+  const [settingsSaved, setSettingsSaved] = useState(false)
   const saveSettings = async () => {
     if (!empSettings) return
     try {
-      await fetch('/api/payroll/employee-settings', {
+      const r = await fetch('/api/payroll/employee-settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(empSettings),
       })
-      setError('')
+      if (r.ok) {
+        setError('')
+        setSettingsSaved(true)
+        setTimeout(() => setSettingsSaved(false), 3000)
+      } else {
+        const d = await r.json()
+        setError(d.error || 'Failed to save settings')
+      }
     } catch { setError('Failed to save settings') }
   }
 
@@ -1015,22 +1025,31 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
       {subTab === 'settings' && empSettings && (
         <div className="space-y-5 max-w-2xl">
           <div className="rounded-xl border p-4" style={{ borderColor: 'var(--light-gray)' }}>
-            <h4 className="text-xs font-bold mb-3" style={{ color: 'var(--charcoal)' }}>Cutoff Configuration</h4>
-            <div className="grid grid-cols-2 gap-3 text-xs">
+            <h4 className="text-xs font-bold mb-1" style={{ color: 'var(--charcoal)' }}>Cutoff Configuration</h4>
+            <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>
+              If start day {'>'} end day (e.g. 26th to 10th), the cutoff spans from the previous month to the current month.
+            </p>
+            <div className="grid grid-cols-3 gap-3 text-xs">
               <div>
-                <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>1st Cutoff Start Day</label>
+                <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>1st Cutoff Start</label>
                 <input type="number" min={1} max={31} value={empSettings.cutoff1Start}
                   onChange={e => setEmpSettings(s => s ? { ...s, cutoff1Start: parseInt(e.target.value) || 1 } : s)}
                   className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
               </div>
               <div>
-                <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>1st Cutoff End Day</label>
+                <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>1st Cutoff End</label>
                 <input type="number" min={1} max={31} value={empSettings.cutoff1End}
                   onChange={e => setEmpSettings(s => s ? { ...s, cutoff1End: parseInt(e.target.value) || 15 } : s)}
                   className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
               </div>
               <div>
-                <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>2nd Cutoff Start Day</label>
+                <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Payout Day</label>
+                <input type="number" min={1} max={31} value={empSettings.payout1Day || 15}
+                  onChange={e => setEmpSettings(s => s ? { ...s, payout1Day: parseInt(e.target.value) || 15 } : s)}
+                  className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+              <div>
+                <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>2nd Cutoff Start</label>
                 <input type="number" min={1} max={31} value={empSettings.cutoff2Start}
                   onChange={e => setEmpSettings(s => s ? { ...s, cutoff2Start: parseInt(e.target.value) || 16 } : s)}
                   className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
@@ -1041,7 +1060,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                   <label className="flex items-center gap-1 cursor-pointer">
                     <input type="checkbox" checked={empSettings.cutoff2EndLastDay}
                       onChange={e => setEmpSettings(s => s ? { ...s, cutoff2EndLastDay: e.target.checked } : s)} />
-                    Last day of month
+                    Last day
                   </label>
                   {!empSettings.cutoff2EndLastDay && (
                     <input type="number" min={1} max={31} value={empSettings.cutoff2End}
@@ -1050,7 +1069,19 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                   )}
                 </div>
               </div>
+              <div>
+                <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Payout Day</label>
+                <input type="number" min={1} max={31} value={empSettings.payout2Day || 30}
+                  onChange={e => setEmpSettings(s => s ? { ...s, payout2Day: parseInt(e.target.value) || 30 } : s)}
+                  className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                <p className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>Use 0 for last day</p>
+              </div>
             </div>
+            {empSettings.cutoff1Start > empSettings.cutoff1End && (
+              <p className="text-[11px] mt-2 px-2 py-1.5 rounded-lg" style={{ background: '#eff6ff', color: '#1d4ed8' }}>
+                1st cutoff spans months: {empSettings.cutoff1Start}th of prev month &rarr; {empSettings.cutoff1End}th of current month (payout {empSettings.payout1Day || 15}th)
+              </p>
+            )}
           </div>
 
           <div className="rounded-xl border p-4" style={{ borderColor: 'var(--light-gray)' }}>
@@ -1097,7 +1128,12 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
           </div>
 
           {canWrite && (
-            <div className="flex justify-end">
+            <div className="flex items-center justify-end gap-3">
+              {settingsSaved && (
+                <span className="flex items-center gap-1 text-xs font-medium" style={{ color: '#16a34a' }}>
+                  <CheckCircle2 size={14} /> Settings saved
+                </span>
+              )}
               <button onClick={saveSettings}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
                 <Save size={13} /> Save Settings

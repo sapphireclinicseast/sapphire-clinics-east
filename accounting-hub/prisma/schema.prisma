@@ -959,6 +959,8 @@ model EmployeeSettings {
   cutoff2Start        Int      @default(16)   // Day of month for 2nd cutoff start
   cutoff2EndLastDay   Boolean  @default(true) // true = use last day of month
   cutoff2End          Int      @default(30)   // Day if not using last day
+  payout1Day          Int      @default(15)   // Payout day for 1st cutoff
+  payout2Day          Int      @default(30)   // Payout day for 2nd cutoff (0 = last day)
   // Work hours
   standardHoursPerDay Decimal  @default(8)
   overtimeMultiplier  Decimal  @default(1.25) // Regular OT = 125%

@@ -26,16 +26,24 @@ export async function PUT(req: Request) {
   }
 
   const body = await req.json()
-  let settings = await prisma.employeeSettings.findFirst()
+  // Strip id and timestamps — these are not updatable
+  const { id: _id, createdAt: _ca, updatedAt: _ua, ...data } = body
 
-  if (settings) {
-    settings = await prisma.employeeSettings.update({
-      where: { id: settings.id },
-      data: body,
-    })
-  } else {
-    settings = await prisma.employeeSettings.create({ data: body })
+  try {
+    let settings = await prisma.employeeSettings.findFirst()
+
+    if (settings) {
+      settings = await prisma.employeeSettings.update({
+        where: { id: settings.id },
+        data,
+      })
+    } else {
+      settings = await prisma.employeeSettings.create({ data })
+    }
+
+    return NextResponse.json(settings)
+  } catch (err) {
+    console.error('[employee-settings] Save error:', err)
+    return NextResponse.json({ error: 'Failed to save settings' }, { status: 500 })
   }
-
-  return NextResponse.json(settings)
 }
