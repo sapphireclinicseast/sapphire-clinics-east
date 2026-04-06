@@ -21,7 +21,11 @@ function parseDatFile(content: string): { bioId: number; timestamp: Date; isOut:
     if (isNaN(bioId)) continue
 
     // Parse date: "M/D/YYYY H:mm" or "MM/DD/YYYY HH:mm"
-    const ts = new Date(dateTimeStr)
+    // Biometric device records Philippine time (UTC+8) — server may run in UTC
+    const parts = dateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})$/)
+    if (!parts) continue
+    const [, mo, da, yr, hr, mi] = parts
+    const ts = new Date(`${yr}-${mo.padStart(2, '0')}-${da.padStart(2, '0')}T${hr.padStart(2, '0')}:${mi}:00+08:00`)
     if (isNaN(ts.getTime())) continue
 
     records.push({ bioId, timestamp: ts, isOut })
@@ -65,14 +69,14 @@ export async function POST(req: Request) {
   })
   const bioMap = new Map(employees.map(e => [e.employeeBioId!, e]))
 
-  // Get holidays in the date range for marking
-  const dates = raw.map(r => {
-    const d = new Date(r.timestamp)
-    d.setHours(0, 0, 0, 0)
+  // Get holidays in the date range for marking (use PHT dates)
+  const phtDates = raw.map(r => {
+    const pht = new Date(r.timestamp.getTime() + 8 * 60 * 60 * 1000)
+    const d = new Date(pht.toISOString().split('T')[0] + 'T00:00:00Z')
     return d
   })
-  const minDate = new Date(Math.min(...dates.map(d => d.getTime())))
-  const maxDate = new Date(Math.max(...dates.map(d => d.getTime())))
+  const minDate = new Date(Math.min(...phtDates.map(d => d.getTime())))
+  const maxDate = new Date(Math.max(...phtDates.map(d => d.getTime())))
   maxDate.setDate(maxDate.getDate() + 1)
 
   const holidays = await prisma.holiday.findMany({
@@ -80,13 +84,19 @@ export async function POST(req: Request) {
   })
   const holidayMap = new Map(holidays.map(h => [h.date.toISOString().split('T')[0], h]))
 
-  // Group raw records by employee + date
+  // Helper: get Philippine date string (UTC+8) from a Date
+  const toPHTDateKey = (d: Date) => {
+    const pht = new Date(d.getTime() + 8 * 60 * 60 * 1000)
+    return pht.toISOString().split('T')[0]
+  }
+
+  // Group raw records by employee + date (in Philippine time)
   const grouped = new Map<string, { bioId: number; date: string; ins: Date[]; outs: Date[] }>()
   for (const r of raw) {
     const emp = bioMap.get(r.bioId)
     if (!emp) continue
 
-    const dateKey = r.timestamp.toISOString().split('T')[0]
+    const dateKey = toPHTDateKey(r.timestamp)
     const key = `${emp.id}|${dateKey}`
 
     if (!grouped.has(key)) {
@@ -136,16 +146,20 @@ export async function POST(req: Request) {
       const [schInH, schInM] = emp.scheduleIn.split(':').map(Number)
       const [schOutH, schOutM] = emp.scheduleOut.split(':').map(Number)
 
+      // Get Philippine time hours/minutes (UTC+8)
+      const phtIn = new Date(timeIn.getTime() + 8 * 60 * 60 * 1000)
+      const phtOut = new Date(timeOut.getTime() + 8 * 60 * 60 * 1000)
+
       // Late: compare actual timeIn with schedule
       const schedInMinutes = schInH * 60 + schInM
-      const actualInMinutes = timeIn.getHours() * 60 + timeIn.getMinutes()
+      const actualInMinutes = phtIn.getUTCHours() * 60 + phtIn.getUTCMinutes()
       if (actualInMinutes > schedInMinutes) {
         lateMinutes = actualInMinutes - schedInMinutes
       }
 
       // Undertime: compare actual timeOut with schedule
       const schedOutMinutes = schOutH * 60 + schOutM
-      const actualOutMinutes = timeOut.getHours() * 60 + timeOut.getMinutes()
+      const actualOutMinutes = phtOut.getUTCHours() * 60 + phtOut.getUTCMinutes()
       if (actualOutMinutes < schedOutMinutes) {
         undertimeMinutes = schedOutMinutes - actualOutMinutes
       }

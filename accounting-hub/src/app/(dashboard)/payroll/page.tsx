@@ -201,6 +201,7 @@ const BRANCHES = [
   { value: '', label: 'All Branches' },
   { value: 'SBEA', label: 'Sandbox East' },
   { value: 'SBGH', label: 'Sandbox Greenhills' },
+  { value: 'VERDANA', label: 'Verdana Store' },
 ]
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -2037,6 +2038,7 @@ export default function PayrollPage() {
                           <option value="">All branches</option>
                           <option value="SBEA">Sandbox East (SBEA)</option>
                           <option value="SBGH">Sandbox Greenhills (SBGH)</option>
+                          <option value="VERDANA">Verdana Store</option>
                         </select>
                       </div>
                       {editingIncentive && (
