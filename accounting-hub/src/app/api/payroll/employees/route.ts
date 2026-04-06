@@ -41,8 +41,11 @@ export async function GET(req: Request) {
         for (const s of staff) {
           const dept = s.department || ''
           const br = s.branch || ''
-          // Only sync ADMINISTRATION and FRONT_DESK department staff as employees
-          if (!['FRONT_DESK', 'ADMINISTRATION'].includes(dept)) continue
+          // Sync ADMINISTRATION and FRONT_DESK as employees, plus ALL Verdana Store staff
+          const isVerdana = ['VDNA', 'VERDANA'].includes(br.toUpperCase())
+          if (!isVerdana && !['FRONT_DESK', 'ADMINISTRATION'].includes(dept)) continue
+          // Normalize Verdana branch name for accounting hub
+          const normalizedBranch = isVerdana ? 'VERDANA' : br
 
           // Build update/create data — always sync basic fields
           // Use HR job title (human-readable) if available, fall back to marketing hub slug
@@ -50,7 +53,7 @@ export async function GET(req: Request) {
             firstName: s.firstName || '',
             lastName: s.lastName || '',
             department: dept,
-            branch: br,
+            branch: normalizedBranch,
             jobTitle: s.hrJobTitle || s.jobTitle || null,
             email: s.email || null,
           }
