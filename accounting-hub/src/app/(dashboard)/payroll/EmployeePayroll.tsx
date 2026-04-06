@@ -739,16 +739,16 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
   ]
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Sub-tabs */}
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-1">
         {SUB_TABS.map(t => (
           <button key={t.key} onClick={() => setSubTab(t.key)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium transition-all hover:bg-gray-100 active:scale-[0.97]"
             style={subTab === t.key
-              ? { background: 'var(--pale-teal)', color: 'var(--deep-teal)' }
+              ? { background: 'var(--pale-teal)', color: 'var(--deep-teal)', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }
               : { color: 'var(--mid-gray)' }}>
-            <t.icon size={13} /> {t.label}
+            <t.icon size={14} /> {t.label}
           </button>
         ))}
       </div>
@@ -771,31 +771,31 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
             <div className="relative flex-1 min-w-[180px]">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search employees..."
-                className="w-full pl-9 pr-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+                className="w-full pl-9 pr-3 py-2.5 rounded-xl border text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200" style={{ borderColor: 'var(--light-gray)' }} />
             </div>
             <select value={branch} onChange={e => setBranch(e.target.value)}
-              className="px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+              className="px-3 py-2.5 rounded-xl border text-xs cursor-pointer hover:border-gray-400 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
               {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
             </select>
             <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
-              className="px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+              className="px-3 py-2.5 rounded-xl border text-xs cursor-pointer hover:border-gray-400 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
               {EMP_DEPARTMENTS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
             </select>
             {canWrite && (
               <>
                 <button onClick={syncEmployees} disabled={syncing}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border"
+                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium border transition-all hover:bg-gray-50 active:scale-[0.97]"
                   style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
-                  {syncing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Sync from CRM
+                  {syncing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Sync from Hub
                 </button>
                 <button onClick={() => { setEditingId(''); setFormData({ firstName: '', lastName: '', email: '', department: 'ADMINISTRATION', branch: 'SBEA', jobTitle: '', rateType: 'DAILY', dailyRate: 0, monthlyRate: 0, scheduleIn: '08:00', scheduleOut: '17:00', restDay: 'SUNDAY' }); setShowForm(true) }}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-white"
+                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium text-white transition-all hover:opacity-90 active:scale-[0.97]"
                   style={{ background: 'var(--teal)' }}>
                   <Plus size={13} /> Add Employee
                 </button>
                 {selectedEmployeeIds.size > 0 && (
                   <button onClick={() => { setBulkEditData({}); setShowBulkEditModal(true) }}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-white"
+                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium text-white transition-all hover:opacity-90 active:scale-[0.97]"
                     style={{ background: '#7c3aed' }}>
                     <Pencil size={13} /> Bulk Edit ({selectedEmployeeIds.size})
                   </button>
@@ -852,8 +852,8 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                       <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{emp.scheduleIn} – {emp.scheduleOut}</td>
                       {canWrite && (
                         <td className="px-3 py-2.5 text-center">
-                          <button onClick={() => openEditForm(emp)} className="p-1 rounded hover:bg-gray-100">
-                            <Pencil size={13} style={{ color: 'var(--mid-gray)' }} />
+                          <button onClick={() => openEditForm(emp)} className="p-2 rounded-lg hover:bg-blue-50 transition-colors active:scale-95" title="Edit employee">
+                            <Pencil size={14} style={{ color: 'var(--teal)' }} />
                           </button>
                         </td>
                       )}
@@ -876,41 +876,41 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>First Name *</label>
                     <input value={formData.firstName || ''} onChange={e => setFormData(p => ({ ...p, firstName: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Last Name *</label>
                     <input value={formData.lastName || ''} onChange={e => setFormData(p => ({ ...p, lastName: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Email</label>
                     <input value={formData.email || ''} onChange={e => setFormData(p => ({ ...p, email: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Job Title</label>
                     <input value={formData.jobTitle || ''} onChange={e => setFormData(p => ({ ...p, jobTitle: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Department *</label>
                     <select value={formData.department || ''} onChange={e => setFormData(p => ({ ...p, department: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }}>
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }}>
                       {EMP_DEPARTMENTS.filter(d => d.value).map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Branch *</label>
                     <select value={formData.branch || ''} onChange={e => setFormData(p => ({ ...p, branch: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }}>
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }}>
                       {BRANCHES.filter(b => b.value).map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Rate Type</label>
                     <select value={formData.rateType || 'DAILY'} onChange={e => setFormData(p => ({ ...p, rateType: e.target.value as 'DAILY' | 'MONTHLY' }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }}>
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }}>
                       <option value="DAILY">Daily Rate</option>
                       <option value="MONTHLY">Fixed Monthly</option>
                     </select>
@@ -919,12 +919,12 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>{formData.rateType === 'DAILY' ? 'Daily Rate' : 'Monthly Rate'}</label>
                     <input type="number" value={formData.rateType === 'DAILY' ? (formData.dailyRate || '') : (formData.monthlyRate || '')}
                       onChange={e => setFormData(p => formData.rateType === 'DAILY' ? { ...p, dailyRate: parseFloat(e.target.value) || 0 } : { ...p, monthlyRate: parseFloat(e.target.value) || 0 })}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Biometric ID</label>
                     <input type="number" value={formData.employeeBioId || ''} onChange={e => setFormData(p => ({ ...p, employeeBioId: parseInt(e.target.value) || null }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Rest Day(s)</label>
@@ -949,12 +949,12 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Schedule In</label>
                     <input type="time" value={formData.scheduleIn || '08:00'} onChange={e => setFormData(p => ({ ...p, scheduleIn: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Schedule Out</label>
                     <input type="time" value={formData.scheduleOut || '17:00'} onChange={e => setFormData(p => ({ ...p, scheduleOut: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
 
                   <div className="col-span-2 border-t pt-3 mt-1" style={{ borderColor: 'var(--light-gray)' }}>
@@ -963,22 +963,22 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>SSS Number</label>
                     <input value={formData.sssNumber || ''} onChange={e => setFormData(p => ({ ...p, sssNumber: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>PhilHealth Number</label>
                     <input value={formData.philhealthNumber || ''} onChange={e => setFormData(p => ({ ...p, philhealthNumber: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Pag-IBIG Number</label>
                     <input value={formData.pagibigNumber || ''} onChange={e => setFormData(p => ({ ...p, pagibigNumber: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>TIN Number</label>
                     <input value={formData.tinNumber || ''} onChange={e => setFormData(p => ({ ...p, tinNumber: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                 </div>
                 <div className="flex justify-end gap-2 mt-5">
@@ -1006,7 +1006,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Rate Type</label>
                     <select value={bulkEditData.rateType || ''} onChange={e => setBulkEditData(p => ({ ...p, rateType: e.target.value as 'DAILY' | 'MONTHLY' || undefined }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }}>
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }}>
                       <option value="">— No change —</option>
                       <option value="DAILY">Daily Rate</option>
                       <option value="MONTHLY">Fixed Monthly</option>
@@ -1015,22 +1015,22 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Daily Rate</label>
                     <input type="number" value={bulkEditData.dailyRate || ''} onChange={e => setBulkEditData(p => ({ ...p, dailyRate: parseFloat(e.target.value) || 0 }))}
-                      placeholder="No change" className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                      placeholder="No change" className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Monthly Rate</label>
                     <input type="number" value={bulkEditData.monthlyRate || ''} onChange={e => setBulkEditData(p => ({ ...p, monthlyRate: parseFloat(e.target.value) || 0 }))}
-                      placeholder="No change" className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                      placeholder="No change" className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Schedule In</label>
                     <input type="time" value={bulkEditData.scheduleIn || ''} onChange={e => setBulkEditData(p => ({ ...p, scheduleIn: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Schedule Out</label>
                     <input type="time" value={bulkEditData.scheduleOut || ''} onChange={e => setBulkEditData(p => ({ ...p, scheduleOut: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Rest Day(s)</label>
@@ -1055,7 +1055,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Department</label>
                     <select value={bulkEditData.department || ''} onChange={e => setBulkEditData(p => ({ ...p, department: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }}>
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }}>
                       <option value="">— No change —</option>
                       {EMP_DEPARTMENTS.filter(d => d.value).map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
                     </select>
@@ -1063,7 +1063,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Branch</label>
                     <select value={bulkEditData.branch || ''} onChange={e => setBulkEditData(p => ({ ...p, branch: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }}>
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }}>
                       <option value="">— No change —</option>
                       {BRANCHES.filter(b => b.value).map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
                     </select>
@@ -1098,25 +1098,25 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                 <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>1st Cutoff Start</label>
                 <input type="number" min={1} max={31} value={empSettings.cutoff1Start}
                   onChange={e => setEmpSettings(s => s ? { ...s, cutoff1Start: parseInt(e.target.value) || 1 } : s)}
-                  className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                  className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
               </div>
               <div>
                 <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>1st Cutoff End</label>
                 <input type="number" min={1} max={31} value={empSettings.cutoff1End}
                   onChange={e => setEmpSettings(s => s ? { ...s, cutoff1End: parseInt(e.target.value) || 15 } : s)}
-                  className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                  className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
               </div>
               <div>
                 <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Payout Day</label>
                 <input type="number" min={1} max={31} value={empSettings.payout1Day || 15}
                   onChange={e => setEmpSettings(s => s ? { ...s, payout1Day: parseInt(e.target.value) || 15 } : s)}
-                  className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                  className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
               </div>
               <div>
                 <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>2nd Cutoff Start</label>
                 <input type="number" min={1} max={31} value={empSettings.cutoff2Start}
                   onChange={e => setEmpSettings(s => s ? { ...s, cutoff2Start: parseInt(e.target.value) || 16 } : s)}
-                  className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                  className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
               </div>
               <div>
                 <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>2nd Cutoff End</label>
@@ -1137,7 +1137,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                 <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Payout Day</label>
                 <input type="number" min={1} max={31} value={empSettings.payout2Day || 30}
                   onChange={e => setEmpSettings(s => s ? { ...s, payout2Day: parseInt(e.target.value) || 30 } : s)}
-                  className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                  className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
                 <p className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>Use 0 for last day</p>
               </div>
             </div>
@@ -1167,7 +1167,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                   <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>{f.label}</label>
                   <input type="number" step="0.01" value={toNum((empSettings as unknown as Record<string, unknown>)[f.key])}
                     onChange={e => setEmpSettings(s => s ? { ...s, [f.key]: parseFloat(e.target.value) || 0 } : s)}
-                    className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                    className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
                 </div>
               ))}
             </div>
@@ -1283,7 +1283,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                 {requests.length === 0 ? (
                   <tr><td colSpan={6} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No {reqStatusFilter.toLowerCase()} requests</td></tr>
                 ) : requests.map(r => (
-                  <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                  <tr key={r.id} className="border-t transition-colors hover:bg-gray-50/50" style={{ borderColor: 'var(--light-gray)' }}>
                     <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{r.employee.firstName} {r.employee.lastName}</td>
                     <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>
                       {REQUEST_TYPES.find(t => t.value === r.requestType)?.label || r.requestType}
@@ -1323,17 +1323,23 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
               Upload the .dat file from your biometric device. Select the branch first.
             </p>
 
-            <div className="flex items-center gap-3 mb-3">
-              <select value={branch} onChange={e => setBranch(e.target.value)}
-                className="px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
-                {BRANCHES.filter(b => b.value).map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
-              </select>
+            <div className="flex items-center gap-3 mb-4">
+              <label className="text-xs font-medium" style={{ color: 'var(--charcoal)' }}>Branch:</label>
+              {BRANCHES.filter(b => b.value).map(b => (
+                <button key={b.value} onClick={() => setBranch(b.value)}
+                  className="px-3.5 py-2 rounded-lg text-xs font-medium transition-all"
+                  style={branch === b.value
+                    ? { background: 'var(--teal)', color: 'white' }
+                    : { background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                  {b.label}
+                </button>
+              ))}
             </div>
 
             <input ref={fileInputRef} type="file" accept=".dat,.txt,.csv" onChange={handleFileUpload}
               className="hidden" />
             <button onClick={() => { if (!branch) { setError('Please select a branch first'); return }; fileInputRef.current?.click() }} disabled={uploading}
-              className="flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-medium text-white w-full justify-center"
+              className="flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-medium text-white w-full justify-center transition-all hover:opacity-90 active:scale-[0.98]"
               style={{ background: uploading ? 'var(--mid-gray)' : !branch ? '#9ca3af' : 'var(--teal)' }}>
               {uploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
               {uploading ? 'Processing...' : 'Choose .dat File & Upload'}
@@ -1444,11 +1450,11 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                 {/* Proceed button */}
                 <div className="flex items-center gap-2 pt-1">
                   <button onClick={() => { setSubTab('tk-data'); if (uploadResult.dateFrom) setTkStartDate(uploadResult.dateFrom); if (uploadResult.dateTo) setTkEndDate(uploadResult.dateTo) }}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
-                    <Eye size={13} /> View Timekeeping Data
+                    className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-medium text-white transition-all hover:opacity-90 active:scale-[0.97]" style={{ background: 'var(--teal)' }}>
+                    <Eye size={14} /> View Timekeeping Data
                   </button>
                   <button onClick={() => setUploadResult(null)}
-                    className="px-4 py-2 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                    className="px-5 py-2.5 rounded-xl text-xs font-medium border transition-all hover:bg-gray-50 active:scale-[0.97]" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
                     Upload Another
                   </button>
                 </div>
@@ -1477,16 +1483,16 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
         <div className="space-y-3">
           <div className="flex items-center flex-wrap gap-2">
             <select value={branch} onChange={e => setBranch(e.target.value)}
-              className="px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+              className="px-3 py-2.5 rounded-xl border text-xs cursor-pointer hover:border-gray-400 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
               {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
             </select>
             <input type="date" value={tkStartDate} onChange={e => setTkStartDate(e.target.value)}
-              className="px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+              className="px-3 py-2.5 rounded-xl border text-xs cursor-pointer hover:border-gray-400 transition-colors" style={{ borderColor: 'var(--light-gray)' }} />
             <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</span>
             <input type="date" value={tkEndDate} onChange={e => setTkEndDate(e.target.value)}
-              className="px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+              className="px-3 py-2.5 rounded-xl border text-xs cursor-pointer hover:border-gray-400 transition-colors" style={{ borderColor: 'var(--light-gray)' }} />
             <button onClick={fetchTimekeeping}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium text-white transition-all hover:opacity-90 active:scale-[0.97]" style={{ background: 'var(--teal)' }}>
               <Search size={13} /> Load
             </button>
           </div>
@@ -1538,7 +1544,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                     </td>
                   </tr>
                 ) : (
-                  <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                  <tr key={r.id} className="border-t transition-colors hover:bg-gray-50/50" style={{ borderColor: 'var(--light-gray)' }}>
                     <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{r.employee.firstName} {r.employee.lastName}</td>
                     <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{fmtDate(r.date)}</td>
                     <td className="px-3 py-2 font-mono" style={{ color: r.timeIn ? 'var(--charcoal)' : 'var(--mid-gray)' }}>{fmtTime(r.timeIn)}</td>
@@ -1623,7 +1629,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                   const pag = emp.benefits.find(b => b.benefitType === 'PAGIBIG')
                   const tax = emp.benefits.find(b => b.benefitType === 'TAX')
                   return (
-                    <tr key={emp.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                    <tr key={emp.id} className="border-t transition-colors hover:bg-gray-50/50" style={{ borderColor: 'var(--light-gray)' }}>
                       {canWrite && (
                         <td className="text-center px-2 py-2.5">
                           <input type="checkbox" checked={selectedBenefitEmpIds.has(emp.id)}
@@ -1662,7 +1668,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Employee</label>
                     <select value={benefitEmpId} onChange={e => setBenefitEmpId(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }}>
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }}>
                       <option value="">Select employee...</option>
                       {employees.map(e => <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>)}
                     </select>
@@ -1670,19 +1676,19 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Benefit Type</label>
                     <select value={benefitType} onChange={e => setBenefitType(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }}>
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }}>
                       {BENEFIT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Employee Share (Monthly)</label>
                     <input type="number" value={benefitEmpShare} onChange={e => setBenefitEmpShare(parseFloat(e.target.value) || 0)}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Employer Share (Monthly)</label>
                     <input type="number" value={benefitErShare} onChange={e => setBenefitErShare(parseFloat(e.target.value) || 0)}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                 </div>
                 <div className="flex justify-end gap-2 mt-5">
@@ -1709,19 +1715,19 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Benefit Type</label>
                     <select value={bulkBenefitType} onChange={e => setBulkBenefitType(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }}>
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }}>
                       {BENEFIT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Employee Share (Monthly)</label>
                     <input type="number" value={bulkBenefitEmpShare} onChange={e => setBulkBenefitEmpShare(parseFloat(e.target.value) || 0)}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Employer Share (Monthly)</label>
                     <input type="number" value={bulkBenefitErShare} onChange={e => setBulkBenefitErShare(parseFloat(e.target.value) || 0)}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                 </div>
                 <div className="flex justify-end gap-2 mt-5">
@@ -1781,7 +1787,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                 {holidays.length === 0 ? (
                   <tr><td colSpan={6} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No holidays for {holidayYear}</td></tr>
                 ) : holidays.map(h => (
-                  <tr key={h.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                  <tr key={h.id} className="border-t transition-colors hover:bg-gray-50/50" style={{ borderColor: 'var(--light-gray)' }}>
                     <td className="px-3 py-2.5 font-mono" style={{ color: 'var(--charcoal)' }}>{fmtDate(h.date)}</td>
                     <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{h.name}</td>
                     <td className="px-3 py-2.5">
@@ -1820,24 +1826,24 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Holiday Name *</label>
                     <input value={holidayForm.name} onChange={e => setHolidayForm(f => ({ ...f, name: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Date *</label>
                     <input type="date" value={holidayForm.date} onChange={e => setHolidayForm(f => ({ ...f, date: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Type *</label>
                     <select value={holidayForm.holidayType} onChange={e => setHolidayForm(f => ({ ...f, holidayType: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }}>
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }}>
                       {HOLIDAY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Branch</label>
                     <select value={holidayForm.branch} onChange={e => setHolidayForm(f => ({ ...f, branch: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }}>
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }}>
                       <option value="">All Branches</option>
                       {BRANCHES.filter(b => b.value).map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
                     </select>
