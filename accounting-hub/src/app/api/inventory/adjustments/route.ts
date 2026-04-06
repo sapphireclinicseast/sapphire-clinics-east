@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parsePagination, paginatedResult } from '@/lib/pagination'
-import { consumeFifoLots } from '@/lib/fifo'
+import { consumeFifoLots, recalcWeightedUnitCost } from '@/lib/fifo'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -44,7 +44,8 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { itemId, type, quantityChange, adjustmentDate, remarks } = await req.json()
+    const { itemId, type, quantityChange, adjustmentDate, remarks,
+            foreignCost, foreignCurrency, localCost, exchangeRate } = await req.json()
 
     if (!itemId || !type || !quantityChange || !remarks?.trim()) {
       return NextResponse.json({ error: 'Item, type, quantity change, and remarks are required' }, { status: 400 })
@@ -70,6 +71,24 @@ export async function POST(req: Request) {
 
     // Create adjustment and update item quantity in one transaction
     const adjustment = await prisma.$transaction(async (tx) => {
+      // For INCREASE, calculate cost data if provided
+      const costData: Record<string, unknown> = {}
+      if (type === 'INCREASE') {
+        if (foreignCost) {
+          costData.foreignCost = parseFloat(foreignCost)
+          costData.foreignCurrency = foreignCurrency || 'PHP'
+        }
+        if (localCost) {
+          costData.localCost = parseFloat(localCost)
+          costData.totalLandedCost = parseFloat(localCost) * change
+        } else if (foreignCost && exchangeRate) {
+          const lc = parseFloat(foreignCost) * parseFloat(exchangeRate)
+          costData.localCost = lc
+          costData.exchangeRate = parseFloat(exchangeRate)
+          costData.totalLandedCost = lc * change
+        }
+      }
+
       const adj = await tx.inventoryAdjustment.create({
         data: {
           itemId,
@@ -81,6 +100,7 @@ export async function POST(req: Request) {
           adjustmentDate: adjustmentDate ? new Date(adjustmentDate) : new Date(),
           remarks: remarks.trim(),
           adjustedById: session.user.id,
+          ...costData,
         },
         include: {
           item: { select: { name: true, sku: true } },
@@ -96,6 +116,12 @@ export async function POST(req: Request) {
       // For SHRINKAGE, consume from oldest FIFO lots
       if (type === 'SHRINKAGE') {
         await consumeFifoLots(tx, itemId, change)
+      }
+
+      // Recalculate weighted-average unit cost from remaining lots
+      const newUnitCost = await recalcWeightedUnitCost(tx, itemId)
+      if (newUnitCost > 0) {
+        await tx.inventoryItem.update({ where: { id: itemId }, data: { unitCost: newUnitCost } })
       }
 
       return adj

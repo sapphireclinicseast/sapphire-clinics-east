@@ -622,6 +622,10 @@ export default function InventoryPage() {
   const [adjQty, setAdjQty] = useState('')
   const [adjDate, setAdjDate] = useState(new Date().toISOString().split('T')[0])
   const [adjRemarks, setAdjRemarks] = useState('')
+  const [adjLocalCost, setAdjLocalCost] = useState('')  // Cost per unit in PHP
+  const [adjForeignCost, setAdjForeignCost] = useState('')  // Cost per unit in foreign currency
+  const [adjForeignCurrency, setAdjForeignCurrency] = useState('CNY')
+  const [adjExchangeRate, setAdjExchangeRate] = useState('')
 
   // ── Consignment state
   const [consignments, setConsignments] = useState<Consignment[]>([])
@@ -1153,6 +1157,12 @@ export default function InventoryPage() {
           itemId: adjItemId, type: adjType,
           quantityChange: parseInt(adjQty) || 0,
           adjustmentDate: adjDate, remarks: adjRemarks,
+          ...(adjType === 'INCREASE' ? {
+            localCost: adjLocalCost || undefined,
+            foreignCost: adjForeignCost || undefined,
+            foreignCurrency: adjForeignCost ? adjForeignCurrency : undefined,
+            exchangeRate: adjExchangeRate || undefined,
+          } : {}),
         }),
       })
       const data = await res.json()
@@ -2622,6 +2632,43 @@ setTimeout(()=>window.print(),500);
                     <textarea value={adjRemarks} onChange={(e) => setAdjRemarks(e.target.value)} required rows={2}
                       className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none resize-none" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
+                  {/* Cost fields for INCREASE (purchase cost tracking) */}
+                  {adjType === 'INCREASE' && (
+                    <div className="p-3 rounded-xl space-y-3" style={{ background: '#f0fdfa', border: '1px solid var(--teal)' }}>
+                      <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--teal)' }}>Purchase Cost</p>
+                      <div>
+                        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Cost per Unit (PHP)</label>
+                        <input type="number" step="0.01" min="0" value={adjLocalCost} onChange={(e) => setAdjLocalCost(e.target.value)}
+                          placeholder="e.g. 70.22"
+                          className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      </div>
+                      <div className="text-xs font-medium pt-1" style={{ color: 'var(--mid-gray)' }}>— or enter foreign currency cost —</div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Foreign Cost/Unit</label>
+                          <input type="number" step="0.01" min="0" value={adjForeignCost} onChange={(e) => setAdjForeignCost(e.target.value)}
+                            placeholder="e.g. 9.50"
+                            className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Currency</label>
+                          <select value={adjForeignCurrency} onChange={(e) => setAdjForeignCurrency(e.target.value)}
+                            className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                            <option value="CNY">CNY</option>
+                            <option value="USD">USD</option>
+                            <option value="EUR">EUR</option>
+                            <option value="JPY">JPY</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Exchange Rate</label>
+                          <input type="number" step="0.0001" min="0" value={adjExchangeRate} onChange={(e) => setAdjExchangeRate(e.target.value)}
+                            placeholder="e.g. 7.80"
+                            className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {/* Preview */}
                   {adjItemId && adjQty && (
                     <div className="p-3 rounded-xl text-sm" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>
