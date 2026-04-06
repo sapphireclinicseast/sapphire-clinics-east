@@ -23,6 +23,7 @@ const BRANCHES = [
   { value: '', label: 'All Branches' },
   { value: 'SBEA', label: 'Sandbox East' },
   { value: 'SBGH', label: 'Sandbox Greenhills' },
+  { value: 'VERDANA', label: 'Verdana Store' },
 ]
 
 const DAYS_OF_WEEK = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']
@@ -262,7 +263,18 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
   const [tkEndDate, setTkEndDate] = useState(() => new Date().toISOString().split('T')[0])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
-  const [uploadResult, setUploadResult] = useState<{ totalRawRecords: number; recordsProcessed: number; unmatchedBioIds: number[] } | null>(null)
+  const [uploadResult, setUploadResult] = useState<{
+    uploadId: string; totalRawRecords: number; recordsProcessed: number; unmatchedBioIds: number[]
+    dateFrom?: string; dateTo?: string; detectedCutoff?: string; branch?: string | null
+    totalBranchEmployees?: number; employeesIncluded?: number
+    missingEmployees?: { id: string; name: string; rateType: string; hasBioId: boolean }[]
+  } | null>(null)
+
+  /* ── Timekeeping Inline Edit ── */
+  const [tkEditId, setTkEditId] = useState('')
+  const [tkEditForm, setTkEditForm] = useState({ timeIn: '', timeOut: '', lateMinutes: '', undertimeMinutes: '', overtimeMinutes: '', remarks: '' })
+  const [tkEditSaving, setTkEditSaving] = useState(false)
+  const [tkDeleting, setTkDeleting] = useState('')
 
   /* ── Holidays ── */
   const [holidays, setHolidays] = useState<Holiday[]>([])
@@ -506,6 +518,58 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
       body: JSON.stringify({ ids: draftIds, status: 'FINAL' }),
     })
     fetchPayslips()
+  }
+
+  /* ── Timekeeping Edit/Delete ── */
+  const startTkEdit = (r: TimekeepingRecord) => {
+    setTkEditId(r.id)
+    const toLocal = (iso: string | null | undefined) => {
+      if (!iso) return ''
+      const d = new Date(iso)
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+    }
+    setTkEditForm({
+      timeIn: toLocal(r.timeIn),
+      timeOut: toLocal(r.timeOut),
+      lateMinutes: String(r.lateMinutes || 0),
+      undertimeMinutes: String(r.undertimeMinutes || 0),
+      overtimeMinutes: String(r.overtimeMinutes || 0),
+      remarks: r.remarks || '',
+    })
+  }
+
+  const saveTkEdit = async () => {
+    setTkEditSaving(true)
+    try {
+      const r = await fetch('/api/payroll/timekeeping/records', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: tkEditId,
+          timeIn: tkEditForm.timeIn ? new Date(tkEditForm.timeIn).toISOString() : null,
+          timeOut: tkEditForm.timeOut ? new Date(tkEditForm.timeOut).toISOString() : null,
+          lateMinutes: tkEditForm.lateMinutes,
+          undertimeMinutes: tkEditForm.undertimeMinutes,
+          overtimeMinutes: tkEditForm.overtimeMinutes,
+          remarks: tkEditForm.remarks,
+        }),
+      })
+      if (r.ok) {
+        setTkEditId('')
+        fetchTimekeeping()
+      }
+    } catch { /* ignore */ }
+    setTkEditSaving(false)
+  }
+
+  const deleteTkRecord = async (id: string) => {
+    if (!confirm('Delete this timekeeping record?')) return
+    setTkDeleting(id)
+    try {
+      await fetch(`/api/payroll/timekeeping/records?id=${id}`, { method: 'DELETE' })
+      fetchTimekeeping()
+    } catch { /* ignore */ }
+    setTkDeleting('')
   }
 
   const [settingsSaved, setSettingsSaved] = useState(false)
@@ -1252,51 +1316,143 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
          TAB: TIMEKEEPING UPLOAD
          ═══════════════════════════════════════════════════════════════ */}
       {subTab === 'tk-upload' && (
-        <div className="space-y-4 max-w-xl">
+        <div className="space-y-4 max-w-2xl">
           <div className="rounded-xl border p-5" style={{ borderColor: 'var(--light-gray)' }}>
             <h4 className="text-sm font-bold mb-1" style={{ color: 'var(--charcoal)' }}>Upload Biometric File (.dat)</h4>
             <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
-              Upload the .dat file from your biometric device. The system will parse clock-in/out records
-              and match them to employees by their Biometric ID.
+              Upload the .dat file from your biometric device. Select the branch first.
             </p>
 
             <div className="flex items-center gap-3 mb-3">
               <select value={branch} onChange={e => setBranch(e.target.value)}
                 className="px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
-                {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+                {BRANCHES.filter(b => b.value).map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
               </select>
             </div>
 
             <input ref={fileInputRef} type="file" accept=".dat,.txt,.csv" onChange={handleFileUpload}
               className="hidden" />
-            <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
+            <button onClick={() => { if (!branch) { setError('Please select a branch first'); return }; fileInputRef.current?.click() }} disabled={uploading}
               className="flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-medium text-white w-full justify-center"
-              style={{ background: uploading ? 'var(--mid-gray)' : 'var(--teal)' }}>
+              style={{ background: uploading ? 'var(--mid-gray)' : !branch ? '#9ca3af' : 'var(--teal)' }}>
               {uploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
               {uploading ? 'Processing...' : 'Choose .dat File & Upload'}
             </button>
           </div>
 
           {uploadResult && (
-            <div className="rounded-xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-              <h4 className="text-xs font-bold mb-2 flex items-center gap-1.5" style={{ color: '#059669' }}>
-                <CheckCircle2 size={14} /> Upload Complete
-              </h4>
-              <div className="grid grid-cols-2 gap-2 text-xs" style={{ color: 'var(--charcoal)' }}>
-                <span>Raw records in file:</span><span className="font-mono font-medium">{uploadResult.totalRawRecords}</span>
-                <span>Records processed:</span><span className="font-mono font-medium">{uploadResult.recordsProcessed}</span>
-                {uploadResult.unmatchedBioIds.length > 0 && (
-                  <>
-                    <span className="text-orange-600">Unmatched Bio IDs:</span>
-                    <span className="font-mono text-orange-600">{uploadResult.unmatchedBioIds.join(', ')}</span>
-                  </>
-                )}
+            <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+              {/* Header with success indicator */}
+              <div className="px-4 py-3 flex items-center justify-between" style={{ background: '#f0fdf4' }}>
+                <h4 className="text-xs font-bold flex items-center gap-1.5" style={{ color: '#059669' }}>
+                  <CheckCircle2 size={14} /> Upload Successful
+                </h4>
+                <button onClick={async () => {
+                  if (!confirm('Delete all records from this upload?')) return
+                  await fetch(`/api/payroll/timekeeping/records?uploadId=${uploadResult.uploadId}`, { method: 'DELETE' })
+                  setUploadResult(null)
+                }} className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium text-red-600 hover:bg-red-50">
+                  <Trash2 size={11} /> Delete Upload
+                </button>
               </div>
-              {uploadResult.unmatchedBioIds.length > 0 && (
-                <p className="text-[10px] mt-2" style={{ color: 'var(--mid-gray)' }}>
-                  Unmatched IDs = employees whose Biometric ID has not been set. Go to Employee List to assign Bio IDs.
-                </p>
-              )}
+
+              <div className="px-4 py-3 space-y-3">
+                {/* Cutoff & Branch Detection */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {uploadResult.branch && (
+                    <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold" style={{ background: '#dbeafe', color: '#1d4ed8' }}>
+                      {BRANCHES.find(b => b.value === uploadResult.branch)?.label || uploadResult.branch}
+                    </span>
+                  )}
+                  {uploadResult.detectedCutoff && (
+                    <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold" style={{ background: '#fae8ff', color: '#9333ea' }}>
+                      Cutoff: {uploadResult.detectedCutoff.endsWith('-A') ? '1st Half' : '2nd Half'} ({uploadResult.detectedCutoff.replace(/-[AB]$/, '')})
+                    </span>
+                  )}
+                  {uploadResult.dateFrom && uploadResult.dateTo && (
+                    <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                      {uploadResult.dateFrom} to {uploadResult.dateTo}
+                    </span>
+                  )}
+                </div>
+
+                {/* Stats */}
+                <div className="grid grid-cols-3 gap-3 text-xs">
+                  <div className="rounded-lg p-2.5 text-center" style={{ background: 'var(--off-white)' }}>
+                    <div className="font-mono font-bold text-sm" style={{ color: 'var(--charcoal)' }}>{uploadResult.recordsProcessed}</div>
+                    <div style={{ color: 'var(--mid-gray)' }}>Records</div>
+                  </div>
+                  <div className="rounded-lg p-2.5 text-center" style={{ background: 'var(--off-white)' }}>
+                    <div className="font-mono font-bold text-sm" style={{ color: 'var(--charcoal)' }}>{uploadResult.employeesIncluded || 0}</div>
+                    <div style={{ color: 'var(--mid-gray)' }}>Employees</div>
+                  </div>
+                  <div className="rounded-lg p-2.5 text-center" style={{ background: 'var(--off-white)' }}>
+                    <div className="font-mono font-bold text-sm" style={{ color: 'var(--charcoal)' }}>{uploadResult.totalRawRecords}</div>
+                    <div style={{ color: 'var(--mid-gray)' }}>Raw Lines</div>
+                  </div>
+                </div>
+
+                {/* Employee Coverage */}
+                {uploadResult.totalBranchEmployees !== undefined && (
+                  <div>
+                    {uploadResult.employeesIncluded === uploadResult.totalBranchEmployees ? (
+                      <div className="flex items-center gap-1.5 text-xs font-medium" style={{ color: '#059669' }}>
+                        <CheckCircle2 size={14} /> All {uploadResult.totalBranchEmployees} employees included
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="flex items-center gap-1.5 text-xs font-medium mb-2" style={{ color: '#d97706' }}>
+                          <AlertCircle size={14} /> {uploadResult.employeesIncluded} of {uploadResult.totalBranchEmployees} employees included
+                        </div>
+                        {(uploadResult.missingEmployees || []).length > 0 && (
+                          <div className="rounded-lg p-3" style={{ background: '#fffbeb' }}>
+                            <p className="text-[11px] font-semibold mb-1.5" style={{ color: '#92400e' }}>Missing employees:</p>
+                            <div className="space-y-1">
+                              {(uploadResult.missingEmployees || []).map(e => (
+                                <div key={e.id} className="flex items-center justify-between text-[11px]">
+                                  <span style={{ color: '#92400e' }}>{e.name}</span>
+                                  <div className="flex items-center gap-2">
+                                    {e.rateType === 'MONTHLY' && (
+                                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700">Fixed Monthly</span>
+                                    )}
+                                    {!e.hasBioId && (
+                                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-700">No Bio ID</span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <p className="text-[10px] mt-2" style={{ color: '#92400e' }}>
+                              Fixed Monthly employees do not need timekeeping data. Employees without Bio ID need one assigned in Employee List.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Unmatched Bio IDs */}
+                {uploadResult.unmatchedBioIds.length > 0 && (
+                  <div className="rounded-lg p-2.5" style={{ background: '#fff7ed' }}>
+                    <span className="text-[11px] font-medium text-orange-700">Unmatched Bio IDs: </span>
+                    <span className="font-mono text-[11px] text-orange-600">{uploadResult.unmatchedBioIds.join(', ')}</span>
+                    <p className="text-[10px] mt-1 text-orange-600">These IDs exist in the .dat file but no employee has this Bio ID assigned.</p>
+                  </div>
+                )}
+
+                {/* Proceed button */}
+                <div className="flex items-center gap-2 pt-1">
+                  <button onClick={() => { setSubTab('tk-data'); if (uploadResult.dateFrom) setTkStartDate(uploadResult.dateFrom); if (uploadResult.dateTo) setTkEndDate(uploadResult.dateTo) }}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
+                    <Eye size={13} /> View Timekeeping Data
+                  </button>
+                  <button onClick={() => setUploadResult(null)}
+                    className="px-4 py-2 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                    Upload Another
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1349,12 +1505,39 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                   <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>OT (min)</th>
                   <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Flags</th>
                   <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Source</th>
+                  <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Remarks</th>
+                  {canWrite && <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>}
                 </tr>
               </thead>
               <tbody>
                 {tkRecords.length === 0 ? (
-                  <tr><td colSpan={10} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No timekeeping records for selected period</td></tr>
-                ) : tkRecords.map(r => (
+                  <tr><td colSpan={canWrite ? 12 : 11} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No timekeeping records for selected period</td></tr>
+                ) : tkRecords.map(r => tkEditId === r.id ? (
+                  <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: '#f0fdf4' }}>
+                    <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{r.employee.firstName} {r.employee.lastName}</td>
+                    <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{fmtDate(r.date)}</td>
+                    <td className="px-2 py-1"><input type="datetime-local" value={tkEditForm.timeIn} onChange={e => setTkEditForm(f => ({ ...f, timeIn: e.target.value }))} className="px-1.5 py-1 rounded border text-xs w-[155px]" style={{ borderColor: 'var(--light-gray)' }} /></td>
+                    <td className="px-2 py-1"><input type="datetime-local" value={tkEditForm.timeOut} onChange={e => setTkEditForm(f => ({ ...f, timeOut: e.target.value }))} className="px-1.5 py-1 rounded border text-xs w-[155px]" style={{ borderColor: 'var(--light-gray)' }} /></td>
+                    <td className="px-3 py-2 text-right font-mono text-xs" style={{ color: 'var(--mid-gray)' }}>auto</td>
+                    <td className="px-2 py-1"><input type="number" value={tkEditForm.lateMinutes} onChange={e => setTkEditForm(f => ({ ...f, lateMinutes: e.target.value }))} className="px-1.5 py-1 rounded border text-xs text-right w-16" style={{ borderColor: 'var(--light-gray)' }} /></td>
+                    <td className="px-2 py-1"><input type="number" value={tkEditForm.undertimeMinutes} onChange={e => setTkEditForm(f => ({ ...f, undertimeMinutes: e.target.value }))} className="px-1.5 py-1 rounded border text-xs text-right w-16" style={{ borderColor: 'var(--light-gray)' }} /></td>
+                    <td className="px-2 py-1"><input type="number" value={tkEditForm.overtimeMinutes} onChange={e => setTkEditForm(f => ({ ...f, overtimeMinutes: e.target.value }))} className="px-1.5 py-1 rounded border text-xs text-right w-16" style={{ borderColor: 'var(--light-gray)' }} /></td>
+                    <td className="px-3 py-2 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        {r.isRestDay && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700">Rest</span>}
+                        {r.isHoliday && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange-100 text-orange-700">{r.holidayType === 'REGULAR' ? 'Reg Hol' : 'Spec Hol'}</span>}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-[10px]" style={{ color: 'var(--mid-gray)' }}>{r.source}</td>
+                    <td className="px-2 py-1"><input type="text" value={tkEditForm.remarks} onChange={e => setTkEditForm(f => ({ ...f, remarks: e.target.value }))} placeholder="Remarks" className="px-1.5 py-1 rounded border text-xs w-24" style={{ borderColor: 'var(--light-gray)' }} /></td>
+                    <td className="px-3 py-2 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <button onClick={saveTkEdit} disabled={tkEditSaving} className="p-1 rounded hover:bg-green-100 text-green-600" title="Save"><Save size={14} /></button>
+                        <button onClick={() => setTkEditId('')} className="p-1 rounded hover:bg-gray-100" style={{ color: 'var(--mid-gray)' }} title="Cancel"><X size={14} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
                   <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                     <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{r.employee.firstName} {r.employee.lastName}</td>
                     <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{fmtDate(r.date)}</td>
@@ -1371,6 +1554,17 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                       </div>
                     </td>
                     <td className="px-3 py-2 text-[10px]" style={{ color: 'var(--mid-gray)' }}>{r.source}</td>
+                    <td className="px-3 py-2 text-[10px]" style={{ color: 'var(--mid-gray)' }}>{r.remarks || '—'}</td>
+                    {canWrite && (
+                      <td className="px-3 py-2 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button onClick={() => startTkEdit(r)} className="p-1 rounded hover:bg-blue-50" style={{ color: 'var(--teal)' }} title="Edit"><Pencil size={13} /></button>
+                          <button onClick={() => deleteTkRecord(r.id)} disabled={tkDeleting === r.id} className="p-1 rounded hover:bg-red-50 text-red-500" title="Delete">
+                            {tkDeleting === r.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

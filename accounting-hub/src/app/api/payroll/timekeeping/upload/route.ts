@@ -195,11 +195,73 @@ export async function POST(req: Request) {
     }
   }
 
+  // Detect date range covered by this upload
+  const allDates = [...grouped.values()].map(g => g.date).sort()
+  const dateFrom = allDates[0] || ''
+  const dateTo = allDates[allDates.length - 1] || ''
+
+  // Detect cutoff period from settings
+  const settings = await prisma.employeeSettings.findFirst()
+  let detectedCutoff = ''
+  if (settings && dateFrom) {
+    const fromDay = parseInt(dateFrom.split('-')[2])
+    const toDay = parseInt(dateTo.split('-')[2])
+    const fromMonth = parseInt(dateFrom.split('-')[1])
+    const toMonth = parseInt(dateTo.split('-')[1])
+    const fromYear = parseInt(dateFrom.split('-')[0])
+
+    // Check if range fits 1st cutoff
+    const c1s = settings.cutoff1Start
+    const c1e = settings.cutoff1End
+    const c2s = settings.cutoff2Start
+    const c2e = settings.cutoff2EndLastDay ? 31 : settings.cutoff2End
+
+    if (c1s > c1e) {
+      // Cross-month 1st cutoff (e.g. 26th to 10th)
+      if (fromDay >= c1s || toDay <= c1e) {
+        const payMonth = toDay <= c1e ? toMonth : (fromMonth % 12) + 1
+        const payYear = toDay <= c1e ? fromYear : (fromMonth === 12 ? fromYear + 1 : fromYear)
+        detectedCutoff = `${payYear}-${String(payMonth).padStart(2, '0')}-A`
+      }
+    } else if (fromDay >= c1s && toDay <= c1e) {
+      detectedCutoff = `${fromYear}-${String(fromMonth).padStart(2, '0')}-A`
+    }
+
+    if (!detectedCutoff) {
+      if (fromDay >= c2s && toDay <= c2e) {
+        detectedCutoff = `${fromYear}-${String(fromMonth).padStart(2, '0')}-B`
+      }
+    }
+  }
+
+  // Employee coverage: which employees in this branch have records vs total
+  const branchFilter = branch || undefined
+  const allBranchEmployees = await prisma.employee.findMany({
+    where: { isActive: true, ...(branchFilter ? { branch: branchFilter } : {}) },
+    select: { id: true, firstName: true, lastName: true, rateType: true, employeeBioId: true },
+  })
+  const employeesWithRecords = new Set([...grouped.keys()].map(k => k.split('|')[0]))
+  const missingEmployees = allBranchEmployees
+    .filter(e => !employeesWithRecords.has(e.id))
+    .map(e => ({
+      id: e.id,
+      name: `${e.firstName} ${e.lastName}`,
+      rateType: e.rateType,
+      hasBioId: e.employeeBioId !== null,
+    }))
+
   return NextResponse.json({
     uploadId: upload.id,
     totalRawRecords: raw.length,
     uniqueBioIds: new Set(raw.map(r => r.bioId)).size,
     recordsProcessed: created + updated,
     unmatchedBioIds: [...new Set(raw.map(r => r.bioId))].filter(id => !bioMap.has(id)),
+    dateFrom,
+    dateTo,
+    detectedCutoff,
+    branch: branch || null,
+    totalBranchEmployees: allBranchEmployees.length,
+    employeesIncluded: employeesWithRecords.size,
+    missingEmployees,
   })
 }
