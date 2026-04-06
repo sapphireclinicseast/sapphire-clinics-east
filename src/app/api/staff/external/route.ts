@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
         tin: true,
       },
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
-      take: search ? 20 : 100,
+      ...(search ? { take: 20 } : {}),
     })
 
     // If includeHR is requested, fetch gov IDs from HR platform
