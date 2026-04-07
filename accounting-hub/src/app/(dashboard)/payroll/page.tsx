@@ -586,6 +586,12 @@ export default function PayrollPage() {
   const [editingRetainer, setEditingRetainer] = useState('')
   const [savingConsultant, setSavingConsultant] = useState(false)
 
+  /* ── Past Payslips in Clinician List ── */
+  interface ConsultantPayslip { id: string; cutoffPeriod: string; branch: string; grossPay: number; netPay: number; status: string; pdfUrl?: string | null }
+  const [clinicianPastPayslips, setClinicianPastPayslips] = useState<ConsultantPayslip[]>([])
+  const [loadingClinicianPayslips, setLoadingClinicianPayslips] = useState(false)
+  const [showClinicianPayslips, setShowClinicianPayslips] = useState<string | null>(null)
+
   /* ── Bulk unit pay ── */
   const [bulkDept, setBulkDept] = useState('')
   const [bulkUnitPayId, setBulkUnitPayId] = useState('')
@@ -820,6 +826,18 @@ export default function PayrollPage() {
     setEditingRates(rateMap)
     setEditingTax(c.taxDeduction)
     setEditingRetainer(String(toNum(c.monthlyRetainer)))
+  }
+
+  const fetchClinicianPastPayslips = async (consultantId: string) => {
+    if (showClinicianPayslips === consultantId) { setShowClinicianPayslips(null); return }
+    setShowClinicianPayslips(consultantId)
+    setLoadingClinicianPayslips(true)
+    try {
+      const r = await fetch(`/api/payroll/consultant-payslips?consultantId=${consultantId}`)
+      const d = await r.json()
+      setClinicianPastPayslips(Array.isArray(d) ? d : [])
+    } catch { setClinicianPastPayslips([]) }
+    finally { setLoadingClinicianPayslips(false) }
   }
 
   const saveConsultantConfig = async (c: Consultant) => {
@@ -1159,6 +1177,15 @@ export default function PayrollPage() {
     const doc = await buildPayslipPdf(p, extras, adjs, cutoffPeriod, generatedDateRange ?? undefined)
     const safeName = p.consultantName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()
     doc.save(`payslip-${safeName}-${cutoffPeriod}.pdf`)
+    // Store PDF server-side
+    try {
+      const pdfBase64 = doc.output('datauristring')
+      await fetch('/api/payroll/payslip-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'consultant', pdfBase64, consultantId: p.consultantId, cutoffPeriod, branch: p.branch }),
+      })
+    } catch (e) { console.error('PDF storage error:', e) }
   }
 
   const downloadAllPdfs = async () => {
@@ -1194,6 +1221,15 @@ export default function PayrollPage() {
       const doc = await buildPayslipPdf(p, extras, adjs, cutoffPeriod, generatedDateRange ?? undefined)
       const pdfBase64 = doc.output('datauristring')
       const totals = computeTotals(p, extras, adjs)
+
+      // Store PDF server-side
+      try {
+        await fetch('/api/payroll/payslip-pdf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'consultant', pdfBase64, consultantId: p.consultantId, cutoffPeriod, branch: p.branch }),
+        })
+      } catch (e) { console.error('PDF storage error:', e) }
 
       // Send
       const sendRes = await fetch('/api/payroll/email', {
@@ -1841,6 +1877,49 @@ export default function PayrollPage() {
                                     <Save size={14} /> {savingConsultant ? 'Saving...' : 'Save Configuration'}
                                   </button>
                                 )}
+
+                                {/* Past Payslips */}
+                                <div className="border-t pt-3 mt-3" style={{ borderColor: 'var(--light-gray)' }}>
+                                  <button onClick={() => fetchClinicianPastPayslips(c.id)}
+                                    className="flex items-center gap-1.5 text-xs font-semibold hover:opacity-80 transition-opacity"
+                                    style={{ color: 'var(--teal)' }}>
+                                    <FileText size={14} /> {showClinicianPayslips === c.id ? 'Hide' : 'View'} Past Payslips
+                                  </button>
+                                  {showClinicianPayslips === c.id && (
+                                    <div className="mt-2">
+                                      {loadingClinicianPayslips ? (
+                                        <div className="flex items-center gap-2 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                                          <Loader2 size={12} className="animate-spin" /> Loading...
+                                        </div>
+                                      ) : clinicianPastPayslips.length === 0 ? (
+                                        <p className="text-xs py-1" style={{ color: 'var(--mid-gray)' }}>No saved payslips found.</p>
+                                      ) : (
+                                        <div className="grid gap-1">
+                                          {clinicianPastPayslips.map(ps => (
+                                            <div key={ps.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-white border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+                                              <div className="flex items-center gap-4">
+                                                <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{ps.cutoffPeriod}</span>
+                                                <span style={{ color: 'var(--mid-gray)' }}>{ps.branch}</span>
+                                                <span className="font-mono" style={{ color: 'var(--charcoal)' }}>Net: {formatCurrency(toNum(ps.netPay))}</span>
+                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                                                  style={ps.status === 'FINAL' ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>
+                                                  {ps.status}
+                                                </span>
+                                              </div>
+                                              {ps.pdfUrl && (
+                                                <a href={ps.pdfUrl} target="_blank" rel="noopener noreferrer"
+                                                  className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors text-xs"
+                                                  style={{ color: 'var(--teal)' }}>
+                                                  <Download size={12} /> View PDF
+                                                </a>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             </td>
                           </tr>

@@ -811,6 +811,7 @@ model PayrollEntry {
   retainerAmount  Decimal    @default(0)
   taxAmount       Decimal    @default(0)
   netPay          Decimal
+  pdfUrl          String?    // Stored PDF file path on VPS
   status          String     @default("DRAFT") // DRAFT, FINAL
   taxRemitted     Boolean    @default(false)
   createdById     String
@@ -900,6 +901,7 @@ enum RequestStatus {
 
 enum TimekeepingSource {
   BIOMETRIC
+  BIOMETRIC_CONFLICT
   MANUAL
 }
 
@@ -1035,6 +1037,8 @@ model TimekeepingRecord {
   isHoliday  Boolean   @default(false)
   holidayType String?  // REGULAR, SPECIAL_NON_WORKING, SPECIAL_WORKING
   source     TimekeepingSource @default(BIOMETRIC)
+  conflictData Json?           // Raw time entries when multiple IN/OUT detected
+  dtrProof     String?         // Base64 or URL of DTR photo proof for manual entries
   remarks    String?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
@@ -1109,6 +1113,7 @@ model EmployeePayslip {
   lateMinutes      Int          @default(0)
   undertimeMinutes Int          @default(0)
   details          Json?        // Additional breakdown data
+  pdfUrl           String?      // Stored PDF file path on VPS
   status           PayslipStatus @default(DRAFT)
   createdById      String
   createdAt        DateTime     @default(now())

@@ -28,6 +28,34 @@ export async function GET(req: Request) {
   const sync = searchParams.get('sync') === 'true'
   const includeInactive = searchParams.get('includeInactive') === 'true'
 
+  // Cleanup: remove duplicate employees (same name+branch, prefer the one with externalStaffId)
+  if (sync) {
+    try {
+      const allEmps = await prisma.employee.findMany({ where: { isActive: true } })
+      const seen = new Map<string, typeof allEmps[0]>()
+      for (const emp of allEmps) {
+        const key = `${emp.firstName.toUpperCase()}|${emp.lastName.toUpperCase()}|${emp.branch}`
+        const prev = seen.get(key)
+        if (prev) {
+          // Prefer the one with externalStaffId (synced). If both have it, keep the newer one.
+          const keepSynced = emp.externalStaffId && !prev.externalStaffId ? emp : prev
+          const removeDup = keepSynced === emp ? prev : emp
+          // Transfer bio ID if the one being removed has it and the keeper doesn't
+          if (removeDup.employeeBioId && !keepSynced.employeeBioId) {
+            await prisma.employee.update({ where: { id: keepSynced.id }, data: { employeeBioId: removeDup.employeeBioId } })
+          }
+          // Soft-delete the duplicate
+          await prisma.employee.update({ where: { id: removeDup.id }, data: { isActive: false } })
+          seen.set(key, keepSynced)
+        } else {
+          seen.set(key, emp)
+        }
+      }
+    } catch (e) {
+      console.error('Duplicate cleanup error:', e)
+    }
+  }
+
   // Sync from marketing hub (which also fetches gov IDs from HR platform via includeHR)
   if (sync) {
     try {
@@ -58,22 +86,47 @@ export async function GET(req: Request) {
             email: s.email || null,
           }
 
-          // Pre-fill employeeId as Biometric ID if not already set
+          // Sync employeeId from HR platform as biometric ID (they are the same)
           const empId = s.hrEmployeeId || s.employeeId
           if (empId) {
-            const existing = await prisma.employee.findUnique({ where: { externalStaffId: s.id } })
-            if (!existing || !existing.employeeBioId) {
-              const bioId = parseInt(empId)
-              if (!isNaN(bioId)) syncData.employeeBioId = bioId
+            const bioId = parseInt(empId)
+            if (!isNaN(bioId)) {
+              // Check if another employee already has this bioId (unique constraint)
+              const bioConflict = await prisma.employee.findFirst({
+                where: { employeeBioId: bioId, externalStaffId: { not: s.id } },
+              })
+              if (!bioConflict) syncData.employeeBioId = bioId
+            }
+          }
+
+          // Look up existing by externalStaffId first
+          let existing = await prisma.employee.findUnique({ where: { externalStaffId: s.id } })
+
+          // If not found by externalStaffId, try matching by name+branch to link manual entries
+          if (!existing) {
+            const nameMatch = await prisma.employee.findFirst({
+              where: {
+                firstName: { equals: s.firstName || '', mode: 'insensitive' },
+                lastName: { equals: s.lastName || '', mode: 'insensitive' },
+                branch: normalizedBranch,
+                externalStaffId: null, // only match unlinked manual entries
+              },
+            })
+            if (nameMatch) {
+              // Link the manual entry to the marketing hub record
+              await prisma.employee.update({
+                where: { id: nameMatch.id },
+                data: { externalStaffId: s.id },
+              })
+              existing = { ...nameMatch, externalStaffId: s.id }
             }
           }
 
           // Pre-fill government IDs from HR platform if not already set
-          const existingEmp = await prisma.employee.findUnique({ where: { externalStaffId: s.id } })
-          if (s.sss && (!existingEmp || !existingEmp.sssNumber)) syncData.sssNumber = s.sss
-          if (s.philhealth && (!existingEmp || !existingEmp.philhealthNumber)) syncData.philhealthNumber = s.philhealth
-          if (s.pagibig && (!existingEmp || !existingEmp.pagibigNumber)) syncData.pagibigNumber = s.pagibig
-          if (s.tin && (!existingEmp || !existingEmp.tinNumber)) syncData.tinNumber = s.tin
+          if (s.sss && (!existing || !existing.sssNumber)) syncData.sssNumber = s.sss
+          if (s.philhealth && (!existing || !existing.philhealthNumber)) syncData.philhealthNumber = s.philhealth
+          if (s.pagibig && (!existing || !existing.pagibigNumber)) syncData.pagibigNumber = s.pagibig
+          if (s.tin && (!existing || !existing.tinNumber)) syncData.tinNumber = s.tin
 
           await prisma.employee.upsert({
             where: { externalStaffId: s.id },

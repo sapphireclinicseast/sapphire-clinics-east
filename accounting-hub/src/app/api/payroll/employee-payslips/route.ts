@@ -22,11 +22,13 @@ export async function GET(req: Request) {
   const cutoffPeriod = searchParams.get('cutoffPeriod') || ''
   const branch = searchParams.get('branch') || ''
   const status = searchParams.get('status') || ''
+  const employeeId = searchParams.get('employeeId') || ''
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = {}
   if (cutoffPeriod) where.cutoffPeriod = cutoffPeriod
   if (status) where.status = status
+  if (employeeId) where.employeeId = employeeId
 
   // Enforce branch restriction based on role
   const allowed = allowedBranches(session.user.role as string)
@@ -42,7 +44,7 @@ export async function GET(req: Request) {
   const payslips = await prisma.employeePayslip.findMany({
     where,
     include: {
-      employee: { select: { id: true, firstName: true, lastName: true, department: true, branch: true, rateType: true, dailyRate: true, monthlyRate: true } },
+      employee: { select: { id: true, firstName: true, lastName: true, email: true, department: true, branch: true, rateType: true, dailyRate: true, monthlyRate: true } },
     },
     orderBy: [{ employee: { lastName: 'asc' } }],
   })

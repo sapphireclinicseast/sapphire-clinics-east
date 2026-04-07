@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Users, Settings, FileText, Plus, Pencil, Save, Search, X, AlertCircle,
   RefreshCw, Loader2, Upload, Download, Calendar, Clock, CheckCircle2,
   XCircle, ChevronDown, ChevronUp, Trash2, Eye, QrCode, ClipboardList,
-  DollarSign, Shield, Star,
+  DollarSign, Shield, Star, Mail, FileDown,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
@@ -154,6 +154,8 @@ interface TimekeepingRecord {
   isHoliday: boolean
   holidayType?: string | null
   source: string
+  conflictData?: { ins: string[]; outs: string[]; totalEvents: number } | null
+  dtrProof?: string | null
   remarks?: string | null
   employee: { id: string; firstName: string; lastName: string; department: string; branch: string; scheduleIn: string; scheduleOut: string }
 }
@@ -216,8 +218,18 @@ interface Payslip {
   overtimeHours: number | string
   lateMinutes: number
   undertimeMinutes: number
+  pdfUrl?: string | null
   status: string
-  employee: { id: string; firstName: string; lastName: string; department: string; branch: string; rateType: string; dailyRate: number | string; monthlyRate: number | string }
+  employee: { id: string; firstName: string; lastName: string; department: string; branch: string; rateType: string; dailyRate: number | string; monthlyRate: number | string; email?: string | null }
+}
+
+interface TkUploadRecord {
+  id: string
+  fileName: string
+  uploadDate: string
+  recordCount: number
+  branch: string | null
+  _count: { records: number }
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -268,13 +280,44 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
     dateFrom?: string; dateTo?: string; detectedCutoff?: string; branch?: string | null
     totalBranchEmployees?: number; employeesIncluded?: number
     missingEmployees?: { id: string; name: string; rateType: string; hasBioId: boolean }[]
+    conflicts?: { employeeId: string; employeeName?: string; date: string; insCount: number; outsCount: number }[]
+    missingTimes?: { employeeId: string; employeeName?: string; date: string; missing: 'timeIn' | 'timeOut'; approvedRequests: { requestType: string; leaveType: string | null }[] }[]
   } | null>(null)
+
+  /* ── Past Uploads ── */
+  const [pastUploads, setPastUploads] = useState<TkUploadRecord[]>([])
 
   /* ── Timekeeping Inline Edit ── */
   const [tkEditId, setTkEditId] = useState('')
   const [tkEditForm, setTkEditForm] = useState({ timeIn: '', timeOut: '', lateMinutes: '', undertimeMinutes: '', overtimeMinutes: '', remarks: '' })
   const [tkEditSaving, setTkEditSaving] = useState(false)
   const [tkDeleting, setTkDeleting] = useState('')
+
+  /* ── Conflict Resolution ── */
+  const [conflictRecord, setConflictRecord] = useState<TimekeepingRecord | null>(null)
+  const [conflictSelectedIn, setConflictSelectedIn] = useState('')
+  const [conflictSelectedOut, setConflictSelectedOut] = useState('')
+  const [conflictSaving, setConflictSaving] = useState(false)
+
+  /* ── Missing Time / DTR Upload ── */
+  const [dtrRecord, setDtrRecord] = useState<TimekeepingRecord | null>(null)
+  const [dtrTimeIn, setDtrTimeIn] = useState('')
+  const [dtrTimeOut, setDtrTimeOut] = useState('')
+  const [dtrProofData, setDtrProofData] = useState('')
+  const [dtrSaving, setDtrSaving] = useState(false)
+  const dtrFileRef = useRef<HTMLInputElement>(null)
+  const [tkApprovedRequests, setTkApprovedRequests] = useState<EmployeeRequest[]>([])
+
+  /* ── Fetch approved requests for missing time check ── */
+  const fetchApprovedRequests = useCallback(async () => {
+    try {
+      const params = new URLSearchParams({ status: 'APPROVED' })
+      if (branch) params.set('branch', branch)
+      const r = await fetch(`/api/payroll/employee-requests?${params}`)
+      const d = await r.json()
+      setTkApprovedRequests(Array.isArray(d) ? d : [])
+    } catch { /* ignore */ }
+  }, [branch])
 
   /* ── Holidays ── */
   const [holidays, setHolidays] = useState<Holiday[]>([])
@@ -297,6 +340,8 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
   const [cutoffHalf, setCutoffHalf] = useState(now.getDate() <= 15 ? 1 : 2)
   const [generating, setGenerating] = useState(false)
   const [expandedPayslip, setExpandedPayslip] = useState('')
+  const [pdfGenerating, setPdfGenerating] = useState('')
+  const [emailSending, setEmailSending] = useState('')
 
   /* ── Holiday Presets ── */
   const [showHolidayPresets, setShowHolidayPresets] = useState(false)
@@ -317,6 +362,11 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
   const [bulkBenefitType, setBulkBenefitType] = useState('SSS')
   const [bulkBenefitEmpShare, setBulkBenefitEmpShare] = useState(0)
   const [bulkBenefitErShare, setBulkBenefitErShare] = useState(0)
+
+  /* ── Past Payslips in Employee List ── */
+  const [expandedEmpPayslips, setExpandedEmpPayslips] = useState('')
+  const [empPastPayslips, setEmpPastPayslips] = useState<Payslip[]>([])
+  const [loadingPastPayslips, setLoadingPastPayslips] = useState(false)
 
   const cutoffPeriod = `${cutoffYear}-${String(cutoffMonth).padStart(2, '0')}-${cutoffHalf}`
 
@@ -386,15 +436,39 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
     } catch { /* ignore */ }
   }, [cutoffPeriod, branch])
 
+  const fetchEmpPastPayslips = async (employeeId: string) => {
+    if (expandedEmpPayslips === employeeId) { setExpandedEmpPayslips(''); return }
+    setExpandedEmpPayslips(employeeId)
+    setLoadingPastPayslips(true)
+    try {
+      const params = new URLSearchParams({ employeeId, status: 'FINAL' })
+      const r = await fetch(`/api/payroll/employee-payslips?${params}`)
+      const d = await r.json()
+      setEmpPastPayslips(Array.isArray(d) ? d : [])
+    } catch { setEmpPastPayslips([]) }
+    finally { setLoadingPastPayslips(false) }
+  }
+
+  const fetchPastUploads = useCallback(async () => {
+    try {
+      const params = new URLSearchParams()
+      if (branch) params.set('branch', branch)
+      const r = await fetch(`/api/payroll/timekeeping/uploads?${params}`)
+      const d = await r.json()
+      setPastUploads(Array.isArray(d) ? d : [])
+    } catch { /* ignore */ }
+  }, [branch])
+
   useEffect(() => {
     if (subTab === 'list') fetchEmployees()
     else if (subTab === 'settings') fetchSettings()
     else if (subTab === 'requests') fetchRequests()
-    else if (subTab === 'tk-data') fetchTimekeeping()
+    else if (subTab === 'tk-data') { fetchTimekeeping(); fetchApprovedRequests() }
+    else if (subTab === 'tk-upload') fetchPastUploads()
     else if (subTab === 'holidays') fetchHolidays()
     else if (subTab === 'benefits') fetchEmployees()
     else if (subTab === 'payslips') fetchPayslips()
-  }, [subTab, fetchEmployees, fetchSettings, fetchRequests, fetchTimekeeping, fetchHolidays, fetchPayslips])
+  }, [subTab, fetchEmployees, fetchSettings, fetchRequests, fetchTimekeeping, fetchApprovedRequests, fetchPastUploads, fetchHolidays, fetchPayslips])
 
   /* ═══════════════════════════════════════════════════════════════
      ACTIONS
@@ -509,6 +583,340 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
     setGenerating(false)
   }
 
+  const buildEmployeePayslipPdf = async (p: Payslip) => {
+    const { jsPDF } = await import('jspdf')
+    const { default: autoTable } = await import('jspdf-autotable')
+    const ORANGE: [number, number, number] = [237, 104, 35]
+    const NET_GREEN: [number, number, number] = [226, 239, 217]
+    const WHITE: [number, number, number] = [255, 255, 255]
+    const DARK: [number, number, number] = [30, 30, 30]
+    const MID: [number, number, number] = [80, 80, 80]
+    const LIGHT_BORDER: [number, number, number] = [210, 210, 210]
+
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+    const pageW = doc.internal.pageSize.getWidth()
+    const margin = 25.4
+    let y = margin
+
+    const branchLabel = BRANCHES.find(b => b.value === p.branch)?.label || p.branch
+    const cutoffLabel = `${MONTHS[parseInt(p.cutoffPeriod.split('-')[1]) - 1]} ${p.cutoffPeriod.split('-')[0]} — ${p.cutoffPeriod.endsWith('-1') ? '1st Half' : '2nd Half'}`
+    const fmtPHP = (n: number) => `PHP ${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+    // Header
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(16)
+    doc.setTextColor(...ORANGE)
+    doc.text('SAPPHIRE CLINICS EAST INC.', pageW / 2, y + 8, { align: 'center' })
+    y += 14
+    doc.setFontSize(9)
+    doc.setTextColor(...DARK)
+    doc.text(branchLabel, margin, y)
+    y += 8
+
+    doc.setFontSize(16)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(...DARK)
+    doc.text('EMPLOYEE PAYSLIP', pageW / 2, y, { align: 'center' })
+    y += 10
+
+    // Employee details
+    const details: [string, string][] = [
+      ['Name', `${p.employee.firstName} ${p.employee.lastName}`],
+      ['Department', p.employee.department],
+      ['Branch', branchLabel],
+      ['Rate Type', p.employee.rateType === 'DAILY' ? 'Daily' : 'Monthly'],
+      ['Rate', fmtPHP(toNum(p.employee.rateType === 'DAILY' ? p.employee.dailyRate : p.employee.monthlyRate))],
+      ['Cutoff Period', cutoffLabel],
+    ]
+    for (const [label, value] of details) {
+      doc.setFontSize(9)
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(...MID)
+      doc.text(`${label}:`, margin, y)
+      doc.setFont('helvetica', 'normal')
+      doc.setTextColor(...DARK)
+      doc.text(value, margin + 42, y)
+      y += 6
+    }
+    y += 4
+
+    const tableHeadStyles = { fillColor: ORANGE, textColor: WHITE, fontStyle: 'bold' as const, fontSize: 9, lineColor: ORANGE, lineWidth: 0 }
+    const tableBodyStyles = { fontSize: 9, textColor: DARK, lineColor: LIGHT_BORDER, lineWidth: 0.3 }
+
+    // Earnings
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(...DARK)
+    doc.text('EARNINGS', margin, y)
+    y += 2
+    autoTable(doc, {
+      startY: y,
+      head: [['Description', 'Amount']],
+      body: [
+        ['Basic Pay', fmtPHP(toNum(p.basicPay))],
+        ['Overtime Pay', fmtPHP(toNum(p.overtimePay))],
+        ['Holiday Pay', fmtPHP(toNum(p.holidayPay))],
+        ['Night Differential', fmtPHP(toNum(p.nightDiffPay))],
+        ['Rest Day Pay', fmtPHP(toNum(p.restDayPay))],
+      ].filter(r => parseFloat(r[1].replace(/[^0-9.-]/g, '')) > 0),
+      theme: 'grid',
+      headStyles: tableHeadStyles,
+      bodyStyles: tableBodyStyles,
+      columnStyles: { 0: { cellWidth: 'auto' }, 1: { halign: 'right', cellWidth: 50 } },
+      margin: { left: margin, right: margin },
+    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    y = (doc as any).lastAutoTable?.finalY ?? y
+    y += 6
+
+    // Deductions
+    doc.text('DEDUCTIONS', margin, y)
+    y += 2
+    autoTable(doc, {
+      startY: y,
+      head: [['Description', 'Amount']],
+      body: [
+        ['SSS', fmtPHP(toNum(p.sssDeduction))],
+        ['PhilHealth', fmtPHP(toNum(p.philhealthDeduction))],
+        ['Pag-IBIG', fmtPHP(toNum(p.pagibigDeduction))],
+        ['Tax', fmtPHP(toNum(p.taxDeduction))],
+        ['Late Deduction', fmtPHP(toNum(p.lateDeduction))],
+        ['Undertime Deduction', fmtPHP(toNum(p.undertimeDeduction))],
+      ].filter(r => parseFloat(r[1].replace(/[^0-9.-]/g, '')) > 0),
+      theme: 'grid',
+      headStyles: { ...tableHeadStyles, fillColor: [180, 40, 40] as [number, number, number] },
+      bodyStyles: tableBodyStyles,
+      columnStyles: { 0: { cellWidth: 'auto' }, 1: { halign: 'right', cellWidth: 50 } },
+      margin: { left: margin, right: margin },
+    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    y = (doc as any).lastAutoTable?.finalY ?? y
+    y += 6
+
+    // Summary
+    doc.text('SUMMARY', margin, y)
+    y += 2
+    autoTable(doc, {
+      startY: y,
+      head: [['', 'Amount']],
+      body: [
+        ['Gross Pay', fmtPHP(toNum(p.grossPay))],
+        ['Total Deductions', `(${fmtPHP(toNum(p.totalDeductions))})`],
+        ['NET PAY', fmtPHP(toNum(p.netPay))],
+      ],
+      theme: 'grid',
+      headStyles: tableHeadStyles,
+      bodyStyles: tableBodyStyles,
+      columnStyles: { 0: { cellWidth: 'auto', fontStyle: 'bold' }, 1: { halign: 'right', cellWidth: 50 } },
+      margin: { left: margin, right: margin },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      didParseCell: (data: any) => {
+        if (data.row.index === 2) {
+          data.cell.styles.fillColor = NET_GREEN
+          data.cell.styles.fontStyle = 'bold'
+          data.cell.styles.textColor = [0, 80, 40]
+        }
+        if (data.row.index === 1) {
+          data.cell.styles.textColor = [180, 40, 40]
+        }
+      },
+    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    y = (doc as any).lastAutoTable?.finalY ?? y
+    y += 10
+
+    // Attendance summary
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(...MID)
+    doc.text(`Days Worked: ${toNum(p.daysWorked).toFixed(0)}  |  Hours: ${toNum(p.hoursWorked).toFixed(1)}  |  OT Hours: ${toNum(p.overtimeHours).toFixed(1)}  |  Late: ${p.lateMinutes} min  |  UT: ${p.undertimeMinutes} min`, margin, y)
+    y += 10
+
+    doc.setFontSize(7)
+    doc.setTextColor(150, 150, 150)
+    doc.text('Computer-generated payslip. No signature required.', pageW / 2, y, { align: 'center' })
+    y += 4
+    doc.text(`Generated: ${new Date().toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}`, pageW / 2, y, { align: 'center' })
+
+    return doc
+  }
+
+  const generateCoePdf = async (req: EmployeeRequest) => {
+    const emp = employees.find(e => e.id === req.employeeId)
+    if (!emp) {
+      setError('Employee data not found. Please go to the Employee List tab first to load employee data, then return here.')
+      return
+    }
+
+    const { jsPDF } = await import('jspdf')
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+    const pageW = doc.internal.pageSize.getWidth()
+    const margin = 30
+    const contentW = pageW - margin * 2
+    let y = margin
+
+    // Company Letterhead
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(22)
+    doc.setTextColor(13, 148, 136) // teal
+    doc.text('SAPPHIRE CLINICS', pageW / 2, y, { align: 'center' })
+    y += 8
+
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(120, 120, 120)
+    doc.text('Healthcare & Wellness', pageW / 2, y, { align: 'center' })
+    y += 12
+
+    // Divider line
+    doc.setDrawColor(13, 148, 136)
+    doc.setLineWidth(0.5)
+    doc.line(margin, y, pageW - margin, y)
+    y += 20
+
+    // Title
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(16)
+    doc.setTextColor(30, 30, 30)
+    doc.text('CERTIFICATE OF EMPLOYMENT', pageW / 2, y, { align: 'center' })
+    y += 20
+
+    // Date issued
+    const issuedDate = new Date().toLocaleDateString('en-PH', {
+      year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Manila',
+    })
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(11)
+    doc.setTextColor(60, 60, 60)
+    doc.text(issuedDate, pageW / 2, y, { align: 'center' })
+    y += 15
+
+    // "To Whom It May Concern"
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11)
+    doc.setTextColor(30, 30, 30)
+    doc.text('TO WHOM IT MAY CONCERN:', margin, y)
+    y += 12
+
+    // Body text
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(11)
+    doc.setTextColor(50, 50, 50)
+
+    const empName = `${emp.firstName} ${emp.lastName}`.toUpperCase()
+    const dateHired = emp.dateHired
+      ? new Date(emp.dateHired).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Manila' })
+      : 'N/A'
+    const jobTitle = formatJobTitle(emp.jobTitle) || 'N/A'
+    const branchLabel = BRANCHES.find(b => b.value === emp.branch)?.label || emp.branch
+
+    let bodyText = `This is to certify that ${empName} has been employed with Sapphire Clinics since ${dateHired} as ${jobTitle} under the ${branchLabel} branch.`
+
+    // Compensation
+    let compensation = ''
+    if (emp.rateType === 'DAILY' && toNum(emp.dailyRate) > 0) {
+      const grossMonthly = toNum(emp.dailyRate) * 22
+      compensation = `PHP ${grossMonthly.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    } else if (emp.rateType === 'MONTHLY' && toNum(emp.monthlyRate) > 0) {
+      compensation = `PHP ${toNum(emp.monthlyRate).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    }
+
+    if (compensation) {
+      bodyText += `\n\nThe above-named employee receives a gross monthly compensation of ${compensation}.`
+    }
+
+    // Purpose
+    const purpose = req.reason || 'the purpose stated'
+    bodyText += `\n\nThis certificate is issued upon the request of the above-named employee for ${purpose}.`
+
+    // Render body text with word wrap
+    const lines = doc.splitTextToSize(bodyText, contentW)
+    doc.text(lines, margin, y)
+    y += lines.length * 6 + 30
+
+    // Signature block
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11)
+    doc.setTextColor(30, 30, 30)
+    doc.text('MANAGEMENT', margin, y)
+    y += 5
+    doc.setDrawColor(80, 80, 80)
+    doc.setLineWidth(0.3)
+    doc.line(margin, y, margin + 60, y)
+    y += 5
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(100, 100, 100)
+    doc.text('Authorized Signatory', margin, y)
+    y += 20
+
+    // Footer note
+    doc.setFontSize(7)
+    doc.setTextColor(150, 150, 150)
+    doc.text('This is a computer-generated document.', pageW / 2, y, { align: 'center' })
+    y += 4
+    doc.text(`Generated: ${issuedDate}`, pageW / 2, y, { align: 'center' })
+
+    doc.save(`COE-${emp.lastName}-${emp.firstName}-${issuedDate.replace(/\s/g, '-')}.pdf`)
+  }
+
+  const downloadPayslipPdf = async (p: Payslip) => {
+    setPdfGenerating(p.id)
+    try {
+      const doc = await buildEmployeePayslipPdf(p)
+      doc.save(`payslip-${p.employee.lastName}-${p.employee.firstName}-${p.cutoffPeriod}.pdf`)
+
+      // Also store on server
+      const pdfBase64 = doc.output('datauristring')
+      await fetch('/api/payroll/payslip-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: p.id, type: 'employee', pdfBase64 }),
+      })
+      fetchPayslips()
+    } catch { setError('Failed to generate PDF') }
+    setPdfGenerating('')
+  }
+
+  const emailPayslip = async (p: Payslip) => {
+    const email = p.employee.email
+    if (!email) { setError(`No email address for ${p.employee.firstName} ${p.employee.lastName}`); return }
+    setEmailSending(p.id)
+    try {
+      const doc = await buildEmployeePayslipPdf(p)
+      const pdfBase64 = doc.output('datauristring')
+
+      // Store PDF on server
+      await fetch('/api/payroll/payslip-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: p.id, type: 'employee', pdfBase64 }),
+      })
+
+      // Send email
+      const branchLabel = BRANCHES.find(b => b.value === p.branch)?.label || p.branch
+      const r = await fetch('/api/payroll/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          consultantName: `${p.employee.lastName}, ${p.employee.firstName}`,
+          firstName: p.employee.firstName,
+          branch: branchLabel,
+          cutoffPeriod: p.cutoffPeriod,
+          netPay: formatCurrency(toNum(p.netPay)),
+          email,
+          pdfBase64,
+        }),
+      })
+      if (!r.ok) {
+        const d = await r.json()
+        throw new Error(d.error || 'Email failed')
+      }
+      fetchPayslips()
+    } catch (err) { setError(err instanceof Error ? err.message : 'Failed to send email') }
+    setEmailSending('')
+  }
+
   const finalizePayslips = async () => {
     const draftIds = payslips.filter(p => p.status === 'DRAFT').map(p => p.id)
     if (draftIds.length === 0) return
@@ -570,6 +978,114 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
       fetchTimekeeping()
     } catch { /* ignore */ }
     setTkDeleting('')
+  }
+
+  /* ── Conflict Resolution ── */
+  const openConflictModal = (r: TimekeepingRecord) => {
+    setConflictRecord(r)
+    setConflictSelectedIn(r.timeIn || '')
+    setConflictSelectedOut(r.timeOut || '')
+  }
+
+  const saveConflictResolution = async () => {
+    if (!conflictRecord) return
+    setConflictSaving(true)
+    try {
+      const r = await fetch('/api/payroll/timekeeping/records', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: conflictRecord.id,
+          timeIn: conflictSelectedIn ? new Date(conflictSelectedIn).toISOString() : null,
+          timeOut: conflictSelectedOut ? new Date(conflictSelectedOut).toISOString() : null,
+          resolveConflict: true,
+        }),
+      })
+      if (r.ok) {
+        setConflictRecord(null)
+        fetchTimekeeping()
+      }
+    } catch { /* ignore */ }
+    setConflictSaving(false)
+  }
+
+  /* ── DTR Upload for Missing Time ── */
+  const openDtrModal = (r: TimekeepingRecord) => {
+    setDtrRecord(r)
+    const toLocal = (iso: string | null | undefined) => {
+      if (!iso) return ''
+      const d = new Date(iso)
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+    }
+    setDtrTimeIn(toLocal(r.timeIn))
+    setDtrTimeOut(toLocal(r.timeOut))
+    setDtrProofData(r.dtrProof || '')
+  }
+
+  const handleDtrFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      setDtrProofData(reader.result as string)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const saveDtrEntry = async () => {
+    if (!dtrRecord) return
+    if (!dtrProofData && !dtrRecord.dtrProof) {
+      setError('Please upload a DTR photo as proof before saving')
+      return
+    }
+    setDtrSaving(true)
+    try {
+      const r = await fetch('/api/payroll/timekeeping/records', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: dtrRecord.id,
+          timeIn: dtrTimeIn ? new Date(dtrTimeIn).toISOString() : null,
+          timeOut: dtrTimeOut ? new Date(dtrTimeOut).toISOString() : null,
+          dtrProof: dtrProofData || undefined,
+          remarks: `Manual entry with DTR proof${dtrRecord.remarks ? ' | ' + dtrRecord.remarks : ''}`,
+        }),
+      })
+      if (r.ok) {
+        setDtrRecord(null)
+        setDtrProofData('')
+        fetchTimekeeping()
+      }
+    } catch { /* ignore */ }
+    setDtrSaving(false)
+  }
+
+  const autoFillFromRequest = (req: EmployeeRequest) => {
+    if (!dtrRecord) return
+    // For leave: set both times to schedule
+    const emp = dtrRecord.employee
+    const dateStr = dtrRecord.date.split('T')[0]
+    if (req.requestType === 'LEAVE') {
+      setDtrTimeIn(`${dateStr}T${emp.scheduleIn}`)
+      setDtrTimeOut(`${dateStr}T${emp.scheduleOut}`)
+    } else if (req.requestType === 'UNDERTIME') {
+      // Keep existing timeIn, set timeOut to current value or schedule
+      if (!dtrTimeIn) setDtrTimeIn(`${dateStr}T${emp.scheduleIn}`)
+    } else if (req.requestType === 'OVERTIME') {
+      if (!dtrTimeIn) setDtrTimeIn(`${dateStr}T${emp.scheduleIn}`)
+    }
+  }
+
+  // Helper to find approved requests for a given employee+date
+  const getApprovedRequestsForRecord = (r: TimekeepingRecord) => {
+    const recordDate = r.date.split('T')[0]
+    return tkApprovedRequests.filter(req => {
+      if (req.employeeId !== r.employeeId) return false
+      if (!req.startDate || !req.endDate) return false
+      const start = req.startDate.split('T')[0]
+      const end = req.endDate.split('T')[0]
+      return recordDate >= start && recordDate <= end
+    })
   }
 
   const [settingsSaved, setSettingsSaved] = useState(false)
@@ -826,14 +1342,16 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                     <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Rate</th>
                     <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Bio ID</th>
                     <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Schedule</th>
+                    <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Payslips</th>
                     {canWrite && <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}></th>}
                   </tr>
                 </thead>
                 <tbody>
                   {filteredEmployees.length === 0 ? (
-                    <tr><td colSpan={canWrite ? 11 : 9} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No employees found. Sync from CRM or add manually.</td></tr>
+                    <tr><td colSpan={canWrite ? 12 : 10} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No employees found. Sync from CRM or add manually.</td></tr>
                   ) : filteredEmployees.map(emp => (
-                    <tr key={emp.id} className="border-t hover:bg-gray-50" style={{ borderColor: 'var(--light-gray)' }}>
+                    <React.Fragment key={emp.id}>
+                    <tr className="border-t hover:bg-gray-50" style={{ borderColor: 'var(--light-gray)' }}>
                       {canWrite && (
                         <td className="text-center px-2 py-2.5">
                           <input type="checkbox" checked={selectedEmployeeIds.has(emp.id)}
@@ -850,6 +1368,12 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                       </td>
                       <td className="px-3 py-2.5 text-center" style={{ color: 'var(--mid-gray)' }}>{emp.employeeBioId || '—'}</td>
                       <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{emp.scheduleIn} – {emp.scheduleOut}</td>
+                      <td className="px-3 py-2.5 text-center">
+                        <button onClick={() => fetchEmpPastPayslips(emp.id)}
+                          className="p-2 rounded-lg hover:bg-blue-50 transition-colors active:scale-95" title="View past payslips">
+                          <FileText size={14} style={{ color: expandedEmpPayslips === emp.id ? 'var(--deep-teal)' : 'var(--mid-gray)' }} />
+                        </button>
+                      </td>
                       {canWrite && (
                         <td className="px-3 py-2.5 text-center">
                           <button onClick={() => openEditForm(emp)} className="p-2 rounded-lg hover:bg-blue-50 transition-colors active:scale-95" title="Edit employee">
@@ -858,6 +1382,50 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                         </td>
                       )}
                     </tr>
+                    {expandedEmpPayslips === emp.id && (
+                      <tr className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                        <td colSpan={canWrite ? 12 : 10} className="px-4 py-3" style={{ background: '#f8fafc' }}>
+                          {loadingPastPayslips ? (
+                            <div className="flex items-center gap-2 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                              <Loader2 size={12} className="animate-spin" /> Loading payslips...
+                            </div>
+                          ) : empPastPayslips.length === 0 ? (
+                            <p className="text-xs py-2" style={{ color: 'var(--mid-gray)' }}>No finalized payslips found for this employee.</p>
+                          ) : (
+                            <div className="space-y-1">
+                              <p className="text-xs font-semibold mb-2" style={{ color: 'var(--charcoal)' }}>Past Payslips ({empPastPayslips.length})</p>
+                              <div className="grid gap-1">
+                                {empPastPayslips.map(ps => (
+                                  <div key={ps.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-white border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+                                    <div className="flex items-center gap-4">
+                                      <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{ps.cutoffPeriod}</span>
+                                      <span style={{ color: 'var(--mid-gray)' }}>{ps.branch}</span>
+                                      <span className="font-mono" style={{ color: 'var(--charcoal)' }}>Net: {formatCurrency(toNum(ps.netPay))}</span>
+                                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                                        style={ps.status === 'FINAL' ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>
+                                        {ps.status}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      {ps.pdfUrl && (
+                                        <a href={ps.pdfUrl} target="_blank" rel="noopener noreferrer"
+                                          className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors" title="View PDF">
+                                          <Eye size={12} style={{ color: 'var(--teal)' }} /> <span style={{ color: 'var(--teal)' }}>View</span>
+                                        </a>
+                                      )}
+                                      <a href={ps.pdfUrl || '#'} download className={`flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors ${!ps.pdfUrl ? 'opacity-30 pointer-events-none' : ''}`} title="Download PDF">
+                                        <Download size={12} style={{ color: 'var(--charcoal)' }} /> <span style={{ color: 'var(--charcoal)' }}>Download</span>
+                                      </a>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>
@@ -1277,11 +1845,12 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                   <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Reason</th>
                   <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Filed</th>
                   {reqStatusFilter === 'PENDING' && canWrite && <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>}
+                  {reqStatusFilter === 'APPROVED' && <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>}
                 </tr>
               </thead>
               <tbody>
                 {requests.length === 0 ? (
-                  <tr><td colSpan={6} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No {reqStatusFilter.toLowerCase()} requests</td></tr>
+                  <tr><td colSpan={(reqStatusFilter === 'PENDING' && canWrite) || reqStatusFilter === 'APPROVED' ? 6 : 5} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No {reqStatusFilter.toLowerCase()} requests</td></tr>
                 ) : requests.map(r => (
                   <tr key={r.id} className="border-t transition-colors hover:bg-gray-50/50" style={{ borderColor: 'var(--light-gray)' }}>
                     <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{r.employee.firstName} {r.employee.lastName}</td>
@@ -1302,6 +1871,18 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                             <XCircle size={15} className="text-red-500" />
                           </button>
                         </div>
+                      </td>
+                    )}
+                    {reqStatusFilter === 'APPROVED' && (
+                      <td className="px-3 py-2.5 text-center">
+                        {r.requestType === 'CERTIFICATE_OF_EMPLOYMENT' && (
+                          <button onClick={() => generateCoePdf(r)}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-medium text-white mx-auto"
+                            style={{ background: 'var(--teal)' }}
+                            title="Generate Certificate of Employment PDF">
+                            <FileDown size={12} /> Generate COE
+                          </button>
+                        )}
                       </td>
                     )}
                   </tr>
@@ -1447,6 +2028,51 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                   </div>
                 )}
 
+                {/* Conflicts */}
+                {(uploadResult.conflicts || []).length > 0 && (
+                  <div className="rounded-lg p-3" style={{ background: '#fef3c7' }}>
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <AlertCircle size={14} className="text-amber-600" />
+                      <span className="text-[11px] font-semibold text-amber-800">{uploadResult.conflicts!.length} conflict(s) detected — multiple clock entries on same date</span>
+                    </div>
+                    <div className="space-y-1">
+                      {uploadResult.conflicts!.map((c, i) => (
+                        <div key={i} className="flex items-center justify-between text-[11px] text-amber-700">
+                          <span>{c.employeeName} — {c.date}</span>
+                          <span className="font-mono">{c.insCount} IN, {c.outsCount} OUT</span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[10px] mt-2 text-amber-600">Default: first IN / last OUT used. Review in Timekeeping Data to resolve.</p>
+                  </div>
+                )}
+
+                {/* Missing Times */}
+                {(uploadResult.missingTimes || []).length > 0 && (
+                  <div className="rounded-lg p-3" style={{ background: '#fef2f2' }}>
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <AlertCircle size={14} className="text-red-600" />
+                      <span className="text-[11px] font-semibold text-red-800">{uploadResult.missingTimes!.length} record(s) with missing time in/out</span>
+                    </div>
+                    <div className="space-y-1">
+                      {uploadResult.missingTimes!.map((m, i) => (
+                        <div key={i} className="flex items-center justify-between text-[11px] text-red-700">
+                          <span>{m.employeeName} — {m.date}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">Missing {m.missing === 'timeIn' ? 'Time In' : 'Time Out'}</span>
+                            {m.approvedRequests.length > 0 && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700">
+                                Has approved {m.approvedRequests.map(r => r.requestType).join(', ')}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[10px] mt-2 text-red-600">Set missing times manually in Timekeeping Data (DTR proof required).</p>
+                  </div>
+                )}
+
                 {/* Proceed button */}
                 <div className="flex items-center gap-2 pt-1">
                   <button onClick={() => { setSubTab('tk-data'); if (uploadResult.dateFrom) setTkStartDate(uploadResult.dateFrom); if (uploadResult.dateTo) setTkEndDate(uploadResult.dateTo) }}
@@ -1461,6 +2087,55 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
               </div>
             </div>
           )}
+
+          {/* Past Uploads */}
+          <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+            <div className="px-4 py-3" style={{ background: 'var(--off-white)' }}>
+              <h4 className="text-xs font-bold" style={{ color: 'var(--charcoal)' }}>Past Uploads</h4>
+            </div>
+            {pastUploads.length === 0 ? (
+              <p className="px-4 py-6 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>No past uploads found</p>
+            ) : (
+              <table className="w-full text-xs">
+                <thead>
+                  <tr style={{ background: 'var(--off-white)' }}>
+                    <th className="text-left px-4 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>File</th>
+                    <th className="text-left px-4 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Date</th>
+                    <th className="text-left px-4 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Branch</th>
+                    <th className="text-right px-4 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Records</th>
+                    <th className="text-center px-4 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pastUploads.map(u => (
+                    <tr key={u.id} className="border-t transition-colors hover:bg-gray-50/50" style={{ borderColor: 'var(--light-gray)' }}>
+                      <td className="px-4 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{u.fileName}</td>
+                      <td className="px-4 py-2.5" style={{ color: 'var(--mid-gray)' }}>{new Date(u.uploadDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                      <td className="px-4 py-2.5" style={{ color: 'var(--mid-gray)' }}>{BRANCHES.find(b => b.value === u.branch)?.label || u.branch || '—'}</td>
+                      <td className="px-4 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{u._count.records}</td>
+                      <td className="px-4 py-2.5 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button onClick={() => { setSubTab('tk-data'); if (u.branch) setBranch(u.branch) }}
+                            className="p-1.5 rounded-lg hover:bg-blue-50 transition-colors" title="View records" style={{ color: 'var(--teal)' }}>
+                            <Eye size={14} />
+                          </button>
+                          {canWrite && (
+                            <button onClick={async () => {
+                              if (!confirm(`Delete upload "${u.fileName}" and all its ${u._count.records} records?`)) return
+                              await fetch(`/api/payroll/timekeeping/records?uploadId=${u.id}`, { method: 'DELETE' })
+                              fetchPastUploads()
+                            }} className="p-1.5 rounded-lg hover:bg-red-50 transition-colors text-red-500" title="Delete upload">
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
 
           <div className="rounded-xl border p-4" style={{ borderColor: 'var(--light-gray)' }}>
             <h4 className="text-xs font-bold mb-2" style={{ color: 'var(--charcoal)' }}>File Format Reference</h4>
@@ -1543,27 +2218,53 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                       </div>
                     </td>
                   </tr>
-                ) : (
-                  <tr key={r.id} className="border-t transition-colors hover:bg-gray-50/50" style={{ borderColor: 'var(--light-gray)' }}>
+                ) : (() => {
+                  const isConflict = r.source === 'BIOMETRIC_CONFLICT'
+                  const hasMissingTime = (!r.timeIn || !r.timeOut) && (r.timeIn || r.timeOut)
+                  const rowBg = isConflict ? '#fef9c3' : hasMissingTime ? '#fff1f2' : undefined
+                  const approvedReqs = hasMissingTime ? getApprovedRequestsForRecord(r) : []
+                  return (
+                  <tr key={r.id} className="border-t transition-colors hover:bg-gray-50/50" style={{ borderColor: 'var(--light-gray)', background: rowBg }}>
                     <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{r.employee.firstName} {r.employee.lastName}</td>
                     <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{fmtDate(r.date)}</td>
-                    <td className="px-3 py-2 font-mono" style={{ color: r.timeIn ? 'var(--charcoal)' : 'var(--mid-gray)' }}>{fmtTime(r.timeIn)}</td>
-                    <td className="px-3 py-2 font-mono" style={{ color: r.timeOut ? 'var(--charcoal)' : 'var(--mid-gray)' }}>{fmtTime(r.timeOut)}</td>
+                    <td className="px-3 py-2 font-mono" style={{ color: r.timeIn ? 'var(--charcoal)' : '#dc2626' }}>
+                      {r.timeIn ? fmtTime(r.timeIn) : <span className="italic">Missing</span>}
+                    </td>
+                    <td className="px-3 py-2 font-mono" style={{ color: r.timeOut ? 'var(--charcoal)' : '#dc2626' }}>
+                      {r.timeOut ? fmtTime(r.timeOut) : <span className="italic">Missing</span>}
+                    </td>
                     <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{toNum(r.hoursWorked).toFixed(1)}</td>
                     <td className="px-3 py-2 text-right font-mono" style={{ color: r.lateMinutes > 0 ? '#dc2626' : 'var(--mid-gray)' }}>{r.lateMinutes || '—'}</td>
                     <td className="px-3 py-2 text-right font-mono" style={{ color: r.undertimeMinutes > 0 ? '#dc2626' : 'var(--mid-gray)' }}>{r.undertimeMinutes || '—'}</td>
                     <td className="px-3 py-2 text-right font-mono" style={{ color: r.overtimeMinutes > 0 ? '#059669' : 'var(--mid-gray)' }}>{r.overtimeMinutes || '—'}</td>
                     <td className="px-3 py-2 text-center">
-                      <div className="flex items-center justify-center gap-1">
+                      <div className="flex items-center justify-center gap-1 flex-wrap">
                         {r.isRestDay && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700">Rest</span>}
                         {r.isHoliday && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange-100 text-orange-700">{r.holidayType === 'REGULAR' ? 'Reg Hol' : 'Spec Hol'}</span>}
+                        {isConflict && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-200 text-amber-800">Multi-entry</span>}
+                        {hasMissingTime && approvedReqs.length > 0 && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700">
+                            Req: {approvedReqs.map(rq => rq.requestType).join(', ')}
+                          </span>
+                        )}
+                        {r.dtrProof && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700">DTR</span>}
                       </div>
                     </td>
-                    <td className="px-3 py-2 text-[10px]" style={{ color: 'var(--mid-gray)' }}>{r.source}</td>
+                    <td className="px-3 py-2 text-[10px]" style={{ color: isConflict ? '#92400e' : 'var(--mid-gray)' }}>{r.source === 'BIOMETRIC_CONFLICT' ? 'CONFLICT' : r.source}</td>
                     <td className="px-3 py-2 text-[10px]" style={{ color: 'var(--mid-gray)' }}>{r.remarks || '—'}</td>
                     {canWrite && (
                       <td className="px-3 py-2 text-center">
                         <div className="flex items-center justify-center gap-1">
+                          {isConflict && (
+                            <button onClick={() => openConflictModal(r)} className="p-1 rounded hover:bg-amber-100 text-amber-600" title="Resolve conflict">
+                              <AlertCircle size={13} />
+                            </button>
+                          )}
+                          {hasMissingTime && (
+                            <button onClick={() => openDtrModal(r)} className="p-1 rounded hover:bg-red-100 text-red-500" title="Set missing time">
+                              <Clock size={13} />
+                            </button>
+                          )}
                           <button onClick={() => startTkEdit(r)} className="p-1 rounded hover:bg-blue-50" style={{ color: 'var(--teal)' }} title="Edit"><Pencil size={13} /></button>
                           <button onClick={() => deleteTkRecord(r.id)} disabled={tkDeleting === r.id} className="p-1 rounded hover:bg-red-50 text-red-500" title="Delete">
                             {tkDeleting === r.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
@@ -1572,10 +2273,180 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                       </td>
                     )}
                   </tr>
-                ))}
+                  )
+                })())}
               </tbody>
             </table>
           </div>
+
+          {/* Conflict Resolution Modal */}
+          {conflictRecord && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+              <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Resolve Time Conflict</h3>
+                  <button onClick={() => setConflictRecord(null)}><X size={16} /></button>
+                </div>
+                <div className="mb-3">
+                  <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                    <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{conflictRecord.employee.firstName} {conflictRecord.employee.lastName}</span>
+                    {' '}&mdash; {fmtDate(conflictRecord.date)}
+                  </p>
+                  <p className="text-[11px] mt-1" style={{ color: '#92400e' }}>
+                    Multiple clock entries detected ({conflictRecord.conflictData?.totalEvents || 0} events). Select the correct Time In and Time Out.
+                  </p>
+                </div>
+
+                {conflictRecord.conflictData && (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-medium mb-1.5 block" style={{ color: 'var(--charcoal)' }}>
+                        Clock IN entries ({conflictRecord.conflictData.ins.length}):
+                      </label>
+                      <div className="space-y-1">
+                        {conflictRecord.conflictData.ins.map((ts, i) => (
+                          <label key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer hover:bg-gray-50 transition-colors text-xs"
+                            style={{ borderColor: conflictSelectedIn === ts ? 'var(--teal)' : 'var(--light-gray)', background: conflictSelectedIn === ts ? '#f0fdfa' : undefined }}>
+                            <input type="radio" name="conflictIn" value={ts} checked={conflictSelectedIn === ts}
+                              onChange={() => setConflictSelectedIn(ts)} />
+                            <span className="font-mono">{fmtTime(ts)}</span>
+                            <span style={{ color: 'var(--mid-gray)' }}>({new Date(ts).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true })})</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-medium mb-1.5 block" style={{ color: 'var(--charcoal)' }}>
+                        Clock OUT entries ({conflictRecord.conflictData.outs.length}):
+                      </label>
+                      <div className="space-y-1">
+                        {conflictRecord.conflictData.outs.map((ts, i) => (
+                          <label key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer hover:bg-gray-50 transition-colors text-xs"
+                            style={{ borderColor: conflictSelectedOut === ts ? 'var(--teal)' : 'var(--light-gray)', background: conflictSelectedOut === ts ? '#f0fdfa' : undefined }}>
+                            <input type="radio" name="conflictOut" value={ts} checked={conflictSelectedOut === ts}
+                              onChange={() => setConflictSelectedOut(ts)} />
+                            <span className="font-mono">{fmtTime(ts)}</span>
+                            <span style={{ color: 'var(--mid-gray)' }}>({new Date(ts).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true })})</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2 mt-4">
+                  <button onClick={saveConflictResolution} disabled={conflictSaving || !conflictSelectedIn || !conflictSelectedOut}
+                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium text-white transition-all hover:opacity-90 disabled:opacity-50"
+                    style={{ background: 'var(--teal)' }}>
+                    {conflictSaving ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+                    Resolve Conflict
+                  </button>
+                  <button onClick={() => setConflictRecord(null)}
+                    className="px-4 py-2.5 rounded-xl text-xs font-medium border transition-all hover:bg-gray-50"
+                    style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* DTR Upload / Missing Time Modal */}
+          {dtrRecord && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+              <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Set Missing Time</h3>
+                  <button onClick={() => { setDtrRecord(null); setDtrProofData('') }}><X size={16} /></button>
+                </div>
+                <div className="mb-3">
+                  <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                    <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{dtrRecord.employee.firstName} {dtrRecord.employee.lastName}</span>
+                    {' '}&mdash; {fmtDate(dtrRecord.date)}
+                  </p>
+                  <p className="text-[11px] mt-1" style={{ color: '#dc2626' }}>
+                    {!dtrRecord.timeIn && !dtrRecord.timeOut ? 'Both Time In and Time Out are missing.' :
+                     !dtrRecord.timeIn ? 'Time In is missing.' : 'Time Out is missing.'}
+                  </p>
+                </div>
+
+                {/* Approved Requests */}
+                {(() => {
+                  const reqs = getApprovedRequestsForRecord(dtrRecord)
+                  if (reqs.length === 0) return null
+                  return (
+                    <div className="mb-3 rounded-lg p-3" style={{ background: '#f0fdf4' }}>
+                      <p className="text-[11px] font-semibold mb-1.5" style={{ color: '#059669' }}>Approved Requests for this date:</p>
+                      <div className="space-y-1">
+                        {reqs.map((rq, i) => (
+                          <button key={i} onClick={() => autoFillFromRequest(rq)}
+                            className="flex items-center gap-2 w-full px-3 py-2 rounded-lg border text-xs hover:bg-green-50 transition-colors text-left"
+                            style={{ borderColor: '#bbf7d0' }}>
+                            <CheckCircle2 size={12} className="text-green-600 flex-shrink-0" />
+                            <span className="font-medium text-green-800">{rq.requestType}{rq.leaveType ? ` (${rq.leaveType})` : ''}</span>
+                            <span className="text-green-600 ml-auto text-[10px]">Click to auto-fill</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Time In</label>
+                    <input type="datetime-local" value={dtrTimeIn} onChange={e => setDtrTimeIn(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl border text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200"
+                      style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Time Out</label>
+                    <input type="datetime-local" value={dtrTimeOut} onChange={e => setDtrTimeOut(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl border text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200"
+                      style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>
+                      DTR Photo Proof <span className="text-red-500">*</span>
+                    </label>
+                    <p className="text-[10px] mb-2" style={{ color: 'var(--mid-gray)' }}>
+                      Upload a photo of the Daily Time Record (DTR) as proof for manual entry.
+                    </p>
+                    <input ref={dtrFileRef} type="file" accept="image/*" onChange={handleDtrFileChange}
+                      className="hidden" />
+                    <button onClick={() => dtrFileRef.current?.click()}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-medium border w-full justify-center transition-all hover:bg-gray-50"
+                      style={{ borderColor: dtrProofData ? '#059669' : 'var(--light-gray)', color: dtrProofData ? '#059669' : 'var(--mid-gray)' }}>
+                      {dtrProofData ? <CheckCircle2 size={13} /> : <Upload size={13} />}
+                      {dtrProofData ? 'DTR Photo Uploaded' : 'Choose DTR Photo'}
+                    </button>
+                    {dtrProofData && dtrProofData.startsWith('data:image') && (
+                      <div className="mt-2 rounded-lg overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={dtrProofData} alt="DTR Proof" className="w-full max-h-48 object-contain" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 mt-4">
+                  <button onClick={saveDtrEntry} disabled={dtrSaving || (!dtrTimeIn && !dtrTimeOut)}
+                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium text-white transition-all hover:opacity-90 disabled:opacity-50"
+                    style={{ background: 'var(--teal)' }}>
+                    {dtrSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                    Save Entry
+                  </button>
+                  <button onClick={() => { setDtrRecord(null); setDtrProofData('') }}
+                    className="px-4 py-2.5 rounded-xl text-xs font-medium border transition-all hover:bg-gray-50"
+                    style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -2064,6 +2935,30 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                                 <div className="flex justify-between"><span>Rate</span><span className="font-mono">{formatCurrency(toNum(p.employee.rateType === 'DAILY' ? p.employee.dailyRate : p.employee.monthlyRate))}</span></div>
                               </div>
                             </div>
+                          </div>
+                          {/* PDF & Email Actions */}
+                          <div className="flex items-center gap-2 mt-4 pt-3 border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                            <button onClick={() => downloadPayslipPdf(p)} disabled={pdfGenerating === p.id}
+                              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium text-white transition-all hover:opacity-90 active:scale-[0.97]"
+                              style={{ background: 'var(--teal)' }}>
+                              {pdfGenerating === p.id ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />}
+                              Download PDF
+                            </button>
+                            <button onClick={() => emailPayslip(p)} disabled={emailSending === p.id || !p.employee.email}
+                              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium text-white transition-all hover:opacity-90 active:scale-[0.97]"
+                              style={{ background: p.employee.email ? '#7c3aed' : '#9ca3af' }}
+                              title={p.employee.email ? `Email to ${p.employee.email}` : 'No email address'}>
+                              {emailSending === p.id ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />}
+                              Email Employee
+                            </button>
+                            {p.pdfUrl && (
+                              <a href={p.pdfUrl} target="_blank" rel="noopener noreferrer"
+                                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium border transition-all hover:bg-gray-50"
+                                style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                                <Eye size={13} /> View Stored PDF
+                              </a>
+                            )}
+                            {!p.employee.email && <span className="text-[10px]" style={{ color: '#d97706' }}>No email on file</span>}
                           </div>
                         </td>
                       </tr>

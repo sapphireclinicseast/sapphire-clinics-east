@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -110,15 +111,43 @@ export async function POST(req: Request) {
   // Days of week for rest day comparison
   const DAYS = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']
 
+  // Fetch approved employee requests in the date range for missing time check
+  const approvedRequests = await prisma.employeeRequest.findMany({
+    where: {
+      status: 'APPROVED',
+      requestType: { in: ['OVERTIME', 'UNDERTIME', 'LEAVE'] },
+      startDate: { lte: maxDate },
+      endDate: { gte: minDate },
+    },
+    select: { employeeId: true, requestType: true, leaveType: true, startDate: true, endDate: true },
+  })
+
+  // Build a map of employee+date -> approved requests
+  const requestMap = new Map<string, { requestType: string; leaveType: string | null }[]>()
+  for (const req2 of approvedRequests) {
+    if (!req2.startDate || !req2.endDate) continue
+    // Iterate each date in the request range
+    const start = new Date(req2.startDate)
+    const end = new Date(req2.endDate)
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const dateKey = d.toISOString().split('T')[0]
+      const key = `${req2.employeeId}|${dateKey}`
+      if (!requestMap.has(key)) requestMap.set(key, [])
+      requestMap.get(key)!.push({ requestType: req2.requestType, leaveType: req2.leaveType })
+    }
+  }
+
   let created = 0
   let updated = 0
+  const conflicts: { employeeId: string; employeeName?: string; date: string; insCount: number; outsCount: number }[] = []
+  const missingTimes: { employeeId: string; employeeName?: string; date: string; missing: 'timeIn' | 'timeOut'; approvedRequests: { requestType: string; leaveType: string | null }[] }[] = []
 
   for (const [key, g] of grouped) {
     const [employeeId] = key.split('|')
     const emp = employees.find(e => e.employeeBioId === g.bioId)
     if (!emp) continue
 
-    // First in, last out
+    // First in, last out (default calculation)
     const timeIn = g.ins.length > 0 ? new Date(Math.min(...g.ins.map(d => d.getTime()))) : null
     const timeOut = g.outs.length > 0 ? new Date(Math.max(...g.outs.map(d => d.getTime()))) : null
 
@@ -130,6 +159,33 @@ export async function POST(req: Request) {
     const holiday = holidayMap.get(g.date)
     const isHoliday = !!holiday
     const holidayType = holiday?.holidayType || null
+
+    // Detect conflict: more than 2 total clock events (e.g., multiple IN or multiple OUT)
+    const totalEvents = g.ins.length + g.outs.length
+    const hasConflict = totalEvents > 2
+
+    // Build conflict data if needed
+    const conflictData = hasConflict ? {
+      ins: g.ins.map(d => d.toISOString()).sort(),
+      outs: g.outs.map(d => d.toISOString()).sort(),
+      totalEvents,
+    } as Prisma.InputJsonValue : Prisma.JsonNull
+
+    const source = hasConflict ? 'BIOMETRIC_CONFLICT' : 'BIOMETRIC'
+
+    // Check for missing time in/out
+    const reqKey = `${employeeId}|${g.date}`
+    const matchingRequests = requestMap.get(reqKey) || []
+
+    if (timeIn && !timeOut) {
+      missingTimes.push({ employeeId, date: g.date, missing: 'timeOut', approvedRequests: matchingRequests })
+    } else if (!timeIn && timeOut) {
+      missingTimes.push({ employeeId, date: g.date, missing: 'timeIn', approvedRequests: matchingRequests })
+    }
+
+    if (hasConflict) {
+      conflicts.push({ employeeId, date: g.date, insCount: g.ins.length, outsCount: g.outs.length })
+    }
 
     // Compute hours worked, late minutes, undertime
     let hoursWorked = 0
@@ -185,7 +241,8 @@ export async function POST(req: Request) {
           isHoliday,
           holidayType,
           uploadId: upload.id,
-          source: 'BIOMETRIC',
+          source,
+          conflictData,
         },
         create: {
           employeeId,
@@ -200,7 +257,8 @@ export async function POST(req: Request) {
           isHoliday,
           holidayType,
           uploadId: upload.id,
-          source: 'BIOMETRIC',
+          source,
+          conflictData,
         },
       })
       if (g.ins.length > 0 || g.outs.length > 0) created++
@@ -264,6 +322,11 @@ export async function POST(req: Request) {
       hasBioId: e.employeeBioId !== null,
     }))
 
+  // Enrich conflict and missing time entries with employee names
+  const empNameMap = new Map(allBranchEmployees.map(e => [e.id, `${e.firstName} ${e.lastName}`]))
+  for (const c of conflicts) c.employeeName = empNameMap.get(c.employeeId) || c.employeeId
+  for (const m of missingTimes) m.employeeName = empNameMap.get(m.employeeId) || m.employeeId
+
   return NextResponse.json({
     uploadId: upload.id,
     totalRawRecords: raw.length,
@@ -277,5 +340,7 @@ export async function POST(req: Request) {
     totalBranchEmployees: allBranchEmployees.length,
     employeesIncluded: employeesWithRecords.size,
     missingEmployees,
+    conflicts,
+    missingTimes,
   })
 }

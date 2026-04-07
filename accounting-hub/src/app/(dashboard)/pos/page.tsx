@@ -209,6 +209,7 @@ const PAYMENT_METHODS_PRODUCT = [
   { value: 'SHOPEE', label: 'Shopee' },
   { value: 'LAZADA', label: 'Lazada' },
   { value: 'TIKTOK', label: 'TikTok Shop' },
+  { value: 'REWARD_POINTS', label: 'Reward Points' },
 ]
 
 const ORDER_STATUS_BADGE: Record<string, { bg: string; color: string }> = {
@@ -1177,20 +1178,25 @@ function OrderFormModal({
       if (!res.ok) { setError(data.error || 'Failed to create order'); setSubmitting(false); return }
 
       // Deduct wallet balance for wallet payments (VIP/Prepaid usage)
-      // 1. If activeWallet is set (VIP/Prepaid card applied), deduct the net amount from it
+      // 1. If activeWallet is set (VIP/Prepaid card applied), deduct the actual payment amount for that wallet
       if (activeWallet?.id) {
-        try {
-          await fetch(`/api/pos/wallets/${activeWallet.id}/deduct`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              amount: netAmount,
-              description: `Payment for order ${data.orderNumber} (${activeWallet.walletType || 'wallet'})`,
-              orderId: data.id,
-            }),
-          })
-        } catch (e) {
-          console.error('Wallet deduction error:', e)
+        // Find the payment entry that references this wallet to get the actual amount paid
+        const activeWalletPayment = payments.find(p => p.walletId === activeWallet.id)
+        const deductAmount = activeWalletPayment ? toNum(activeWalletPayment.amount) : netAmount
+        if (deductAmount > 0) {
+          try {
+            await fetch(`/api/pos/wallets/${activeWallet.id}/deduct`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                amount: deductAmount,
+                description: `Payment for order ${data.orderNumber} (${activeWallet.walletType || 'wallet'})`,
+                orderId: data.id,
+              }),
+            })
+          } catch (e) {
+            console.error('Wallet deduction error:', e)
+          }
         }
       }
 
@@ -1214,21 +1220,25 @@ function OrderFormModal({
         }
       }
       // 2. If a VIP/Prepaid wallet was used (activeWallet set via scan/search),
-      //    deduct the net amount from that wallet even if payment method is CASH/etc.
+      //    deduct the actual wallet payment amount (not netAmount) from that wallet
       const alreadyDeductedWalletIds = walletPayments.map(wp => wp.walletId)
-      if (activeWallet && !alreadyDeductedWalletIds.includes(activeWallet.id) && netAmount > 0) {
-        try {
-          await fetch(`/api/pos/wallets/${activeWallet.id}/deduct`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              amount: netAmount,
-              description: `${WALLET_TYPE_LABELS[activeWallet.walletType] || 'Wallet'} used for order ${data.orderNumber}`,
-              orderId: data.id,
-            }),
-          })
-        } catch (e) {
-          console.error('Active wallet deduction error:', e)
+      if (activeWallet && !alreadyDeductedWalletIds.includes(activeWallet.id)) {
+        const walletPay = payments.find(p => p.walletId === activeWallet.id)
+        const walletDeductAmt = walletPay ? toNum(walletPay.amount) : netAmount
+        if (walletDeductAmt > 0) {
+          try {
+            await fetch(`/api/pos/wallets/${activeWallet.id}/deduct`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                amount: walletDeductAmt,
+                description: `${WALLET_TYPE_LABELS[activeWallet.walletType] || 'Wallet'} used for order ${data.orderNumber}`,
+                orderId: data.id,
+              }),
+            })
+          } catch (e) {
+            console.error('Active wallet deduction error:', e)
+          }
         }
       }
 
@@ -1589,6 +1599,17 @@ function OrderFormModal({
                     ) : (
                       <>
                         {paymentMethods.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                      </>
+                    )}
+                    {/* Digital wallet payment type options */}
+                    {p.walletId && (
+                      <>
+                        <option value="VIP_CARD">VIP Card</option>
+                        <option value="PREPAID_CARD">Prepaid Card</option>
+                        <option value="PACKAGE">Package</option>
+                        <option value="DOWNPAYMENT">Downpayment</option>
+                        <option value="HMO">HMO</option>
+                        <option value="GL">Guarantee Letter</option>
                       </>
                     )}
                     {p.method === 'WALLET' && <option value="WALLET">VIP/Prepaid Card</option>}
@@ -1981,7 +2002,7 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
   const [ordPageSize, setOrdPageSize] = useState(25)
   const [editOrder, setEditOrder] = useState<Order | null>(null)
   const [editItems, setEditItems] = useState<{ name: string; quantity: number; unitPrice: number; lineTotal: number; serviceId?: string }[]>([])
-  const [editPayments, setEditPayments] = useState<{ method: string; amount: number }[]>([])
+  const [editPayments, setEditPayments] = useState<{ method: string; amount: number; paymentModeId?: string; walletId?: string }[]>([])
   const [editPatient, setEditPatient] = useState('')
   const [editClinician, setEditClinician] = useState('')
   const [editDate, setEditDate] = useState('')
@@ -2004,6 +2025,16 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
   const [editPatientSearch, setEditPatientSearch] = useState('')
   const editPatientTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const editClinicianTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [editConfiguredModes, setEditConfiguredModes] = useState<PaymentModeType[]>([])
+
+  // Fetch configured payment modes for edit order
+  useEffect(() => {
+    const b = canSelectBranch ? '' : branch
+    fetch(`/api/pos/payment-modes${b ? `?branch=${encodeURIComponent(b)}` : ''}`)
+      .then(r => r.json())
+      .then(d => setEditConfiguredModes(Array.isArray(d) ? d.filter((m: PaymentModeType) => m.isActive) : []))
+      .catch(() => {})
+  }, [branch, canSelectBranch])
 
   // useEffect-based search for edit patient (same pattern as new order)
   useEffect(() => {
@@ -2098,7 +2129,7 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
       lineTotal: toNum(it.lineTotal),
       serviceId: it.serviceId,
     })))
-    setEditPayments(o.payments.map(p => ({ method: p.method, amount: toNum(p.amount) })))
+    setEditPayments(o.payments.map(p => ({ method: p.method, amount: toNum(p.amount), walletId: p.walletId })))
     setEditDate(o.transactionDate ? o.transactionDate.split('T')[0] : today())
     setEditDateReason('')
     const dAmt = toNum(o.discountAmount)
@@ -2417,9 +2448,32 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                 <div className="space-y-2">
                   {editPayments.map((p, idx) => (
                     <div key={idx} className="flex items-center gap-2">
-                      <select value={p.method} onChange={e => setEditPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, method: e.target.value } : pp))}
+                      <select value={p.paymentModeId || p.method} onChange={e => {
+                        const val = e.target.value
+                        const cm = editConfiguredModes.find(m => m.id === val)
+                        if (cm) {
+                          setEditPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, method: cm.paymentMethod || 'CASH', paymentModeId: cm.id } : pp))
+                        } else {
+                          setEditPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, method: val, paymentModeId: undefined } : pp))
+                        }
+                      }}
                         className="flex-1 px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
-                        {PAYMENT_METHODS_SERVICE.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                        {editConfiguredModes.length > 0 ? (
+                          editConfiguredModes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)
+                        ) : (
+                          PAYMENT_METHODS_SERVICE.map(m => <option key={m.value} value={m.value}>{m.label}</option>)
+                        )}
+                        {/* Digital wallet payment type options */}
+                        {p.walletId && (
+                          <>
+                            <option value="VIP_CARD">VIP Card</option>
+                            <option value="PREPAID_CARD">Prepaid Card</option>
+                            <option value="PACKAGE">Package</option>
+                            <option value="DOWNPAYMENT">Downpayment</option>
+                            <option value="HMO">HMO</option>
+                            <option value="GL">Guarantee Letter</option>
+                          </>
+                        )}
                       </select>
                       <input type="number" min={0} step="0.01" value={p.amount || ''}
                         onChange={e => setEditPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, amount: parseFloat(e.target.value) || 0 } : pp))}
@@ -2557,6 +2611,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     }, 300)
   }, [crmSearch])
   const [selectedWallet, setSelectedWallet] = useState<DigitalWallet | null>(null)
+  const [showDeletedWallets, setShowDeletedWallets] = useState(false)
   const [walletDetail, setWalletDetail] = useState<DigitalWallet | null>(null)
   const [walletEditing, setWalletEditing] = useState(false)
   const [walletEditForm, setWalletEditForm] = useState<Record<string, string>>({})
@@ -2586,7 +2641,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       const qp = new URLSearchParams()
       if (search) qp.set('search', search)
       qp.set('walletType', walletTypeFilter)
-      qp.set('includeDeleted', 'true')
+      if (showDeletedWallets) qp.set('includeDeleted', 'true')
       const r = await fetch(`/api/pos/wallets?${qp}`)
       const d = await r.json()
       setWallets(normalize(d) as DigitalWallet[])
@@ -2595,7 +2650,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     } finally {
       setLoading(false)
     }
-  }, [search, walletTypeFilter])
+  }, [search, walletTypeFilter, showDeletedWallets])
 
   useEffect(() => { fetchWallets() }, [fetchWallets])
 
@@ -3042,6 +3097,14 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         <button onClick={() => { setShowCreate(true); setCreateError('') }} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium text-white" style={{ background: 'var(--teal)' }}>
           <Plus size={16} /> {walletTypeFilter === 'HMO' ? 'Add HMO' : walletTypeFilter === 'GL' ? 'Create GL Wallet' : 'Create Wallet'}
         </button>
+      </div>
+
+      {/* Show deleted toggle */}
+      <div className="flex items-center gap-2">
+        <label className="flex items-center gap-2 text-xs cursor-pointer" style={{ color: 'var(--mid-gray)' }}>
+          <input type="checkbox" checked={showDeletedWallets} onChange={e => setShowDeletedWallets(e.target.checked)} className="rounded" />
+          Show deleted wallets
+        </label>
       </div>
 
       {/* Wallets Table */}
@@ -4291,9 +4354,14 @@ function ProductsSection({
     setRpWalletSearch(q)
     if (q.length < 2) { setRpWalletResults([]); return }
     try {
-      const r = await fetch(`/api/pos/wallets?search=${encodeURIComponent(q)}`)
-      const d = await r.json()
-      setRpWalletResults(normalize(d) as DigitalWallet[])
+      // Fetch VIP wallets first, then PREPAID_CARD, merge results
+      const [rVip, rPrepaid] = await Promise.all([
+        fetch(`/api/pos/wallets?search=${encodeURIComponent(q)}&walletType=VIP`),
+        fetch(`/api/pos/wallets?search=${encodeURIComponent(q)}&walletType=PREPAID_CARD`),
+      ])
+      const [dVip, dPrepaid] = await Promise.all([rVip.json(), rPrepaid.json()])
+      const combined = [...(normalize(dVip) as DigitalWallet[]), ...(normalize(dPrepaid) as DigitalWallet[])]
+      setRpWalletResults(combined)
     } catch { setRpWalletResults([]) }
   }
 
@@ -4636,16 +4704,25 @@ function ProductsSection({
                 <select value={p.method} onChange={e => setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, method: e.target.value } : pp))}
                   className="px-2 py-2 rounded-xl border text-xs outline-none flex-1" style={{ borderColor: 'var(--light-gray)' }}>
                   {configuredModes.length > 0 ? (
-                    configuredModes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)
+                    <>
+                      {configuredModes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                      <option value="REWARD_POINTS">Reward Points</option>
+                    </>
                   ) : (
                     PAYMENT_METHODS_PRODUCT.map(m => <option key={m.value} value={m.value}>{m.label}</option>)
                   )}
                 </select>
-                <input type="number" min={0} step="0.01" value={p.amount || ''} placeholder="Amt"
-                  onChange={e => setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, amount: parseFloat(e.target.value) || 0 } : pp))}
-                  className="w-24 px-2 py-2 rounded-xl border text-xs outline-none text-right" style={{ borderColor: 'var(--light-gray)' }} />
+                {p.method === 'REWARD_POINTS' ? (
+                  <span className="w-24 px-2 py-2 rounded-xl border text-xs text-right flex items-center justify-end gap-1" style={{ borderColor: 'var(--light-gray)', color: '#ED6823', background: '#FFF8F0' }}>
+                    <Star size={10} /> {rewardPointsTotal.toLocaleString()} pts
+                  </span>
+                ) : (
+                  <input type="number" min={0} step="0.01" value={p.amount || ''} placeholder="Amt"
+                    onChange={e => setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, amount: parseFloat(e.target.value) || 0 } : pp))}
+                    className="w-24 px-2 py-2 rounded-xl border text-xs outline-none text-right" style={{ borderColor: 'var(--light-gray)' }} />
+                )}
                 {payments.length > 1 && (
-                  <button onClick={() => setPayments(prev => prev.filter((_, i) => i !== idx))} className="p-1 rounded hover:bg-red-50">
+                  <button onClick={() => { setPayments(prev => prev.filter((_, i) => i !== idx)); if (p.method === 'REWARD_POINTS') setRpSelectedWallet(null) }} className="p-1 rounded hover:bg-red-50">
                     <X size={12} className="text-red-500" />
                   </button>
                 )}
@@ -4666,9 +4743,15 @@ function ProductsSection({
               {rpSelectedWallet ? (
                 <div className="flex items-center justify-between p-2 rounded-lg bg-white">
                   <div>
-                    <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>{rpSelectedWallet.patientName}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>{rpSelectedWallet.patientName}</p>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
+                        style={{ background: WALLET_TYPE_COLORS[rpSelectedWallet.walletType]?.bg || '#f3f4f6', color: WALLET_TYPE_COLORS[rpSelectedWallet.walletType]?.color || '#374151' }}>
+                        {WALLET_TYPE_LABELS[rpSelectedWallet.walletType] || rpSelectedWallet.walletType}
+                      </span>
+                    </div>
                     <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-                      <Star size={10} className="inline" /> {rpSelectedWallet.rewardPoints?.toLocaleString() || 0} pts available
+                      {rpSelectedWallet.barcode} &middot; <Star size={10} className="inline" /> {rpSelectedWallet.rewardPoints?.toLocaleString() || 0} pts available
                     </p>
                   </div>
                   <button onClick={() => setRpSelectedWallet(null)} className="text-xs px-2 py-1 rounded-lg" style={{ color: '#ED6823' }}>Change</button>
@@ -4689,8 +4772,14 @@ function ProductsSection({
                     className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                   {rpWalletResults.length > 0 && rpWalletResults.map(w => (
                     <button key={w.id} onClick={() => { setRpSelectedWallet(w); setRpWalletResults([]) }}
-                      className="w-full text-left px-2 py-1.5 text-xs hover:bg-gray-50 flex justify-between rounded-lg">
-                      <span className="font-medium">{w.patientName}</span>
+                      className="w-full text-left px-2 py-1.5 text-xs hover:bg-gray-50 flex justify-between items-center rounded-lg">
+                      <div>
+                        <span className="font-medium">{w.patientName}</span>
+                        <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-semibold"
+                          style={{ background: WALLET_TYPE_COLORS[w.walletType]?.bg || '#f3f4f6', color: WALLET_TYPE_COLORS[w.walletType]?.color || '#374151' }}>
+                          {WALLET_TYPE_LABELS[w.walletType] || w.walletType}
+                        </span>
+                      </div>
                       <span style={{ color: 'var(--mid-gray)' }}><Star size={10} className="inline" /> {w.rewardPoints?.toLocaleString() || 0} pts</span>
                     </button>
                   ))}

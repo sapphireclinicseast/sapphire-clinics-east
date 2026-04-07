@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 
 const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
@@ -101,7 +102,7 @@ export async function PUT(req: Request) {
   }
 
   const body = await req.json()
-  const { id, timeIn, timeOut, lateMinutes, undertimeMinutes, overtimeMinutes, remarks } = body
+  const { id, timeIn, timeOut, lateMinutes, undertimeMinutes, overtimeMinutes, remarks, resolveConflict, dtrProof } = body
 
   if (!id) {
     return NextResponse.json({ error: 'Missing record id' }, { status: 400 })
@@ -114,10 +115,21 @@ export async function PUT(req: Request) {
 
   // Recalculate hours worked if times changed
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const data: any = { source: 'MANUAL' }
+  const data: any = {}
+
+  // If resolving a conflict, change source from BIOMETRIC_CONFLICT back to BIOMETRIC
+  // and clear the conflict data
+  if (resolveConflict) {
+    data.source = 'BIOMETRIC'
+    data.conflictData = Prisma.JsonNull
+  } else {
+    data.source = 'MANUAL'
+  }
+
   if (timeIn !== undefined) data.timeIn = timeIn ? new Date(timeIn) : null
   if (timeOut !== undefined) data.timeOut = timeOut ? new Date(timeOut) : null
   if (remarks !== undefined) data.remarks = remarks || null
+  if (dtrProof !== undefined) data.dtrProof = dtrProof || null
   if (lateMinutes !== undefined) data.lateMinutes = parseInt(lateMinutes) || 0
   if (undertimeMinutes !== undefined) data.undertimeMinutes = parseInt(undertimeMinutes) || 0
   if (overtimeMinutes !== undefined) data.overtimeMinutes = parseInt(overtimeMinutes) || 0
@@ -129,6 +141,31 @@ export async function PUT(req: Request) {
     let hours = (new Date(newOut).getTime() - new Date(newIn).getTime()) / (1000 * 60 * 60)
     if (hours > 5) hours -= 1 // lunch break
     data.hoursWorked = Math.max(0, hours)
+  }
+
+  // Recalculate late/undertime if times changed and we have an employee schedule
+  if ((timeIn !== undefined || timeOut !== undefined) && (resolveConflict || data.source === 'MANUAL')) {
+    const empRecord = await prisma.timekeepingRecord.findUnique({
+      where: { id },
+      include: { employee: { select: { scheduleIn: true, scheduleOut: true } } },
+    })
+    if (empRecord?.employee && newIn && newOut) {
+      const [schInH, schInM] = empRecord.employee.scheduleIn.split(':').map(Number)
+      const [schOutH, schOutM] = empRecord.employee.scheduleOut.split(':').map(Number)
+      const phtIn = new Date(new Date(newIn).getTime() + 8 * 60 * 60 * 1000)
+      const phtOut = new Date(new Date(newOut).getTime() + 8 * 60 * 60 * 1000)
+      const schedInMinutes = schInH * 60 + schInM
+      const actualInMinutes = phtIn.getUTCHours() * 60 + phtIn.getUTCMinutes()
+      if (actualInMinutes > schedInMinutes) data.lateMinutes = actualInMinutes - schedInMinutes
+      else data.lateMinutes = 0
+      const schedOutMinutes = schOutH * 60 + schOutM
+      const actualOutMinutes = phtOut.getUTCHours() * 60 + phtOut.getUTCMinutes()
+      if (actualOutMinutes < schedOutMinutes) data.undertimeMinutes = schedOutMinutes - actualOutMinutes
+      else data.undertimeMinutes = 0
+      const hours = data.hoursWorked || 0
+      if (hours > 8) data.overtimeMinutes = Math.round((hours - 8) * 60)
+      else data.overtimeMinutes = 0
+    }
   }
 
   const record = await prisma.timekeepingRecord.update({ where: { id }, data })

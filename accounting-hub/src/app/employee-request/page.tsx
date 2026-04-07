@@ -28,6 +28,15 @@ const LEAVE_TYPES = [
   { value: 'UNPAID', label: 'Unpaid Leave' },
 ]
 
+const COE_PURPOSES = [
+  { value: 'Employment Verification', label: 'Employment Verification' },
+  { value: 'Bank/Loan Application', label: 'Bank/Loan Application' },
+  { value: 'Government Transaction', label: 'Government Transaction' },
+  { value: 'Visa/Travel Application', label: 'Visa/Travel Application' },
+  { value: 'School/Educational Purposes', label: 'School/Educational Purposes' },
+  { value: 'Other', label: 'Other (please specify)' },
+]
+
 export default function EmployeeRequestPage() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [employeeSearch, setEmployeeSearch] = useState('')
@@ -37,6 +46,8 @@ export default function EmployeeRequestPage() {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [reason, setReason] = useState('')
+  const [coePurpose, setCoePurpose] = useState('')
+  const [coeCustomPurpose, setCoeCustomPurpose] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState('')
@@ -55,6 +66,11 @@ export default function EmployeeRequestPage() {
     setError('')
 
     try {
+      // For COE requests, store the selected purpose in the reason field
+      const finalReason = requestType === 'CERTIFICATE_OF_EMPLOYMENT'
+        ? (coePurpose === 'Other' ? coeCustomPurpose : coePurpose) || null
+        : reason || null
+
       const res = await fetch('/api/payroll/employee-requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -64,7 +80,7 @@ export default function EmployeeRequestPage() {
           leaveType: requestType === 'LEAVE' ? leaveType : null,
           startDate: startDate || null,
           endDate: endDate || null,
-          reason: reason || null,
+          reason: finalReason,
         }),
       })
       if (res.ok) {
@@ -98,7 +114,7 @@ export default function EmployeeRequestPage() {
             Your request has been submitted successfully and is pending review.
           </p>
           <button
-            onClick={() => { setSubmitted(false); setRequestType(''); setLeaveType(''); setStartDate(''); setEndDate(''); setReason('') }}
+            onClick={() => { setSubmitted(false); setRequestType(''); setLeaveType(''); setStartDate(''); setEndDate(''); setReason(''); setCoePurpose(''); setCoeCustomPurpose('') }}
             className="px-6 py-2.5 rounded-xl text-white text-sm font-semibold"
             style={{ background: '#0d9488' }}
           >
@@ -186,13 +202,38 @@ export default function EmployeeRequestPage() {
             </div>
           )}
 
-          {/* Reason */}
-          <div>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: '#1a1a2e' }}>Reason / Details</label>
-            <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3}
-              placeholder="Please provide details for your request..."
-              className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none resize-none" style={{ borderColor: '#e5e7eb' }} />
-          </div>
+          {/* COE Purpose (only for Certificate of Employment) */}
+          {requestType === 'CERTIFICATE_OF_EMPLOYMENT' && (
+            <div>
+              <label className="block text-xs font-medium mb-1.5" style={{ color: '#1a1a2e' }}>Purpose</label>
+              <select value={coePurpose} onChange={(e) => setCoePurpose(e.target.value)} required
+                className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: '#e5e7eb' }}>
+                <option value="">Select purpose...</option>
+                {COE_PURPOSES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+              </select>
+              {coePurpose === 'Other' && (
+                <input
+                  type="text"
+                  value={coeCustomPurpose}
+                  onChange={(e) => setCoeCustomPurpose(e.target.value)}
+                  placeholder="Please specify the purpose..."
+                  required
+                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none mt-2"
+                  style={{ borderColor: '#e5e7eb' }}
+                />
+              )}
+            </div>
+          )}
+
+          {/* Reason (hide for COE since purpose replaces it) */}
+          {requestType !== 'CERTIFICATE_OF_EMPLOYMENT' && (
+            <div>
+              <label className="block text-xs font-medium mb-1.5" style={{ color: '#1a1a2e' }}>Reason / Details</label>
+              <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3}
+                placeholder="Please provide details for your request..."
+                className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none resize-none" style={{ borderColor: '#e5e7eb' }} />
+            </div>
+          )}
 
           <button type="submit" disabled={submitting || !employeeId || !requestType}
             className="w-full py-3 rounded-xl text-white text-sm font-semibold disabled:opacity-50 transition-colors"
