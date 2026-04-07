@@ -40,11 +40,10 @@ export async function GET(req: Request) {
           // Prefer the one with externalStaffId (synced). If both have it, keep the newer one.
           const keepSynced = emp.externalStaffId && !prev.externalStaffId ? emp : prev
           const removeDup = keepSynced === emp ? prev : emp
-          // Transfer bio ID if the one being removed has it and the keeper doesn't
-          if (removeDup.employeeBioId && !keepSynced.employeeBioId) {
-            await prisma.employee.update({ where: { id: keepSynced.id }, data: { employeeBioId: removeDup.employeeBioId } })
+          // Clear bio ID on duplicate first (unique constraint), then soft-delete
+          if (removeDup.employeeBioId) {
+            await prisma.employee.update({ where: { id: removeDup.id }, data: { employeeBioId: null } })
           }
-          // Soft-delete the duplicate
           await prisma.employee.update({ where: { id: removeDup.id }, data: { isActive: false } })
           seen.set(key, keepSynced)
         } else {
@@ -87,15 +86,17 @@ export async function GET(req: Request) {
           }
 
           // Sync employeeId from HR platform as biometric ID (they are the same)
+          // Always overwrite — the marketing hub is the source of truth for bio IDs
           const empId = s.hrEmployeeId || s.employeeId
           if (empId) {
             const bioId = parseInt(empId)
             if (!isNaN(bioId)) {
-              // Check if another employee already has this bioId (unique constraint)
-              const bioConflict = await prisma.employee.findFirst({
+              // Clear bio ID from any other employee that has it (unique constraint)
+              await prisma.employee.updateMany({
                 where: { employeeBioId: bioId, externalStaffId: { not: s.id } },
+                data: { employeeBioId: null },
               })
-              if (!bioConflict) syncData.employeeBioId = bioId
+              syncData.employeeBioId = bioId
             }
           }
 
