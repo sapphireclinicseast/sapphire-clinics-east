@@ -1,0 +1,122 @@
+import { NextResponse } from 'next/server'
+import { auth } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+
+const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+const READ_ROLES = [...WRITE_ROLES, 'VIEWER']
+
+function allowedBranches(role: string): string[] | null {
+  if (role === 'SBEA_ADMIN') return ['SBEA', 'VERDANA']
+  if (role === 'SBGH_ADMIN') return ['SBGH', 'VERDANA']
+  if (role === 'VERDANA_ADMIN') return ['VERDANA']
+  return null
+}
+
+export async function GET(req: Request) {
+  const session = await auth()
+  if (!session?.user || !READ_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const { searchParams } = new URL(req.url)
+  const cutoffPeriod = searchParams.get('cutoffPeriod') || ''
+  const branch = searchParams.get('branch') || ''
+
+  if (!cutoffPeriod || !branch) {
+    return NextResponse.json({ error: 'Missing cutoffPeriod or branch' }, { status: 400 })
+  }
+
+  const allowed = allowedBranches(session.user.role as string)
+  if (allowed && !allowed.includes(branch)) {
+    return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+  }
+
+  const adjustments = await prisma.consultantCutoffAdjustment.findMany({
+    where: { cutoffPeriod, branch },
+    include: {
+      consultant: { select: { id: true, name: true, department: true, branch: true } },
+    },
+    orderBy: { consultant: { name: 'asc' } },
+  })
+
+  return NextResponse.json(adjustments)
+}
+
+export async function POST(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const { cutoffPeriod, branch, adjustments } = await req.json()
+
+  if (!cutoffPeriod || !branch || !Array.isArray(adjustments)) {
+    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+  }
+
+  // Delete all existing adjustments for this cutoff/branch, then recreate
+  await prisma.consultantCutoffAdjustment.deleteMany({
+    where: { cutoffPeriod, branch },
+  })
+
+  const toCreate = adjustments
+    .filter((adj: { consultantId?: string; allowance?: number; deduction?: number }) =>
+      adj.consultantId && ((adj.allowance && adj.allowance > 0) || (adj.deduction && adj.deduction > 0))
+    )
+    .map((adj: { consultantId: string; allowance?: number; allowanceType?: string; allowanceLabel?: string; deduction?: number; deductionLabel?: string }) => ({
+      consultantId: adj.consultantId,
+      cutoffPeriod,
+      branch,
+      allowance: adj.allowance || 0,
+      allowanceType: adj.allowanceType || 'NON_TAXABLE',
+      allowanceLabel: adj.allowanceLabel || null,
+      deduction: adj.deduction || 0,
+      deductionLabel: adj.deductionLabel || null,
+    }))
+
+  if (toCreate.length > 0) {
+    await prisma.consultantCutoffAdjustment.createMany({ data: toCreate })
+  }
+
+  return NextResponse.json({ saved: toCreate.length })
+}
+
+// PUT: Pre-fill from previous cutoff
+export async function PUT(req: Request) {
+  const session = await auth()
+  if (!session?.user || !READ_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const { searchParams } = new URL(req.url)
+  const cutoffPeriod = searchParams.get('cutoffPeriod') || ''
+  const branch = searchParams.get('branch') || ''
+
+  if (!cutoffPeriod || !branch) {
+    return NextResponse.json({ error: 'Missing cutoffPeriod or branch' }, { status: 400 })
+  }
+
+  const [yearStr, monthStr, halfStr] = cutoffPeriod.split('-')
+  let prevYear = parseInt(yearStr)
+  let prevMonth = parseInt(monthStr)
+  let prevHalf = parseInt(halfStr)
+
+  if (prevHalf === 1) {
+    prevHalf = 2
+    prevMonth--
+    if (prevMonth < 1) { prevMonth = 12; prevYear-- }
+  } else {
+    prevHalf = 1
+  }
+
+  const prevCutoff = `${prevYear}-${prevMonth}-${prevHalf}`
+
+  const prevAdjustments = await prisma.consultantCutoffAdjustment.findMany({
+    where: { cutoffPeriod: prevCutoff, branch },
+    include: {
+      consultant: { select: { id: true, name: true, department: true, branch: true } },
+    },
+  })
+
+  return NextResponse.json({ previousCutoff: prevCutoff, adjustments: prevAdjustments })
+}

@@ -13,12 +13,20 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url)
   const year = parseInt(searchParams.get('year') || String(new Date().getFullYear()))
+  const branch = searchParams.get('branch') || ''
 
   const startDate = new Date(Date.UTC(year, 0, 1))
   const endDate = new Date(Date.UTC(year + 1, 0, 1))
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const where: any = { date: { gte: startDate, lt: endDate } }
+  if (branch) {
+    // Show holidays for this specific branch + holidays that apply to all branches (branch=null)
+    where.OR = [{ branch }, { branch: null }]
+  }
+
   const holidays = await prisma.holiday.findMany({
-    where: { date: { gte: startDate, lt: endDate } },
+    where,
     orderBy: { date: 'asc' },
   })
 

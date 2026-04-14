@@ -79,7 +79,7 @@ export async function PUT(
     const { id } = await params
     const body = await req.json()
     const { patientName, patientEmail, patientId, isActive, deleteReason, accountId,
-            dateObtained, paymentModeId, agency, vipTier, attachmentUrl, balance } = body
+            dateObtained, paymentModeId, agency, vipTier, attachmentUrl, balance, rewardPoints, totalGlAmount, branch } = body
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = {}
@@ -94,6 +94,9 @@ export async function PUT(
     if (vipTier !== undefined) data.vipTier = vipTier || null
     if (attachmentUrl !== undefined) data.attachmentUrl = attachmentUrl || null
     if (balance !== undefined) data.balance = parseFloat(balance)
+    if (rewardPoints !== undefined) data.rewardPoints = parseInt(rewardPoints) || 0
+    if (totalGlAmount !== undefined) data.totalGlAmount = parseFloat(totalGlAmount) || null
+    if (branch !== undefined) data.branch = branch || 'ALL'
 
     const wallet = await prisma.digitalWallet.update({ where: { id }, data })
 

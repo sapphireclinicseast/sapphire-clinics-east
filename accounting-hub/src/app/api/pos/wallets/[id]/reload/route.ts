@@ -15,7 +15,8 @@ export async function POST(
 
   try {
     const { id } = await params
-    const { serviceName, serviceId, department, totalSessions, amountPaid, expiresAt } = await req.json()
+    const { serviceName, serviceId, department, totalSessions, amountPaid, expiresAt, usedSessions: usedSessionsRaw } = await req.json()
+    const usedSessions = parseInt(usedSessionsRaw) || 0
 
     if (!serviceName?.trim()) {
       return NextResponse.json({ error: 'Service name is required' }, { status: 400 })
@@ -36,15 +37,22 @@ export async function POST(
     const REWARD_ELIGIBLE = ['VIP', 'PREPAID_CARD']
     const rewardPointsEarned = REWARD_ELIGIBLE.includes(wallet.walletType) ? Math.floor(amountPaid / 100) : 0
 
+    // For migrated packages, only add the remaining balance (not the full amount paid)
+    const parsedTotal = parseInt(totalSessions)
+    const remainingSessions = parsedTotal - usedSessions
+    const perSessionRate = parseFloat(amountPaid) / parsedTotal
+    const balanceToAdd = perSessionRate * remainingSessions
+
     const [walletPackage] = await prisma.$transaction([
-      // Create the package
+      // Create the package (with usedSessions pre-set for migrations)
       prisma.walletPackage.create({
         data: {
           walletId: id,
           serviceName: serviceName.trim(),
           serviceId: serviceId || null,
           department: department || null,
-          totalSessions: parseInt(totalSessions),
+          totalSessions: parsedTotal,
+          usedSessions,
           amountPaid: parseFloat(amountPaid),
           expiresAt: expiresAt ? new Date(expiresAt) : null,
         },
@@ -54,7 +62,7 @@ export async function POST(
         where: { id },
         data: {
           ...(rewardPointsEarned > 0 ? { rewardPoints: { increment: rewardPointsEarned } } : {}),
-          balance: { increment: parseFloat(amountPaid) },
+          balance: { increment: balanceToAdd },
         },
       }),
     ])
@@ -65,8 +73,10 @@ export async function POST(
         walletId: id,
         packageId: walletPackage.id,
         action: 'RELOAD',
-        sessions: parseInt(totalSessions),
-        description: `Package loaded: ${serviceName.trim()} (${totalSessions} sessions)`,
+        sessions: parsedTotal,
+        description: usedSessions > 0
+          ? `Package loaded: ${serviceName.trim()} (${parsedTotal} sessions, ${usedSessions} already used — balance +₱${balanceToAdd.toFixed(2)})`
+          : `Package loaded: ${serviceName.trim()} (${parsedTotal} sessions)`,
         createdById: session.user.id,
       },
     })

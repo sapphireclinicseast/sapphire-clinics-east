@@ -33,24 +33,87 @@ export async function GET(req: Request) {
   // Optionally sync from marketing hub
   if (sync) {
     try {
-      const res = await fetch(`${MARKETING_HUB_URL}/api/staff/external`, {
+      const res = await fetch(`${MARKETING_HUB_URL}/api/staff/external?includeHR=true`, {
         headers: { 'Authorization': `Bearer ${EXTERNAL_API_KEY}` },
         cache: 'no-store',
       })
       if (res.ok) {
         const data = await res.json()
         const staff = data.staff || []
+        const syncedExternalIds = new Set<string>()
+
+        // Phase 1: Clean existing duplicates (same name + same branch, prefer one with externalStaffId)
+        const allConsultants = await prisma.consultant.findMany({ where: { isActive: true } })
+        const seenNames = new Map<string, typeof allConsultants[0]>()
+        for (const c of allConsultants) {
+          const key = `${c.name.toUpperCase()}|${c.branch}`
+          const prev = seenNames.get(key)
+          if (prev) {
+            const keep = c.externalStaffId && !prev.externalStaffId ? c : prev
+            const remove = keep === c ? prev : c
+            await prisma.consultant.update({ where: { id: remove.id }, data: { isActive: false } })
+            seenNames.set(key, keep)
+          } else {
+            seenNames.set(key, c)
+          }
+        }
+
+        // Phase 2: Sync from marketing hub
         for (const s of staff) {
           const name = formatName(`${s.firstName} ${s.lastName}`)
           const dept = s.department || ''
           const br = s.branch || ''
           // Only sync clinical departments (not admin/front desk)
           if (['FRONT_DESK', 'ADMINISTRATION'].includes(dept)) continue
+
+          syncedExternalIds.add(s.id)
+
+          let existing = await prisma.consultant.findUnique({ where: { externalStaffId: s.id } })
+
+          // If not found by externalStaffId, try matching by name to link manual entries
+          if (!existing) {
+            const nameMatch = await prisma.consultant.findFirst({
+              where: { name: { equals: name, mode: 'insensitive' }, branch: br, externalStaffId: null, isActive: true },
+            })
+            if (nameMatch) {
+              await prisma.consultant.update({
+                where: { id: nameMatch.id },
+                data: { externalStaffId: s.id },
+              })
+              existing = { ...nameMatch, externalStaffId: s.id }
+            }
+          }
+
+          const syncData: Record<string, unknown> = { name, department: dept, branch: br }
+
+          // Sync contact info
+          if (s.email) syncData.email = s.email
+          if (s.phone) syncData.phone = s.phone
+
+          // Pre-fill government IDs from HR platform if not already set
+          if (s.tin && (!existing || !existing.tinNumber)) syncData.tinNumber = s.tin
+          if (s.sss && (!existing || !existing.sssNumber)) syncData.sssNumber = s.sss
+          if (s.philhealth && (!existing || !existing.philhealthNumber)) syncData.philhealthNumber = s.philhealth
+          if (s.pagibig && (!existing || !existing.pagibigNumber)) syncData.pagibigNumber = s.pagibig
+
           await prisma.consultant.upsert({
             where: { externalStaffId: s.id },
-            update: { name, department: dept, branch: br },
-            create: { externalStaffId: s.id, name, department: dept, branch: br },
+            update: syncData,
+            create: { externalStaffId: s.id, name, department: dept, branch: br, ...syncData },
           })
+        }
+
+        // Phase 3: Soft-delete consultants removed from marketing hub
+        // Only affect those that were previously synced (have externalStaffId)
+        if (syncedExternalIds.size > 0) {
+          const linkedConsultants = await prisma.consultant.findMany({
+            where: { externalStaffId: { not: null }, isActive: true },
+          })
+          for (const c of linkedConsultants) {
+            if (c.externalStaffId && !syncedExternalIds.has(c.externalStaffId)) {
+              await prisma.consultant.update({ where: { id: c.id }, data: { isActive: false } })
+            }
+          }
         }
       }
     } catch (e) {

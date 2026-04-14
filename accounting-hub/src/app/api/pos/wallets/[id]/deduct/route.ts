@@ -154,10 +154,21 @@ export async function POST(
       return NextResponse.json({ error: 'Package has expired' }, { status: 400 })
     }
 
-    const updated = await prisma.walletPackage.update({
-      where: { id: packageId },
-      data: { usedSessions: { increment: sessionsToDeduct } },
-    })
+    // Calculate per-session rate from package purchase price
+    const perSessionRate = Number(walletPackage.amountPaid) / walletPackage.totalSessions
+    const deductionAmount = perSessionRate * sessionsToDeduct
+    const currentBalance = Number(wallet.balance)
+
+    const [updatedPackage, updatedWallet] = await prisma.$transaction([
+      prisma.walletPackage.update({
+        where: { id: packageId },
+        data: { usedSessions: { increment: sessionsToDeduct } },
+      }),
+      prisma.digitalWallet.update({
+        where: { id },
+        data: { balance: { decrement: deductionAmount } },
+      }),
+    ])
 
     await prisma.walletLog.create({
       data: {
@@ -165,7 +176,7 @@ export async function POST(
         packageId,
         action: 'DEDUCTION',
         sessions: sessionsToDeduct,
-        description: `Deducted ${sessionsToDeduct} session(s) from ${walletPackage.serviceName}`,
+        description: `Deducted ${sessionsToDeduct} session(s) from ${walletPackage.serviceName} — ₱${deductionAmount.toFixed(2)} (₱${perSessionRate.toFixed(2)}/session)`,
         createdById: session.user.id,
       },
     })
@@ -179,15 +190,22 @@ export async function POST(
         details: {
           packageId,
           sessionsDeducted: sessionsToDeduct,
-          usedSessions: updated.usedSessions,
-          totalSessions: updated.totalSessions,
+          perSessionRate,
+          amountDeducted: deductionAmount,
+          previousBalance: currentBalance,
+          newBalance: Number(updatedWallet.balance),
+          usedSessions: updatedPackage.usedSessions,
+          totalSessions: updatedPackage.totalSessions,
         },
       },
     })
 
     return NextResponse.json({
-      package: updated,
-      remaining: updated.totalSessions - updated.usedSessions,
+      package: updatedPackage,
+      remaining: updatedPackage.totalSessions - updatedPackage.usedSessions,
+      perSessionRate,
+      amountDeducted: deductionAmount,
+      newBalance: Number(updatedWallet.balance),
     })
   } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

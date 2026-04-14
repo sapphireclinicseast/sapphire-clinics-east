@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+const DAYS_OF_WEEK = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']
 
 // Parse .dat biometric file
 // Format: tab-delimited, columns: employeeBioId, date+time, flag, 0=in/1=out, rest ignored
@@ -66,7 +67,7 @@ export async function POST(req: Request) {
   // Get all employees with biometric IDs
   const employees = await prisma.employee.findMany({
     where: { employeeBioId: { not: null } },
-    select: { id: true, employeeBioId: true, scheduleIn: true, scheduleOut: true, restDay: true },
+    select: { id: true, employeeBioId: true, scheduleIn: true, scheduleOut: true, daySchedules: true, restDay: true },
   })
   const bioMap = new Map(employees.map(e => [e.employeeBioId!, e]))
 
@@ -198,9 +199,14 @@ export async function POST(req: Request) {
       // Subtract 1 hour for lunch if worked more than 5 hours
       if (hoursWorked > 5) hoursWorked -= 1
 
-      // Parse schedule
-      const [schInH, schInM] = emp.scheduleIn.split(':').map(Number)
-      const [schOutH, schOutM] = emp.scheduleOut.split(':').map(Number)
+      // Parse schedule — check for per-day override first
+      const dayOfWeek = DAYS_OF_WEEK[dateObj.getUTCDay()]
+      const daySched = emp.daySchedules && typeof emp.daySchedules === 'object' && !Array.isArray(emp.daySchedules)
+        ? (emp.daySchedules as Record<string, { in: string; out: string }>)[dayOfWeek] : null
+      const schedIn = daySched?.in || emp.scheduleIn
+      const schedOut = daySched?.out || emp.scheduleOut
+      const [schInH, schInM] = schedIn.split(':').map(Number)
+      const [schOutH, schOutM] = schedOut.split(':').map(Number)
 
       // Get Philippine time hours/minutes (UTC+8)
       const phtIn = new Date(timeIn.getTime() + 8 * 60 * 60 * 1000)

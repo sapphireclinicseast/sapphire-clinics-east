@@ -83,20 +83,22 @@ export async function GET(req: Request) {
             branch: normalizedBranch,
             jobTitle: s.hrJobTitle || s.jobTitle || null,
             email: s.email || null,
+            phone: s.phone || null,
           }
 
-          // Sync employeeId from HR platform as biometric ID (they are the same)
-          // Always overwrite — the marketing hub is the source of truth for bio IDs
-          const empId = s.hrEmployeeId || s.employeeId
+          // Sync employeeId as biometric ID
+          // Use marketing hub's employeeId (branch-specific bio ID), NOT hrEmployeeId (HR platform ID shared across branches)
+          const empId = s.employeeId
           if (empId) {
             const bioId = parseInt(empId)
             if (!isNaN(bioId)) {
-              // Clear bio ID from any other employee that has it (unique constraint)
-              await prisma.employee.updateMany({
+              // Check if another employee already has this bioId (unique constraint)
+              const bioConflict = await prisma.employee.findFirst({
                 where: { employeeBioId: bioId, externalStaffId: { not: s.id } },
-                data: { employeeBioId: null },
               })
-              syncData.employeeBioId = bioId
+              if (!bioConflict) {
+                syncData.employeeBioId = bioId
+              }
             }
           }
 
@@ -188,7 +190,7 @@ export async function POST(req: Request) {
     firstName, lastName, email, department, branch, jobTitle,
     rateType, dailyRate, monthlyRate, employeeBioId,
     sssNumber, philhealthNumber, pagibigNumber, tinNumber,
-    dateHired, regularizationDate, scheduleIn, scheduleOut, restDay,
+    dateHired, regularizationDate, scheduleIn, scheduleOut, daySchedules, restDay,
   } = body
 
   if (!firstName || !lastName || !department || !branch) {
@@ -215,6 +217,7 @@ export async function POST(req: Request) {
       regularizationDate: regularizationDate ? new Date(regularizationDate) : null,
       scheduleIn: scheduleIn || '08:00',
       scheduleOut: scheduleOut || '17:00',
+      daySchedules: daySchedules || null,
       restDay: restDay || 'SUNDAY',
     },
   })
@@ -242,6 +245,7 @@ function buildUpdateData(data: Record<string, unknown>): Record<string, unknown>
   if (data.regularizationDate !== undefined) updateData.regularizationDate = data.regularizationDate ? new Date(data.regularizationDate as string) : null
   if (data.scheduleIn !== undefined) updateData.scheduleIn = data.scheduleIn
   if (data.scheduleOut !== undefined) updateData.scheduleOut = data.scheduleOut
+  if (data.daySchedules !== undefined) updateData.daySchedules = data.daySchedules || null
   if (data.restDay !== undefined) updateData.restDay = data.restDay
   if (data.isActive !== undefined) updateData.isActive = data.isActive
   return updateData

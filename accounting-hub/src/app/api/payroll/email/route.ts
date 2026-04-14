@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import nodemailer from 'nodemailer'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -11,10 +10,10 @@ const MONTHS = [
 
 function getPeriodLabel(cutoffPeriod: string) {
   const [year, month, half] = cutoffPeriod.split('-')
-  return `${MONTHS[parseInt(month) - 1]} ${year} — ${half === '1' ? '1st Half (1–15)' : '2nd Half (16–End)'}`
+  return `${MONTHS[parseInt(month) - 1]} ${year} — ${half === '1' ? '1st Half' : '2nd Half'}`
 }
 
-function buildEmailHtml(firstName: string, periodLabel: string, netPay: string, branch: string) {
+function buildEmailHtml(firstName: string, periodLabel: string, branch: string) {
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -27,10 +26,7 @@ function buildEmailHtml(firstName: string, periodLabel: string, netPay: string, 
 
     <!-- Header -->
     <div style="background:linear-gradient(135deg,#c44b00,#e8650a,#f4832a);padding:40px 40px 30px;text-align:center;">
-      <img src="https://accounting.sapphireclinicseast.org/brand/sandbox-clinic-logo.png"
-           alt="Sandbox Clinic" style="max-width:200px;height:auto;filter:brightness(0) invert(1);"
-           onerror="this.style.display='none'">
-      <p style="color:rgba(255,255,255,0.85);font-size:13px;margin:14px 0 0;letter-spacing:2px;text-transform:uppercase;">
+      <p style="color:rgba(255,255,255,0.85);font-size:13px;margin:0;letter-spacing:2px;text-transform:uppercase;">
         ${branch || 'Sandbox Clinic'}
       </p>
     </div>
@@ -48,19 +44,11 @@ function buildEmailHtml(firstName: string, periodLabel: string, netPay: string, 
       </p>
 
       <p style="color:#3d2200;line-height:1.8;font-size:15px;margin:0 0 18px;">
-        Your dedication to each patient — the patience, the precision, the quiet compassion
-        behind every session — does not go unnoticed. The progress our patients make is a direct
-        reflection of the heart and skill you pour into your work. We are proud and grateful to
+        Your dedication to Sandbox Clinic — the hard work, the attention to detail, and the
+        commitment you bring every day — does not go unnoticed. The success of our clinic is a direct
+        reflection of the effort and care you pour into your work. We are proud and grateful to
         have you on our team.
       </p>
-
-      <!-- Net pay highlight -->
-      <div style="background:#fff4ec;border:2px solid #f4832a;border-radius:14px;padding:24px;text-align:center;margin:28px 0;">
-        <p style="margin:0 0 6px;font-size:12px;color:#c44b00;letter-spacing:2px;text-transform:uppercase;font-weight:600;">
-          Your Net Pay for ${periodLabel}
-        </p>
-        <p style="margin:0;font-size:32px;font-weight:800;color:#c44b00;">${netPay}</p>
-      </div>
 
       <p style="color:#3d2200;line-height:1.8;font-size:15px;margin:0 0 18px;">
         Your detailed payslip is <strong>attached to this email as a PDF</strong>.
@@ -72,6 +60,24 @@ function buildEmailHtml(firstName: string, periodLabel: string, netPay: string, 
         If you have any questions or concerns about your payslip, please don't hesitate to reach out
         to the clinic administration. We are always here to help.
       </p>
+
+      <!-- Staff Payroll Revision Request -->
+      <div style="background:#fff8f3;border:1px solid #ffdec8;border-radius:12px;padding:24px;margin:0 0 24px;text-align:center;">
+        <p style="color:#c44b00;font-weight:700;font-size:14px;margin:0 0 8px;">
+          Staff Payroll Revision Request
+        </p>
+        <p style="color:#3d2200;font-size:13px;line-height:1.6;margin:0 0 16px;">
+          Need to request a revision to your payslip? Use the link or scan the QR code below.
+        </p>
+        <a href="https://hr.sapphireclinicseast.org/forms/fill/byKlxWS6"
+           style="display:inline-block;background:#c44b00;color:#fff;font-size:13px;font-weight:600;padding:10px 24px;border-radius:8px;text-decoration:none;margin:0 0 16px;">
+          Open Revision Request Form
+        </a>
+        <div style="margin:0 auto;">
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent('https://hr.sapphireclinicseast.org/forms/fill/byKlxWS6')}"
+               alt="QR Code — Payroll Revision Request" width="140" height="140" style="display:block;margin:0 auto;" />
+        </div>
+      </div>
 
       <p style="color:#3d2200;line-height:1.8;font-size:15px;margin:0 0 4px;">
         With gratitude and appreciation,
@@ -106,9 +112,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
 
-  if (!process.env.SMTP_HOST || !process.env.SMTP_USER) {
+  if (!process.env.RESEND_API_KEY) {
     return NextResponse.json(
-      { error: 'Email is not configured. Please set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS in your environment.' },
+      { error: 'Email is not configured. Please set RESEND_API_KEY in your environment.' },
       { status: 503 }
     )
   }
@@ -123,33 +129,34 @@ export async function POST(req: Request) {
     const periodLabel = getPeriodLabel(cutoffPeriod)
     const displayName = firstName || consultantName?.split(',')[1]?.trim() || consultantName || 'Clinician'
 
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    })
-
     const safeName = (consultantName || 'clinician').replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()
     const pdfData = pdfBase64.includes('base64,') ? pdfBase64.split('base64,')[1] : pdfBase64
 
-    await transporter.sendMail({
-      from: `"Sandbox Clinic" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
-      to: email,
-      subject: `Your Payslip — ${periodLabel} | Sandbox Clinic`,
-      html: buildEmailHtml(displayName, periodLabel, netPay || '', branch || ''),
-      attachments: [
-        {
-          filename: `payslip-${safeName}-${cutoffPeriod}.pdf`,
-          content: pdfData,
-          encoding: 'base64',
-          contentType: 'application/pdf',
-        },
-      ],
+    // Use Resend HTTP API (SMTP ports blocked on this VPS)
+    const resendRes = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: 'Sandbox Clinic Payroll <noreply@do-not-reply.sapphireclinicseast.org>',
+        to: [email],
+        subject: `Your Payslip — ${periodLabel} | Sandbox Clinic`,
+        html: buildEmailHtml(displayName, periodLabel, branch || ''),
+        attachments: [
+          {
+            filename: `payslip-${safeName}-${cutoffPeriod}.pdf`,
+            content: pdfData,
+          },
+        ],
+      }),
     })
+
+    if (!resendRes.ok) {
+      const errData = await resendRes.json().catch(() => ({}))
+      throw new Error(errData.message || `Resend API error (${resendRes.status})`)
+    }
 
     return NextResponse.json({ sent: true, to: email })
   } catch (err) {

@@ -32,6 +32,7 @@ export async function GET(req: Request) {
   const search = searchParams.get('search') || ''
   const patientId = searchParams.get('patientId') || ''
   const walletType = searchParams.get('walletType') || ''
+  const branch = searchParams.get('branch') || ''
 
   const includeDeleted = searchParams.get('includeDeleted') === 'true'
 
@@ -40,6 +41,11 @@ export async function GET(req: Request) {
 
   if (walletType) {
     where.walletType = walletType
+  }
+
+  // Filter wallets by branch: show wallets matching user's branch OR wallets set to ALL
+  if (branch && branch !== 'ALL') {
+    where.branch = { in: [branch, 'ALL'] }
   }
 
   if (patientId) {
@@ -63,6 +69,7 @@ export async function GET(req: Request) {
       take: params.pageSize,
       include: {
         _count: { select: { packages: true } },
+        ...(walletType === 'PACKAGE' ? { packages: { select: { id: true, department: true, serviceName: true, isActive: true, totalSessions: true, usedSessions: true }, orderBy: { createdAt: 'desc' as const } } } : {}),
       },
     }),
     prisma.digitalWallet.count({ where }),
@@ -78,7 +85,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { patientId, patientName, patientEmail, walletType, accountId, dateObtained, paymentModeId, initialBalance, attachmentUrl, agency } = await req.json()
+    const { patientId, patientName, patientEmail, walletType, accountId, dateObtained, paymentModeId, initialBalance, attachmentUrl, agency, initialRewardPoints, totalGlAmount, branch: walletBranch } = await req.json()
 
     if (!patientName?.trim()) {
       return NextResponse.json({ error: 'Patient name is required' }, { status: 400 })
@@ -102,8 +109,9 @@ export async function POST(req: Request) {
     }
 
     // Check for existing wallet with same patientId/name + walletType
+    // SKIP for PACKAGE wallets — same patient can have multiple packages (OT, ST, etc.)
     const lookupId = patientId?.trim() || `${walletType}-${patientName.trim().replace(/\s+/g, '-').toUpperCase()}`
-    {
+    if (walletType !== 'PACKAGE') {
       const existingWallet = await prisma.digitalWallet.findFirst({
         where: {
           patientId: lookupId,
@@ -145,15 +153,20 @@ export async function POST(req: Request) {
       data: {
         barcode,
         walletType,
-        patientId: patientId?.trim() || `${walletType}-${patientName.trim().replace(/\s+/g, '-').toUpperCase()}`,
+        patientId: patientId?.trim() || (walletType === 'PACKAGE'
+          ? `${walletType}-${patientName.trim().replace(/\s+/g, '-').toUpperCase()}-${Date.now().toString(36)}`
+          : `${walletType}-${patientName.trim().replace(/\s+/g, '-').toUpperCase()}`),
         patientName: patientName.trim(),
         patientEmail: patientEmail?.trim() || null,
         accountId: resolvedAccountId,
         dateObtained: dateObtained ? new Date(dateObtained) : null,
         paymentModeId: paymentModeId || null,
         balance: initialBalance ? Number(initialBalance) : 0,
+        rewardPoints: walletType === 'VIP' && initialRewardPoints ? Number(initialRewardPoints) : 0,
         attachmentUrl: attachmentUrl || null,
         agency: walletType === 'GL' ? (agency?.trim() || null) : null,
+        totalGlAmount: walletType === 'GL' && totalGlAmount ? Number(totalGlAmount) : null,
+        branch: walletBranch || 'ALL',
       },
     })
 

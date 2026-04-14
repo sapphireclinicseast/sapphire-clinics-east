@@ -24,10 +24,25 @@ export async function GET(req: Request) {
   const branch = searchParams.get('branch') || ''
   const startDate = searchParams.get('startDate') || ''
   const endDate = searchParams.get('endDate') || ''
+  const minStatus = searchParams.get('minStatus') || '' // ACCEPTED or FINALIZED — filter by upload status
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = {}
   if (employeeId) where.employeeId = employeeId
+
+  // Filter by upload status: only show records from uploads with at least this status
+  // Manual records (no upload) are always included
+  if (minStatus === 'ACCEPTED') {
+    where.OR = [
+      { uploadId: null }, // manual entries always visible
+      { upload: { status: { in: ['ACCEPTED', 'FINALIZED'] } } },
+    ]
+  } else if (minStatus === 'FINALIZED') {
+    where.OR = [
+      { uploadId: null },
+      { upload: { status: 'FINALIZED' } },
+    ]
+  }
 
   // Enforce branch restriction based on role
   const allowed = allowedBranches(session.user.role as string)
@@ -50,6 +65,7 @@ export async function GET(req: Request) {
     where,
     include: {
       employee: { select: { id: true, firstName: true, lastName: true, department: true, branch: true, scheduleIn: true, scheduleOut: true } },
+      upload: { select: { id: true, status: true } },
     },
     orderBy: [{ date: 'asc' }],
   })
@@ -147,11 +163,18 @@ export async function PUT(req: Request) {
   if ((timeIn !== undefined || timeOut !== undefined) && (resolveConflict || data.source === 'MANUAL')) {
     const empRecord = await prisma.timekeepingRecord.findUnique({
       where: { id },
-      include: { employee: { select: { scheduleIn: true, scheduleOut: true } } },
+      include: { employee: { select: { scheduleIn: true, scheduleOut: true, daySchedules: true } } },
     })
     if (empRecord?.employee && newIn && newOut) {
-      const [schInH, schInM] = empRecord.employee.scheduleIn.split(':').map(Number)
-      const [schOutH, schOutM] = empRecord.employee.scheduleOut.split(':').map(Number)
+      // Check for per-day schedule override
+      const DAYS = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']
+      const dayOfWeek = DAYS[existing.date.getUTCDay()]
+      const ds = empRecord.employee.daySchedules as Record<string, { in: string; out: string }> | null
+      const daySched = ds?.[dayOfWeek]
+      const schedIn = daySched?.in || empRecord.employee.scheduleIn
+      const schedOut = daySched?.out || empRecord.employee.scheduleOut
+      const [schInH, schInM] = schedIn.split(':').map(Number)
+      const [schOutH, schOutM] = schedOut.split(':').map(Number)
       const phtIn = new Date(new Date(newIn).getTime() + 8 * 60 * 60 * 1000)
       const phtOut = new Date(new Date(newOut).getTime() + 8 * 60 * 60 * 1000)
       const schedInMinutes = schInH * 60 + schInM
