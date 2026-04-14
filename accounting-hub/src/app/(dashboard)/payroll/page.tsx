@@ -37,6 +37,8 @@ interface Consultant {
   pagibigNumber?: string | null
   taxDeduction: string
   monthlyRetainer: number | string
+  bankName?: string | null
+  bankAccountNo?: string | null
   isActive: boolean
   unitPayRates: { id: string; unitPayId: string; unitPay: { id: string; name: string }; amount: number | string; disabled?: boolean; thresholdEnabled?: boolean; thresholdAmount?: number | string | null; reducedAmount?: number | string | null }[]
 }
@@ -2244,15 +2246,17 @@ export default function PayrollPage() {
                       <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>SSS</th>
                       <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>PhilHealth</th>
                       <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Pag-IBIG</th>
+                      <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Bank</th>
+                      <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Bank Account No.</th>
                       <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Tax</th>
                       <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Retainer</th>
                     </tr>
                   </thead>
                   <tbody>
                     {loading ? (
-                      <tr><td colSpan={12} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</td></tr>
+                      <tr><td colSpan={14} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</td></tr>
                     ) : filteredConsultants.length === 0 ? (
-                      <tr><td colSpan={12} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
+                      <tr><td colSpan={14} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
                         No consultants found. Click &quot;Sync from Clinician Database&quot; to import.
                       </td></tr>
                     ) : filteredConsultants.map(c => (
@@ -2271,6 +2275,8 @@ export default function PayrollPage() {
                           <td className="px-4 py-3 text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>{c.sssNumber || '—'}</td>
                           <td className="px-4 py-3 text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>{c.philhealthNumber || '—'}</td>
                           <td className="px-4 py-3 text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>{c.pagibigNumber || '—'}</td>
+                          <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{c.bankName || '—'}</td>
+                          <td className="px-4 py-3 text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>{c.bankAccountNo || '—'}</td>
                           <td className="px-4 py-3">
                             <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
                               style={c.taxDeduction === 'FIVE_PERCENT' ? { background: '#fef3c7', color: '#92400e' } : { background: '#f3f4f6', color: '#374151' }}>
@@ -2283,7 +2289,7 @@ export default function PayrollPage() {
                         </tr>
                         {expandedConsultant === c.id && (
                           <tr key={`${c.id}-exp`} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                            <td colSpan={12} className="px-6 py-4" style={{ background: '#fafafa' }}>
+                            <td colSpan={14} className="px-6 py-4" style={{ background: '#fafafa' }}>
                               <div className="space-y-4 max-w-lg">
                                 <div className="flex items-center gap-4">
                                   <label className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Tax Deduction:</label>

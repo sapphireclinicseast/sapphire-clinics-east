@@ -139,6 +139,8 @@ interface Employee {
   philhealthNumber?: string | null
   pagibigNumber?: string | null
   tinNumber?: string | null
+  bankName?: string | null
+  bankAccountNo?: string | null
   dateHired?: string | null
   regularizationDate?: string | null
   scheduleIn: string
@@ -1654,6 +1656,8 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                     <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>SSS</th>
                     <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>PhilHealth</th>
                     <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Pag-IBIG</th>
+                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Bank</th>
+                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Bank Account No.</th>
                     <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Schedule</th>
                     <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Payslips</th>
                     {canWrite && <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}></th>}
@@ -1661,7 +1665,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                 </thead>
                 <tbody>
                   {filteredEmployees.length === 0 ? (
-                    <tr><td colSpan={canWrite ? 18 : 16} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No employees found. Sync from CRM or add manually.</td></tr>
+                    <tr><td colSpan={canWrite ? 20 : 18} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No employees found. Sync from CRM or add manually.</td></tr>
                   ) : sortRows(filteredEmployees, (e) => {
                     if (sortField === 'empName') return `${e.lastName} ${e.firstName}`
                     if (sortField === 'empDept') return e.department
@@ -1695,6 +1699,8 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                       <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{emp.sssNumber || '—'}</td>
                       <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{emp.philhealthNumber || '—'}</td>
                       <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{emp.pagibigNumber || '—'}</td>
+                      <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{emp.bankName || '—'}</td>
+                      <td className="px-3 py-2.5 text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>{emp.bankAccountNo || '—'}</td>
                       <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>
                         {emp.scheduleIn} – {emp.scheduleOut}
                         {emp.daySchedules && Object.keys(emp.daySchedules).length > 0 && (
@@ -1717,7 +1723,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                     </tr>
                     {expandedEmpPayslips === emp.id && (
                       <tr className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                        <td colSpan={canWrite ? 18 : 16} className="px-4 py-3" style={{ background: '#f8fafc' }}>
+                        <td colSpan={canWrite ? 20 : 18} className="px-4 py-3" style={{ background: '#f8fafc' }}>
                           {loadingPastPayslips ? (
                             <div className="flex items-center gap-2 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>
                               <Loader2 size={12} className="animate-spin" /> Loading payslips...
