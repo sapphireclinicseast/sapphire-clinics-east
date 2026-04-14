@@ -1209,11 +1209,15 @@ model EmployeePayslip {
   details          Json?        // Additional breakdown data
   pdfUrl           String?      // Stored PDF file path on VPS
   status           PayslipStatus @default(DRAFT)
+  taxRemitted      Boolean      @default(false)
+  salariesRemitted Boolean      @default(false)
   createdById      String
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
   @@unique([employeeId, cutoffPeriod, branch])
+  @@index([taxRemitted])
+  @@index([salariesRemitted])
   @@index([employeeId])
   @@index([cutoffPeriod])
   @@index([branch])

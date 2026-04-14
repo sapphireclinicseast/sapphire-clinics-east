@@ -69,7 +69,7 @@ export async function GET(req: Request) {
       take: params.pageSize,
       include: {
         _count: { select: { packages: true } },
-        ...(walletType === 'PACKAGE' ? { packages: { select: { id: true, department: true, serviceName: true, isActive: true, totalSessions: true, usedSessions: true }, orderBy: { createdAt: 'desc' as const } } } : {}),
+        ...(walletType === 'PACKAGE' ? { packages: { select: { id: true, department: true, serviceName: true, isActive: true, totalSessions: true, usedSessions: true, amountPaid: true }, orderBy: { createdAt: 'desc' as const } } } : {}),
       },
     }),
     prisma.digitalWallet.count({ where }),

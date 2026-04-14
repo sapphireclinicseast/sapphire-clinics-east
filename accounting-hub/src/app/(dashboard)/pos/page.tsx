@@ -1866,19 +1866,38 @@ function OrderFormModal({
                 <input value={packageSearch} onChange={e => searchPackageWallets(e.target.value)} placeholder="Search by patient name..."
                   className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#93c5fd' }} />
                 {packageWallets.length > 0 && (
-                  <div className="max-h-32 overflow-y-auto space-y-1">
-                    {packageWallets.map(w => {
-                      const pkgDept = w.packages?.find(p => p.isActive)?.department || w.packages?.[0]?.department
-                      return (
-                      <button key={w.id} onClick={() => selectPackageWallet(w)}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 rounded-lg flex justify-between">
-                        <span className="font-medium">{w.patientName}{pkgDept ? ` (${pkgDept})` : ''}</span>
-                        <span className="text-xs" style={{ color: '#1e40af' }}>
-                          Balance: {formatCurrency(toNum(w.balance))} · {w._count?.packages || 0} pkg(s)
-                        </span>
-                      </button>
-                      )
-                    })}
+                  <div className="max-h-40 overflow-y-auto space-y-1">
+                    {packageWallets.flatMap(w =>
+                      (w.packages || [])
+                        .filter((p: WalletPackage) => p.isActive !== false && (p.totalSessions - p.usedSessions) > 0)
+                        .map((p: WalletPackage) => {
+                          const remaining = p.totalSessions - p.usedSessions
+                          const perSession = toNum(p.amountPaid) / p.totalSessions
+                          return (
+                            <button key={p.id} onClick={() => {
+                              setSelectedPackageWallet(w)
+                              setPayments(prev => {
+                                const existing = prev.findIndex(pm => pm.method === 'PACKAGE')
+                                const payment = { method: 'PACKAGE' as const, amount: perSession, walletId: w.id, reference: `PKG:${p.id}` }
+                                if (existing >= 0) return prev.map((pm, i) => i === existing ? payment : pm)
+                                return [...prev, payment]
+                              })
+                              setPackageSearch(w.patientName)
+                              setPackageWallets([])
+                            }}
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 rounded-lg flex justify-between items-start">
+                              <div>
+                                <span className="font-medium block">{w.patientName}</span>
+                                <span className="text-xs" style={{ color: '#6b7280' }}>{p.serviceName}{p.department ? ` · ${p.department}` : ''}</span>
+                              </div>
+                              <div className="text-right ml-2 shrink-0">
+                                <span className="text-xs font-semibold block" style={{ color: '#1e40af' }}>{remaining} sessions left</span>
+                                <span className="text-xs" style={{ color: '#6b7280' }}>{formatCurrency(perSession)}/session</span>
+                              </div>
+                            </button>
+                          )
+                        })
+                    )}
                   </div>
                 )}
                 {selectedPackageWallet && (
@@ -2157,7 +2176,7 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
   const [viewOrder, setViewOrder] = useState<Order | null>(null)
   const [editOrder, setEditOrder] = useState<Order | null>(null)
   const [editItems, setEditItems] = useState<{ name: string; quantity: number; unitPrice: number; lineTotal: number; serviceId?: string }[]>([])
-  const [editPayments, setEditPayments] = useState<{ method: string; amount: number; paymentModeId?: string; walletId?: string }[]>([])
+  const [editPayments, setEditPayments] = useState<{ method: string; amount: number; paymentModeId?: string; walletId?: string; reference?: string }[]>([])
   const [editPatient, setEditPatient] = useState('')
   const [editClinician, setEditClinician] = useState('')
   const [editDate, setEditDate] = useState('')
@@ -2975,20 +2994,31 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                       <input value={editPackageSearch} onChange={e => { setEditPackageSearch(e.target.value); editSearchTypedWallets('PACKAGE', e.target.value, setEditPackageWallets) }} placeholder="Search by patient name..."
                         className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#93c5fd' }} />
                       {editPackageWallets.length > 0 && (
-                        <div className="max-h-32 overflow-y-auto space-y-1">
-                          {editPackageWallets.map(w => {
-                            const pkgDept = w.packages?.find(p => p.isActive)?.department || w.packages?.[0]?.department
-                            return (
-                            <button key={w.id} onClick={() => {
-                              setEditPayments([{ method: 'PACKAGE', amount: 0, walletId: w.id }])
-                              setEditShowPackagePay(false)
-                            }}
-                              className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 rounded-lg flex justify-between">
-                              <span className="font-medium">{w.patientName}{pkgDept ? ` (${pkgDept})` : ''}</span>
-                              <span className="text-xs" style={{ color: '#1e40af' }}>Balance: {formatCurrency(toNum(w.balance))}</span>
-                            </button>
-                            )
-                          })}
+                        <div className="max-h-40 overflow-y-auto space-y-1">
+                          {editPackageWallets.flatMap(w =>
+                            (w.packages || [])
+                              .filter((p: WalletPackage) => p.isActive !== false && (p.totalSessions - p.usedSessions) > 0)
+                              .map((p: WalletPackage) => {
+                                const remaining = p.totalSessions - p.usedSessions
+                                const perSession = toNum(p.amountPaid) / p.totalSessions
+                                return (
+                                  <button key={p.id} onClick={() => {
+                                    setEditPayments([{ method: 'PACKAGE', amount: perSession, walletId: w.id, reference: `PKG:${p.id}` }])
+                                    setEditShowPackagePay(false)
+                                  }}
+                                    className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 rounded-lg flex justify-between items-start">
+                                    <div>
+                                      <span className="font-medium block">{w.patientName}</span>
+                                      <span className="text-xs" style={{ color: '#6b7280' }}>{p.serviceName}{p.department ? ` · ${p.department}` : ''}</span>
+                                    </div>
+                                    <div className="text-right ml-2 shrink-0">
+                                      <span className="text-xs font-semibold block" style={{ color: '#1e40af' }}>{remaining} sessions left</span>
+                                      <span className="text-xs" style={{ color: '#6b7280' }}>{formatCurrency(perSession)}/session</span>
+                                    </div>
+                                  </button>
+                                )
+                              })
+                          )}
                         </div>
                       )}
                     </div>
@@ -3863,6 +3893,8 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                   ? [{ label: 'Patient Name', field: 'patientName' }, { label: 'Agency', field: 'agency' }, { label: 'Total GL Amount', field: 'totalGlAmount' }, { label: 'Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'Attachment', field: '' }, { label: '', field: '' }]
                   : ['VIP', 'PREPAID_CARD'].includes(walletTypeFilter)
                   ? [{ label: 'Patient Name', field: 'patientName' }, { label: 'Type', field: '' }, { label: 'Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'Barcode', field: 'barcode' }, { label: 'Packages', field: '' }, { label: 'Reward Points', field: 'rewardPoints' }, { label: '', field: '' }]
+                  : walletTypeFilter === 'PACKAGE'
+                  ? [{ label: 'Patient Name', field: 'patientName' }, { label: 'Package', field: '' }, { label: 'Sessions Used', field: '' }, { label: 'Remaining', field: '' }, { label: 'Amount Paid', field: '' }, { label: 'Rate/Session', field: '' }, { label: 'Branch', field: 'branch' }, { label: 'Status', field: '' }, { label: '', field: '' }]
                   : [{ label: 'Patient Name', field: 'patientName' }, { label: 'Type', field: '' }, { label: 'Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'Packages', field: '' }, { label: '', field: '' }]
                 ).map(h => (
                   <th key={h.label || 'actions'} className={`px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider ${h.field ? 'cursor-pointer select-none hover:bg-gray-50' : ''}`}
@@ -3879,7 +3911,85 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
               </tr>
             </thead>
             <tbody>
-              {[...wallets].sort((a, b) => {
+              {walletTypeFilter === 'PACKAGE' ? (
+                // For PACKAGE wallets: show each WalletPackage as a separate row
+                [...wallets].sort((a, b) => {
+                  const av = (a as DigitalWallet)[wSortField as keyof DigitalWallet]
+                  const bv = (b as DigitalWallet)[wSortField as keyof DigitalWallet]
+                  const an = typeof av === 'number' ? av : typeof av === 'string' ? (isNaN(Number(av)) ? av.toLowerCase() : Number(av)) : 0
+                  const bn = typeof bv === 'number' ? bv : typeof bv === 'string' ? (isNaN(Number(bv)) ? bv.toLowerCase() : Number(bv)) : 0
+                  if (an < bn) return wSortDir === 'asc' ? -1 : 1
+                  if (an > bn) return wSortDir === 'asc' ? 1 : -1
+                  return 0
+                }).flatMap(w =>
+                  (w.packages || []).length > 0
+                    ? (w.packages || []).map((pkg: WalletPackage) => {
+                        const remaining = pkg.totalSessions - pkg.usedSessions
+                        const perSession = toNum(pkg.amountPaid) / pkg.totalSessions
+                        const isFullyUsed = remaining <= 0
+                        const isInactive = pkg.isActive === false
+                        return (
+                          <tr key={pkg.id}
+                            className={`border-b cursor-pointer ${w.isActive === false || isInactive ? 'bg-red-50 opacity-60' : isFullyUsed ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
+                            style={{ borderColor: 'var(--light-gray)' }}
+                            onClick={() => w.isActive !== false && !isInactive && loadWalletDetail(w)}>
+                            <td className="px-5 py-3 font-medium" style={{ color: w.isActive === false ? '#991b1b' : 'var(--charcoal)' }}>
+                              {w.patientName}
+                              {w.isActive === false && <span className="ml-2 text-xs font-normal text-red-600">(Deleted)</span>}
+                            </td>
+                            <td className="px-5 py-3">
+                              <span className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>{pkg.serviceName}</span>
+                              {pkg.department && <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-xs font-bold" style={{ background: '#fce7f3', color: '#be185d' }}>{pkg.department}</span>}
+                            </td>
+                            <td className="px-5 py-3 text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>{pkg.usedSessions}/{pkg.totalSessions}</td>
+                            <td className="px-5 py-3">
+                              <span className="text-sm font-semibold" style={{ color: remaining > 0 ? 'var(--deep-teal)' : 'var(--mid-gray)' }}>{remaining}</span>
+                            </td>
+                            <td className="px-5 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>{formatCurrency(toNum(pkg.amountPaid))}</td>
+                            <td className="px-5 py-3 text-xs" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(perSession)}/session</td>
+                            <td className="px-5 py-3">
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                                style={{ background: (w.branch === 'SANDBOX_EAST' ? '#dbeafe' : w.branch === 'SANDBOX_GREENHILLS' ? '#dcfce7' : '#f3e8ff'),
+                                         color: (w.branch === 'SANDBOX_EAST' ? '#1e40af' : w.branch === 'SANDBOX_GREENHILLS' ? '#166534' : '#7e22ce') }}>
+                                {w.branch === 'SANDBOX_EAST' ? 'East' : w.branch === 'SANDBOX_GREENHILLS' ? 'GH' : 'All'}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3">
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                                style={isInactive || isFullyUsed ? { background: '#f3f4f6', color: '#6b7280' } : { background: '#dcfce7', color: '#166534' }}>
+                                {isInactive ? 'Inactive' : isFullyUsed ? 'Exhausted' : 'Active'}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3">
+                              <div className="flex items-center gap-1.5">
+                                <button className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+                                  View Wallet
+                                </button>
+                                {w.isActive !== false && (
+                                  <button onClick={(e) => { e.stopPropagation(); deleteWallet(w) }}
+                                    className="p-1.5 rounded-lg hover:bg-red-50" title="Delete Wallet">
+                                    <Trash2 size={13} className="text-red-500" />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })
+                    : [(
+                        <tr key={w.id}
+                          className={`border-b cursor-pointer ${w.isActive === false ? 'bg-red-50 opacity-60' : 'hover:bg-gray-50'}`}
+                          style={{ borderColor: 'var(--light-gray)' }}
+                          onClick={() => w.isActive !== false && loadWalletDetail(w)}>
+                          <td className="px-5 py-3 font-medium" style={{ color: w.isActive === false ? '#991b1b' : 'var(--charcoal)' }}>{w.patientName}</td>
+                          <td className="px-5 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>No packages</td>
+                          <td colSpan={7} className="px-5 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>—</td>
+                        </tr>
+                      )]
+                )
+              ) : (
+              // All other wallet types: show one row per wallet
+              [...wallets].sort((a, b) => {
                 const f = wSortField as keyof DigitalWallet
                 const av = a[f], bv = b[f]
                 const an = typeof av === 'number' ? av : typeof av === 'string' ? (isNaN(Number(av)) ? av.toLowerCase() : Number(av)) : 0
@@ -4017,7 +4127,8 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                     )}
                   </tr>
                 )
-              })}
+              }))
+              }
             </tbody>
           </table>
         )}
