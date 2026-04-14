@@ -1882,6 +1882,7 @@ function OrderFormModal({
                                 if (existing >= 0) return prev.map((pm, i) => i === existing ? payment : pm)
                                 return [...prev, payment]
                               })
+                              setItems(prev => prev.map(it => ({ ...it, unitPrice: perSession, lineTotal: perSession * it.quantity })))
                               setPackageSearch(w.patientName)
                               setPackageWallets([])
                             }}
@@ -3004,6 +3005,7 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                                 return (
                                   <button key={p.id} onClick={() => {
                                     setEditPayments([{ method: 'PACKAGE', amount: perSession, walletId: w.id, reference: `PKG:${p.id}` }])
+                                    setEditItems(prev => prev.map(it => ({ ...it, unitPrice: perSession, lineTotal: perSession * it.quantity })))
                                     setEditShowPackagePay(false)
                                   }}
                                     className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 rounded-lg flex justify-between items-start">
