@@ -1561,6 +1561,10 @@ export default function PayrollPage() {
       })
       setSavedMap(prev => ({ ...prev, [cid]: true }))
       setTimeout(() => setSavedMap(prev => ({ ...prev, [cid]: false })), 2500)
+      // Update local existingStatus so consultant stays visible in the list
+      setPayrollPreviews(prev => prev.map(pr =>
+        pr.consultantId === cid ? { ...pr, existingStatus: pr.existingStatus || 'DRAFT' } : pr
+      ))
     } catch { setError('Failed to save') }
     finally { setSavingMap(prev => ({ ...prev, [cid]: false })) }
   }
