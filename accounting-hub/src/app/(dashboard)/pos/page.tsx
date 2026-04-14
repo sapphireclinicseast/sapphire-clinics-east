@@ -7,7 +7,7 @@ import {
   CreditCard, Wallet, FileText, Download, Printer,
   RefreshCw, Ban, Star, Filter,
   Loader2, AlertCircle, ScanLine, UserPlus,
-  Pencil, PlusCircle, ToggleLeft, ToggleRight,
+  Pencil, PlusCircle, ToggleLeft, ToggleRight, Eye,
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import Pagination from '@/components/ui/Pagination'
@@ -78,6 +78,10 @@ interface Order {
   discountLabel?: string
   netAmount: string | number
   revenueType: string
+  issuedOfficialInvoice?: boolean
+  salesInvoiceNumber?: string | null
+  referenceNumber?: string | null
+  notes?: string | null
   status: string
   items: { id: string; name: string; quantity: number; unitPrice: string | number; lineTotal: string | number; serviceId?: string; inventoryItemId?: string; service?: { department?: string; revenueType?: string } | null }[]
   payments: { id: string; method: string; amount: string | number; walletId?: string; reference?: string }[]
@@ -296,41 +300,41 @@ function printThermalReceipt(order: {
   const phone = isVerdana ? '+63 917 173 1368' : '+63 917 118 9289 | (02) 5310 4991'
   const email = isVerdana ? 'verdanatrading@gmail.com' : 'east.sandboxclinic@gmail.com'
   const paymentLabel = order.payments.map(p => p.method.replace(/_/g, ' ')).join(', ')
-  const html = `<div style="font-family:'Courier New',monospace;font-size:11px;width:280px;padding:8px;line-height:1.5">
-<div style="text-align:center;font-weight:bold;font-size:12px">Sapphire Clinics East Inc.</div>
-<div style="text-align:center;font-size:11px">${branchName}</div>
-<div style="text-align:center;font-size:9px">${address}</div>
-<div style="text-align:center;font-size:9px">VAT-registered TIN: 010-817-642-00000</div>
-<div style="text-align:center;font-size:9px">${phone}</div>
-<div style="text-align:center;font-size:9px;margin-bottom:6px">${email}</div>
-<div style="font-size:10px">Receptionist: ${order.createdBy?.name || '\u2014'}</div>
-<div style="font-size:10px">Date: ${formatDate(order.transactionDate)}</div>
-<div style="font-size:10px">Order No: ${order.orderNumber}</div>
-<div style="font-size:10px">Payment Method: ${paymentLabel}</div>
-<div style="font-size:10px">Patient Name: ${order.patientName || '\u2014'}</div>
-<div style="border-top:1px solid #000;border-bottom:1px solid #000;margin:6px 0;padding:3px 0;display:flex;justify-content:space-between;font-weight:bold;font-size:10px">
+  const html = `<div style="font-family:'Arial Black',Arial,Helvetica,sans-serif;font-weight:900;font-size:11px;width:280px;padding:8px;line-height:1.5;color:#000">
+<div style="text-align:center;font-weight:900;font-size:12px">Sapphire Clinics East Inc.</div>
+<div style="text-align:center;font-size:11px;font-weight:900">${branchName}</div>
+<div style="text-align:center;font-size:9px;font-weight:900">${address}</div>
+<div style="text-align:center;font-size:9px;font-weight:900">VAT-registered TIN: 010-817-642-00000</div>
+<div style="text-align:center;font-size:9px;font-weight:900">${phone}</div>
+<div style="text-align:center;font-size:9px;font-weight:900;margin-bottom:6px">${email}</div>
+<div style="font-size:10px;font-weight:900">Receptionist: ${order.createdBy?.name || '\u2014'}</div>
+<div style="font-size:10px;font-weight:900">Date: ${formatDate(order.transactionDate)}</div>
+<div style="font-size:10px;font-weight:900">Order No: ${order.orderNumber}</div>
+<div style="font-size:10px;font-weight:900">Payment Method: ${paymentLabel}</div>
+<div style="font-size:10px;font-weight:900">Patient Name: ${order.patientName || '\u2014'}</div>
+<div style="border-top:1px solid #000;border-bottom:1px solid #000;margin:6px 0;padding:3px 0;display:flex;justify-content:space-between;font-weight:900;font-size:10px">
 <span>Product/s or Service/s</span><span>Amount</span></div>
-${order.items.map(it => `<div style="display:flex;justify-content:space-between;font-size:10px;margin:2px 0">
+${order.items.map(it => `<div style="display:flex;justify-content:space-between;font-size:10px;font-weight:900;margin:2px 0">
 <span>${it.name}${it.quantity > 1 ? ' x' + it.quantity : ''}</span><span>${fmt(it.lineTotal)}</span></div>`).join('')}
 <div style="border-bottom:1px solid #000;margin:6px 0"></div>
-<div style="display:flex;justify-content:space-between;font-size:10px"><span>Subtotal:</span><span>${fmt(order.subtotal)}</span></div>
-<div style="display:flex;justify-content:space-between;font-size:10px"><span>VAT:</span><span>Inclusive</span></div>
-${Number(order.discountAmount) > 0 ? `<div style="display:flex;justify-content:space-between;font-size:10px"><span>Discount${order.discountLabel ? ' (' + order.discountLabel + ')' : ''}:</span><span>-${fmt(order.discountAmount)}</span></div>` : ''}
-<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:bold;margin-top:2px"><span>Total:</span><span>${fmt(order.netAmount)}</span></div>
-${change > 0 ? `<div style="display:flex;justify-content:space-between;font-size:10px"><span>Change:</span><span>${fmt(change)}</span></div>` : ''}
-${order.revenueType === 'UNEARNED' ? '<div style="text-align:center;margin-top:4px;font-size:9px;font-style:italic">** UNEARNED REVENUE **</div>' : ''}
-<div style="text-align:center;margin-top:10px;font-size:11px;font-weight:bold">Thank you!</div>
-<div style="text-align:center;font-size:8px;margin:4px 0">Follow us on Facebook, Instagram, and Tiktok @sandboxcliniceast</div>
-<div style="text-align:center;font-size:8px;font-style:italic;margin-bottom:8px">This is not an official sales invoice. Please request the sales invoice from the front desk.</div>
+<div style="display:flex;justify-content:space-between;font-size:10px;font-weight:900"><span>Subtotal:</span><span>${fmt(order.subtotal)}</span></div>
+<div style="display:flex;justify-content:space-between;font-size:10px;font-weight:900"><span>VAT:</span><span>Inclusive</span></div>
+${Number(order.discountAmount) > 0 ? `<div style="display:flex;justify-content:space-between;font-size:10px;font-weight:900"><span>Discount${order.discountLabel ? ' (' + order.discountLabel + ')' : ''}:</span><span>-${fmt(order.discountAmount)}</span></div>` : ''}
+<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:900;margin-top:2px"><span>Total:</span><span>${fmt(order.netAmount)}</span></div>
+${change > 0 ? `<div style="display:flex;justify-content:space-between;font-size:10px;font-weight:900"><span>Change:</span><span>${fmt(change)}</span></div>` : ''}
+${order.revenueType === 'UNEARNED' ? '<div style="text-align:center;margin-top:4px;font-size:9px;font-weight:900;font-style:italic">** UNEARNED REVENUE **</div>' : ''}
+<div style="text-align:center;margin-top:10px;font-size:11px;font-weight:900">Thank you!</div>
+<div style="text-align:center;font-size:8px;font-weight:900;margin:4px 0">Follow us on Facebook, Instagram, and Tiktok @sandboxcliniceast</div>
+<div style="text-align:center;font-size:8px;font-weight:900;font-style:italic;margin-bottom:8px">This is not an official sales invoice. Please request the sales invoice from the front desk.</div>
 <div style="display:flex;justify-content:center;align-items:center;gap:12px;margin:10px 0">
-<img src="/qr-feedback.png" style="width:70px;height:70px" />
-<div style="font-size:8px;text-align:center;flex:1;line-height:1.3">Scan this QR Code for any concerns/<br/>complaints.</div>
-<img src="/scei-mark.png" style="width:65px;height:65px" onerror="this.style.display='none'" />
+<img src="/qr-feedback.png" style="width:70px;height:70px;filter:grayscale(100%) contrast(150%)" />
+<div style="font-size:8px;font-weight:900;text-align:center;flex:1;line-height:1.3">Scan this QR Code for any concerns/<br/>complaints.</div>
+<img src="/scei-mark.png" style="width:65px;height:65px;filter:grayscale(100%) contrast(150%)" onerror="this.style.display='none'" />
 </div></div>`
 
   const win = window.open('', '_blank', 'width=320,height=700')
   if (!win) return
-  win.document.write(`<html><head><title>Receipt #${order.orderNumber}</title><style>@page{size:80mm auto;margin:2mm}@media print{body{margin:0}}</style></head><body style="margin:0;padding:0">${html}<script>setTimeout(()=>{window.print();window.close()},500)<\/script></body></html>`)
+  win.document.write(`<html><head><title>Receipt #${order.orderNumber}</title><style>@page{size:80mm auto;margin:2mm}@media print{body{margin:0}}*{font-family:'Arial Black',Arial,Helvetica,sans-serif!important;font-weight:900!important;color:#000!important}img{filter:grayscale(100%) contrast(150%)!important}</style></head><body style="margin:0;padding:0">${html}<script>setTimeout(()=>{window.print();window.close()},500)<\/script></body></html>`)
   win.document.close()
 }
 
@@ -743,6 +747,9 @@ function OrderFormModal({
   const [showGlPay, setShowGlPay] = useState(false)
   const [glSearch, setGlSearch] = useState('')
   const [glWallets, setGlWallets] = useState<DigitalWallet[]>([])
+  const [showAdvancePay, setShowAdvancePay] = useState(false)
+  const [advanceSearch, setAdvanceSearch] = useState('')
+  const [advanceWallets, setAdvanceWallets] = useState<DigitalWallet[]>([])
   const [isAdvancePayment, setIsAdvancePayment] = useState(false)
   const [walletPopup, setWalletPopup] = useState<{ show: boolean; wallet?: DigitalWallet; walletType?: string }>({ show: false })
   const [patientId, setPatientId] = useState(prefill?.patientId as string || '')
@@ -751,6 +758,8 @@ function OrderFormModal({
   const [walletDiscountRules, setWalletDiscountRules] = useState<WalletDiscountRuleItem[]>([])
   const [issuedOfficialInvoice, setIssuedOfficialInvoice] = useState(false)
   const [salesInvoiceNumber, setSalesInvoiceNumber] = useState('')
+  const [referenceNumber, setReferenceNumber] = useState('')
+  const [orderNotes, setOrderNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const patientTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -798,7 +807,7 @@ function OrderFormModal({
     clearTimeout(serviceTimer.current)
     serviceTimer.current = setTimeout(async () => {
       try {
-        const r = await fetch(`/api/services?pageSize=500&branch=${branch}`)
+        const r = await fetch(`/api/services?pageSize=2000&branch=${branch}`)
         const d = await r.json()
         setServices(normalize(d) as ServiceItem[])
       } catch { setServices([]) }
@@ -809,8 +818,29 @@ function OrderFormModal({
     s.name.toLowerCase().includes(serviceSearch.toLowerCase())
   )
 
+  // Compute the effective price for a service based on branch and effective dates
+  const effectivePrice = (svc: ServiceItem) => {
+    let price = toNum(svc.price)
+    const now = new Date()
+    const bps = svc.branchPrices as { branch: string; price: string | number; newPrice?: string | number | null; newPriceEffectiveDate?: string | null }[] | undefined
+    if (bps?.length) {
+      const bp = bps.find(b => b.branch === branch)
+      if (bp) {
+        price = toNum(bp.price)
+        if (bp.newPrice && bp.newPriceEffectiveDate && new Date(bp.newPriceEffectiveDate) <= now) {
+          price = toNum(bp.newPrice)
+        }
+        return price
+      }
+    }
+    if (svc.newPrice && svc.newPriceEffectiveDate && new Date(svc.newPriceEffectiveDate as string) <= now) {
+      price = toNum(svc.newPrice as string | number)
+    }
+    return price
+  }
+
   const addItem = (svc: ServiceItem) => {
-    const price = toNum(svc.price)
+    const price = effectivePrice(svc)
     setItems(prev => [...prev, {
       serviceId: svc.id,
       name: svc.name,
@@ -902,9 +932,9 @@ function OrderFormModal({
   }
 
   const netAmount = Math.max(0, subtotal - discountAmount)
-  // For Package payments, use the stored per-session amount (not netAmount)
+  // For Package payments, always use netAmount (items prices are already set to per-session rate)
   const totalPayments = payments.reduce((s, p) => {
-    if (p.method === 'PACKAGE') return s + (p.walletId ? toNum(p.amount) : netAmount)
+    if (p.method === 'PACKAGE') return s + netAmount
     return s + toNum(p.amount)
   }, 0)
   const changeDue = totalPayments - netAmount
@@ -916,6 +946,7 @@ function OrderFormModal({
     try {
       const params = new URLSearchParams({ walletType: 'HMO' })
       if (q) params.set('search', q)
+      if (!isAdmin(session)) params.set('branch', userBranch(session))
       const r = await fetch(`/api/pos/wallets?${params}`)
       const d = await r.json()
       setHmoWallets(normalize(d) as DigitalWallet[])
@@ -927,6 +958,7 @@ function OrderFormModal({
     try {
       const params = new URLSearchParams({ walletType: 'GL' })
       if (q) params.set('search', q)
+      if (!isAdmin(session)) params.set('branch', userBranch(session))
       const r = await fetch(`/api/pos/wallets?${params}`)
       const d = await r.json()
       setGlWallets(normalize(d) as DigitalWallet[])
@@ -944,27 +976,58 @@ function OrderFormModal({
     } catch { setDpWallets([]) }
   }
 
+  const searchAdvanceWallets = async (q: string) => {
+    setAdvanceSearch(q)
+    try {
+      const params = new URLSearchParams({ walletType: 'ADVANCE' })
+      if (q) params.set('search', q)
+      const r = await fetch(`/api/pos/wallets?${params}`)
+      const d = await r.json()
+      setAdvanceWallets(normalize(d) as DigitalWallet[])
+    } catch { setAdvanceWallets([]) }
+  }
+
   const searchPackageWallets = async (q: string) => {
     setPackageSearch(q)
     if (q.length < 2) { setPackageWallets([]); return }
     try {
-      const r = await fetch(`/api/pos/wallets?search=${encodeURIComponent(q)}&walletType=PACKAGE`)
+      const r = await fetch(`/api/pos/wallets?search=${encodeURIComponent(q)}&walletType=PACKAGE&branch=${branch}`)
       const d = await r.json()
       setPackageWallets(normalize(d) as DigitalWallet[])
     } catch { setPackageWallets([]) }
   }
 
   // Select a package wallet — find per-session rate and link
+  // Match package to the service being consumed by department or name
   const selectPackageWallet = async (wallet: DigitalWallet) => {
     setSelectedPackageWallet(wallet)
     try {
       const r = await fetch(`/api/pos/wallets/${wallet.id}`)
       const detail = await r.json()
-      const activePkg = (detail.packages || []).find((pkg: WalletPackage) => {
+      const allPkgs = (detail.packages || []).filter((pkg: WalletPackage) => {
         const remaining = pkg.totalSessions - pkg.usedSessions
         return remaining > 0 && pkg.isActive
       })
+      // Try to match by department of current item(s)
+      const currentDept = items[0]?.department?.toUpperCase() || ''
+      const currentName = items[0]?.name?.toUpperCase() || ''
+      let activePkg = allPkgs.find((pkg: WalletPackage) => {
+        const pkgDept = (pkg.department || '').toUpperCase()
+        const pkgName = (pkg.serviceName || '').toUpperCase()
+        // Match by department (e.g. OT, ST, SLP)
+        if (currentDept && pkgDept && pkgDept === currentDept) return true
+        // Match by name containing department abbreviation
+        if (currentDept && pkgName.includes(currentDept)) return true
+        // Match by service name similarity
+        if (currentName && pkgName.includes(currentName)) return true
+        return false
+      })
+      // Fallback: pick the first active package if no department match
+      if (!activePkg && allPkgs.length > 0) activePkg = allPkgs[0]
+
       if (activePkg) {
+        // Per-session rate = amountPaid at purchase time / total sessions
+        // This locks in the original purchase price regardless of current service price
         const perSession = toNum(activePkg.amountPaid) / activePkg.totalSessions
         setPayments(prev => {
           const existing = prev.findIndex(p => p.method === 'PACKAGE')
@@ -973,9 +1036,9 @@ function OrderFormModal({
           }
           return [...prev, { method: 'PACKAGE', amount: perSession, walletId: wallet.id, reference: `PKG:${activePkg.id}` }]
         })
-        // Override item price to per-session rate
+        // Override ALL item prices to per-session rate (based on package purchase price, not current price)
         if (items.length > 0) {
-          setItems(prev => prev.map((it, i) => i === 0 ? { ...it, unitPrice: perSession, lineTotal: perSession * it.quantity } : it))
+          setItems(prev => prev.map(it => ({ ...it, unitPrice: perSession, lineTotal: perSession * it.quantity })))
         }
       } else {
         setError('No active packages with remaining sessions found')
@@ -989,14 +1052,25 @@ function OrderFormModal({
   const applyWalletDiscount = async (wallet: DigitalWallet) => {
     setActiveWallet(wallet)
     if (!wallet.walletType) return
+    // Don't override discount if user already selected one
+    if (customDiscountId || pwdDiscount) return
     try {
       const r = await fetch(`/api/pos/discount-settings?walletType=${wallet.walletType}`)
       const d = await r.json()
       const settings = normalize(d) as DiscountSettingFull[]
-      if (settings.length > 0 && settings[0].rules && settings[0].rules.length > 0) {
-        setWalletDiscountRules(settings[0].rules)
-        setWalletDiscountApplied(true)
-        setCustomDiscountId(settings[0].id)
+      if (settings.length > 0) {
+        // Try to match by VIP tier if wallet has one
+        let matched = settings[0]
+        if (wallet.vipTier && settings.length > 1) {
+          const tierName = wallet.vipTier.toLowerCase()
+          const tierMatch = settings.find(s => s.name.toLowerCase().includes(tierName))
+          if (tierMatch) matched = tierMatch
+        }
+        if (matched.rules && matched.rules.length > 0) {
+          setWalletDiscountRules(matched.rules)
+          setWalletDiscountApplied(true)
+        }
+        setCustomDiscountId(matched.id)
         setPwdDiscount(false)
       }
     } catch { /* no wallet discounts available */ }
@@ -1010,7 +1084,7 @@ function OrderFormModal({
       const d = await r.json()
       if (d.error) { setError(d.error); return }
       // Replace primary payment with wallet — map walletType to PaymentMethod enum
-      const walletMethodMap: Record<string, string> = { VIP: 'VIP_CARD', PREPAID_CARD: 'PREPAID_CARD', PACKAGE: 'PACKAGE', DOWNPAYMENT: 'DOWNPAYMENT', ADVANCE: 'CASH', HMO: 'HMO', GL: 'GL' }
+      const walletMethodMap: Record<string, string> = { VIP: 'VIP_CARD', PREPAID_CARD: 'PREPAID_CARD', PACKAGE: 'PACKAGE', DOWNPAYMENT: 'DOWNPAYMENT', ADVANCE: 'ADVANCE', HMO: 'HMO', GL: 'GL' }
       const payMethod = walletMethodMap[d.walletType] || 'PREPAID_CARD'
       setPayments([{ method: payMethod, amount: 0, walletId: d.id, reference: d.barcode }])
       setShowWalletPay(false)
@@ -1109,6 +1183,7 @@ function OrderFormModal({
               patientName: patientName.trim(),
               patientId: walletPatientId,
               walletType,
+              branch,
             }),
           })
           const walletData = await walletRes.json()
@@ -1168,6 +1243,8 @@ function OrderFormModal({
         referrerId: referrerId || null,
         issuedOfficialInvoice,
         salesInvoiceNumber: issuedOfficialInvoice ? salesInvoiceNumber.trim() : null,
+        referenceNumber: referenceNumber.trim() || null,
+        notes: orderNotes.trim() || null,
       }
       const res = await fetch('/api/pos/orders', {
         method: 'POST',
@@ -1203,7 +1280,7 @@ function OrderFormModal({
       // 2. Explicit WALLET payment lines (walletId on the payment)
       // Exclude HMO and GL — those are accounts receivable, credited on the backend (not deducted)
       const RECEIVABLE_METHODS = ['HMO', 'GL']
-      const walletPayments = payments.filter(p => p.walletId && toNum(p.amount) > 0 && p.walletId !== activeWallet?.id && !RECEIVABLE_METHODS.includes(p.method))
+      const walletPayments = payments.filter(p => p.walletId && toNum(p.amount) > 0 && p.walletId !== activeWallet?.id && !RECEIVABLE_METHODS.includes(p.method) && p.method !== 'PACKAGE')
       for (const wp of walletPayments) {
         try {
           await fetch(`/api/pos/wallets/${wp.walletId}/deduct`, {
@@ -1242,18 +1319,19 @@ function OrderFormModal({
         }
       }
 
-      // 3. Package session deduction
+      // 3. Package session deduction — deduct total item quantity as sessions
       const packagePayment = payments.find(p => p.method === 'PACKAGE' && p.walletId && p.reference?.startsWith('PKG:'))
       if (packagePayment) {
         const pkgId = packagePayment.reference?.replace('PKG:', '') || ''
-        if (pkgId) {
+        const totalSessions = items.reduce((s, it) => s + it.quantity, 0)
+        if (pkgId && totalSessions > 0) {
           try {
             await fetch(`/api/pos/wallets/${packagePayment.walletId}/deduct`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 packageId: pkgId,
-                sessions: 1,
+                sessions: totalSessions,
               }),
             })
           } catch (e) {
@@ -1350,7 +1428,7 @@ function OrderFormModal({
                         </span>
                       )}
                     </span>
-                    <span className="font-semibold shrink-0" style={{ color: 'var(--teal)' }}>{formatCurrency(toNum(s.price))}</span>
+                    <span className="font-semibold shrink-0" style={{ color: 'var(--teal)' }}>{formatCurrency(effectivePrice(s))}</span>
                   </button>
                 ))}
               </div>
@@ -1489,7 +1567,20 @@ function OrderFormModal({
             )}
             {!pwdDiscount && (
               <div className="space-y-2">
-                <select value={customDiscountId} onChange={e => { setCustomDiscountId(e.target.value); if (e.target.value !== '__FREEFORM__') { setFreeformDiscountAmt(0); setFreeformDiscountRemarks('') } }}
+                <select value={customDiscountId} onChange={e => {
+                  const newId = e.target.value
+                  setCustomDiscountId(newId)
+                  if (newId !== '__FREEFORM__') { setFreeformDiscountAmt(0); setFreeformDiscountRemarks('') }
+                  // When switching discount, check if new selection has wallet rules
+                  const ds = discountSettings.find(d => d.id === newId) as DiscountSettingFull | undefined
+                  if (ds?.rules && ds.rules.length > 0) {
+                    setWalletDiscountRules(ds.rules)
+                    setWalletDiscountApplied(true)
+                  } else {
+                    setWalletDiscountApplied(false)
+                    setWalletDiscountRules([])
+                  }
+                }}
                   className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
                   <option value="">No custom discount</option>
                   {discountSettings.map(ds => (
@@ -1608,6 +1699,7 @@ function OrderFormModal({
                         <option value="PREPAID_CARD">Prepaid Card</option>
                         <option value="PACKAGE">Package</option>
                         <option value="DOWNPAYMENT">Downpayment</option>
+                        <option value="ADVANCE">Advance</option>
                         <option value="HMO">HMO</option>
                         <option value="GL">Guarantee Letter</option>
                       </>
@@ -1616,7 +1708,7 @@ function OrderFormModal({
                   </select>
                   {p.method === 'PACKAGE' ? (
                     <span className="w-32 px-3 py-2.5 rounded-xl border text-sm text-right font-semibold" style={{ borderColor: '#93c5fd', background: '#eff6ff', color: '#1e40af' }}>
-                      {p.walletId ? formatCurrency(toNum(p.amount)) : '—'}
+                      {p.walletId ? formatCurrency(netAmount) : '—'}
                     </span>
                   ) : (
                     <input type="number" min={0} step="0.01" value={p.amount || ''} placeholder="Amount"
@@ -1682,15 +1774,20 @@ function OrderFormModal({
                 style={{ color: '#1e40af' }}>
                 Package
               </button>
-              <button onClick={() => { const next = !showHmoPay; setShowHmoPay(next); setShowGlPay(false); if (next) searchHmoWallets('') }}
+              <button onClick={() => { const next = !showHmoPay; setShowHmoPay(next); setShowGlPay(false); setShowAdvancePay(false); if (next) searchHmoWallets('') }}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold"
                 style={{ color: '#c2410c' }}>
                 HMO
               </button>
-              <button onClick={() => { const next = !showGlPay; setShowGlPay(next); setShowHmoPay(false); if (next) searchGlWallets('') }}
+              <button onClick={() => { const next = !showGlPay; setShowGlPay(next); setShowHmoPay(false); setShowAdvancePay(false); if (next) searchGlWallets('') }}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold"
                 style={{ color: '#15803d' }}>
                 GL
+              </button>
+              <button onClick={() => { const next = !showAdvancePay; setShowAdvancePay(next); setShowHmoPay(false); setShowGlPay(false); if (next) searchAdvanceWallets('') }}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+                style={{ color: '#7c3aed' }}>
+                Advance
               </button>
             </div>
 
@@ -1711,7 +1808,7 @@ function OrderFormModal({
                 {walletResults.length > 0 && (
                   <div className="max-h-32 overflow-y-auto">
                     {walletResults.map(w => {
-                      const wMethodMap: Record<string, string> = { VIP: 'VIP_CARD', PREPAID_CARD: 'PREPAID_CARD', PACKAGE: 'PACKAGE', DOWNPAYMENT: 'DOWNPAYMENT', ADVANCE: 'CASH', HMO: 'HMO', GL: 'GL' }
+                      const wMethodMap: Record<string, string> = { VIP: 'VIP_CARD', PREPAID_CARD: 'PREPAID_CARD', PACKAGE: 'PACKAGE', DOWNPAYMENT: 'DOWNPAYMENT', ADVANCE: 'ADVANCE', HMO: 'HMO', GL: 'GL' }
                       const wPayMethod = wMethodMap[w.walletType] || 'PREPAID_CARD'
                       return (
                       <button key={w.id} onClick={() => {
@@ -1770,20 +1867,23 @@ function OrderFormModal({
                   className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#93c5fd' }} />
                 {packageWallets.length > 0 && (
                   <div className="max-h-32 overflow-y-auto space-y-1">
-                    {packageWallets.map(w => (
+                    {packageWallets.map(w => {
+                      const pkgDept = w.packages?.find(p => p.isActive)?.department || w.packages?.[0]?.department
+                      return (
                       <button key={w.id} onClick={() => selectPackageWallet(w)}
                         className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 rounded-lg flex justify-between">
-                        <span className="font-medium">{w.patientName}</span>
+                        <span className="font-medium">{w.patientName}{pkgDept ? ` (${pkgDept})` : ''}</span>
                         <span className="text-xs" style={{ color: '#1e40af' }}>
                           Balance: {formatCurrency(toNum(w.balance))} · {w._count?.packages || 0} pkg(s)
                         </span>
                       </button>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
                 {selectedPackageWallet && (
                   <div className="rounded-lg p-2 text-xs" style={{ background: '#dbeafe', color: '#1e40af' }}>
-                    Using: <strong>{selectedPackageWallet.patientName}</strong>&apos;s package
+                    Using: <strong>{selectedPackageWallet.patientName}{(() => { const d = selectedPackageWallet.packages?.find(p => p.isActive)?.department || selectedPackageWallet.packages?.[0]?.department; return d ? ` (${d})` : '' })()}</strong>&apos;s package
                   </div>
                 )}
               </div>
@@ -1854,6 +1954,37 @@ function OrderFormModal({
                 )}
               </div>
             )}
+
+            {/* Advance wallet search */}
+            {showAdvancePay && (
+              <div className="p-3 rounded-xl border space-y-2" style={{ borderColor: '#c4b5fd', background: '#f5f3ff' }}>
+                <p className="text-xs font-semibold" style={{ color: '#7c3aed' }}>Search Advance wallets</p>
+                <input value={advanceSearch} onChange={e => searchAdvanceWallets(e.target.value)} placeholder="Search by patient name..."
+                  onFocus={() => { if (!advanceSearch) searchAdvanceWallets('') }}
+                  className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#c4b5fd' }} />
+                {advanceWallets.length > 0 && (
+                  <div className="max-h-32 overflow-y-auto space-y-1">
+                    {advanceWallets.map(w => (
+                      <button key={w.id} onClick={() => {
+                        setPayments([{ method: 'ADVANCE', amount: 0, walletId: w.id, reference: w.patientName }])
+                        setShowAdvancePay(false)
+                        setAdvanceSearch('')
+                        setAdvanceWallets([])
+                      }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 rounded-lg flex justify-between">
+                        <span className="font-medium">{w.patientName}</span>
+                        <span className="text-xs" style={{ color: '#7c3aed' }}>
+                          Balance: {formatCurrency(toNum(w.balance))}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {advanceWallets.length === 0 && advanceSearch.length > 0 && (
+                  <p className="text-xs" style={{ color: '#7c3aed' }}>No advance wallets found.</p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Advance Payment Toggle */}
@@ -1916,6 +2047,25 @@ function OrderFormModal({
                 />
               </div>
             )}
+          </div>
+
+          {/* Reference Number */}
+          <div>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Reference Number (optional)</label>
+            <input type="text" value={referenceNumber} onChange={e => setReferenceNumber(e.target.value)}
+              placeholder="e.g. OR-2026-001234"
+              className="w-full px-3 py-2 rounded-xl border text-sm outline-none"
+              style={{ borderColor: 'var(--light-gray)' }} />
+          </div>
+
+          {/* Remarks */}
+          <div>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Remarks (optional)</label>
+            <textarea value={orderNotes} onChange={e => setOrderNotes(e.target.value)}
+              placeholder="Any notes or remarks for this order..."
+              rows={2}
+              className="w-full px-3 py-2 rounded-xl border text-sm outline-none resize-none"
+              style={{ borderColor: 'var(--light-gray)' }} />
           </div>
 
           {/* Totals */}
@@ -1996,10 +2146,15 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
   const [dateFrom, setDateFrom] = useState(today())
   const [dateTo, setDateTo] = useState(today())
   const [statusFilter, setStatusFilter] = useState('')
+  const [showVoided, setShowVoided] = useState(false)
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(false)
   const [ordPage, setOrdPage] = useState(1)
   const [ordPageSize, setOrdPageSize] = useState(25)
+  const [orderSearch, setOrderSearch] = useState('')
+  const [ordSortField, setOrdSortField] = useState('orderNumber')
+  const [ordSortDir, setOrdSortDir] = useState<'asc' | 'desc'>('desc')
+  const [viewOrder, setViewOrder] = useState<Order | null>(null)
   const [editOrder, setEditOrder] = useState<Order | null>(null)
   const [editItems, setEditItems] = useState<{ name: string; quantity: number; unitPrice: number; lineTotal: number; serviceId?: string }[]>([])
   const [editPayments, setEditPayments] = useState<{ method: string; amount: number; paymentModeId?: string; walletId?: string }[]>([])
@@ -2026,6 +2181,30 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
   const editPatientTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const editClinicianTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [editConfiguredModes, setEditConfiguredModes] = useState<PaymentModeType[]>([])
+  const [editIssuedOfficialInvoice, setEditIssuedOfficialInvoice] = useState(false)
+  const [editSalesInvoiceNumber, setEditSalesInvoiceNumber] = useState('')
+  const [editReferenceNumber, setEditReferenceNumber] = useState('')
+  const [editNotes, setEditNotes] = useState('')
+  // Wallet search state for edit modal
+  const [editShowWalletPay, setEditShowWalletPay] = useState(false)
+  const [editWalletBarcode, setEditWalletBarcode] = useState('')
+  const [editWalletSearch, setEditWalletSearch] = useState('')
+  const [editWalletResults, setEditWalletResults] = useState<DigitalWallet[]>([])
+  const [editShowDownpayment, setEditShowDownpayment] = useState(false)
+  const [editDpSearch, setEditDpSearch] = useState('')
+  const [editDpWallets, setEditDpWallets] = useState<DigitalWallet[]>([])
+  const [editShowPackagePay, setEditShowPackagePay] = useState(false)
+  const [editPackageSearch, setEditPackageSearch] = useState('')
+  const [editPackageWallets, setEditPackageWallets] = useState<DigitalWallet[]>([])
+  const [editShowHmoPay, setEditShowHmoPay] = useState(false)
+  const [editHmoSearch, setEditHmoSearch] = useState('')
+  const [editHmoWallets, setEditHmoWallets] = useState<DigitalWallet[]>([])
+  const [editShowGlPay, setEditShowGlPay] = useState(false)
+  const [editGlSearch, setEditGlSearch] = useState('')
+  const [editGlWallets, setEditGlWallets] = useState<DigitalWallet[]>([])
+  const [editShowAdvancePay, setEditShowAdvancePay] = useState(false)
+  const [editAdvanceSearch, setEditAdvanceSearch] = useState('')
+  const [editAdvanceWallets, setEditAdvanceWallets] = useState<DigitalWallet[]>([])
 
   // Fetch configured payment modes for edit order
   useEffect(() => {
@@ -2071,6 +2250,39 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
     }, 300)
     return () => { clearTimeout(editClinicianTimer.current!) }
   }, [editClinicianSearch, branch])
+
+  // Wallet search helpers for edit modal
+  const editSearchWallets = async (q: string) => {
+    setEditWalletSearch(q)
+    if (q.length < 2) { setEditWalletResults([]); return }
+    try {
+      const r = await fetch(`/api/pos/wallets?search=${encodeURIComponent(q)}`)
+      const d = await r.json()
+      setEditWalletResults((Array.isArray(d) ? d : d.data || []) as DigitalWallet[])
+    } catch { setEditWalletResults([]) }
+  }
+  const editScanBarcode = async () => {
+    if (!editWalletBarcode.trim()) return
+    try {
+      const r = await fetch(`/api/pos/wallets/scan/${encodeURIComponent(editWalletBarcode.trim())}`)
+      const d = await r.json()
+      if (d.error) { setEditError(d.error); return }
+      const wMap: Record<string, string> = { VIP: 'VIP_CARD', PREPAID_CARD: 'PREPAID_CARD', PACKAGE: 'PACKAGE', DOWNPAYMENT: 'DOWNPAYMENT', ADVANCE: 'ADVANCE', HMO: 'HMO', GL: 'GL' }
+      setEditPayments([{ method: wMap[d.walletType] || 'PREPAID_CARD', amount: 0, walletId: d.id }])
+      setEditShowWalletPay(false)
+      setEditWalletBarcode('')
+    } catch { setEditError('Failed to scan barcode') }
+  }
+  const editSearchTypedWallets = async (type: string, q: string, setter: (w: DigitalWallet[]) => void) => {
+    try {
+      const params = new URLSearchParams({ walletType: type })
+      if (q) params.set('search', q)
+      if (branch) params.set('branch', branch)
+      const r = await fetch(`/api/pos/wallets?${params}`)
+      const d = await r.json()
+      setter((Array.isArray(d) ? d : d.data || []) as DigitalWallet[])
+    } catch { setter([]) }
+  }
 
   const fetchOrders = useCallback(async () => {
     setLoading(true)
@@ -2143,6 +2355,17 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
     setEditFreeformAmt(dType === 'CUSTOM' ? dAmt : 0)
     setEditFreeformType('FIXED')
     setEditFreeformRemarks(dType === 'CUSTOM' ? dLabel : '')
+    setEditIssuedOfficialInvoice(!!o.issuedOfficialInvoice)
+    setEditSalesInvoiceNumber(o.salesInvoiceNumber || '')
+    setEditReferenceNumber(o.referenceNumber || '')
+    setEditNotes((o.notes as string) || '')
+    // Reset wallet search states
+    setEditShowWalletPay(false); setEditWalletBarcode(''); setEditWalletSearch(''); setEditWalletResults([])
+    setEditShowDownpayment(false); setEditDpSearch(''); setEditDpWallets([])
+    setEditShowPackagePay(false); setEditPackageSearch(''); setEditPackageWallets([])
+    setEditShowHmoPay(false); setEditHmoSearch(''); setEditHmoWallets([])
+    setEditShowGlPay(false); setEditGlSearch(''); setEditGlWallets([])
+    setEditShowAdvancePay(false); setEditAdvanceSearch(''); setEditAdvanceWallets([])
     setEditError('')
   }
 
@@ -2189,7 +2412,12 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
         payments: editPayments.filter(p => p.amount > 0).map(p => ({
           method: p.method,
           amount: p.amount,
+          walletId: p.walletId || null,
         })),
+        issuedOfficialInvoice: editIssuedOfficialInvoice,
+        salesInvoiceNumber: editIssuedOfficialInvoice ? editSalesInvoiceNumber.trim() : null,
+        referenceNumber: editReferenceNumber.trim() || null,
+        notes: editNotes.trim() || null,
       }
       const res = await fetch(`/api/pos/orders/${editOrder.id}`, {
         method: 'PUT',
@@ -2209,6 +2437,18 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
 
   return (
     <div className="space-y-4">
+      {/* Search */}
+      <div className="relative">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
+        <input
+          value={orderSearch}
+          onChange={e => { setOrderSearch(e.target.value); setOrdPage(1) }}
+          placeholder="Search by order #, patient, clinician, or item..."
+          className="w-full pl-9 pr-3 py-2.5 rounded-xl border text-sm outline-none"
+          style={{ borderColor: 'var(--light-gray)' }}
+        />
+      </div>
+
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
         {canSelectBranch && (
@@ -2229,6 +2469,10 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
           <option value="REOPENED">Reopened</option>
           <option value="VOIDED">Voided</option>
         </select>
+        <label className="flex items-center gap-1.5 text-xs cursor-pointer" style={{ color: 'var(--mid-gray)' }}>
+          <input type="checkbox" checked={showVoided} onChange={e => setShowVoided(e.target.checked)} />
+          Show voided
+        </label>
       </div>
 
       {/* Orders Table */}
@@ -2237,22 +2481,56 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
           <div className="flex items-center justify-center py-12">
             <Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} />
           </div>
-        ) : orders.length === 0 ? (
+        ) : (() => {
+          const q = orderSearch.trim().toLowerCase()
+          const displayOrders = (showVoided || statusFilter === 'VOIDED' ? orders : orders.filter(o => o.status !== 'VOIDED'))
+            .filter(o => !q || String(o.orderNumber).includes(q) || (o.patientName || '').toLowerCase().includes(q) || (o.clinicianName || '').toLowerCase().includes(q) || (o.referenceNumber || '').toLowerCase().includes(q) || o.items.some(it => it.name.toLowerCase().includes(q)))
+          return displayOrders.length === 0 ? (
           <div className="text-center py-12 text-sm" style={{ color: 'var(--mid-gray)' }}>No orders found.</div>
         ) : (
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b" style={{ borderColor: 'var(--light-gray)' }}>
-                {['Order #', 'Date', 'Branch', 'Type', 'Patient', 'Item(s)', 'Clinician', 'Net Amount', 'Payment', 'Status', 'Actions'].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>{h}</th>
+                {[
+                  { label: 'Order #', field: 'orderNumber' },
+                  { label: 'Date', field: 'transactionDate' },
+                  { label: 'Branch', field: 'branch' },
+                  { label: 'Type', field: 'orderType' },
+                  { label: 'Patient', field: 'patientName' },
+                  { label: 'Item(s)', field: '' },
+                  { label: 'Clinician', field: 'clinicianName' },
+                  { label: 'Ref #', field: 'referenceNumber' },
+                  { label: 'Net Amount', field: 'netAmount' },
+                  { label: 'Payment', field: '' },
+                  { label: 'Status', field: 'status' },
+                  { label: 'Actions', field: '' },
+                ].map(h => (
+                  <th key={h.label} className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${h.field ? 'cursor-pointer select-none hover:bg-gray-50' : ''}`}
+                    style={{ color: ordSortField === h.field ? 'var(--teal)' : 'var(--mid-gray)' }}
+                    onClick={() => { if (!h.field) return; if (ordSortField === h.field) { setOrdSortDir(d => d === 'asc' ? 'desc' : 'asc') } else { setOrdSortField(h.field); setOrdSortDir('asc') } }}>
+                    <span className="flex items-center gap-1">
+                      {h.label}
+                      {h.field && ordSortField === h.field && <span className="text-[10px]">{ordSortDir === 'asc' ? '▲' : '▼'}</span>}
+                    </span>
+                  </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {orders.slice((ordPage - 1) * ordPageSize, ordPage * ordPageSize).map(o => {
+              {[...displayOrders].sort((a, b) => {
+                const f = ordSortField as keyof Order
+                let av = a[f], bv = b[f]
+                if (f === 'netAmount') { av = toNum(av as string | number); bv = toNum(bv as string | number) }
+                if (f === 'orderNumber') { av = Number(av) || 0; bv = Number(bv) || 0 }
+                const an = typeof av === 'number' ? av : String(av || '').toLowerCase()
+                const bn = typeof bv === 'number' ? bv : String(bv || '').toLowerCase()
+                if (an < bn) return ordSortDir === 'asc' ? -1 : 1
+                if (an > bn) return ordSortDir === 'asc' ? 1 : -1
+                return 0
+              }).slice((ordPage - 1) * ordPageSize, ordPage * ordPageSize).map(o => {
                 const badge = ORDER_STATUS_BADGE[o.status] || ORDER_STATUS_BADGE.COMPLETED
                 return (
-                  <tr key={o.id} className="border-b hover:bg-gray-50" style={{ borderColor: 'var(--light-gray)' }}>
+                  <tr key={o.id} className="border-b hover:bg-gray-50 cursor-pointer" style={{ borderColor: 'var(--light-gray)' }} onClick={() => setViewOrder(o)}>
                     <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--charcoal)' }}>{o.orderNumber}</td>
                     <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{formatDate(o.transactionDate)}</td>
                     <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
@@ -2268,6 +2546,7 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                       {o.items.map(it => it.name).join(', ')}
                     </td>
                     <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>{formatClinicianName(o.clinicianName)}</td>
+                    <td className="px-4 py-3 text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>{o.referenceNumber || '—'}</td>
                     <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(toNum(o.netAmount))}</td>
                     <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
                       {o.payments.map(p => p.method).join(', ')}
@@ -2277,8 +2556,11 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                         {o.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                       <div className="flex gap-1">
+                        <button onClick={() => setViewOrder(o)} className="p-1.5 rounded-lg hover:bg-gray-100" title="View Details">
+                          <Eye size={13} style={{ color: 'var(--mid-gray)' }} />
+                        </button>
                         {(o.status === 'COMPLETED' || o.status === 'REOPENED') && (
                           <button onClick={() => printThermalReceipt(o)} className="p-1.5 rounded-lg hover:bg-gray-100" title="Print Receipt">
                             <Printer size={13} style={{ color: 'var(--teal)' }} />
@@ -2311,12 +2593,130 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
               })}
             </tbody>
           </table>
-        )}
+        )
+          })()}
         {orders.length > 0 && (
-          <Pagination totalItems={orders.length} page={ordPage} pageSize={ordPageSize}
+          <Pagination totalItems={(showVoided || statusFilter === 'VOIDED' ? orders : orders.filter(o => o.status !== 'VOIDED')).length} page={ordPage} pageSize={ordPageSize}
             onPageChange={setOrdPage} onPageSizeChange={setOrdPageSize} />
         )}
       </div>
+
+      {/* View Order Detail Modal */}
+      {viewOrder && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-8 overflow-y-auto" onClick={() => setViewOrder(null)}>
+          <div className="bg-white rounded-2xl p-6 shadow-xl w-full max-w-lg mb-8 relative" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setViewOrder(null)} className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-gray-100">
+              <X size={18} style={{ color: 'var(--mid-gray)' }} />
+            </button>
+            <h3 className="text-lg font-bold mb-4" style={{ color: 'var(--charcoal)' }}>Order #{viewOrder.orderNumber}</h3>
+
+            <div className="space-y-3 text-sm">
+              {/* Status */}
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-1 rounded-full text-xs font-semibold" style={{
+                  background: (ORDER_STATUS_BADGE[viewOrder.status] || ORDER_STATUS_BADGE.COMPLETED).bg,
+                  color: (ORDER_STATUS_BADGE[viewOrder.status] || ORDER_STATUS_BADGE.COMPLETED).color,
+                }}>{viewOrder.status}</span>
+                <span className="text-xs px-1.5 py-0.5 rounded" style={viewOrder.orderType === 'SERVICE' ? { background: '#dbeafe', color: '#1e40af' } : { background: '#fef3c7', color: '#92400e' }}>
+                  {viewOrder.orderType === 'SERVICE' ? 'Service' : 'Product'}
+                </span>
+              </div>
+
+              {/* Details grid */}
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                <div><span style={{ color: 'var(--mid-gray)' }}>Date:</span> <span style={{ color: 'var(--charcoal)' }}>{formatDate(viewOrder.transactionDate)}</span></div>
+                <div><span style={{ color: 'var(--mid-gray)' }}>Branch:</span> <span style={{ color: 'var(--charcoal)' }}>{viewOrder.branch === 'SANDBOX_EAST' ? 'SBEA' : viewOrder.branch === 'SANDBOX_GREENHILLS' ? 'SBGH' : viewOrder.branch === 'VERDANA_STORE' ? 'Verdana' : viewOrder.branch}</span></div>
+                <div><span style={{ color: 'var(--mid-gray)' }}>Patient:</span> <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{viewOrder.patientName || '—'}</span></div>
+                <div><span style={{ color: 'var(--mid-gray)' }}>Clinician:</span> <span style={{ color: 'var(--charcoal)' }}>{formatClinicianName(viewOrder.clinicianName)}</span></div>
+                <div className="col-span-2"><span style={{ color: 'var(--mid-gray)' }}>Reference #:</span> <span className="font-mono" style={{ color: 'var(--charcoal)' }}>{viewOrder.referenceNumber || <span style={{ color: 'var(--mid-gray)' }}>—</span>}</span></div>
+                {viewOrder.referrer && (
+                  <div className="col-span-2"><span style={{ color: 'var(--mid-gray)' }}>Referrer:</span> <span style={{ color: 'var(--charcoal)' }}>{viewOrder.referrer.name}</span></div>
+                )}
+                {viewOrder.createdBy && (
+                  <div className="col-span-2"><span style={{ color: 'var(--mid-gray)' }}>Created by:</span> <span style={{ color: 'var(--charcoal)' }}>{viewOrder.createdBy.name}</span></div>
+                )}
+              </div>
+
+              {/* Items */}
+              <div>
+                <p className="text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Items</p>
+                <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr style={{ background: 'var(--off-white)' }}>
+                        <th className="text-left px-3 py-1.5 font-semibold" style={{ color: 'var(--mid-gray)' }}>Item</th>
+                        <th className="text-center px-2 py-1.5 font-semibold" style={{ color: 'var(--mid-gray)' }}>Qty</th>
+                        <th className="text-right px-3 py-1.5 font-semibold" style={{ color: 'var(--mid-gray)' }}>Unit Price</th>
+                        <th className="text-right px-3 py-1.5 font-semibold" style={{ color: 'var(--mid-gray)' }}>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {viewOrder.items.map((it, i) => (
+                        <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                          <td className="px-3 py-1.5" style={{ color: 'var(--charcoal)' }}>{it.name}</td>
+                          <td className="text-center px-2 py-1.5" style={{ color: 'var(--mid-gray)' }}>{it.quantity}</td>
+                          <td className="text-right px-3 py-1.5" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(toNum(it.unitPrice))}</td>
+                          <td className="text-right px-3 py-1.5 font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(toNum(it.lineTotal))}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Totals */}
+              <div className="rounded-lg p-3 space-y-1" style={{ background: 'var(--off-white)' }}>
+                <div className="flex justify-between text-xs"><span style={{ color: 'var(--mid-gray)' }}>Subtotal</span><span style={{ color: 'var(--charcoal)' }}>{formatCurrency(toNum(viewOrder.subtotal))}</span></div>
+                {toNum(viewOrder.discountAmount) > 0 && (
+                  <div className="flex justify-between text-xs"><span style={{ color: 'var(--mid-gray)' }}>Discount{viewOrder.discountLabel ? ` (${viewOrder.discountLabel})` : ''}</span><span className="text-red-600">-{formatCurrency(toNum(viewOrder.discountAmount))}</span></div>
+                )}
+                <div className="flex justify-between text-sm font-bold border-t pt-1" style={{ borderColor: 'var(--light-gray)' }}>
+                  <span style={{ color: 'var(--charcoal)' }}>Net Amount</span>
+                  <span style={{ color: 'var(--deep-teal)' }}>{formatCurrency(toNum(viewOrder.netAmount))}</span>
+                </div>
+              </div>
+
+              {/* Payments */}
+              <div>
+                <p className="text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Payments</p>
+                <div className="space-y-1">
+                  {viewOrder.payments.map((p, i) => (
+                    <div key={i} className="flex justify-between text-xs px-3 py-1.5 rounded-lg" style={{ background: 'var(--off-white)' }}>
+                      <span style={{ color: 'var(--charcoal)' }}>{p.method}{p.reference ? ` (${p.reference})` : ''}</span>
+                      <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(toNum(p.amount))}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Remarks */}
+              <div>
+                <p className="text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Remarks</p>
+                {viewOrder.notes
+                  ? <p className="text-xs px-3 py-2 rounded-lg" style={{ background: '#fffbeb', color: '#92400e', border: '1px solid #fde68a' }}>{viewOrder.notes as string}</p>
+                  : <p className="text-xs px-3 py-2 rounded-lg" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>—</p>
+                }
+              </div>
+
+              {/* Invoice info */}
+              {viewOrder.issuedOfficialInvoice && (
+                <div className="text-xs px-3 py-2 rounded-lg" style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0' }}>
+                  Official Invoice: {viewOrder.salesInvoiceNumber || 'Issued'}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 mt-4 pt-3 border-t" style={{ borderColor: 'var(--light-gray)' }}>
+              <button onClick={() => { printThermalReceipt(viewOrder); }} className="flex-1 py-2 rounded-xl text-sm font-medium flex items-center justify-center gap-2" style={{ background: 'var(--off-white)', color: 'var(--teal)' }}>
+                <Printer size={14} /> Print Receipt
+              </button>
+              <button onClick={() => setViewOrder(null)} className="px-6 py-2 rounded-xl text-sm font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit Reopened Order Modal */}
       {editOrder && (
@@ -2485,8 +2885,186 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                       )}
                     </div>
                   ))}
-                  <button onClick={() => setEditPayments(prev => [...prev, { method: 'CASH', amount: 0 }])}
-                    className="text-xs font-medium" style={{ color: 'var(--teal)' }}>+ Add Payment</button>
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={() => setEditPayments(prev => [...prev, { method: 'CASH', amount: 0 }])}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>+ Add Payment</button>
+                    <button onClick={() => setEditShowWalletPay(!editShowWalletPay)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1"
+                      style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
+                      <Wallet size={12} /> VIP/Prepaid Card
+                    </button>
+                    <button onClick={() => { setEditShowDownpayment(!editShowDownpayment); if (!editShowDownpayment) editSearchTypedWallets('DOWNPAYMENT', '', setEditDpWallets) }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1"
+                      style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
+                      <CreditCard size={12} /> Has Downpayment
+                    </button>
+                    <button onClick={() => setEditShowPackagePay(!editShowPackagePay)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ color: '#1e40af' }}>Package</button>
+                    <button onClick={() => { setEditShowHmoPay(!editShowHmoPay); setEditShowGlPay(false); setEditShowAdvancePay(false); if (!editShowHmoPay) editSearchTypedWallets('HMO', '', setEditHmoWallets) }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ color: '#c2410c' }}>HMO</button>
+                    <button onClick={() => { setEditShowGlPay(!editShowGlPay); setEditShowHmoPay(false); setEditShowAdvancePay(false); if (!editShowGlPay) editSearchTypedWallets('GL', '', setEditGlWallets) }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ color: '#15803d' }}>GL</button>
+                    <button onClick={() => { setEditShowAdvancePay(!editShowAdvancePay); setEditShowHmoPay(false); setEditShowGlPay(false); if (!editShowAdvancePay) editSearchTypedWallets('ADVANCE', '', setEditAdvanceWallets) }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ color: '#7c3aed' }}>Advance</button>
+                  </div>
+
+                  {/* VIP/Prepaid Card search */}
+                  {editShowWalletPay && (
+                    <div className="p-3 rounded-xl border space-y-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                      <div className="flex gap-2">
+                        <input value={editWalletBarcode} onChange={e => setEditWalletBarcode(e.target.value)} placeholder="Scan barcode..."
+                          onKeyDown={e => e.key === 'Enter' && editScanBarcode()}
+                          className="flex-1 px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                        <button onClick={editScanBarcode} className="px-3 py-2 rounded-xl text-sm text-white" style={{ background: 'var(--teal)' }}>
+                          <ScanLine size={14} />
+                        </button>
+                      </div>
+                      <div className="text-xs text-center" style={{ color: 'var(--mid-gray)' }}>or search by name</div>
+                      <input value={editWalletSearch} onChange={e => editSearchWallets(e.target.value)} placeholder="Search patient name..."
+                        className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      {editWalletResults.length > 0 && (
+                        <div className="max-h-32 overflow-y-auto">
+                          {editWalletResults.map(w => {
+                            const wMethodMap: Record<string, string> = { VIP: 'VIP_CARD', PREPAID_CARD: 'PREPAID_CARD', PACKAGE: 'PACKAGE', DOWNPAYMENT: 'DOWNPAYMENT', ADVANCE: 'ADVANCE', HMO: 'HMO', GL: 'GL' }
+                            return (
+                              <button key={w.id} onClick={() => {
+                                setEditPayments([{ method: wMethodMap[w.walletType] || 'PREPAID_CARD', amount: 0, walletId: w.id }])
+                                setEditShowWalletPay(false)
+                              }}
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex justify-between">
+                                <span>{w.patientName}</span>
+                                <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                                  {w.walletType} · {w.barcode} · Bal: {formatCurrency(toNum(w.balance))}
+                                </span>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Downpayment search */}
+                  {editShowDownpayment && (
+                    <div className="p-3 rounded-xl border space-y-2" style={{ borderColor: '#f9a8d4', background: '#fdf2f8' }}>
+                      <p className="text-xs font-semibold" style={{ color: '#9d174d' }}>Search Downpayment wallets</p>
+                      <input value={editDpSearch} onChange={e => { setEditDpSearch(e.target.value); editSearchTypedWallets('DOWNPAYMENT', e.target.value, setEditDpWallets) }} placeholder="Search by patient name..."
+                        onFocus={() => { if (!editDpSearch) editSearchTypedWallets('DOWNPAYMENT', '', setEditDpWallets) }}
+                        className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#f9a8d4' }} />
+                      {editDpWallets.length > 0 && (
+                        <div className="max-h-32 overflow-y-auto space-y-1">
+                          {editDpWallets.map(w => (
+                            <button key={w.id} onClick={() => {
+                              setEditPayments([{ method: 'DOWNPAYMENT', amount: 0, walletId: w.id }])
+                              setEditShowDownpayment(false)
+                            }}
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-pink-50 rounded-lg flex justify-between">
+                              <span className="font-medium">{w.patientName}</span>
+                              <span className="text-xs" style={{ color: '#9d174d' }}>Balance: {formatCurrency(toNum(w.balance))}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Package search */}
+                  {editShowPackagePay && (
+                    <div className="p-3 rounded-xl border space-y-2" style={{ borderColor: '#93c5fd', background: '#eff6ff' }}>
+                      <p className="text-xs font-semibold" style={{ color: '#1e40af' }}>Search patient&apos;s package wallet</p>
+                      <input value={editPackageSearch} onChange={e => { setEditPackageSearch(e.target.value); editSearchTypedWallets('PACKAGE', e.target.value, setEditPackageWallets) }} placeholder="Search by patient name..."
+                        className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#93c5fd' }} />
+                      {editPackageWallets.length > 0 && (
+                        <div className="max-h-32 overflow-y-auto space-y-1">
+                          {editPackageWallets.map(w => {
+                            const pkgDept = w.packages?.find(p => p.isActive)?.department || w.packages?.[0]?.department
+                            return (
+                            <button key={w.id} onClick={() => {
+                              setEditPayments([{ method: 'PACKAGE', amount: 0, walletId: w.id }])
+                              setEditShowPackagePay(false)
+                            }}
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 rounded-lg flex justify-between">
+                              <span className="font-medium">{w.patientName}{pkgDept ? ` (${pkgDept})` : ''}</span>
+                              <span className="text-xs" style={{ color: '#1e40af' }}>Balance: {formatCurrency(toNum(w.balance))}</span>
+                            </button>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* HMO search */}
+                  {editShowHmoPay && (
+                    <div className="p-3 rounded-xl border space-y-2" style={{ borderColor: '#fdba74', background: '#fff7ed' }}>
+                      <p className="text-xs font-semibold" style={{ color: '#c2410c' }}>Select HMO Provider</p>
+                      <input value={editHmoSearch} onChange={e => { setEditHmoSearch(e.target.value); editSearchTypedWallets('HMO', e.target.value, setEditHmoWallets) }} placeholder="Search HMO..."
+                        onFocus={() => { if (!editHmoSearch) editSearchTypedWallets('HMO', '', setEditHmoWallets) }}
+                        className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#fdba74' }} />
+                      {editHmoWallets.length > 0 && (
+                        <div className="max-h-32 overflow-y-auto space-y-1">
+                          {editHmoWallets.map(w => (
+                            <button key={w.id} onClick={() => {
+                              setEditPayments([{ method: 'HMO', amount: 0, walletId: w.id }])
+                              setEditShowHmoPay(false)
+                            }}
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-orange-50 rounded-lg flex justify-between">
+                              <span className="font-medium">{w.patientName}</span>
+                              <span className="text-xs" style={{ color: '#c2410c' }}>Receivable: {formatCurrency(toNum(w.balance))}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* GL search */}
+                  {editShowGlPay && (
+                    <div className="p-3 rounded-xl border space-y-2" style={{ borderColor: '#86efac', background: '#f0fdf4' }}>
+                      <p className="text-xs font-semibold" style={{ color: '#15803d' }}>Select Agency (GL)</p>
+                      <input value={editGlSearch} onChange={e => { setEditGlSearch(e.target.value); editSearchTypedWallets('GL', e.target.value, setEditGlWallets) }} placeholder="Search agency..."
+                        onFocus={() => { if (!editGlSearch) editSearchTypedWallets('GL', '', setEditGlWallets) }}
+                        className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#86efac' }} />
+                      {editGlWallets.length > 0 && (
+                        <div className="max-h-32 overflow-y-auto space-y-1">
+                          {editGlWallets.map(w => (
+                            <button key={w.id} onClick={() => {
+                              setEditPayments([{ method: 'GL', amount: 0, walletId: w.id }])
+                              setEditShowGlPay(false)
+                            }}
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-green-50 rounded-lg flex justify-between">
+                              <span className="font-medium">{w.patientName}</span>
+                              <span className="text-xs" style={{ color: '#15803d' }}>Remaining: {formatCurrency(toNum(w.balance))}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Advance search */}
+                  {editShowAdvancePay && (
+                    <div className="p-3 rounded-xl border space-y-2" style={{ borderColor: '#c4b5fd', background: '#f5f3ff' }}>
+                      <p className="text-xs font-semibold" style={{ color: '#7c3aed' }}>Search Advance wallets</p>
+                      <input value={editAdvanceSearch} onChange={e => { setEditAdvanceSearch(e.target.value); editSearchTypedWallets('ADVANCE', e.target.value, setEditAdvanceWallets) }} placeholder="Search by patient name..."
+                        onFocus={() => { if (!editAdvanceSearch) editSearchTypedWallets('ADVANCE', '', setEditAdvanceWallets) }}
+                        className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#c4b5fd' }} />
+                      {editAdvanceWallets.length > 0 && (
+                        <div className="max-h-32 overflow-y-auto space-y-1">
+                          {editAdvanceWallets.map(w => (
+                            <button key={w.id} onClick={() => {
+                              setEditPayments([{ method: 'ADVANCE', amount: 0, walletId: w.id }])
+                              setEditShowAdvancePay(false)
+                            }}
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 rounded-lg flex justify-between">
+                              <span className="font-medium">{w.patientName}</span>
+                              <span className="text-xs" style={{ color: '#7c3aed' }}>Balance: {formatCurrency(toNum(w.balance))}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <p className="text-right text-sm mt-2" style={{ color: editTotalPayments >= editNetAmount ? 'var(--deep-teal)' : '#991b1b' }}>
                   Total Payments: {formatCurrency(editTotalPayments)}
@@ -2544,6 +3122,51 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                 )}
               </div>
 
+              {/* Official Sales Invoice */}
+              <div className="rounded-xl p-3 border" style={{ borderColor: 'var(--light-gray)' }}>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={editIssuedOfficialInvoice}
+                    onChange={e => { setEditIssuedOfficialInvoice(e.target.checked); if (!e.target.checked) setEditSalesInvoiceNumber('') }}
+                    className="w-4 h-4 rounded accent-teal-600"
+                  />
+                  <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Issued Official Sales Invoice</span>
+                </label>
+                {editIssuedOfficialInvoice && (
+                  <div className="mt-2">
+                    <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Sales Invoice Number</label>
+                    <input
+                      type="text"
+                      value={editSalesInvoiceNumber}
+                      onChange={e => setEditSalesInvoiceNumber(e.target.value)}
+                      placeholder="e.g. SI-2026-001234"
+                      className="w-full px-3 py-2 rounded-xl border text-sm outline-none"
+                      style={{ borderColor: 'var(--light-gray)' }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Reference Number */}
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Reference Number (optional)</label>
+                <input type="text" value={editReferenceNumber} onChange={e => setEditReferenceNumber(e.target.value)}
+                  placeholder="e.g. OR-2026-001234"
+                  className="w-full px-3 py-2 rounded-xl border text-sm outline-none"
+                  style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+
+              {/* Remarks */}
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Remarks (optional)</label>
+                <textarea value={editNotes} onChange={e => setEditNotes(e.target.value)}
+                  placeholder="Any notes or remarks for this order..."
+                  rows={2}
+                  className="w-full px-3 py-2 rounded-xl border text-sm outline-none resize-none"
+                  style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+
               {/* Save */}
               <div className="flex gap-2 pt-2">
                 <button onClick={saveEditOrder} disabled={editSaving || editItems.length === 0}
@@ -2574,8 +3197,10 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   const [search, setSearch] = useState('')
   const [wallets, setWallets] = useState<DigitalWallet[]>([])
   const [loading, setLoading] = useState(false)
+  const [wSortField, setWSortField] = useState('patientName')
+  const [wSortDir, setWSortDir] = useState<'asc' | 'desc'>('asc')
   const [showCreate, setShowCreate] = useState(false)
-  const [createForm, setCreateForm] = useState({ patientName: '', patientId: '', patientEmail: '', accountId: '', dateObtained: '', paymentModeId: '', glAmount: '', attachmentUrl: '', agency: '' })
+  const [createForm, setCreateForm] = useState({ patientName: '', patientId: '', patientEmail: '', accountId: '', dateObtained: '', paymentModeId: '', glAmount: '', totalGlAmount: '', attachmentUrl: '', agency: '', initialRewardPoints: '', branch: 'ALL' })
   const [createAccountSearch, setCreateAccountSearch] = useState('')
   const [arAccounts, setArAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
   const [crmSearch, setCrmSearch] = useState('')
@@ -2622,8 +3247,54 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   const [soaDateTo, setSoaDateTo] = useState(today())
   const [soaBranch, setSoaBranch] = useState('')
   const [soaOrders, setSoaOrders] = useState<Order[]>([])
-  const [pkgForm, setPkgForm] = useState({ serviceName: '', totalSessions: 1, amountPaid: 0, expiresAt: '' })
+  const [pkgForm, setPkgForm] = useState({ serviceName: '', serviceId: '', department: '', totalSessions: 1, amountPaid: 0, expiresAt: '' })
+  const [pkgServiceSearch, setPkgServiceSearch] = useState('')
+  const [pkgServiceResults, setPkgServiceResults] = useState<{ id: string; name: string; department: string; packageSessions?: number; price: number }[]>([])
+  const [showPkgServiceDrop, setShowPkgServiceDrop] = useState(false)
+  const pkgSearchTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  // Create-modal package search (separate from add-package form)
+  const [createPkgSearch, setCreatePkgSearch] = useState('')
+  const [createPkgResults, setCreatePkgResults] = useState<{ id: string; name: string; department: string; packageSessions?: number; price: number }[]>([])
+  const [showCreatePkgDrop, setShowCreatePkgDrop] = useState(false)
+  const [createPkgSelected, setCreatePkgSelected] = useState<{ serviceId: string; serviceName: string; department: string; totalSessions: number; amountPaid: number; usedSessions: number } | null>(null)
+  const createPkgTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const barcodeRef = useRef<SVGSVGElement>(null)
+
+  // Debounced search for UNEARNED PACKAGE services (for add-package dropdown)
+  useEffect(() => {
+    if (pkgSearchTimer.current) clearTimeout(pkgSearchTimer.current)
+    if (pkgServiceSearch.length < 2) { setPkgServiceResults([]); setShowPkgServiceDrop(false); return }
+    pkgSearchTimer.current = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/services?search=${encodeURIComponent(pkgServiceSearch)}&revenueType=UNEARNED&walletType=PACKAGE&pageSize=20`)
+        const d = await r.json()
+        const items = (Array.isArray(d) ? d : d.data || []).map((s: { id: string; name: string; department: string; packageSessions?: number; price: number }) => ({
+          id: s.id, name: s.name, department: s.department, packageSessions: s.packageSessions || null, price: s.price,
+        }))
+        setPkgServiceResults(items)
+        setShowPkgServiceDrop(items.length > 0)
+      } catch { setPkgServiceResults([]) }
+    }, 300)
+    return () => { if (pkgSearchTimer.current) clearTimeout(pkgSearchTimer.current) }
+  }, [pkgServiceSearch])
+
+  // Debounced search for create-modal package service
+  useEffect(() => {
+    if (createPkgTimer.current) clearTimeout(createPkgTimer.current)
+    if (createPkgSearch.length < 2) { setCreatePkgResults([]); setShowCreatePkgDrop(false); return }
+    createPkgTimer.current = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/services?search=${encodeURIComponent(createPkgSearch)}&revenueType=UNEARNED&walletType=PACKAGE&pageSize=20`)
+        const d = await r.json()
+        const items = (Array.isArray(d) ? d : d.data || []).map((s: { id: string; name: string; department: string; packageSessions?: number; price: number }) => ({
+          id: s.id, name: s.name, department: s.department, packageSessions: s.packageSessions || null, price: s.price,
+        }))
+        setCreatePkgResults(items)
+        setShowCreatePkgDrop(items.length > 0)
+      } catch { setCreatePkgResults([]) }
+    }, 300)
+    return () => { if (createPkgTimer.current) clearTimeout(createPkgTimer.current) }
+  }, [createPkgSearch])
 
   const walletSubTabs = [
     { key: 'VIP', label: 'VIP' },
@@ -2635,6 +3306,8 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     { key: 'GL', label: 'GL' },
   ]
 
+  const panelBranch = userBranch(session)
+
   const fetchWallets = useCallback(async () => {
     setLoading(true)
     try {
@@ -2642,6 +3315,8 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       if (search) qp.set('search', search)
       qp.set('walletType', walletTypeFilter)
       if (showDeletedWallets) qp.set('includeDeleted', 'true')
+      // Non-admin users only see wallets for their branch + ALL
+      if (!isAdmin(session)) qp.set('branch', panelBranch)
       const r = await fetch(`/api/pos/wallets?${qp}`)
       const d = await r.json()
       setWallets(normalize(d) as DigitalWallet[])
@@ -2650,7 +3325,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     } finally {
       setLoading(false)
     }
-  }, [search, walletTypeFilter, showDeletedWallets])
+  }, [search, walletTypeFilter, showDeletedWallets, panelBranch, session])
 
   useEffect(() => { fetchWallets() }, [fetchWallets])
 
@@ -2662,7 +3337,10 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       const payload = {
         ...createForm,
         walletType: walletTypeFilter,
-        initialBalance: createForm.glAmount ? parseFloat(createForm.glAmount) : undefined,
+        // For PACKAGE wallets, balance is computed from package data (not from initialBalance field)
+        initialBalance: walletTypeFilter !== 'PACKAGE' && createForm.glAmount ? parseFloat(createForm.glAmount) : undefined,
+        totalGlAmount: walletTypeFilter === 'GL' && createForm.totalGlAmount ? parseFloat(createForm.totalGlAmount) : undefined,
+        initialRewardPoints: createForm.initialRewardPoints ? parseInt(createForm.initialRewardPoints) : undefined,
       }
       const r = await fetch('/api/pos/wallets', {
         method: 'POST',
@@ -2679,11 +3357,31 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         fetchWallets()
         return
       }
+      // If PACKAGE wallet and a package service was selected, auto-add the first package
+      if (walletTypeFilter === 'PACKAGE' && createPkgSelected && data.id) {
+        try {
+          await fetch(`/api/pos/wallets/${data.id}/reload`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              serviceName: createPkgSelected.serviceName,
+              serviceId: createPkgSelected.serviceId,
+              department: createPkgSelected.department,
+              totalSessions: createPkgSelected.totalSessions,
+              amountPaid: createPkgSelected.amountPaid,
+              usedSessions: createPkgSelected.usedSessions || 0,
+              expiresAt: '',
+            }),
+          })
+        } catch {}
+      }
       setShowCreate(false)
-      setCreateForm({ patientName: '', patientId: '', patientEmail: '', accountId: '', dateObtained: '', paymentModeId: '', glAmount: '', attachmentUrl: '', agency: '' })
+      setCreateForm({ patientName: '', patientId: '', patientEmail: '', accountId: '', dateObtained: '', paymentModeId: '', glAmount: '', totalGlAmount: '', attachmentUrl: '', agency: '', initialRewardPoints: '', branch: 'ALL' })
       setCreateAccountSearch('')
       setCrmSearch('')
       setCrmPatients([])
+      setCreatePkgSelected(null)
+      setCreatePkgSearch('')
       fetchWallets()
     } catch (e) {
       setCreateError(`Network error: ${e}`)
@@ -2711,6 +3409,10 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       vipTier: walletDetail.vipTier || '',
       balance: String(toNum(walletDetail.balance)),
       attachmentUrl: (walletDetail.attachmentUrl as string) || '',
+      accountId: (walletDetail.accountId as string) || '',
+      rewardPoints: String(walletDetail.rewardPoints || 0),
+      totalGlAmount: String(toNum(walletDetail.totalGlAmount as string | number | null)),
+      branch: (walletDetail.branch as string) || 'ALL',
     })
     setWalletEditing(true)
   }
@@ -2730,6 +3432,10 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
           vipTier: walletEditForm.vipTier || null,
           balance: walletEditForm.balance,
           attachmentUrl: walletEditForm.attachmentUrl || null,
+          accountId: walletEditForm.accountId || null,
+          ...(['VIP', 'PREPAID_CARD'].includes(walletDetail.walletType) ? { rewardPoints: walletEditForm.rewardPoints } : {}),
+          ...(walletDetail.walletType === 'GL' ? { totalGlAmount: walletEditForm.totalGlAmount } : {}),
+          branch: walletEditForm.branch || 'ALL',
         }),
       })
       if (r.ok) {
@@ -2781,19 +3487,28 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       const r = await fetch(`/api/pos/wallets/${walletDetail.id}/reload`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(pkgForm),
+        body: JSON.stringify({
+          serviceName: pkgForm.serviceName,
+          serviceId: pkgForm.serviceId || undefined,
+          department: pkgForm.department || undefined,
+          totalSessions: pkgForm.totalSessions,
+          amountPaid: pkgForm.amountPaid,
+          expiresAt: pkgForm.expiresAt,
+        }),
       })
       if (r.ok) {
         setShowAddPackage(false)
-        setPkgForm({ serviceName: '', totalSessions: 1, amountPaid: 0, expiresAt: '' })
+        setPkgForm({ serviceName: '', serviceId: '', department: '', totalSessions: 1, amountPaid: 0, expiresAt: '' })
+        setPkgServiceSearch('')
         loadWalletDetail(walletDetail)
       }
     } catch {}
   }
 
-  const deductSession = async (pkgId: string, serviceName: string) => {
+  const deductSession = async (pkgId: string, serviceName: string, amountPaid: number, totalSessions: number) => {
     if (!walletDetail) return
-    if (!window.confirm(`Deduct 1 session from "${serviceName}"?`)) return
+    const perSession = amountPaid / totalSessions
+    if (!window.confirm(`Deduct 1 session from "${serviceName}"?\n\nPer-session rate: ₱${perSession.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\nWallet balance will decrease by this amount.`)) return
     try {
       await fetch(`/api/pos/wallets/${walletDetail.id}/deduct`, {
         method: 'POST',
@@ -2820,13 +3535,10 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     const isVIP = w.walletType === 'VIP'
     const tier = (w.vipTier || 'PLATINUM').toUpperCase()
 
-    // VIP tier colors
-    const tierColors: Record<string, { bg: string; text: string; barFg: string; barBg: string }> = {
-      PLATINUM: { bg: '#000000', text: '#FFFFFF', barFg: '#FFFFFF', barBg: '#000000' },
-      GOLD: { bg: '#C5952A', text: '#FFFFFF', barFg: '#FFFFFF', barBg: '#C5952A' },
-      SILVER: { bg: '#B8B8B8', text: '#2B3A42', barFg: '#2B3A42', barBg: '#B8B8B8' },
-    }
-    const colors = isVIP ? (tierColors[tier] || tierColors.PLATINUM) : { bg: '#FFFFFF', text: '#222', barFg: '#000', barBg: '#FFFFFF' }
+    // VIP cards: white background with black text/logo
+    const colors = isVIP
+      ? { bg: '#FFFFFF', text: '#000000', barFg: '#000000', barBg: '#FFFFFF' }
+      : { bg: '#FFFFFF', text: '#222', barFg: '#000', barBg: '#FFFFFF' }
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -2849,7 +3561,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     // SCEI diamond mark logos (actual PNGs)
     const sceiMarkWhite = `${window.location.origin}/brand/scei-mark-white.png`
     const sceiMarkDark = `${window.location.origin}/brand/scei-mark-dark.png`
-    const sceiMark = tier === 'SILVER' ? sceiMarkDark : sceiMarkWhite
+    const sceiMark = isVIP ? sceiMarkDark : sceiMarkWhite
 
     const cardW = '85.6mm'
     const cardH = '54mm'
@@ -2858,20 +3570,48 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     let backHtml: string
 
     if (isVIP) {
-      // VIP CARD LAYOUT (Platinum/Gold/Silver)
-      frontHtml = `<div class="card" style="background:${colors.bg}">
-        <div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%">
-          <img src="${sceiMark}" style="width:80px;height:80px;object-fit:contain" />
+      // VIP CARD LAYOUT — white card, ink-saving, tier accent color for text
+      const tierAccent = tier === 'GOLD' ? '#B8860B' : tier === 'SILVER' ? '#6B7280' : '#374151'
+      const tierLine = tier === 'GOLD' ? 'linear-gradient(90deg, transparent, #B8860B, transparent)'
+        : tier === 'SILVER' ? 'linear-gradient(90deg, transparent, #9CA3AF, transparent)'
+        : 'linear-gradient(90deg, transparent, #6B7280, transparent)'
+
+      frontHtml = `<div class="card" style="background:#FFFFFF;border:1px solid #e5e7eb;position:relative;overflow:hidden">
+        <div style="padding:14px 18px;display:flex;flex-direction:column;justify-content:space-between;width:100%;height:100%;box-sizing:border-box">
+          <!-- Top: SCEI mark + tier badge -->
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <img src="${sceiMark}" style="width:42px;height:42px;object-fit:contain" />
+            <div style="font-size:7px;font-weight:900;letter-spacing:3px;color:${tierAccent};font-family:Arial Black,Arial,Helvetica,sans-serif">${tier}</div>
+          </div>
+          <!-- Center: VIP CARD prominent -->
+          <div style="text-align:center;margin:-2px 0">
+            <div style="font-size:8px;font-weight:900;letter-spacing:6px;color:${tierAccent};font-family:Arial Black,Arial,Helvetica,sans-serif;margin-bottom:2px">EXCLUSIVE</div>
+            <div style="font-size:28px;font-weight:900;letter-spacing:10px;color:#1a1a1a;font-family:Arial Black,Arial,Helvetica,sans-serif;line-height:1">VIP</div>
+            <div style="width:60px;height:1.5px;background:${tierLine};margin:4px auto"></div>
+            <div style="font-size:8px;font-weight:900;letter-spacing:5px;color:#4B5563;font-family:Arial Black,Arial,Helvetica,sans-serif">MEMBER CARD</div>
+          </div>
+          <!-- Bottom: card number + name -->
+          <div>
+            <div style="font-size:9px;font-weight:900;letter-spacing:2.5px;color:#6B7280;font-family:Arial Black,Arial,Helvetica,sans-serif">${cardNum}</div>
+            <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:3px">
+              <div style="font-size:8px;font-weight:900;letter-spacing:1px;color:${tierAccent};font-family:Arial Black,Arial,Helvetica,sans-serif">${w.patientName}</div>
+              <div>
+                <div style="font-size:5.5px;color:#6B7280;font-weight:900;letter-spacing:1px;font-family:Arial,Helvetica,sans-serif">EXP</div>
+                <div style="font-size:7.5px;font-weight:900;color:#4B5563;font-family:Arial Black,Arial,Helvetica,sans-serif">${expStr}</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>`
-      backHtml = `<div class="card" style="background:${colors.bg}">
-        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;padding:12px">
-          <img src="${barcodeImg}" style="height:50px;max-width:240px;margin-bottom:8px" />
-          <div style="font-size:9px;font-weight:700;letter-spacing:2px;color:${colors.text};font-family:'Courier New',monospace;text-align:center">
+      backHtml = `<div class="card" style="background:#FFFFFF;border:1px solid #e5e7eb;position:relative;overflow:hidden">
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;padding:14px;box-sizing:border-box">
+          <img src="${barcodeImg}" style="height:45px;max-width:230px;margin-bottom:8px" />
+          <div style="width:40px;height:1.5px;background:${tierLine};margin-bottom:8px"></div>
+          <div style="font-size:8px;font-weight:900;letter-spacing:3px;color:${tierAccent};font-family:Arial Black,Arial,Helvetica,sans-serif;text-align:center">
             SAPPHIRE CLINICS EAST INC.
           </div>
-          <div style="font-size:11px;font-weight:900;letter-spacing:3px;color:${colors.text};font-family:'Courier New',monospace;margin-top:4px">
-            ${tier} VIP CARD
+          <div style="font-size:6px;font-weight:900;letter-spacing:1px;color:#6B7280;font-family:Arial Black,Arial,Helvetica,sans-serif;margin-top:3px">
+            EXCLUSIVE VIP MEMBER PRIVILEGES
           </div>
         </div>
       </div>`
@@ -2879,7 +3619,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       // PREPAID CARD LAYOUT (Sandbox Clinic style)
       frontHtml = `<div class="card" style="background:#FFF;border:1px solid #ddd">
         <div style="padding:15px;display:flex;flex-direction:column;justify-content:space-between;width:100%;height:100%;box-sizing:border-box">
-          <img src="${logoUrl}" style="height:20px;object-fit:contain;align-self:flex-start" />
+          <img src="${logoUrl}" style="height:32px;object-fit:contain;align-self:flex-start" />
           <div>
             <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:#222;font-family:monospace;margin-bottom:6px">${cardNum}</div>
             <div style="display:flex;justify-content:space-between;align-items:flex-end">
@@ -2906,7 +3646,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
           <div style="font-size:5.5px;color:#333;text-align:justify;padding:0 8px;margin-bottom:4px;line-height:1.4">
             Your reloadable card lets you earn points every time you avail of our services or purchase products. Simply present this card during each visit to collect points and redeem exclusive Sandbox rewards and merchandise.
           </div>
-          <img src="${logoUrl}" style="height:14px;object-fit:contain" />
+          <img src="${logoUrl}" style="height:18px;object-fit:contain" />
         </div>
       </div>`
     }
@@ -3118,17 +3858,36 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
             <thead>
               <tr className="border-b" style={{ borderColor: 'var(--light-gray)' }}>
                 {(walletTypeFilter === 'HMO'
-                  ? ['HMO Provider', 'Type', 'Receivable Balance', 'Transactions', '']
+                  ? [{ label: 'HMO Provider', field: 'patientName' }, { label: 'Type', field: '' }, { label: 'Receivable Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'Transactions', field: '' }, { label: '', field: '' }]
                   : walletTypeFilter === 'GL'
-                  ? ['Patient Name', 'Agency', 'GL Balance', 'Attachment', '']
-                  : ['Patient Name', 'Type', 'Balance', 'Barcode', 'Packages', 'Reward Points', '']
+                  ? [{ label: 'Patient Name', field: 'patientName' }, { label: 'Agency', field: 'agency' }, { label: 'Total GL Amount', field: 'totalGlAmount' }, { label: 'Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'Attachment', field: '' }, { label: '', field: '' }]
+                  : ['VIP', 'PREPAID_CARD'].includes(walletTypeFilter)
+                  ? [{ label: 'Patient Name', field: 'patientName' }, { label: 'Type', field: '' }, { label: 'Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'Barcode', field: 'barcode' }, { label: 'Packages', field: '' }, { label: 'Reward Points', field: 'rewardPoints' }, { label: '', field: '' }]
+                  : [{ label: 'Patient Name', field: 'patientName' }, { label: 'Type', field: '' }, { label: 'Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'Packages', field: '' }, { label: '', field: '' }]
                 ).map(h => (
-                  <th key={h} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>{h}</th>
+                  <th key={h.label || 'actions'} className={`px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider ${h.field ? 'cursor-pointer select-none hover:bg-gray-50' : ''}`}
+                    style={{ color: wSortField === h.field ? 'var(--teal)' : 'var(--mid-gray)' }}
+                    onClick={() => { if (!h.field) return; if (wSortField === h.field) { setWSortDir(d => d === 'asc' ? 'desc' : 'asc') } else { setWSortField(h.field); setWSortDir('asc') } }}>
+                    <span className="flex items-center gap-1">
+                      {h.label}
+                      {h.field && wSortField === h.field && (
+                        <span className="text-[10px]">{wSortDir === 'asc' ? '▲' : '▼'}</span>
+                      )}
+                    </span>
+                  </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {wallets.map(w => {
+              {[...wallets].sort((a, b) => {
+                const f = wSortField as keyof DigitalWallet
+                const av = a[f], bv = b[f]
+                const an = typeof av === 'number' ? av : typeof av === 'string' ? (isNaN(Number(av)) ? av.toLowerCase() : Number(av)) : 0
+                const bn = typeof bv === 'number' ? bv : typeof bv === 'string' ? (isNaN(Number(bv)) ? bv.toLowerCase() : Number(bv)) : 0
+                if (an < bn) return wSortDir === 'asc' ? -1 : 1
+                if (an > bn) return wSortDir === 'asc' ? 1 : -1
+                return 0
+              }).map(w => {
                 const typeBadge = WALLET_TYPE_COLORS[w.walletType] || { bg: '#f3f4f6', color: '#374151' }
                 return (
                   <tr key={w.id}
@@ -3145,12 +3904,33 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                           {(w as unknown as { agency?: string }).agency || <span style={{ color: 'var(--mid-gray)' }}>—</span>}
                         </span>
                       ) : (
-                        <span className="px-2.5 py-1 rounded-full text-xs font-semibold" style={{ background: typeBadge.bg, color: typeBadge.color }}>
-                          {WALLET_TYPE_LABELS[w.walletType] || w.walletType}
+                        <span className="flex items-center gap-1.5">
+                          <span className="px-2.5 py-1 rounded-full text-xs font-semibold" style={{ background: typeBadge.bg, color: typeBadge.color }}>
+                            {WALLET_TYPE_LABELS[w.walletType] || w.walletType}
+                          </span>
+                          {w.walletType === 'VIP' && w.vipTier && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: w.vipTier === 'PLATINUM' ? '#e2e8f0' : w.vipTier === 'GOLD' ? '#fef3c7' : '#e0e7ff', color: w.vipTier === 'PLATINUM' ? '#475569' : w.vipTier === 'GOLD' ? '#92400e' : '#3730a3' }}>
+                              {w.vipTier}
+                            </span>
+                          )}
                         </span>
                       )}
                     </td>
+                    {walletTypeFilter === 'GL' && (
+                      <td className="px-5 py-3 font-semibold" style={{ color: '#15803d' }}>
+                        {(w as unknown as { totalGlAmount?: number | string }).totalGlAmount
+                          ? formatCurrency(toNum((w as unknown as { totalGlAmount?: number | string }).totalGlAmount))
+                          : <span className="text-xs font-normal" style={{ color: 'var(--mid-gray)' }}>—</span>}
+                      </td>
+                    )}
                     <td className="px-5 py-3 font-semibold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(toNum(w.balance))}</td>
+                    <td className="px-5 py-3">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                        style={{ background: (w.branch === 'SANDBOX_EAST' ? '#dbeafe' : w.branch === 'SANDBOX_GREENHILLS' ? '#dcfce7' : '#f3e8ff'),
+                                 color: (w.branch === 'SANDBOX_EAST' ? '#1e40af' : w.branch === 'SANDBOX_GREENHILLS' ? '#166534' : '#7e22ce') }}>
+                        {w.branch === 'SANDBOX_EAST' ? 'East' : w.branch === 'SANDBOX_GREENHILLS' ? 'GH' : 'All'}
+                      </span>
+                    </td>
                     {walletTypeFilter === 'HMO' ? (
                       <>
                         <td className="px-5 py-3" style={{ color: 'var(--mid-gray)' }}>{w._count?.packages || 0}</td>
@@ -3163,6 +3943,12 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                             <button className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
                               View
                             </button>
+                            {w.isActive !== false && (
+                              <button onClick={(e) => { e.stopPropagation(); deleteWallet(w) }}
+                                className="p-1.5 rounded-lg hover:bg-red-50" title="Delete HMO Wallet">
+                                <Trash2 size={13} className="text-red-500" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </>
@@ -3193,15 +3979,19 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                       </>
                     ) : (
                       <>
-                        <td className="px-5 py-3 font-mono text-xs" style={{ color: 'var(--mid-gray)' }}>
-                          {['VIP', 'PREPAID_CARD'].includes(w.walletType) ? w.barcode : '—'}
-                        </td>
+                        {['VIP', 'PREPAID_CARD'].includes(walletTypeFilter) && (
+                          <td className="px-5 py-3 font-mono text-xs" style={{ color: 'var(--mid-gray)' }}>
+                            {w.barcode || '—'}
+                          </td>
+                        )}
                         <td className="px-5 py-3" style={{ color: 'var(--mid-gray)' }}>{w._count?.packages || 0}</td>
-                        <td className="px-5 py-3">
-                          <span className="flex items-center gap-1" style={{ color: 'var(--teal)' }}>
-                            {['VIP', 'PREPAID_CARD'].includes(w.walletType) ? <><Star size={12} /> {w.rewardPoints || 0}</> : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
-                          </span>
-                        </td>
+                        {['VIP', 'PREPAID_CARD'].includes(walletTypeFilter) && (
+                          <td className="px-5 py-3">
+                            <span className="flex items-center gap-1" style={{ color: 'var(--teal)' }}>
+                              {['VIP', 'PREPAID_CARD'].includes(w.walletType) ? <><Star size={12} /> {w.rewardPoints || 0}</> : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
+                            </span>
+                          </td>
+                        )}
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-1.5">
                             {['VIP', 'PREPAID_CARD'].includes(w.walletType) && (
@@ -3304,6 +4094,89 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 <input value={createForm.patientEmail} onChange={e => setCreateForm({ ...createForm, patientEmail: e.target.value })}
                   className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
               </div>
+              {/* Package Service — searchable for PACKAGE wallets */}
+              {walletTypeFilter === 'PACKAGE' && (
+                <div className="relative">
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Package Service *</label>
+                  <input
+                    value={createPkgSelected ? createPkgSelected.serviceName : createPkgSearch}
+                    onChange={e => {
+                      setCreatePkgSearch(e.target.value)
+                      setShowCreatePkgDrop(true)
+                      if (!e.target.value) setCreatePkgSelected(null)
+                    }}
+                    placeholder="Search package (e.g. 12 Basic Session Package)..."
+                    className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                    style={{ borderColor: createPkgSelected ? 'var(--teal)' : 'var(--light-gray)', background: createPkgSelected ? '#f0fdfa' : 'white' }}
+                  />
+                  {createPkgSelected && (
+                    <button type="button" onClick={() => { setCreatePkgSelected(null); setCreatePkgSearch('') }}
+                      className="absolute right-2 top-7 p-0.5 rounded hover:bg-gray-100"><X size={14} style={{ color: 'var(--mid-gray)' }} /></button>
+                  )}
+                  {createPkgSelected && (
+                    <div className="mt-1 flex items-center gap-2 text-xs">
+                      <span className="px-2 py-0.5 rounded-full font-semibold" style={{ background: '#e0e7ff', color: '#3730a3' }}>{createPkgSelected.department}</span>
+                      <span style={{ color: 'var(--mid-gray)' }}>{createPkgSelected.totalSessions} sessions</span>
+                      <span style={{ color: 'var(--deep-teal)' }}>System price: &#8369;{createPkgSelected.amountPaid.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {createPkgSelected && (
+                    <div className="mt-2">
+                      <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
+                        Price During Purchase <span className="font-normal">(override if different from system price)</span>
+                      </label>
+                      <div className="flex items-center gap-1">
+                        <span className="text-sm" style={{ color: 'var(--mid-gray)' }}>&#8369;</span>
+                        <input type="number" min={0} step="0.01"
+                          value={createPkgSelected.amountPaid || ''}
+                          onChange={e => setCreatePkgSelected({ ...createPkgSelected, amountPaid: parseFloat(e.target.value) || 0 })}
+                          className="flex-1 px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      </div>
+                      {createPkgSelected.totalSessions > 0 && createPkgSelected.amountPaid > 0 && (
+                        <p className="text-xs mt-1" style={{ color: 'var(--deep-teal)' }}>
+                          Per-session rate: &#8369;{(createPkgSelected.amountPaid / createPkgSelected.totalSessions).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {createPkgSelected && (
+                    <div className="mt-2">
+                      <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
+                        Sessions Already Used <span className="font-normal">(optional — for migrating existing packages)</span>
+                      </label>
+                      <input type="number" min={0} max={createPkgSelected.totalSessions - 1} step="1"
+                        value={createPkgSelected.usedSessions || ''}
+                        onChange={e => setCreatePkgSelected({ ...createPkgSelected, usedSessions: parseInt(e.target.value) || 0 })}
+                        placeholder="0"
+                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      {createPkgSelected.usedSessions > 0 && createPkgSelected.totalSessions > 0 && createPkgSelected.amountPaid > 0 && (
+                        <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+                          Remaining: {createPkgSelected.totalSessions - createPkgSelected.usedSessions} session(s) — Balance: &#8369;{((createPkgSelected.amountPaid / createPkgSelected.totalSessions) * (createPkgSelected.totalSessions - createPkgSelected.usedSessions)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {showCreatePkgDrop && createPkgResults.length > 0 && !createPkgSelected && (
+                    <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border rounded-xl shadow-lg max-h-48 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                      {createPkgResults.map(s => (
+                        <button key={s.id} type="button"
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center justify-between"
+                          onClick={() => {
+                            setCreatePkgSelected({ serviceId: s.id, serviceName: s.name, department: s.department, totalSessions: s.packageSessions || 1, amountPaid: s.price || 0, usedSessions: 0 })
+                            setCreatePkgSearch(s.name)
+                            setShowCreatePkgDrop(false)
+                          }}>
+                          <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{s.name}</span>
+                          <span className="flex items-center gap-2">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold" style={{ background: '#e0e7ff', color: '#3730a3' }}>{s.department}</span>
+                            {s.packageSessions && <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{s.packageSessions}s</span>}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               {/* COA Account for HMO — Accounts Receivable classification (GL auto-uses 1010) */}
               {walletTypeFilter === 'HMO' && (
                 <div className="relative">
@@ -3354,8 +4227,8 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                   </select>
                 </div>
               )}
-              {/* Initial Balance — for migration of existing wallets (all patient wallet types except HMO) */}
-              {walletTypeFilter !== 'HMO' && walletTypeFilter !== 'GL' && (
+              {/* Initial Balance — for migration of existing wallets (VIP/Prepaid only; PACKAGE uses sessions already used instead) */}
+              {walletTypeFilter !== 'HMO' && walletTypeFilter !== 'GL' && walletTypeFilter !== 'PACKAGE' && (
                 <div>
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Initial Balance <span className="font-normal">(optional — for migrating existing wallets)</span></label>
                   <div className="flex items-center gap-1">
@@ -3365,6 +4238,16 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                       placeholder="0.00"
                       className="flex-1 px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
+                </div>
+              )}
+              {/* Initial Reward Points — for VIP wallet migration */}
+              {walletTypeFilter === 'VIP' && (
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Initial Reward Points <span className="font-normal">(optional — for migrating existing wallets)</span></label>
+                  <input type="number" min={0} step="1" value={createForm.initialRewardPoints || ''}
+                    onChange={e => setCreateForm({ ...createForm, initialRewardPoints: e.target.value })}
+                    placeholder="0"
+                    className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                 </div>
               )}
               {/* GL-specific: Agency, Amount and Attachment */}
@@ -3378,7 +4261,18 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                     <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>The issuing agency of this Guarantee Letter</p>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>GL Amount (Accounts Receivable) *</label>
+                    <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Total GL Amount (Accounts Receivable) *</label>
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm" style={{ color: 'var(--mid-gray)' }}>&#8369;</span>
+                      <input type="number" min={0} step="0.01" value={createForm.totalGlAmount || ''}
+                        onChange={e => setCreateForm({ ...createForm, totalGlAmount: e.target.value })}
+                        placeholder="e.g. 10000"
+                        className="flex-1 px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                    </div>
+                    <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Full approved amount — this goes into Accounts Receivable</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Remaining Balance (Usable Amount)</label>
                     <div className="flex items-center gap-1">
                       <span className="text-sm" style={{ color: 'var(--mid-gray)' }}>&#8369;</span>
                       <input type="number" min={0} step="0.01" value={createForm.glAmount || ''}
@@ -3386,6 +4280,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                         placeholder="e.g. 5000"
                         className="flex-1 px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                     </div>
+                    <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Amount still available to use (may be less than Total GL Amount if partially used)</p>
                   </div>
                   <div>
                     <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Attach Proof of GL</label>
@@ -3418,6 +4313,16 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                   </div>
                 </>
               )}
+              {/* Branch Assignment */}
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Branch</label>
+                <select value={createForm.branch} onChange={e => setCreateForm({ ...createForm, branch: e.target.value })}
+                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+                  <option value="ALL">All Branches</option>
+                  <option value="SANDBOX_EAST">Sandbox East</option>
+                  <option value="SANDBOX_GREENHILLS">Sandbox Greenhills</option>
+                </select>
+              </div>
               {createError && <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle size={12} />{createError}</p>}
               <button onClick={createWallet} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>
                 {walletTypeFilter === 'HMO' ? 'Add HMO' : walletTypeFilter === 'GL' ? 'Create GL Wallet' : 'Create Wallet'}
@@ -3478,8 +4383,20 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                       </select>
                     </div>
                   )}
+                  {['VIP', 'PREPAID_CARD'].includes(walletDetail.walletType) && (
+                    <div>
+                      <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Reward Points</label>
+                      <input type="number" step="1" value={walletEditForm.rewardPoints || ''} onChange={e => setWalletEditForm(p => ({ ...p, rewardPoints: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                    </div>
+                  )}
                   {walletDetail.walletType === 'GL' && (
                     <>
+                      <div>
+                        <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Total GL Amount (AR)</label>
+                        <input type="number" step="0.01" value={walletEditForm.totalGlAmount || ''} onChange={e => setWalletEditForm(p => ({ ...p, totalGlAmount: e.target.value }))}
+                          className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      </div>
                       <div>
                         <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Agency</label>
                         <input value={walletEditForm.agency || ''} onChange={e => setWalletEditForm(p => ({ ...p, agency: e.target.value }))}
@@ -3509,6 +4426,27 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                       </div>
                     </>
                   )}
+                  {walletDetail.walletType === 'HMO' && (
+                    <div className="col-span-2">
+                      <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Chart of Accounts</label>
+                      <select value={walletEditForm.accountId || ''} onChange={e => setWalletEditForm(p => ({ ...p, accountId: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+                        <option value="">— None —</option>
+                        {arAccounts.map(a => (
+                          <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <div>
+                    <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Branch</label>
+                    <select value={walletEditForm.branch || 'ALL'} onChange={e => setWalletEditForm(p => ({ ...p, branch: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+                      <option value="ALL">All Branches</option>
+                      <option value="SANDBOX_EAST">Sandbox East</option>
+                      <option value="SANDBOX_GREENHILLS">Sandbox Greenhills</option>
+                    </select>
+                  </div>
                 </div>
                 <div className="flex gap-2 pt-1">
                   <button onClick={saveWalletEdit} disabled={walletEditSaving}
@@ -3528,14 +4466,26 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
               {(() => {
                 const typeBadge = WALLET_TYPE_COLORS[walletDetail.walletType] || { bg: '#f3f4f6', color: '#374151' }
                 return (
-                  <span className="px-2.5 py-1 rounded-full text-xs font-semibold" style={{ background: typeBadge.bg, color: typeBadge.color }}>
-                    {WALLET_TYPE_LABELS[walletDetail.walletType] || walletDetail.walletType}
-                  </span>
+                  <>
+                    <span className="px-2.5 py-1 rounded-full text-xs font-semibold" style={{ background: typeBadge.bg, color: typeBadge.color }}>
+                      {WALLET_TYPE_LABELS[walletDetail.walletType] || walletDetail.walletType}
+                    </span>
+                    {walletDetail.walletType === 'VIP' && walletDetail.vipTier && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: walletDetail.vipTier === 'PLATINUM' ? '#e2e8f0' : walletDetail.vipTier === 'GOLD' ? '#fef3c7' : '#e0e7ff', color: walletDetail.vipTier === 'PLATINUM' ? '#475569' : walletDetail.vipTier === 'GOLD' ? '#92400e' : '#3730a3' }}>
+                        {walletDetail.vipTier}
+                      </span>
+                    )}
+                  </>
                 )
               })()}
               <span className="text-sm font-semibold" style={{ color: 'var(--deep-teal)' }}>
                 Balance: {formatCurrency(toNum(walletDetail.balance))}
               </span>
+              {walletDetail.walletType === 'GL' && (walletDetail as unknown as { totalGlAmount?: number }).totalGlAmount != null && (
+                <span className="text-sm font-semibold" style={{ color: '#15803d' }}>
+                  &nbsp;&middot;&nbsp;Total GL: {formatCurrency(toNum((walletDetail as unknown as { totalGlAmount?: number }).totalGlAmount))}
+                </span>
+              )}
             </div>
             <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
               {walletDetail.patientEmail || 'No email'}
@@ -3589,12 +4539,13 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                           <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
                             {pkg.usedSessions}/{pkg.totalSessions} used &middot; {remaining} remaining
                             &middot; Paid: {formatCurrency(toNum(pkg.amountPaid))}
+                            &middot; <span style={{ color: 'var(--deep-teal)' }}>{formatCurrency(toNum(pkg.amountPaid) / pkg.totalSessions)}/session</span>
                             {pkg.expiresAt && <> &middot; Expires: {formatDate(pkg.expiresAt)}</>}
                           </p>
                           {expired && <span className="text-xs text-red-600">Expired</span>}
                         </div>
                         <button
-                          onClick={() => deductSession(pkg.id, pkg.serviceName)}
+                          onClick={() => deductSession(pkg.id, pkg.serviceName, toNum(pkg.amountPaid), pkg.totalSessions)}
                           disabled={remaining <= 0 || !!expired}
                           className="px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-50"
                           style={{ background: remaining > 0 && !expired ? 'var(--teal)' : 'var(--mid-gray)' }}
@@ -3612,8 +4563,42 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
             {showAddPackage && (
               <div className="mb-4 p-4 rounded-xl border space-y-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                 <h4 className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Add Package</h4>
-                <input value={pkgForm.serviceName} onChange={e => setPkgForm({ ...pkgForm, serviceName: e.target.value })} placeholder="Service Name *"
-                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                <div className="relative">
+                  <input
+                    value={pkgForm.serviceId ? pkgForm.serviceName : pkgServiceSearch}
+                    onChange={e => {
+                      setPkgServiceSearch(e.target.value)
+                      setShowPkgServiceDrop(true)
+                      if (!e.target.value) setPkgForm({ ...pkgForm, serviceName: '', serviceId: '', department: '' })
+                    }}
+                    placeholder="Search package service..."
+                    className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                    style={{ borderColor: pkgForm.serviceId ? 'var(--teal)' : 'var(--light-gray)', background: pkgForm.serviceId ? '#f0fdfa' : 'white' }}
+                  />
+                  {pkgForm.serviceId && (
+                    <button type="button" onClick={() => { setPkgForm({ ...pkgForm, serviceName: '', serviceId: '', department: '', totalSessions: 1, amountPaid: 0 }); setPkgServiceSearch('') }}
+                      className="absolute right-2 top-2 p-0.5 rounded hover:bg-gray-100"><X size={14} style={{ color: 'var(--mid-gray)' }} /></button>
+                  )}
+                  {showPkgServiceDrop && pkgServiceResults.length > 0 && !pkgForm.serviceId && (
+                    <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border rounded-xl shadow-lg max-h-48 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                      {pkgServiceResults.map(s => (
+                        <button key={s.id} type="button"
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center justify-between"
+                          onClick={() => {
+                            setPkgForm({ ...pkgForm, serviceName: s.name, serviceId: s.id, department: s.department, totalSessions: s.packageSessions || 1, amountPaid: s.price || 0 })
+                            setPkgServiceSearch(s.name)
+                            setShowPkgServiceDrop(false)
+                          }}>
+                          <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{s.name}</span>
+                          <span className="flex items-center gap-2">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold" style={{ background: '#e0e7ff', color: '#3730a3' }}>{s.department}</span>
+                            {s.packageSessions && <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{s.packageSessions} sessions</span>}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div>
                     <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Sessions</label>
@@ -3631,6 +4616,11 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                       className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                 </div>
+                {pkgForm.totalSessions > 0 && pkgForm.amountPaid > 0 && (
+                  <p className="text-xs" style={{ color: 'var(--deep-teal)' }}>
+                    Per-session rate: &#8369;{(pkgForm.amountPaid / pkgForm.totalSessions).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                )}
                 <div className="flex gap-2">
                   <button onClick={addPackage} className="px-4 py-2 rounded-xl text-sm text-white font-medium" style={{ background: 'var(--teal)' }}>Add</button>
                   <button onClick={() => setShowAddPackage(false)} className="px-4 py-2 rounded-xl text-sm font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
@@ -4257,6 +5247,10 @@ function ProductsSection({
   const [configuredModes, setConfiguredModes] = useState<PaymentModeType[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [prodIssuedInvoice, setProdIssuedInvoice] = useState(false)
+  const [prodInvoiceNumber, setProdInvoiceNumber] = useState('')
+  const [prodReferenceNumber, setProdReferenceNumber] = useState('')
+  const [prodNotes, setProdNotes] = useState('')
   // Reward points wallet state
   const [rpWalletSearch, setRpWalletSearch] = useState('')
   const [rpWalletResults, setRpWalletResults] = useState<DigitalWallet[]>([])
@@ -4355,9 +5349,10 @@ function ProductsSection({
     if (q.length < 2) { setRpWalletResults([]); return }
     try {
       // Fetch VIP wallets first, then PREPAID_CARD, merge results
+      const branchParam = !isAdmin(session) ? `&branch=${encodeURIComponent(userBranch(session))}` : ''
       const [rVip, rPrepaid] = await Promise.all([
-        fetch(`/api/pos/wallets?search=${encodeURIComponent(q)}&walletType=VIP`),
-        fetch(`/api/pos/wallets?search=${encodeURIComponent(q)}&walletType=PREPAID_CARD`),
+        fetch(`/api/pos/wallets?search=${encodeURIComponent(q)}&walletType=VIP${branchParam}`),
+        fetch(`/api/pos/wallets?search=${encodeURIComponent(q)}&walletType=PREPAID_CARD${branchParam}`),
       ])
       const [dVip, dPrepaid] = await Promise.all([rVip.json(), rPrepaid.json()])
       const combined = [...(normalize(dVip) as DigitalWallet[]), ...(normalize(dPrepaid) as DigitalWallet[])]
@@ -4376,13 +5371,22 @@ function ProductsSection({
     } catch { setError('Failed to scan barcode') }
   }
 
+  // Reward points partial coverage calculation
+  const rpWalletPoints = rpSelectedWallet?.rewardPoints || 0
+  const rpPointsToUse = hasRewardPointsPayment ? Math.min(rpWalletPoints, rewardPointsTotal) : 0
+  const rpCoveragePercent = rewardPointsTotal > 0 ? rpPointsToUse / rewardPointsTotal : 0
+  const rpMonetaryValue = netAmount * rpCoveragePercent // how much the points cover in Php
+  const rpRemainingBalance = netAmount - rpMonetaryValue // how much the customer still needs to pay
+  const otherPaymentsTotal = payments.filter(p => p.method !== 'REWARD_POINTS').reduce((s, p) => s + toNum(p.amount), 0)
+
   const handleSubmit = async () => {
     if (cart.length === 0) { setError('Add at least one product'); return }
-    // For reward points payment, check wallet is selected and has enough points
+    // For reward points payment, check wallet is selected
     if (hasRewardPointsPayment) {
       if (!rpSelectedWallet) { setError('Please scan or search a wallet for reward points payment'); return }
-      if ((rpSelectedWallet.rewardPoints || 0) < rewardPointsTotal) {
-        setError(`Insufficient reward points. Need ${rewardPointsTotal} pts, wallet has ${rpSelectedWallet.rewardPoints || 0} pts`)
+      // If partial coverage, other payments must cover the remaining balance
+      if (rpCoveragePercent < 1 && otherPaymentsTotal < rpRemainingBalance - 0.01) {
+        setError(`Reward points cover ${(rpCoveragePercent * 100).toFixed(0)}% (${formatCurrency(rpMonetaryValue)}). Remaining ${formatCurrency(rpRemainingBalance)} must be covered by other payments.`)
         return
       }
     }
@@ -4403,13 +5407,18 @@ function ProductsSection({
         })),
         payments: payments.filter(p => toNum(p.amount) > 0 || p.method === 'REWARD_POINTS').map(p => ({
           method: p.method,
-          amount: p.method === 'REWARD_POINTS' ? rewardPointsTotal : toNum(p.amount),
+          paymentModeId: p.paymentModeId || null,
+          amount: p.method === 'REWARD_POINTS' ? rpMonetaryValue : toNum(p.amount),
           walletId: p.method === 'REWARD_POINTS' ? rpSelectedWallet?.id : null,
-          reference: p.method === 'REWARD_POINTS' ? `${rewardPointsTotal} pts from ${rpSelectedWallet?.patientName}` : null,
+          reference: p.method === 'REWARD_POINTS' ? `${rpPointsToUse} pts from ${rpSelectedWallet?.patientName}${rpCoveragePercent < 1 ? ` (${(rpCoveragePercent * 100).toFixed(0)}% coverage)` : ''}` : null,
         })),
         discountType,
         discountAmount,
         discountLabel: discountLabel || null,
+        issuedOfficialInvoice: prodIssuedInvoice,
+        salesInvoiceNumber: prodIssuedInvoice ? prodInvoiceNumber.trim() : null,
+        referenceNumber: prodReferenceNumber.trim() || null,
+        notes: prodNotes.trim() || null,
       }
       const res = await fetch('/api/pos/orders', {
         method: 'POST',
@@ -4419,15 +5428,15 @@ function ProductsSection({
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Failed to create order'); setSubmitting(false); return }
 
-      // Deduct reward points from wallet
-      if (hasRewardPointsPayment && rpSelectedWallet) {
+      // Deduct reward points from wallet (only the points actually used)
+      if (hasRewardPointsPayment && rpSelectedWallet && rpPointsToUse > 0) {
         try {
           await fetch(`/api/pos/wallets/${rpSelectedWallet.id}/deduct`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              rewardPoints: rewardPointsTotal,
-              description: `Product purchase: Order #${data.orderNumber} (${rewardPointsTotal} pts)`,
+              rewardPoints: rpPointsToUse,
+              description: `Product purchase: Order #${data.orderNumber} (${rpPointsToUse} pts${rpCoveragePercent < 1 ? `, ${(rpCoveragePercent * 100).toFixed(0)}% coverage` : ''})`,
               orderId: data.id,
             }),
           })
@@ -4701,7 +5710,15 @@ function ProductsSection({
             <h4 className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Payment</h4>
             {payments.map((p, idx) => (
               <div key={idx} className="flex items-center gap-1">
-                <select value={p.method} onChange={e => setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, method: e.target.value } : pp))}
+                <select value={p.paymentModeId || p.method} onChange={e => {
+                    const val = e.target.value
+                    const cm = configuredModes.find(m => m.id === val)
+                    if (cm) {
+                      setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, method: cm.paymentMethod || 'CASH', paymentModeId: cm.id } : pp))
+                    } else {
+                      setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, method: val, paymentModeId: undefined } : pp))
+                    }
+                  }}
                   className="px-2 py-2 rounded-xl border text-xs outline-none flex-1" style={{ borderColor: 'var(--light-gray)' }}>
                   {configuredModes.length > 0 ? (
                     <>
@@ -4713,8 +5730,8 @@ function ProductsSection({
                   )}
                 </select>
                 {p.method === 'REWARD_POINTS' ? (
-                  <span className="w-24 px-2 py-2 rounded-xl border text-xs text-right flex items-center justify-end gap-1" style={{ borderColor: 'var(--light-gray)', color: '#ED6823', background: '#FFF8F0' }}>
-                    <Star size={10} /> {rewardPointsTotal.toLocaleString()} pts
+                  <span className="w-28 px-2 py-2 rounded-xl border text-xs text-right flex items-center justify-end gap-1" style={{ borderColor: 'var(--light-gray)', color: '#ED6823', background: '#FFF8F0' }}>
+                    <Star size={10} /> {rpPointsToUse.toLocaleString()}/{rewardPointsTotal.toLocaleString()}
                   </span>
                 ) : (
                   <input type="number" min={0} step="0.01" value={p.amount || ''} placeholder="Amt"
@@ -4786,23 +5803,78 @@ function ProductsSection({
                 </>
               )}
               {cart.length > 0 && (
-                <p className="text-xs font-medium" style={{ color: '#ED6823' }}>
-                  Points needed: {rewardPointsTotal.toLocaleString()} pts
-                  {rpSelectedWallet && (rpSelectedWallet.rewardPoints || 0) < rewardPointsTotal && (
-                    <span className="text-red-600 ml-2">Insufficient points!</span>
+                <div className="text-xs font-medium space-y-0.5">
+                  <p style={{ color: '#ED6823' }}>
+                    Points needed: {rewardPointsTotal.toLocaleString()} pts &middot; Available: {rpSelectedWallet ? rpWalletPoints.toLocaleString() : '—'} pts
+                  </p>
+                  {rpSelectedWallet && rpWalletPoints < rewardPointsTotal && (
+                    <p style={{ color: '#92400e' }}>
+                      Using {rpPointsToUse.toLocaleString()} pts = {(rpCoveragePercent * 100).toFixed(0)}% coverage ({formatCurrency(rpMonetaryValue)}).
+                      Remaining: <strong>{formatCurrency(rpRemainingBalance)}</strong> — pay via other method.
+                    </p>
                   )}
-                </p>
+                  {rpSelectedWallet && rpWalletPoints >= rewardPointsTotal && (
+                    <p style={{ color: '#166534' }}>Fully covered by reward points!</p>
+                  )}
+                </div>
               )}
             </div>
           )}
+
+          {/* Official Sales Invoice */}
+          <div className="rounded-xl p-3 border" style={{ borderColor: 'var(--light-gray)' }}>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input type="checkbox" checked={prodIssuedInvoice}
+                onChange={e => { setProdIssuedInvoice(e.target.checked); if (!e.target.checked) setProdInvoiceNumber('') }}
+                className="w-4 h-4 rounded accent-teal-600" />
+              <span className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Issued Official Sales Invoice</span>
+            </label>
+            {prodIssuedInvoice && (
+              <div className="mt-2">
+                <input type="text" value={prodInvoiceNumber} onChange={e => setProdInvoiceNumber(e.target.value)}
+                  placeholder="Sales Invoice Number" className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+            )}
+          </div>
+
+          {/* Reference Number */}
+          <div>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Reference Number (optional)</label>
+            <input type="text" value={prodReferenceNumber} onChange={e => setProdReferenceNumber(e.target.value)}
+              placeholder="e.g. OR-2026-001234" className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+          </div>
+
+          {/* Remarks */}
+          <div>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Remarks (optional)</label>
+            <textarea value={prodNotes} onChange={e => setProdNotes(e.target.value)}
+              placeholder="Any notes or remarks for this order..."
+              rows={2}
+              className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none resize-none"
+              style={{ borderColor: 'var(--light-gray)' }} />
+          </div>
 
           {/* Totals */}
           <div className="pt-2 border-t space-y-1" style={{ borderColor: 'var(--light-gray)' }}>
             <div className="flex justify-between text-xs"><span style={{ color: 'var(--mid-gray)' }}>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
             {discountAmount > 0 && <div className="flex justify-between text-xs"><span style={{ color: 'var(--mid-gray)' }}>Discount</span><span className="text-red-600">-{formatCurrency(discountAmount)}</span></div>}
             <div className="flex justify-between text-sm font-bold"><span style={{ color: 'var(--charcoal)' }}>Net</span><span style={{ color: 'var(--deep-teal)' }}>{formatCurrency(netAmount)}</span></div>
-            {hasRewardPointsPayment && rewardPointsTotal > 0 && (
-              <div className="flex justify-between text-xs"><span style={{ color: '#ED6823' }}><Star size={10} className="inline" /> Reward Points</span><span style={{ color: '#ED6823' }}>{rewardPointsTotal.toLocaleString()} pts</span></div>
+            {hasRewardPointsPayment && rpSelectedWallet && (
+              <>
+                <div className="flex justify-between text-xs"><span style={{ color: '#ED6823' }}><Star size={10} className="inline" /> Reward Points ({rpPointsToUse.toLocaleString()} pts)</span><span style={{ color: '#ED6823' }}>{formatCurrency(rpMonetaryValue)}</span></div>
+                {rpCoveragePercent < 1 && (
+                  <>
+                    <div className="flex justify-between text-xs"><span style={{ color: 'var(--mid-gray)' }}>Remaining Balance</span><span style={{ color: '#991b1b' }}>{formatCurrency(rpRemainingBalance)}</span></div>
+                    <div className="flex justify-between text-xs"><span style={{ color: 'var(--mid-gray)' }}>Other Payments</span><span>{formatCurrency(otherPaymentsTotal)}</span></div>
+                    {otherPaymentsTotal > rpRemainingBalance && (
+                      <div className="flex justify-between text-xs"><span style={{ color: 'var(--mid-gray)' }}>Change</span><span className="text-green-700">{formatCurrency(otherPaymentsTotal - rpRemainingBalance)}</span></div>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+            {hasRewardPointsPayment && !rpSelectedWallet && rewardPointsTotal > 0 && (
+              <div className="flex justify-between text-xs"><span style={{ color: '#ED6823' }}><Star size={10} className="inline" /> Points needed</span><span style={{ color: '#ED6823' }}>{rewardPointsTotal.toLocaleString()} pts</span></div>
             )}
             {!hasRewardPointsPayment && <div className="flex justify-between text-xs"><span style={{ color: 'var(--mid-gray)' }}>Paid</span><span>{formatCurrency(totalPayments)}</span></div>}
             {!hasRewardPointsPayment && totalPayments >= netAmount && netAmount > 0 && (
@@ -4810,7 +5882,7 @@ function ProductsSection({
             )}
           </div>
 
-          <button onClick={handleSubmit} disabled={submitting || cart.length === 0 || (!hasRewardPointsPayment && totalPayments < netAmount)}
+          <button onClick={handleSubmit} disabled={submitting || cart.length === 0 || (!hasRewardPointsPayment && totalPayments < netAmount) || (hasRewardPointsPayment && rpCoveragePercent < 1 && otherPaymentsTotal < rpRemainingBalance - 0.01)}
             className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2"
             style={{ background: 'var(--teal)' }}>
             {submitting && <Loader2 className="animate-spin" size={14} />}
@@ -5182,12 +6254,12 @@ function SalesSummarySection({ branch, canSelectBranch }: { branch: string; canS
     const paymentLines = Object.entries(paymentBreakdown).map(([k, v]) => `   ${k.replace(/_/g, ' ')}: ${fmt(v.total)}`).join('\n') || '   None'
     const deptLines = DEPTS.map(d => `${d}: ${fmt(deptBreakdown[d] || 0)}`).join('\n')
 
-    const content = `<div style="font-family:'Courier New',monospace;font-size:11px;border:1px solid #000;padding:20px;max-width:600px;margin:auto;line-height:1.6;position:relative">
+    const content = `<div style="font-family:'Arial Black',Arial,Helvetica,sans-serif;font-size:11px;font-weight:900;border:1px solid #000;padding:20px;max-width:600px;margin:auto;line-height:1.7;position:relative">
 <img src="/scei-logo-full.png" style="position:absolute;top:16px;right:16px;width:100px;height:auto" onerror="this.style.display='none'" />
-<div style="text-align:center;font-size:11px;margin-bottom:4px">${branchLabel}</div>
-<div style="text-align:center;font-size:11px;margin-bottom:12px">SALES FOR THE DAY</div>
-<pre style="font-family:inherit;font-size:inherit;margin:0;line-height:1.6;white-space:pre-wrap">
-Date: ${formatDate(dateFrom)}${dateFrom !== dateTo ? ' to ' + formatDate(dateTo) : ''}
+<div style="text-align:center;font-size:12px;font-weight:900;margin-bottom:4px;letter-spacing:0.5px">${branchLabel}</div>
+<div style="text-align:center;font-size:11px;font-weight:900;margin-bottom:12px">SALES FOR THE DAY</div>
+
+<div style="font-size:11px;white-space:pre-wrap;font-family:'Arial Black',Arial,Helvetica,sans-serif;font-weight:900;line-height:1.7">Date: ${formatDate(dateFrom)}${dateFrom !== dateTo ? ' to ' + formatDate(dateTo) : ''}
 
 Total Sales (Gross): ${fmt(grossSales)}
 
@@ -5217,10 +6289,10 @@ Signature:  ___________________________
 
 Validated by: _________________________
 Signature:    _________________________
-</pre></div>`
+</div></div>`
 
     win.document.write(`<html><head><title>Daily Sales Report - ${dateFrom}</title>
-<style>@page{size:letter;margin:20mm}body{margin:0;padding:20px}</style>
+<style>@page{size:letter;margin:20mm}body{margin:0;padding:20px}*{font-family:'Arial Black',Arial,Helvetica,sans-serif!important;font-weight:900!important}</style>
 </head><body>${content}<script>setTimeout(()=>{window.print()},300)<\/script></body></html>`)
     win.document.close()
   }
