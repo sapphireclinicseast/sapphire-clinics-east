@@ -1299,6 +1299,7 @@ model JournalEntry {
   referenceType  String   // PAYROLL_CONSULTANT, PAYROLL_EMPLOYEE, SALARY_PAYMENT, BENEFIT_PAYMENT, TAX_PAYMENT
   referenceId    String?  // cutoffPeriod+branch or payment ID
   totalAmount    Decimal
+  branch         String   @default("ALL")
   createdById    String
   createdAt      DateTime @default(now())
 
@@ -1307,6 +1308,7 @@ model JournalEntry {
   @@index([referenceType, referenceId])
   @@index([entryDate])
   @@index([createdById])
+  @@index([branch])
 }
 
 model JournalEntryLine {

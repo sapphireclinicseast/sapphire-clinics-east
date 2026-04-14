@@ -27,6 +27,8 @@ interface MonthData {
   deductionsByMethod: Record<string, number>
   deductionsByType: Record<string, number>  // "Merchant Discount Rate" → amount, "Creditable Withholding Tax" → amount
   deductionsByAccount: Record<string, number>  // COA account key → amount (for balance sheet assets like CWT)
+  cashByAccount: Record<string, number>  // COA account key (bank account) → net cash received
+  expenseByAccount: Record<string, number>  // COA account key → amount (indirect expenses from journal entries)
 }
 
 interface AccountEntry {
@@ -51,8 +53,10 @@ interface ReportData {
     discounts: number
     byCashAccount: { accountNumber: string; accountTitle: string; amount: number }[]
   }
-  inventorySourceAccounts?: { accountNumber: string; accountTitle: string; amount: number }[]
+  inventorySourceAccounts?: { accountNumber: string; accountTitle: string; accountType: string; amount: number }[]
   unclassifiedAP?: number
+  journalBalances?: { accountNumber: string; accountTitle: string; accountType: string; balance: number; entries: { date: string; description: string; referenceType: string; amount: number }[] }[]
+  journalRevenueKeys?: string[]
 }
 
 type ReportTab = 'balance-sheet' | 'income-statement' | 'cash-flow'
@@ -224,7 +228,7 @@ function fmtSigned(n: number): string {
    SHARED ROW COMPONENTS
    ═══════════════════════════════════════════════════════════════ */
 
-const rowBase = 'grid items-center py-2 px-4 text-sm'
+const rowBase = 'grid items-center py-2.5 px-4 text-sm'
 
 function SectionHeader({ label, colSpan }: { label: string; colSpan?: number }) {
   return (
@@ -272,7 +276,11 @@ function AnnualRow({
       <span>{label}</span>
       <span
         className={`text-right font-mono text-sm${onDrillDown ? ' cursor-pointer hover:underline' : ''}`}
-        style={{ color: onDrillDown && amount !== 0 ? 'var(--teal)' : undefined }}
+        style={{
+          color: onDrillDown && amount !== 0 ? 'var(--teal)'
+            : amount === 0 && !isTotal && !isGrandTotal ? '#d1d5db'
+            : undefined,
+        }}
         onClick={onDrillDown}
       >
         {negative ? fmtSigned(amount) : fmt(amount)}
@@ -311,7 +319,11 @@ function MonthlyRow({
         <span
           key={i}
           className={`text-right font-mono pr-1${onClickCell && v !== 0 ? ' cursor-pointer hover:underline' : ''}`}
-          style={{ color: onClickCell && v !== 0 ? 'var(--teal)' : undefined }}
+          style={{
+            color: onClickCell && v !== 0 ? 'var(--teal)'
+              : v === 0 && !isTotal && !isGrandTotal ? '#d1d5db'
+              : undefined,
+          }}
           onClick={() => onClickCell?.(i + 1)}
         >
           {negative ? fmtSigned(v) : fmt(v)}
@@ -459,7 +471,13 @@ function DrillDownPanel({
    ═══════════════════════════════════════════════════════════════ */
 
 function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewMode: ViewMode; onDrillDown: OnDrillDown }) {
-  const { accounts, inventory, wallets, monthly, inventorySourceAccounts = [], unclassifiedAP = 0, accountsReceivable } = data
+  const { accounts, inventory, wallets, monthly, inventorySourceAccounts = [], unclassifiedAP = 0, accountsReceivable, journalBalances = [] } = data
+
+  // Build journal balance lookup: accountKey → balance
+  const journalBalanceMap: Record<string, number> = {}
+  for (const jb of journalBalances) {
+    journalBalanceMap[`${jb.accountNumber} ${jb.accountTitle}`] = jb.balance
+  }
 
   // Calculate totals from available data
   const totalCashReceived = sumMonths(monthly, (m) => m.cashReceived)
@@ -530,14 +548,25 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
   const totalNonCurrentAssets = 0
   const totalAssets = totalCurrentAssets + totalNonCurrentAssets
 
-  // Source account balances (inventory payables) + unclassified AP + wallet liabilities
-  const sourceAccountTotal = inventorySourceAccounts.reduce((s, a) => s + a.amount, 0) + unclassifiedAP
-  const totalCurrentLiabilities = wallets.total + sourceAccountTotal
+  // Source account balances — only LIABILITY accounts are payables (ASSET accounts are cash purchases, not payables)
+  const liabilitySourceAccounts = inventorySourceAccounts.filter(a => a.accountType === 'LIABILITY')
+  const sourceAccountTotal = liabilitySourceAccounts.reduce((s, a) => s + a.amount, 0) + unclassifiedAP
+
+  // Payroll payable balances from journal entries (4040, 4060, 4070, etc.)
+  const payrollPayableAccounts = journalBalances.filter(jb => jb.accountType === 'LIABILITY' && jb.balance > 0)
+  const payrollPayableTotal = payrollPayableAccounts.reduce((s, a) => s + a.balance, 0)
+
+  const totalCurrentLiabilities = wallets.total + sourceAccountTotal + payrollPayableTotal
   const totalNonCurrentLiabilities = 0
   const totalLiabilities = totalCurrentLiabilities + totalNonCurrentLiabilities
 
-  // Net income for retained earnings
-  const totalRevenue = sumMonths(monthly, (m) => m.serviceRevenue + m.productRevenue)
+  // Net income for retained earnings — should match Income Statement logic
+  // Include all revenue by account (POS + journal entries) minus discounts and COGS
+  const totalRevenue = sumMonths(monthly, (m) => {
+    let rev = 0
+    for (const [, v] of Object.entries(m.revenueByAccount || {})) rev += v
+    return rev
+  })
   const totalCOGS = sumMonths(monthly, (m) => m.cogs)
   const netIncome = totalRevenue - totalCOGS
   const totalEquity = netIncome
@@ -566,9 +595,33 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
         {/* ASSETS */}
         <SectionHeader label="Assets" />
         <SubSectionHeader label="Current Assets" />
-        <AnnualRow label="Cash and Cash Equivalents" amount={totalCashReceived + arCashReceived} indent={2} onDrillDown={() => onDrillDown('Cash and Cash Equivalents', 'CASH_BALANCE', 0)} />
+        <AnnualRow label="Cash and Cash Equivalents" amount={totalCashReceived + arCashReceived} indent={2} bold onDrillDown={() => onDrillDown('Cash and Cash Equivalents', 'CASH_BALANCE', 0)} />
+        {/* Cash breakdown by bank account from payment mode COA */}
+        {(() => {
+          const cashAccts: Record<string, number> = {}
+          for (let m = 1; m <= 12; m++) {
+            for (const [k, v] of Object.entries(monthly[m].cashByAccount || {})) {
+              cashAccts[k] = (cashAccts[k] || 0) + v
+            }
+          }
+          // Add AR cash received by account
+          if (accountsReceivable?.byCashAccount) {
+            for (const ca of accountsReceivable.byCashAccount) {
+              const k = `${ca.accountNumber} ${ca.accountTitle}`
+              cashAccts[k] = (cashAccts[k] || 0) + ca.amount
+            }
+          }
+          const unclassifiedCash = (totalCashReceived + arCashReceived) - Object.values(cashAccts).reduce((s, v) => s + v, 0)
+          return <>
+            {Object.entries(cashAccts).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => (
+              <AnnualRow key={k} label={k} amount={v} indent={3} />
+            ))}
+            {unclassifiedCash > 0.01 && <AnnualRow label="Unclassified Cash" amount={unclassifiedCash} indent={3} />}
+          </>
+        })()}
         {arTotal > 0 && (
-          <AnnualRow label="1010 — Accounts Receivable" amount={arTotal} indent={2} />
+          <AnnualRow label="1010 — Accounts Receivable" amount={arTotal} indent={2}
+            onDrillDown={() => onDrillDown('Accounts Receivable', 'AR_PAYMENTS', 0)} />
         )}
         {accountsReceivable && Object.entries(accountsReceivable.byType).map(([type, bal]) => (
           bal > 0 ? <AnnualRow key={type} label={`    ${type === 'HMO' ? 'HMO Receivables' : type === 'GL' ? 'Guarantee Letter Receivables' : type}`} amount={bal} indent={3} /> : null
@@ -618,21 +671,41 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
         {/* LIABILITIES */}
         <SectionHeader label="Liabilities" />
         <SubSectionHeader label="Current Liabilities" />
-        {currentLiabAccounts.map((a) => (
-          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={0} indent={2} />
-        ))}
-        {/* Unearned revenue from wallets */}
-        {Object.entries(wallets.byType).map(([type, bal]) => (
-          <AnnualRow key={type} label={`Unearned Revenue — ${WALLET_LABELS[type] || type}`} amount={bal} indent={2} />
-        ))}
-        {/* Inventory source accounts (payables) */}
-        {inventorySourceAccounts.length > 0 && inventorySourceAccounts.map((a) => (
+        {/* Payroll payable accounts from journal entries (4040, 4060, 4070, etc.) */}
+        {payrollPayableAccounts.map((a) => {
+          const acctKey = `${a.accountNumber} ${a.accountTitle}`
+          return (
+            <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={a.balance} indent={2}
+              onDrillDown={() => onDrillDown(a.accountTitle, 'JOURNAL_ACCOUNT', 0, acctKey)} />
+          )
+        })}
+        {/* Other COA liability accounts not covered by journal entries */}
+        {currentLiabAccounts.filter(a => !payrollPayableAccounts.find(p => p.accountNumber === a.accountNumber)).map((a) => {
+          const acctKey = `${a.accountNumber} ${a.accountTitle}`
+          const jBal = journalBalanceMap[acctKey] || 0
+          return jBal !== 0 ? (
+            <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={jBal} indent={2}
+              onDrillDown={() => onDrillDown(a.accountTitle, 'JOURNAL_ACCOUNT', 0, acctKey)} />
+          ) : null
+        })}
+        {/* Unearned revenue from wallets — lodged under 4050 */}
+        {wallets.total > 0 && (
+          <>
+            <AnnualRow label="4050 — Unearned Revenue" amount={wallets.total} indent={2} bold
+              onDrillDown={() => onDrillDown('Unearned Revenue', 'WALLET_BALANCE', 0)} />
+            {Object.entries(wallets.byType).map(([type, bal]) => (
+              <AnnualRow key={type} label={`Unearned Revenue — ${WALLET_LABELS[type] || type}`} amount={bal} indent={3} />
+            ))}
+          </>
+        )}
+        {/* Inventory source accounts (only liability/payable accounts) */}
+        {liabilitySourceAccounts.length > 0 && liabilitySourceAccounts.map((a) => (
           <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={a.amount} indent={2} />
         ))}
         {unclassifiedAP > 0 && (
           <AnnualRow label="Unclassified Accounts Payable" amount={unclassifiedAP} indent={2} />
         )}
-        {wallets.total === 0 && currentLiabAccounts.length === 0 && sourceAccountTotal === 0 && (
+        {wallets.total === 0 && currentLiabAccounts.length === 0 && sourceAccountTotal === 0 && payrollPayableTotal === 0 && (
           <AnnualRow label="(No current liabilities recorded)" amount={0} indent={2} />
         )}
         <AnnualRow label="Total Current Liabilities" amount={totalCurrentLiabilities} indent={1} isTotal bold />
@@ -689,7 +762,8 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
    ═══════════════════════════════════════════════════════════════ */
 
 function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; viewMode: ViewMode; onDrillDown: OnDrillDown }) {
-  const { monthly, accounts } = data
+  const { monthly, accounts, journalRevenueKeys = [] } = data
+  const journalRevenueSet = new Set(journalRevenueKeys)
 
   // COA-driven: Revenue accounts — gather from ALL revenue subTypes, not just OPERATING/NON_OPERATING
   const allRevenueSubTypes = accounts.REVENUE ? Object.values(accounts.REVENUE).flat() : []
@@ -732,6 +806,12 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
     return sumMonths(monthly, (m) => (m.revenueByAccount || {})[key] || 0)
   }
 
+  // Helper: get amount for a COA expense account from expenseByAccount (journal entries)
+  const expenseAmount = (acctNum: string, acctTitle: string) => {
+    const key = `${acctNum} ${acctTitle}`
+    return sumMonths(monthly, (m) => (m.expenseByAccount || {})[key] || 0)
+  }
+
   // Gross Revenue = sum of all CREDIT revenue accounts + unmatched revenue keys
   const totalGrossRevenue = grossRevenueAccts.reduce((s, a) => s + acctAmount(a.accountNumber, a.accountTitle), 0)
   const unmatchedRevenueTotal = unmatchedRevenueKeys.reduce((s, key) => s + sumMonths(monthly, (m) => (m.revenueByAccount || {})[key] || 0), 0)
@@ -751,8 +831,8 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
   // Gross Profit
   const grossProfit = netSales - totalCOGS
 
-  // Operating Expenses (indirect) — placeholder 0 until journal entries exist
-  const totalOpex = 0
+  // Operating Expenses (indirect) — from journal entry lines
+  const totalOpex = indirectExpenseAccts.reduce((s, a) => s + expenseAmount(a.accountNumber, a.accountTitle), 0)
 
   // EBITDA
   const ebitda = grossProfit - totalOpex
@@ -765,10 +845,15 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
       <div>
         {/* 7000 GROSS REVENUE */}
         <SectionHeader label="7000 Gross Revenue" />
-        {grossRevenueAccts.map((a) => (
-          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={acctAmount(a.accountNumber, a.accountTitle)} indent={1}
-            onDrillDown={() => onDrillDown(a.accountTitle, 'REVENUE', 0, `${a.accountNumber} ${a.accountTitle}`)} />
-        ))}
+        <div className="h-2" />
+        {grossRevenueAccts.map((a) => {
+          const acctKey = `${a.accountNumber} ${a.accountTitle}`
+          const isJournalSourced = journalRevenueSet.has(acctKey)
+          return (
+            <AnnualRow key={a.accountNumber} label={acctKey} amount={acctAmount(a.accountNumber, a.accountTitle)} indent={1}
+              onDrillDown={() => onDrillDown(a.accountTitle, isJournalSourced ? 'JOURNAL_ACCOUNT' : 'REVENUE', 0, isJournalSourced ? acctKey : acctKey)} />
+          )
+        })}
         {unmatchedRevenueKeys.map((key) => {
           const amt = sumMonths(monthly, (m) => (m.revenueByAccount || {})[key] || 0)
           return amt > 0 ? (
@@ -783,6 +868,7 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
 
         {/* 7002 DISCOUNTS AND REFUNDS */}
         <SectionHeader label="7002 Discounts and Refunds" />
+        <div className="h-2" />
         {discountAccts.map((a) => {
           const amt = acctAmount(a.accountNumber, a.accountTitle)
           const acctKey = `${a.accountNumber} ${a.accountTitle}`
@@ -803,6 +889,7 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
 
         {/* COST OF SALES — broken down by expense account from inventory items */}
         <SectionHeader label="Cost of Sales" />
+        <div className="h-2" />
         {(() => {
           const cogsByAcct: Record<string, number> = {}
           for (let m = 1; m <= 12; m++) {
@@ -840,8 +927,9 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
 
         {/* EXPENSES (Indirect) */}
         <SectionHeader label="Expenses" />
+        <div className="h-2" />
         {indirectExpenseAccts.map((a) => (
-          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={0} indent={1} />
+          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={expenseAmount(a.accountNumber, a.accountTitle)} indent={1} />
         ))}
         {indirectExpenseAccts.length === 0 && (
           <AnnualRow label="(No expense accounts set up)" amount={0} indent={1} />
@@ -877,12 +965,16 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
 
       {/* 7000 GROSS REVENUE */}
       <SectionHeader label="7000 Gross Revenue" />
-      {grossRevenueAccts.map((a) => (
-        <MonthlyRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`}
-          values={acctMonthly(a.accountNumber, a.accountTitle)}
-          total={acctAmount(a.accountNumber, a.accountTitle)} indent={1}
-          onClickCell={(m) => onDrillDown(a.accountTitle, 'REVENUE', m ?? 0, `${a.accountNumber} ${a.accountTitle}`)} />
-      ))}
+      {grossRevenueAccts.map((a) => {
+        const acctKey = `${a.accountNumber} ${a.accountTitle}`
+        const isJournalSourced = journalRevenueSet.has(acctKey)
+        return (
+          <MonthlyRow key={a.accountNumber} label={acctKey}
+            values={acctMonthly(a.accountNumber, a.accountTitle)}
+            total={acctAmount(a.accountNumber, a.accountTitle)} indent={1}
+            onClickCell={(m) => onDrillDown(a.accountTitle, isJournalSourced ? 'JOURNAL_ACCOUNT' : 'REVENUE', m ?? 0, acctKey)} />
+        )
+      })}
       {unmatchedRevenueKeys.map((key) => {
         const total = sumMonths(monthly, (m) => (m.revenueByAccount || {})[key] || 0)
         return total > 0 ? (
@@ -969,15 +1061,21 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
       <SectionHeader label="Expenses" />
       {indirectExpenseAccts.map((a) => (
         <MonthlyRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`}
-          values={Array(12).fill(0)} total={0} indent={1} />
+          values={getMonthlyArray(monthly, (m) => (m.expenseByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0)}
+          total={expenseAmount(a.accountNumber, a.accountTitle)} indent={1} />
       ))}
       <MonthlyRow label="Total for Expenses"
-        values={Array(12).fill(0)} total={totalOpex} bold isTotal />
+        values={getMonthlyArray(monthly, (m) => Object.values(m.expenseByAccount || {}).reduce((s, v) => s + v, 0))}
+        total={totalOpex} bold isTotal />
 
       <div className="h-2" />
 
       <MonthlyRow label="EBITDA"
-        values={getMonthlyArray(monthly, (m) => m.serviceRevenue + m.productRevenue - m.cogs)}
+        values={getMonthlyArray(monthly, (m) => {
+          const expTotal = Object.values(m.expenseByAccount || {}).reduce((s, v) => s + v, 0)
+          const rev = Object.values(m.revenueByAccount || {}).reduce((s, v) => s + v, 0) || (m.serviceRevenue + m.productRevenue)
+          return rev - m.cogs - expTotal
+        })}
         total={ebitda} isGrandTotal />
 
       <div className="h-2" />
@@ -991,7 +1089,11 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
       <div className="h-2" />
 
       <MonthlyRow label="NET INCOME"
-        values={getMonthlyArray(monthly, (m) => m.serviceRevenue + m.productRevenue - m.cogs)}
+        values={getMonthlyArray(monthly, (m) => {
+          const expTotal = Object.values(m.expenseByAccount || {}).reduce((s, v) => s + v, 0)
+          const rev = Object.values(m.revenueByAccount || {}).reduce((s, v) => s + v, 0) || (m.serviceRevenue + m.productRevenue)
+          return rev - m.cogs - expTotal
+        })}
         total={netIncome} isGrandTotal />
     </div>
   )
