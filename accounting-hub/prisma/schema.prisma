@@ -778,6 +778,8 @@ model Consultant {
   sssNumber       String?
   philhealthNumber String?
   pagibigNumber   String?
+  bankName        String?
+  bankAccountNo   String?
   taxDeduction    String    @default("NONE") // "FIVE_PERCENT" or "NONE"
   monthlyRetainer Decimal   @default(0)
   isActive        Boolean   @default(true)
@@ -997,6 +999,8 @@ model Employee {
   philhealthNumber  String?
   pagibigNumber     String?
   tinNumber         String?
+  bankName          String?
+  bankAccountNo     String?
   dateHired         DateTime?
   regularizationDate DateTime?
   scheduleIn        String    @default("08:00")  // Default clock-in time HH:mm

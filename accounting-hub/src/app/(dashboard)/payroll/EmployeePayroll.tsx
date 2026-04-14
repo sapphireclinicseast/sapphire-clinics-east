@@ -1203,6 +1203,22 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     finally { setLockingPayroll(false) }
   }
 
+  const createBankFile = async () => {
+    if (!cutoffPeriod) { setError('Select a cutoff period first'); return }
+    const params = new URLSearchParams({ cutoffPeriod, payrollType: 'EMPLOYEE' })
+    if (branch) params.set('branch', branch)
+    const url = `/api/payroll/bank-file?${params}`
+    const res = await fetch(url)
+    if (!res.ok) { setError('Failed to generate bank file'); return }
+    const text = await res.text()
+    const blob = new Blob([text], { type: 'text/plain' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `bank-employee-${cutoffPeriod}${branch ? `-${branch}` : ''}.txt`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
   const [unlockingPayroll, setUnlockingPayroll] = useState(false)
   const unlockEmployeePayroll = async () => {
     if (!confirm(`Unlock employee payslips for ${cutoffPeriod} — ${branch || 'all branches'}? This will delete the journal entry and allow editing again.`)) return
@@ -3779,6 +3795,11 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                   style={{ background: generating ? 'var(--mid-gray)' : 'var(--teal)' }}>
                   {generating ? <Loader2 size={13} className="animate-spin" /> : <DollarSign size={13} />}
                   Generate Payslips
+                </button>
+                <button onClick={createBankFile}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border"
+                  style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                  <Download size={13} /> Create Bank File
                 </button>
                 {payslips.some(p => p.status === 'DRAFT') && (
                   <button onClick={finalizePayslips}

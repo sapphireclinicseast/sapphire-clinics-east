@@ -89,6 +89,8 @@ export async function GET(req: Request) {
           // Sync contact info
           if (s.email) syncData.email = s.email
           if (s.phone) syncData.phone = s.phone
+          if (s.bankName) syncData.bankName = s.bankName
+          if (s.bankAccountNo) syncData.bankAccountNo = s.bankAccountNo
 
           // Pre-fill government IDs from HR platform if not already set
           if (s.tin && (!existing || !existing.tinNumber)) syncData.tinNumber = s.tin

@@ -1496,6 +1496,22 @@ export default function PayrollPage() {
     finally { setSaving(false) }
   }
 
+  const createBankFile = async (type: 'CONSULTANT' | 'EMPLOYEE') => {
+    if (!cutoffPeriod) { setError('Select a cutoff period first'); return }
+    const params = new URLSearchParams({ cutoffPeriod, payrollType: type })
+    if (branch) params.set('branch', branch)
+    const url = `/api/payroll/bank-file?${params}`
+    const res = await fetch(url)
+    if (!res.ok) { setError('Failed to generate bank file'); return }
+    const text = await res.text()
+    const blob = new Blob([text], { type: 'text/plain' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `bank-${type.toLowerCase()}-${cutoffPeriod}${branch ? `-${branch}` : ''}.txt`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
   const saveSingleConsultant = async (cid: string) => {
     const p = payrollPreviews.find(pr => pr.consultantId === cid)
     if (!p || p.existingStatus === 'LOCKED') return
@@ -3049,6 +3065,11 @@ export default function PayrollPage() {
                         style={{ background: 'var(--teal)' }}>
                         {generating ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
                         Generate Payslips
+                      </button>
+                      <button onClick={() => createBankFile('CONSULTANT')}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border"
+                        style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                        <Download size={14} /> Create Bank File
                       </button>
                       {payrollPreviews.some(p => p.grossPay > 0) && (
                         <button onClick={savePayslips} disabled={saving}

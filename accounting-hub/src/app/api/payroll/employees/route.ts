@@ -130,6 +130,8 @@ export async function GET(req: Request) {
           if (s.philhealth && (!existing || !existing.philhealthNumber)) syncData.philhealthNumber = s.philhealth
           if (s.pagibig && (!existing || !existing.pagibigNumber)) syncData.pagibigNumber = s.pagibig
           if (s.tin && (!existing || !existing.tinNumber)) syncData.tinNumber = s.tin
+          if (s.bankName) syncData.bankName = s.bankName
+          if (s.bankAccountNo) syncData.bankAccountNo = s.bankAccountNo
 
           await prisma.employee.upsert({
             where: { externalStaffId: s.id },
