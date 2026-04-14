@@ -300,18 +300,18 @@ function MonthlyRow({
 }) {
   return (
     <div
-      className={`${rowBase} min-w-[1400px]`}
+      className={`${rowBase} min-w-[1200px]`}
       style={{
         display: 'grid',
-        gridTemplateColumns: '280px repeat(12, 1fr) 120px',
-        paddingLeft: `${0.5 + indent * 1}rem`,
+        gridTemplateColumns: '220px repeat(12, 1fr) 110px',
+        paddingLeft: `${0.5 + indent * 0.75}rem`,
         fontWeight: bold || isTotal || isGrandTotal ? 600 : 400,
         borderTop: isTotal ? '1px solid var(--light-gray)' : undefined,
         borderBottom: isGrandTotal ? '3px double var(--charcoal)' : isTotal ? '1px solid var(--light-gray)' : undefined,
         background: isGrandTotal ? 'var(--pale-teal)' : undefined,
         color: negative && total < 0 ? '#dc2626' : 'var(--charcoal)',
         fontFamily: isGrandTotal ? 'var(--font-display)' : undefined,
-        fontSize: '0.8rem',
+        fontSize: '0.72rem',
       }}
     >
       <span className="truncate pr-2">{label}</span>
@@ -343,13 +343,14 @@ function MonthlyRow({
 function MonthlyHeader() {
   return (
     <div
-      className="min-w-[1400px] py-2 px-4 text-xs font-semibold uppercase tracking-wider sticky top-0 z-10"
+      className="min-w-[1200px] py-2 px-4 font-semibold uppercase tracking-wider sticky top-0 z-10"
       style={{
         display: 'grid',
-        gridTemplateColumns: '280px repeat(12, 1fr) 120px',
+        gridTemplateColumns: '220px repeat(12, 1fr) 110px',
         background: 'var(--charcoal)',
         color: 'white',
         fontFamily: 'var(--font-display)',
+        fontSize: '0.65rem',
       }}
     >
       <span>Line Item</span>
@@ -825,8 +826,9 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
   // Net Sales
   const netSales = effectiveGrossRevenue - totalDiscounts
 
-  // Cost of Sales (currently from COGS computation)
-  const totalCOGS = sumMonths(monthly, (m) => m.cogs)
+  // Cost of Sales: inventory COGS + direct expense accounts from journal entries (e.g. 8190 Professional Fees)
+  const totalDirectExpJournal = directExpenseAccts.reduce((s, a) => s + expenseAmount(a.accountNumber, a.accountTitle), 0)
+  const totalCOGS = sumMonths(monthly, (m) => m.cogs) + totalDirectExpJournal
 
   // Gross Profit
   const grossProfit = netSales - totalCOGS
@@ -839,6 +841,20 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
 
   // Net Income
   const netIncome = ebitda
+
+  // Per-month helpers for consistent monthly formulas
+  const grossRevenueForMonth = (m: MonthData) => {
+    const coaRev = grossRevenueAccts.reduce((s, a) => s + ((m.revenueByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
+    const unmatched = unmatchedRevenueKeys.reduce((s, k) => s + ((m.revenueByAccount || {})[k] || 0), 0)
+    return (coaRev + unmatched) > 0 ? (coaRev + unmatched) : (m.serviceRevenue + m.productRevenue)
+  }
+  const discountsForMonth = (m: MonthData) =>
+    discountAccts.reduce((s, a) => s + ((m.revenueByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
+  const netSalesForMonth = (m: MonthData) => grossRevenueForMonth(m) - discountsForMonth(m)
+  const directExpForMonth = (m: MonthData) =>
+    directExpenseAccts.reduce((s, a) => s + ((m.expenseByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
+  const indirectExpForMonth = (m: MonthData) =>
+    indirectExpenseAccts.reduce((s, a) => s + ((m.expenseByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
 
   if (viewMode === 'annual') {
     return (
@@ -898,23 +914,23 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
             }
           }
           const acctKeys = Object.keys(cogsByAcct).sort()
-          if (acctKeys.length > 0) {
-            return acctKeys.map(key => (
-              <AnnualRow key={key} label={key} amount={cogsByAcct[key]} indent={1}
-                onDrillDown={() => onDrillDown(key, 'COGS', 0)} />
-            ))
-          }
-          // Fallback: show COA accounts or computed total
-          if (costOfSalesAccts.length > 0) {
-            return costOfSalesAccts.map((a) => (
-              <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={0} indent={1} />
-            ))
-          }
-          if (totalCOGS > 0) {
-            return <AnnualRow label="Cost of Goods Sold (computed)" amount={totalCOGS} indent={1}
-              onDrillDown={() => onDrillDown('Cost of Goods Sold', 'COGS', 0)} />
-          }
-          return null
+          return (
+            <>
+              {acctKeys.map(key => (
+                <AnnualRow key={key} label={key} amount={cogsByAcct[key]} indent={1}
+                  onDrillDown={() => onDrillDown(key, 'COGS', 0)} />
+              ))}
+              {directExpenseAccts.map((a) => {
+                const amt = expenseAmount(a.accountNumber, a.accountTitle)
+                return amt > 0 ? (
+                  <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={amt} indent={1} />
+                ) : null
+              })}
+              {acctKeys.length === 0 && totalDirectExpJournal === 0 && sumMonths(monthly, m => m.cogs) === 0 && (
+                <AnnualRow label="(No cost of sales recorded)" amount={0} indent={1} />
+              )}
+            </>
+          )
         })()}
         <AnnualRow label="Total for Cost of Sales" amount={totalCOGS} indent={0} isTotal bold
           onDrillDown={() => onDrillDown('Cost of Sales', 'COGS', 0)} />
@@ -985,7 +1001,7 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
         ) : null
       })}
       <MonthlyRow label="Total for 7000 Gross Revenue"
-        values={getMonthlyArray(monthly, (m) => m.serviceRevenue + m.productRevenue)}
+        values={getMonthlyArray(monthly, (m) => grossRevenueForMonth(m))}
         total={effectiveGrossRevenue} bold isTotal
         onClickCell={(m) => onDrillDown('Total Gross Revenue', 'REVENUE', m ?? 0)} />
 
@@ -1017,7 +1033,7 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
       <div className="h-2" />
 
       <MonthlyRow label="Total for Net Sales"
-        values={getMonthlyArray(monthly, (m) => m.serviceRevenue + m.productRevenue)}
+        values={getMonthlyArray(monthly, (m) => netSalesForMonth(m))}
         total={netSales} isGrandTotal />
 
       <div className="h-2" />
@@ -1032,27 +1048,33 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
           }
         }
         const acctKeys = Object.keys(cogsByAcct).sort()
-        if (acctKeys.length > 0) {
-          return acctKeys.map(key => (
-            <MonthlyRow key={key} label={key}
-              values={getMonthlyArray(monthly, (m) => (m.cogsByAccount || {})[key] || 0)}
-              total={cogsByAcct[key]} indent={1}
-              onClickCell={(m) => onDrillDown(key, 'COGS', m ?? 0)} />
-          ))
-        }
-        return costOfSalesAccts.map((a) => (
-          <MonthlyRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`}
-            values={Array(12).fill(0)} total={0} indent={1} />
-        ))
+        return (
+          <>
+            {acctKeys.map(key => (
+              <MonthlyRow key={key} label={key}
+                values={getMonthlyArray(monthly, (m) => (m.cogsByAccount || {})[key] || 0)}
+                total={cogsByAcct[key]} indent={1}
+                onClickCell={(m) => onDrillDown(key, 'COGS', m ?? 0)} />
+            ))}
+            {directExpenseAccts.map((a) => {
+              const amt = expenseAmount(a.accountNumber, a.accountTitle)
+              return amt > 0 ? (
+                <MonthlyRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`}
+                  values={getMonthlyArray(monthly, (m) => (m.expenseByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0)}
+                  total={amt} indent={1} />
+              ) : null
+            })}
+          </>
+        )
       })()}
       <MonthlyRow label="Total for Cost of Sales"
-        values={getMonthlyArray(monthly, (m) => m.cogs)} total={totalCOGS} bold isTotal
+        values={getMonthlyArray(monthly, (m) => m.cogs + directExpForMonth(m))} total={totalCOGS} bold isTotal
         onClickCell={(m) => onDrillDown('Cost of Sales', 'COGS', m ?? 0)} />
 
       <div className="h-2" />
 
       <MonthlyRow label="Gross Profit"
-        values={getMonthlyArray(monthly, (m) => m.serviceRevenue + m.productRevenue - m.cogs)}
+        values={getMonthlyArray(monthly, (m) => netSalesForMonth(m) - m.cogs - directExpForMonth(m))}
         total={grossProfit} isGrandTotal />
 
       <div className="h-2" />
@@ -1065,17 +1087,13 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
           total={expenseAmount(a.accountNumber, a.accountTitle)} indent={1} />
       ))}
       <MonthlyRow label="Total for Expenses"
-        values={getMonthlyArray(monthly, (m) => Object.values(m.expenseByAccount || {}).reduce((s, v) => s + v, 0))}
+        values={getMonthlyArray(monthly, (m) => indirectExpForMonth(m))}
         total={totalOpex} bold isTotal />
 
       <div className="h-2" />
 
       <MonthlyRow label="EBITDA"
-        values={getMonthlyArray(monthly, (m) => {
-          const expTotal = Object.values(m.expenseByAccount || {}).reduce((s, v) => s + v, 0)
-          const rev = Object.values(m.revenueByAccount || {}).reduce((s, v) => s + v, 0) || (m.serviceRevenue + m.productRevenue)
-          return rev - m.cogs - expTotal
-        })}
+        values={getMonthlyArray(monthly, (m) => netSalesForMonth(m) - m.cogs - directExpForMonth(m) - indirectExpForMonth(m))}
         total={ebitda} isGrandTotal />
 
       <div className="h-2" />
@@ -1089,11 +1107,7 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
       <div className="h-2" />
 
       <MonthlyRow label="NET INCOME"
-        values={getMonthlyArray(monthly, (m) => {
-          const expTotal = Object.values(m.expenseByAccount || {}).reduce((s, v) => s + v, 0)
-          const rev = Object.values(m.revenueByAccount || {}).reduce((s, v) => s + v, 0) || (m.serviceRevenue + m.productRevenue)
-          return rev - m.cogs - expTotal
-        })}
+        values={getMonthlyArray(monthly, (m) => netSalesForMonth(m) - m.cogs - directExpForMonth(m) - indirectExpForMonth(m))}
         total={netIncome} isGrandTotal />
     </div>
   )
@@ -1388,6 +1402,104 @@ export default function ReportsPage() {
     window.print()
   }
 
+  const handleDownloadCSV = () => {
+    if (!data) return
+    const { monthly, accounts } = data
+    const allRevSubs = accounts.REVENUE ? Object.values(accounts.REVENUE).flat() : []
+    const grossRevAccts = allRevSubs.filter(a => a.normalBalance !== 'DEBIT')
+    const discAccts = allRevSubs.filter(a => a.normalBalance === 'DEBIT')
+    const dirExpAccts = accounts.EXPENSE?.DIRECT_EXPENSES || []
+    const indirExpAccts = accounts.EXPENSE?.INDIRECT_EXPENSES || []
+
+    const acctAmt = (n: string, t: string) => sumMonths(monthly, m => (m.revenueByAccount || {})[`${n} ${t}`] || 0)
+    const expAmt = (n: string, t: string) => sumMonths(monthly, m => (m.expenseByAccount || {})[`${n} ${t}`] || 0)
+
+    const totalGross = grossRevAccts.reduce((s, a) => s + acctAmt(a.accountNumber, a.accountTitle), 0)
+    const totalDisc = discAccts.reduce((s, a) => s + acctAmt(a.accountNumber, a.accountTitle), 0)
+    const ns = totalGross - totalDisc
+    const totalDirExp = dirExpAccts.reduce((s, a) => s + expAmt(a.accountNumber, a.accountTitle), 0)
+    const tCOGS = sumMonths(monthly, m => m.cogs) + totalDirExp
+    const gp = ns - tCOGS
+    const tOpex = indirExpAccts.reduce((s, a) => s + expAmt(a.accountNumber, a.accountTitle), 0)
+    const ebda = gp - tOpex
+    const branchLbl = branch === 'ALL' ? 'All Branches' : BRANCHES.find(b => b.value === branch)?.label || branch
+
+    const rows: string[][] = []
+
+    if (activeTab === 'income-statement') {
+      if (viewMode === 'annual') {
+        rows.push([`Income Statement — ${year} — ${branchLbl}`, ''])
+        rows.push(['Line Item', 'Amount (PHP)'])
+        rows.push(['7000 GROSS REVENUE', ''])
+        grossRevAccts.forEach(a => {
+          const amt = acctAmt(a.accountNumber, a.accountTitle)
+          if (amt) rows.push([`  ${a.accountNumber} ${a.accountTitle}`, amt.toFixed(2)])
+        })
+        rows.push(['Total for 7000 Gross Revenue', totalGross.toFixed(2)])
+        rows.push(['', ''])
+        rows.push(['7002 DISCOUNTS AND REFUNDS', ''])
+        discAccts.forEach(a => {
+          const amt = acctAmt(a.accountNumber, a.accountTitle)
+          if (amt) rows.push([`  ${a.accountNumber} ${a.accountTitle}`, (-amt).toFixed(2)])
+        })
+        rows.push(['Total for 7002 Discounts and Refunds', (-totalDisc).toFixed(2)])
+        rows.push(['', ''])
+        rows.push(['TOTAL FOR NET SALES', ns.toFixed(2)])
+        rows.push(['', ''])
+        rows.push(['COST OF SALES', ''])
+        dirExpAccts.forEach(a => {
+          const amt = expAmt(a.accountNumber, a.accountTitle)
+          if (amt) rows.push([`  ${a.accountNumber} ${a.accountTitle}`, amt.toFixed(2)])
+        })
+        rows.push(['Total for Cost of Sales', tCOGS.toFixed(2)])
+        rows.push(['', ''])
+        rows.push(['GROSS PROFIT', gp.toFixed(2)])
+        rows.push(['', ''])
+        rows.push(['EXPENSES (INDIRECT)', ''])
+        indirExpAccts.forEach(a => {
+          const amt = expAmt(a.accountNumber, a.accountTitle)
+          if (amt) rows.push([`  ${a.accountNumber} ${a.accountTitle}`, amt.toFixed(2)])
+        })
+        rows.push(['Total for Expenses', tOpex.toFixed(2)])
+        rows.push(['', ''])
+        rows.push(['EBITDA', ebda.toFixed(2)])
+        rows.push(['NET INCOME', ebda.toFixed(2)])
+      } else {
+        rows.push([`Income Statement — ${year} — ${branchLbl}`, ...FULL_MONTHS, 'Total'])
+        const mv = (getter: (m: MonthData) => number) =>
+          [...Array.from({ length: 12 }, (_, i) => getter(monthly[i + 1]).toFixed(2))]
+        const mGross = (m: MonthData) => {
+          const r = grossRevAccts.reduce((s, a) => s + ((m.revenueByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
+          const u = Object.keys(m.revenueByAccount || {}).filter(k => !grossRevAccts.some(a => `${a.accountNumber} ${a.accountTitle}` === k) && !discAccts.some(a => `${a.accountNumber} ${a.accountTitle}` === k)).reduce((s, k) => s + ((m.revenueByAccount || {})[k] || 0), 0)
+          return (r + u) > 0 ? (r + u) : (m.serviceRevenue + m.productRevenue)
+        }
+        const mDisc = (m: MonthData) => discAccts.reduce((s, a) => s + ((m.revenueByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
+        const mDirExp = (m: MonthData) => dirExpAccts.reduce((s, a) => s + ((m.expenseByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
+        const mIndirExp = (m: MonthData) => indirExpAccts.reduce((s, a) => s + ((m.expenseByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
+        rows.push(['GROSS REVENUE', ...mv(mGross), totalGross.toFixed(2)])
+        rows.push(['DISCOUNTS', ...mv(m => -mDisc(m)), (-totalDisc).toFixed(2)])
+        rows.push(['NET SALES', ...mv(m => mGross(m) - mDisc(m)), ns.toFixed(2)])
+        rows.push(['COST OF SALES', ...mv(m => m.cogs + mDirExp(m)), tCOGS.toFixed(2)])
+        rows.push(['GROSS PROFIT', ...mv(m => mGross(m) - mDisc(m) - m.cogs - mDirExp(m)), gp.toFixed(2)])
+        rows.push(['EXPENSES', ...mv(mIndirExp), tOpex.toFixed(2)])
+        rows.push(['EBITDA', ...mv(m => mGross(m) - mDisc(m) - m.cogs - mDirExp(m) - mIndirExp(m)), ebda.toFixed(2)])
+        rows.push(['NET INCOME', ...mv(m => mGross(m) - mDisc(m) - m.cogs - mDirExp(m) - mIndirExp(m)), ebda.toFixed(2)])
+      }
+    } else {
+      rows.push([`${reportTitle} — ${year} — ${branchLbl}`])
+      rows.push(['Note: CSV download is fully supported for Income Statement. For other reports, use Print (PDF).'])
+    }
+
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${activeTab}-${year}-${branch}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const reportTitle = activeTab === 'balance-sheet'
     ? 'Balance Sheet'
     : activeTab === 'income-statement'
@@ -1417,12 +1529,21 @@ export default function ReportsPage() {
         </div>
         <div className="flex gap-2">
           <button
+            onClick={handleDownloadCSV}
+            disabled={!data}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-40"
+            style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}
+          >
+            <Download size={16} />
+            CSV
+          </button>
+          <button
             onClick={handlePrint}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
             style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}
           >
             <Printer size={16} />
-            Print
+            PDF
           </button>
         </div>
       </div>
