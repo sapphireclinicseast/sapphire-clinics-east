@@ -203,8 +203,8 @@ jobs:
             ALTER TABLE \"TherapistAccount\" ADD COLUMN IF NOT EXISTS \"lastPlainPassword\" TEXT;
 
             -- Create a system admin staff record if it doesn't exist
-            INSERT INTO \"Staff\" (id, \"firstName\", \"lastName\", department, branch, status, \"createdAt\", \"updatedAt\")
-            VALUES ('system-admin-staff', 'System', 'Administrator', 'ADMINISTRATION', 'SBEA', 'Active', NOW(), NOW())
+            INSERT INTO \"Staff\" (id, \"firstName\", \"lastName\", department, branch, \"createdAt\", \"updatedAt\")
+            VALUES ('system-admin-staff', 'System', 'Administrator', 'ADMINISTRATION', 'SBEA', NOW(), NOW())
             ON CONFLICT (id) DO NOTHING;
 
             -- Free Hannah Jara's staffId if the admin was previously linked to her
