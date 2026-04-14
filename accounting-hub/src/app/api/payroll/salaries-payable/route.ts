@@ -9,9 +9,42 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const showRemitted = searchParams.get('showRemitted') === 'true'
   const branch = searchParams.get('branch') || ''
+  const payrollType = searchParams.get('payrollType') || 'CONSULTANT'
 
+  if (payrollType === 'CONSULTANT') {
+    // Per-consultant payslip rows (LOCKED or FINAL entries with netPay > 0)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const where: any = {
+      status: { in: ['LOCKED', 'FINAL'] },
+      netPay: { gt: 0 },
+    }
+    if (!showRemitted) where.salariesRemitted = false
+    if (branch) where.branch = branch
+
+    const entries = await prisma.payrollEntry.findMany({
+      where,
+      include: { consultant: { select: { id: true, name: true, department: true } } },
+      orderBy: [{ cutoffPeriod: 'desc' }, { branch: 'asc' }],
+    })
+
+    return NextResponse.json(entries.map(e => ({
+      id: e.id,
+      consultantId: e.consultantId,
+      consultantName: e.consultant?.name ?? '—',
+      department: e.consultant?.department ?? '',
+      branch: e.branch,
+      cutoffPeriod: e.cutoffPeriod,
+      grossPay: Number(e.grossPay),
+      taxAmount: Number(e.taxAmount),
+      netPay: Number(e.netPay),
+      salariesRemitted: e.salariesRemitted,
+      status: e.status,
+    })))
+  }
+
+  // EMPLOYEE — keep aggregate PayrollPayableStatus rows for now
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const where: any = {}
+  const where: any = { payrollType: 'EMPLOYEE' }
   if (!showRemitted) where.salariesRemitted = false
   if (branch) where.branch = branch
 
@@ -25,8 +58,12 @@ export async function GET(req: Request) {
     cutoffPeriod: p.cutoffPeriod,
     branch: p.branch,
     payrollType: p.payrollType,
-    totalSalariesPayable: Number(p.totalSalariesPayable),
+    grossPay: null,
+    taxAmount: null,
+    netPay: Number(p.totalSalariesPayable),
     salariesRemitted: p.salariesRemitted,
-    salaryPaymentId: p.salaryPaymentId,
+    consultantName: null,
+    department: null,
+    isAggregateRow: true,
   })))
 }

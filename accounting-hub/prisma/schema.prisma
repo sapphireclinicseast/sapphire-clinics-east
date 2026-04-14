@@ -863,7 +863,8 @@ model PayrollEntry {
   netPay          Decimal
   pdfUrl          String?    // Stored PDF file path on VPS
   status          String     @default("DRAFT") // DRAFT, FINAL
-  taxRemitted     Boolean    @default(false)
+  taxRemitted      Boolean    @default(false)
+  salariesRemitted Boolean    @default(false)
   createdById     String
   createdBy       User       @relation("PayrollCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   createdAt       DateTime   @default(now())
@@ -877,6 +878,7 @@ model PayrollEntry {
   @@index([branch])
   @@index([status])
   @@index([taxRemitted])
+  @@index([salariesRemitted])
 }
 
 model TaxPayment {

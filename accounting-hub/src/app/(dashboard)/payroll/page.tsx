@@ -143,6 +143,21 @@ interface TaxPaymentRecord {
   createdAt: string
 }
 
+interface SalaryPayableEntry {
+  id: string
+  consultantId?: string
+  consultantName: string | null
+  department: string
+  branch: string
+  cutoffPeriod: string
+  grossPay: number | null
+  taxAmount: number | null
+  netPay: number
+  salariesRemitted: boolean
+  status: string
+  isAggregateRow?: boolean
+}
+
 interface AccountBrief {
   id: string
   accountNumber: string
@@ -800,8 +815,7 @@ export default function PayrollPage() {
   const [coaSearch, setCoaSearch] = useState('')
 
   // Salaries Payable tab state
-  interface PayableRow { id: string; cutoffPeriod: string; branch: string; payrollType: string; totalSalariesPayable: number; salariesRemitted: boolean }
-  const [salariesPayables, setSalariesPayables] = useState<PayableRow[]>([])
+  const [salariesPayables, setSalariesPayables] = useState<SalaryPayableEntry[]>([])
   const [loadingSalPayable, setLoadingSalPayable] = useState(false)
   const [showSalRemitted, setShowSalRemitted] = useState(false)
 
@@ -823,6 +837,11 @@ export default function PayrollPage() {
   const [remitFromSearch, setRemitFromSearch] = useState('')
   const [remitProofUrl, setRemitProofUrl] = useState('')
   const [remitNotes, setRemitNotes] = useState('')
+  const [remitFeeAmount, setRemitFeeAmount] = useState('')
+  const [remitFeeExpenseAccountId, setRemitFeeExpenseAccountId] = useState('')
+  const [remitFeeExpenseSearch, setRemitFeeExpenseSearch] = useState('')
+  const [remitFeeCashAccountId, setRemitFeeCashAccountId] = useState('')
+  const [remitFeeCashSearch, setRemitFeeCashSearch] = useState('')
   const [remitting, setRemitting] = useState(false)
 
   // Finalize state
@@ -1057,15 +1076,22 @@ export default function PayrollPage() {
     setRemitting(true)
     try {
       const endpoint = showRemitModal === 'salary' ? '/api/payroll/salary-payments' : '/api/payroll/benefit-payments'
+      const hasFee = showRemitModal === 'salary' && Number(remitFeeAmount) > 0
+      const isSalaryPerPerson = showRemitModal === 'salary' && salariesPayables.some(p => ids.includes(p.id) && !p.isAggregateRow)
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          payableIds: ids,
+          ...(isSalaryPerPerson ? { payrollEntryIds: ids } : { payableIds: ids }),
           paymentDate: remitDate,
           fromAccountId: remitFromAccountId,
           proofUrl: remitProofUrl || null,
           notes: remitNotes || null,
+          ...(hasFee ? {
+            feeAmount: Number(remitFeeAmount),
+            feeExpenseAccountId: remitFeeExpenseAccountId || null,
+            feeCashAccountId: remitFeeCashAccountId || remitFromAccountId,
+          } : {}),
         }),
       })
       const data = await res.json()
@@ -3689,14 +3715,14 @@ export default function PayrollPage() {
          ═══════════════════════════════════════════════════════════ */}
       {mainTab === 'salaries-payable' && (() => {
         const salUnremitted = salariesPayables.filter(p => !p.salariesRemitted)
-        const salSelectedTotal = salariesPayables.filter(p => selectedSalaryPayableIds.includes(p.id)).reduce((s, p) => s + Number(p.totalSalariesPayable), 0)
+        const salSelectedTotal = salariesPayables.filter(p => selectedSalaryPayableIds.includes(p.id)).reduce((s, p) => s + p.netPay, 0)
         return (
         <div className="space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Salaries Payable</h2>
             <div className="flex items-center gap-3">
               {selectedSalaryPayableIds.length > 0 && (
-                <button onClick={() => { setShowRemitModal('salary'); setRemitFromAccountId(''); setRemitFromSearch(''); setRemitProofUrl(''); setRemitNotes('') }}
+                <button onClick={() => { setShowRemitModal('salary'); setRemitFromAccountId(''); setRemitFromSearch(''); setRemitProofUrl(''); setRemitNotes(''); setRemitFeeAmount(''); setRemitFeeExpenseAccountId(''); setRemitFeeExpenseSearch(''); setRemitFeeCashAccountId(''); setRemitFeeCashSearch('') }}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
                   style={{ background: 'var(--teal)' }}>
                   <BadgeDollarSign size={14} /> Remit Selected ({selectedSalaryPayableIds.length})
@@ -3726,15 +3752,19 @@ export default function PayrollPage() {
                           else setSelectedSalaryPayableIds(prev => prev.filter(id => !salUnremitted.find(p => p.id === id)))
                         }} />
                     </th>
+                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Consultant</th>
                     <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Cutoff Period</th>
                     <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Branch</th>
-                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Type</th>
-                    <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Amount</th>
+                    <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Gross Pay</th>
+                    <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Tax (5%)</th>
+                    <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Net Pay</th>
                     <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {salariesPayables.map(p => (
+                  {salariesPayables.length === 0 ? (
+                    <tr><td colSpan={8} className="px-4 py-10 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>No unremitted salaries — all caught up!</td></tr>
+                  ) : salariesPayables.map(p => (
                     <tr key={p.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                       <td className="px-3 py-2.5">
                         {!p.salariesRemitted && (
@@ -3745,10 +3775,15 @@ export default function PayrollPage() {
                             )} />
                         )}
                       </td>
-                      <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{p.cutoffPeriod}</td>
+                      <td className="px-3 py-2.5">
+                        <p className="font-medium" style={{ color: 'var(--charcoal)' }}>{p.consultantName || '—'}</p>
+                        {p.department && <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{DEPT_LABELS[p.department] || p.department}</p>}
+                      </td>
+                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{getCutoffLabel(p.cutoffPeriod)}</td>
                       <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{p.branch}</td>
-                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{p.payrollType}</td>
-                      <td className="px-3 py-2.5 text-right font-mono font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(p.totalSalariesPayable)}</td>
+                      <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{p.grossPay != null ? formatCurrency(p.grossPay) : '—'}</td>
+                      <td className="px-3 py-2.5 text-right font-mono" style={{ color: '#c44b00' }}>{p.taxAmount != null && p.taxAmount > 0 ? formatCurrency(p.taxAmount) : '—'}</td>
+                      <td className="px-3 py-2.5 text-right font-mono font-semibold" style={{ color: 'var(--teal)' }}>{formatCurrency(p.netPay)}</td>
                       <td className="px-3 py-2.5 text-center">
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={p.salariesRemitted ? { background: '#dcfce7', color: '#16a34a' } : { background: '#fef3c7', color: '#d97706' }}>
                           {p.salariesRemitted ? 'REMITTED' : 'PENDING'}
@@ -3759,16 +3794,19 @@ export default function PayrollPage() {
                 </tbody>
               </table>
             </div>
-            {selectedSalaryPayableIds.length > 0 && (
+            {salariesPayables.some(p => !p.salariesRemitted) && (
               <div className="flex items-center justify-between px-4 py-3 rounded-xl" style={{ background: 'var(--off-white)' }}>
                 <span className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>
-                  Selected: <span style={{ color: 'var(--teal)' }}>{formatCurrency(salSelectedTotal)}</span> ({selectedSalaryPayableIds.length} entries)
+                  Total unremitted: <span style={{ color: 'var(--teal)' }}>{formatCurrency(salUnremitted.reduce((s, p) => s + p.netPay, 0))}</span>
+                  {selectedSalaryPayableIds.length > 0 && <span className="ml-3">Selected: <span style={{ color: 'var(--deep-teal)' }}>{formatCurrency(salSelectedTotal)}</span></span>}
                 </span>
-                <button onClick={() => { setShowRemitModal('salary'); setRemitFromAccountId(''); setRemitFromSearch(''); setRemitProofUrl(''); setRemitNotes('') }}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
-                  style={{ background: 'var(--teal)' }}>
-                  <BadgeDollarSign size={14} /> Remit Selected
-                </button>
+                {selectedSalaryPayableIds.length > 0 && (
+                  <button onClick={() => { setShowRemitModal('salary'); setRemitFromAccountId(''); setRemitFromSearch(''); setRemitProofUrl(''); setRemitNotes(''); setRemitFeeAmount(''); setRemitFeeExpenseAccountId(''); setRemitFeeExpenseSearch(''); setRemitFeeCashAccountId(''); setRemitFeeCashSearch('') }}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
+                    style={{ background: 'var(--teal)' }}>
+                    <BadgeDollarSign size={14} /> Remit Selected ({selectedSalaryPayableIds.length} payslips)
+                  </button>
+                )}
               </div>
             )}
             </div>
@@ -3956,8 +3994,9 @@ export default function PayrollPage() {
       {showRemitModal && (() => {
         const ids = showRemitModal === 'salary' ? selectedSalaryPayableIds : selectedBenefitPayableIds
         const modalTotal = showRemitModal === 'salary'
-          ? salariesPayables.filter(p => ids.includes(p.id)).reduce((s, p) => s + Number(p.totalSalariesPayable), 0)
+          ? salariesPayables.filter(p => ids.includes(p.id)).reduce((s, p) => s + p.netPay, 0)
           : benefitsPayables.filter(p => ids.includes(p.id)).reduce((s, p) => s + Number(p.totalBenefitsPayable), 0)
+        const feeAmt = showRemitModal === 'salary' ? (Number(remitFeeAmount) || 0) : 0
         return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowRemitModal(null)}>
           <div className="w-full max-w-md rounded-2xl p-6 space-y-4" style={{ background: 'white' }} onClick={e => e.stopPropagation()}>
@@ -3969,7 +4008,7 @@ export default function PayrollPage() {
             </div>
 
             <div className="px-3 py-2 rounded-xl text-sm font-semibold" style={{ background: '#f0fdfa', color: 'var(--deep-teal)' }}>
-              {ids.length} entries — Total: {formatCurrency(modalTotal)}
+              {ids.length} entries — Net Pay: {formatCurrency(modalTotal)}{feeAmt > 0 ? ` + Fee: ${formatCurrency(feeAmt)} = Total: ${formatCurrency(modalTotal + feeAmt)}` : ''}
             </div>
 
             <div className="space-y-3">
@@ -3999,6 +4038,45 @@ export default function PayrollPage() {
               </div>
             </div>
 
+            {showRemitModal === 'salary' && (
+              <div className="space-y-3 pt-1 border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Remittance Fee (optional)</p>
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Fee Amount</label>
+                  <input type="number" min="0" step="0.01" value={remitFeeAmount} onChange={e => setRemitFeeAmount(e.target.value)}
+                    placeholder="0.00" className="w-full px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+                </div>
+                {Number(remitFeeAmount) > 0 && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Fee Expense Account (Debit)</label>
+                      <input value={remitFeeExpenseSearch} onChange={e => setRemitFeeExpenseSearch(e.target.value)} placeholder="Search expense accounts..."
+                        className="w-full px-3 py-2 rounded-lg border text-xs mb-1" style={{ borderColor: 'var(--light-gray)' }} />
+                      <select value={remitFeeExpenseAccountId} onChange={e => setRemitFeeExpenseAccountId(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+                        <option value="">— Select Expense Account —</option>
+                        {allAccounts
+                          .filter(a => a.accountType === 'EXPENSE' && (!remitFeeExpenseSearch || `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(remitFeeExpenseSearch.toLowerCase())))
+                          .map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Fee Cash Account (Credit — defaults to source above)</label>
+                      <input value={remitFeeCashSearch} onChange={e => setRemitFeeCashSearch(e.target.value)} placeholder="Search asset accounts (leave blank to use source account)..."
+                        className="w-full px-3 py-2 rounded-lg border text-xs mb-1" style={{ borderColor: 'var(--light-gray)' }} />
+                      <select value={remitFeeCashAccountId} onChange={e => setRemitFeeCashAccountId(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+                        <option value="">— Same as Source Account —</option>
+                        {allAccounts
+                          .filter(a => a.accountType === 'ASSET' && (!remitFeeCashSearch || `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(remitFeeCashSearch.toLowerCase())))
+                          .map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
+                      </select>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             <div className="flex gap-3 pt-2">
               <button onClick={() => setShowRemitModal(null)}
                 className="flex-1 py-2.5 rounded-xl border text-sm font-medium"
@@ -4008,7 +4086,7 @@ export default function PayrollPage() {
               <button onClick={handleRemit} disabled={remitting || !remitFromAccountId}
                 className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50"
                 style={{ background: 'var(--teal)' }}>
-                {remitting ? 'Recording...' : `Record Payment — ${formatCurrency(modalTotal)}`}
+                {remitting ? 'Recording...' : `Record Payment — ${formatCurrency(modalTotal + feeAmt)}`}
               </button>
             </div>
           </div>

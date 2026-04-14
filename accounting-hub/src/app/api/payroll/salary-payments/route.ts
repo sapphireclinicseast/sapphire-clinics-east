@@ -11,45 +11,142 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { payableId, payableIds, paymentDate, fromAccountId, proofUrl, notes } = await req.json()
-    const ids: string[] = payableIds || (payableId ? [payableId] : [])
-    if (!ids.length || !paymentDate || !fromAccountId) {
-      return NextResponse.json({ error: 'payableId(s), paymentDate, and fromAccountId are required' }, { status: 400 })
+    const {
+      payrollEntryIds,   // for CONSULTANT per-person
+      payableIds,        // legacy aggregate (EMPLOYEE)
+      paymentDate,
+      fromAccountId,
+      proofUrl,
+      notes,
+      feeAmount,
+      feeExpenseAccountId,
+      feeCashAccountId,
+    } = await req.json()
+
+    if (!paymentDate || !fromAccountId) {
+      return NextResponse.json({ error: 'paymentDate and fromAccountId are required' }, { status: 400 })
     }
 
-    const payables = await prisma.payrollPayableStatus.findMany({ where: { id: { in: ids }, salariesRemitted: false } })
-    if (!payables.length) return NextResponse.json({ error: 'No valid unremitted payable records found' }, { status: 404 })
+    const hasFee = feeAmount && Number(feeAmount) > 0 && feeExpenseAccountId
+    const feeAmt = hasFee ? Number(feeAmount) : 0
 
     const mapping = await prisma.payrollCOAMapping.findFirst()
     if (!mapping?.salariesPayableAccountId) {
-      return NextResponse.json({ error: 'Salaries Payable account not configured' }, { status: 400 })
+      return NextResponse.json({ error: 'Salaries Payable account not configured in Payroll Settings' }, { status: 400 })
     }
+
+    // ── CONSULTANT per-person path ──
+    if (payrollEntryIds?.length) {
+      const entries = await prisma.payrollEntry.findMany({
+        where: { id: { in: payrollEntryIds }, salariesRemitted: false },
+        include: { consultant: { select: { name: true } } },
+      })
+      if (!entries.length) return NextResponse.json({ error: 'No valid unremitted entries found' }, { status: 404 })
+
+      const totalNet = entries.reduce((s, e) => s + Number(e.netPay), 0)
+      const descriptions = entries.map(e => `${e.consultant?.name} (${e.cutoffPeriod})`).join(', ')
+
+      const result = await prisma.$transaction(async (tx) => {
+        // Journal entry lines
+        const lines: { accountId: string; debit: number; credit: number; description: string }[] = [
+          { accountId: mapping.salariesPayableAccountId!, debit: totalNet, credit: 0, description: `Salaries Payable — ${descriptions}` },
+          { accountId: fromAccountId, debit: 0, credit: totalNet, description: 'Cash/Bank — Salary Payment' },
+        ]
+        if (hasFee) {
+          lines.push({ accountId: feeExpenseAccountId, debit: feeAmt, credit: 0, description: 'Remittance Fee Expense' })
+          lines.push({ accountId: feeCashAccountId || fromAccountId, debit: 0, credit: feeAmt, description: 'Cash/Bank — Remittance Fee' })
+        }
+
+        const journalEntry = await tx.journalEntry.create({
+          data: {
+            entryDate: new Date(paymentDate),
+            description: `Salary Payment${hasFee ? ` (+ ₱${feeAmt} fee)` : ''} — ${descriptions}`,
+            referenceType: 'SALARY_PAYMENT',
+            referenceId: entries.map(e => e.id).join(';'),
+            totalAmount: totalNet + feeAmt,
+            createdById: session.user.id as string,
+            lines: { create: lines },
+          },
+        })
+
+        const payment = await tx.salaryPayment.create({
+          data: {
+            paymentDate: new Date(paymentDate),
+            totalAmount: totalNet + feeAmt,
+            fromAccountId,
+            proofUrl: proofUrl || null,
+            notes: notes ? `${notes}${hasFee ? ` | Fee: ₱${feeAmt}` : ''}` : (hasFee ? `Fee: ₱${feeAmt}` : null),
+            paymentType: 'CONSULTANT',
+            cutoffPeriod: entries.map(e => e.cutoffPeriod).join(', '),
+            branch: entries[0].branch,
+            journalEntryId: journalEntry.id,
+            createdById: session.user.id as string,
+          },
+        })
+
+        // Mark individual entries as remitted
+        await tx.payrollEntry.updateMany({
+          where: { id: { in: entries.map(e => e.id) } },
+          data: { salariesRemitted: true },
+        })
+
+        // If all entries in a PayrollPayableStatus are now remitted, mark the aggregate too
+        for (const entry of entries) {
+          const payable = await tx.payrollPayableStatus.findFirst({
+            where: { cutoffPeriod: entry.cutoffPeriod, branch: entry.branch, payrollType: 'CONSULTANT' },
+          })
+          if (payable && !payable.salariesRemitted) {
+            const remaining = await tx.payrollEntry.count({
+              where: { cutoffPeriod: entry.cutoffPeriod, branch: entry.branch, salariesRemitted: false, status: { in: ['LOCKED', 'FINAL'] }, netPay: { gt: 0 } },
+            })
+            if (remaining === 0) {
+              await tx.payrollPayableStatus.update({ where: { id: payable.id }, data: { salariesRemitted: true, salaryPaymentId: payment.id } })
+            }
+          }
+        }
+
+        return { payment, journalEntry }
+      })
+
+      return NextResponse.json(result, { status: 201 })
+    }
+
+    // ── Legacy aggregate path (EMPLOYEE or old data) ──
+    const ids: string[] = payableIds || []
+    if (!ids.length) return NextResponse.json({ error: 'payrollEntryIds or payableIds required' }, { status: 400 })
+
+    const payables = await prisma.payrollPayableStatus.findMany({ where: { id: { in: ids }, salariesRemitted: false } })
+    if (!payables.length) return NextResponse.json({ error: 'No valid unremitted payable records found' }, { status: 404 })
 
     const totalAmount = payables.reduce((s, p) => s + Number(p.totalSalariesPayable), 0)
     const descriptions = payables.map(p => `${p.payrollType} ${p.cutoffPeriod} ${p.branch}`).join(', ')
 
     const result = await prisma.$transaction(async (tx) => {
+      const lines: { accountId: string; debit: number; credit: number; description: string }[] = [
+        { accountId: mapping.salariesPayableAccountId!, debit: totalAmount, credit: 0, description: 'Salaries Payable' },
+        { accountId: fromAccountId, debit: 0, credit: totalAmount, description: 'Cash/Bank' },
+      ]
+      if (hasFee) {
+        lines.push({ accountId: feeExpenseAccountId, debit: feeAmt, credit: 0, description: 'Remittance Fee Expense' })
+        lines.push({ accountId: feeCashAccountId || fromAccountId, debit: 0, credit: feeAmt, description: 'Cash/Bank — Remittance Fee' })
+      }
+
       const journalEntry = await tx.journalEntry.create({
         data: {
           entryDate: new Date(paymentDate),
           description: `Salary Payment — ${descriptions}`,
           referenceType: 'SALARY_PAYMENT',
           referenceId: payables.map(p => `${p.cutoffPeriod}|${p.branch}|${p.payrollType}`).join(';'),
-          totalAmount,
+          totalAmount: totalAmount + feeAmt,
           createdById: session.user.id as string,
-          lines: {
-            create: [
-              { accountId: mapping.salariesPayableAccountId!, debit: totalAmount, credit: 0, description: 'Salaries Payable' },
-              { accountId: fromAccountId, debit: 0, credit: totalAmount, description: 'Cash/Bank' },
-            ],
-          },
+          lines: { create: lines },
         },
       })
 
       const payment = await tx.salaryPayment.create({
         data: {
           paymentDate: new Date(paymentDate),
-          totalAmount,
+          totalAmount: totalAmount + feeAmt,
           fromAccountId,
           proofUrl: proofUrl || null,
           notes: notes || null,
@@ -62,10 +159,7 @@ export async function POST(req: Request) {
       })
 
       for (const p of payables) {
-        await tx.payrollPayableStatus.update({
-          where: { id: p.id },
-          data: { salariesRemitted: true, salaryPaymentId: payment.id },
-        })
+        await tx.payrollPayableStatus.update({ where: { id: p.id }, data: { salariesRemitted: true, salaryPaymentId: payment.id } })
       }
 
       return { payment, journalEntry }
