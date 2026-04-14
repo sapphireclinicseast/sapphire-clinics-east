@@ -24,6 +24,11 @@ export default function SettingsPage() {
   const [showCurrentPw, setShowCurrentPw] = useState(false)
   const [showNewPw, setShowNewPw] = useState(false)
 
+  function showToast(msg: string) {
+    setToast(msg)
+    setTimeout(() => setToast(null), 4000)
+  }
+
   useEffect(() => {
     fetchSettings()
   }, [])
