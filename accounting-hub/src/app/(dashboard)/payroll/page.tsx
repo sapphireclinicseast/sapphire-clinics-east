@@ -787,7 +787,7 @@ export default function PayrollPage() {
   const [editPayment, setEditPayment] = useState<{ id: string; type: 'tax' | 'salary'; paymentDate: string; proofUrl: string; notes: string } | null>(null)
   const [editPaymentSaving, setEditPaymentSaving] = useState(false)
   // Salary payment history
-  const [salaryPayments, setSalaryPayments] = useState<{ id: string; paymentDate: string; totalAmount: number; fromAccount: { accountNumber: string; accountTitle: string }; proofUrl: string | null; notes: string | null; cutoffPeriod: string; branch: string }[]>([])
+  const [salaryPayments, setSalaryPayments] = useState<{ id: string; paymentDate: string; totalAmount: number; fromAccount: { accountNumber: string; accountTitle: string }; proofUrl: string | null; notes: string | null; cutoffPeriod: string; branch: string; consultants?: { name: string; department: string; netPay: number; cutoffPeriod: string }[] }[]>([])
 
   // Tax settings
   const [showTaxSettings, setShowTaxSettings] = useState(false)
@@ -3928,50 +3928,56 @@ export default function PayrollPage() {
           {salaryPayments.length > 0 && (
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--mid-gray)' }}>Payment History</p>
-              <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr style={{ background: 'var(--off-white)' }}>
-                      <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Payment Date</th>
-                      <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>From Account</th>
-                      <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Cutoff / Branch</th>
-                      <th className="text-right px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Amount Paid</th>
-                      <th className="text-center px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Proof</th>
-                      <th className="px-4 py-3" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {salaryPayments.map(sp => (
-                      <tr key={sp.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                        <td className="px-4 py-3 text-xs" style={{ color: 'var(--charcoal)' }}>
+              <div className="space-y-3">
+                {salaryPayments.map(sp => (
+                  <div key={sp.id} className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+                    {/* Payment header row */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                      <div className="flex flex-wrap items-center gap-4">
+                        <span className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>
                           {new Date(sp.paymentDate).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })}
-                        </td>
-                        <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                        </span>
+                        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
                           {sp.fromAccount.accountNumber} — {sp.fromAccount.accountTitle}
-                        </td>
-                        <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                        </span>
+                        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
                           {sp.cutoffPeriod}{sp.branch ? ` · ${sp.branch}` : ''}
-                        </td>
-                        <td className="px-4 py-3 text-right font-semibold text-xs" style={{ color: '#166534' }}>{formatCurrency(sp.totalAmount)}</td>
-                        <td className="px-4 py-3 text-center">
-                          {sp.proofUrl ? (
-                            <a href={sp.proofUrl} target="_blank" rel="noopener noreferrer"
-                              className="text-xs underline" style={{ color: 'var(--teal)' }}>View</a>
-                          ) : <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>—</span>}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          {canWrite && (
-                            <button onClick={() => setEditPayment({ id: sp.id, type: 'salary', paymentDate: sp.paymentDate.slice(0, 10), proofUrl: sp.proofUrl || '', notes: sp.notes || '' })}
-                              className="text-xs px-2 py-1 rounded-lg border font-medium hover:bg-gray-50"
-                              style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
-                              Edit
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-semibold" style={{ color: '#166534' }}>{formatCurrency(sp.totalAmount)}</span>
+                        {sp.proofUrl ? (
+                          <a href={sp.proofUrl} target="_blank" rel="noopener noreferrer"
+                            className="text-xs underline" style={{ color: 'var(--teal)' }}>Proof</a>
+                        ) : null}
+                        {canWrite && (
+                          <button onClick={() => setEditPayment({ id: sp.id, type: 'salary', paymentDate: sp.paymentDate.slice(0, 10), proofUrl: sp.proofUrl || '', notes: sp.notes || '' })}
+                            className="text-xs px-2 py-1 rounded-lg border font-medium hover:bg-gray-50"
+                            style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                            Edit
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {/* Individuals included in this remittance */}
+                    {sp.consultants && sp.consultants.length > 0 ? (
+                      <table className="w-full text-xs">
+                        <tbody>
+                          {sp.consultants.map((c, i) => (
+                            <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                              <td className="px-4 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{c.name}</td>
+                              <td className="px-4 py-2" style={{ color: 'var(--mid-gray)' }}>{DEPT_LABELS[c.department] || c.department}</td>
+                              <td className="px-4 py-2" style={{ color: 'var(--mid-gray)' }}>{getCutoffLabel(c.cutoffPeriod)}</td>
+                              <td className="px-4 py-2 text-right font-mono font-semibold" style={{ color: 'var(--teal)' }}>{formatCurrency(c.netPay)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <p className="px-4 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{sp.notes || '—'}</p>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           )}

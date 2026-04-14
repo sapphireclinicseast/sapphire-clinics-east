@@ -867,6 +867,7 @@ model PayrollEntry {
   status          String     @default("DRAFT") // DRAFT, FINAL
   taxRemitted      Boolean    @default(false)
   salariesRemitted Boolean    @default(false)
+  salaryPaymentId  String?    // set when salary is remitted
   createdById     String
   createdBy       User       @relation("PayrollCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   createdAt       DateTime   @default(now())

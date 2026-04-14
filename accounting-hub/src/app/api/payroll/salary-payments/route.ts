@@ -17,6 +17,22 @@ export async function GET(req: Request) {
     orderBy: { paymentDate: 'desc' },
   })
 
+  // For each payment, fetch the linked PayrollEntry consultant names
+  const paymentIds = payments.map(p => p.id)
+  const linkedEntries = paymentIds.length > 0
+    ? await prisma.payrollEntry.findMany({
+        where: { salaryPaymentId: { in: paymentIds } },
+        select: { salaryPaymentId: true, id: true, netPay: true, cutoffPeriod: true, consultant: { select: { name: true, department: true } } },
+      })
+    : []
+
+  const entriesByPayment = new Map<string, typeof linkedEntries>()
+  for (const e of linkedEntries) {
+    if (!e.salaryPaymentId) continue
+    if (!entriesByPayment.has(e.salaryPaymentId)) entriesByPayment.set(e.salaryPaymentId, [])
+    entriesByPayment.get(e.salaryPaymentId)!.push(e)
+  }
+
   return NextResponse.json(payments.map(p => ({
     id: p.id,
     paymentDate: p.paymentDate.toISOString(),
@@ -28,6 +44,12 @@ export async function GET(req: Request) {
     cutoffPeriod: p.cutoffPeriod,
     branch: p.branch,
     createdAt: p.createdAt.toISOString(),
+    consultants: (entriesByPayment.get(p.id) || []).map(e => ({
+      name: e.consultant.name,
+      department: e.consultant.department,
+      netPay: Number(e.netPay),
+      cutoffPeriod: e.cutoffPeriod,
+    })),
   })))
 }
 
@@ -136,10 +158,10 @@ export async function POST(req: Request) {
           },
         })
 
-        // Mark individual entries as remitted
+        // Mark individual entries as remitted, link to payment
         await tx.payrollEntry.updateMany({
           where: { id: { in: entries.map(e => e.id) } },
-          data: { salariesRemitted: true },
+          data: { salariesRemitted: true, salaryPaymentId: payment.id },
         })
 
         // If all entries in a PayrollPayableStatus are now remitted, mark the aggregate too
