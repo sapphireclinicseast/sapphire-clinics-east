@@ -588,7 +588,7 @@ async function buildPayslipPdf(
       doc.text(`${item.unitPayName}  (${item.sessions!.length} session${item.sessions!.length !== 1 ? 's' : ''})`, margin, y2)
       y2 += 2
 
-      const sessionRows = item.sessions!.map(s => {
+      const sessionRows = [...item.sessions!].sort((a, b) => a.date.localeCompare(b.date)).map(s => {
         const d = new Date(s.date + 'T00:00:00+08:00')
         const dateStr = d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })
         const status = (s.orderStatus || 'COMPLETED').toUpperCase()
@@ -732,6 +732,7 @@ export default function PayrollPage() {
   const [extraUnitPays, setExtraUnitPays] = useState<Record<string, ExtraUnitPayLine[]>>({})
   const [adjustments, setAdjustments] = useState<Record<string, AdjustmentLine[]>>({})
   const [savingMap, setSavingMap] = useState<Record<string, boolean>>({})
+  const [savedMap, setSavedMap] = useState<Record<string, boolean>>({})
 
   // Per-card UI state for adding
   const [showUpAdd, setShowUpAdd] = useState<Record<string, boolean>>({})
@@ -1482,6 +1483,8 @@ export default function PayrollPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cutoffPeriod, branch, entries: [buildEntry(p, extras, adjs, status)] }),
       })
+      setSavedMap(prev => ({ ...prev, [cid]: true }))
+      setTimeout(() => setSavedMap(prev => ({ ...prev, [cid]: false })), 2500)
     } catch { setError('Failed to save') }
     finally { setSavingMap(prev => ({ ...prev, [cid]: false })) }
   }
@@ -3498,9 +3501,9 @@ export default function PayrollPage() {
                                           {p.existingStatus !== 'LOCKED' && (
                                             <button onClick={(e) => { e.stopPropagation(); saveSingleConsultant(p.consultantId) }} disabled={savingMap[p.consultantId]}
                                               className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium text-white disabled:opacity-50"
-                                              style={{ background: 'var(--deep-teal)' }}>
-                                              {savingMap[p.consultantId] ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                                              {savingMap[p.consultantId] ? 'Saving...' : 'Save'}
+                                              style={{ background: savedMap[p.consultantId] ? '#059669' : 'var(--deep-teal)', transition: 'background 0.3s' }}>
+                                              {savingMap[p.consultantId] ? <Loader2 size={13} className="animate-spin" /> : savedMap[p.consultantId] ? <CheckCircle2 size={13} /> : <Save size={13} />}
+                                              {savingMap[p.consultantId] ? 'Saving...' : savedMap[p.consultantId] ? 'Saved!' : 'Save'}
                                             </button>
                                           )}
                                           <button onClick={(e) => { e.stopPropagation(); emailClinician(p) }} disabled={isSendingThis || emailSt === 'success'}
@@ -4034,7 +4037,7 @@ export default function PayrollPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sessionBreakdown.sessions.map((s, i) => {
+                  {[...sessionBreakdown.sessions].sort((a, b) => a.date.localeCompare(b.date)).map((s, i) => {
                     const status = s.orderStatus || 'COMPLETED'
                     const isVoided = status === 'CANCELLED' || status === 'VOIDED'
                     const isReopened = status === 'REOPENED'
