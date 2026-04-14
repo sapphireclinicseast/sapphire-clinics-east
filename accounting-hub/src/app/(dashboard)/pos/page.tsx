@@ -273,7 +273,7 @@ function toNum(v: string | number | undefined | null): number {
 }
 
 function today(): string {
-  return new Date().toISOString().split('T')[0]
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
 }
 
 function printThermalReceipt(order: {
