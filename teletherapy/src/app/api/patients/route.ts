@@ -9,10 +9,20 @@ export async function GET(req: NextRequest) {
   }
 
   const search = req.nextUrl.searchParams.get('search') ?? ''
+  const requestedStaffId = req.nextUrl.searchParams.get('staffId')
   const isAdmin = session.user.role === 'ADMIN'
 
+  // Determine effective staffId (support interbranch switching)
+  let effectiveStaffId = session.user.staffId
+  if (requestedStaffId && !isAdmin) {
+    const allowedStaffIds = (session.user.branches ?? []).map((b: any) => b.staffId)
+    if (allowedStaffIds.includes(requestedStaffId)) {
+      effectiveStaffId = requestedStaffId
+    }
+  }
+
   // 1. Get patients from direct sessions (staffId match)
-  const staffFilter = isAdmin ? {} : { staffId: session.user.staffId }
+  const staffFilter = isAdmin ? {} : { staffId: effectiveStaffId }
 
   const schedules = await prisma.schedule.findMany({
     where: {
@@ -70,7 +80,7 @@ export async function GET(req: NextRequest) {
         const hasSession = await prisma.schedule.findFirst({
           where: {
             patientId: a.patient.id,
-            staffId: session.user.staffId,
+            staffId: effectiveStaffId,
             status: 'CONFIRMED',
           },
           select: { id: true },

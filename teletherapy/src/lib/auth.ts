@@ -4,6 +4,12 @@ import bcrypt from 'bcryptjs'
 import { prisma } from './prisma'
 import { rateLimit } from './rate-limit'
 
+interface BranchInfo {
+  staffId: string
+  branch: string
+  department: string
+}
+
 declare module 'next-auth' {
   interface Session {
     user: {
@@ -15,6 +21,7 @@ declare module 'next-auth' {
       role: string
       department?: string
       branch?: string
+      branches?: BranchInfo[]
     }
   }
   interface User {
@@ -22,6 +29,7 @@ declare module 'next-auth' {
     role: string
     department?: string
     branch?: string
+    branches?: BranchInfo[]
   }
 }
 
@@ -69,6 +77,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           data: { lastLoginAt: new Date() },
         })
 
+        // Find all staff records with matching email (interbranch clinicians)
+        const staffEmail = account.staff.email
+        let branches: BranchInfo[] = [
+          { staffId: account.staffId, branch: account.staff.branch, department: account.staff.department },
+        ]
+
+        if (staffEmail) {
+          const allStaffWithEmail = await prisma.staff.findMany({
+            where: { email: staffEmail },
+            select: { id: true, branch: true, department: true },
+          })
+          if (allStaffWithEmail.length > 1) {
+            branches = allStaffWithEmail.map((s) => ({
+              staffId: s.id,
+              branch: s.branch,
+              department: s.department,
+            }))
+          }
+        }
+
         return {
           id: account.id,
           name: `${account.staff.firstName} ${account.staff.lastName}`,
@@ -77,6 +105,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           role: account.role,
           department: account.staff.department,
           branch: account.staff.branch,
+          branches,
         }
       },
     }),
@@ -89,6 +118,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.role = user.role
         token.department = user.department
         token.branch = user.branch
+        token.branches = user.branches
       }
 
       // On every token refresh, check if account is still active
@@ -117,6 +147,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.role = token.role as string
         session.user.department = token.department as string
         session.user.branch = token.branch as string
+        session.user.branches = (token.branches as BranchInfo[]) ?? []
       }
       return session
     },

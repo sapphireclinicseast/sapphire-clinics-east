@@ -16,6 +16,7 @@ import {
   Stethoscope,
 } from 'lucide-react'
 import { cn, formatTime, formatDate, toDateString } from '@/lib/utils'
+import BranchSwitcher, { useBranchSwitcher } from '@/components/BranchSwitcher'
 
 interface SessionItem {
   id: string
@@ -56,15 +57,17 @@ export default function DashboardPage() {
   const [date, setDate] = useState(toDateString(new Date()))
   const [sessions, setSessions] = useState<SessionItem[]>([])
   const [loading, setLoading] = useState(true)
+  const { branches, isMultiBranch, activeStaffId, switchBranch } = useBranchSwitcher()
 
   useEffect(() => {
-    fetchSessions()
-  }, [date])
+    if (activeStaffId) fetchSessions()
+  }, [date, activeStaffId])
 
   async function fetchSessions() {
     setLoading(true)
     try {
-      const res = await fetch(`/api/sessions?date=${date}`)
+      const staffParam = isMultiBranch && activeStaffId ? `&staffId=${activeStaffId}` : ''
+      const res = await fetch(`/api/sessions?date=${date}${staffParam}`)
       const data = await res.json()
       setSessions(data.sessions ?? [])
     } catch {
@@ -87,6 +90,13 @@ export default function DashboardPage() {
 
   return (
     <div className="max-w-5xl mx-auto">
+      {/* Branch switcher for interbranch clinicians */}
+      {isMultiBranch && (
+        <div className="mb-4 animate-fade-up">
+          <BranchSwitcher branches={branches} activeStaffId={activeStaffId} onSwitch={switchBranch} />
+        </div>
+      )}
+
       {/* Hero header — templates pattern */}
       <div className="hero-gradient rounded-2xl px-8 py-8 mb-8 animate-fade-up">
         <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">

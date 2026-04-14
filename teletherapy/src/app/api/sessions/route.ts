@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url)
   const dateStr = searchParams.get('date')
+  const requestedStaffId = searchParams.get('staffId') // For interbranch clinicians
 
   if (!dateStr) {
     return NextResponse.json({ error: 'Date parameter required' }, { status: 400 })
@@ -21,6 +22,16 @@ export async function GET(req: NextRequest) {
 
   const isAdmin = session.user.role === 'ADMIN'
 
+  // Determine which staffId to use
+  let effectiveStaffId = session.user.staffId
+  if (requestedStaffId && !isAdmin) {
+    // Validate the requested staffId is in the user's allowed branches
+    const allowedStaffIds = (session.user.branches ?? []).map((b) => b.staffId)
+    if (allowedStaffIds.includes(requestedStaffId)) {
+      effectiveStaffId = requestedStaffId
+    }
+  }
+
   const schedules = await prisma.schedule.findMany({
     where: {
       date: {
@@ -28,8 +39,8 @@ export async function GET(req: NextRequest) {
         lte: endOfDay,
       },
       status: 'CONFIRMED',
-      // Non-admin users only see their own sessions
-      ...(isAdmin ? {} : { staffId: session.user.staffId }),
+      // Non-admin users only see their own sessions (for the selected branch)
+      ...(isAdmin ? {} : { staffId: effectiveStaffId }),
     },
     include: {
       patient: {

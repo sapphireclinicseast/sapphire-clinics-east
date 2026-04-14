@@ -11,6 +11,7 @@ import {
   UserX,
   ArrowRightLeft,
 } from 'lucide-react'
+import BranchSwitcher, { useBranchSwitcher } from '@/components/BranchSwitcher'
 
 interface PatientItem {
   id: string
@@ -29,15 +30,17 @@ export default function PatientsPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'ENDORSED' | 'DISCHARGED'>('ALL')
+  const { branches, isMultiBranch, activeStaffId, switchBranch } = useBranchSwitcher()
 
   useEffect(() => {
-    fetchPatients()
-  }, [search])
+    if (activeStaffId) fetchPatients()
+  }, [search, activeStaffId])
 
   async function fetchPatients() {
     setLoading(true)
     try {
-      const res = await fetch(`/api/patients?search=${encodeURIComponent(search)}`)
+      const staffParam = isMultiBranch && activeStaffId ? `&staffId=${activeStaffId}` : ''
+      const res = await fetch(`/api/patients?search=${encodeURIComponent(search)}${staffParam}`)
       if (res.ok) {
         const data = await res.json()
         setPatients(data.patients)
@@ -76,6 +79,13 @@ export default function PatientsPage() {
 
   return (
     <div className="max-w-4xl mx-auto">
+      {/* Branch switcher for interbranch clinicians */}
+      {isMultiBranch && (
+        <div className="mb-4 animate-fade-up">
+          <BranchSwitcher branches={branches} activeStaffId={activeStaffId} onSwitch={switchBranch} />
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-6 animate-fade-up">
         <div>
