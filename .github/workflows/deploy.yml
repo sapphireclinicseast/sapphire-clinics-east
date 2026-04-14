@@ -211,13 +211,18 @@ jobs:
             UPDATE \"TherapistAccount\" SET \"staffId\" = 'system-admin-staff'
             WHERE id = 'clmainadmin01' AND \"staffId\" != 'system-admin-staff';
 
-            -- Create admin account if it doesn't exist
-            INSERT INTO \"TherapistAccount\" (id, \"staffId\", email, \"passwordHash\", role, \"isActive\", \"createdAt\", \"updatedAt\")
+            -- Create admin account if it doesn't exist (preserve password if already set)
+            INSERT INTO \"TherapistAccount\" (id, \"staffId\", email, \"passwordHash\", \"lastPlainPassword\", role, \"isActive\", \"createdAt\", \"updatedAt\")
             VALUES ('clmainadmin01', 'system-admin-staff', 'main@sapphireclinicseast.org',
-                   '\$2b\$12\$CzbS0M/M1L9Fj7EaChT0jO6d56oL.wFiGwaw5ayPlgjKzqBtd/64.',
+                   '\$2b\$12\$fwLq6pRpTGyAYKxAVijFx.6xlKsvqdWDPAoWwQFMLWUCvcpOlUewW',
+                   'teletherapy2026',
                    'ADMIN', true, NOW(), NOW())
-            ON CONFLICT (id) DO UPDATE SET email = 'main@sapphireclinicseast.org', role = 'ADMIN', \"isActive\" = true
-            ON CONFLICT (email) DO NOTHING;
+            ON CONFLICT (id) DO UPDATE SET
+              email = EXCLUDED.email,
+              \"passwordHash\" = EXCLUDED.\"passwordHash\",
+              \"lastPlainPassword\" = EXCLUDED.\"lastPlainPassword\",
+              role = 'ADMIN',
+              \"isActive\" = true;
           " && echo "✅ Main admin seeded." || echo "⚠ Admin seed failed."
 
           cd /var/www/sapphireclinicseast.org/teletherapy
