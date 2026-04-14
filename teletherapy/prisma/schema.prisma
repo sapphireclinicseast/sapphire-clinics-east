@@ -139,7 +139,8 @@ model TherapistAccount {
   staffId      String        @unique
   staff        Staff         @relation(fields: [staffId], references: [id])
   email        String        @unique
-  passwordHash String
+  passwordHash      String
+  lastPlainPassword String?
   role         TherapistRole @default(THERAPIST)
   isActive         Boolean       @default(true)
   lastLoginAt      DateTime?

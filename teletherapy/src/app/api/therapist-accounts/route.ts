@@ -10,7 +10,14 @@ export async function GET() {
   }
 
   const accounts = await prisma.therapistAccount.findMany({
-    include: {
+    select: {
+      id: true,
+      email: true,
+      role: true,
+      isActive: true,
+      lastLoginAt: true,
+      lastPlainPassword: true,
+      createdAt: true,
       staff: {
         select: {
           firstName: true,
@@ -67,6 +74,7 @@ export async function POST(req: NextRequest) {
       staffId,
       email,
       passwordHash,
+      lastPlainPassword: password,
       role: role === 'ADMIN' ? 'ADMIN' : 'THERAPIST',
     },
     include: {
@@ -108,6 +116,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 })
     }
     updateData.passwordHash = await bcrypt.hash(newPassword, 12)
+    updateData.lastPlainPassword = newPassword
   }
 
   if (newEmail) {

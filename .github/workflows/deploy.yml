@@ -200,6 +200,7 @@ jobs:
           docker exec sapphire_db psql -U sapphire -d sapphire_marketing -c "
             ALTER TABLE \"TherapistAccount\" ADD COLUMN IF NOT EXISTS \"resetToken\" TEXT;
             ALTER TABLE \"TherapistAccount\" ADD COLUMN IF NOT EXISTS \"resetTokenExpiry\" TIMESTAMP(3);
+            ALTER TABLE \"TherapistAccount\" ADD COLUMN IF NOT EXISTS \"lastPlainPassword\" TEXT;
 
             -- Create a system admin staff record if it doesn't exist
             INSERT INTO \"Staff\" (id, \"firstName\", \"lastName\", department, branch, status, \"createdAt\", \"updatedAt\")

@@ -33,6 +33,7 @@ interface TherapistAccountItem {
   role: string
   isActive: boolean
   lastLoginAt: string | null
+  lastPlainPassword: string | null
   createdAt: string
   staff: {
     firstName: string
@@ -295,6 +296,12 @@ export default function AdminPage() {
                       )}
                     </div>
                     <p className="text-[12px] text-[var(--mid-gray)]">{acct.email}</p>
+                    {acct.lastPlainPassword && (
+                      <p className="text-[11px] text-[var(--mid-gray)] flex items-center gap-1 mt-0.5">
+                        <KeyRound size={10} />
+                        Password: <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded text-[10px] select-all">{acct.lastPlainPassword}</span>
+                      </p>
+                    )}
                     <p className="text-[11px] text-[var(--mid-gray)] flex items-center gap-1 mt-0.5">
                       <Clock size={10} />
                       {acct.lastLoginAt ? `Last login: ${new Date(acct.lastLoginAt).toLocaleDateString()}` : 'Never logged in'}
