@@ -1,11 +1,11 @@
 'use client'
 
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   Users, Settings, FileText, Plus, Pencil, Save, Search, X, AlertCircle,
   RefreshCw, Loader2, Upload, Download, Calendar, Clock, CheckCircle2,
   XCircle, ChevronDown, ChevronUp, Trash2, Eye, QrCode, ClipboardList,
-  DollarSign, Shield, Star, Mail, FileDown,
+  DollarSign, Shield, ShieldOff, Star, Mail, FileDown, ArrowUpDown,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
@@ -26,6 +26,33 @@ const BRANCHES = [
   { value: 'VERDANA', label: 'Verdana Store' },
 ]
 
+const BRANCH_INFO: Record<string, { name: string; address: string; phone: string; tin: string }> = {
+  SBEA: {
+    name: 'Sandbox Clinic – East Branch',
+    address: '4th Floor Robinsons Metro East, Marcos Highway, Dela Paz, Pasig City',
+    phone: '0917 118 9289 | (02) 5310-4991',
+    tin: 'TIN 010-817-642-00000',
+  },
+  SBGH: {
+    name: 'Sandbox Clinic – Greenhills Branch',
+    address: 'Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City',
+    phone: '0917 770 1686 | (02) 8529 1590',
+    tin: 'TIN 010-817-642-00001',
+  },
+  VERDANA: {
+    name: 'Verdana Store',
+    address: 'Metro Manila, Philippines',
+    phone: '',
+    tin: '',
+  },
+  '': {
+    name: 'Sapphire Clinics East Inc.',
+    address: 'Metro Manila, Philippines',
+    phone: '',
+    tin: '',
+  },
+}
+
 const DAYS_OF_WEEK = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -42,7 +69,10 @@ const REQUEST_TYPES = [
   { value: 'OVERTIME', label: 'Overtime' },
   { value: 'UNDERTIME', label: 'Undertime' },
   { value: 'CHANGE_SCHEDULE', label: 'Change Schedule' },
+  { value: 'CHANGE_TIME_IN', label: 'Change Time In' },
+  { value: 'CHANGE_TIME_OUT', label: 'Change Time Out' },
   { value: 'CERTIFICATE_OF_EMPLOYMENT', label: 'Certificate of Employment' },
+  { value: 'CERTIFICATE_OF_CONSULTATION', label: 'Certificate of Consultation' },
 ]
 
 const LEAVE_TYPES = [
@@ -98,6 +128,7 @@ interface Employee {
   firstName: string
   lastName: string
   email?: string | null
+  phone?: string | null
   department: string
   branch: string
   jobTitle?: string | null
@@ -112,6 +143,7 @@ interface Employee {
   regularizationDate?: string | null
   scheduleIn: string
   scheduleOut: string
+  daySchedules?: Record<string, { in: string; out: string }> | null
   restDay: string
   isActive: boolean
   benefits: Benefit[]
@@ -128,16 +160,24 @@ interface Benefit {
 
 interface EmployeeRequest {
   id: string
-  employeeId: string
+  employeeId?: string | null
+  consultantId?: string | null
   requestType: string
   leaveType?: string | null
   startDate?: string | null
   endDate?: string | null
+  requestedTimeIn?: string | null
+  requestedTimeOut?: string | null
+  requestedScheduleIn?: string | null
+  requestedScheduleOut?: string | null
+  changeToWorkingDay?: boolean | null
   reason?: string | null
+  attachment?: string | null
   status: string
   reviewNotes?: string | null
   createdAt: string
-  employee: { id: string; firstName: string; lastName: string; department: string; branch: string }
+  employee?: { id: string; firstName: string; lastName: string; department: string; branch: string } | null
+  consultant?: { id: string; name: string; department: string; branch: string } | null
 }
 
 interface TimekeepingRecord {
@@ -158,6 +198,7 @@ interface TimekeepingRecord {
   dtrProof?: string | null
   remarks?: string | null
   employee: { id: string; firstName: string; lastName: string; department: string; branch: string; scheduleIn: string; scheduleOut: string }
+  upload?: { id: string; status: string } | null
 }
 
 interface Holiday {
@@ -188,10 +229,18 @@ interface EmpSettings {
   restDayRate: number | string
   restDayRegHolidayRate: number | string
   restDaySpecHolidayRate: number | string
+  lateGraceMinutes: number
+  otIntervalMinutes: number
+  otMaxHours: number | string
   sssEnabled: boolean
   philhealthEnabled: boolean
   pagibigEnabled: boolean
   taxEnabled: boolean
+  benefitDeductionTiming: string
+  hrOfficerNameSBEA?: string | null
+  hrOfficerNameSBGH?: string | null
+  hrOfficerNameVERDANA?: string | null
+  requestApprovalExcludedPositions?: string[] | null
 }
 
 interface Payslip {
@@ -204,6 +253,7 @@ interface Payslip {
   holidayPay: number | string
   nightDiffPay: number | string
   restDayPay: number | string
+  allowances: number | string
   grossPay: number | string
   sssDeduction: number | string
   philhealthDeduction: number | string
@@ -211,6 +261,7 @@ interface Payslip {
   taxDeduction: number | string
   lateDeduction: number | string
   undertimeDeduction: number | string
+  otherDeductions: number | string
   totalDeductions: number | string
   netPay: number | string
   daysWorked: number | string
@@ -218,6 +269,8 @@ interface Payslip {
   overtimeHours: number | string
   lateMinutes: number
   undertimeMinutes: number
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  details?: any
   pdfUrl?: string | null
   status: string
   employee: { id: string; firstName: string; lastName: string; department: string; branch: string; rateType: string; dailyRate: number | string; monthlyRate: number | string; email?: string | null }
@@ -229,21 +282,23 @@ interface TkUploadRecord {
   uploadDate: string
   recordCount: number
   branch: string | null
+  status: 'UPLOADED' | 'ACCEPTED' | 'FINALIZED'
   _count: { records: number }
 }
 
 /* ═══════════════════════════════════════════════════════════════
    MAIN COMPONENT
    ═══════════════════════════════════════════════════════════════ */
-export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
+export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoffMonth: parentCutoffMonth, cutoffYear: parentCutoffYear, cutoffHalf: parentCutoffHalf, cutoffPeriod: parentCutoffPeriod }: { canWrite: boolean; branch: string; cutoffMonth: number; cutoffYear: number; cutoffHalf: number; cutoffPeriod: string }) {
   const now = new Date()
 
-  const [subTab, setSubTab] = useState<'list' | 'settings' | 'requests' | 'tk-upload' | 'tk-data' | 'benefits' | 'holidays' | 'payslips'>('list')
+  const [subTab, setSubTab] = useState<'list' | 'settings' | 'requests' | 'tk-upload' | 'tk-data' | 'benefits' | 'adjustments' | 'holidays' | 'payslips'>('list')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  /* ── Shared filters ── */
-  const [branch, setBranch] = useState('')
+  /* ── Shared filters (branch/cutoff come from parent) ── */
+  const branch = parentBranch
+  const cutoffPeriod = parentCutoffPeriod
   const [deptFilter, setDeptFilter] = useState('')
   const [search, setSearch] = useState('')
 
@@ -256,7 +311,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
     firstName: '', lastName: '', email: '', department: 'ADMINISTRATION', branch: 'SBEA',
     jobTitle: '', rateType: 'DAILY', dailyRate: 0, monthlyRate: 0, employeeBioId: null,
     sssNumber: '', philhealthNumber: '', pagibigNumber: '', tinNumber: '',
-    scheduleIn: '08:00', scheduleOut: '17:00', restDay: 'SUNDAY',
+    scheduleIn: '08:00', scheduleOut: '17:00', daySchedules: null, restDay: 'SUNDAY',
   })
 
   /* ── Settings ── */
@@ -325,6 +380,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
   const [showHolidayForm, setShowHolidayForm] = useState(false)
   const [holidayForm, setHolidayForm] = useState({ name: '', date: '', holidayType: 'REGULAR' as string, branch: '', isRecurring: false })
   const [editHolidayId, setEditHolidayId] = useState('')
+  const [holidayBranchFilter, setHolidayBranchFilter] = useState('')
 
   /* ── Benefits ── */
   const [showBenefitForm, setShowBenefitForm] = useState(false)
@@ -333,15 +389,31 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
   const [benefitEmpShare, setBenefitEmpShare] = useState(0)
   const [benefitErShare, setBenefitErShare] = useState(0)
 
+  /* ── Cutoff Adjustments ── */
+  interface AdjustmentRow { employeeId: string; employeeName?: string; allowance: number; allowanceType: string; allowanceLabel: string; deduction: number; deductionLabel: string; rowKey: string }
+  const adjCutoffMonth = parentCutoffMonth
+  const adjCutoffYear = parentCutoffYear
+  const adjCutoffHalf = parentCutoffHalf
+  const [adjRows, setAdjRows] = useState<AdjustmentRow[]>([])
+  const [adjLoading, setAdjLoading] = useState(false)
+  const [adjSaving, setAdjSaving] = useState(false)
+  const [adjSaved, setAdjSaved] = useState(false)
+  const [selectedAdjEmpIds, setSelectedAdjEmpIds] = useState<Set<string>>(new Set())
+  const [showBulkAdjModal, setShowBulkAdjModal] = useState(false)
+  const [bulkAdj, setBulkAdj] = useState<Partial<AdjustmentRow>>({})
+
   /* ── Payslips ── */
   const [payslips, setPayslips] = useState<Payslip[]>([])
-  const [cutoffMonth, setCutoffMonth] = useState(now.getMonth() + 1)
-  const [cutoffYear, setCutoffYear] = useState(now.getFullYear())
-  const [cutoffHalf, setCutoffHalf] = useState(now.getDate() <= 15 ? 1 : 2)
+  const cutoffMonth = parentCutoffMonth
+  const cutoffYear = parentCutoffYear
+  const cutoffHalf = parentCutoffHalf
   const [generating, setGenerating] = useState(false)
   const [expandedPayslip, setExpandedPayslip] = useState('')
   const [pdfGenerating, setPdfGenerating] = useState('')
   const [emailSending, setEmailSending] = useState('')
+  const [emailSent, setEmailSent] = useState<Record<string, boolean>>({})
+  const [downloadingAllPdfs, setDownloadingAllPdfs] = useState(false)
+  const [emailingAll, setEmailingAll] = useState(false)
 
   /* ── Holiday Presets ── */
   const [showHolidayPresets, setShowHolidayPresets] = useState(false)
@@ -350,6 +422,8 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
 
   /* ── Employee Request QR/Link ── */
   const [showRequestLink, setShowRequestLink] = useState(false)
+  const [showReqSettings, setShowReqSettings] = useState(false)
+  const [excludedPositionInput, setExcludedPositionInput] = useState('')
 
   /* ── Bulk Edit Employees ── */
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<string>>(new Set())
@@ -368,7 +442,37 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
   const [empPastPayslips, setEmpPastPayslips] = useState<Payslip[]>([])
   const [loadingPastPayslips, setLoadingPastPayslips] = useState(false)
 
-  const cutoffPeriod = `${cutoffYear}-${String(cutoffMonth).padStart(2, '0')}-${cutoffHalf}`
+  /* ── Column Sorting ── */
+  const [sortField, setSortField] = useState('')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  function toggleSort(field: string) {
+    if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortField(field); setSortDir('asc') }
+  }
+  function SortIcon({ field }: { field: string }) {
+    if (sortField !== field) return <ArrowUpDown size={11} className="opacity-30" />
+    return sortDir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function sortRows<T>(rows: T[], getter: (row: T) => unknown): T[] {
+    if (!sortField) return rows
+    return [...rows].sort((a, b) => {
+      const va = getter(a), vb = getter(b)
+      if (va == null && vb == null) return 0
+      if (va == null) return 1
+      if (vb == null) return -1
+      if (typeof va === 'number' && typeof vb === 'number') return sortDir === 'asc' ? va - vb : vb - va
+      const sa = String(va).toLowerCase(), sb = String(vb).toLowerCase()
+      return sortDir === 'asc' ? sa.localeCompare(sb) : sb.localeCompare(sa)
+    })
+  }
+  function SortTh({ field, children, className, style }: { field: string; children: React.ReactNode; className?: string; style?: React.CSSProperties }) {
+    return (
+      <th className={`cursor-pointer select-none ${className || ''}`} style={style} onClick={() => toggleSort(field)}>
+        <span className="flex items-center gap-1">{children} <SortIcon field={field} /></span>
+      </th>
+    )
+  }
 
   /* ═══════════════════════════════════════════════════════════════
      FETCHERS
@@ -412,6 +516,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
       if (branch) params.set('branch', branch)
       if (tkStartDate) params.set('startDate', tkStartDate)
       if (tkEndDate) params.set('endDate', tkEndDate)
+      params.set('minStatus', 'ACCEPTED') // Only show accepted/finalized TK data
       const r = await fetch(`/api/payroll/timekeeping/records?${params}`)
       const d = await r.json()
       setTkRecords(Array.isArray(d) ? d : [])
@@ -420,11 +525,13 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
 
   const fetchHolidays = useCallback(async () => {
     try {
-      const r = await fetch(`/api/payroll/holidays?year=${holidayYear}`)
+      const params = new URLSearchParams({ year: String(holidayYear) })
+      if (holidayBranchFilter) params.set('branch', holidayBranchFilter)
+      const r = await fetch(`/api/payroll/holidays?${params}`)
       const d = await r.json()
       setHolidays(Array.isArray(d) ? d : [])
     } catch { /* ignore */ }
-  }, [holidayYear])
+  }, [holidayYear, holidayBranchFilter])
 
   const fetchPayslips = useCallback(async () => {
     try {
@@ -462,11 +569,12 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
   useEffect(() => {
     if (subTab === 'list') fetchEmployees()
     else if (subTab === 'settings') fetchSettings()
-    else if (subTab === 'requests') fetchRequests()
-    else if (subTab === 'tk-data') { fetchTimekeeping(); fetchApprovedRequests() }
+    else if (subTab === 'requests') { fetchRequests(); fetchSettings() }
+    else if (subTab === 'tk-data') { fetchTimekeeping(); fetchApprovedRequests(); fetchPastUploads() }
     else if (subTab === 'tk-upload') fetchPastUploads()
     else if (subTab === 'holidays') fetchHolidays()
     else if (subTab === 'benefits') fetchEmployees()
+    else if (subTab === 'adjustments') fetchEmployees()
     else if (subTab === 'payslips') fetchPayslips()
   }, [subTab, fetchEmployees, fetchSettings, fetchRequests, fetchTimekeeping, fetchApprovedRequests, fetchPastUploads, fetchHolidays, fetchPayslips])
 
@@ -500,7 +608,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
       employeeBioId: emp.employeeBioId, sssNumber: emp.sssNumber || '',
       philhealthNumber: emp.philhealthNumber || '', pagibigNumber: emp.pagibigNumber || '',
       tinNumber: emp.tinNumber || '', scheduleIn: emp.scheduleIn, scheduleOut: emp.scheduleOut,
-      restDay: emp.restDay,
+      daySchedules: emp.daySchedules || null, restDay: emp.restDay,
     })
     setShowForm(true)
   }
@@ -598,6 +706,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
     const margin = 25.4
     let y = margin
 
+    const branchInfo = BRANCH_INFO[p.branch] || BRANCH_INFO['']
     const branchLabel = BRANCHES.find(b => b.value === p.branch)?.label || p.branch
     const cutoffLabel = `${MONTHS[parseInt(p.cutoffPeriod.split('-')[1]) - 1]} ${p.cutoffPeriod.split('-')[0]} — ${p.cutoffPeriod.endsWith('-1') ? '1st Half' : '2nd Half'}`
     const fmtPHP = (n: number) => `PHP ${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -609,9 +718,18 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
     doc.text('SAPPHIRE CLINICS EAST INC.', pageW / 2, y + 8, { align: 'center' })
     y += 14
     doc.setFontSize(9)
-    doc.setTextColor(...DARK)
-    doc.text(branchLabel, margin, y)
-    y += 8
+    doc.setTextColor(...MID)
+    doc.text(branchInfo.address, pageW / 2, y, { align: 'center' })
+    y += 5
+    if (branchInfo.phone) {
+      doc.text(branchInfo.phone, pageW / 2, y, { align: 'center' })
+      y += 5
+    }
+    if (branchInfo.tin) {
+      doc.text(branchInfo.tin, pageW / 2, y, { align: 'center' })
+      y += 5
+    }
+    y += 3
 
     doc.setFontSize(16)
     doc.setFont('helvetica', 'bold')
@@ -658,6 +776,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
         ['Holiday Pay', fmtPHP(toNum(p.holidayPay))],
         ['Night Differential', fmtPHP(toNum(p.nightDiffPay))],
         ['Rest Day Pay', fmtPHP(toNum(p.restDayPay))],
+        ['Allowances', fmtPHP(toNum(p.allowances))],
       ].filter(r => parseFloat(r[1].replace(/[^0-9.-]/g, '')) > 0),
       theme: 'grid',
       headStyles: tableHeadStyles,
@@ -682,6 +801,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
         ['Tax', fmtPHP(toNum(p.taxDeduction))],
         ['Late Deduction', fmtPHP(toNum(p.lateDeduction))],
         ['Undertime Deduction', fmtPHP(toNum(p.undertimeDeduction))],
+        ['Other Deductions', fmtPHP(toNum(p.otherDeductions))],
       ].filter(r => parseFloat(r[1].replace(/[^0-9.-]/g, '')) > 0),
       theme: 'grid',
       headStyles: { ...tableHeadStyles, fillColor: [180, 40, 40] as [number, number, number] },
@@ -741,8 +861,47 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
     return doc
   }
 
+  const getHrOfficerForBranch = (branchCode: string): string => {
+    if (!empSettings) return ''
+    if (branchCode === 'SBEA') return empSettings.hrOfficerNameSBEA || ''
+    if (branchCode === 'SBGH') return empSettings.hrOfficerNameSBGH || ''
+    if (['VERDANA', 'VDNA'].includes(branchCode)) return empSettings.hrOfficerNameVERDANA || ''
+    return ''
+  }
+
+  const buildCertificateLetterhead = (doc: import('jspdf').jsPDF) => {
+    const pageW = doc.internal.pageSize.getWidth()
+    let y = 30
+
+    // Company Name
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(18)
+    doc.setTextColor(13, 148, 136)
+    doc.text('SAPPHIRE CLINICS EAST INCORPORATED', pageW / 2, y, { align: 'center' })
+    y += 6
+
+    // Email
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(80, 80, 80)
+    doc.text('main@sapphireclinicseast.org', pageW / 2, y, { align: 'center' })
+    y += 5
+
+    // Main Office address (used in COE letterhead — defaults to SBEA)
+    doc.text('4th Floor Robinsons Metro East, Marcos Highway, Dela Paz, Pasig City', pageW / 2, y, { align: 'center' })
+    y += 10
+
+    // Divider line
+    doc.setDrawColor(13, 148, 136)
+    doc.setLineWidth(0.5)
+    doc.line(30, y, pageW - 30, y)
+    y += 5
+
+    return y
+  }
+
   const generateCoePdf = async (req: EmployeeRequest) => {
-    const emp = employees.find(e => e.id === req.employeeId)
+    const emp = req.employee ? employees.find(e => e.id === req.employeeId) : null
     if (!emp) {
       setError('Employee data not found. Please go to the Employee List tab first to load employee data, then return here.')
       return
@@ -753,26 +912,9 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
     const pageW = doc.internal.pageSize.getWidth()
     const margin = 30
     const contentW = pageW - margin * 2
-    let y = margin
 
-    // Company Letterhead
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(22)
-    doc.setTextColor(13, 148, 136) // teal
-    doc.text('SAPPHIRE CLINICS', pageW / 2, y, { align: 'center' })
-    y += 8
-
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(9)
-    doc.setTextColor(120, 120, 120)
-    doc.text('Healthcare & Wellness', pageW / 2, y, { align: 'center' })
-    y += 12
-
-    // Divider line
-    doc.setDrawColor(13, 148, 136)
-    doc.setLineWidth(0.5)
-    doc.line(margin, y, pageW - margin, y)
-    y += 20
+    let y = buildCertificateLetterhead(doc)
+    y += 15
 
     // Title
     doc.setFont('helvetica', 'bold')
@@ -810,7 +952,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
     const jobTitle = formatJobTitle(emp.jobTitle) || 'N/A'
     const branchLabel = BRANCHES.find(b => b.value === emp.branch)?.label || emp.branch
 
-    let bodyText = `This is to certify that ${empName} has been employed with Sapphire Clinics since ${dateHired} as ${jobTitle} under the ${branchLabel} branch.`
+    let bodyText = `This is to certify that ${empName} has been employed with Sapphire Clinics East Incorporated since ${dateHired} as ${jobTitle} under the ${branchLabel} branch.`
 
     // Compensation
     let compensation = ''
@@ -834,20 +976,23 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
     doc.text(lines, margin, y)
     y += lines.length * 6 + 30
 
-    // Signature block
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(11)
-    doc.setTextColor(30, 30, 30)
-    doc.text('MANAGEMENT', margin, y)
-    y += 5
+    // Signature block — HR Officer name from settings (per branch)
+    const hrOfficer = getHrOfficerForBranch(emp.branch)
+    if (hrOfficer) {
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(11)
+      doc.setTextColor(30, 30, 30)
+      doc.text(hrOfficer.toUpperCase(), margin, y)
+      y += 5
+    }
     doc.setDrawColor(80, 80, 80)
     doc.setLineWidth(0.3)
-    doc.line(margin, y, margin + 60, y)
+    doc.line(margin, y, margin + 70, y)
     y += 5
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(9)
     doc.setTextColor(100, 100, 100)
-    doc.text('Authorized Signatory', margin, y)
+    doc.text('HR Officer', margin, y)
     y += 20
 
     // Footer note
@@ -858,6 +1003,95 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
     doc.text(`Generated: ${issuedDate}`, pageW / 2, y, { align: 'center' })
 
     doc.save(`COE-${emp.lastName}-${emp.firstName}-${issuedDate.replace(/\s/g, '-')}.pdf`)
+  }
+
+  const generateCocPdf = async (req: EmployeeRequest) => {
+    if (!req.consultant) {
+      setError('Consultant data not found for this request.')
+      return
+    }
+
+    const { jsPDF } = await import('jspdf')
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+    const pageW = doc.internal.pageSize.getWidth()
+    const margin = 30
+    const contentW = pageW - margin * 2
+
+    let y = buildCertificateLetterhead(doc)
+    y += 15
+
+    // Title
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(16)
+    doc.setTextColor(30, 30, 30)
+    doc.text('CERTIFICATE OF CONSULTATION', pageW / 2, y, { align: 'center' })
+    y += 20
+
+    // Date issued
+    const issuedDate = new Date().toLocaleDateString('en-PH', {
+      year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Manila',
+    })
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(11)
+    doc.setTextColor(60, 60, 60)
+    doc.text(issuedDate, pageW / 2, y, { align: 'center' })
+    y += 15
+
+    // "To Whom It May Concern"
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11)
+    doc.setTextColor(30, 30, 30)
+    doc.text('TO WHOM IT MAY CONCERN:', margin, y)
+    y += 12
+
+    // Body text
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(11)
+    doc.setTextColor(50, 50, 50)
+
+    const consultantName = req.consultant.name.toUpperCase()
+    const branchLabel = BRANCHES.find(b => b.value === req.consultant!.branch)?.label || req.consultant.branch
+
+    let bodyText = `This is to certify that ${consultantName} has been engaged with Sapphire Clinics East Incorporated on a consultancy basis under the ${branchLabel} branch.`
+
+    // Purpose
+    const purpose = req.reason || 'the purpose stated'
+    bodyText += `\n\nThis certificate is issued upon the request of the above-named consultant for ${purpose}.`
+
+    // Render body text with word wrap
+    const lines = doc.splitTextToSize(bodyText, contentW)
+    doc.text(lines, margin, y)
+    y += lines.length * 6 + 30
+
+    // Signature block — HR Officer name from settings (per branch)
+    const hrOfficer = getHrOfficerForBranch(req.consultant!.branch)
+    if (hrOfficer) {
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(11)
+      doc.setTextColor(30, 30, 30)
+      doc.text(hrOfficer.toUpperCase(), margin, y)
+      y += 5
+    }
+    doc.setDrawColor(80, 80, 80)
+    doc.setLineWidth(0.3)
+    doc.line(margin, y, margin + 70, y)
+    y += 5
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(100, 100, 100)
+    doc.text('HR Officer', margin, y)
+    y += 20
+
+    // Footer note
+    doc.setFontSize(7)
+    doc.setTextColor(150, 150, 150)
+    doc.text('This is a computer-generated document.', pageW / 2, y, { align: 'center' })
+    y += 4
+    doc.text(`Generated: ${issuedDate}`, pageW / 2, y, { align: 'center' })
+
+    const nameParts = req.consultant.name.split(',').map(s => s.trim())
+    const fileLabel = nameParts.join('-') || 'consultant'
+    doc.save(`COC-${fileLabel}-${issuedDate.replace(/\s/g, '-')}.pdf`)
   }
 
   const downloadPayslipPdf = async (p: Payslip) => {
@@ -876,6 +1110,15 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
       fetchPayslips()
     } catch { setError('Failed to generate PDF') }
     setPdfGenerating('')
+  }
+
+  const downloadAllPayslipPdfs = async () => {
+    setDownloadingAllPdfs(true)
+    for (const p of payslips) {
+      try { await downloadPayslipPdf(p); await new Promise(r => setTimeout(r, 600)) }
+      catch (e) { console.error('PDF error for', p.employee.lastName, e) }
+    }
+    setDownloadingAllPdfs(false)
   }
 
   const emailPayslip = async (p: Payslip) => {
@@ -901,7 +1144,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
         body: JSON.stringify({
           consultantName: `${p.employee.lastName}, ${p.employee.firstName}`,
           firstName: p.employee.firstName,
-          branch: branchLabel,
+          branch: BRANCH_INFO[p.branch]?.name || branchLabel,
           cutoffPeriod: p.cutoffPeriod,
           netPay: formatCurrency(toNum(p.netPay)),
           email,
@@ -909,12 +1152,25 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
         }),
       })
       if (!r.ok) {
-        const d = await r.json()
-        throw new Error(d.error || 'Email failed')
+        const text = await r.text()
+        let msg = 'Email failed'
+        try { msg = JSON.parse(text).error || msg } catch { msg = `Email failed (${r.status})` }
+        throw new Error(msg)
       }
+      setEmailSent(prev => ({ ...prev, [p.id]: true }))
       fetchPayslips()
     } catch (err) { setError(err instanceof Error ? err.message : 'Failed to send email') }
     setEmailSending('')
+  }
+
+  const emailAllPayslips = async () => {
+    setEmailingAll(true)
+    for (const p of payslips) {
+      if (!p.employee.email) continue
+      try { await emailPayslip(p); await new Promise(r => setTimeout(r, 800)) }
+      catch (e) { console.error('Email error for', p.employee.lastName, e) }
+    }
+    setEmailingAll(false)
   }
 
   const finalizePayslips = async () => {
@@ -926,6 +1182,44 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
       body: JSON.stringify({ ids: draftIds, status: 'FINAL' }),
     })
     fetchPayslips()
+  }
+
+  const [lockingPayroll, setLockingPayroll] = useState(false)
+  const lockAndFinalizeEmployees = async () => {
+    if (!confirm(`Lock and finalize all employee payslips for ${cutoffPeriod} — ${branch || 'all branches'}? This cannot be undone.`)) return
+    setLockingPayroll(true)
+    try {
+      const res = await fetch('/api/payroll/finalize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cutoffPeriod, branch: branch || 'SBEA', payrollType: 'EMPLOYEE' }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Failed to finalize'); return }
+      setError('')
+      alert(`Payroll locked! ${data.lockedCount} payslips finalized. Journal entry created.`)
+      fetchPayslips()
+    } catch (e) { setError(String(e)) }
+    finally { setLockingPayroll(false) }
+  }
+
+  const [unlockingPayroll, setUnlockingPayroll] = useState(false)
+  const unlockEmployeePayroll = async () => {
+    if (!confirm(`Unlock employee payslips for ${cutoffPeriod} — ${branch || 'all branches'}? This will delete the journal entry and allow editing again.`)) return
+    setUnlockingPayroll(true)
+    try {
+      const res = await fetch('/api/payroll/finalize', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cutoffPeriod, branch: branch || 'SBEA', payrollType: 'EMPLOYEE' }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Failed to unlock'); return }
+      setError('')
+      alert('Payroll unlocked. Payslips are now editable again.')
+      fetchPayslips()
+    } catch (e) { setError(String(e)) }
+    finally { setUnlockingPayroll(false) }
   }
 
   /* ── Timekeeping Edit/Delete ── */
@@ -1250,6 +1544,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
     { key: 'tk-upload', label: 'Timekeeping Upload', icon: Upload },
     { key: 'tk-data', label: 'Timekeeping Data', icon: Clock },
     { key: 'benefits', label: 'Benefits Setting', icon: Shield },
+    { key: 'adjustments', label: 'Allowance/Deduction', icon: DollarSign },
     { key: 'holidays', label: 'Holiday Setting', icon: Calendar },
     { key: 'payslips', label: 'Payslip Generation', icon: FileText },
   ]
@@ -1289,10 +1584,6 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search employees..."
                 className="w-full pl-9 pr-3 py-2.5 rounded-xl border text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200" style={{ borderColor: 'var(--light-gray)' }} />
             </div>
-            <select value={branch} onChange={e => setBranch(e.target.value)}
-              className="px-3 py-2.5 rounded-xl border text-xs cursor-pointer hover:border-gray-400 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
-              {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
-            </select>
             <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
               className="px-3 py-2.5 rounded-xl border text-xs cursor-pointer hover:border-gray-400 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
               {EMP_DEPARTMENTS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
@@ -1304,7 +1595,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                   style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
                   {syncing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Sync from Hub
                 </button>
-                <button onClick={() => { setEditingId(''); setFormData({ firstName: '', lastName: '', email: '', department: 'ADMINISTRATION', branch: 'SBEA', jobTitle: '', rateType: 'DAILY', dailyRate: 0, monthlyRate: 0, scheduleIn: '08:00', scheduleOut: '17:00', restDay: 'SUNDAY' }); setShowForm(true) }}
+                <button onClick={() => { setEditingId(''); setFormData({ firstName: '', lastName: '', email: '', department: 'ADMINISTRATION', branch: 'SBEA', jobTitle: '', rateType: 'DAILY', dailyRate: 0, monthlyRate: 0, scheduleIn: '08:00', scheduleOut: '17:00', daySchedules: null, restDay: 'SUNDAY' }); setShowForm(true) }}
                   className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium text-white transition-all hover:opacity-90 active:scale-[0.97]"
                   style={{ background: 'var(--teal)' }}>
                   <Plus size={13} /> Add Employee
@@ -1334,13 +1625,19 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                           onChange={toggleAllEmployees} />
                       </th>
                     )}
-                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Name</th>
-                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Department</th>
-                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Branch</th>
-                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Job Title</th>
-                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Rate Type</th>
-                    <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Rate</th>
-                    <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Bio ID</th>
+                    <SortTh field="empName" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Name</SortTh>
+                    <SortTh field="empDept" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Department</SortTh>
+                    <SortTh field="empBranch" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Branch</SortTh>
+                    <SortTh field="empJobTitle" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Job Title</SortTh>
+                    <SortTh field="empRateType" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Rate Type</SortTh>
+                    <SortTh field="empRate" className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Rate</SortTh>
+                    <SortTh field="empBioId" className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Bio ID</SortTh>
+                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Email</th>
+                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Phone</th>
+                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>TIN</th>
+                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>SSS</th>
+                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>PhilHealth</th>
+                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Pag-IBIG</th>
                     <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Schedule</th>
                     <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Payslips</th>
                     {canWrite && <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}></th>}
@@ -1348,8 +1645,17 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                 </thead>
                 <tbody>
                   {filteredEmployees.length === 0 ? (
-                    <tr><td colSpan={canWrite ? 12 : 10} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No employees found. Sync from CRM or add manually.</td></tr>
-                  ) : filteredEmployees.map(emp => (
+                    <tr><td colSpan={canWrite ? 18 : 16} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No employees found. Sync from CRM or add manually.</td></tr>
+                  ) : sortRows(filteredEmployees, (e) => {
+                    if (sortField === 'empName') return `${e.lastName} ${e.firstName}`
+                    if (sortField === 'empDept') return e.department
+                    if (sortField === 'empBranch') return e.branch
+                    if (sortField === 'empJobTitle') return e.jobTitle
+                    if (sortField === 'empRateType') return e.rateType
+                    if (sortField === 'empRate') return e.rateType === 'MONTHLY' ? toNum(e.monthlyRate) : toNum(e.dailyRate)
+                    if (sortField === 'empBioId') return e.employeeBioId
+                    return null
+                  }).map(emp => (
                     <React.Fragment key={emp.id}>
                     <tr className="border-t hover:bg-gray-50" style={{ borderColor: 'var(--light-gray)' }}>
                       {canWrite && (
@@ -1367,7 +1673,18 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                         {formatCurrency(toNum(emp.rateType === 'DAILY' ? emp.dailyRate : emp.monthlyRate))}
                       </td>
                       <td className="px-3 py-2.5 text-center" style={{ color: 'var(--mid-gray)' }}>{emp.employeeBioId || '—'}</td>
-                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{emp.scheduleIn} – {emp.scheduleOut}</td>
+                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{emp.email || '—'}</td>
+                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{emp.phone || '—'}</td>
+                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{emp.tinNumber || '—'}</td>
+                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{emp.sssNumber || '—'}</td>
+                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{emp.philhealthNumber || '—'}</td>
+                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{emp.pagibigNumber || '—'}</td>
+                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>
+                        {emp.scheduleIn} – {emp.scheduleOut}
+                        {emp.daySchedules && Object.keys(emp.daySchedules).length > 0 && (
+                          <span className="ml-1 text-[10px] px-1 py-0.5 rounded" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }} title={Object.entries(emp.daySchedules).map(([d, s]) => `${d}: ${(s as {in:string;out:string}).in}–${(s as {in:string;out:string}).out}`).join(', ')}>+{Object.keys(emp.daySchedules).length} override{Object.keys(emp.daySchedules).length > 1 ? 's' : ''}</span>
+                        )}
+                      </td>
                       <td className="px-3 py-2.5 text-center">
                         <button onClick={() => fetchEmpPastPayslips(emp.id)}
                           className="p-2 rounded-lg hover:bg-blue-50 transition-colors active:scale-95" title="View past payslips">
@@ -1384,7 +1701,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                     </tr>
                     {expandedEmpPayslips === emp.id && (
                       <tr className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                        <td colSpan={canWrite ? 12 : 10} className="px-4 py-3" style={{ background: '#f8fafc' }}>
+                        <td colSpan={canWrite ? 18 : 16} className="px-4 py-3" style={{ background: '#f8fafc' }}>
                           {loadingPastPayslips ? (
                             <div className="flex items-center gap-2 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>
                               <Loader2 size={12} className="animate-spin" /> Loading payslips...
@@ -1515,14 +1832,55 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                     </div>
                   </div>
                   <div>
-                    <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Schedule In</label>
+                    <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Default Schedule In</label>
                     <input type="time" value={formData.scheduleIn || '08:00'} onChange={e => setFormData(p => ({ ...p, scheduleIn: e.target.value }))}
                       className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                   <div>
-                    <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Schedule Out</label>
+                    <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Default Schedule Out</label>
                     <input type="time" value={formData.scheduleOut || '17:00'} onChange={e => setFormData(p => ({ ...p, scheduleOut: e.target.value }))}
                       className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="font-medium mb-2 block" style={{ color: 'var(--charcoal)' }}>Per-Day Schedule Overrides <span className="text-xs font-normal" style={{ color: 'var(--mid-gray)' }}>(leave blank to use default)</span></label>
+                    <div className="space-y-1.5">
+                      {DAYS_OF_WEEK.map(day => {
+                        const ds = formData.daySchedules || {}
+                        const override = ds[day]
+                        const hasOverride = !!override
+                        return (
+                          <div key={day} className="flex items-center gap-2">
+                            <label className="flex items-center gap-1.5 w-28 text-xs">
+                              <input type="checkbox" checked={hasOverride}
+                                onChange={() => {
+                                  const next = { ...ds }
+                                  if (hasOverride) { delete next[day] } else { next[day] = { in: formData.scheduleIn || '08:00', out: formData.scheduleOut || '17:00' } }
+                                  setFormData(p => ({ ...p, daySchedules: Object.keys(next).length > 0 ? next : null }))
+                                }}
+                                className="rounded" style={{ accentColor: 'var(--teal)' }} />
+                              {day.charAt(0) + day.slice(1).toLowerCase()}
+                            </label>
+                            {hasOverride && (
+                              <>
+                                <input type="time" value={override.in}
+                                  onChange={e => {
+                                    const next = { ...ds, [day]: { ...override, in: e.target.value } }
+                                    setFormData(p => ({ ...p, daySchedules: next }))
+                                  }}
+                                  className="px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)', width: '110px' }} />
+                                <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</span>
+                                <input type="time" value={override.out}
+                                  onChange={e => {
+                                    const next = { ...ds, [day]: { ...override, out: e.target.value } }
+                                    setFormData(p => ({ ...p, daySchedules: next }))
+                                  }}
+                                  className="px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)', width: '110px' }} />
+                              </>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
 
                   <div className="col-span-2 border-t pt-3 mt-1" style={{ borderColor: 'var(--light-gray)' }}>
@@ -1742,6 +2100,33 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
           </div>
 
           <div className="rounded-xl border p-4" style={{ borderColor: 'var(--light-gray)' }}>
+            <h4 className="text-xs font-bold mb-3" style={{ color: 'var(--charcoal)' }}>Late & Overtime Rules</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <div>
+                <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Late Grace Period (minutes)</label>
+                <input type="number" min={0} max={60} value={empSettings.lateGraceMinutes ?? 0}
+                  onChange={e => setEmpSettings(s => s ? { ...s, lateGraceMinutes: parseInt(e.target.value) || 0 } : s)}
+                  className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
+                <p className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>Minutes late from time-in with no deduction (e.g. 5)</p>
+              </div>
+              <div>
+                <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>OT Interval (minutes)</label>
+                <input type="number" min={1} max={60} value={empSettings.otIntervalMinutes ?? 30}
+                  onChange={e => setEmpSettings(s => s ? { ...s, otIntervalMinutes: parseInt(e.target.value) || 30 } : s)}
+                  className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
+                <p className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>OT counted only in full intervals (e.g. 30 = round down to nearest 30min)</p>
+              </div>
+              <div>
+                <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Max OT per Day (hours)</label>
+                <input type="number" min={0} step="0.5" value={toNum(empSettings.otMaxHours) || 3}
+                  onChange={e => setEmpSettings(s => s ? { ...s, otMaxHours: parseFloat(e.target.value) || 3 } : s)}
+                  className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
+                <p className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>Maximum OT hours considered per day (e.g. 3)</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border p-4" style={{ borderColor: 'var(--light-gray)' }}>
             <h4 className="text-xs font-bold mb-3" style={{ color: 'var(--charcoal)' }}>Deduction Toggles</h4>
             <div className="flex flex-wrap gap-4 text-xs">
               {[
@@ -1759,6 +2144,46 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
             </div>
           </div>
 
+          <div className="rounded-xl border p-4" style={{ borderColor: 'var(--light-gray)' }}>
+            <h4 className="text-xs font-bold mb-3" style={{ color: 'var(--charcoal)' }}>EE Share Deduction Timing</h4>
+            <p className="text-[10px] mb-3" style={{ color: 'var(--mid-gray)' }}>When to deduct the employee share of SSS, PhilHealth, and Pag-IBIG per month:</p>
+            <div className="flex flex-wrap gap-3 text-xs">
+              {[
+                { value: 'HALF_HALF', label: 'Half in 1st Cutoff + Half in 2nd Cutoff' },
+                { value: 'FIRST_CUTOFF', label: 'Full deduction in 1st Cutoff only' },
+                { value: 'SECOND_CUTOFF', label: 'Full deduction in 2nd Cutoff only' },
+              ].map(opt => (
+                <label key={opt.value} className="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-lg border transition-colors"
+                  style={{ borderColor: empSettings?.benefitDeductionTiming === opt.value ? 'var(--teal)' : 'var(--light-gray)', background: empSettings?.benefitDeductionTiming === opt.value ? 'var(--pale-teal)' : 'transparent' }}>
+                  <input type="radio" name="benefitDeductionTiming" value={opt.value}
+                    checked={empSettings?.benefitDeductionTiming === opt.value}
+                    onChange={e => setEmpSettings(s => s ? { ...s, benefitDeductionTiming: e.target.value } : s)} />
+                  <span style={{ color: 'var(--charcoal)' }}>{opt.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-xl border p-4" style={{ borderColor: 'var(--light-gray)' }}>
+            <h4 className="text-xs font-bold mb-3" style={{ color: 'var(--charcoal)' }}>Certificate Settings — HR Officer Name (COE/COC Signatory)</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              {[
+                { key: 'hrOfficerNameSBEA', label: 'Sandbox East' },
+                { key: 'hrOfficerNameSBGH', label: 'Sandbox Greenhills' },
+                { key: 'hrOfficerNameVERDANA', label: 'Verdana Store' },
+              ].map(f => (
+                <div key={f.key}>
+                  <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>{f.label}</label>
+                  <input type="text" value={(empSettings as unknown as Record<string, string>)[f.key] || ''}
+                    onChange={e => setEmpSettings(s => s ? { ...s, [f.key]: e.target.value } : s)}
+                    placeholder="e.g. MARIA DELA CRUZ"
+                    className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] mt-2" style={{ color: 'var(--mid-gray)' }}>These names will appear as the signatory on Certificate of Employment and Certificate of Consultation PDFs for each branch.</p>
+          </div>
+
           {canWrite && (
             <div className="flex items-center justify-end gap-3">
               {settingsSaved && (
@@ -1767,7 +2192,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                 </span>
               )}
               <button onClick={saveSettings}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium text-white transition-colors hover:opacity-80 active:scale-[0.97]" style={{ background: 'var(--teal)' }}>
                 <Save size={13} /> Save Settings
               </button>
             </div>
@@ -1798,6 +2223,13 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
               style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
               <QrCode size={13} /> Request Link / QR
             </button>
+            {canWrite && (
+              <button onClick={() => setShowReqSettings(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border"
+                style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                <Settings size={13} /> Settings
+              </button>
+            )}
           </div>
 
           {/* Request Link / QR Modal */}
@@ -1835,6 +2267,73 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
             </div>
           )}
 
+          {/* Request Approval Settings Modal */}
+          {showReqSettings && empSettings && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+              <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Request Approval Settings</h3>
+                  <button onClick={() => setShowReqSettings(false)}><X size={16} /></button>
+                </div>
+                <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>
+                  Positions listed below require Admin or Accountant approval. Branch admins (SBEA Admin, SBGH Admin) cannot approve requests from employees with these job titles.
+                </p>
+                <div className="space-y-2 mb-3">
+                  {(empSettings.requestApprovalExcludedPositions || []).map((pos, i) => (
+                    <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                      <span className="flex-1" style={{ color: 'var(--charcoal)' }}>{pos}</span>
+                      <button onClick={() => {
+                        const updated = (empSettings.requestApprovalExcludedPositions || []).filter((_, j) => j !== i)
+                        setEmpSettings({ ...empSettings, requestApprovalExcludedPositions: updated })
+                      }} className="text-red-400 hover:text-red-600"><X size={13} /></button>
+                    </div>
+                  ))}
+                  {(empSettings.requestApprovalExcludedPositions || []).length === 0 && (
+                    <p className="text-[10px] italic py-2" style={{ color: 'var(--mid-gray)' }}>No excluded positions. All branch admins can approve all requests.</p>
+                  )}
+                </div>
+                <div className="relative mb-4">
+                  <input type="text" value={excludedPositionInput} onChange={e => setExcludedPositionInput(e.target.value)}
+                    placeholder="Search job titles..."
+                    className="w-full px-3 py-2 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  {excludedPositionInput.trim() && (() => {
+                    const currentExcluded = empSettings.requestApprovalExcludedPositions || []
+                    const allTitles = [...new Set(employees.map(e => e.jobTitle).filter((t): t is string => !!t && t.trim() !== ''))]
+                    const filtered = allTitles.filter(t =>
+                      t.toLowerCase().includes(excludedPositionInput.toLowerCase()) && !currentExcluded.includes(t)
+                    )
+                    return filtered.length > 0 ? (
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg max-h-40 overflow-y-auto z-10" style={{ borderColor: 'var(--light-gray)' }}>
+                        {filtered.map(title => (
+                          <button key={title} onClick={() => {
+                            setEmpSettings({ ...empSettings, requestApprovalExcludedPositions: [...currentExcluded, title] })
+                            setExcludedPositionInput('')
+                          }}
+                            className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50" style={{ color: 'var(--charcoal)' }}>
+                            {title}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg z-10 px-3 py-2 text-xs" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                        No matching job titles found
+                      </div>
+                    )
+                  })()}
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setShowReqSettings(false)}
+                    className="px-4 py-2 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>Cancel</button>
+                  <button onClick={async () => {
+                    await saveSettings()
+                    setShowReqSettings(false)
+                  }}
+                    className="px-4 py-2 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>Save</button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
             <table className="w-full text-xs">
               <thead>
@@ -1851,15 +2350,39 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
               <tbody>
                 {requests.length === 0 ? (
                   <tr><td colSpan={(reqStatusFilter === 'PENDING' && canWrite) || reqStatusFilter === 'APPROVED' ? 6 : 5} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No {reqStatusFilter.toLowerCase()} requests</td></tr>
-                ) : requests.map(r => (
+                ) : requests.map(r => {
+                  const reqName = r.employee
+                    ? `${r.employee.firstName} ${r.employee.lastName}`
+                    : r.consultant?.name || '—'
+                  return (
                   <tr key={r.id} className="border-t transition-colors hover:bg-gray-50/50" style={{ borderColor: 'var(--light-gray)' }}>
-                    <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{r.employee.firstName} {r.employee.lastName}</td>
+                    <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{reqName}</td>
                     <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>
                       {REQUEST_TYPES.find(t => t.value === r.requestType)?.label || r.requestType}
                       {r.leaveType && <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'var(--off-white)' }}>{LEAVE_TYPES.find(t => t.value === r.leaveType)?.label || r.leaveType}</span>}
                     </td>
                     <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{fmtDate(r.startDate)}{r.endDate ? ` – ${fmtDate(r.endDate)}` : ''}</td>
-                    <td className="px-3 py-2.5 max-w-[200px] truncate" style={{ color: 'var(--mid-gray)' }}>{r.reason || '—'}</td>
+                    <td className="px-3 py-2.5 max-w-[200px]" style={{ color: 'var(--mid-gray)' }}>
+                      {(r.requestType === 'CHANGE_TIME_IN' || r.requestType === 'CHANGE_TIME_OUT') ? (
+                        <div className="space-y-0.5">
+                          <span className="font-mono text-xs">{r.requestType === 'CHANGE_TIME_IN' ? r.requestedTimeIn : r.requestedTimeOut}</span>
+                          {r.attachment && <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700">DTR attached</span>}
+                          {r.reason && <div className="text-[10px] truncate">{r.reason}</div>}
+                        </div>
+                      ) : r.requestType === 'CHANGE_SCHEDULE' ? (
+                        <div className="space-y-0.5">
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: r.changeToWorkingDay ? '#dcfce7' : '#fef3c7', color: r.changeToWorkingDay ? '#059669' : '#d97706' }}>
+                            → {r.changeToWorkingDay ? 'Working Day' : 'Rest Day'}
+                          </span>
+                          {r.changeToWorkingDay && r.requestedScheduleIn && (
+                            <div className="text-[10px] font-mono">{r.requestedScheduleIn} – {r.requestedScheduleOut}</div>
+                          )}
+                          {r.reason && <div className="text-[10px] truncate">{r.reason}</div>}
+                        </div>
+                      ) : (
+                        <span className="truncate block">{r.reason || '—'}</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{fmtDate(r.createdAt)}</td>
                     {reqStatusFilter === 'PENDING' && canWrite && (
                       <td className="px-3 py-2.5 text-center">
@@ -1883,10 +2406,19 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                             <FileDown size={12} /> Generate COE
                           </button>
                         )}
+                        {r.requestType === 'CERTIFICATE_OF_CONSULTATION' && (
+                          <button onClick={() => generateCocPdf(r)}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-medium text-white mx-auto"
+                            style={{ background: 'var(--teal)' }}
+                            title="Generate Certificate of Consultation PDF">
+                            <FileDown size={12} /> Generate COC
+                          </button>
+                        )}
                       </td>
                     )}
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -1904,18 +2436,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
               Upload the .dat file from your biometric device. Select the branch first.
             </p>
 
-            <div className="flex items-center gap-3 mb-4">
-              <label className="text-xs font-medium" style={{ color: 'var(--charcoal)' }}>Branch:</label>
-              {BRANCHES.filter(b => b.value).map(b => (
-                <button key={b.value} onClick={() => setBranch(b.value)}
-                  className="px-3.5 py-2 rounded-lg text-xs font-medium transition-all"
-                  style={branch === b.value
-                    ? { background: 'var(--teal)', color: 'white' }
-                    : { background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-                  {b.label}
-                </button>
-              ))}
-            </div>
+            {!branch && <p className="text-xs mb-4 px-3 py-2 rounded-lg" style={{ background: '#fef3c7', color: '#78350f' }}>Please select a branch from the top filter first.</p>}
 
             <input ref={fileInputRef} type="file" accept=".dat,.txt,.csv" onChange={handleFileUpload}
               className="hidden" />
@@ -2103,6 +2624,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                     <th className="text-left px-4 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Date</th>
                     <th className="text-left px-4 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Branch</th>
                     <th className="text-right px-4 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Records</th>
+                    <th className="text-center px-4 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Status</th>
                     <th className="text-center px-4 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>
                   </tr>
                 </thead>
@@ -2114,8 +2636,39 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                       <td className="px-4 py-2.5" style={{ color: 'var(--mid-gray)' }}>{BRANCHES.find(b => b.value === u.branch)?.label || u.branch || '—'}</td>
                       <td className="px-4 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{u._count.records}</td>
                       <td className="px-4 py-2.5 text-center">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium" style={{
+                          background: u.status === 'FINALIZED' ? '#dcfce7' : u.status === 'ACCEPTED' ? '#fef3c7' : '#f3f4f6',
+                          color: u.status === 'FINALIZED' ? '#16a34a' : u.status === 'ACCEPTED' ? '#d97706' : '#6b7280',
+                        }}>{u.status}</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
                         <div className="flex items-center justify-center gap-1">
-                          <button onClick={() => { setSubTab('tk-data'); if (u.branch) setBranch(u.branch) }}
+                          {canWrite && u.status === 'UPLOADED' && (
+                            <button onClick={async () => {
+                              await fetch('/api/payroll/timekeeping/upload-status', {
+                                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ uploadId: u.id, status: 'ACCEPTED' }),
+                              })
+                              fetchPastUploads()
+                            }} className="px-2 py-1 rounded-lg text-[10px] font-medium text-white transition-colors hover:opacity-80"
+                              style={{ background: '#d97706' }} title="Accept TK Data — records will appear in Timekeeping Data">
+                              Accept TK Data
+                            </button>
+                          )}
+                          {canWrite && u.status === 'ACCEPTED' && (
+                            <button onClick={async () => {
+                              if (!confirm('Finalize this upload? Finalized data will be used for Payslip Generation.')) return
+                              await fetch('/api/payroll/timekeeping/upload-status', {
+                                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ uploadId: u.id, status: 'FINALIZED' }),
+                              })
+                              fetchPastUploads()
+                            }} className="px-2 py-1 rounded-lg text-[10px] font-medium text-white transition-colors hover:opacity-80"
+                              style={{ background: '#16a34a' }} title="Finalize TK Data — records will be used in Payslip Generation">
+                              Finalize
+                            </button>
+                          )}
+                          <button onClick={() => { setSubTab('tk-data') }}
                             className="p-1.5 rounded-lg hover:bg-blue-50 transition-colors" title="View records" style={{ color: 'var(--teal)' }}>
                             <Eye size={14} />
                           </button>
@@ -2157,10 +2710,6 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
       {subTab === 'tk-data' && (
         <div className="space-y-3">
           <div className="flex items-center flex-wrap gap-2">
-            <select value={branch} onChange={e => setBranch(e.target.value)}
-              className="px-3 py-2.5 rounded-xl border text-xs cursor-pointer hover:border-gray-400 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
-              {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
-            </select>
             <input type="date" value={tkStartDate} onChange={e => setTkStartDate(e.target.value)}
               className="px-3 py-2.5 rounded-xl border text-xs cursor-pointer hover:border-gray-400 transition-colors" style={{ borderColor: 'var(--light-gray)' }} />
             <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</span>
@@ -2170,22 +2719,73 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
               className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium text-white transition-all hover:opacity-90 active:scale-[0.97]" style={{ background: 'var(--teal)' }}>
               <Search size={13} /> Load
             </button>
+            {canWrite && pastUploads.some(u => u.status === 'UPLOADED') && (
+              <button onClick={async () => {
+                if (!confirm('Accept all uploaded TK data? Accepted records will appear in the table below.')) return
+                for (const u of pastUploads.filter(u => u.status === 'UPLOADED')) {
+                  await fetch('/api/payroll/timekeeping/upload-status', {
+                    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ uploadId: u.id, status: 'ACCEPTED' }),
+                  })
+                }
+                fetchPastUploads()
+                fetchTimekeeping()
+              }}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium text-white transition-all hover:opacity-80 active:scale-[0.97]" style={{ background: '#d97706' }}>
+                <CheckCircle2 size={13} /> Accept TK Data
+              </button>
+            )}
+            {canWrite && pastUploads.some(u => u.status === 'ACCEPTED') && (
+              <button onClick={async (e) => {
+                if (!confirm('Finalize all accepted TK data? Finalized data will be used for Payslip Generation.')) return
+                const btn = e.currentTarget
+                btn.disabled = true
+                btn.textContent = 'Finalizing...'
+                btn.style.background = '#9ca3af'
+                // Find all unique uploadIds from current records that are ACCEPTED
+                const uploadIds = new Set<string>()
+                for (const r of tkRecords) {
+                  if (r.upload?.status === 'ACCEPTED' && r.upload?.id) uploadIds.add(r.upload.id)
+                }
+                // Also include pastUploads with ACCEPTED status
+                for (const u of pastUploads) {
+                  if (u.status === 'ACCEPTED') uploadIds.add(u.id)
+                }
+                for (const uid of uploadIds) {
+                  await fetch('/api/payroll/timekeeping/upload-status', {
+                    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ uploadId: uid, status: 'FINALIZED' }),
+                  })
+                }
+                fetchPastUploads()
+                fetchTimekeeping()
+                setError('')
+              }}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium text-white transition-all hover:opacity-80 active:scale-[0.97]" style={{ background: '#16a34a' }}>
+                <CheckCircle2 size={13} /> Finalize TK Data
+              </button>
+            )}
+            {canWrite && pastUploads.length > 0 && pastUploads.every(u => u.status === 'FINALIZED') && (
+              <span className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium text-white" style={{ background: '#059669' }}>
+                <CheckCircle2 size={13} /> TK Data Finalized
+              </span>
+            )}
           </div>
 
           <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
             <table className="w-full text-xs">
               <thead>
                 <tr style={{ background: 'var(--off-white)' }}>
-                  <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Employee</th>
-                  <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Date</th>
-                  <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Time In</th>
-                  <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Time Out</th>
-                  <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Hours</th>
-                  <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Late (min)</th>
-                  <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>UT (min)</th>
-                  <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>OT (min)</th>
+                  <SortTh field="tkEmp" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Employee</SortTh>
+                  <SortTh field="tkDate" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Date</SortTh>
+                  <SortTh field="tkIn" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Time In</SortTh>
+                  <SortTh field="tkOut" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Time Out</SortTh>
+                  <SortTh field="tkHours" className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Hours</SortTh>
+                  <SortTh field="tkLate" className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Late (min)</SortTh>
+                  <SortTh field="tkUT" className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>UT (min)</SortTh>
+                  <SortTh field="tkOT" className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>OT (min)</SortTh>
                   <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Flags</th>
-                  <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Source</th>
+                  <SortTh field="tkSource" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Source</SortTh>
                   <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Remarks</th>
                   {canWrite && <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>}
                 </tr>
@@ -2193,7 +2793,18 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
               <tbody>
                 {tkRecords.length === 0 ? (
                   <tr><td colSpan={canWrite ? 12 : 11} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No timekeeping records for selected period</td></tr>
-                ) : tkRecords.map(r => tkEditId === r.id ? (
+                ) : sortRows(tkRecords, (r) => {
+                  if (sortField === 'tkEmp') return `${r.employee.lastName} ${r.employee.firstName}`
+                  if (sortField === 'tkDate') return r.date
+                  if (sortField === 'tkIn') return r.timeIn
+                  if (sortField === 'tkOut') return r.timeOut
+                  if (sortField === 'tkHours') return toNum(r.hoursWorked)
+                  if (sortField === 'tkLate') return r.lateMinutes
+                  if (sortField === 'tkUT') return r.undertimeMinutes
+                  if (sortField === 'tkOT') return r.overtimeMinutes
+                  if (sortField === 'tkSource') return r.source
+                  return null
+                }).map(r => tkEditId === r.id ? (
                   <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: '#f0fdf4' }}>
                     <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{r.employee.firstName} {r.employee.lastName}</td>
                     <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{fmtDate(r.date)}</td>
@@ -2220,8 +2831,9 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                   </tr>
                 ) : (() => {
                   const isConflict = r.source === 'BIOMETRIC_CONFLICT'
+                  const isFiling = r.source === 'FILING'
                   const hasMissingTime = (!r.timeIn || !r.timeOut) && (r.timeIn || r.timeOut)
-                  const rowBg = isConflict ? '#fef9c3' : hasMissingTime ? '#fff1f2' : undefined
+                  const rowBg = isConflict ? '#fef9c3' : isFiling ? '#eff6ff' : hasMissingTime ? '#fff1f2' : undefined
                   const approvedReqs = hasMissingTime ? getApprovedRequestsForRecord(r) : []
                   return (
                   <tr key={r.id} className="border-t transition-colors hover:bg-gray-50/50" style={{ borderColor: 'var(--light-gray)', background: rowBg }}>
@@ -2248,9 +2860,10 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                           </span>
                         )}
                         {r.dtrProof && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700">DTR</span>}
+                        {isFiling && <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700">Filed</span>}
                       </div>
                     </td>
-                    <td className="px-3 py-2 text-[10px]" style={{ color: isConflict ? '#92400e' : 'var(--mid-gray)' }}>{r.source === 'BIOMETRIC_CONFLICT' ? 'CONFLICT' : r.source}</td>
+                    <td className="px-3 py-2 text-[10px]" style={{ color: isConflict ? '#92400e' : isFiling ? '#1d4ed8' : 'var(--mid-gray)' }}>{r.source === 'BIOMETRIC_CONFLICT' ? 'CONFLICT' : r.source === 'FILING' ? 'FILING' : r.source}</td>
                     <td className="px-3 py-2 text-[10px]" style={{ color: 'var(--mid-gray)' }}>{r.remarks || '—'}</td>
                     {canWrite && (
                       <td className="px-3 py-2 text-center">
@@ -2455,8 +3068,10 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
          ═══════════════════════════════════════════════════════════════ */}
       {subTab === 'benefits' && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Employee Benefits (SSS, PhilHealth, Pag-IBIG, Tax)</p>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Employee Benefits (SSS, PhilHealth, Pag-IBIG)</p>
+            </div>
             {canWrite && (
               <div className="flex items-center gap-2">
                 {selectedBenefitEmpIds.size > 0 && (
@@ -2484,21 +3099,25 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                         onChange={toggleAllBenefitEmps} />
                     </th>
                   )}
-                  <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Employee</th>
-                  <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>SSS (EE / ER)</th>
-                  <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>PhilHealth (EE / ER)</th>
-                  <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Pag-IBIG (EE / ER)</th>
-                  <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Tax (EE)</th>
+                  <SortTh field="benEmp" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Employee</SortTh>
+                  <SortTh field="benSSS" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>SSS (EE / ER)</SortTh>
+                  <SortTh field="benPhil" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>PhilHealth (EE / ER)</SortTh>
+                  <SortTh field="benPag" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Pag-IBIG (EE / ER)</SortTh>
                 </tr>
               </thead>
               <tbody>
                 {filteredEmployees.length === 0 ? (
                   <tr><td colSpan={canWrite ? 6 : 5} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No employees</td></tr>
-                ) : filteredEmployees.map(emp => {
+                ) : sortRows(filteredEmployees, (e) => {
+                  if (sortField === 'benEmp') return `${e.lastName} ${e.firstName}`
+                  if (sortField === 'benSSS') return toNum(e.benefits.find(b => b.benefitType === 'SSS')?.employeeShare)
+                  if (sortField === 'benPhil') return toNum(e.benefits.find(b => b.benefitType === 'PHILHEALTH')?.employeeShare)
+                  if (sortField === 'benPag') return toNum(e.benefits.find(b => b.benefitType === 'PAGIBIG')?.employeeShare)
+                  return null
+                }).map(emp => {
                   const sss = emp.benefits.find(b => b.benefitType === 'SSS')
                   const phil = emp.benefits.find(b => b.benefitType === 'PHILHEALTH')
                   const pag = emp.benefits.find(b => b.benefitType === 'PAGIBIG')
-                  const tax = emp.benefits.find(b => b.benefitType === 'TAX')
                   return (
                     <tr key={emp.id} className="border-t transition-colors hover:bg-gray-50/50" style={{ borderColor: 'var(--light-gray)' }}>
                       {canWrite && (
@@ -2516,9 +3135,6 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                       </td>
                       <td className="px-3 py-2.5 font-mono" style={{ color: 'var(--mid-gray)' }}>
                         {pag ? `${formatCurrency(toNum(pag.employeeShare))} / ${formatCurrency(toNum(pag.employerShare))}` : '—'}
-                      </td>
-                      <td className="px-3 py-2.5 font-mono" style={{ color: 'var(--mid-gray)' }}>
-                        {tax ? formatCurrency(toNum(tax.employeeShare)) : '—'}
                       </td>
                     </tr>
                   )
@@ -2616,16 +3232,355 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
       )}
 
       {/* ═══════════════════════════════════════════════════════════════
+         TAB: ALLOWANCE/DEDUCTION
+         ═══════════════════════════════════════════════════════════════ */}
+      {subTab === 'adjustments' && (
+        <div className="space-y-3">
+          <div className="flex items-center flex-wrap gap-2">
+            <button onClick={async () => {
+              if (!branch) return
+              setAdjLoading(true)
+              const cp = `${adjCutoffYear}-${adjCutoffMonth}-${adjCutoffHalf}`
+              try {
+                // Fetch ALL employees for this branch (not filtered by search/dept)
+                const allBranchEmps: Employee[] = await (await fetch(`/api/payroll/employees?branch=${branch}`)).json()
+                const r = await fetch(`/api/payroll/cutoff-adjustments?cutoffPeriod=${cp}&branch=${branch}`)
+                const data = await r.json()
+                const existing = Array.isArray(data) ? data : []
+                // Group existing adjustments by employee (multiple rows per employee)
+                const existByEmp = new Map<string, { allowance: number; allowanceType: string; allowanceLabel: string; deduction: number; deductionLabel: string }[]>()
+                for (const a of existing) {
+                  if (!existByEmp.has(a.employeeId)) existByEmp.set(a.employeeId, [])
+                  existByEmp.get(a.employeeId)!.push(a)
+                }
+                const rows: AdjustmentRow[] = []
+                let rk = 0
+                for (const emp of allBranchEmps) {
+                  const empAdjs = existByEmp.get(emp.id)
+                  if (empAdjs && empAdjs.length > 0) {
+                    for (const ex of empAdjs) {
+                      rows.push({
+                        employeeId: emp.id,
+                        employeeName: `${emp.firstName} ${emp.lastName}`,
+                        allowance: toNum(ex.allowance),
+                        allowanceType: ex.allowanceType || 'NON_TAXABLE',
+                        allowanceLabel: ex.allowanceLabel || '',
+                        deduction: toNum(ex.deduction),
+                        deductionLabel: ex.deductionLabel || '',
+                        rowKey: `r${rk++}`,
+                      })
+                    }
+                  } else {
+                    rows.push({
+                      employeeId: emp.id,
+                      employeeName: `${emp.firstName} ${emp.lastName}`,
+                      allowance: 0, allowanceType: 'NON_TAXABLE', allowanceLabel: '',
+                      deduction: 0, deductionLabel: '',
+                      rowKey: `r${rk++}`,
+                    })
+                  }
+                }
+                setAdjRows(rows)
+                setAdjSaved(false)
+              } catch { /* ignore */ }
+              setAdjLoading(false)
+            }} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium text-white transition-all hover:opacity-90" style={{ background: 'var(--teal)' }}>
+              <Search size={13} /> Load
+            </button>
+            <button onClick={async () => {
+              if (!branch) return
+              setAdjLoading(true)
+              const cp = `${adjCutoffYear}-${adjCutoffMonth}-${adjCutoffHalf}`
+              try {
+                // Fetch ALL employees for this branch
+                const allBranchEmps: Employee[] = await (await fetch(`/api/payroll/employees?branch=${branch}`)).json()
+                const r = await fetch(`/api/payroll/cutoff-adjustments?cutoffPeriod=${cp}&branch=${branch}`, { method: 'PUT' })
+                const data = await r.json()
+                const prevByEmp = new Map<string, { allowance: number; allowanceType: string; allowanceLabel: string; deduction: number; deductionLabel: string }[]>()
+                for (const a of (data.adjustments || [])) {
+                  if (!prevByEmp.has(a.employeeId)) prevByEmp.set(a.employeeId, [])
+                  prevByEmp.get(a.employeeId)!.push(a)
+                }
+                const rows: AdjustmentRow[] = []
+                let rk = 0
+                for (const emp of allBranchEmps) {
+                  const empAdjs = prevByEmp.get(emp.id)
+                  if (empAdjs && empAdjs.length > 0) {
+                    for (const ex of empAdjs) {
+                      rows.push({
+                        employeeId: emp.id,
+                        employeeName: `${emp.firstName} ${emp.lastName}`,
+                        allowance: toNum(ex.allowance),
+                        allowanceType: ex.allowanceType || 'NON_TAXABLE',
+                        allowanceLabel: ex.allowanceLabel || '',
+                        deduction: toNum(ex.deduction),
+                        deductionLabel: ex.deductionLabel || '',
+                        rowKey: `r${rk++}`,
+                      })
+                    }
+                  } else {
+                    rows.push({
+                      employeeId: emp.id,
+                      employeeName: `${emp.firstName} ${emp.lastName}`,
+                      allowance: 0, allowanceType: 'NON_TAXABLE', allowanceLabel: '',
+                      deduction: 0, deductionLabel: '',
+                      rowKey: `r${rk++}`,
+                    })
+                  }
+                }
+                setAdjRows(rows)
+                setAdjSaved(false)
+              } catch { /* ignore */ }
+              setAdjLoading(false)
+            }} className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-medium border transition-all hover:opacity-80" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+              <Download size={13} /> Pre-fill from Previous
+            </button>
+          </div>
+
+          {adjLoading ? (
+            <div className="flex items-center justify-center py-12"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} /></div>
+          ) : adjRows.length === 0 ? (
+            <p className="text-center py-8 text-xs" style={{ color: 'var(--mid-gray)' }}>Select a branch and click Load to view adjustments for this cutoff.</p>
+          ) : (
+            <>
+              {selectedAdjEmpIds.size > 0 && canWrite && (
+                <div className="flex items-center gap-2">
+                  <button onClick={() => { setBulkAdj({}); setShowBulkAdjModal(true) }}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-white" style={{ background: '#7c3aed' }}>
+                    <DollarSign size={13} /> Set for Selected ({selectedAdjEmpIds.size})
+                  </button>
+                </div>
+              )}
+
+              <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr style={{ background: 'var(--off-white)' }}>
+                      {canWrite && (
+                        <th className="text-center px-2 py-2.5">
+                          <input type="checkbox" checked={adjRows.length > 0 && selectedAdjEmpIds.size === adjRows.length}
+                            onChange={() => {
+                              if (selectedAdjEmpIds.size === adjRows.length) setSelectedAdjEmpIds(new Set())
+                              else setSelectedAdjEmpIds(new Set(adjRows.map(r => r.employeeId)))
+                            }} />
+                        </th>
+                      )}
+                      <SortTh field="adjEmp" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Employee</SortTh>
+                      <SortTh field="adjAllow" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Allowance</SortTh>
+                      <SortTh field="adjType" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Type</SortTh>
+                      <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Allowance Label</th>
+                      <SortTh field="adjDed" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Deduction</SortTh>
+                      <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Deduction Label</th>
+                      {canWrite && <th className="px-2 py-2.5 w-8"></th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      const sorted = sortRows(adjRows, (r) => {
+                        if (sortField === 'adjEmp') return r.employeeName
+                        if (sortField === 'adjAllow') return r.allowance
+                        if (sortField === 'adjType') return r.allowanceType
+                        if (sortField === 'adjDed') return r.deduction
+                        return null
+                      })
+                      // Track which employee names have already been shown
+                      const shownEmps = new Set<string>()
+                      return sorted.map((row) => {
+                        const actualIdx = adjRows.findIndex(r => r.rowKey === row.rowKey)
+                        const updateRow = (field: string, value: unknown) => {
+                          setAdjRows(prev => prev.map(r => r.rowKey === row.rowKey ? { ...r, [field]: value } : r))
+                          setAdjSaved(false)
+                        }
+                        const isFirstForEmp = !shownEmps.has(row.employeeId)
+                        if (isFirstForEmp) shownEmps.add(row.employeeId)
+                        const empRowCount = adjRows.filter(r => r.employeeId === row.employeeId).length
+                        return (
+                          <tr key={row.rowKey} className="border-t transition-colors hover:bg-gray-50/50" style={{ borderColor: 'var(--light-gray)' }}>
+                            {canWrite && (
+                              <td className="text-center px-2 py-2">
+                                {isFirstForEmp && (
+                                  <input type="checkbox" checked={selectedAdjEmpIds.has(row.employeeId)}
+                                    onChange={() => {
+                                      const next = new Set(selectedAdjEmpIds)
+                                      if (next.has(row.employeeId)) next.delete(row.employeeId); else next.add(row.employeeId)
+                                      setSelectedAdjEmpIds(next)
+                                    }} />
+                                )}
+                              </td>
+                            )}
+                            <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>
+                              {isFirstForEmp ? (row.employeeName || row.employeeId) : ''}
+                            </td>
+                            <td className="px-2 py-1">
+                              <input type="number" min={0} step="0.01" value={row.allowance || ''} onChange={e => updateRow('allowance', parseFloat(e.target.value) || 0)}
+                                className="w-24 px-2 py-1.5 rounded border text-xs text-right" style={{ borderColor: 'var(--light-gray)' }} />
+                            </td>
+                            <td className="px-2 py-1">
+                              <select value={row.allowanceType} onChange={e => updateRow('allowanceType', e.target.value)}
+                                className="px-2 py-1.5 rounded border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+                                <option value="NON_TAXABLE">Non-Taxable</option>
+                                <option value="TAXABLE">Taxable</option>
+                              </select>
+                            </td>
+                            <td className="px-2 py-1">
+                              <input type="text" value={row.allowanceLabel} onChange={e => updateRow('allowanceLabel', e.target.value)}
+                                placeholder="e.g. De Minimis"
+                                className="w-28 px-2 py-1.5 rounded border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+                            </td>
+                            <td className="px-2 py-1">
+                              <input type="number" min={0} step="0.01" value={row.deduction || ''} onChange={e => updateRow('deduction', parseFloat(e.target.value) || 0)}
+                                className="w-24 px-2 py-1.5 rounded border text-xs text-right" style={{ borderColor: 'var(--light-gray)' }} />
+                            </td>
+                            <td className="px-2 py-1">
+                              <input type="text" value={row.deductionLabel} onChange={e => updateRow('deductionLabel', e.target.value)}
+                                placeholder="e.g. Cash Advance"
+                                className="w-28 px-2 py-1.5 rounded border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+                            </td>
+                            {canWrite && (
+                              <td className="px-1 py-1">
+                                <div className="flex items-center gap-0.5">
+                                  {isFirstForEmp && (
+                                    <button onClick={() => {
+                                      const newRow: AdjustmentRow = {
+                                        employeeId: row.employeeId,
+                                        employeeName: row.employeeName,
+                                        allowance: 0, allowanceType: 'NON_TAXABLE', allowanceLabel: '',
+                                        deduction: 0, deductionLabel: '',
+                                        rowKey: `r${Date.now()}`,
+                                      }
+                                      // Insert after last row of this employee
+                                      const lastIdx = adjRows.reduce((acc, r, i) => r.employeeId === row.employeeId ? i : acc, actualIdx)
+                                      setAdjRows(prev => [...prev.slice(0, lastIdx + 1), newRow, ...prev.slice(lastIdx + 1)])
+                                      setAdjSaved(false)
+                                    }} className="p-0.5 rounded hover:bg-green-50" title="Add another line">
+                                      <Plus size={13} className="text-green-600" />
+                                    </button>
+                                  )}
+                                  {empRowCount > 1 && (
+                                    <button onClick={() => {
+                                      setAdjRows(prev => prev.filter(r => r.rowKey !== row.rowKey))
+                                      setAdjSaved(false)
+                                    }} className="p-0.5 rounded hover:bg-red-50" title="Remove this line">
+                                      <X size={13} className="text-red-400" />
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            )}
+                          </tr>
+                        )
+                      })
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+
+              {canWrite && (
+                <div className="flex items-center justify-end gap-3">
+                  {adjSaved && (
+                    <span className="flex items-center gap-1 text-xs font-medium" style={{ color: '#16a34a' }}>
+                      <CheckCircle2 size={14} /> Saved
+                    </span>
+                  )}
+                  <button onClick={async () => {
+                    setAdjSaving(true)
+                    const cp = `${adjCutoffYear}-${adjCutoffMonth}-${adjCutoffHalf}`
+                    try {
+                      await fetch('/api/payroll/cutoff-adjustments', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ cutoffPeriod: cp, branch, adjustments: adjRows }),
+                      })
+                      setAdjSaved(true)
+                    } catch { setError('Failed to save adjustments') }
+                    setAdjSaving(false)
+                  }} disabled={adjSaving}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium text-white transition-colors hover:opacity-80 active:scale-[0.97]"
+                    style={{ background: 'var(--teal)' }}>
+                    {adjSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Save Adjustments
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Bulk Adjustment Modal */}
+          {showBulkAdjModal && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowBulkAdjModal(false)}>
+              <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full" onClick={e => e.stopPropagation()}>
+                <h3 className="text-sm font-bold mb-4" style={{ color: 'var(--charcoal)' }}>Bulk Set Allowance/Deduction</h3>
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <label className="font-medium mb-1 block">Allowance Amount</label>
+                    <input type="number" min={0} step="0.01" value={bulkAdj.allowance || ''} onChange={e => setBulkAdj(prev => ({ ...prev, allowance: parseFloat(e.target.value) || 0 }))}
+                      className="w-full px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                  <div>
+                    <label className="font-medium mb-1 block">Type</label>
+                    <select value={bulkAdj.allowanceType || 'NON_TAXABLE'} onChange={e => setBulkAdj(prev => ({ ...prev, allowanceType: e.target.value }))}
+                      className="w-full px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
+                      <option value="NON_TAXABLE">Non-Taxable</option>
+                      <option value="TAXABLE">Taxable</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="font-medium mb-1 block">Allowance Label</label>
+                    <input type="text" value={bulkAdj.allowanceLabel || ''} onChange={e => setBulkAdj(prev => ({ ...prev, allowanceLabel: e.target.value }))}
+                      placeholder="e.g. De Minimis"
+                      className="w-full px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                  <div>
+                    <label className="font-medium mb-1 block">Deduction Amount</label>
+                    <input type="number" min={0} step="0.01" value={bulkAdj.deduction || ''} onChange={e => setBulkAdj(prev => ({ ...prev, deduction: parseFloat(e.target.value) || 0 }))}
+                      className="w-full px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                  <div>
+                    <label className="font-medium mb-1 block">Deduction Label</label>
+                    <input type="text" value={bulkAdj.deductionLabel || ''} onChange={e => setBulkAdj(prev => ({ ...prev, deductionLabel: e.target.value }))}
+                      placeholder="e.g. Cash Advance"
+                      className="w-full px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 mt-5">
+                  <button onClick={() => setShowBulkAdjModal(false)} className="px-4 py-2 rounded-lg text-xs font-medium" style={{ color: 'var(--mid-gray)' }}>Cancel</button>
+                  <button onClick={() => {
+                    setAdjRows(prev => prev.map(r => selectedAdjEmpIds.has(r.employeeId) ? {
+                      ...r,
+                      allowance: bulkAdj.allowance ?? r.allowance,
+                      allowanceType: bulkAdj.allowanceType || r.allowanceType,
+                      allowanceLabel: bulkAdj.allowanceLabel ?? r.allowanceLabel,
+                      deduction: bulkAdj.deduction ?? r.deduction,
+                      deductionLabel: bulkAdj.deductionLabel ?? r.deductionLabel,
+                    } : r))
+                    setAdjSaved(false)
+                    setShowBulkAdjModal(false)
+                  }} className="px-4 py-2 rounded-lg text-xs font-medium text-white" style={{ background: '#7c3aed' }}>
+                    Apply to Selected
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════
          TAB: HOLIDAY SETTING
          ═══════════════════════════════════════════════════════════════ */}
       {subTab === 'holidays' && (
         <div className="space-y-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <select value={holidayYear} onChange={e => setHolidayYear(parseInt(e.target.value))}
               className="px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
               {[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map(y => (
                 <option key={y} value={y}>{y}</option>
               ))}
+            </select>
+            <select value={holidayBranchFilter} onChange={e => setHolidayBranchFilter(e.target.value)}
+              className="px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+              <option value="">All Branches</option>
+              <option value="SBEA">SBEA</option>
+              <option value="SBGH">SBGH</option>
+              <option value="VERDANA">Verdana</option>
             </select>
             {canWrite && (
               <>
@@ -2646,10 +3601,10 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
             <table className="w-full text-xs">
               <thead>
                 <tr style={{ background: 'var(--off-white)' }}>
-                  <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Date</th>
-                  <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Holiday</th>
-                  <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Type</th>
-                  <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Branch</th>
+                  <SortTh field="holDate" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Date</SortTh>
+                  <SortTh field="holName" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Holiday</SortTh>
+                  <SortTh field="holType" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Type</SortTh>
+                  <SortTh field="holBranch" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Branch</SortTh>
                   <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Recurring</th>
                   {canWrite && <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}></th>}
                 </tr>
@@ -2657,7 +3612,13 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
               <tbody>
                 {holidays.length === 0 ? (
                   <tr><td colSpan={6} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No holidays for {holidayYear}</td></tr>
-                ) : holidays.map(h => (
+                ) : sortRows(holidays, (h) => {
+                  if (sortField === 'holDate') return h.date
+                  if (sortField === 'holName') return h.name
+                  if (sortField === 'holType') return h.holidayType
+                  if (sortField === 'holBranch') return h.branch
+                  return null
+                }).map(h => (
                   <tr key={h.id} className="border-t transition-colors hover:bg-gray-50/50" style={{ borderColor: 'var(--light-gray)' }}>
                     <td className="px-3 py-2.5 font-mono" style={{ color: 'var(--charcoal)' }}>{fmtDate(h.date)}</td>
                     <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{h.name}</td>
@@ -2807,27 +3768,11 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
       {subTab === 'payslips' && (
         <div className="space-y-3">
           {/* Controls */}
+          {(() => {
+            const allLocked = payslips.length > 0 && payslips.every(p => p.status === 'LOCKED')
+            return (
           <div className="flex items-center flex-wrap gap-2">
-            <select value={cutoffMonth} onChange={e => setCutoffMonth(parseInt(e.target.value))}
-              className="px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
-              {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-            </select>
-            <input type="number" value={cutoffYear} onChange={e => setCutoffYear(parseInt(e.target.value))} min={2020} max={2030}
-              className="w-20 px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
-            <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
-              {[1, 2].map(h => (
-                <button key={h} onClick={() => setCutoffHalf(h)}
-                  className="px-3 py-2 text-xs font-medium"
-                  style={cutoffHalf === h ? { background: 'var(--teal)', color: 'white' } : { color: 'var(--charcoal)' }}>
-                  {h === 1 ? '1st Half' : '2nd Half'}
-                </button>
-              ))}
-            </div>
-            <select value={branch} onChange={e => setBranch(e.target.value)}
-              className="px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
-              {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
-            </select>
-            {canWrite && (
+            {canWrite && !allLocked && (
               <>
                 <button onClick={generatePayslips} disabled={generating}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-white"
@@ -2842,9 +3787,43 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                     <CheckCircle2 size={13} /> Finalize All
                   </button>
                 )}
+                {payslips.length > 0 && payslips.every(p => p.status === 'FINAL') && (
+                  <button onClick={lockAndFinalizeEmployees} disabled={lockingPayroll}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-50"
+                    style={{ background: '#dc2626' }}>
+                    {lockingPayroll ? <Loader2 size={13} className="animate-spin" /> : <Shield size={13} />}
+                    {lockingPayroll ? 'Locking...' : 'Lock & Finalize Payroll'}
+                  </button>
+                )}
               </>
             )}
+            {canWrite && allLocked && (
+              <button onClick={unlockEmployeePayroll} disabled={unlockingPayroll}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border disabled:opacity-50"
+                style={{ borderColor: '#4338ca', color: '#4338ca' }}>
+                {unlockingPayroll ? <Loader2 size={13} className="animate-spin" /> : <ShieldOff size={13} />}
+                {unlockingPayroll ? 'Unlocking...' : 'Unlock Payroll'}
+              </button>
+            )}
+            {payslips.length > 0 && (
+              <button onClick={downloadAllPayslipPdfs} disabled={downloadingAllPdfs}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border disabled:opacity-50"
+                style={{ borderColor: 'var(--charcoal)', color: 'var(--charcoal)' }}>
+                {downloadingAllPdfs ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />}
+                {downloadingAllPdfs ? 'Generating...' : 'Download All PDFs'}
+              </button>
+            )}
+            {payslips.length > 0 && (
+              <button onClick={emailAllPayslips} disabled={emailingAll}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-50"
+                style={{ background: '#7c3aed' }}>
+                {emailingAll ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />}
+                {emailingAll ? 'Sending...' : 'Email All'}
+              </button>
+            )}
           </div>
+            )
+          })()}
 
           <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
             Cutoff: {MONTHS[cutoffMonth - 1]} {cutoffYear} — {cutoffHalf === 1 ? '1st Half' : '2nd Half'}
@@ -2856,22 +3835,35 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
             <table className="w-full text-xs">
               <thead>
                 <tr style={{ background: 'var(--off-white)' }}>
-                  <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Employee</th>
-                  <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Days</th>
-                  <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Basic</th>
-                  <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>OT</th>
-                  <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Holiday</th>
-                  <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Gross</th>
-                  <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Deductions</th>
-                  <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Net Pay</th>
-                  <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Status</th>
+                  <SortTh field="psEmp" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Employee</SortTh>
+                  <SortTh field="psDays" className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Days</SortTh>
+                  <SortTh field="psBasic" className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Basic</SortTh>
+                  <SortTh field="psOT" className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>OT</SortTh>
+                  <SortTh field="psHoliday" className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Holiday</SortTh>
+                  <SortTh field="psGross" className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Gross</SortTh>
+                  <SortTh field="psDed" className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Deductions</SortTh>
+                  <SortTh field="psTax" className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Tax</SortTh>
+                  <SortTh field="psNet" className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Net Pay</SortTh>
+                  <SortTh field="psStatus" className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Status</SortTh>
                   <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}></th>
                 </tr>
               </thead>
               <tbody>
                 {payslips.length === 0 ? (
-                  <tr><td colSpan={10} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No payslips generated for this period. Click &quot;Generate Payslips&quot; to compute.</td></tr>
-                ) : payslips.map(p => (
+                  <tr><td colSpan={11} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No payslips generated for this period. Click &quot;Generate Payslips&quot; to compute.</td></tr>
+                ) : sortRows(payslips, (p) => {
+                  if (sortField === 'psEmp') return `${p.employee.lastName} ${p.employee.firstName}`
+                  if (sortField === 'psDays') return toNum(p.daysWorked)
+                  if (sortField === 'psBasic') return toNum(p.basicPay)
+                  if (sortField === 'psOT') return toNum(p.overtimePay)
+                  if (sortField === 'psHoliday') return toNum(p.holidayPay)
+                  if (sortField === 'psGross') return toNum(p.grossPay)
+                  if (sortField === 'psDed') return toNum(p.totalDeductions)
+                  if (sortField === 'psTax') return toNum(p.taxDeduction)
+                  if (sortField === 'psNet') return toNum(p.netPay)
+                  if (sortField === 'psStatus') return p.status
+                  return null
+                }).map(p => (
                   <>
                     <tr key={p.id} className="border-t hover:bg-gray-50 cursor-pointer" style={{ borderColor: 'var(--light-gray)' }}
                       onClick={() => setExpandedPayslip(expandedPayslip === p.id ? '' : p.id)}>
@@ -2885,10 +3877,11 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                       <td className="px-3 py-2.5 text-right font-mono">{formatCurrency(toNum(p.holidayPay))}</td>
                       <td className="px-3 py-2.5 text-right font-mono font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(toNum(p.grossPay))}</td>
                       <td className="px-3 py-2.5 text-right font-mono" style={{ color: '#dc2626' }}>({formatCurrency(toNum(p.totalDeductions))})</td>
+                      <td className="px-3 py-2.5 text-right font-mono" style={{ color: '#d97706' }}>{formatCurrency(toNum(p.taxDeduction))}</td>
                       <td className="px-3 py-2.5 text-right font-mono font-bold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(toNum(p.netPay))}</td>
                       <td className="px-3 py-2.5 text-center">
                         <span className="px-2 py-0.5 rounded text-[10px] font-semibold"
-                          style={{ background: p.status === 'FINAL' ? '#dcfce7' : '#fef3c7', color: p.status === 'FINAL' ? '#059669' : '#d97706' }}>
+                          style={{ background: p.status === 'LOCKED' ? '#e0e7ff' : p.status === 'FINAL' ? '#dcfce7' : '#fef3c7', color: p.status === 'LOCKED' ? '#4338ca' : p.status === 'FINAL' ? '#059669' : '#d97706' }}>
                           {p.status}
                         </span>
                       </td>
@@ -2898,7 +3891,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                     </tr>
                     {expandedPayslip === p.id && (
                       <tr key={`${p.id}-detail`}>
-                        <td colSpan={10} className="px-6 py-4" style={{ background: 'var(--off-white)' }}>
+                        <td colSpan={11} className="px-6 py-4" style={{ background: 'var(--off-white)' }}>
                           <div className="grid grid-cols-3 gap-4 text-xs">
                             <div>
                               <p className="font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Earnings</p>
@@ -2944,12 +3937,12 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                               {pdfGenerating === p.id ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />}
                               Download PDF
                             </button>
-                            <button onClick={() => emailPayslip(p)} disabled={emailSending === p.id || !p.employee.email}
+                            <button onClick={() => emailPayslip(p)} disabled={emailSending === p.id || !p.employee.email || emailSent[p.id]}
                               className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium text-white transition-all hover:opacity-90 active:scale-[0.97]"
-                              style={{ background: p.employee.email ? '#7c3aed' : '#9ca3af' }}
+                              style={{ background: emailSent[p.id] ? '#059669' : p.employee.email ? '#7c3aed' : '#9ca3af' }}
                               title={p.employee.email ? `Email to ${p.employee.email}` : 'No email address'}>
-                              {emailSending === p.id ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />}
-                              Email Employee
+                              {emailSending === p.id ? <Loader2 size={13} className="animate-spin" /> : emailSent[p.id] ? <CheckCircle2 size={13} /> : <Mail size={13} />}
+                              {emailSent[p.id] ? 'Sent' : 'Email Employee'}
                             </button>
                             {p.pdfUrl && (
                               <a href={p.pdfUrl} target="_blank" rel="noopener noreferrer"
@@ -2976,6 +3969,7 @@ export default function EmployeePayroll({ canWrite }: { canWrite: boolean }) {
                     <td className="px-3 py-2.5 text-right font-mono">{formatCurrency(payslips.reduce((s, p) => s + toNum(p.holidayPay), 0))}</td>
                     <td className="px-3 py-2.5 text-right font-mono">{formatCurrency(payslips.reduce((s, p) => s + toNum(p.grossPay), 0))}</td>
                     <td className="px-3 py-2.5 text-right font-mono" style={{ color: '#dc2626' }}>({formatCurrency(payslips.reduce((s, p) => s + toNum(p.totalDeductions), 0))})</td>
+                    <td className="px-3 py-2.5 text-right font-mono" style={{ color: '#d97706' }}>{formatCurrency(payslips.reduce((s, p) => s + toNum(p.taxDeduction), 0))}</td>
                     <td className="px-3 py-2.5 text-right font-mono font-bold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(payslips.reduce((s, p) => s + toNum(p.netPay), 0))}</td>
                     <td colSpan={2}></td>
                   </tr>
