@@ -783,6 +783,11 @@ export default function PayrollPage() {
   const [loadingTax, setLoadingTax] = useState(false)
   const [selectedTaxIds, setSelectedTaxIds] = useState<string[]>([])
   const [showRemitted, setShowRemitted] = useState(false)
+  // Payment edit state
+  const [editPayment, setEditPayment] = useState<{ id: string; type: 'tax' | 'salary'; paymentDate: string; proofUrl: string; notes: string } | null>(null)
+  const [editPaymentSaving, setEditPaymentSaving] = useState(false)
+  // Salary payment history
+  const [salaryPayments, setSalaryPayments] = useState<{ id: string; paymentDate: string; totalAmount: number; fromAccount: { accountNumber: string; accountTitle: string }; proofUrl: string | null; notes: string | null; cutoffPeriod: string; branch: string }[]>([])
 
   // Tax settings
   const [showTaxSettings, setShowTaxSettings] = useState(false)
@@ -891,11 +896,12 @@ export default function PayrollPage() {
     try {
       const params = new URLSearchParams()
       if (branch) params.set('branch', branch)
+      params.set('payrollType', taxFilter)
       const res = await fetch(`/api/payroll/tax-payable?${params}`)
       setTaxPayableEntries(await res.json())
     } catch { setTaxPayableEntries([]) }
     finally { setLoadingTax(false) }
-  }, [branch])
+  }, [branch, taxFilter])
 
   const fetchTaxPayments = useCallback(async () => {
     try {
@@ -934,7 +940,7 @@ export default function PayrollPage() {
       fetchTaxPayments()
       fetchTaxSettings()
     }
-  }, [mainTab, fetchTaxPayable, fetchTaxPayments, fetchTaxSettings])
+  }, [mainTab, taxFilter, fetchTaxPayable, fetchTaxPayments, fetchTaxSettings])
 
   // Fetch salaries payable
   const fetchSalariesPayable = useCallback(async () => {
@@ -972,7 +978,11 @@ export default function PayrollPage() {
   }, [])
 
   useEffect(() => {
-    if (mainTab === 'salaries-payable') fetchSalariesPayable()
+    if (mainTab === 'salaries-payable') {
+      fetchSalariesPayable()
+      fetch('/api/payroll/salary-payments?paymentType=CONSULTANT')
+        .then(r => r.json()).then(setSalaryPayments).catch(() => setSalaryPayments([]))
+    }
   }, [mainTab, fetchSalariesPayable])
 
   useEffect(() => {
@@ -1125,6 +1135,28 @@ export default function PayrollPage() {
       await fetchTaxPayments()
     } catch { setError('Failed to record as other income') }
     finally { setRecordingOtherIncome(false) }
+  }
+
+  /* ── Save edited payment (tax or salary) ── */
+  const saveEditPayment = async () => {
+    if (!editPayment) return
+    setEditPaymentSaving(true)
+    try {
+      const url = editPayment.type === 'tax' ? '/api/payroll/tax-payments' : '/api/payroll/salary-payments'
+      const res = await fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editPayment.id, paymentDate: editPayment.paymentDate, proofUrl: editPayment.proofUrl || null, notes: editPayment.notes || null }),
+      })
+      if (!res.ok) { const d = await res.json(); setError(d.error || 'Failed to save'); return }
+      setEditPayment(null)
+      if (editPayment.type === 'tax') await fetchTaxPayments()
+      else {
+        fetch('/api/payroll/salary-payments?paymentType=CONSULTANT')
+          .then(r => r.json()).then(setSalaryPayments).catch(() => setSalaryPayments([]))
+      }
+    } catch { setError('Failed to save payment') }
+    finally { setEditPaymentSaving(false) }
   }
 
   /* ── Save COA mapping ── */
@@ -1615,7 +1647,7 @@ export default function PayrollPage() {
   }
 
   const downloadAllPdfs = async () => {
-    const active = payrollPreviews.filter(p => p.grossPay > 0 || p.orderCount > 0)
+    const active = payrollPreviews.filter(p => p.grossPay > 0 || p.orderCount > 0 || p.existingStatus !== null)
     setDownloadingAll(true)
     for (const p of active) {
       try { await downloadPdf(p); await new Promise(r => setTimeout(r, 600)) }
@@ -1689,7 +1721,7 @@ export default function PayrollPage() {
 
   const emailAllClinicians = async () => {
     setEmailingAll(true)
-    const visible = payrollPreviews.filter(p => p.grossPay > 0 || p.orderCount > 0)
+    const visible = payrollPreviews.filter(p => p.grossPay > 0 || p.orderCount > 0 || p.existingStatus !== null)
     for (const p of visible) {
       try { await emailClinician(p) } catch (e) { console.error('Email error for', p.consultantName, e) }
       await new Promise(r => setTimeout(r, 800))
@@ -1868,11 +1900,11 @@ export default function PayrollPage() {
                                 else setSelectedTaxIds(prev => prev.filter(id => !allUnremitted.find(x => x.payrollEntryId === id)))
                               }} />
                           </th>
-                          <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Consultant</th>
+                          <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>{taxFilter === 'EMPLOYEE' ? 'Employee' : 'Consultant'}</th>
                           <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Cutoff Period</th>
                           <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Branch</th>
                           <th className="text-right px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Gross Pay</th>
-                          <th className="text-right px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Tax (5%)</th>
+                          <th className="text-right px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Withholding Tax</th>
                           <th className="text-center px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Status</th>
                         </tr>
                       </thead>
@@ -1959,6 +1991,7 @@ export default function PayrollPage() {
                       <th className="text-center px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Payslips</th>
                       <th className="text-right px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Amount Paid</th>
                       <th className="text-center px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Proof</th>
+                      <th className="px-4 py-3" />
                     </tr>
                   </thead>
                   <tbody>
@@ -1978,6 +2011,15 @@ export default function PayrollPage() {
                               className="text-xs underline" style={{ color: 'var(--teal)' }}>View</a>
                           ) : <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>—</span>}
                         </td>
+                        <td className="px-4 py-3 text-center">
+                          {canWrite && (
+                            <button onClick={() => setEditPayment({ id: tp.id, type: 'tax', paymentDate: tp.paymentDate.slice(0, 10), proofUrl: tp.proofUrl || '', notes: tp.notes || '' })}
+                              className="text-xs px-2 py-1 rounded-lg border font-medium hover:bg-gray-50"
+                              style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                              Edit
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1986,11 +2028,50 @@ export default function PayrollPage() {
             </div>
           )}
 
-          {/* Employee placeholder */}
-          {taxFilter === 'EMPLOYEE' && (
-            <div className="flex flex-col items-center justify-center py-12 text-center rounded-2xl border border-dashed" style={{ borderColor: 'var(--light-gray)' }}>
-              <p className="text-sm font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Employee Tax (BIR Form 1601-C)</p>
-              <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Employee payroll is coming soon. This section will show withholding taxes for employed staff.</p>
+
+          {/* Edit Payment Modal */}
+          {editPayment && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+                <div className="flex items-center justify-between px-6 py-5 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+                  <h3 className="text-base font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                    Edit {editPayment.type === 'tax' ? 'Tax' : 'Salary'} Payment
+                  </h3>
+                  <button onClick={() => setEditPayment(null)} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+                </div>
+                <div className="px-6 py-5 space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Payment Date</label>
+                    <input type="date" value={editPayment.paymentDate}
+                      onChange={e => setEditPayment(prev => prev ? { ...prev, paymentDate: e.target.value } : prev)}
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Proof URL (optional)</label>
+                    <input type="url" value={editPayment.proofUrl}
+                      onChange={e => setEditPayment(prev => prev ? { ...prev, proofUrl: e.target.value } : prev)}
+                      placeholder="https://..."
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Notes (optional)</label>
+                    <textarea value={editPayment.notes}
+                      onChange={e => setEditPayment(prev => prev ? { ...prev, notes: e.target.value } : prev)}
+                      rows={3}
+                      className="w-full px-3 py-2 rounded-xl border text-sm outline-none resize-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                </div>
+                <div className="px-6 pb-5 flex gap-3">
+                  <button onClick={() => setEditPayment(null)}
+                    className="flex-1 py-2.5 rounded-xl border text-sm font-medium" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                    Cancel
+                  </button>
+                  <button onClick={saveEditPayment} disabled={editPaymentSaving}
+                    className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+                    {editPaymentSaving ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -3120,7 +3201,7 @@ export default function PayrollPage() {
                   </button>
 
                   {/* Download ALL PDFs */}
-                  {payrollPreviews.some(p => p.grossPay > 0 || p.orderCount > 0) && (
+                  {payrollPreviews.some(p => p.grossPay > 0 || p.orderCount > 0 || p.existingStatus !== null) && (
                     <button onClick={downloadAllPdfs} disabled={downloadingAll}
                       className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border disabled:opacity-50"
                       style={{ borderColor: 'var(--charcoal)', color: 'var(--charcoal)' }}>
@@ -3128,7 +3209,7 @@ export default function PayrollPage() {
                       {downloadingAll ? 'Generating PDFs...' : 'Download ALL PDFs'}
                     </button>
                   )}
-                  {payrollPreviews.some(p => p.grossPay > 0 || p.orderCount > 0) && (
+                  {payrollPreviews.some(p => p.grossPay > 0 || p.orderCount > 0 || p.existingStatus !== null) && (
                     <button onClick={emailAllClinicians} disabled={emailingAll}
                       className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
                       style={{ background: '#c44b00' }}>
@@ -3143,7 +3224,7 @@ export default function PayrollPage() {
 
               {/* Preview table — expandable summary rows */}
               {payrollPreviews.length > 0 && (() => {
-                const visiblePreviews = payrollPreviews.filter(p => p.grossPay > 0 || p.orderCount > 0)
+                const visiblePreviews = payrollPreviews.filter(p => p.grossPay > 0 || p.orderCount > 0 || p.existingStatus !== null)
                 return (
                 <div className="space-y-3">
                   <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>
@@ -3836,6 +3917,58 @@ export default function PayrollPage() {
                 )}
               </div>
             )}
+            </div>
+          )}
+
+          {/* Salary Payment History */}
+          {salaryPayments.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--mid-gray)' }}>Payment History</p>
+              <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr style={{ background: 'var(--off-white)' }}>
+                      <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Payment Date</th>
+                      <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>From Account</th>
+                      <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Cutoff / Branch</th>
+                      <th className="text-right px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Amount Paid</th>
+                      <th className="text-center px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Proof</th>
+                      <th className="px-4 py-3" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {salaryPayments.map(sp => (
+                      <tr key={sp.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className="px-4 py-3 text-xs" style={{ color: 'var(--charcoal)' }}>
+                          {new Date(sp.paymentDate).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })}
+                        </td>
+                        <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                          {sp.fromAccount.accountNumber} — {sp.fromAccount.accountTitle}
+                        </td>
+                        <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                          {sp.cutoffPeriod}{sp.branch ? ` · ${sp.branch}` : ''}
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold text-xs" style={{ color: '#166534' }}>{formatCurrency(sp.totalAmount)}</td>
+                        <td className="px-4 py-3 text-center">
+                          {sp.proofUrl ? (
+                            <a href={sp.proofUrl} target="_blank" rel="noopener noreferrer"
+                              className="text-xs underline" style={{ color: 'var(--teal)' }}>View</a>
+                          ) : <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>—</span>}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {canWrite && (
+                            <button onClick={() => setEditPayment({ id: sp.id, type: 'salary', paymentDate: sp.paymentDate.slice(0, 10), proofUrl: sp.proofUrl || '', notes: sp.notes || '' })}
+                              className="text-xs px-2 py-1 rounded-lg border font-medium hover:bg-gray-50"
+                              style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                              Edit
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>

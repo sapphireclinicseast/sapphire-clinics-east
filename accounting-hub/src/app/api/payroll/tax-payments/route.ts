@@ -34,6 +34,31 @@ export async function GET(req: Request) {
   })))
 }
 
+export async function PUT(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+
+  try {
+    const { id, paymentDate, proofUrl, notes } = await req.json()
+    if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+
+    const updated = await prisma.taxPayment.update({
+      where: { id },
+      data: {
+        ...(paymentDate ? { paymentDate: new Date(paymentDate) } : {}),
+        proofUrl: proofUrl ?? undefined,
+        notes: notes ?? undefined,
+      },
+    })
+    return NextResponse.json({ id: updated.id })
+  } catch (err) {
+    console.error('Tax payment update error:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
 export async function POST(req: Request) {
   const session = await auth()
   if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {

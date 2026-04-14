@@ -4,6 +4,58 @@ import { prisma } from '@/lib/prisma'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
+export async function GET(req: Request) {
+  const session = await auth()
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { searchParams } = new URL(req.url)
+  const paymentType = searchParams.get('paymentType') || 'CONSULTANT'
+
+  const payments = await prisma.salaryPayment.findMany({
+    where: { paymentType },
+    include: { fromAccount: { select: { id: true, accountNumber: true, accountTitle: true } } },
+    orderBy: { paymentDate: 'desc' },
+  })
+
+  return NextResponse.json(payments.map(p => ({
+    id: p.id,
+    paymentDate: p.paymentDate.toISOString(),
+    totalAmount: Number(p.totalAmount),
+    fromAccount: p.fromAccount,
+    proofUrl: p.proofUrl,
+    notes: p.notes,
+    paymentType: p.paymentType,
+    cutoffPeriod: p.cutoffPeriod,
+    branch: p.branch,
+    createdAt: p.createdAt.toISOString(),
+  })))
+}
+
+export async function PUT(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+
+  try {
+    const { id, paymentDate, proofUrl, notes } = await req.json()
+    if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+
+    const updated = await prisma.salaryPayment.update({
+      where: { id },
+      data: {
+        ...(paymentDate ? { paymentDate: new Date(paymentDate) } : {}),
+        proofUrl: proofUrl ?? undefined,
+        notes: notes ?? undefined,
+      },
+    })
+    return NextResponse.json({ id: updated.id })
+  } catch (err) {
+    console.error('Salary payment update error:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
 export async function POST(req: Request) {
   const session = await auth()
   if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {

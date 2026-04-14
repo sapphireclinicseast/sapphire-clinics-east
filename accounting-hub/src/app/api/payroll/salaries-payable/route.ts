@@ -13,9 +13,10 @@ export async function GET(req: Request) {
 
   if (payrollType === 'CONSULTANT') {
     // Per-consultant payslip rows (LOCKED or FINAL entries with netPay > 0)
+    // Only show LOCKED entries — unlocked payrolls should not appear here
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {
-      status: { in: ['LOCKED', 'FINAL'] },
+      status: 'LOCKED',
       netPay: { gt: 0 },
     }
     if (!showRemitted) where.salariesRemitted = false
