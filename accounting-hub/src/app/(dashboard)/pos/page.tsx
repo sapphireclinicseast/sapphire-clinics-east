@@ -6573,6 +6573,7 @@ function ReferrerSettingsPanel() {
   const [search, setSearch] = useState('')
   const [error, setError] = useState('')
   const [uploading, setUploading] = useState(false)
+  const [saving, setSaving] = useState(false)
 
   const fetchReferrers = useCallback(async () => {
     setLoading(true)
@@ -6597,16 +6598,20 @@ function ReferrerSettingsPanel() {
 
   const save = async () => {
     if (!form.name.trim()) { setError('Name is required'); return }
+    if (saving) return
     setError('')
-    const body = { id: editingId, name: form.name.trim(), affiliation: form.affiliation.trim() || null, specialization: form.specialization.trim() || null }
-    const res = await fetch('/api/referrers', { method: editingId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-    if (res.ok) { setShowForm(false); fetchReferrers() }
-    else { const d = await res.json(); setError(d.error || 'Failed to save') }
+    setSaving(true)
+    try {
+      const body = { id: editingId, name: form.name.trim(), affiliation: form.affiliation.trim() || null, specialization: form.specialization.trim() || null }
+      const res = await fetch('/api/referrers', { method: editingId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      if (res.ok) { setShowForm(false); fetchReferrers() }
+      else { const d = await res.json(); setError(d.error || 'Failed to save') }
+    } finally { setSaving(false) }
   }
 
   const deleteReferrer = async (id: string) => {
     if (!window.confirm('Remove this referrer?')) return
-    await fetch('/api/referrers', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })
+    await fetch(`/api/referrers?id=${id}`, { method: 'DELETE' })
     fetchReferrers()
   }
 
@@ -6749,8 +6754,8 @@ function ReferrerSettingsPanel() {
                 className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
             </div>
             <div className="flex gap-2 pt-2">
-              <button onClick={save} className="px-4 py-2 rounded-xl text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
-                {editingId ? 'Update' : 'Add'}
+              <button onClick={save} disabled={saving} className="px-4 py-2 rounded-xl text-xs font-medium text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+                {saving ? 'Saving...' : editingId ? 'Update' : 'Add'}
               </button>
               <button onClick={() => setShowForm(false)} className="px-4 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
                 Cancel

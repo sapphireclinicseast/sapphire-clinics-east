@@ -62,6 +62,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Referrer name is required' }, { status: 400 })
     }
 
+    const existing = await prisma.referrer.findFirst({
+      where: { name: { equals: name.trim(), mode: 'insensitive' } },
+    })
+    if (existing) {
+      return NextResponse.json({ error: 'A referrer with this name already exists' }, { status: 409 })
+    }
+
     const referrer = await prisma.referrer.create({
       data: {
         name: name.trim(),
