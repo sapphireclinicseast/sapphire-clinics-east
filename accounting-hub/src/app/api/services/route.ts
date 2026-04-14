@@ -43,6 +43,11 @@ export async function GET(req: Request) {
     where.revenueType = revenueType
   }
 
+  const walletType = searchParams.get('walletType') || ''
+  if (walletType) {
+    where.walletType = walletType
+  }
+
   // Build orderBy
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const orderBy: any = {}
@@ -61,6 +66,7 @@ export async function GET(req: Request) {
       include: {
         revenueAccount: { select: { id: true, accountNumber: true, accountTitle: true } },
         unitPay: { select: { id: true, name: true } },
+        branchPrices: true,
         eligibleFor: {
           include: {
             eligibleService: { select: { id: true, name: true, department: true, price: true } },
@@ -71,7 +77,53 @@ export async function GET(req: Request) {
     prisma.service.count({ where }),
   ])
 
-  return NextResponse.json(paginatedResult(services, total, params))
+  // Auto-rollover: if newPriceEffectiveDate has passed, move newPrice → price and clear
+  const now = new Date()
+  const rolloverPromises: Promise<unknown>[] = []
+  for (const s of services) {
+    if (s.newPrice != null && s.newPriceEffectiveDate && s.newPriceEffectiveDate <= now) {
+      rolloverPromises.push(
+        prisma.service.update({
+          where: { id: s.id },
+          data: { price: s.newPrice, newPrice: null, newPriceEffectiveDate: null },
+        })
+      )
+      s.price = s.newPrice
+      s.newPrice = null
+      s.newPriceEffectiveDate = null
+    }
+    for (const bp of s.branchPrices) {
+      if (bp.newPrice != null && bp.newPriceEffectiveDate && bp.newPriceEffectiveDate <= now) {
+        rolloverPromises.push(
+          prisma.serviceBranchPrice.update({
+            where: { id: bp.id },
+            data: { price: bp.newPrice, newPrice: null, newPriceEffectiveDate: null },
+          })
+        )
+        bp.price = bp.newPrice
+        bp.newPrice = null
+        bp.newPriceEffectiveDate = null
+      }
+    }
+  }
+  if (rolloverPromises.length > 0) {
+    await Promise.all(rolloverPromises)
+  }
+
+  // For branch-specific users, filter branchPrices to only their branch
+  const userRole = session.user.role as string
+  let restrictBranch: string | null = null
+  if (userRole === 'SBEA_ADMIN' || userRole === 'SBEA_FRONTDESK') restrictBranch = 'SANDBOX_EAST'
+  else if (userRole === 'SBGH_ADMIN' || userRole === 'SBGH_FRONTDESK') restrictBranch = 'SANDBOX_GREENHILLS'
+
+  const filtered = restrictBranch
+    ? services.map(s => ({
+        ...s,
+        branchPrices: s.branchPrices.filter(bp => bp.branch === restrictBranch),
+      }))
+    : services
+
+  return NextResponse.json(paginatedResult(filtered, total, params))
 }
 
 export async function POST(req: Request) {
@@ -82,9 +134,9 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json()
-    const { name, department, branch, price, priceType, revenueType, walletType, packageSessions,
+    const { name, department, branch, price, newPrice, newPriceEffectiveDate, priceType, revenueType, walletType, packageSessions,
             hasDoctorFee, doctorFee, clinicFee, pwdDiscountClinicOnly, noPwdDiscount, description,
-            revenueAccountId, unitPayId, unitPayEnabled, eligibleServices } = body
+            revenueAccountId, unitPayId, unitPayEnabled, issuedOfficialInvoice, eligibleServices, branchPrices } = body
 
     if (!name?.trim() || !department || !branch || price == null) {
       return NextResponse.json({ error: 'Name, department, branch, and price are required' }, { status: 400 })
@@ -104,6 +156,8 @@ export async function POST(req: Request) {
         department,
         branch,
         price: parseFloat(price),
+        newPrice: newPrice ? parseFloat(newPrice) : null,
+        newPriceEffectiveDate: newPriceEffectiveDate ? new Date(newPriceEffectiveDate) : null,
         priceType: priceType && VALID_PRICE_TYPES.includes(priceType) ? priceType : 'FIXED',
         revenueType: revenueType && VALID_REVENUE_TYPES.includes(revenueType) ? revenueType : 'EARNED',
         walletType: revenueType === 'UNEARNED' && walletType ? walletType : null,
@@ -118,6 +172,7 @@ export async function POST(req: Request) {
         revenueAccountId: revenueAccountId || null,
         unitPayId: unitPayId || null,
         unitPayEnabled: unitPayEnabled !== undefined ? unitPayEnabled : true,
+        issuedOfficialInvoice: issuedOfficialInvoice || false,
         createdById: session.user.id,
       },
     })
@@ -132,6 +187,23 @@ export async function POST(req: Request) {
         })),
         skipDuplicates: true,
       })
+    }
+
+    // Create per-branch price overrides for ALL-branch services
+    if (branch === 'ALL' && Array.isArray(branchPrices) && branchPrices.length > 0) {
+      for (const bp of branchPrices) {
+        if (bp.branch && bp.price != null) {
+          await prisma.serviceBranchPrice.create({
+            data: {
+              serviceId: service.id,
+              branch: bp.branch,
+              price: parseFloat(bp.price),
+              newPrice: bp.newPrice ? parseFloat(bp.newPrice) : null,
+              newPriceEffectiveDate: bp.newPriceEffectiveDate ? new Date(bp.newPriceEffectiveDate) : null,
+            },
+          })
+        }
+      }
     }
 
     await prisma.auditLog.create({
@@ -158,9 +230,9 @@ export async function PUT(req: Request) {
 
   try {
     const body = await req.json()
-    const { id, name, department, branch, price, priceType, revenueType, walletType, packageSessions,
+    const { id, name, department, branch, price, newPrice, newPriceEffectiveDate, priceType, revenueType, walletType, packageSessions,
             hasDoctorFee, doctorFee, clinicFee, pwdDiscountClinicOnly, noPwdDiscount, description,
-            revenueAccountId, unitPayId, unitPayEnabled, eligibleServices } = body
+            revenueAccountId, unitPayId, unitPayEnabled, issuedOfficialInvoice, eligibleServices, branchPrices } = body
 
     if (!id) {
       return NextResponse.json({ error: 'Service ID is required' }, { status: 400 })
@@ -172,6 +244,8 @@ export async function PUT(req: Request) {
     if (department !== undefined) data.department = department
     if (branch !== undefined) data.branch = branch
     if (price !== undefined) data.price = parseFloat(price)
+    if (newPrice !== undefined) data.newPrice = newPrice ? parseFloat(newPrice) : null
+    if (newPriceEffectiveDate !== undefined) data.newPriceEffectiveDate = newPriceEffectiveDate ? new Date(newPriceEffectiveDate) : null
     if (priceType !== undefined) data.priceType = priceType
     if (revenueType !== undefined) {
       data.revenueType = revenueType
@@ -195,6 +269,7 @@ export async function PUT(req: Request) {
     if (revenueAccountId !== undefined) data.revenueAccountId = revenueAccountId || null
     if (unitPayId !== undefined) data.unitPayId = unitPayId || null
     if (unitPayEnabled !== undefined) data.unitPayEnabled = unitPayEnabled
+    if (issuedOfficialInvoice !== undefined) data.issuedOfficialInvoice = issuedOfficialInvoice
 
     const service = await prisma.service.update({ where: { id }, data })
 
@@ -213,12 +288,33 @@ export async function PUT(req: Request) {
       }
     }
 
-    // Re-fetch with eligibility + revenue account + unit pay
+    // Update per-branch price overrides if provided
+    if (branchPrices !== undefined) {
+      await prisma.serviceBranchPrice.deleteMany({ where: { serviceId: id } })
+      if (Array.isArray(branchPrices) && branchPrices.length > 0) {
+        for (const bp of branchPrices) {
+          if (bp.branch && bp.price != null) {
+            await prisma.serviceBranchPrice.create({
+              data: {
+                serviceId: id,
+                branch: bp.branch,
+                price: parseFloat(bp.price),
+                newPrice: bp.newPrice ? parseFloat(bp.newPrice) : null,
+                newPriceEffectiveDate: bp.newPriceEffectiveDate ? new Date(bp.newPriceEffectiveDate) : null,
+              },
+            })
+          }
+        }
+      }
+    }
+
+    // Re-fetch with eligibility + revenue account + unit pay + branch prices
     const result = await prisma.service.findUnique({
       where: { id },
       include: {
         revenueAccount: { select: { id: true, accountNumber: true, accountTitle: true } },
         unitPay: { select: { id: true, name: true } },
+        branchPrices: true,
         eligibleFor: {
           include: { eligibleService: { select: { id: true, name: true, department: true, price: true } } },
         },

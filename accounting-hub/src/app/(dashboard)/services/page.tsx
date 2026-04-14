@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import {
   Plus, Pencil, Trash2, X, Search, Stethoscope,
-  ArrowUpDown, ChevronUp, ChevronDown, AlertCircle, XCircle,
+  ArrowUpDown, ChevronUp, ChevronDown, AlertCircle, XCircle, FileCheck,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
@@ -27,6 +27,10 @@ interface Service {
   clinicFee: string | number | null
   pwdDiscountClinicOnly: boolean
   noPwdDiscount: boolean
+  issuedOfficialInvoice: boolean
+  newPrice?: string | number | null
+  newPriceEffectiveDate?: string | null
+  branchPrices?: { id?: string; branch: string; price: string | number; newPrice?: string | number | null; newPriceEffectiveDate?: string | null }[]
   description: string | null
   revenueAccountId: string | null
   revenueAccount?: { id: string; accountNumber: string; accountTitle: string } | null
@@ -103,6 +107,9 @@ export default function ServicesPage() {
   const [fDept, setFDept] = useState('PT')
   const [fBranch, setFBranch] = useState('ALL')
   const [fPrice, setFPrice] = useState('')
+  const [fNewPrice, setFNewPrice] = useState('')
+  const [fNewPriceDate, setFNewPriceDate] = useState('')
+  const [fBranchPrices, setFBranchPrices] = useState<{ branch: string; price: string; newPrice: string; newPriceDate: string }[]>([])
   const [fPriceType, setFPriceType] = useState('FIXED')
   const [fRevenueType, setFRevenueType] = useState('EARNED')
   const [fHasDoctorFee, setFHasDoctorFee] = useState(false)
@@ -110,6 +117,7 @@ export default function ServicesPage() {
   const [fClinicFee, setFClinicFee] = useState('')
   const [fPwdClinicOnly, setFPwdClinicOnly] = useState(false)
   const [fNoPwdDiscount, setFNoPwdDiscount] = useState(false)
+  const [fIssuedOfficialInvoice, setFIssuedOfficialInvoice] = useState(false)
   const [fDescription, setFDescription] = useState('')
   const [fWalletType, setFWalletType] = useState('')
   const [fVipTier, setFVipTier] = useState('')
@@ -215,9 +223,9 @@ export default function ServicesPage() {
   // Form handlers
   function openCreate() {
     setEditing(null)
-    setFName(''); setFDept('PT'); setFBranch('ALL'); setFPrice('')
+    setFName(''); setFDept('PT'); setFBranch('ALL'); setFPrice(''); setFNewPrice(''); setFNewPriceDate(''); setFBranchPrices([])
     setFPriceType('FIXED'); setFRevenueType('EARNED'); setFHasDoctorFee(false); setFDoctorFee('')
-    setFClinicFee(''); setFPwdClinicOnly(false); setFNoPwdDiscount(false); setFDescription('')
+    setFClinicFee(''); setFPwdClinicOnly(false); setFNoPwdDiscount(false); setFIssuedOfficialInvoice(false); setFDescription('')
     setFWalletType(''); setFVipTier(''); setFPackageSessions(''); setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFUnitPayId(''); setFUnitPayEnabled(false); setFEligibleServices([]); setEligibleSearch(''); setEligibleResults([])
     setError(''); setModalOpen(true)
   }
@@ -225,12 +233,15 @@ export default function ServicesPage() {
   function openEdit(s: Service) {
     setEditing(s)
     setFName(s.name); setFDept(s.department); setFBranch(s.branch)
-    setFPrice(String(s.price)); setFPriceType(s.priceType); setFRevenueType(s.revenueType)
+    setFPrice(String(s.price)); setFNewPrice(s.newPrice != null ? String(s.newPrice) : ''); setFNewPriceDate(s.newPriceEffectiveDate ? String(s.newPriceEffectiveDate).split('T')[0] : '')
+    setFBranchPrices((s.branchPrices || []).map(bp => ({ branch: bp.branch, price: String(bp.price), newPrice: bp.newPrice != null ? String(bp.newPrice) : '', newPriceDate: bp.newPriceEffectiveDate ? String(bp.newPriceEffectiveDate).split('T')[0] : '' })))
+    setFPriceType(s.priceType); setFRevenueType(s.revenueType)
     setFHasDoctorFee(s.hasDoctorFee)
     setFDoctorFee(s.doctorFee != null ? String(s.doctorFee) : '')
     setFClinicFee(s.clinicFee != null ? String(s.clinicFee) : '')
     setFPwdClinicOnly(s.pwdDiscountClinicOnly)
     setFNoPwdDiscount(s.noPwdDiscount)
+    setFIssuedOfficialInvoice(s.issuedOfficialInvoice)
     setFDescription(s.description || '')
     setFWalletType(s.walletType || '')
     setFVipTier(s.vipTier || '')
@@ -274,10 +285,14 @@ export default function ServicesPage() {
       clinicFee: fHasDoctorFee ? fClinicFee : null,
       pwdDiscountClinicOnly: fHasDoctorFee ? fPwdClinicOnly : false,
       noPwdDiscount: fNoPwdDiscount,
+      issuedOfficialInvoice: fIssuedOfficialInvoice,
       description: fDescription,
       revenueAccountId: fRevenueAccountId || null,
       unitPayId: fUnitPayEnabled ? (fUnitPayId || null) : null,
       unitPayEnabled: fUnitPayEnabled,
+      newPrice: fNewPrice || null,
+      newPriceEffectiveDate: fNewPriceDate || null,
+      branchPrices: fBranch === 'ALL' ? fBranchPrices.filter(bp => bp.price).map(bp => ({ branch: bp.branch, price: bp.price, newPrice: bp.newPrice || null, newPriceEffectiveDate: bp.newPriceDate || null })) : [],
     }
     if (editing) body.id = editing.id
     try {
@@ -444,7 +459,12 @@ export default function ServicesPage() {
                 return (
                   <tr key={s.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
                     <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>
-                      {s.name}
+                      <span className="flex items-center gap-1.5">
+                        {s.name}
+                        {s.issuedOfficialInvoice && (
+                          <span title="Issued Official Sales Invoice" className="flex-shrink-0"><FileCheck size={14} style={{ color: '#16a34a' }} /></span>
+                        )}
+                      </span>
                       {s.revenueAccount && (
                         <p className="text-xs mt-0.5" style={{ color: 'var(--teal)' }}>{s.revenueAccount.accountNumber} {s.revenueAccount.accountTitle}</p>
                       )}
@@ -468,6 +488,24 @@ export default function ServicesPage() {
                       {s.hasDoctorFee && doctor != null && clinic != null && (
                         <div className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
                           Dr: {formatCurrency(doctor)} + Clinic: {formatCurrency(clinic)}
+                        </div>
+                      )}
+                      {s.newPrice != null && Number(s.newPrice) > 0 && (
+                        <div className="text-xs mt-0.5" style={{ color: '#2563eb' }}>
+                          → {formatCurrency(Number(s.newPrice))}
+                          {s.newPriceEffectiveDate && <span className="ml-1" style={{ color: 'var(--mid-gray)' }}>({new Date(s.newPriceEffectiveDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })})</span>}
+                        </div>
+                      )}
+                      {s.branchPrices && s.branchPrices.length > 0 && (
+                        <div className="text-xs mt-1 space-y-0.5">
+                          {s.branchPrices.map(bp => (
+                            <div key={bp.branch} style={{ color: 'var(--mid-gray)' }}>
+                              {bp.branch === 'SANDBOX_EAST' ? 'East' : 'GH'}: {formatCurrency(Number(bp.price))}
+                              {bp.newPrice != null && Number(bp.newPrice) > 0 && (
+                                <span style={{ color: '#2563eb' }}> → {formatCurrency(Number(bp.newPrice))}</span>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       )}
                     </td>
@@ -587,17 +625,22 @@ export default function ServicesPage() {
               </div>
 
               {/* Price + Price Type */}
+              {(() => {
+                const hasBP = fBranch === 'ALL' && fBranchPrices.some(bp => bp.price)
+                const priceDisabled = fHasDoctorFee || hasBP
+                return (
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                  <label className="block text-xs font-medium mb-1.5" style={{ color: hasBP ? 'var(--mid-gray)' : 'var(--charcoal)' }}>
                     Total Price (PHP) {fHasDoctorFee && <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(auto-calculated)</span>}
+                    {hasBP && <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(per-branch)</span>}
                   </label>
                   <input type="number" step="0.01" value={fPrice}
                     onChange={(e) => setFPrice(e.target.value)}
-                    readOnly={fHasDoctorFee}
-                    required placeholder="0.00"
+                    readOnly={priceDisabled}
+                    required={!hasBP} placeholder={hasBP ? 'Using per-branch prices' : '0.00'}
                     className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
-                    style={{ borderColor: 'var(--light-gray)', background: fHasDoctorFee ? 'var(--off-white)' : 'white' }} />
+                    style={{ borderColor: 'var(--light-gray)', background: priceDisabled ? 'var(--off-white)' : 'white' }} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Price Type</label>
@@ -609,6 +652,67 @@ export default function ServicesPage() {
                   </select>
                 </div>
               </div>
+                )
+              })()}
+
+              {/* New Price + Effective Date */}
+              {(() => {
+                const hasBranchPricing = fBranch === 'ALL' && fBranchPrices.some(bp => bp.price)
+                return (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium mb-1.5" style={{ color: hasBranchPricing ? 'var(--mid-gray)' : 'var(--charcoal)' }}>New Price (PHP)</label>
+                        <input type="number" step="0.01" value={fNewPrice} onChange={(e) => setFNewPrice(e.target.value)}
+                          placeholder={hasBranchPricing ? 'Using per-branch prices' : 'Leave blank if no change'}
+                          disabled={hasBranchPricing}
+                          className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                          style={{ borderColor: 'var(--light-gray)', background: hasBranchPricing ? 'var(--off-white)' : 'white' }} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1.5" style={{ color: hasBranchPricing ? 'var(--mid-gray)' : 'var(--charcoal)' }}>Effective Date</label>
+                        <input type="date" value={fNewPriceDate} onChange={(e) => setFNewPriceDate(e.target.value)}
+                          disabled={hasBranchPricing}
+                          className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                          style={{ borderColor: 'var(--light-gray)', background: hasBranchPricing ? 'var(--off-white)' : 'white' }} />
+                      </div>
+                    </div>
+                    {fNewPrice && !hasBranchPricing && <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>When the effective date arrives, the current price will become the old price and the new price will take effect.</p>}
+                    {hasBranchPricing && <p className="text-xs" style={{ color: '#3730a3' }}>General price fields disabled — using per-branch pricing below.</p>}
+                  </>
+                )
+              })()}
+
+              {/* Per-branch pricing (only for ALL-branch services) */}
+              {fBranch === 'ALL' && (
+                <div className="p-3 rounded-xl border" style={{ borderColor: '#e0e7ff', background: '#f8faff' }}>
+                  <p className="text-xs font-semibold mb-2" style={{ color: '#3730a3' }}>Per-Branch Price Overrides</p>
+                  <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>Leave blank to use the default price above for that branch.</p>
+                  {['SANDBOX_EAST', 'SANDBOX_GREENHILLS'].map(br => {
+                    const bp = fBranchPrices.find(b => b.branch === br) || { branch: br, price: '', newPrice: '', newPriceDate: '' }
+                    const update = (field: string, val: string) => {
+                      setFBranchPrices(prev => {
+                        const existing = prev.find(b => b.branch === br)
+                        if (existing) return prev.map(b => b.branch === br ? { ...b, [field]: val } : b)
+                        return [...prev, { branch: br, price: '', newPrice: '', newPriceDate: '', [field]: val }]
+                      })
+                    }
+                    return (
+                      <div key={br} className="mb-2 last:mb-0">
+                        <p className="text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>{br === 'SANDBOX_EAST' ? 'Sandbox East' : 'Sandbox Greenhills'}</p>
+                        <div className="grid grid-cols-3 gap-2">
+                          <input type="number" step="0.01" value={bp.price} onChange={(e) => update('price', e.target.value)}
+                            placeholder="Price" className="px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                          <input type="number" step="0.01" value={bp.newPrice} onChange={(e) => update('newPrice', e.target.value)}
+                            placeholder="New Price" className="px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                          <input type="date" value={bp.newPriceDate} onChange={(e) => update('newPriceDate', e.target.value)}
+                            className="px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
 
               {/* Revenue Type */}
               <div>
@@ -823,7 +927,21 @@ export default function ServicesPage() {
                 )}
               </div>
 
-              {/* Description */}
+              {/* Issued Official Sales Invoice */}
+              <div className="p-3 rounded-xl border" style={{ borderColor: fIssuedOfficialInvoice ? '#86efac' : 'var(--light-gray)', background: fIssuedOfficialInvoice ? '#f0fdf4' : 'var(--off-white)' }}>
+                <label className="flex items-center gap-2 text-sm font-medium cursor-pointer" style={{ color: fIssuedOfficialInvoice ? '#166534' : 'var(--charcoal)' }}>
+                  <input type="checkbox" checked={fIssuedOfficialInvoice}
+                    onChange={(e) => setFIssuedOfficialInvoice(e.target.checked)}
+                    className="rounded" />
+                  Issued Official Sales Invoice
+                </label>
+                {fIssuedOfficialInvoice && (
+                  <p className="mt-1.5 text-xs" style={{ color: '#166534' }}>
+                    This service will be marked as having an official sales invoice in the Sales Summary.
+                  </p>
+                )}
+              </div>
+
               {/* Revenue Account (COA) — searchable */}
               <div className="relative">
                 <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
