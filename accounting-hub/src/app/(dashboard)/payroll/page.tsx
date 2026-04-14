@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import {
   BadgeDollarSign, Users, Settings, FileText, Plus, Pencil, Save,
   ChevronUp, ChevronDown, ArrowUpDown, Search, X, AlertCircle,
   RefreshCw, Loader2, ChevronRight, Download, Mail, Trash2,
-  PlusCircle, CheckCircle2, ToggleLeft, ToggleRight, Receipt,
+  PlusCircle, CheckCircle2, ToggleLeft, ToggleRight, Receipt, ShieldOff,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import EmployeePayroll from './EmployeePayroll'
@@ -29,6 +29,12 @@ interface Consultant {
   name: string
   department: string
   branch: string
+  email?: string | null
+  phone?: string | null
+  tinNumber?: string | null
+  sssNumber?: string | null
+  philhealthNumber?: string | null
+  pagibigNumber?: string | null
   taxDeduction: string
   monthlyRetainer: number | string
   isActive: boolean
@@ -50,7 +56,7 @@ interface PayrollPreview {
   department: string
   branch: string
   taxDeduction: string
-  items: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean; sessions?: { date: string; patientName: string; serviceName: string; orderNetAmount: number }[] }[]
+  items: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean; sessions?: { date: string; patientName: string; serviceName: string; orderNetAmount: number; orderStatus?: string }[] }[]
   unitPayTotal: number
   retainerAmount: number
   incentives: IncentiveLine[]
@@ -60,6 +66,8 @@ interface PayrollPreview {
   netPay: number
   orderCount: number
   existingStatus: string | null
+  storedAdjustments?: AdjustmentLine[]
+  storedExtraItems?: ExtraUnitPayLine[]
 }
 
 interface ExtraUnitPayLine {
@@ -174,12 +182,12 @@ const BRANCH_INFO: Record<string, { name: string; address: string; phone: string
   SBEA: {
     name: 'Sandbox Clinic – East Branch',
     address: '4th Floor Robinsons Metro East, Marcos Highway, Dela Paz, Pasig City',
-    phone: '0917 770 1686 | (02) 8529 1590',
+    phone: '0917 118 9289 | (02) 5310-4991',
     tin: 'TIN 010-817-642-00000',
   },
   SBGH: {
     name: 'Sandbox Clinic – Greenhills Branch',
-    address: 'GHT1-08L GH Tower Offices, South Drive, Ortigas Ave., Greenhills, San Juan City',
+    address: 'Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City',
     phone: '0917 770 1686 | (02) 8529 1590',
     tin: 'TIN 010-817-642-00001',
   },
@@ -546,6 +554,83 @@ async function buildPayslipPdf(
     pageW / 2, y + 5, { align: 'center' }
   )
 
+  /* ══ PAGE 2: SESSION DETAILS ══ */
+  const itemsWithSessions = p.items.filter(item => item.sessions && item.sessions.length > 0)
+  if (itemsWithSessions.length > 0) {
+    doc.addPage()
+    let y2 = margin
+
+    // Header
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(16)
+    doc.setTextColor(...ORANGE)
+    doc.text('SAPPHIRE CLINICS EAST INC.', pageW / 2, y2 + 8, { align: 'center' })
+    y2 += 14
+
+    doc.setFontSize(14)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(...DARK)
+    doc.text('SESSION DETAILS', pageW / 2, y2, { align: 'center' })
+    y2 += 8
+
+    // Consultant name + cutoff
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(...MID)
+    doc.text(`${p.consultantName}  \u2014  ${cutoffLabel}`, pageW / 2, y2, { align: 'center' })
+    y2 += 10
+
+    for (const item of itemsWithSessions) {
+      // Section header for each unit pay type
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(...ORANGE)
+      doc.text(`${item.unitPayName}  (${item.sessions!.length} session${item.sessions!.length !== 1 ? 's' : ''})`, margin, y2)
+      y2 += 2
+
+      const sessionRows = item.sessions!.map(s => {
+        const d = new Date(s.date + 'T00:00:00+08:00')
+        const dateStr = d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })
+        const status = (s.orderStatus || 'COMPLETED').toUpperCase()
+        const statusLabel = status === 'CANCELLED' || status === 'VOIDED' ? 'Voided'
+          : status === 'REOPENED' ? 'Reopened' : 'Completed'
+        return [dateStr, s.patientName || '\u2014', s.serviceName || '\u2014', statusLabel]
+      })
+
+      autoTable(doc, {
+        startY: y2,
+        head: [['Date', 'Patient', 'Service', 'Status']],
+        body: sessionRows,
+        theme: 'grid',
+        headStyles: { ...tableHeadStyles, fontSize: 8 },
+        bodyStyles: { ...tableBodyStyles, fontSize: 8 },
+        columnStyles: {
+          0: { cellWidth: 30 },
+          1: { cellWidth: 'auto' },
+          2: { cellWidth: 'auto' },
+          3: { cellWidth: 22, halign: 'center' },
+        },
+        margin: { left: margin, right: margin },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        didParseCell: (data: any) => {
+          if (data.section === 'body' && data.column.index === 3) {
+            const val = data.cell.raw as string
+            if (val === 'Voided') {
+              data.cell.styles.textColor = [180, 40, 40]
+            } else if (val === 'Reopened') {
+              data.cell.styles.textColor = [180, 130, 20]
+            } else {
+              data.cell.styles.textColor = [30, 120, 60]
+            }
+          }
+        },
+      })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      y2 = (doc as any).lastAutoTable?.finalY ?? y2
+      y2 += 8
+    }
+  }
+
   return doc
 }
 
@@ -563,8 +648,8 @@ export default function PayrollPage() {
   const [cutoffHalf, setCutoffHalf] = useState(now.getDate() <= 15 ? 1 : 2)
   const cutoffPeriod = `${cutoffYear}-${String(cutoffMonth).padStart(2, '0')}-${cutoffHalf}`
 
-  const [mainTab, setMainTab] = useState<'consultants' | 'employees' | 'tax-payable'>('consultants')
-  const [subTab, setSubTab] = useState<'list' | 'unit-pay' | 'pay-rules' | 'payslips'>('list')
+  const [mainTab, setMainTab] = useState<'consultants' | 'employees' | 'tax-payable' | 'salaries-payable' | 'benefits-payable' | 'payroll-settings'>('consultants')
+  const [subTab, setSubTab] = useState<'list' | 'unit-pay' | 'pay-rules' | 'adjustments' | 'payslips'>('list')
 
   /* ── Core data ── */
   const [consultants, setConsultants] = useState<Consultant[]>([])
@@ -624,17 +709,29 @@ export default function PayrollPage() {
   const [incForm, setIncForm] = useState({ name: '', description: '', threshold: 7, bonusPerUnit: 20, departments: [] as string[], branch: '', isActive: true })
   const [savingInc, setSavingInc] = useState(false)
 
+  /* ── Consultant Cutoff Adjustments ── */
+  interface ConAdjRow { consultantId: string; consultantName?: string; allowance: number; allowanceType: string; allowanceLabel: string; deduction: number; deductionLabel: string; rowKey: string }
+  const [conAdjCutoffMonth, setConAdjCutoffMonth] = useState(now.getMonth() + 1)
+  const [conAdjCutoffYear, setConAdjCutoffYear] = useState(now.getFullYear())
+  const [conAdjCutoffHalf, setConAdjCutoffHalf] = useState(now.getDate() <= 15 ? 1 : 2)
+  const [conAdjRows, setConAdjRows] = useState<ConAdjRow[]>([])
+  const [conAdjLoading, setConAdjLoading] = useState(false)
+  const [conAdjSaving, setConAdjSaving] = useState(false)
+  const [conAdjSaved, setConAdjSaved] = useState(false)
+  const [conAdjBranch, setConAdjBranch] = useState('')
+
   /* ── Payslip generation — base ── */
   const [genDept, setGenDept] = useState('')
   const [genConsultantId, setGenConsultantId] = useState('')
   const [generating, setGenerating] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  const [sessionBreakdown, setSessionBreakdown] = useState<{ unitPayName: string; sessions: { date: string; patientName: string; serviceName: string; orderNetAmount: number }[] } | null>(null)
+  const [sessionBreakdown, setSessionBreakdown] = useState<{ unitPayName: string; sessions: { date: string; patientName: string; serviceName: string; orderNetAmount: number; orderStatus?: string }[] } | null>(null)
 
   /* ── Payslip generation — per-consultant extras ── */
   const [extraUnitPays, setExtraUnitPays] = useState<Record<string, ExtraUnitPayLine[]>>({})
   const [adjustments, setAdjustments] = useState<Record<string, AdjustmentLine[]>>({})
+  const [savingMap, setSavingMap] = useState<Record<string, boolean>>({})
 
   // Per-card UI state for adding
   const [showUpAdd, setShowUpAdd] = useState<Record<string, boolean>>({})
@@ -693,6 +790,46 @@ export default function PayrollPage() {
   // Unit pay expense account editing
   const [upExpenseSearch, setUpExpenseSearch] = useState('')
   const [upExpenseAccountId, setUpExpenseAccountId] = useState('')
+
+  // COA Mapping state
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [coaMapping, setCoaMapping] = useState<Record<string, any>>({})
+  const [coaEdits, setCoaEdits] = useState<Record<string, string>>({})
+  const [savingCoa, setSavingCoa] = useState(false)
+  const [coaSearch, setCoaSearch] = useState('')
+
+  // Salaries Payable tab state
+  interface PayableRow { id: string; cutoffPeriod: string; branch: string; payrollType: string; totalSalariesPayable: number; salariesRemitted: boolean }
+  const [salariesPayables, setSalariesPayables] = useState<PayableRow[]>([])
+  const [loadingSalPayable, setLoadingSalPayable] = useState(false)
+  const [showSalRemitted, setShowSalRemitted] = useState(false)
+
+  // Benefits Payable tab state
+  interface BenefitPayableRow { id: string; cutoffPeriod: string; branch: string; payrollType: string; totalBenefitsPayable: number; benefitsRemitted: boolean }
+  const [benefitsPayables, setBenefitsPayables] = useState<BenefitPayableRow[]>([])
+  const [loadingBenPayable, setLoadingBenPayable] = useState(false)
+  const [showBenRemitted, setShowBenRemitted] = useState(false)
+
+  // Multi-select for salary/benefit payables
+  const [selectedSalaryPayableIds, setSelectedSalaryPayableIds] = useState<string[]>([])
+  const [selectedBenefitPayableIds, setSelectedBenefitPayableIds] = useState<string[]>([])
+
+  // Remit modal state (shared between salary and benefit payments)
+  const [showRemitModal, setShowRemitModal] = useState<'salary' | 'benefit' | null>(null)
+  const [remitPayableId, setRemitPayableId] = useState('')
+  const [remitDate, setRemitDate] = useState(new Date().toISOString().slice(0, 10))
+  const [remitFromAccountId, setRemitFromAccountId] = useState('')
+  const [remitFromSearch, setRemitFromSearch] = useState('')
+  const [remitProofUrl, setRemitProofUrl] = useState('')
+  const [remitNotes, setRemitNotes] = useState('')
+  const [remitting, setRemitting] = useState(false)
+
+  // Finalize state
+  const [finalizing, setFinalizing] = useState(false)
+  const [emailingAll, setEmailingAll] = useState(false)
+
+  // Consultant payslip expanded view
+  const [expandedPayslip, setExpandedPayslip] = useState<string | null>(null)
 
   /* ── Data fetching ── */
   const fetchConsultants = useCallback(async () => {
@@ -777,6 +914,53 @@ export default function PayrollPage() {
     }
   }, [mainTab, fetchTaxPayable, fetchTaxPayments, fetchTaxSettings])
 
+  // Fetch salaries payable
+  const fetchSalariesPayable = useCallback(async () => {
+    setLoadingSalPayable(true)
+    try {
+      const params = new URLSearchParams()
+      if (branch) params.set('branch', branch)
+      if (showSalRemitted) params.set('showRemitted', 'true')
+      const res = await fetch(`/api/payroll/salaries-payable?${params}`)
+      setSalariesPayables(await res.json())
+    } catch { setSalariesPayables([]) }
+    finally { setLoadingSalPayable(false) }
+  }, [branch, showSalRemitted])
+
+  // Fetch benefits payable
+  const fetchBenefitsPayable = useCallback(async () => {
+    setLoadingBenPayable(true)
+    try {
+      const params = new URLSearchParams()
+      if (branch) params.set('branch', branch)
+      if (showBenRemitted) params.set('showRemitted', 'true')
+      const res = await fetch(`/api/payroll/benefits-payable?${params}`)
+      setBenefitsPayables(await res.json())
+    } catch { setBenefitsPayables([]) }
+    finally { setLoadingBenPayable(false) }
+  }, [branch, showBenRemitted])
+
+  // Fetch COA mapping
+  const fetchCoaMapping = useCallback(async () => {
+    try {
+      const res = await fetch('/api/payroll/coa-mapping')
+      const data = await res.json()
+      setCoaMapping(data)
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    if (mainTab === 'salaries-payable') fetchSalariesPayable()
+  }, [mainTab, fetchSalariesPayable])
+
+  useEffect(() => {
+    if (mainTab === 'benefits-payable') fetchBenefitsPayable()
+  }, [mainTab, fetchBenefitsPayable])
+
+  useEffect(() => {
+    if (mainTab === 'payroll-settings') fetchCoaMapping()
+  }, [mainTab, fetchCoaMapping])
+
   useEffect(() => {
     fetchAllAccounts()
     fetchIncentiveRules()
@@ -792,6 +976,154 @@ export default function PayrollPage() {
       await fetchConsultants()
     } catch {}
     finally { setSyncing(false) }
+  }
+
+  /* ── Lock and Finalize ── */
+  const lockAndFinalize = async (payrollType: 'CONSULTANT' | 'EMPLOYEE') => {
+    if (!confirm(`Lock and finalize all ${payrollType === 'CONSULTANT' ? 'consultant' : 'employee'} payslips for ${cutoffPeriod} — ${branch || 'all branches'}? This cannot be undone.`)) return
+    setFinalizing(true)
+    try {
+      const res = await fetch('/api/payroll/finalize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cutoffPeriod, branch: branch || 'SBEA', payrollType }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Failed to finalize'); return }
+      setError('')
+      alert(`Payroll locked! ${data.lockedCount} payslips finalized. Journal entry created.`)
+      // Refresh data and restore adjustments from DB
+      if (payrollType === 'CONSULTANT') {
+        const previewRes = await fetch(`/api/payroll/generate?cutoffPeriod=${cutoffPeriod}&branch=${branch || 'SBEA'}`)
+        if (previewRes.ok) {
+          const d = await previewRes.json()
+          const payrolls: PayrollPreview[] = d.payrolls || []
+          setPayrollPreviews(payrolls)
+          const newAdj: Record<string, AdjustmentLine[]> = {}
+          const newExtra: Record<string, ExtraUnitPayLine[]> = {}
+          for (const p of payrolls) {
+            if (p.storedAdjustments?.length) newAdj[p.consultantId] = p.storedAdjustments as AdjustmentLine[]
+            if (p.storedExtraItems?.length) newExtra[p.consultantId] = p.storedExtraItems as ExtraUnitPayLine[]
+          }
+          setAdjustments(newAdj)
+          setExtraUnitPays(newExtra)
+        }
+      }
+    } catch (e) { setError(String(e)) }
+    finally { setFinalizing(false) }
+  }
+
+  /* ── Unlock payroll ── */
+  const [unlocking, setUnlocking] = useState(false)
+  const unlockPayroll = async (payrollType: 'CONSULTANT' | 'EMPLOYEE') => {
+    if (!confirm(`Unlock ${payrollType === 'CONSULTANT' ? 'consultant' : 'employee'} payslips for ${cutoffPeriod} — ${branch || 'all branches'}? This will delete the journal entry and allow editing again.`)) return
+    setUnlocking(true)
+    try {
+      const res = await fetch('/api/payroll/finalize', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cutoffPeriod, branch: branch || 'SBEA', payrollType }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Failed to unlock'); return }
+      setError('')
+      alert('Payroll unlocked. Payslips are now editable again.')
+      if (payrollType === 'CONSULTANT') {
+        const previewRes = await fetch(`/api/payroll/generate?cutoffPeriod=${cutoffPeriod}&branch=${branch || 'SBEA'}`)
+        if (previewRes.ok) {
+          const d = await previewRes.json()
+          const payrolls: PayrollPreview[] = d.payrolls || []
+          setPayrollPreviews(payrolls)
+          const newAdj: Record<string, AdjustmentLine[]> = {}
+          const newExtra: Record<string, ExtraUnitPayLine[]> = {}
+          for (const p of payrolls) {
+            if (p.storedAdjustments?.length) newAdj[p.consultantId] = p.storedAdjustments as AdjustmentLine[]
+            if (p.storedExtraItems?.length) newExtra[p.consultantId] = p.storedExtraItems as ExtraUnitPayLine[]
+          }
+          setAdjustments(newAdj)
+          setExtraUnitPays(newExtra)
+        }
+      }
+    } catch (e) { setError(String(e)) }
+    finally { setUnlocking(false) }
+  }
+
+  /* ── Remit payment ── */
+  const handleRemit = async () => {
+    if (!remitFromAccountId) return
+    const ids = showRemitModal === 'salary' ? selectedSalaryPayableIds : selectedBenefitPayableIds
+    if (!ids.length) return
+    setRemitting(true)
+    try {
+      const endpoint = showRemitModal === 'salary' ? '/api/payroll/salary-payments' : '/api/payroll/benefit-payments'
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          payableIds: ids,
+          paymentDate: remitDate,
+          fromAccountId: remitFromAccountId,
+          proofUrl: remitProofUrl || null,
+          notes: remitNotes || null,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Failed to record payment'); return }
+      setShowRemitModal(null)
+      setSelectedSalaryPayableIds([])
+      setSelectedBenefitPayableIds([])
+      if (mainTab === 'salaries-payable') fetchSalariesPayable()
+      if (mainTab === 'benefits-payable') fetchBenefitsPayable()
+    } catch (e) { setError(String(e)) }
+    finally { setRemitting(false) }
+  }
+
+  /* ── Record tax as Other Income ── */
+  const [recordingOtherIncome, setRecordingOtherIncome] = useState(false)
+  const recordTaxAsOtherIncome = async () => {
+    if (!selectedTaxIds.length) return
+    setRecordingOtherIncome(true)
+    try {
+      const res = await fetch('/api/payroll/tax-payments/other-income', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payrollEntryIds: selectedTaxIds, paymentType: taxFilter }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Failed to record as other income'); return }
+      setSelectedTaxIds([])
+      await fetchTaxPayable()
+      await fetchTaxPayments()
+    } catch { setError('Failed to record as other income') }
+    finally { setRecordingOtherIncome(false) }
+  }
+
+  /* ── Save COA mapping ── */
+  const saveCoaMapping = async () => {
+    setSavingCoa(true)
+    try {
+      // Merge existing mapping IDs with new edits so we don't overwrite previously saved fields
+      const allKeys = [
+        'salaryExpenseAccountId', 'professionalFeesAccountId', 'sssERAccountId',
+        'hdmfERAccountId', 'philhealthERAccountId', 'salariesPayableAccountId',
+        'benefitsPayableAccountId', 'taxPayableAccountId',
+      ]
+      const merged: Record<string, string | null> = {}
+      for (const key of allKeys) {
+        merged[key] = coaEdits[key] ?? coaMapping[key] ?? null
+      }
+      const res = await fetch('/api/payroll/coa-mapping', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(merged),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setCoaMapping(data)
+        setCoaEdits({})
+      }
+    } catch {}
+    finally { setSavingCoa(false) }
   }
 
   /* ── Clinician list helpers ── */
@@ -1059,7 +1391,7 @@ export default function PayrollPage() {
   }
 
   /* ── Payslip generation ── */
-  const generatePayslips = async () => {
+  const generatePayslips = async (resetExtras = false) => {
     setGenerating(true); setError('')
     try {
       const customDates = computeCustomDates(payrollSettings, cutoffYear, cutoffMonth, cutoffHalf)
@@ -1071,11 +1403,24 @@ export default function PayrollPage() {
       if (genConsultantId) params.set('consultantId', genConsultantId)
       const res = await fetch(`/api/payroll/generate?${params}`)
       const data = await res.json()
-      setPayrollPreviews(data.payrolls || [])
+      const payrolls: PayrollPreview[] = data.payrolls || []
+      setPayrollPreviews(payrolls)
       setGeneratedDateRange({ start: customDates.start.toISOString(), end: customDates.end.toISOString() })
-      // Reset per-consultant extras when regenerating
-      setExtraUnitPays({})
-      setAdjustments({})
+      if (resetExtras) {
+        // User clicked Generate — fresh slate
+        setExtraUnitPays({})
+        setAdjustments({})
+      } else {
+        // Restore saved adjustments/extras from DB
+        const newAdj: Record<string, AdjustmentLine[]> = {}
+        const newExtra: Record<string, ExtraUnitPayLine[]> = {}
+        for (const p of payrolls) {
+          if (p.storedAdjustments?.length) newAdj[p.consultantId] = p.storedAdjustments as AdjustmentLine[]
+          if (p.storedExtraItems?.length) newExtra[p.consultantId] = p.storedExtraItems as ExtraUnitPayLine[]
+        }
+        setAdjustments(newAdj)
+        setExtraUnitPays(newExtra)
+      }
     } catch { setError('Failed to generate') }
     finally { setGenerating(false) }
   }
@@ -1100,23 +1445,57 @@ export default function PayrollPage() {
     } catch { alert('Failed to export CSV') }
   }
 
+  const buildEntry = (p: PayrollPreview, extras: ExtraUnitPayLine[], adjs: AdjustmentLine[], status: string) => {
+    const t = computeTotals(p, extras, adjs)
+    return {
+      consultantId: p.consultantId, branch: p.branch,
+      items: [...p.items, ...extras.map(e => ({ unitPayId: e.unitPayId, unitPayName: e.unitPayName, unitAmount: e.unitAmount, quantity: e.qty, lineTotal: e.unitAmount * e.qty }))],
+      extraItems: extras,
+      adjustments: adjs,
+      grossPay: t.gross, retainerAmount: p.retainerAmount, taxAmount: t.tax, netPay: t.net, status,
+    }
+  }
+
   const savePayslips = async () => {
     setSaving(true)
     try {
-      const entries = payrollPreviews.filter(p => p.grossPay > 0).map(p => {
-        const extras = extraUnitPays[p.consultantId] || []
-        const adjs = adjustments[p.consultantId] || []
-        const t = computeTotals(p, extras, adjs)
-        return {
-          consultantId: p.consultantId, branch: p.branch,
-          items: [...p.items, ...extras.map(e => ({ unitPayId: e.unitPayId, unitPayName: e.unitPayName, unitAmount: e.unitAmount, quantity: e.qty, lineTotal: e.unitAmount * e.qty }))],
-          adjustments: adjs,
-          grossPay: t.gross, retainerAmount: p.retainerAmount, taxAmount: t.tax, netPay: t.net, status: 'DRAFT',
-        }
-      })
+      const entries = payrollPreviews.filter(p => p.existingStatus !== 'LOCKED').map(p =>
+        buildEntry(p, extraUnitPays[p.consultantId] || [], adjustments[p.consultantId] || [], 'DRAFT')
+      )
+      if (entries.length === 0) return
       await fetch('/api/payroll/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cutoffPeriod, branch, entries }) })
       await generatePayslips()
     } catch { setError('Failed to save') }
+    finally { setSaving(false) }
+  }
+
+  const saveSingleConsultant = async (cid: string) => {
+    const p = payrollPreviews.find(pr => pr.consultantId === cid)
+    if (!p || p.existingStatus === 'LOCKED') return
+    const extras = extraUnitPays[cid] || []
+    const adjs = adjustments[cid] || []
+    const status = p.existingStatus === 'FINAL' ? 'FINAL' : 'DRAFT'
+    setSavingMap(prev => ({ ...prev, [cid]: true }))
+    try {
+      await fetch('/api/payroll/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cutoffPeriod, branch, entries: [buildEntry(p, extras, adjs, status)] }),
+      })
+    } catch { setError('Failed to save') }
+    finally { setSavingMap(prev => ({ ...prev, [cid]: false })) }
+  }
+
+  const finalizeConsultantPayslips = async () => {
+    setSaving(true)
+    try {
+      const entries = payrollPreviews.filter(p => p.existingStatus === 'DRAFT').map(p =>
+        buildEntry(p, extraUnitPays[p.consultantId] || [], adjustments[p.consultantId] || [], 'FINAL')
+      )
+      if (entries.length === 0) return
+      await fetch('/api/payroll/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cutoffPeriod, branch, entries }) })
+      await generatePayslips()
+    } catch { setError('Failed to finalize') }
     finally { setSaving(false) }
   }
 
@@ -1246,8 +1625,10 @@ export default function PayrollPage() {
         }),
       })
       if (!sendRes.ok) {
-        const d = await sendRes.json()
-        throw new Error(d.error || 'Email failed to send')
+        const text = await sendRes.text()
+        let msg = 'Email failed to send'
+        try { msg = JSON.parse(text).error || msg } catch { msg = `Email failed (${sendRes.status})` }
+        throw new Error(msg)
       }
       setEmailStatus(prev => ({ ...prev, [p.consultantId]: 'success' }))
       setEmailMsg(prev => ({ ...prev, [p.consultantId]: `Sent to ${email}` }))
@@ -1257,6 +1638,16 @@ export default function PayrollPage() {
     } finally {
       setSendingEmailFor(null)
     }
+  }
+
+  const emailAllClinicians = async () => {
+    setEmailingAll(true)
+    const visible = payrollPreviews.filter(p => p.grossPay > 0 || p.orderCount > 0)
+    for (const p of visible) {
+      try { await emailClinician(p) } catch (e) { console.error('Email error for', p.consultantName, e) }
+      await new Promise(r => setTimeout(r, 800))
+    }
+    setEmailingAll(false)
   }
 
   if (!session?.user) return null
@@ -1327,15 +1718,20 @@ export default function PayrollPage() {
             <Users size={16} /> {t}
           </button>
         ))}
-        <button onClick={() => setMainTab('tax-payable')}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-colors"
-          style={mainTab === 'tax-payable' ? { background: 'var(--teal)', color: 'white' } : { background: 'var(--off-white)', color: 'var(--charcoal)' }}>
-          <Receipt size={16} /> Tax Payable
-        </button>
+        {(['tax-payable', 'salaries-payable', 'benefits-payable', 'payroll-settings'] as const).map(t => {
+          const labels: Record<string, string> = { 'tax-payable': 'Tax Payable', 'salaries-payable': 'Salaries Payable', 'benefits-payable': 'Benefits Payable', 'payroll-settings': 'Payroll Settings' }
+          return (
+            <button key={t} onClick={() => setMainTab(t)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-colors"
+              style={mainTab === t ? { background: 'var(--teal)', color: 'white' } : { background: 'var(--off-white)', color: 'var(--charcoal)' }}>
+              <Receipt size={16} /> {labels[t]}
+            </button>
+          )
+        })}
       </div>
 
       {mainTab === 'employees' && (
-        <EmployeePayroll canWrite={!!canWrite} />
+        <EmployeePayroll canWrite={!!canWrite} branch={branch} cutoffMonth={cutoffMonth} cutoffYear={cutoffYear} cutoffHalf={cutoffHalf} cutoffPeriod={cutoffPeriod} />
       )}
 
       {mainTab === 'tax-payable' && (
@@ -1385,11 +1781,19 @@ export default function PayrollPage() {
                 {showRemitted ? 'All Tax Records' : 'Unremitted Taxes Payable'}
               </p>
               {selectedTaxIds.length > 0 && (
-                <button onClick={() => setShowPaymentModal(true)}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
-                  style={{ background: '#c44b00' }}>
-                  <BadgeDollarSign size={14} /> Record BIR Payment ({selectedTaxIds.length})
-                </button>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setShowPaymentModal(true)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
+                    style={{ background: '#c44b00' }}>
+                    <BadgeDollarSign size={14} /> Record BIR Payment ({selectedTaxIds.length})
+                  </button>
+                  <button onClick={recordTaxAsOtherIncome} disabled={recordingOtherIncome}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+                    style={{ background: '#6d28d9' }}>
+                    {recordingOtherIncome ? <Loader2 size={14} className="animate-spin" /> : <Receipt size={14} />}
+                    Record as Other Income
+                  </button>
+                </div>
               )}
             </div>
 
@@ -1474,11 +1878,19 @@ export default function PayrollPage() {
                         {selectedTaxIds.length > 0 && <span className="ml-3">Selected: <span style={{ color: 'var(--teal)' }}>{formatCurrency(selectedTotal)}</span></span>}
                       </span>
                       {selectedTaxIds.length > 0 && (
-                        <button onClick={() => setShowPaymentModal(true)}
-                          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
-                          style={{ background: '#c44b00' }}>
-                          <BadgeDollarSign size={14} /> Record BIR Payment ({selectedTaxIds.length} payslips)
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => setShowPaymentModal(true)}
+                            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
+                            style={{ background: '#c44b00' }}>
+                            <BadgeDollarSign size={14} /> Record BIR Payment ({selectedTaxIds.length} payslips)
+                          </button>
+                          <button onClick={recordTaxAsOtherIncome} disabled={recordingOtherIncome}
+                            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+                            style={{ background: '#6d28d9' }}>
+                            {recordingOtherIncome ? <Loader2 size={14} className="animate-spin" /> : <Receipt size={14} />}
+                            Record as Other Income
+                          </button>
+                        </div>
                       )}
                     </div>
                   )}
@@ -1769,8 +2181,8 @@ export default function PayrollPage() {
                 </div>
               )}
 
-              <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-                <table className="w-full text-sm">
+              <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+                <table className="w-full text-sm min-w-[1100px]">
                   <thead>
                     <tr style={{ background: 'var(--off-white)' }}>
                       <th className="w-8 px-4 py-3" />
@@ -1781,15 +2193,21 @@ export default function PayrollPage() {
                         <span className="flex items-center gap-1">Department <CSortIcon field="department" /></span>
                       </th>
                       <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Branch</th>
+                      <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Email</th>
+                      <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Phone</th>
+                      <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>TIN</th>
+                      <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>SSS</th>
+                      <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>PhilHealth</th>
+                      <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Pag-IBIG</th>
                       <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Tax</th>
                       <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Retainer</th>
                     </tr>
                   </thead>
                   <tbody>
                     {loading ? (
-                      <tr><td colSpan={6} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</td></tr>
+                      <tr><td colSpan={12} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</td></tr>
                     ) : filteredConsultants.length === 0 ? (
-                      <tr><td colSpan={6} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
+                      <tr><td colSpan={12} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
                         No consultants found. Click &quot;Sync from Clinician Database&quot; to import.
                       </td></tr>
                     ) : filteredConsultants.map(c => (
@@ -1802,6 +2220,12 @@ export default function PayrollPage() {
                           <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{c.name}</td>
                           <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{DEPT_LABELS[c.department] || c.department}</td>
                           <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{c.branch}</td>
+                          <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{c.email || '—'}</td>
+                          <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{c.phone || '—'}</td>
+                          <td className="px-4 py-3 text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>{c.tinNumber || '—'}</td>
+                          <td className="px-4 py-3 text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>{c.sssNumber || '—'}</td>
+                          <td className="px-4 py-3 text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>{c.philhealthNumber || '—'}</td>
+                          <td className="px-4 py-3 text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>{c.pagibigNumber || '—'}</td>
                           <td className="px-4 py-3">
                             <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
                               style={c.taxDeduction === 'FIVE_PERCENT' ? { background: '#fef3c7', color: '#92400e' } : { background: '#f3f4f6', color: '#374151' }}>
@@ -1814,7 +2238,7 @@ export default function PayrollPage() {
                         </tr>
                         {expandedConsultant === c.id && (
                           <tr key={`${c.id}-exp`} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                            <td colSpan={6} className="px-6 py-4" style={{ background: '#fafafa' }}>
+                            <td colSpan={12} className="px-6 py-4" style={{ background: '#fafafa' }}>
                               <div className="space-y-4 max-w-lg">
                                 <div className="flex items-center gap-4">
                                   <label className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Tax Deduction:</label>
@@ -2336,10 +2760,248 @@ export default function PayrollPage() {
             </div>
           )}
 
+          {/* ══ TAB: Consultant Allowance/Deduction ══ */}
+          {subTab === 'adjustments' && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <select value={conAdjCutoffMonth} onChange={e => setConAdjCutoffMonth(parseInt(e.target.value))}
+                  className="px-3 py-2.5 rounded-xl border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+                  {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                </select>
+                <input type="number" value={conAdjCutoffYear} onChange={e => setConAdjCutoffYear(parseInt(e.target.value))}
+                  className="w-20 px-3 py-2.5 rounded-xl border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+                <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
+                  {[1, 2].map(h => (
+                    <button key={h} onClick={() => setConAdjCutoffHalf(h)}
+                      className="px-3 py-2 text-xs font-medium transition-colors"
+                      style={conAdjCutoffHalf === h ? { background: 'var(--pale-teal)', color: 'var(--deep-teal)' } : { color: 'var(--mid-gray)' }}>
+                      {h === 1 ? '1st Half' : '2nd Half'}
+                    </button>
+                  ))}
+                </div>
+                <select value={conAdjBranch} onChange={e => setConAdjBranch(e.target.value)}
+                  className="px-3 py-2.5 rounded-xl border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+                  {BRANCHES.filter(b => b.value).map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+                </select>
+                <button onClick={async () => {
+                  if (!conAdjBranch) return
+                  setConAdjLoading(true)
+                  const cp = `${conAdjCutoffYear}-${conAdjCutoffMonth}-${conAdjCutoffHalf}`
+                  try {
+                    const branchConsultants = consultants.filter(c => c.branch === conAdjBranch && c.isActive)
+                    const r = await fetch(`/api/payroll/consultant-adjustments?cutoffPeriod=${cp}&branch=${conAdjBranch}`)
+                    const data = await r.json()
+                    const existing = Array.isArray(data) ? data : []
+                    const existByConsultant = new Map<string, { allowance: number; allowanceType: string; allowanceLabel: string; deduction: number; deductionLabel: string }[]>()
+                    for (const a of existing) {
+                      if (!existByConsultant.has(a.consultantId)) existByConsultant.set(a.consultantId, [])
+                      existByConsultant.get(a.consultantId)!.push(a)
+                    }
+                    const rows: ConAdjRow[] = []
+                    let rk = 0
+                    for (const c of branchConsultants) {
+                      const cAdjs = existByConsultant.get(c.id)
+                      if (cAdjs && cAdjs.length > 0) {
+                        for (const ex of cAdjs) {
+                          rows.push({
+                            consultantId: c.id, consultantName: c.name,
+                            allowance: toNum(ex.allowance), allowanceType: ex.allowanceType || 'NON_TAXABLE',
+                            allowanceLabel: ex.allowanceLabel || '', deduction: toNum(ex.deduction),
+                            deductionLabel: ex.deductionLabel || '', rowKey: `cr${rk++}`,
+                          })
+                        }
+                      } else {
+                        rows.push({
+                          consultantId: c.id, consultantName: c.name,
+                          allowance: 0, allowanceType: 'NON_TAXABLE', allowanceLabel: '',
+                          deduction: 0, deductionLabel: '', rowKey: `cr${rk++}`,
+                        })
+                      }
+                    }
+                    setConAdjRows(rows)
+                    setConAdjSaved(false)
+                  } catch {}
+                  setConAdjLoading(false)
+                }} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium text-white transition-all hover:opacity-90" style={{ background: 'var(--teal)' }}>
+                  <Search size={13} /> Load
+                </button>
+                <button onClick={async () => {
+                  if (!conAdjBranch) return
+                  setConAdjLoading(true)
+                  const cp = `${conAdjCutoffYear}-${conAdjCutoffMonth}-${conAdjCutoffHalf}`
+                  try {
+                    const branchConsultants = consultants.filter(c => c.branch === conAdjBranch && c.isActive)
+                    const r = await fetch(`/api/payroll/consultant-adjustments?cutoffPeriod=${cp}&branch=${conAdjBranch}`, { method: 'PUT' })
+                    const data = await r.json()
+                    const prevByConsultant = new Map<string, { allowance: number; allowanceType: string; allowanceLabel: string; deduction: number; deductionLabel: string }[]>()
+                    for (const a of (data.adjustments || [])) {
+                      if (!prevByConsultant.has(a.consultantId)) prevByConsultant.set(a.consultantId, [])
+                      prevByConsultant.get(a.consultantId)!.push(a)
+                    }
+                    const rows: ConAdjRow[] = []
+                    let rk = 0
+                    for (const c of branchConsultants) {
+                      const cAdjs = prevByConsultant.get(c.id)
+                      if (cAdjs && cAdjs.length > 0) {
+                        for (const ex of cAdjs) {
+                          rows.push({
+                            consultantId: c.id, consultantName: c.name,
+                            allowance: toNum(ex.allowance), allowanceType: ex.allowanceType || 'NON_TAXABLE',
+                            allowanceLabel: ex.allowanceLabel || '', deduction: toNum(ex.deduction),
+                            deductionLabel: ex.deductionLabel || '', rowKey: `cr${rk++}`,
+                          })
+                        }
+                      } else {
+                        rows.push({
+                          consultantId: c.id, consultantName: c.name,
+                          allowance: 0, allowanceType: 'NON_TAXABLE', allowanceLabel: '',
+                          deduction: 0, deductionLabel: '', rowKey: `cr${rk++}`,
+                        })
+                      }
+                    }
+                    setConAdjRows(rows)
+                    setConAdjSaved(false)
+                  } catch {}
+                  setConAdjLoading(false)
+                }} className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-medium border transition-all hover:opacity-80" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                  <Download size={13} /> Pre-fill from Previous
+                </button>
+              </div>
+
+              {conAdjLoading ? (
+                <div className="flex items-center justify-center py-12"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} /></div>
+              ) : conAdjRows.length === 0 ? (
+                <p className="text-center py-8 text-xs" style={{ color: 'var(--mid-gray)' }}>Select a branch and click Load to view adjustments for this cutoff.</p>
+              ) : (
+                <>
+                  <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr style={{ background: 'var(--off-white)' }}>
+                          <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Consultant</th>
+                          <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Allowance</th>
+                          <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Type</th>
+                          <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Allowance Label</th>
+                          <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Deduction</th>
+                          <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Deduction Label</th>
+                          {canWrite && <th className="px-2 py-2.5 w-8"></th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(() => {
+                          const shownConsultants = new Set<string>()
+                          return conAdjRows.map((row) => {
+                            const updateRow = (field: string, value: unknown) => {
+                              setConAdjRows(prev => prev.map(r => r.rowKey === row.rowKey ? { ...r, [field]: value } : r))
+                              setConAdjSaved(false)
+                            }
+                            const isFirst = !shownConsultants.has(row.consultantId)
+                            if (isFirst) shownConsultants.add(row.consultantId)
+                            const rowCount = conAdjRows.filter(r => r.consultantId === row.consultantId).length
+                            return (
+                              <tr key={row.rowKey} className="border-t transition-colors hover:bg-gray-50/50" style={{ borderColor: 'var(--light-gray)' }}>
+                                <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>
+                                  {isFirst ? (row.consultantName || row.consultantId) : ''}
+                                </td>
+                                <td className="px-2 py-1">
+                                  <input type="number" min={0} step="0.01" value={row.allowance || ''} onChange={e => updateRow('allowance', parseFloat(e.target.value) || 0)}
+                                    className="w-24 px-2 py-1.5 rounded border text-xs text-right" style={{ borderColor: 'var(--light-gray)' }} />
+                                </td>
+                                <td className="px-2 py-1">
+                                  <select value={row.allowanceType} onChange={e => updateRow('allowanceType', e.target.value)}
+                                    className="px-2 py-1.5 rounded border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+                                    <option value="NON_TAXABLE">Non-Taxable</option>
+                                    <option value="TAXABLE">Taxable</option>
+                                  </select>
+                                </td>
+                                <td className="px-2 py-1">
+                                  <input type="text" value={row.allowanceLabel} onChange={e => updateRow('allowanceLabel', e.target.value)}
+                                    placeholder="e.g. De Minimis"
+                                    className="w-28 px-2 py-1.5 rounded border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+                                </td>
+                                <td className="px-2 py-1">
+                                  <input type="number" min={0} step="0.01" value={row.deduction || ''} onChange={e => updateRow('deduction', parseFloat(e.target.value) || 0)}
+                                    className="w-24 px-2 py-1.5 rounded border text-xs text-right" style={{ borderColor: 'var(--light-gray)' }} />
+                                </td>
+                                <td className="px-2 py-1">
+                                  <input type="text" value={row.deductionLabel} onChange={e => updateRow('deductionLabel', e.target.value)}
+                                    placeholder="e.g. Cash Advance"
+                                    className="w-28 px-2 py-1.5 rounded border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+                                </td>
+                                {canWrite && (
+                                  <td className="px-1 py-1">
+                                    <div className="flex items-center gap-0.5">
+                                      {isFirst && (
+                                        <button onClick={() => {
+                                          const newRow: ConAdjRow = {
+                                            consultantId: row.consultantId, consultantName: row.consultantName,
+                                            allowance: 0, allowanceType: 'NON_TAXABLE', allowanceLabel: '',
+                                            deduction: 0, deductionLabel: '', rowKey: `cr${Date.now()}`,
+                                          }
+                                          const lastIdx = conAdjRows.reduce((acc, r, i) => r.consultantId === row.consultantId ? i : acc, 0)
+                                          setConAdjRows(prev => [...prev.slice(0, lastIdx + 1), newRow, ...prev.slice(lastIdx + 1)])
+                                          setConAdjSaved(false)
+                                        }} className="p-0.5 rounded hover:bg-green-50" title="Add another line">
+                                          <Plus size={13} className="text-green-600" />
+                                        </button>
+                                      )}
+                                      {rowCount > 1 && (
+                                        <button onClick={() => {
+                                          setConAdjRows(prev => prev.filter(r => r.rowKey !== row.rowKey))
+                                          setConAdjSaved(false)
+                                        }} className="p-0.5 rounded hover:bg-red-50" title="Remove this line">
+                                          <X size={13} className="text-red-400" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
+                                )}
+                              </tr>
+                            )
+                          })
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {canWrite && (
+                    <div className="flex items-center justify-end gap-3">
+                      {conAdjSaved && (
+                        <span className="flex items-center gap-1 text-xs font-medium" style={{ color: '#16a34a' }}>
+                          <CheckCircle2 size={14} /> Saved
+                        </span>
+                      )}
+                      <button onClick={async () => {
+                        setConAdjSaving(true)
+                        const cp = `${conAdjCutoffYear}-${conAdjCutoffMonth}-${conAdjCutoffHalf}`
+                        try {
+                          await fetch('/api/payroll/consultant-adjustments', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ cutoffPeriod: cp, branch: conAdjBranch, adjustments: conAdjRows }),
+                          })
+                          setConAdjSaved(true)
+                        } catch { setError('Failed to save adjustments') }
+                        setConAdjSaving(false)
+                      }} disabled={conAdjSaving}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium text-white transition-colors hover:opacity-80 active:scale-[0.97]"
+                        style={{ background: 'var(--teal)' }}>
+                        {conAdjSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Save Adjustments
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
           {/* ══ TAB 4: Payslip Generation ══ */}
           {subTab === 'payslips' && (
             <div className="space-y-4">
               {/* Controls row */}
+              {(() => {
+                const activeConsultants = payrollPreviews
+                const allConsultantLocked = activeConsultants.length > 0 && activeConsultants.every(p => p.existingStatus === 'LOCKED')
+                return (
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="flex items-center gap-3 flex-wrap">
                   <select value={genDept} onChange={e => setGenDept(e.target.value)}
@@ -2351,17 +3013,44 @@ export default function PayrollPage() {
                     <option value="">All Consultants</option>
                     {consultants.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
-                  <button onClick={generatePayslips} disabled={generating}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50"
-                    style={{ background: 'var(--teal)' }}>
-                    {generating ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
-                    Generate Payslips
-                  </button>
-                  {payrollPreviews.some(p => p.grossPay > 0) && (
-                    <button onClick={savePayslips} disabled={saving}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium border disabled:opacity-50"
-                      style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
-                      <Save size={14} /> {saving ? 'Saving...' : 'Save All as Draft'}
+                  {!allConsultantLocked && (
+                    <>
+                      <button onClick={() => generatePayslips(true)} disabled={generating}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50"
+                        style={{ background: 'var(--teal)' }}>
+                        {generating ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+                        Generate Payslips
+                      </button>
+                      {payrollPreviews.some(p => p.grossPay > 0) && (
+                        <button onClick={savePayslips} disabled={saving}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium border disabled:opacity-50"
+                          style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                          <Save size={14} /> {saving ? 'Saving...' : 'Save All as Draft'}
+                        </button>
+                      )}
+                      {activeConsultants.some(p => p.existingStatus === 'DRAFT') && (
+                        <button onClick={finalizeConsultantPayslips} disabled={saving}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium border disabled:opacity-50"
+                          style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                          <CheckCircle2 size={14} /> {saving ? 'Finalizing...' : 'Finalize All'}
+                        </button>
+                      )}
+                      {activeConsultants.some(p => p.existingStatus === 'FINAL') && (
+                        <button onClick={() => lockAndFinalize('CONSULTANT')} disabled={finalizing}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+                          style={{ background: '#dc2626' }}>
+                          {finalizing ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                          {finalizing ? 'Locking...' : 'Lock Payroll'}
+                        </button>
+                      )}
+                    </>
+                  )}
+                  {allConsultantLocked && (
+                    <button onClick={() => unlockPayroll('CONSULTANT')} disabled={unlocking}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border disabled:opacity-50"
+                      style={{ borderColor: '#4338ca', color: '#4338ca' }}>
+                      {unlocking ? <Loader2 size={14} className="animate-spin" /> : <ShieldOff size={14} />}
+                      {unlocking ? 'Unlocking...' : 'Unlock Payroll'}
                     </button>
                   )}
                 </div>
@@ -2383,435 +3072,479 @@ export default function PayrollPage() {
                       {downloadingAll ? 'Generating PDFs...' : 'Download ALL PDFs'}
                     </button>
                   )}
+                  {payrollPreviews.some(p => p.grossPay > 0 || p.orderCount > 0) && (
+                    <button onClick={emailAllClinicians} disabled={emailingAll}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+                      style={{ background: '#c44b00' }}>
+                      {emailingAll ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
+                      {emailingAll ? 'Sending...' : 'Email All'}
+                    </button>
+                  )}
                 </div>
               </div>
+                )
+              })()}
 
-              {/* Preview cards */}
-              {payrollPreviews.length > 0 && (
-                <div className="space-y-5">
+              {/* Preview table — expandable summary rows */}
+              {payrollPreviews.length > 0 && (() => {
+                const visiblePreviews = payrollPreviews.filter(p => p.grossPay > 0 || p.orderCount > 0)
+                return (
+                <div className="space-y-3">
                   <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>
-                    Payroll for: {getCutoffLabel(cutoffPeriod)}
+                    Payroll for: {getCutoffLabel(cutoffPeriod)} — {visiblePreviews.length} consultant(s)
                   </p>
 
-                  {payrollPreviews.filter(p => p.grossPay > 0 || p.orderCount > 0).map(p => {
-                    const extras = extraUnitPays[p.consultantId] || []
-                    const adjs = adjustments[p.consultantId] || []
-                    const t = computeTotals(p, extras, adjs)
+                  {visiblePreviews.length > 0 ? (
+                    <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr style={{ background: 'var(--off-white)' }}>
+                            <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Consultant</th>
+                            <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Unit Pay</th>
+                            <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Retainer</th>
+                            <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Adj</th>
+                            <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Gross</th>
+                            <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Tax</th>
+                            <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Net Pay</th>
+                            <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Status</th>
+                            <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {visiblePreviews.map(p => {
+                            const extras = extraUnitPays[p.consultantId] || []
+                            const adjs = adjustments[p.consultantId] || []
+                            const t = computeTotals(p, extras, adjs)
+                            const adjNet = t.taxedAdj + t.nonTaxedAdj
+                            const isExpanded = expandedPayslip === p.consultantId
 
-                    // Unit pays available for this clinician's dept
-                    const availableUPs = unitPays.filter(up =>
-                      up.departments.length === 0 || up.departments.includes(p.department)
-                    )
-                    const upSearch = upAddSearch[p.consultantId] || ''
-                    const filteredUPs = availableUPs.filter(up =>
-                      !upSearch || up.name.toLowerCase().includes(upSearch.toLowerCase())
-                    )
-                    const selUPId = upAddSel[p.consultantId] || ''
-                    const selUP = availableUPs.find(u => u.id === selUPId)
-                    const consultant = consultants.find(c => c.id === p.consultantId)
-                    const selUPRate = selUP ? toNum(consultant?.unitPayRates.find(r => r.unitPayId === selUP.id)?.amount) : 0
-                    const selUPQty = upAddQty[p.consultantId] || 1
-                    const emailSt = emailStatus[p.consultantId]
-                    const isSendingThis = sendingEmailFor === p.consultantId
+                            // Unit pays available for this clinician's dept
+                            const availableUPs = unitPays.filter(up =>
+                              up.departments.length === 0 || up.departments.includes(p.department)
+                            )
+                            const upSearch = upAddSearch[p.consultantId] || ''
+                            const filteredUPs = availableUPs.filter(up =>
+                              !upSearch || up.name.toLowerCase().includes(upSearch.toLowerCase())
+                            )
+                            const selUPId = upAddSel[p.consultantId] || ''
+                            const selUP = availableUPs.find(u => u.id === selUPId)
+                            const consultant = consultants.find(c => c.id === p.consultantId)
+                            const selUPRate = selUP ? toNum(consultant?.unitPayRates.find(r => r.unitPayId === selUP.id)?.amount) : 0
+                            const selUPQty = upAddQty[p.consultantId] || 1
+                            const emailSt = emailStatus[p.consultantId]
+                            const isSendingThis = sendingEmailFor === p.consultantId
 
-                    return (
-                      <div key={p.consultantId} className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-                        {/* Card header */}
-                        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-                          <div>
-                            <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>{p.consultantName}</p>
-                            <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-                              {POSITION_LABELS[p.department] || p.department} · {DEPT_LABELS[p.department] || p.department} · {p.branch}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-xl font-bold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(t.net)}</p>
-                            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Net Pay</p>
-                          </div>
-                        </div>
-
-                        <div className="p-5 space-y-5">
-                          {/* ── Auto-computed earnings ── */}
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--mid-gray)' }}>Earnings from Orders</p>
-                            <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
-                              <table className="w-full text-xs">
-                                <thead>
-                                  <tr style={{ background: 'var(--off-white)' }}>
-                                    {['Item', 'Rate', 'Qty', 'Amount'].map(h => (
-                                      <th key={h} className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--mid-gray)' }}>{h}</th>
-                                    ))}
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {p.items.map((item, idx) => (
-                                    <tr key={idx} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                                      <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{item.unitPayName}</td>
-                                      <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(item.unitAmount)}</td>
-                                      <td className="px-3 py-2 cursor-pointer underline" style={{ color: 'var(--teal)' }}
-                                        onClick={() => item.sessions?.length ? setSessionBreakdown({ unitPayName: item.unitPayName, sessions: item.sessions }) : undefined}
-                                        title="Click to view session details">{item.quantity}</td>
-                                      <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(item.lineTotal)}</td>
-                                    </tr>
-                                  ))}
-                                  {p.items.length === 0 && (
-                                    <tr><td colSpan={4} className="px-3 py-3 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>No order-linked earnings this cutoff</td></tr>
-                                  )}
-                                  {p.retainerAmount > 0 && (
-                                    <tr className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                                      <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>Monthly Retainer (½)</td>
-                                      <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>—</td>
-                                      <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>—</td>
-                                      <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(p.retainerAmount)}</td>
-                                    </tr>
-                                  )}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-
-                          {/* ── Extra Unit Pays ── */}
-                          <div>
-                            <div className="flex items-center justify-between mb-2">
-                              <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>
-                                Additional Unit Pay {extras.length > 0 && <span className="ml-1 px-1.5 py-0.5 rounded-full bg-teal-50 text-teal-700 text-[10px]">{extras.length}</span>}
-                              </p>
-                              <button
-                                onClick={() => setShowUpAdd(prev => ({ ...prev, [p.consultantId]: !prev[p.consultantId] }))}
-                                className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg"
-                                style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
-                                <PlusCircle size={12} /> Add Unit Pay
-                              </button>
-                            </div>
-
-                            {/* Add unit pay form */}
-                            {showUpAdd[p.consultantId] && (
-                              <div className="rounded-xl border p-3 mb-3 space-y-2" style={{ borderColor: 'var(--light-gray)', background: '#fafafa' }}>
-                                <div className="relative">
-                                  <Search size={12} className="absolute left-2.5 top-2.5" style={{ color: 'var(--mid-gray)' }} />
-                                  <input
-                                    value={upSearch}
-                                    onChange={e => setUpAddSearch(prev => ({ ...prev, [p.consultantId]: e.target.value }))}
-                                    placeholder={`Search unit pays for ${DEPT_LABELS[p.department] || p.department}...`}
-                                    className="w-full pl-8 pr-3 py-2 rounded-lg border text-xs outline-none"
-                                    style={{ borderColor: 'var(--light-gray)' }}
-                                  />
-                                </div>
-                                {filteredUPs.length > 0 && (
-                                  <div className="max-h-36 overflow-y-auto rounded-lg border" style={{ borderColor: 'var(--light-gray)' }}>
-                                    {filteredUPs.map(up => {
-                                      const rate = toNum(consultant?.unitPayRates.find(r => r.unitPayId === up.id)?.amount)
-                                      return (
-                                        <button key={up.id} onClick={() => setUpAddSel(prev => ({ ...prev, [p.consultantId]: up.id }))}
-                                          className="w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-teal-50 transition-colors"
-                                          style={selUPId === up.id ? { background: '#f0fdfa', color: 'var(--deep-teal)' } : { color: 'var(--charcoal)' }}>
-                                          <span>{up.name}</span>
-                                          <span style={{ color: 'var(--mid-gray)' }}>{rate > 0 ? formatCurrency(rate) + ' / unit' : 'No rate set'}</span>
-                                        </button>
-                                      )
-                                    })}
-                                  </div>
-                                )}
-                                {filteredUPs.length === 0 && upSearch && (
-                                  <p className="text-xs text-center py-2" style={{ color: 'var(--mid-gray)' }}>No matching unit pays for this department.</p>
-                                )}
-                                {selUPId && (
-                                  <div className="flex items-center gap-3 pt-1">
-                                    <div className="flex-1 text-xs px-2 py-1.5 rounded-lg" style={{ background: '#f0fdfa', color: 'var(--deep-teal)' }}>
-                                      <span className="font-semibold">{selUP?.name}</span>
-                                      {selUPRate > 0 && <span className="ml-2 opacity-70">@ {formatCurrency(selUPRate)}/unit</span>}
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                      <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>Qty:</label>
-                                      <input type="number" min={1} step={1} value={selUPQty}
-                                        onChange={e => setUpAddQty(prev => ({ ...prev, [p.consultantId]: parseInt(e.target.value) || 1 }))}
-                                        className="w-16 px-2 py-1 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-                                    </div>
-                                    {selUPRate > 0 && (
-                                      <span className="text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>
-                                        = {formatCurrency(selUPRate * selUPQty)}
+                            return (
+                              <React.Fragment key={p.consultantId}>
+                                {/* ── Summary row ── */}
+                                <tr className="border-t hover:bg-gray-50 cursor-pointer" style={{ borderColor: 'var(--light-gray)' }}
+                                  onClick={() => setExpandedPayslip(isExpanded ? null : p.consultantId)}>
+                                  <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>
+                                    {p.consultantName}
+                                    <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>{p.department}</span>
+                                  </td>
+                                  <td className="px-3 py-2.5 text-right font-mono">{formatCurrency(t.totalUnitPay)}</td>
+                                  <td className="px-3 py-2.5 text-right font-mono">{formatCurrency(p.retainerAmount)}</td>
+                                  <td className="px-3 py-2.5 text-right font-mono" style={{ color: adjNet >= 0 ? '#065f46' : '#991b1b' }}>
+                                    {adjNet !== 0 ? ((adjNet > 0 ? '+' : '') + formatCurrency(adjNet)) : '—'}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-right font-mono font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(t.gross)}</td>
+                                  <td className="px-3 py-2.5 text-right font-mono" style={{ color: '#d97706' }}>{t.tax > 0 ? formatCurrency(t.tax) : '—'}</td>
+                                  <td className="px-3 py-2.5 text-right font-mono font-bold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(t.net)}</td>
+                                  <td className="px-3 py-2.5 text-center">
+                                    {p.existingStatus && (
+                                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold"
+                                        style={{ background: p.existingStatus === 'FINAL' ? '#dcfce7' : p.existingStatus === 'LOCKED' ? '#e0e7ff' : '#fef3c7', color: p.existingStatus === 'FINAL' ? '#059669' : p.existingStatus === 'LOCKED' ? '#4338ca' : '#d97706' }}>
+                                        {p.existingStatus}
                                       </span>
                                     )}
-                                    <button onClick={() => addExtraUP(p.consultantId)}
-                                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
-                                      style={{ background: 'var(--teal)' }}>Add</button>
-                                    <button onClick={() => setShowUpAdd(prev => ({ ...prev, [p.consultantId]: false }))}
-                                      className="p-1.5 rounded-lg hover:bg-gray-100"><X size={12} /></button>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                            {/* List of added unit pays */}
-                            {extras.length > 0 && (
-                              <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
-                                <table className="w-full text-xs">
-                                  <thead>
-                                    <tr style={{ background: '#f0fdfa' }}>
-                                      <th className="px-3 py-2 text-left font-semibold text-teal-700">Unit Pay</th>
-                                      <th className="px-3 py-2 text-right font-semibold text-teal-700">Rate</th>
-                                      <th className="px-3 py-2 text-center font-semibold text-teal-700">Qty</th>
-                                      <th className="px-3 py-2 text-right font-semibold text-teal-700">Total</th>
-                                      <th className="px-3 py-2 w-8" />
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {extras.map(e => (
-                                      <tr key={e.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                                        <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{e.unitPayName}</td>
-                                        <td className="px-3 py-2 text-right" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(e.unitAmount)}</td>
-                                        <td className="px-3 py-2 text-center">
-                                          <input type="number" min={1} step={1} value={e.qty}
-                                            onChange={ev => updateExtraQty(p.consultantId, e.id, parseInt(ev.target.value) || 1)}
-                                            className="w-14 px-2 py-1 rounded border text-xs text-center outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-                                        </td>
-                                        <td className="px-3 py-2 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>{formatCurrency(e.unitAmount * e.qty)}</td>
-                                        <td className="px-3 py-2">
-                                          <button onClick={() => removeExtraUP(p.consultantId, e.id)} className="p-1 hover:bg-red-50 rounded">
-                                            <Trash2 size={12} className="text-red-400" />
-                                          </button>
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* ── Adjustments ── */}
-                          <div>
-                            <div className="flex items-center justify-between mb-2">
-                              <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>
-                                Adjustments {adjs.length > 0 && <span className="ml-1 px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px]">{adjs.length}</span>}
-                              </p>
-                              <button
-                                onClick={() => setShowAdjAdd(prev => ({ ...prev, [p.consultantId]: !prev[p.consultantId] }))}
-                                className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg"
-                                style={{ background: '#fffbeb', color: '#92400e' }}>
-                                <PlusCircle size={12} /> Add Adjustment
-                              </button>
-                            </div>
-
-                            {/* Add adjustment form */}
-                            {showAdjAdd[p.consultantId] && (
-                              <div className="rounded-xl border p-3 mb-3 space-y-3" style={{ borderColor: '#fde68a', background: '#fffbeb' }}>
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div>
-                                    <label className="block text-[10px] font-semibold mb-1" style={{ color: '#92400e' }}>Description *</label>
-                                    <input
-                                      value={adjName[p.consultantId] || ''}
-                                      onChange={e => setAdjName(prev => ({ ...prev, [p.consultantId]: e.target.value }))}
-                                      placeholder="e.g. Performance Bonus"
-                                      className="w-full px-2.5 py-2 rounded-lg border text-xs outline-none"
-                                      style={{ borderColor: '#fde68a' }}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-[10px] font-semibold mb-1" style={{ color: '#92400e' }}>Amount *</label>
-                                    <input
-                                      type="number" min={0} step="0.01"
-                                      value={adjAmount[p.consultantId] || ''}
-                                      onChange={e => setAdjAmount(prev => ({ ...prev, [p.consultantId]: e.target.value }))}
-                                      placeholder="0.00"
-                                      className="w-full px-2.5 py-2 rounded-lg border text-xs outline-none"
-                                      style={{ borderColor: '#fde68a' }}
-                                    />
-                                  </div>
-                                </div>
-
-                                <div className="flex items-center gap-4">
-                                  {/* Addition / Deduction toggle */}
-                                  <div>
-                                    <label className="block text-[10px] font-semibold mb-1" style={{ color: '#92400e' }}>Type</label>
-                                    <div className="flex gap-2">
-                                      <button
-                                        onClick={() => setAdjIsAdd(prev => ({ ...prev, [p.consultantId]: true }))}
-                                        className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors"
-                                        style={adjIsAdd[p.consultantId] !== false ? { background: '#d1fae5', borderColor: '#6ee7b7', color: '#065f46' } : { borderColor: '#e5e7eb', color: '#6b7280' }}>
-                                        + Addition
-                                      </button>
-                                      <button
-                                        onClick={() => setAdjIsAdd(prev => ({ ...prev, [p.consultantId]: false }))}
-                                        className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors"
-                                        style={adjIsAdd[p.consultantId] === false ? { background: '#fee2e2', borderColor: '#fca5a5', color: '#991b1b' } : { borderColor: '#e5e7eb', color: '#6b7280' }}>
-                                        − Deduction
-                                      </button>
-                                    </div>
-                                  </div>
-
-                                  {/* Taxed toggle */}
-                                  <div>
-                                    <label className="block text-[10px] font-semibold mb-1" style={{ color: '#92400e' }}>Include in Tax Base?</label>
-                                    <button
-                                      onClick={() => setAdjIsTaxed(prev => ({ ...prev, [p.consultantId]: !prev[p.consultantId] }))}
-                                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors"
-                                      style={adjIsTaxed[p.consultantId] ? { background: '#fef3c7', borderColor: '#fcd34d', color: '#78350f' } : { borderColor: '#e5e7eb', color: '#6b7280' }}>
-                                      {adjIsTaxed[p.consultantId]
-                                        ? <><ToggleRight size={14} /> Taxed</>
-                                        : <><ToggleLeft size={14} /> Non-taxed</>}
-                                    </button>
-                                  </div>
-                                </div>
-
-                                <div>
-                                  <label className="block text-[10px] font-semibold mb-1" style={{ color: '#92400e' }}>Remarks (visible on payslip)</label>
-                                  <input
-                                    value={adjRemarks[p.consultantId] || ''}
-                                    onChange={e => setAdjRemarks(prev => ({ ...prev, [p.consultantId]: e.target.value }))}
-                                    placeholder="e.g. Q1 performance incentive"
-                                    className="w-full px-2.5 py-2 rounded-lg border text-xs outline-none"
-                                    style={{ borderColor: '#fde68a' }}
-                                  />
-                                </div>
-
-                                <div className="flex gap-2">
-                                  <button onClick={() => addAdjustment(p.consultantId)}
-                                    disabled={!adjName[p.consultantId]?.trim() || !adjAmount[p.consultantId]}
-                                    className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50"
-                                    style={{ background: '#d97706' }}>Add Adjustment</button>
-                                  <button onClick={() => setShowAdjAdd(prev => ({ ...prev, [p.consultantId]: false }))}
-                                    className="px-3 py-1.5 rounded-lg text-xs border" style={{ borderColor: '#e5e7eb', color: '#6b7280' }}>Cancel</button>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* List of adjustments */}
-                            {adjs.length > 0 && (
-                              <div className="rounded-xl border overflow-hidden" style={{ borderColor: '#fde68a' }}>
-                                <table className="w-full text-xs">
-                                  <thead>
-                                    <tr style={{ background: '#fffbeb' }}>
-                                      <th className="px-3 py-2 text-left font-semibold text-amber-800">Description</th>
-                                      <th className="px-3 py-2 text-center font-semibold text-amber-800">Tax</th>
-                                      <th className="px-3 py-2 text-right font-semibold text-amber-800">Amount</th>
-                                      <th className="px-3 py-2 text-left font-semibold text-amber-800">Remarks</th>
-                                      <th className="px-3 py-2 w-8" />
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {adjs.map(a => (
-                                      <tr key={a.id} className="border-t" style={{ borderColor: '#fde68a' }}>
-                                        <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{a.name}</td>
-                                        <td className="px-3 py-2 text-center">
-                                          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
-                                            style={a.isTaxed ? { background: '#fef3c7', color: '#78350f' } : { background: '#f3f4f6', color: '#6b7280' }}>
-                                            {a.isTaxed ? 'Taxed' : 'Non-taxed'}
-                                          </span>
-                                        </td>
-                                        <td className="px-3 py-2 text-right font-semibold"
-                                          style={{ color: a.isAddition ? '#065f46' : '#991b1b' }}>
-                                          {a.isAddition ? '+' : '−'} {formatCurrency(a.amount)}
-                                        </td>
-                                        <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{a.remarks || '—'}</td>
-                                        <td className="px-3 py-2">
-                                          <button onClick={() => removeAdjustment(p.consultantId, a.id)} className="p-1 hover:bg-red-50 rounded">
-                                            <Trash2 size={12} className="text-red-400" />
-                                          </button>
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* ── Computed totals ── */}
-                          <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
-                            <table className="w-full text-xs">
-                              <tbody>
-                                <tr className="border-b" style={{ borderColor: 'var(--light-gray)' }}>
-                                  <td colSpan={3} className="px-3 py-2 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>Unit Pay Total</td>
-                                  <td className="px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>{formatCurrency(t.totalUnitPay)}</td>
+                                  </td>
+                                  <td className="px-3 py-2.5 text-center">
+                                    {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                  </td>
                                 </tr>
-                                {p.retainerAmount > 0 && (
-                                  <tr className="border-b" style={{ borderColor: 'var(--light-gray)' }}>
-                                    <td colSpan={3} className="px-3 py-2 text-right" style={{ color: 'var(--charcoal)' }}>Retainer (½)</td>
-                                    <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{formatCurrency(p.retainerAmount)}</td>
-                                  </tr>
-                                )}
-                                {adjs.length > 0 && (
-                                  <tr className="border-b" style={{ borderColor: 'var(--light-gray)' }}>
-                                    <td colSpan={3} className="px-3 py-2 text-right" style={{ color: '#78350f' }}>Adjustments (net)</td>
-                                    <td className="px-3 py-2 font-medium" style={{ color: (t.taxedAdj + t.nonTaxedAdj) >= 0 ? '#065f46' : '#991b1b' }}>
-                                      {(t.taxedAdj + t.nonTaxedAdj) >= 0 ? '+' : ''}{formatCurrency(t.taxedAdj + t.nonTaxedAdj)}
+
+                                {/* ── Expanded breakdown ── */}
+                                {isExpanded && (
+                                  <tr key={`${p.consultantId}-detail`}>
+                                    <td colSpan={9} className="px-5 py-4" style={{ background: 'var(--off-white)' }}>
+                                      <div className="space-y-4">
+                                        {/* ── Earnings from Orders ── */}
+                                        <div>
+                                          <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--mid-gray)' }}>Earnings from Orders</p>
+                                          <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+                                            <table className="w-full text-xs">
+                                              <thead>
+                                                <tr style={{ background: 'var(--off-white)' }}>
+                                                  {['Item', 'Rate', 'Qty', 'Amount'].map(h => (
+                                                    <th key={h} className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--mid-gray)' }}>{h}</th>
+                                                  ))}
+                                                </tr>
+                                              </thead>
+                                              <tbody>
+                                                {p.items.map((item, idx) => (
+                                                  <tr key={idx} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                                                    <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{item.unitPayName}</td>
+                                                    <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(item.unitAmount)}</td>
+                                                    <td className="px-3 py-2 cursor-pointer underline" style={{ color: 'var(--teal)' }}
+                                                      onClick={(e) => { e.stopPropagation(); item.sessions?.length ? setSessionBreakdown({ unitPayName: item.unitPayName, sessions: item.sessions }) : undefined }}
+                                                      title="Click to view session details">{item.quantity}</td>
+                                                    <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(item.lineTotal)}</td>
+                                                  </tr>
+                                                ))}
+                                                {p.items.length === 0 && (
+                                                  <tr><td colSpan={4} className="px-3 py-3 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>No order-linked earnings this cutoff</td></tr>
+                                                )}
+                                                {p.retainerAmount > 0 && (
+                                                  <tr className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                                                    <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>Monthly Retainer (½)</td>
+                                                    <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>—</td>
+                                                    <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>—</td>
+                                                    <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(p.retainerAmount)}</td>
+                                                  </tr>
+                                                )}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        </div>
+
+                                        {/* ── Extra Unit Pays ── */}
+                                        <div>
+                                          <div className="flex items-center justify-between mb-2">
+                                            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>
+                                              Additional Unit Pay {extras.length > 0 && <span className="ml-1 px-1.5 py-0.5 rounded-full bg-teal-50 text-teal-700 text-[10px]">{extras.length}</span>}
+                                            </p>
+                                            {p.existingStatus !== 'LOCKED' && (
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); setShowUpAdd(prev => ({ ...prev, [p.consultantId]: !prev[p.consultantId] })) }}
+                                              className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg"
+                                              style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+                                              <PlusCircle size={12} /> Add Unit Pay
+                                            </button>
+                                            )}
+                                          </div>
+
+                                          {showUpAdd[p.consultantId] && (
+                                            <div className="rounded-xl border p-3 mb-3 space-y-2" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+                                              <div className="relative">
+                                                <Search size={12} className="absolute left-2.5 top-2.5" style={{ color: 'var(--mid-gray)' }} />
+                                                <input
+                                                  value={upSearch}
+                                                  onChange={e => setUpAddSearch(prev => ({ ...prev, [p.consultantId]: e.target.value }))}
+                                                  placeholder={`Search unit pays for ${DEPT_LABELS[p.department] || p.department}...`}
+                                                  className="w-full pl-8 pr-3 py-2 rounded-lg border text-xs outline-none"
+                                                  style={{ borderColor: 'var(--light-gray)' }}
+                                                  onClick={e => e.stopPropagation()}
+                                                />
+                                              </div>
+                                              {filteredUPs.length > 0 && (
+                                                <div className="max-h-36 overflow-y-auto rounded-lg border" style={{ borderColor: 'var(--light-gray)' }}>
+                                                  {filteredUPs.map(up => {
+                                                    const rate = toNum(consultant?.unitPayRates.find(r => r.unitPayId === up.id)?.amount)
+                                                    return (
+                                                      <button key={up.id} onClick={(e) => { e.stopPropagation(); setUpAddSel(prev => ({ ...prev, [p.consultantId]: up.id })) }}
+                                                        className="w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-teal-50 transition-colors"
+                                                        style={selUPId === up.id ? { background: '#f0fdfa', color: 'var(--deep-teal)' } : { color: 'var(--charcoal)' }}>
+                                                        <span>{up.name}</span>
+                                                        <span style={{ color: 'var(--mid-gray)' }}>{rate > 0 ? formatCurrency(rate) + ' / unit' : 'No rate set'}</span>
+                                                      </button>
+                                                    )
+                                                  })}
+                                                </div>
+                                              )}
+                                              {filteredUPs.length === 0 && upSearch && (
+                                                <p className="text-xs text-center py-2" style={{ color: 'var(--mid-gray)' }}>No matching unit pays for this department.</p>
+                                              )}
+                                              {selUPId && (
+                                                <div className="flex items-center gap-3 pt-1">
+                                                  <div className="flex-1 text-xs px-2 py-1.5 rounded-lg" style={{ background: '#f0fdfa', color: 'var(--deep-teal)' }}>
+                                                    <span className="font-semibold">{selUP?.name}</span>
+                                                    {selUPRate > 0 && <span className="ml-2 opacity-70">@ {formatCurrency(selUPRate)}/unit</span>}
+                                                  </div>
+                                                  <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                                                    <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>Qty:</label>
+                                                    <input type="number" min={1} step={1} value={selUPQty}
+                                                      onChange={e => setUpAddQty(prev => ({ ...prev, [p.consultantId]: parseInt(e.target.value) || 1 }))}
+                                                      className="w-16 px-2 py-1 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                                                  </div>
+                                                  {selUPRate > 0 && (
+                                                    <span className="text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>
+                                                      = {formatCurrency(selUPRate * selUPQty)}
+                                                    </span>
+                                                  )}
+                                                  <button onClick={(e) => { e.stopPropagation(); addExtraUP(p.consultantId) }}
+                                                    className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
+                                                    style={{ background: 'var(--teal)' }}>Add</button>
+                                                  <button onClick={(e) => { e.stopPropagation(); setShowUpAdd(prev => ({ ...prev, [p.consultantId]: false })) }}
+                                                    className="p-1.5 rounded-lg hover:bg-gray-100"><X size={12} /></button>
+                                                </div>
+                                              )}
+                                            </div>
+                                          )}
+
+                                          {extras.length > 0 && (
+                                            <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+                                              <table className="w-full text-xs">
+                                                <thead>
+                                                  <tr style={{ background: '#f0fdfa' }}>
+                                                    <th className="px-3 py-2 text-left font-semibold text-teal-700">Unit Pay</th>
+                                                    <th className="px-3 py-2 text-right font-semibold text-teal-700">Rate</th>
+                                                    <th className="px-3 py-2 text-center font-semibold text-teal-700">Qty</th>
+                                                    <th className="px-3 py-2 text-right font-semibold text-teal-700">Total</th>
+                                                    <th className="px-3 py-2 w-8" />
+                                                  </tr>
+                                                </thead>
+                                                <tbody>
+                                                  {extras.map(e => (
+                                                    <tr key={e.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                                                      <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{e.unitPayName}</td>
+                                                      <td className="px-3 py-2 text-right" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(e.unitAmount)}</td>
+                                                      <td className="px-3 py-2 text-center" onClick={e2 => e2.stopPropagation()}>
+                                                        <input type="number" min={1} step={1} value={e.qty}
+                                                          onChange={ev => updateExtraQty(p.consultantId, e.id, parseInt(ev.target.value) || 1)}
+                                                          className="w-14 px-2 py-1 rounded border text-xs text-center outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                                                      </td>
+                                                      <td className="px-3 py-2 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>{formatCurrency(e.unitAmount * e.qty)}</td>
+                                                      <td className="px-3 py-2">
+                                                        {p.existingStatus !== 'LOCKED' && (
+                                                        <button onClick={(e2) => { e2.stopPropagation(); removeExtraUP(p.consultantId, e.id) }} className="p-1 hover:bg-red-50 rounded">
+                                                          <Trash2 size={12} className="text-red-400" />
+                                                        </button>
+                                                        )}
+                                                      </td>
+                                                    </tr>
+                                                  ))}
+                                                </tbody>
+                                              </table>
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        {/* ── Adjustments ── */}
+                                        <div>
+                                          <div className="flex items-center justify-between mb-2">
+                                            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>
+                                              Adjustments {adjs.length > 0 && <span className="ml-1 px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px]">{adjs.length}</span>}
+                                            </p>
+                                            {p.existingStatus !== 'LOCKED' && (
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); setShowAdjAdd(prev => ({ ...prev, [p.consultantId]: !prev[p.consultantId] })) }}
+                                              className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg"
+                                              style={{ background: '#fffbeb', color: '#92400e' }}>
+                                              <PlusCircle size={12} /> Add Adjustment
+                                            </button>
+                                            )}
+                                          </div>
+
+                                          {showAdjAdd[p.consultantId] && (
+                                            <div className="rounded-xl border p-3 mb-3 space-y-3" style={{ borderColor: '#fde68a', background: '#fffbeb' }} onClick={e => e.stopPropagation()}>
+                                              <div className="grid grid-cols-2 gap-2">
+                                                <div>
+                                                  <label className="block text-[10px] font-semibold mb-1" style={{ color: '#92400e' }}>Description *</label>
+                                                  <input
+                                                    value={adjName[p.consultantId] || ''}
+                                                    onChange={e => setAdjName(prev => ({ ...prev, [p.consultantId]: e.target.value }))}
+                                                    placeholder="e.g. Performance Bonus"
+                                                    className="w-full px-2.5 py-2 rounded-lg border text-xs outline-none"
+                                                    style={{ borderColor: '#fde68a' }}
+                                                  />
+                                                </div>
+                                                <div>
+                                                  <label className="block text-[10px] font-semibold mb-1" style={{ color: '#92400e' }}>Amount *</label>
+                                                  <input
+                                                    type="number" min={0} step="0.01"
+                                                    value={adjAmount[p.consultantId] || ''}
+                                                    onChange={e => setAdjAmount(prev => ({ ...prev, [p.consultantId]: e.target.value }))}
+                                                    placeholder="0.00"
+                                                    className="w-full px-2.5 py-2 rounded-lg border text-xs outline-none"
+                                                    style={{ borderColor: '#fde68a' }}
+                                                  />
+                                                </div>
+                                              </div>
+
+                                              <div className="flex items-center gap-4">
+                                                <div>
+                                                  <label className="block text-[10px] font-semibold mb-1" style={{ color: '#92400e' }}>Type</label>
+                                                  <div className="flex gap-2">
+                                                    <button
+                                                      onClick={() => setAdjIsAdd(prev => ({ ...prev, [p.consultantId]: true }))}
+                                                      className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors"
+                                                      style={adjIsAdd[p.consultantId] !== false ? { background: '#d1fae5', borderColor: '#6ee7b7', color: '#065f46' } : { borderColor: '#e5e7eb', color: '#6b7280' }}>
+                                                      + Addition
+                                                    </button>
+                                                    <button
+                                                      onClick={() => setAdjIsAdd(prev => ({ ...prev, [p.consultantId]: false }))}
+                                                      className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors"
+                                                      style={adjIsAdd[p.consultantId] === false ? { background: '#fee2e2', borderColor: '#fca5a5', color: '#991b1b' } : { borderColor: '#e5e7eb', color: '#6b7280' }}>
+                                                      − Deduction
+                                                    </button>
+                                                  </div>
+                                                </div>
+                                                <div>
+                                                  <label className="block text-[10px] font-semibold mb-1" style={{ color: '#92400e' }}>Include in Tax Base?</label>
+                                                  <button
+                                                    onClick={() => setAdjIsTaxed(prev => ({ ...prev, [p.consultantId]: !prev[p.consultantId] }))}
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors"
+                                                    style={adjIsTaxed[p.consultantId] ? { background: '#fef3c7', borderColor: '#fcd34d', color: '#78350f' } : { borderColor: '#e5e7eb', color: '#6b7280' }}>
+                                                    {adjIsTaxed[p.consultantId]
+                                                      ? <><ToggleRight size={14} /> Taxed</>
+                                                      : <><ToggleLeft size={14} /> Non-taxed</>}
+                                                  </button>
+                                                </div>
+                                              </div>
+
+                                              <div>
+                                                <label className="block text-[10px] font-semibold mb-1" style={{ color: '#92400e' }}>Remarks (visible on payslip)</label>
+                                                <input
+                                                  value={adjRemarks[p.consultantId] || ''}
+                                                  onChange={e => setAdjRemarks(prev => ({ ...prev, [p.consultantId]: e.target.value }))}
+                                                  placeholder="e.g. Q1 performance incentive"
+                                                  className="w-full px-2.5 py-2 rounded-lg border text-xs outline-none"
+                                                  style={{ borderColor: '#fde68a' }}
+                                                />
+                                              </div>
+
+                                              <div className="flex gap-2">
+                                                <button onClick={() => addAdjustment(p.consultantId)}
+                                                  disabled={!adjName[p.consultantId]?.trim() || !adjAmount[p.consultantId]}
+                                                  className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50"
+                                                  style={{ background: '#d97706' }}>Add Adjustment</button>
+                                                <button onClick={() => setShowAdjAdd(prev => ({ ...prev, [p.consultantId]: false }))}
+                                                  className="px-3 py-1.5 rounded-lg text-xs border" style={{ borderColor: '#e5e7eb', color: '#6b7280' }}>Cancel</button>
+                                              </div>
+                                            </div>
+                                          )}
+
+                                          {adjs.length > 0 && (
+                                            <div className="rounded-xl border overflow-hidden" style={{ borderColor: '#fde68a', background: 'white' }}>
+                                              <table className="w-full text-xs">
+                                                <thead>
+                                                  <tr style={{ background: '#fffbeb' }}>
+                                                    <th className="px-3 py-2 text-left font-semibold text-amber-800">Description</th>
+                                                    <th className="px-3 py-2 text-center font-semibold text-amber-800">Tax</th>
+                                                    <th className="px-3 py-2 text-right font-semibold text-amber-800">Amount</th>
+                                                    <th className="px-3 py-2 text-left font-semibold text-amber-800">Remarks</th>
+                                                    <th className="px-3 py-2 w-8" />
+                                                  </tr>
+                                                </thead>
+                                                <tbody>
+                                                  {adjs.map(a => (
+                                                    <tr key={a.id} className="border-t" style={{ borderColor: '#fde68a' }}>
+                                                      <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{a.name}</td>
+                                                      <td className="px-3 py-2 text-center">
+                                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
+                                                          style={a.isTaxed ? { background: '#fef3c7', color: '#78350f' } : { background: '#f3f4f6', color: '#6b7280' }}>
+                                                          {a.isTaxed ? 'Taxed' : 'Non-taxed'}
+                                                        </span>
+                                                      </td>
+                                                      <td className="px-3 py-2 text-right font-semibold"
+                                                        style={{ color: a.isAddition ? '#065f46' : '#991b1b' }}>
+                                                        {a.isAddition ? '+' : '−'} {formatCurrency(a.amount)}
+                                                      </td>
+                                                      <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{a.remarks || '—'}</td>
+                                                      <td className="px-3 py-2">
+                                                        {p.existingStatus !== 'LOCKED' && (
+                                                        <button onClick={(e) => { e.stopPropagation(); removeAdjustment(p.consultantId, a.id) }} className="p-1 hover:bg-red-50 rounded">
+                                                          <Trash2 size={12} className="text-red-400" />
+                                                        </button>
+                                                        )}
+                                                      </td>
+                                                    </tr>
+                                                  ))}
+                                                </tbody>
+                                              </table>
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        {/* ── Totals summary ── */}
+                                        <div className="grid grid-cols-3 gap-4 text-xs">
+                                          <div>
+                                            <p className="font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Earnings</p>
+                                            <div className="space-y-1">
+                                              <div className="flex justify-between"><span>Unit Pay (orders)</span><span className="font-mono">{formatCurrency(p.unitPayTotal)}</span></div>
+                                              {t.extraTotal > 0 && <div className="flex justify-between"><span>Additional Unit Pay</span><span className="font-mono">{formatCurrency(t.extraTotal)}</span></div>}
+                                              {p.retainerAmount > 0 && <div className="flex justify-between"><span>Retainer (½)</span><span className="font-mono">{formatCurrency(p.retainerAmount)}</span></div>}
+                                              {p.incentiveTotal > 0 && <div className="flex justify-between"><span>Incentives</span><span className="font-mono">{formatCurrency(p.incentiveTotal)}</span></div>}
+                                              <div className="flex justify-between border-t pt-1 font-bold" style={{ borderColor: 'var(--light-gray)' }}><span>Total Unit Pay</span><span className="font-mono">{formatCurrency(t.totalUnitPay)}</span></div>
+                                            </div>
+                                          </div>
+                                          <div>
+                                            <p className="font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Adjustments &amp; Tax</p>
+                                            <div className="space-y-1">
+                                              {t.taxedAdj !== 0 && <div className="flex justify-between"><span>Taxed Adj</span><span className="font-mono" style={{ color: t.taxedAdj >= 0 ? '#065f46' : '#991b1b' }}>{t.taxedAdj >= 0 ? '+' : ''}{formatCurrency(t.taxedAdj)}</span></div>}
+                                              {t.nonTaxedAdj !== 0 && <div className="flex justify-between"><span>Non-taxed Adj</span><span className="font-mono" style={{ color: t.nonTaxedAdj >= 0 ? '#065f46' : '#991b1b' }}>{t.nonTaxedAdj >= 0 ? '+' : ''}{formatCurrency(t.nonTaxedAdj)}</span></div>}
+                                              {t.tax > 0 && <div className="flex justify-between"><span>Tax (5%)</span><span className="font-mono" style={{ color: '#991b1b' }}>({formatCurrency(t.tax)})</span></div>}
+                                              {t.taxedAdj === 0 && t.nonTaxedAdj === 0 && t.tax === 0 && <div className="flex justify-between" style={{ color: 'var(--mid-gray)' }}><span>None</span><span>—</span></div>}
+                                            </div>
+                                          </div>
+                                          <div>
+                                            <p className="font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Summary</p>
+                                            <div className="space-y-1">
+                                              <div className="flex justify-between"><span>Gross Pay</span><span className="font-mono font-semibold">{formatCurrency(t.gross)}</span></div>
+                                              <div className="flex justify-between"><span>Tax</span><span className="font-mono" style={{ color: '#991b1b' }}>{t.tax > 0 ? `(${formatCurrency(t.tax)})` : '—'}</span></div>
+                                              <div className="flex justify-between border-t pt-1 font-bold" style={{ borderColor: 'var(--light-gray)', color: '#166534' }}><span>NET PAY</span><span className="font-mono">{formatCurrency(t.net)}</span></div>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        {/* ── Actions ── */}
+                                        <div className="flex items-center gap-2 pt-2 border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                                          <button onClick={(e) => { e.stopPropagation(); downloadPdf(p) }}
+                                            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium border"
+                                            style={{ borderColor: 'var(--charcoal)', color: 'var(--charcoal)' }}>
+                                            <Download size={13} /> PDF
+                                          </button>
+                                          {p.existingStatus !== 'LOCKED' && (
+                                            <button onClick={(e) => { e.stopPropagation(); saveSingleConsultant(p.consultantId) }} disabled={savingMap[p.consultantId]}
+                                              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium text-white disabled:opacity-50"
+                                              style={{ background: 'var(--deep-teal)' }}>
+                                              {savingMap[p.consultantId] ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                                              {savingMap[p.consultantId] ? 'Saving...' : 'Save'}
+                                            </button>
+                                          )}
+                                          <button onClick={(e) => { e.stopPropagation(); emailClinician(p) }} disabled={isSendingThis || emailSt === 'success'}
+                                            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium text-white disabled:opacity-50"
+                                            style={{ background: emailSt === 'success' ? '#059669' : '#c44b00' }}>
+                                            {isSendingThis ? <Loader2 size={13} className="animate-spin" /> : emailSt === 'success' ? <CheckCircle2 size={13} /> : <Mail size={13} />}
+                                            {isSendingThis ? 'Sending...' : emailSt === 'success' ? 'Sent' : 'Email'}
+                                          </button>
+                                          {emailSt === 'error' && (
+                                            <span className="flex items-center gap-1 text-xs text-red-600">
+                                              <AlertCircle size={13} /> {emailMsg[p.consultantId]}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
                                     </td>
                                   </tr>
                                 )}
-                                <tr className="border-b" style={{ borderColor: 'var(--light-gray)' }}>
-                                  <td colSpan={3} className="px-3 py-2 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>Gross Pay</td>
-                                  <td className="px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>{formatCurrency(t.gross)}</td>
-                                </tr>
-                                {t.tax > 0 && (
-                                  <tr style={{ background: '#fef2f2' }}>
-                                    <td colSpan={3} className="px-3 py-2 text-right font-semibold" style={{ color: '#991b1b' }}>Tax (5%)</td>
-                                    <td className="px-3 py-2 font-semibold" style={{ color: '#991b1b' }}>({formatCurrency(t.tax)})</td>
-                                  </tr>
-                                )}
-                                <tr style={{ background: '#f0fdf4' }}>
-                                  <td colSpan={3} className="px-3 py-2 text-right font-bold" style={{ color: '#166534' }}>NET PAY</td>
-                                  <td className="px-3 py-2 font-bold text-base" style={{ color: '#166534' }}>{formatCurrency(t.net)}</td>
-                                </tr>
-                              </tbody>
-                            </table>
-                          </div>
-
-                          {/* ── Action buttons ── */}
-                          <div className="flex items-center gap-3 flex-wrap">
-                            {p.existingStatus && (
-                              <span className="text-xs px-2.5 py-1 rounded-lg font-semibold"
-                                style={p.existingStatus === 'FINAL' ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>
-                                Status: {p.existingStatus}
-                              </span>
-                            )}
-                            <button onClick={() => downloadPdf(p)}
-                              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border"
-                              style={{ borderColor: 'var(--charcoal)', color: 'var(--charcoal)' }}>
-                              <Download size={14} /> Download PDF
-                            </button>
-                            <button onClick={() => emailClinician(p)} disabled={isSendingThis}
-                              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
-                              style={{ background: '#c44b00' }}>
-                              {isSendingThis ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
-                              {isSendingThis ? 'Sending...' : 'Email Clinician'}
-                            </button>
-                            {emailSt === 'success' && (
-                              <span className="flex items-center gap-1 text-xs text-green-700">
-                                <CheckCircle2 size={13} /> {emailMsg[p.consultantId]}
-                              </span>
-                            )}
-                            {emailSt === 'error' && (
-                              <span className="flex items-center gap-1 text-xs text-red-600">
-                                <AlertCircle size={13} /> {emailMsg[p.consultantId]}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-
-                  {payrollPreviews.filter(p => p.grossPay > 0 || p.orderCount > 0).length === 0 && (
+                              </React.Fragment>
+                            )
+                          })}
+                        </tbody>
+                        {visiblePreviews.length > 0 && (
+                          <tfoot>
+                            <tr style={{ background: 'var(--off-white)' }} className="border-t font-bold">
+                              <td className="px-3 py-2.5" style={{ color: 'var(--charcoal)', borderColor: 'var(--light-gray)' }}>TOTAL ({visiblePreviews.length})</td>
+                              <td className="px-3 py-2.5 text-right font-mono">{formatCurrency(visiblePreviews.reduce((s, p) => s + computeTotals(p, extraUnitPays[p.consultantId] || [], adjustments[p.consultantId] || []).totalUnitPay, 0))}</td>
+                              <td className="px-3 py-2.5 text-right font-mono">{formatCurrency(visiblePreviews.reduce((s, p) => s + p.retainerAmount, 0))}</td>
+                              <td className="px-3 py-2.5 text-right font-mono">{(() => { const v = visiblePreviews.reduce((s, p) => { const t = computeTotals(p, extraUnitPays[p.consultantId] || [], adjustments[p.consultantId] || []); return s + t.taxedAdj + t.nonTaxedAdj }, 0); return v !== 0 ? ((v > 0 ? '+' : '') + formatCurrency(v)) : '—' })()}</td>
+                              <td className="px-3 py-2.5 text-right font-mono">{formatCurrency(visiblePreviews.reduce((s, p) => s + computeTotals(p, extraUnitPays[p.consultantId] || [], adjustments[p.consultantId] || []).gross, 0))}</td>
+                              <td className="px-3 py-2.5 text-right font-mono" style={{ color: '#d97706' }}>{formatCurrency(visiblePreviews.reduce((s, p) => s + computeTotals(p, extraUnitPays[p.consultantId] || [], adjustments[p.consultantId] || []).tax, 0))}</td>
+                              <td className="px-3 py-2.5 text-right font-mono font-bold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(visiblePreviews.reduce((s, p) => s + computeTotals(p, extraUnitPays[p.consultantId] || [], adjustments[p.consultantId] || []).net, 0))}</td>
+                              <td colSpan={2}></td>
+                            </tr>
+                          </tfoot>
+                        )}
+                      </table>
+                    </div>
+                  ) : (
                     <p className="text-sm py-8 text-center" style={{ color: 'var(--mid-gray)' }}>No payable transactions found for this cutoff period.</p>
                   )}
-
-                  {/* Grand total */}
-                  {payrollPreviews.some(p => p.grossPay > 0) && (
-                    <div className="rounded-xl p-4 flex items-center justify-between" style={{ background: 'var(--pale-teal)' }}>
-                      <span className="text-sm font-semibold" style={{ color: 'var(--deep-teal)' }}>
-                        Total Payroll ({payrollPreviews.filter(p => p.grossPay > 0).length} consultants)
-                      </span>
-                      <span className="text-lg font-bold" style={{ color: 'var(--deep-teal)' }}>
-                        {formatCurrency(payrollPreviews.reduce((s, p) => {
-                          const t = computeTotals(p, extraUnitPays[p.consultantId] || [], adjustments[p.consultantId] || [])
-                          return s + t.net
-                        }, 0))}
-                      </span>
-                    </div>
-                  )}
                 </div>
-              )}
+                )
+              })()}
 
               {payrollPreviews.length === 0 && !generating && (
                 <p className="text-sm py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
@@ -2948,6 +3681,338 @@ export default function PayrollPage() {
         </div>
       )}
 
+      {/* ═══════════════════════════════════════════════════════════
+         TAB: SALARIES PAYABLE
+         ═══════════════════════════════════════════════════════════ */}
+      {mainTab === 'salaries-payable' && (() => {
+        const salUnremitted = salariesPayables.filter(p => !p.salariesRemitted)
+        const salSelectedTotal = salariesPayables.filter(p => selectedSalaryPayableIds.includes(p.id)).reduce((s, p) => s + Number(p.totalSalariesPayable), 0)
+        return (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Salaries Payable</h2>
+            <div className="flex items-center gap-3">
+              {selectedSalaryPayableIds.length > 0 && (
+                <button onClick={() => { setShowRemitModal('salary'); setRemitFromAccountId(''); setRemitFromSearch(''); setRemitProofUrl(''); setRemitNotes('') }}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
+                  style={{ background: 'var(--teal)' }}>
+                  <BadgeDollarSign size={14} /> Remit Selected ({selectedSalaryPayableIds.length})
+                </button>
+              )}
+              <label className="flex items-center gap-2 text-xs cursor-pointer" style={{ color: 'var(--mid-gray)' }}>
+                <input type="checkbox" checked={showSalRemitted} onChange={e => setShowSalRemitted(e.target.checked)} />
+                Show already remitted
+              </label>
+            </div>
+          </div>
+          {loadingSalPayable ? (
+            <div className="flex justify-center py-12"><Loader2 size={20} className="animate-spin" style={{ color: 'var(--teal)' }} /></div>
+          ) : salariesPayables.length === 0 ? (
+            <p className="text-center py-12 text-sm" style={{ color: 'var(--mid-gray)' }}>No salaries payable records. Finalize payroll to create entries.</p>
+          ) : (
+            <div className="space-y-3">
+            <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr style={{ background: 'var(--off-white)' }}>
+                    <th className="px-3 py-2.5 w-10">
+                      <input type="checkbox"
+                        checked={salUnremitted.length > 0 && salUnremitted.every(p => selectedSalaryPayableIds.includes(p.id))}
+                        onChange={e => {
+                          if (e.target.checked) setSelectedSalaryPayableIds(prev => [...new Set([...prev, ...salUnremitted.map(p => p.id)])])
+                          else setSelectedSalaryPayableIds(prev => prev.filter(id => !salUnremitted.find(p => p.id === id)))
+                        }} />
+                    </th>
+                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Cutoff Period</th>
+                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Branch</th>
+                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Type</th>
+                    <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Amount</th>
+                    <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {salariesPayables.map(p => (
+                    <tr key={p.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                      <td className="px-3 py-2.5">
+                        {!p.salariesRemitted && (
+                          <input type="checkbox"
+                            checked={selectedSalaryPayableIds.includes(p.id)}
+                            onChange={e => setSelectedSalaryPayableIds(prev =>
+                              e.target.checked ? [...prev, p.id] : prev.filter(id => id !== p.id)
+                            )} />
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{p.cutoffPeriod}</td>
+                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{p.branch}</td>
+                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{p.payrollType}</td>
+                      <td className="px-3 py-2.5 text-right font-mono font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(p.totalSalariesPayable)}</td>
+                      <td className="px-3 py-2.5 text-center">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={p.salariesRemitted ? { background: '#dcfce7', color: '#16a34a' } : { background: '#fef3c7', color: '#d97706' }}>
+                          {p.salariesRemitted ? 'REMITTED' : 'PENDING'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {selectedSalaryPayableIds.length > 0 && (
+              <div className="flex items-center justify-between px-4 py-3 rounded-xl" style={{ background: 'var(--off-white)' }}>
+                <span className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>
+                  Selected: <span style={{ color: 'var(--teal)' }}>{formatCurrency(salSelectedTotal)}</span> ({selectedSalaryPayableIds.length} entries)
+                </span>
+                <button onClick={() => { setShowRemitModal('salary'); setRemitFromAccountId(''); setRemitFromSearch(''); setRemitProofUrl(''); setRemitNotes('') }}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
+                  style={{ background: 'var(--teal)' }}>
+                  <BadgeDollarSign size={14} /> Remit Selected
+                </button>
+              </div>
+            )}
+            </div>
+          )}
+        </div>
+        )
+      })()}
+
+      {/* ═══════════════════════════════════════════════════════════
+         TAB: BENEFITS PAYABLE
+         ═══════════════════════════════════════════════════════════ */}
+      {mainTab === 'benefits-payable' && (() => {
+        const benUnremitted = benefitsPayables.filter(p => !p.benefitsRemitted)
+        const benSelectedTotal = benefitsPayables.filter(p => selectedBenefitPayableIds.includes(p.id)).reduce((s, p) => s + Number(p.totalBenefitsPayable), 0)
+        return (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Benefits Payable (SSS, PHIC, HDMF)</h2>
+            <div className="flex items-center gap-3">
+              {selectedBenefitPayableIds.length > 0 && (
+                <button onClick={() => { setShowRemitModal('benefit'); setRemitFromAccountId(''); setRemitFromSearch(''); setRemitProofUrl(''); setRemitNotes('') }}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
+                  style={{ background: 'var(--teal)' }}>
+                  <BadgeDollarSign size={14} /> Remit Selected ({selectedBenefitPayableIds.length})
+                </button>
+              )}
+              <label className="flex items-center gap-2 text-xs cursor-pointer" style={{ color: 'var(--mid-gray)' }}>
+                <input type="checkbox" checked={showBenRemitted} onChange={e => setShowBenRemitted(e.target.checked)} />
+                Show already remitted
+              </label>
+            </div>
+          </div>
+          {loadingBenPayable ? (
+            <div className="flex justify-center py-12"><Loader2 size={20} className="animate-spin" style={{ color: 'var(--teal)' }} /></div>
+          ) : benefitsPayables.length === 0 ? (
+            <p className="text-center py-12 text-sm" style={{ color: 'var(--mid-gray)' }}>No benefits payable records. Finalize employee payroll to create entries.</p>
+          ) : (
+            <div className="space-y-3">
+            <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr style={{ background: 'var(--off-white)' }}>
+                    <th className="px-3 py-2.5 w-10">
+                      <input type="checkbox"
+                        checked={benUnremitted.length > 0 && benUnremitted.every(p => selectedBenefitPayableIds.includes(p.id))}
+                        onChange={e => {
+                          if (e.target.checked) setSelectedBenefitPayableIds(prev => [...new Set([...prev, ...benUnremitted.map(p => p.id)])])
+                          else setSelectedBenefitPayableIds(prev => prev.filter(id => !benUnremitted.find(p => p.id === id)))
+                        }} />
+                    </th>
+                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Cutoff Period</th>
+                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Branch</th>
+                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Type</th>
+                    <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Amount</th>
+                    <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {benefitsPayables.map(p => (
+                    <tr key={p.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                      <td className="px-3 py-2.5">
+                        {!p.benefitsRemitted && (
+                          <input type="checkbox"
+                            checked={selectedBenefitPayableIds.includes(p.id)}
+                            onChange={e => setSelectedBenefitPayableIds(prev =>
+                              e.target.checked ? [...prev, p.id] : prev.filter(id => id !== p.id)
+                            )} />
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{p.cutoffPeriod}</td>
+                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{p.branch}</td>
+                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{p.payrollType}</td>
+                      <td className="px-3 py-2.5 text-right font-mono font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(p.totalBenefitsPayable)}</td>
+                      <td className="px-3 py-2.5 text-center">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={p.benefitsRemitted ? { background: '#dcfce7', color: '#16a34a' } : { background: '#fef3c7', color: '#d97706' }}>
+                          {p.benefitsRemitted ? 'REMITTED' : 'PENDING'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {selectedBenefitPayableIds.length > 0 && (
+              <div className="flex items-center justify-between px-4 py-3 rounded-xl" style={{ background: 'var(--off-white)' }}>
+                <span className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>
+                  Selected: <span style={{ color: 'var(--teal)' }}>{formatCurrency(benSelectedTotal)}</span> ({selectedBenefitPayableIds.length} entries)
+                </span>
+                <button onClick={() => { setShowRemitModal('benefit'); setRemitFromAccountId(''); setRemitFromSearch(''); setRemitProofUrl(''); setRemitNotes('') }}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
+                  style={{ background: 'var(--teal)' }}>
+                  <BadgeDollarSign size={14} /> Remit Selected
+                </button>
+              </div>
+            )}
+            </div>
+          )}
+        </div>
+        )
+      })()}
+
+      {/* ═══════════════════════════════════════════════════════════
+         TAB: PAYROLL SETTINGS (COA MAPPING)
+         ═══════════════════════════════════════════════════════════ */}
+      {mainTab === 'payroll-settings' && (
+        <div className="space-y-5">
+          <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Payroll Chart of Accounts Mapping</h2>
+          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Configure which chart of accounts are used when payroll is finalized. These determine the journal entries created.</p>
+
+          {/* Search accounts */}
+          <div className="relative w-64">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input value={coaSearch} onChange={e => setCoaSearch(e.target.value)} placeholder="Search accounts..."
+              className="w-full pl-9 pr-3 py-2 rounded-xl border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            {/* Expense Accounts */}
+            <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: 'var(--light-gray)' }}>
+              <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Expense Accounts (Debits)</h3>
+              {[
+                { key: 'salaryExpenseAccountId', label: 'Gross Salary — Employees', rel: 'salaryExpenseAccount' },
+                { key: 'professionalFeesAccountId', label: 'Gross Fees — Consultants', rel: 'professionalFeesAccount' },
+                { key: 'sssERAccountId', label: 'SSS Contribution (ER)', rel: 'sssERAccount' },
+                { key: 'hdmfERAccountId', label: 'HDMF/Pag-IBIG Contribution (ER)', rel: 'hdmfERAccount' },
+                { key: 'philhealthERAccountId', label: 'PhilHealth Contribution (ER)', rel: 'philhealthERAccount' },
+              ].map(({ key, label, rel }) => {
+                const current = coaMapping[rel] as { accountNumber: string; accountTitle: string } | null
+                const filteredAccts = allAccounts.filter(a =>
+                  a.accountType === 'EXPENSE' && (!coaSearch || `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(coaSearch.toLowerCase()))
+                )
+                return (
+                  <div key={key}>
+                    <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>{label}</label>
+                    <select value={coaEdits[key] ?? coaMapping[key] ?? ''} onChange={e => setCoaEdits(prev => ({ ...prev, [key]: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+                      <option value="">— Select Account —</option>
+                      {filteredAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
+                    </select>
+                    {current && !coaEdits[key] && <p className="text-[10px] mt-0.5" style={{ color: 'var(--teal)' }}>Current: {current.accountNumber} — {current.accountTitle}</p>}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Liability Accounts */}
+            <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: 'var(--light-gray)' }}>
+              <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Liability Accounts (Credits)</h3>
+              {[
+                { key: 'salariesPayableAccountId', label: 'Salaries and Wages Payable', rel: 'salariesPayableAccount' },
+                { key: 'benefitsPayableAccountId', label: 'SSS, PHIC, HDMF Payable', rel: 'benefitsPayableAccount' },
+                { key: 'taxPayableAccountId', label: 'Withholding Tax Payable', rel: 'taxPayableAccount' },
+              ].map(({ key, label, rel }) => {
+                const current = coaMapping[rel] as { accountNumber: string; accountTitle: string } | null
+                const filteredAccts = allAccounts.filter(a =>
+                  a.accountType === 'LIABILITY' && (!coaSearch || `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(coaSearch.toLowerCase()))
+                )
+                return (
+                  <div key={key}>
+                    <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>{label}</label>
+                    <select value={coaEdits[key] ?? coaMapping[key] ?? ''} onChange={e => setCoaEdits(prev => ({ ...prev, [key]: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+                      <option value="">— Select Account —</option>
+                      {filteredAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
+                    </select>
+                    {current && !coaEdits[key] && <p className="text-[10px] mt-0.5" style={{ color: 'var(--teal)' }}>Current: {current.accountNumber} — {current.accountTitle}</p>}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          <button onClick={saveCoaMapping} disabled={savingCoa || Object.keys(coaEdits).length === 0}
+            className="flex items-center gap-1.5 px-6 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+            style={{ background: Object.keys(coaEdits).length > 0 ? 'var(--teal)' : 'var(--mid-gray)' }}>
+            {savingCoa ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            {savingCoa ? 'Saving...' : 'Save COA Mapping'}
+          </button>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════
+         REMIT PAYMENT MODAL
+         ═══════════════════════════════════════════════════════════ */}
+      {showRemitModal && (() => {
+        const ids = showRemitModal === 'salary' ? selectedSalaryPayableIds : selectedBenefitPayableIds
+        const modalTotal = showRemitModal === 'salary'
+          ? salariesPayables.filter(p => ids.includes(p.id)).reduce((s, p) => s + Number(p.totalSalariesPayable), 0)
+          : benefitsPayables.filter(p => ids.includes(p.id)).reduce((s, p) => s + Number(p.totalBenefitsPayable), 0)
+        return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowRemitModal(null)}>
+          <div className="w-full max-w-md rounded-2xl p-6 space-y-4" style={{ background: 'white' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                Record {showRemitModal === 'salary' ? 'Salary' : 'Benefit'} Payment
+              </h3>
+              <button onClick={() => setShowRemitModal(null)} className="p-1 rounded-lg hover:bg-gray-100"><X size={16} /></button>
+            </div>
+
+            <div className="px-3 py-2 rounded-xl text-sm font-semibold" style={{ background: '#f0fdfa', color: 'var(--deep-teal)' }}>
+              {ids.length} entries — Total: {formatCurrency(modalTotal)}
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Payment Date</label>
+                <input type="date" value={remitDate} onChange={e => setRemitDate(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Source Account (Cash/Bank)</label>
+                <input value={remitFromSearch} onChange={e => setRemitFromSearch(e.target.value)} placeholder="Search asset accounts..."
+                  className="w-full px-3 py-2 rounded-lg border text-xs mb-1" style={{ borderColor: 'var(--light-gray)' }} />
+                <select value={remitFromAccountId} onChange={e => setRemitFromAccountId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+                  <option value="">— Select Account —</option>
+                  {allAccounts
+                    .filter(a => a.accountType === 'ASSET' && (!remitFromSearch || `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(remitFromSearch.toLowerCase())))
+                    .map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Notes (optional)</label>
+                <input value={remitNotes} onChange={e => setRemitNotes(e.target.value)} placeholder="Payment reference, check number, etc."
+                  className="w-full px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => setShowRemitModal(null)}
+                className="flex-1 py-2.5 rounded-xl border text-sm font-medium"
+                style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                Cancel
+              </button>
+              <button onClick={handleRemit} disabled={remitting || !remitFromAccountId}
+                className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50"
+                style={{ background: 'var(--teal)' }}>
+                {remitting ? 'Recording...' : `Record Payment — ${formatCurrency(modalTotal)}`}
+              </button>
+            </div>
+          </div>
+        </div>
+        )
+      })()}
+
       {/* Session Breakdown Modal */}
       {sessionBreakdown && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setSessionBreakdown(null)}>
@@ -2965,17 +4030,29 @@ export default function PayrollPage() {
                     <th className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--deep-teal)' }}>Patient</th>
                     <th className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--deep-teal)' }}>Service</th>
                     <th className="px-3 py-2 text-right font-semibold" style={{ color: 'var(--deep-teal)' }}>Order Net</th>
+                    <th className="px-3 py-2 text-center font-semibold" style={{ color: 'var(--deep-teal)' }}>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sessionBreakdown.sessions.map((s, i) => (
-                    <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                      <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{new Date(s.date + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}</td>
-                      <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{s.patientName}</td>
-                      <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{s.serviceName}</td>
-                      <td className="px-3 py-2 text-right font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(s.orderNetAmount)}</td>
-                    </tr>
-                  ))}
+                  {sessionBreakdown.sessions.map((s, i) => {
+                    const status = s.orderStatus || 'COMPLETED'
+                    const isVoided = status === 'CANCELLED' || status === 'VOIDED'
+                    const isReopened = status === 'REOPENED'
+                    return (
+                      <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)', opacity: isVoided ? 0.5 : 1 }}>
+                        <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{new Date(s.date + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}</td>
+                        <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{s.patientName}</td>
+                        <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{s.serviceName}</td>
+                        <td className="px-3 py-2 text-right font-medium" style={{ color: isVoided ? '#991b1b' : 'var(--charcoal)', textDecoration: isVoided ? 'line-through' : 'none' }}>{formatCurrency(s.orderNetAmount)}</td>
+                        <td className="px-3 py-2 text-center">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                            style={isVoided ? { background: '#fee2e2', color: '#991b1b' } : isReopened ? { background: '#fef3c7', color: '#92400e' } : { background: '#dcfce7', color: '#166534' }}>
+                            {isVoided ? 'Voided' : isReopened ? 'Reopened' : 'Completed'}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

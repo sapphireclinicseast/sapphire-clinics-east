@@ -127,6 +127,18 @@ model Account {
   taxSettings           PayrollTaxSettings[] @relation("TaxLiability")
   paymentModes          PaymentMode[]           @relation("PaymentModeAccount")
   paymentModeDeductions PaymentModeDeduction[]  @relation("DeductionAccount")
+  journalLines          JournalEntryLine[]
+  salaryPaymentsFrom    SalaryPayment[]         @relation("SalaryPaymentFrom")
+  benefitPaymentsFrom   BenefitPayment[]        @relation("BenefitPaymentFrom")
+  // PayrollCOAMapping relations
+  coaSalaryExpense         PayrollCOAMapping[] @relation("COASalaryExpense")
+  coaProfessionalFees      PayrollCOAMapping[] @relation("COAProfFees")
+  coaSssER                 PayrollCOAMapping[] @relation("COASSSER")
+  coaHdmfER                PayrollCOAMapping[] @relation("COAHdmfER")
+  coaPhilhealthER          PayrollCOAMapping[] @relation("COAPhilER")
+  coaSalariesPayable       PayrollCOAMapping[] @relation("COASalPayable")
+  coaBenefitsPayable       PayrollCOAMapping[] @relation("COABenPayable")
+  coaTaxPayable            PayrollCOAMapping[] @relation("COATaxPayable")
 
   @@index([accountType])
   @@index([isActive])
@@ -157,6 +169,8 @@ model Service {
   department            String
   branch                ServiceBranch
   price                 Decimal
+  newPrice              Decimal?
+  newPriceEffectiveDate DateTime?
   priceType             PriceType     @default(FIXED)
   revenueType           RevenueType   @default(EARNED)
   walletType            String?       // VIP, PACKAGE, PREPAID_CARD, DOWNPAYMENT, ADVANCE — only for UNEARNED
@@ -173,12 +187,14 @@ model Service {
   unitPayId             String?
   unitPay               UnitPay?      @relation(fields: [unitPayId], references: [id], onDelete: SetNull)
   unitPayEnabled        Boolean       @default(true)
+  issuedOfficialInvoice Boolean       @default(false)
   isActive              Boolean       @default(true)
   createdById           String
   createdBy             User          @relation("ServiceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 
+  branchPrices        ServiceBranchPrice[]
   orderItems          OrderItem[]
   walletDiscountRules WalletDiscountRule[]
   eligibleFor         ServiceEligibility[] @relation("ParentService")
@@ -190,6 +206,23 @@ model Service {
   @@index([createdById])
   @@index([revenueAccountId])
   @@index([unitPayId])
+}
+
+// Per-branch price overrides for services with branch = ALL
+model ServiceBranchPrice {
+  id                    String    @id @default(cuid())
+  serviceId             String
+  service               Service   @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  branch                String    // SANDBOX_EAST or SANDBOX_GREENHILLS
+  price                 Decimal
+  newPrice              Decimal?
+  newPriceEffectiveDate DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@unique([serviceId, branch])
+  @@index([serviceId])
+  @@index([branch])
 }
 
 // Links a package/VIP service to the earned services it covers
@@ -257,6 +290,7 @@ model InventoryItem {
   branch               Branch
   accountSubType       String?
   unitCost             Decimal   @default(0)
+  initialUnitCost      Decimal?  // Original unit cost set at item creation
   sellingPrice         Decimal?
   rewardPointsPrice    Int?      // Price in reward points (e.g., 1000 pts)
   quantity             Int       @default(0)
@@ -271,6 +305,7 @@ model InventoryItem {
   expenseAccountId     String?
   expenseAccount       Account?  @relation("InventoryExpenseAccount", fields: [expenseAccountId], references: [id], onDelete: SetNull)
   isBundle             Boolean   @default(false)
+  issuedOfficialInvoice Boolean  @default(false)
   isActive             Boolean   @default(true)
   createdById          String
   createdBy            User      @relation("ItemCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -411,6 +446,7 @@ enum PaymentMethod {
   TIKTOK
   DOWNPAYMENT
   PACKAGE
+  ADVANCE
   HMO
   GL
 }
@@ -470,8 +506,10 @@ model DigitalWallet {
   rewardPoints  Int         @default(0)
   accountId     String?     // COA account (e.g., Accounts Receivable for HMO/GL)
   account       Account?    @relation("WalletAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  totalGlAmount Decimal?    // GL wallets: full approved amount (for AR — different from balance which tracks remaining usable amount)
   attachmentUrl String?     // Uploaded proof (e.g., GL document)
   agency        String?     // GL wallets: issuing agency (e.g., DSWD, PhilHealth, OWWA)
+  branch        String      @default("ALL")  // SANDBOX_EAST, SANDBOX_GREENHILLS, or ALL
   dateObtained  DateTime?   // Date patient originally obtained the wallet/card
   paymentModeId String?     // How the initial load was paid
   paymentMode   PaymentMode? @relation("WalletPaymentMode", fields: [paymentModeId], references: [id], onDelete: SetNull)
@@ -490,6 +528,7 @@ model DigitalWallet {
   @@index([walletType])
   @@index([accountId])
   @@index([paymentModeId])
+  @@index([branch])
 }
 
 model WalletPackage {
@@ -554,6 +593,7 @@ model Order {
   notes                  String?
   issuedOfficialInvoice  Boolean  @default(false)
   salesInvoiceNumber     String?
+  referenceNumber        String?
   status          OrderStatus @default(COMPLETED)
   transactionDate DateTime
   createdById     String
@@ -732,14 +772,22 @@ model Consultant {
   name            String    // "LASTNAME, FIRSTNAME"
   department      String    // OT, PT, SLP, SPED, MD, PSYCHOLOGY, etc.
   branch          String    // SBEA, SBGH
+  email           String?
+  phone           String?
+  tinNumber       String?
+  sssNumber       String?
+  philhealthNumber String?
+  pagibigNumber   String?
   taxDeduction    String    @default("NONE") // "FIVE_PERCENT" or "NONE"
   monthlyRetainer Decimal   @default(0)
   isActive        Boolean   @default(true)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  unitPayRates    ConsultantUnitPay[]
-  payrollEntries  PayrollEntry[]
+  unitPayRates       ConsultantUnitPay[]
+  payrollEntries     PayrollEntry[]
+  requests           EmployeeRequest[]
+  cutoffAdjustments  ConsultantCutoffAdjustment[]
 
   @@index([department])
   @@index([branch])
@@ -807,6 +855,8 @@ model PayrollEntry {
   cutoffPeriod    String     // e.g. "2026-03-1" or "2026-03-2"
   branch          String
   items           Json       // [{unitPayName, unitAmount, quantity, lineTotal}]
+  extraItems      Json       @default("[]") // manually added unit pays [{id, unitPayId, unitPayName, unitAmount, qty}]
+  adjustments     Json       @default("[]") // [{id, name, amount, isAddition, isTaxed, remarks}]
   grossPay        Decimal
   retainerAmount  Decimal    @default(0)
   taxAmount       Decimal    @default(0)
@@ -880,7 +930,10 @@ enum EmployeeRequestType {
   OVERTIME
   UNDERTIME
   CHANGE_SCHEDULE
+  CHANGE_TIME_IN
+  CHANGE_TIME_OUT
   CERTIFICATE_OF_EMPLOYMENT
+  CERTIFICATE_OF_CONSULTATION
 }
 
 enum LeaveType {
@@ -903,6 +956,7 @@ enum TimekeepingSource {
   BIOMETRIC
   BIOMETRIC_CONFLICT
   MANUAL
+  FILING
 }
 
 enum HolidayType {
@@ -914,6 +968,13 @@ enum HolidayType {
 enum PayslipStatus {
   DRAFT
   FINAL
+  LOCKED
+}
+
+enum TKUploadStatus {
+  UPLOADED
+  ACCEPTED
+  FINALIZED
 }
 
 model Employee {
@@ -923,6 +984,7 @@ model Employee {
   firstName         String
   lastName          String
   email             String?
+  phone             String?
   department        String              // ADMIN, OPERATIONS, etc.
   branch            String              // SBEA, SBGH
   jobTitle          String?
@@ -937,15 +999,17 @@ model Employee {
   regularizationDate DateTime?
   scheduleIn        String    @default("08:00")  // Default clock-in time HH:mm
   scheduleOut       String    @default("17:00")  // Default clock-out time HH:mm
+  daySchedules      Json?     // Per-day overrides: { "THURSDAY": { "in": "09:00", "out": "18:00" } }
   restDay           String    @default("SUNDAY") // e.g. "SUNDAY", "SATURDAY"
   isActive          Boolean   @default(true)
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  timekeepingRecords TimekeepingRecord[]
-  requests           EmployeeRequest[]
-  benefits           EmployeeBenefit[]
-  payslips           EmployeePayslip[]
+  timekeepingRecords  TimekeepingRecord[]
+  requests            EmployeeRequest[]
+  benefits            EmployeeBenefit[]
+  payslips            EmployeePayslip[]
+  cutoffAdjustments   CutoffAdjustment[]
 
   @@index([branch])
   @@index([department])
@@ -975,24 +1039,41 @@ model EmployeeSettings {
   restDayRate             Decimal @default(1.3)  // 130% for rest day
   restDayRegHolidayRate   Decimal @default(2.6)  // 260% for rest day + regular holiday
   restDaySpecHolidayRate  Decimal @default(1.5)  // 150% for rest day + special holiday
+  // Late / Overtime rules
+  lateGraceMinutes    Int      @default(0)    // Minutes late from time-in before deduction applies (e.g. 5)
+  otIntervalMinutes   Int      @default(30)   // OT counted in intervals of N minutes (e.g. 30)
+  otMaxHours          Decimal  @default(3)    // Maximum OT hours considered per day (e.g. 3)
   // Deduction toggles
   sssEnabled          Boolean  @default(true)
   philhealthEnabled   Boolean  @default(true)
   pagibigEnabled      Boolean  @default(true)
   taxEnabled          Boolean  @default(true)
+  benefitDeductionTiming String @default("HALF_HALF") // HALF_HALF, FIRST_CUTOFF, SECOND_CUTOFF
+  hrOfficerNameSBEA    String?  // HR officer name for Sandbox East COE/COC
+  hrOfficerNameSBGH    String?  // HR officer name for Sandbox Greenhills COE/COC
+  hrOfficerNameVERDANA String?  // HR officer name for Verdana Store COE/COC
+  // Employee request approval settings
+  requestApprovalExcludedPositions Json? // JSON array of job titles that branch admins cannot approve (requires ADMIN/ACCOUNTANT)
   updatedAt           DateTime @updatedAt
 }
 
 model EmployeeRequest {
   id           String              @id @default(cuid())
-  employeeId   String
-  employee     Employee            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeId   String?             // For employee requests (COE, leave, etc.)
+  employee     Employee?           @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  consultantId String?             // For consultant requests (Certificate of Consultation)
+  consultant   Consultant?         @relation(fields: [consultantId], references: [id], onDelete: Cascade)
   requestType  EmployeeRequestType
   leaveType    LeaveType?          // Only for LEAVE requests
   startDate    DateTime?
   endDate      DateTime?
+  requestedTimeIn      String?     // HH:mm for CHANGE_TIME_IN
+  requestedTimeOut     String?     // HH:mm for CHANGE_TIME_OUT
+  requestedScheduleIn  String?     // HH:mm for CHANGE_SCHEDULE new time in
+  requestedScheduleOut String?     // HH:mm for CHANGE_SCHEDULE new time out
+  changeToWorkingDay   Boolean?    // true = rest→work, false = work→rest (CHANGE_SCHEDULE)
   reason       String?
-  attachment   String?             // File URL for supporting docs
+  attachment   String?             // File URL / base64 for supporting docs (DTR photo)
   status       RequestStatus       @default(PENDING)
   reviewedById String?
   reviewNotes  String?
@@ -1000,24 +1081,27 @@ model EmployeeRequest {
   updatedAt    DateTime            @updatedAt
 
   @@index([employeeId])
+  @@index([consultantId])
   @@index([status])
   @@index([requestType])
   @@index([startDate])
 }
 
 model TimekeepingUpload {
-  id           String   @id @default(cuid())
+  id           String         @id @default(cuid())
   fileName     String
-  uploadDate   DateTime @default(now())
-  recordCount  Int      @default(0)
+  uploadDate   DateTime       @default(now())
+  recordCount  Int            @default(0)
   branch       String?
   uploadedById String
-  createdAt    DateTime @default(now())
+  status       TKUploadStatus @default(UPLOADED)
+  createdAt    DateTime       @default(now())
 
   records TimekeepingRecord[]
 
   @@index([uploadDate])
   @@index([branch])
+  @@index([status])
 }
 
 model TimekeepingRecord {
@@ -1104,6 +1188,10 @@ model EmployeePayslip {
   undertimeDeduction Decimal    @default(0)
   otherDeductions  Decimal      @default(0)
   totalDeductions  Decimal      @default(0)
+  // Employer shares (for journal entries)
+  sssEmployerShare       Decimal @default(0)
+  philhealthEmployerShare Decimal @default(0)
+  pagibigEmployerShare   Decimal @default(0)
   // Net
   netPay           Decimal      @default(0)
   // Details
@@ -1124,4 +1212,167 @@ model EmployeePayslip {
   @@index([cutoffPeriod])
   @@index([branch])
   @@index([status])
+}
+
+model CutoffAdjustment {
+  id              String   @id @default(cuid())
+  employeeId      String
+  employee        Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  cutoffPeriod    String   // e.g. "2026-04-1"
+  branch          String
+  allowance       Decimal  @default(0)
+  allowanceType   String   @default("NON_TAXABLE") // TAXABLE or NON_TAXABLE
+  allowanceLabel  String?  // e.g. "De Minimis", "Transportation"
+  deduction       Decimal  @default(0)
+  deductionLabel  String?  // e.g. "Cash Advance", "Loan"
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([employeeId, cutoffPeriod, branch])
+  @@index([employeeId])
+  @@index([cutoffPeriod])
+  @@index([branch])
+}
+
+model ConsultantCutoffAdjustment {
+  id              String     @id @default(cuid())
+  consultantId    String
+  consultant      Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
+  cutoffPeriod    String     // e.g. "2026-04-1"
+  branch          String
+  allowance       Decimal    @default(0)
+  allowanceType   String     @default("NON_TAXABLE")
+  allowanceLabel  String?
+  deduction       Decimal    @default(0)
+  deductionLabel  String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([consultantId, cutoffPeriod, branch])
+  @@index([consultantId])
+  @@index([cutoffPeriod])
+  @@index([branch])
+}
+
+// ── Payroll COA Mapping ──────────────────────────────────────
+
+model PayrollCOAMapping {
+  id                          String   @id @default(cuid())
+  // Expense accounts (debits on finalize)
+  salaryExpenseAccountId      String?
+  salaryExpenseAccount        Account? @relation("COASalaryExpense", fields: [salaryExpenseAccountId], references: [id], onDelete: SetNull)
+  professionalFeesAccountId   String?
+  professionalFeesAccount     Account? @relation("COAProfFees", fields: [professionalFeesAccountId], references: [id], onDelete: SetNull)
+  sssERAccountId              String?
+  sssERAccount                Account? @relation("COASSSER", fields: [sssERAccountId], references: [id], onDelete: SetNull)
+  hdmfERAccountId             String?
+  hdmfERAccount               Account? @relation("COAHdmfER", fields: [hdmfERAccountId], references: [id], onDelete: SetNull)
+  philhealthERAccountId       String?
+  philhealthERAccount         Account? @relation("COAPhilER", fields: [philhealthERAccountId], references: [id], onDelete: SetNull)
+  // Liability accounts (credits on finalize)
+  salariesPayableAccountId    String?
+  salariesPayableAccount      Account? @relation("COASalPayable", fields: [salariesPayableAccountId], references: [id], onDelete: SetNull)
+  benefitsPayableAccountId    String?
+  benefitsPayableAccount      Account? @relation("COABenPayable", fields: [benefitsPayableAccountId], references: [id], onDelete: SetNull)
+  taxPayableAccountId         String?
+  taxPayableAccount           Account? @relation("COATaxPayable", fields: [taxPayableAccountId], references: [id], onDelete: SetNull)
+  updatedAt                   DateTime @updatedAt
+}
+
+// ── Journal Entries ──────────────────────────────────────────
+
+model JournalEntry {
+  id             String   @id @default(cuid())
+  entryDate      DateTime
+  description    String
+  referenceType  String   // PAYROLL_CONSULTANT, PAYROLL_EMPLOYEE, SALARY_PAYMENT, BENEFIT_PAYMENT, TAX_PAYMENT
+  referenceId    String?  // cutoffPeriod+branch or payment ID
+  totalAmount    Decimal
+  createdById    String
+  createdAt      DateTime @default(now())
+
+  lines JournalEntryLine[]
+
+  @@index([referenceType, referenceId])
+  @@index([entryDate])
+  @@index([createdById])
+}
+
+model JournalEntryLine {
+  id             String       @id @default(cuid())
+  journalEntryId String
+  journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  accountId      String
+  account        Account      @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  debit          Decimal      @default(0)
+  credit         Decimal      @default(0)
+  description    String?
+
+  @@index([journalEntryId])
+  @@index([accountId])
+}
+
+// ── Payroll Payable Tracking ─────────────────────────────────
+
+model PayrollPayableStatus {
+  id                    String   @id @default(cuid())
+  cutoffPeriod          String
+  branch                String
+  payrollType           String   // CONSULTANT or EMPLOYEE
+  totalSalariesPayable  Decimal  @default(0)
+  totalBenefitsPayable  Decimal  @default(0)
+  totalTaxPayable       Decimal  @default(0)
+  salariesRemitted      Boolean  @default(false)
+  benefitsRemitted      Boolean  @default(false)
+  taxRemitted           Boolean  @default(false)
+  salaryPaymentId       String?
+  benefitPaymentId      String?
+  taxPaymentId          String?
+  journalEntryId        String?  // The finalization journal entry
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([cutoffPeriod, branch, payrollType])
+  @@index([cutoffPeriod])
+  @@index([branch])
+}
+
+model SalaryPayment {
+  id             String   @id @default(cuid())
+  paymentDate    DateTime
+  totalAmount    Decimal
+  fromAccountId  String
+  fromAccount    Account  @relation("SalaryPaymentFrom", fields: [fromAccountId], references: [id], onDelete: Restrict)
+  proofUrl       String?
+  notes          String?
+  paymentType    String   @default("EMPLOYEE") // EMPLOYEE or CONSULTANT
+  cutoffPeriod   String
+  branch         String
+  journalEntryId String?
+  status         String   @default("COMPLETED")
+  createdById    String
+  createdAt      DateTime @default(now())
+
+  @@index([paymentDate])
+  @@index([paymentType])
+  @@index([cutoffPeriod])
+}
+
+model BenefitPayment {
+  id             String   @id @default(cuid())
+  paymentDate    DateTime
+  totalAmount    Decimal
+  fromAccountId  String
+  fromAccount    Account  @relation("BenefitPaymentFrom", fields: [fromAccountId], references: [id], onDelete: Restrict)
+  proofUrl       String?
+  notes          String?
+  cutoffPeriod   String
+  branch         String
+  journalEntryId String?
+  status         String   @default("COMPLETED")
+  createdById    String
+  createdAt      DateTime @default(now())
+
+  @@index([paymentDate])
+  @@index([cutoffPeriod])
 }

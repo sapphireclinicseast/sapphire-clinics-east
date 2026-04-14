@@ -118,25 +118,79 @@ export async function GET(req: Request) {
       },
     })
 
-    // Get existing payroll entries for this cutoff
+    // Get existing payroll entries for this cutoff (full data for LOCKED entries)
     const existingEntries = await prisma.payrollEntry.findMany({
       where: { cutoffPeriod, ...(branch ? { branch } : {}) },
-      select: { consultantId: true, status: true },
     })
     const existingMap = new Map(existingEntries.map(e => [e.consultantId, e.status]))
+    const existingDataMap = new Map(existingEntries.map(e => [e.consultantId, e]))
 
     // Load active incentive rules
     const incentiveRules = await prisma.incentiveRule.findMany({ where: { isActive: true } })
 
+    // For LOCKED entries, look up current order statuses so we can annotate sessions
+    // Collect all orderIds from locked entries' sessions
+    const lockedOrderIds = new Set<string>()
+    for (const entry of existingEntries) {
+      if (entry.status === 'LOCKED') {
+        const items = entry.items as { sessions?: { orderId?: string }[] }[]
+        for (const item of items) {
+          for (const s of item.sessions || []) {
+            if (s.orderId) lockedOrderIds.add(s.orderId)
+          }
+        }
+      }
+    }
+    // Fetch current status of all orders referenced in locked entries
+    const lockedOrderStatuses = new Map<string, string>()
+    if (lockedOrderIds.size > 0) {
+      const orderStatuses = await prisma.order.findMany({
+        where: { id: { in: Array.from(lockedOrderIds) } },
+        select: { id: true, status: true },
+      })
+      for (const o of orderStatuses) lockedOrderStatuses.set(o.id, o.status)
+    }
+
     // Generate payroll preview for each consultant
     const payrollPreviews = consultants.map(c => {
+      // For LOCKED entries, return stored data with current order statuses
+      const existingEntry = existingDataMap.get(c.id)
+      if (existingEntry && existingEntry.status === 'LOCKED') {
+        const storedItems = (existingEntry.items as { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean; sessions?: { orderId?: string; date: string; patientName: string; serviceName: string; orderNetAmount: number; orderStatus?: string }[] }[]).map(item => ({
+          ...item,
+          sessions: (item.sessions || []).map(s => ({
+            ...s,
+            orderStatus: s.orderId ? (lockedOrderStatuses.get(s.orderId) || s.orderStatus || 'COMPLETED') : (s.orderStatus || 'COMPLETED'),
+          })),
+        }))
+        return {
+          consultantId: c.id,
+          consultantName: c.name,
+          department: c.department,
+          branch: c.branch,
+          taxDeduction: c.taxDeduction,
+          items: storedItems,
+          unitPayTotal: storedItems.reduce((s, b) => s + b.lineTotal, 0),
+          retainerAmount: Number(existingEntry.retainerAmount),
+          incentives: [],
+          incentiveTotal: 0,
+          grossPay: Number(existingEntry.grossPay),
+          taxAmount: Number(existingEntry.taxAmount),
+          netPay: Number(existingEntry.netPay),
+          orderCount: storedItems.reduce((s, b) => s + (b.sessions?.length || 0), 0),
+          existingStatus: 'LOCKED' as string,
+          storedAdjustments: (existingEntry.adjustments as unknown[]) || [],
+          storedExtraItems: (existingEntry.extraItems as unknown[]) || [],
+        }
+      }
+
       // Find orders for this consultant (match by name)
       const consultantOrders = orders.filter(o =>
         o.clinicianName && o.clinicianName.trim().toUpperCase() === c.name.trim().toUpperCase()
       )
 
       // Group by unit pay — with threshold logic per order
-      const unitPayBreakdown: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean; sessions: { date: string; patientName: string; serviceName: string; orderNetAmount: number }[] }[] = []
+      const unitPayBreakdown: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean; sessions: { orderId: string; date: string; patientName: string; serviceName: string; orderNetAmount: number; orderStatus: string }[] }[] = []
 
       for (const order of consultantOrders) {
         const orderNet = Number(order.netAmount) || 0
@@ -170,7 +224,7 @@ export async function GET(req: Request) {
             }
           }
 
-          const sessionEntry = { date: orderDate, patientName: order.patientName || 'N/A', serviceName: item.name, orderNetAmount: orderNet }
+          const sessionEntry = { orderId: order.id, date: orderDate, patientName: order.patientName || 'N/A', serviceName: item.name, orderNetAmount: orderNet, orderStatus: 'COMPLETED' as string }
 
           // Aggregate by unitPayId + effectiveRate (so normal and reduced show separately)
           const existing = unitPayBreakdown.find(b =>
@@ -254,6 +308,8 @@ export async function GET(req: Request) {
         netPay,
         orderCount: consultantOrders.length,
         existingStatus: existingMap.get(c.id) || null,
+        storedAdjustments: (existingEntry?.adjustments as unknown[]) || [],
+        storedExtraItems: (existingEntry?.extraItems as unknown[]) || [],
       }
     })
 
@@ -284,6 +340,13 @@ export async function POST(req: Request) {
 
     const results = []
     for (const entry of entries) {
+      // Never overwrite LOCKED entries
+      const existing = await prisma.payrollEntry.findUnique({
+        where: { consultantId_cutoffPeriod_branch: { consultantId: entry.consultantId, cutoffPeriod, branch: branch || entry.branch || '' } },
+        select: { status: true },
+      })
+      if (existing?.status === 'LOCKED') continue
+
       const result = await prisma.payrollEntry.upsert({
         where: {
           consultantId_cutoffPeriod_branch: {
@@ -294,6 +357,8 @@ export async function POST(req: Request) {
         },
         update: {
           items: entry.items,
+          extraItems: entry.extraItems || [],
+          adjustments: entry.adjustments || [],
           grossPay: entry.grossPay,
           retainerAmount: entry.retainerAmount,
           taxAmount: entry.taxAmount,
@@ -305,6 +370,8 @@ export async function POST(req: Request) {
           cutoffPeriod,
           branch: branch || entry.branch || '',
           items: entry.items,
+          extraItems: entry.extraItems || [],
+          adjustments: entry.adjustments || [],
           grossPay: entry.grossPay,
           retainerAmount: entry.retainerAmount,
           taxAmount: entry.taxAmount,
