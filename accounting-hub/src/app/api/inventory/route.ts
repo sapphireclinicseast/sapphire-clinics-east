@@ -55,7 +55,7 @@ export async function GET(req: Request) {
         sourceAccount: { select: { id: true, accountNumber: true, accountTitle: true } },
         expenseAccount: { select: { id: true, accountNumber: true, accountTitle: true } },
         variants: { where: { isActive: true }, orderBy: { variantLabel: 'asc' } },
-        bundleComponents: { include: { component: { select: { id: true, name: true, sku: true, quantity: true } } } },
+        bundleComponents: { include: { component: { select: { id: true, name: true, sku: true, quantity: true, unitCost: true } } } },
       },
       orderBy: { sku: 'asc' },
       skip: (params.page - 1) * params.pageSize,
@@ -111,6 +111,7 @@ export async function POST(req: Request) {
         branch,
         accountSubType: accountSubType || null,
         unitCost: unitCost ? parseFloat(unitCost) : 0,
+        initialUnitCost: unitCost ? parseFloat(unitCost) : 0,
         sellingPrice: sellingPrice ? parseFloat(sellingPrice) : null,
         rewardPointsPrice: rewardPointsPrice ? parseInt(rewardPointsPrice) : null,
         quantity: quantity ? parseInt(quantity) : 0,
@@ -120,6 +121,7 @@ export async function POST(req: Request) {
         revenueAccountId: revenueAccountId || null,
         sourceAccountId: sourceAccountId || null,
         expenseAccountId: expenseAccountId || null,
+        issuedOfficialInvoice: body.issuedOfficialInvoice || false,
         createdById: session.user.id,
       },
       include: { supplier: { select: { supplierName: true } } },
@@ -149,7 +151,8 @@ export async function PUT(req: Request) {
 
   try {
     const { id, name, branch, accountSubType, unitCost, sellingPrice, rewardPointsPrice, quantity,
-            reorderLevel, supplierId, supplierExchangeRate, revenueAccountId, sourceAccountId, expenseAccountId } = await req.json()
+            reorderLevel, supplierId, supplierExchangeRate, revenueAccountId, sourceAccountId, expenseAccountId,
+            issuedOfficialInvoice } = await req.json()
 
     if (!id) {
       return NextResponse.json({ error: 'Item ID is required' }, { status: 400 })
@@ -170,6 +173,7 @@ export async function PUT(req: Request) {
     if (revenueAccountId !== undefined) data.revenueAccountId = revenueAccountId || null
     if (sourceAccountId !== undefined) data.sourceAccountId = sourceAccountId || null
     if (expenseAccountId !== undefined) data.expenseAccountId = expenseAccountId || null
+    if (issuedOfficialInvoice !== undefined) data.issuedOfficialInvoice = issuedOfficialInvoice
 
     const item = await prisma.inventoryItem.update({ where: { id }, data })
 
