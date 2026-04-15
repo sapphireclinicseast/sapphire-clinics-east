@@ -59,7 +59,7 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json()
-  const { employeeId, consultantId, requestType, leaveType, startDate, endDate, reason, attachment, requestedTimeIn, requestedTimeOut, requestedScheduleIn, requestedScheduleOut, changeToWorkingDay } = body
+  const { employeeId, consultantId, requestType, leaveType, isHalfDay, halfDayPeriod, startDate, endDate, reason, attachment, requestedTimeIn, requestedTimeOut, requestedScheduleIn, requestedScheduleOut, changeToWorkingDay } = body
 
   if ((!employeeId && !consultantId) || !requestType) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -71,6 +71,8 @@ export async function POST(req: Request) {
       consultantId: consultantId || null,
       requestType,
       leaveType: leaveType || null,
+      isHalfDay: !!isHalfDay,
+      halfDayPeriod: isHalfDay && halfDayPeriod ? halfDayPeriod : null,
       startDate: startDate ? new Date(startDate) : null,
       endDate: endDate ? new Date(endDate) : null,
       reason: reason || null,

@@ -62,6 +62,8 @@ export default function EmployeeRequestPage() {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [reason, setReason] = useState('')
+  const [isHalfDay, setIsHalfDay] = useState(false)
+  const [halfDayPeriod, setHalfDayPeriod] = useState<'MORNING' | 'AFTERNOON' | ''>('')
   const [coePurpose, setCoePurpose] = useState('')
   const [coeCustomPurpose, setCoeCustomPurpose] = useState('')
   const [requestedTime, setRequestedTime] = useState('')
@@ -160,6 +162,8 @@ export default function EmployeeRequestPage() {
           consultantId: consultantId || null,
           requestType,
           leaveType: requestType === 'LEAVE' ? leaveType : null,
+          isHalfDay: requestType === 'LEAVE' ? isHalfDay : false,
+          halfDayPeriod: requestType === 'LEAVE' && isHalfDay ? halfDayPeriod : null,
           startDate: requestType === 'CHANGE_SCHEDULE' ? scheduleDate : (startDate || null),
           endDate: endDate || null,
           reason: finalReason,
@@ -198,7 +202,7 @@ export default function EmployeeRequestPage() {
             Your request has been submitted successfully and is pending review.
           </p>
           <button
-            onClick={() => { setSubmitted(false); setRequestType(''); setLeaveType(''); setStartDate(''); setEndDate(''); setReason(''); setCoePurpose(''); setCoeCustomPurpose(''); setNameSearch(''); setEmployeeId(''); setConsultantId(''); setRequestedTime(''); setDtrPhoto(null); setDtrFileName(''); setScheduleDate(''); setScheduleDayType(''); setChangeToWorkingDay(null); setScheduleIn(''); setScheduleOut('') }}
+            onClick={() => { setSubmitted(false); setRequestType(''); setLeaveType(''); setIsHalfDay(false); setHalfDayPeriod(''); setStartDate(''); setEndDate(''); setReason(''); setCoePurpose(''); setCoeCustomPurpose(''); setNameSearch(''); setEmployeeId(''); setConsultantId(''); setRequestedTime(''); setDtrPhoto(null); setDtrFileName(''); setScheduleDate(''); setScheduleDayType(''); setChangeToWorkingDay(null); setScheduleIn(''); setScheduleOut('') }}
             className="px-6 py-2.5 rounded-xl text-white text-sm font-semibold"
             style={{ background: '#0d9488' }}
           >
@@ -300,9 +304,44 @@ export default function EmployeeRequestPage() {
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: '#1a1a2e' }}>End Date</label>
-                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
+                <input type="date" value={endDate} onChange={(e) => { setEndDate(e.target.value); if (e.target.value && e.target.value !== startDate) { setIsHalfDay(false); setHalfDayPeriod('') } }}
                   className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: '#e5e7eb' }} />
               </div>
+            </div>
+          )}
+
+          {/* Half-day option — only for single-day LEAVE */}
+          {requestType === 'LEAVE' && startDate && (!endDate || endDate === startDate) && (
+            <div>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={isHalfDay}
+                  onChange={(e) => { setIsHalfDay(e.target.checked); if (!e.target.checked) setHalfDayPeriod('') }}
+                  className="w-4 h-4 rounded"
+                  style={{ accentColor: '#0d9488' }}
+                />
+                <span className="text-sm font-medium" style={{ color: '#1a1a2e' }}>Half-day leave</span>
+              </label>
+              {isHalfDay && (
+                <div className="flex gap-2 mt-2">
+                  {(['MORNING', 'AFTERNOON'] as const).map(period => (
+                    <button
+                      key={period}
+                      type="button"
+                      onClick={() => setHalfDayPeriod(period)}
+                      className="flex-1 px-3 py-2 rounded-xl border text-sm font-medium transition-colors"
+                      style={{
+                        borderColor: halfDayPeriod === period ? '#0d9488' : '#e5e7eb',
+                        background: halfDayPeriod === period ? '#f0fdfa' : 'white',
+                        color: halfDayPeriod === period ? '#0d9488' : '#6b7280',
+                      }}
+                    >
+                      {period.charAt(0) + period.slice(1).toLowerCase()}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

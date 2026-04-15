@@ -1072,6 +1072,8 @@ model EmployeeRequest {
   consultant   Consultant?         @relation(fields: [consultantId], references: [id], onDelete: Cascade)
   requestType  EmployeeRequestType
   leaveType    LeaveType?          // Only for LEAVE requests
+  isHalfDay    Boolean             @default(false)
+  halfDayPeriod String?            // "MORNING" or "AFTERNOON" — only when isHalfDay is true
   startDate    DateTime?
   endDate      DateTime?
   requestedTimeIn      String?     // HH:mm for CHANGE_TIME_IN

@@ -1,0 +1,3 @@
+ALTER TABLE "EmployeeRequest"
+  ADD COLUMN IF NOT EXISTS "isHalfDay"     BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS "halfDayPeriod" TEXT;
