@@ -729,9 +729,12 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
         {/* Payroll payable accounts from journal entries (4040, 4060, 4070, etc.) */}
         {payrollPayableAccounts.map((a) => {
           const acctKey = `${a.accountNumber} ${a.accountTitle}`
+          const drillCategory = a.accountNumber === '4060' ? 'SALARY_PAYABLE_DETAIL'
+            : a.accountNumber === '4070' ? 'TAX_PAYABLE_DETAIL'
+            : 'JOURNAL_ACCOUNT'
           return (
             <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={a.balance} indent={2}
-              onDrillDown={() => onDrillDown(a.accountTitle, 'JOURNAL_ACCOUNT', 0, acctKey)} />
+              onDrillDown={() => onDrillDown(a.accountTitle, drillCategory, 0, acctKey)} />
           )
         })}
         {/* Other COA liability accounts not covered by journal entries */}
@@ -970,8 +973,10 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
             ))}
             {directExpenseAccts.map((a) => {
               const amt = expenseAmount(a.accountNumber, a.accountTitle)
+              const acctKey = `${a.accountNumber} ${a.accountTitle}`
               return amt > 0 ? (
-                <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={amt} indent={1} />
+                <AnnualRow key={a.accountNumber} label={acctKey} amount={amt} indent={1}
+                  onDrillDown={() => onDrillDown(acctKey, 'PAYROLL_EXPENSE_DETAIL', 0, acctKey)} />
               ) : null
             })}
             {Object.keys(cogsByAcctAnnual).length === 0 && totalDirectExpJournal === 0 && sumMonths(monthly, m => m.cogs) === 0 && (
@@ -988,9 +993,14 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
         <SectionHeader label="Expenses" collapsed={!!col['exp']} onToggle={() => tog('exp')} />
         {!col['exp'] && (
           <>
-            {indirectExpenseAccts.map((a) => (
-              <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={expenseAmount(a.accountNumber, a.accountTitle)} indent={1} />
-            ))}
+            {indirectExpenseAccts.map((a) => {
+              const amt = expenseAmount(a.accountNumber, a.accountTitle)
+              const acctKey = `${a.accountNumber} ${a.accountTitle}`
+              return (
+                <AnnualRow key={a.accountNumber} label={acctKey} amount={amt} indent={1}
+                  onDrillDown={amt > 0 ? () => onDrillDown(acctKey, 'JOURNAL_ACCOUNT', 0, acctKey) : undefined} />
+              )
+            })}
             {indirectExpenseAccts.length === 0 && (
               <AnnualRow label="(No expense accounts set up)" amount={0} indent={1} />
             )}

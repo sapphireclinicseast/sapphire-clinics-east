@@ -47,10 +47,112 @@ export async function GET(req: Request) {
     ? new Date(Date.UTC(year, month, 1))
     : new Date(Date.UTC(year + 1, 0, 1))
 
+  // Map short branch codes to Order model branch enum values
+  const BRANCH_MAP: Record<string, string> = {
+    SBEA: 'SANDBOX_EAST', SBGH: 'SANDBOX_GREENHILLS',
+    VERDANA_STORE: 'VERDANA_STORE', SANDBOX_EAST: 'SANDBOX_EAST', SANDBOX_GREENHILLS: 'SANDBOX_GREENHILLS',
+  }
+  const orderBranch = BRANCH_MAP[branch] || branch
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const branchFilter: any = branch !== 'ALL' ? { branch } : {}
+  const branchFilter: any = branch !== 'ALL' ? { branch: orderBranch } : {}
 
   try {
+    // ── Payroll expense detail (8190 Professional Fees — per consultant row) ──
+    if (category === 'PAYROLL_EXPENSE_DETAIL') {
+      const cutoffPrefix = month > 0
+        ? `${year}-${String(month).padStart(2, '0')}`
+        : String(year)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const where: any = { status: 'LOCKED', cutoffPeriod: { startsWith: cutoffPrefix } }
+      if (branch !== 'ALL') where.branch = branch
+
+      const entries = await prisma.payrollEntry.findMany({
+        where,
+        include: { consultant: { select: { name: true, department: true } } },
+        orderBy: [{ cutoffPeriod: 'asc' }, { branch: 'asc' }],
+      })
+
+      const items = entries.map(e => ({
+        date: e.cutoffPeriod,
+        type: `${e.consultant?.name || '—'}${e.consultant?.department ? ` · ${DEPT_LABELS[e.consultant.department] || e.consultant.department}` : ''}`,
+        branch: BRANCH_LABELS[e.branch] || e.branch,
+        amount: Number(e.grossPay),
+      }))
+      return NextResponse.json({ items, total: items.reduce((s, i) => s + i.amount, 0) })
+    }
+
+    // ── Unremitted salary payable detail (4060 — current balance) ──
+    if (category === 'SALARY_PAYABLE_DETAIL') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const branchWhere: any = branch !== 'ALL' ? { branch } : {}
+
+      const [consultantEntries, employeePayslips] = await Promise.all([
+        prisma.payrollEntry.findMany({
+          where: { salariesRemitted: false, status: 'LOCKED', ...branchWhere },
+          include: { consultant: { select: { name: true, department: true } } },
+          orderBy: [{ cutoffPeriod: 'asc' }],
+        }),
+        prisma.employeePayslip.findMany({
+          where: { salariesRemitted: false, status: { in: ['FINAL', 'LOCKED'] }, ...branchWhere },
+          include: { employee: { select: { firstName: true, lastName: true, department: true } } },
+          orderBy: [{ cutoffPeriod: 'asc' }],
+        }),
+      ])
+
+      const items = [
+        ...consultantEntries.map(e => ({
+          date: e.cutoffPeriod,
+          type: `${e.consultant?.name || '—'} (Consultant${e.consultant?.department ? ` · ${DEPT_LABELS[e.consultant.department] || e.consultant.department}` : ''})`,
+          branch: BRANCH_LABELS[e.branch] || e.branch,
+          amount: Number(e.netPay),
+        })),
+        ...employeePayslips.map(p => ({
+          date: p.cutoffPeriod,
+          type: `${p.employee.firstName} ${p.employee.lastName} (Employee${p.employee.department ? ` · ${DEPT_LABELS[p.employee.department] || p.employee.department}` : ''})`,
+          branch: BRANCH_LABELS[p.branch] || p.branch,
+          amount: Number(p.netPay),
+        })),
+      ].sort((a, b) => a.date.localeCompare(b.date))
+
+      return NextResponse.json({ items, total: items.reduce((s, i) => s + i.amount, 0) })
+    }
+
+    // ── Unremitted tax payable detail (4070 — current balance) ──
+    if (category === 'TAX_PAYABLE_DETAIL') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const branchWhere: any = branch !== 'ALL' ? { branch } : {}
+
+      const [consultantEntries, employeePayslips] = await Promise.all([
+        prisma.payrollEntry.findMany({
+          where: { taxRemitted: false, taxAmount: { gt: 0 }, ...branchWhere },
+          include: { consultant: { select: { name: true, department: true } } },
+          orderBy: [{ cutoffPeriod: 'asc' }],
+        }),
+        prisma.employeePayslip.findMany({
+          where: { taxRemitted: false, taxDeduction: { gt: 0 }, ...branchWhere },
+          include: { employee: { select: { firstName: true, lastName: true, department: true } } },
+          orderBy: [{ cutoffPeriod: 'asc' }],
+        }),
+      ])
+
+      const items = [
+        ...consultantEntries.map(e => ({
+          date: e.cutoffPeriod,
+          type: `${e.consultant?.name || '—'} (Consultant${e.consultant?.department ? ` · ${DEPT_LABELS[e.consultant.department] || e.consultant.department}` : ''})`,
+          branch: BRANCH_LABELS[e.branch] || e.branch,
+          amount: Number(e.taxAmount),
+        })),
+        ...employeePayslips.map(p => ({
+          date: p.cutoffPeriod,
+          type: `${p.employee.firstName} ${p.employee.lastName} (Employee${p.employee.department ? ` · ${DEPT_LABELS[p.employee.department] || p.employee.department}` : ''})`,
+          branch: BRANCH_LABELS[p.branch] || p.branch,
+          amount: Number(p.taxDeduction),
+        })),
+      ].sort((a, b) => a.date.localeCompare(b.date))
+
+      return NextResponse.json({ items, total: items.reduce((s, i) => s + i.amount, 0) })
+    }
+
     // Fetch deduction rates
     const paymentModes = await prisma.paymentMode.findMany({
       where: { isActive: true },
@@ -64,6 +166,61 @@ export async function GET(req: Request) {
     const isPaymentCategory = CASH_METHODS.includes(category) || category === 'CASH_BALANCE'
     const isARIncrease = category.startsWith('AR_INCREASE_')
     const isARPayments = category === 'AR_PAYMENTS'
+    const isJournalAccount = category === 'JOURNAL_ACCOUNT'
+
+    // Journal entry drill-down (for payable accounts like 4060, 4070, 4040, etc.)
+    if (isJournalAccount && accountKey) {
+      const [acctNum, ...titleParts] = accountKey.split(' ')
+      const acctTitle = titleParts.join(' ')
+
+      const lines = await prisma.journalEntryLine.findMany({
+        where: {
+          account: { accountNumber: acctNum, accountTitle: acctTitle },
+          journalEntry: {
+            entryDate: { gte: startDate, lt: endDate },
+          },
+        },
+        select: {
+          debit: true,
+          credit: true,
+          description: true,
+          account: { select: { accountType: true } },
+          journalEntry: { select: { entryDate: true, description: true, referenceType: true } },
+        },
+        orderBy: { journalEntry: { entryDate: 'asc' } },
+      })
+
+      const items = lines.map(line => {
+        const credit = Number(line.credit) || 0
+        const debit = Number(line.debit) || 0
+        const isLiability = line.account?.accountType === 'LIABILITY' || line.account?.accountType === 'REVENUE' || line.account?.accountType === 'EQUITY'
+        const amount = isLiability ? (credit - debit) : (debit - credit)
+        return {
+          date: line.journalEntry.entryDate.toISOString().split('T')[0],
+          type: `${line.journalEntry.description}${line.description ? ` — ${line.description}` : ''}`,
+          branch: line.journalEntry.referenceType || '—',
+          amount,
+        }
+      })
+
+      return NextResponse.json({ items, total: items.reduce((s, i) => s + i.amount, 0) })
+    }
+
+    // Wallet balances drill-down (unearned revenue)
+    if (category === 'WALLET_BALANCE') {
+      const wallets = await prisma.digitalWallet.findMany({
+        where: { isActive: true, balance: { gt: 0 } },
+        select: { patientName: true, walletType: true, balance: true, createdAt: true },
+        orderBy: { walletType: 'asc' },
+      })
+      const items = wallets.map(w => ({
+        date: w.createdAt.toISOString().split('T')[0],
+        type: `${w.walletType} — ${w.patientName}`,
+        branch: '—',
+        amount: Number(w.balance),
+      }))
+      return NextResponse.json({ items, total: items.reduce((s, i) => s + i.amount, 0) })
+    }
 
     // AR Payments Received drill-down (collections from HMO/GL via Record Payment)
     if (isARPayments) {
@@ -172,8 +329,100 @@ export async function GET(req: Request) {
         }
       }
       const matchingModeIds = Object.keys(modeMatch)
+
+      // If no payment mode deductions match, this might be an order-level discount (PWD/SC, Custom)
       if (matchingModeIds.length === 0) {
-        return NextResponse.json({ items: [], total: 0 })
+        const discountSettings = await prisma.discountSetting.findMany({
+          where: { isActive: true },
+          select: { name: true, account: { select: { accountNumber: true, accountTitle: true } } },
+        })
+
+        // Determine which discount setting names map to this accountKey
+        const matchingSettingNames: string[] = []
+        let isPwdScAccount = false
+        let isOtherDiscountsAccount = false
+        for (const ds of discountSettings) {
+          if (!ds.account) continue
+          const dsKey = `${ds.account.accountNumber} ${ds.account.accountTitle}`
+          if (ds.name === accountKey || dsKey === accountKey || ds.account.accountTitle === accountKey) {
+            matchingSettingNames.push(ds.name)
+            if (ds.name.toLowerCase().includes('pwd') || ds.name.toLowerCase().includes('senior')) {
+              isPwdScAccount = true
+            }
+            if (ds.account.accountNumber === '7210') {
+              isOtherDiscountsAccount = true
+            }
+          }
+        }
+
+        // Get all discounted orders and filter using the same logic as the reports API
+        const discountOrders = await prisma.order.findMany({
+          where: {
+            status: 'COMPLETED',
+            transactionDate: { gte: startDate, lt: endDate },
+            ...branchFilter,
+            discountAmount: { gt: 0 },
+          },
+          select: {
+            orderNumber: true,
+            transactionDate: true,
+            orderType: true,
+            branch: true,
+            patientName: true,
+            discountAmount: true,
+            discountType: true,
+            discountLabel: true,
+            items: {
+              take: 1,
+              select: {
+                service: { select: { department: true } },
+                inventoryItem: { select: { skuDepartment: true } },
+              },
+            },
+          },
+          orderBy: { transactionDate: 'asc' },
+        })
+
+        // Build discountLabel → accountKey map (same as reports API)
+        const labelToKey: Record<string, string> = {}
+        let pwdScKey = ''
+        let otherKey = ''
+        for (const ds of discountSettings) {
+          if (ds.account) {
+            const k = `${ds.account.accountNumber} ${ds.account.accountTitle}`
+            labelToKey[ds.name] = k
+            if (ds.name.toLowerCase().includes('pwd') || ds.name.toLowerCase().includes('senior')) pwdScKey = k
+            if (ds.account.accountNumber === '7210') otherKey = k
+          }
+        }
+        labelToKey['PWD/Senior Citizen (20%)'] = pwdScKey
+
+        // Filter orders that would route to the requested accountKey
+        const items = discountOrders.filter((o) => {
+          let resolvedKey = ''
+          if (o.discountType === 'PWD_SC' && pwdScKey) resolvedKey = pwdScKey
+          if (!resolvedKey && o.discountLabel) resolvedKey = labelToKey[o.discountLabel] || ''
+          if (!resolvedKey && o.discountLabel) {
+            const ll = o.discountLabel.toLowerCase()
+            for (const [name, key] of Object.entries(labelToKey)) {
+              if (ll.includes(name.toLowerCase()) || name.toLowerCase().includes(ll)) { resolvedKey = key; break }
+            }
+          }
+          if (!resolvedKey && otherKey) resolvedKey = otherKey
+          // Match against the requested accountKey (full key or account title)
+          return resolvedKey === accountKey || resolvedKey.split(' ').slice(1).join(' ') === accountKey
+            || (matchingSettingNames.length > 0 && resolvedKey === `${matchingSettingNames[0]}`)
+        }).map((o) => {
+          const dept = o.items[0]?.service?.department || o.items[0]?.inventoryItem?.skuDepartment || 'OTHER'
+          return {
+            date: o.transactionDate.toISOString().split('T')[0],
+            type: `#${o.orderNumber} — ${o.discountLabel || o.discountType || 'Discount'} (${DEPT_LABELS[dept] || dept})${o.patientName ? ` · ${o.patientName}` : ''}`,
+            branch: BRANCH_LABELS[o.branch] || o.branch,
+            amount: Number(o.discountAmount),
+          }
+        })
+
+        return NextResponse.json({ items, total: items.reduce((s, i) => s + i.amount, 0) })
       }
 
       const payments = await prisma.orderPayment.findMany({
@@ -191,6 +440,7 @@ export async function GET(req: Request) {
           method: true,
           order: {
             select: {
+              orderNumber: true,
               transactionDate: true,
               patientName: true,
               branch: true,
@@ -214,7 +464,7 @@ export async function GET(req: Request) {
         const dept = p.order.items[0]?.service?.department || p.order.items[0]?.inventoryItem?.skuDepartment || 'OTHER'
         return {
           date: p.order.transactionDate.toISOString().split('T')[0],
-          type: `${info.modeName} — ${PAYMENT_LABELS[p.method] || p.method} (${DEPT_LABELS[dept] || dept})${p.order.patientName ? ` · ${p.order.patientName}` : ''}`,
+          type: `#${p.order.orderNumber} — ${info.modeName} ${PAYMENT_LABELS[p.method] || p.method} (${DEPT_LABELS[dept] || dept}) · ₱${gross.toLocaleString()} × ${info.rate}%${p.order.patientName ? ` · ${p.order.patientName}` : ''}`,
           branch: BRANCH_LABELS[p.order.branch] || p.order.branch,
           amount: dedAmt,
         }
@@ -294,15 +544,47 @@ export async function GET(req: Request) {
     // When an accountKey is provided (e.g. "7020 Occupational Therapy Services Revenue"),
     // drill down to item-level and filter by matching revenue account
     if (accountKey && category === 'REVENUE') {
+      // Fetch name→account lookups for items missing service/inventory relations
+      const [svcLookup, invLookup] = await Promise.all([
+        prisma.service.findMany({
+          where: { isActive: true, revenueAccountId: { not: null } },
+          select: { name: true, department: true, revenueAccount: { select: { accountNumber: true, accountTitle: true } } },
+        }),
+        prisma.inventoryItem.findMany({
+          where: { isActive: true, revenueAccountId: { not: null } },
+          select: { name: true, skuDepartment: true, revenueAccount: { select: { accountNumber: true, accountTitle: true } } },
+        }),
+      ])
+      const svcNameMap: Record<string, { acctKey: string; dept: string; name: string }> = {}
+      for (const s of svcLookup) {
+        if (s.revenueAccount) {
+          svcNameMap[s.name.trim().toUpperCase()] = {
+            acctKey: `${s.revenueAccount.accountNumber} ${s.revenueAccount.accountTitle}`,
+            dept: s.department, name: s.name,
+          }
+        }
+      }
+      const invNameMap: Record<string, { acctKey: string; dept: string; name: string }> = {}
+      for (const i of invLookup) {
+        if (i.revenueAccount) {
+          invNameMap[i.name.trim().toUpperCase()] = {
+            acctKey: `${i.revenueAccount.accountNumber} ${i.revenueAccount.accountTitle}`,
+            dept: i.skuDepartment, name: i.name,
+          }
+        }
+      }
+
       const orders = await prisma.order.findMany({
         where: orderFilter,
         select: {
+          orderNumber: true,
           transactionDate: true,
           orderType: true,
           branch: true,
           patientName: true,
           items: {
             select: {
+              name: true,
               lineTotal: true,
               quantity: true,
               service: { select: { name: true, department: true, revenueAccount: { select: { accountNumber: true, accountTitle: true } } } },
@@ -317,15 +599,24 @@ export async function GET(req: Request) {
       const items: { date: string; type: string; branch: string; amount: number }[] = []
       for (const o of orders) {
         for (const item of o.items) {
+          // Resolve account: direct relation first, then name-based fallback
+          let itemKey: string
           const acct = item.service?.revenueAccount || item.inventoryItem?.revenueAccount
-          const itemKey = acct ? `${acct.accountNumber} ${acct.accountTitle}` : 'Unclassified Revenue'
+          if (acct) {
+            itemKey = `${acct.accountNumber} ${acct.accountTitle}`
+          } else {
+            const nameKey = item.name?.trim().toUpperCase() || ''
+            itemKey = svcNameMap[nameKey]?.acctKey || invNameMap[nameKey]?.acctKey || 'Unclassified Revenue'
+          }
           if (itemKey !== accountKey) continue
 
-          const dept = item.service?.department || item.inventoryItem?.skuDepartment || 'OTHER'
-          const name = item.service?.name || item.inventoryItem?.name || ''
+          const dept = item.service?.department || item.inventoryItem?.skuDepartment
+            || svcNameMap[item.name?.trim().toUpperCase() || '']?.dept
+            || invNameMap[item.name?.trim().toUpperCase() || '']?.dept || 'OTHER'
+          const name = item.service?.name || item.inventoryItem?.name || item.name || ''
           items.push({
             date: o.transactionDate.toISOString().split('T')[0],
-            type: `${o.orderType === 'SERVICE' ? 'Service' : 'Product'} — ${DEPT_LABELS[dept] || dept}${name ? ` (${name})` : ''}`,
+            type: `#${o.orderNumber} — ${o.orderType === 'SERVICE' ? 'Service' : 'Product'} (${DEPT_LABELS[dept] || dept})${name ? ` · ${name}` : ''}${o.patientName ? ` · ${o.patientName}` : ''}`,
             branch: BRANCH_LABELS[o.branch] || o.branch,
             amount: Number(item.lineTotal),
           })
