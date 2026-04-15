@@ -6121,9 +6121,8 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
   }
 
   const sortedDates = Array.from(byDate.keys()).sort()
-  const allMethods = new Set<string>()
-  byDate.forEach(m => m.forEach((_, k) => allMethods.add(k)))
-  const sortedMethods = Array.from(allMethods).sort()
+  const CHECKING_METHODS = ['CASH', 'CREDIT_CARD', 'DEBIT', 'GCASH', 'PAYMAYA']
+  const sortedMethods = CHECKING_METHODS
 
   const getActual = (day: string, method: string) => actualAmounts[day]?.[method] ?? ''
   const setActual = (day: string, method: string, val: number) => {
