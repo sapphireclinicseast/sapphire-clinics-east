@@ -33,6 +33,21 @@ export async function GET(req: Request) {
     entriesByPayment.get(e.salaryPaymentId)!.push(e)
   }
 
+  // Fallback: for payments without linked entries (old remittances before salaryPaymentId was tracked),
+  // look up remitted PayrollEntry records by cutoffPeriod + branch
+  const paymentsWithoutLinks = payments.filter(p => !entriesByPayment.has(p.id))
+  if (paymentsWithoutLinks.length > 0) {
+    for (const payment of paymentsWithoutLinks) {
+      const periods = payment.cutoffPeriod ? payment.cutoffPeriod.split(', ').map(s => s.trim()).filter(Boolean) : []
+      if (!periods.length || !payment.branch) continue
+      const fallback = await prisma.payrollEntry.findMany({
+        where: { branch: payment.branch, cutoffPeriod: { in: periods }, salariesRemitted: true, salaryPaymentId: null },
+        select: { salaryPaymentId: true, id: true, netPay: true, cutoffPeriod: true, consultant: { select: { name: true, department: true } } },
+      })
+      if (fallback.length > 0) entriesByPayment.set(payment.id, fallback)
+    }
+  }
+
   return NextResponse.json(payments.map(p => ({
     id: p.id,
     paymentDate: p.paymentDate.toISOString(),

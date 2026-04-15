@@ -2032,53 +2032,6 @@ export default function PayrollPage() {
             </div>
           )}
 
-
-          {/* Edit Payment Modal */}
-          {editPayment && (
-            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-                <div className="flex items-center justify-between px-6 py-5 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-                  <h3 className="text-base font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-                    Edit {editPayment.type === 'tax' ? 'Tax' : 'Salary'} Payment
-                  </h3>
-                  <button onClick={() => setEditPayment(null)} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
-                </div>
-                <div className="px-6 py-5 space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Payment Date</label>
-                    <input type="date" value={editPayment.paymentDate}
-                      onChange={e => setEditPayment(prev => prev ? { ...prev, paymentDate: e.target.value } : prev)}
-                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Proof URL (optional)</label>
-                    <input type="url" value={editPayment.proofUrl}
-                      onChange={e => setEditPayment(prev => prev ? { ...prev, proofUrl: e.target.value } : prev)}
-                      placeholder="https://..."
-                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Notes (optional)</label>
-                    <textarea value={editPayment.notes}
-                      onChange={e => setEditPayment(prev => prev ? { ...prev, notes: e.target.value } : prev)}
-                      rows={3}
-                      className="w-full px-3 py-2 rounded-xl border text-sm outline-none resize-none" style={{ borderColor: 'var(--light-gray)' }} />
-                  </div>
-                </div>
-                <div className="px-6 pb-5 flex gap-3">
-                  <button onClick={() => setEditPayment(null)}
-                    className="flex-1 py-2.5 rounded-xl border text-sm font-medium" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
-                    Cancel
-                  </button>
-                  <button onClick={saveEditPayment} disabled={editPaymentSaving}
-                    className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50" style={{ background: 'var(--teal)' }}>
-                    {editPaymentSaving ? 'Saving...' : 'Save Changes'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Tax Settings Modal */}
           {showTaxSettings && (
             <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
@@ -3695,6 +3648,52 @@ export default function PayrollPage() {
             </div>
           )}
         </>
+      )}
+
+      {/* ══ EDIT PAYMENT MODAL (global — used by both Tax and Salary tabs) ══ */}
+      {editPayment && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-5 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+              <h3 className="text-base font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                Edit {editPayment.type === 'tax' ? 'Tax' : 'Salary'} Payment
+              </h3>
+              <button onClick={() => setEditPayment(null)} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Payment Date</label>
+                <input type="date" value={editPayment.paymentDate}
+                  onChange={e => setEditPayment(prev => prev ? { ...prev, paymentDate: e.target.value } : prev)}
+                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Proof URL (optional)</label>
+                <input type="url" value={editPayment.proofUrl}
+                  onChange={e => setEditPayment(prev => prev ? { ...prev, proofUrl: e.target.value } : prev)}
+                  placeholder="https://..."
+                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Notes (optional)</label>
+                <textarea value={editPayment.notes}
+                  onChange={e => setEditPayment(prev => prev ? { ...prev, notes: e.target.value } : prev)}
+                  rows={3}
+                  className="w-full px-3 py-2 rounded-xl border text-sm outline-none resize-none" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+            </div>
+            <div className="px-6 pb-5 flex gap-3">
+              <button onClick={() => setEditPayment(null)}
+                className="flex-1 py-2.5 rounded-xl border text-sm font-medium" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                Cancel
+              </button>
+              <button onClick={saveEditPayment} disabled={editPaymentSaving}
+                className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+                {editPaymentSaving ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ══ PAYROLL SETTINGS MODAL ══ */}
