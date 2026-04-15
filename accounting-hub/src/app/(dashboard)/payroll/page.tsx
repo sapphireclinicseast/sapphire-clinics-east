@@ -233,8 +233,8 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December']
 
 const DEFAULT_SETTINGS: PayrollSettings = {
-  c1StartDay: 1, c1StartPrevMonth: false, c1EndDay: 15,
-  c2StartDay: 16, c2EndLastDay: true, c2EndDay: 31,
+  c1StartDay: 26, c1StartPrevMonth: true, c1EndDay: 10,
+  c2StartDay: 11, c2EndLastDay: false, c2EndDay: 25,
 }
 
 /* ═══════════════════════════════════════════════════════════════
