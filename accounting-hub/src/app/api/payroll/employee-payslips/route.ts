@@ -139,6 +139,42 @@ export async function POST(req: Request) {
     orderBy: { date: 'asc' },
   })
 
+  // Fetch approved OVERTIME requests for all employees in this branch for the cutoff period
+  // OT is only paid if the employee has an approved OT request covering that date
+  const approvedOTRequests = await prisma.employeeRequest.findMany({
+    where: {
+      requestType: 'OVERTIME',
+      status: 'APPROVED',
+      employee: { branch: qBranch, isActive: true },
+      startDate: { lt: endDate },
+      OR: [
+        { endDate: { gte: startDate } },
+        { endDate: null, startDate: { gte: startDate } },
+      ],
+    },
+    select: { employeeId: true, startDate: true, endDate: true },
+  })
+
+  // Group approved OT requests by employeeId for fast lookup
+  const otRequestsByEmp = new Map<string, { startDate: Date | null; endDate: Date | null }[]>()
+  for (const req of approvedOTRequests) {
+    if (!req.employeeId) continue
+    if (!otRequestsByEmp.has(req.employeeId)) otRequestsByEmp.set(req.employeeId, [])
+    otRequestsByEmp.get(req.employeeId)!.push({ startDate: req.startDate, endDate: req.endDate })
+  }
+
+  function hasApprovedOT(employeeId: string, date: Date): boolean {
+    const reqs = otRequestsByEmp.get(employeeId) || []
+    const d = date.getTime()
+    return reqs.some(r => {
+      const s = r.startDate ? r.startDate.getTime() : null
+      const e = r.endDate ? r.endDate.getTime() : null
+      if (s === null) return false
+      if (e === null) return d >= s && d <= s + 86400000 - 1 // single-day: same day only
+      return d >= s && d <= e
+    })
+  }
+
   // Get cutoff adjustments (allowances/deductions) for this period
   const adjustments = await prisma.cutoffAdjustment.findMany({
     where: { cutoffPeriod, branch: qBranch },
@@ -218,8 +254,8 @@ export async function POST(req: Request) {
 
       basicPay += dailyRate
 
-      // Overtime — round down to nearest interval, cap at max hours
-      if (rec.overtimeMinutes > 0) {
+      // Overtime — only counted if employee has an approved OT request covering this date
+      if (rec.overtimeMinutes > 0 && hasApprovedOT(emp.id, rec.date)) {
         // Round down to nearest interval (e.g. 45min with 30min interval = 30min)
         const roundedOTMinutes = Math.floor(rec.overtimeMinutes / otInterval) * otInterval
         // Convert to hours and cap at max
