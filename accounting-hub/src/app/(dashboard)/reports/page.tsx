@@ -229,7 +229,7 @@ function fmtSigned(n: number): string {
    ═══════════════════════════════════════════════════════════════ */
 
 const ROW_FONT = '0.7rem'
-const ROW_FONT_MONO = '0.69rem'
+const ROW_FONT_MONO = ROW_FONT
 const GRID_MONTHLY = '210px repeat(12, minmax(0,1fr)) 108px'
 
 function SectionHeader({ label, collapsed, onToggle }: { label: string; collapsed?: boolean; onToggle?: () => void }) {
@@ -309,7 +309,7 @@ function AnnualRow({
       <span
         style={{
           textAlign: 'right',
-          fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
+          fontFamily: 'inherit',
           fontSize: ROW_FONT_MONO,
           color: isNeg ? '#dc2626' : (onDrillDown && amount !== 0 ? '#0d9488' : amount === 0 && !isTotal && !isGrandTotal ? '#c4c9d0' : '#111827'),
           cursor: onDrillDown ? 'pointer' : undefined,
@@ -359,7 +359,7 @@ function MonthlyRow({
             key={i}
             style={{
               textAlign: 'right',
-              fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
+              fontFamily: 'inherit',
               fontSize: ROW_FONT_MONO,
               paddingRight: '4px',
               color: isNeg ? '#dc2626' : (onClickCell && v !== 0 ? '#0d9488' : v === 0 && !isTotal && !isGrandTotal ? '#c4c9d0' : '#111827'),
@@ -374,7 +374,7 @@ function MonthlyRow({
       <span
         style={{
           textAlign: 'right',
-          fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
+          fontFamily: 'inherit',
           fontSize: ROW_FONT_MONO,
           fontWeight: 600,
           color: (negative && total < 0) ? '#dc2626' : (onClickCell && total !== 0 ? '#0d9488' : '#111827'),
