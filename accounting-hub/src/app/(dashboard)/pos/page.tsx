@@ -7,7 +7,7 @@ import {
   CreditCard, Wallet, FileText, Download, Printer,
   RefreshCw, Ban, Star, Filter,
   Loader2, AlertCircle, ScanLine, UserPlus,
-  Pencil, PlusCircle, ToggleLeft, ToggleRight, Eye,
+  Pencil, PlusCircle, ToggleLeft, ToggleRight, Eye, CheckCircle,
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import Pagination from '@/components/ui/Pagination'
@@ -6091,8 +6091,15 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
   const [orders, setOrders] = useState<Order[]>([])
   const [modes, setModes] = useState<PaymentModeType[]>([])
   const [loading, setLoading] = useState(false)
-  const [actualAmounts, setActualAmounts] = useState<Record<string, Record<string, number>>>({}) // { date: { method: amount } }
-  const [confirmed, setConfirmed] = useState<Record<string, Record<string, boolean>>>({}) // { date: { method: bool } }
+  const [actualAmounts, setActualAmounts] = useState<Record<string, Record<string, number>>>({})
+  const [confirmed, setConfirmed] = useState<Record<string, Record<string, boolean>>>({})
+  const [remarks, setRemarks] = useState<Record<string, Record<string, string>>>({}) // { date: { method: remark } }
+  // cleared days: { "YYYY-MM-DD|branch": true }
+  const [clearedDays, setClearedDays] = useState<Record<string, { clearedAt: string; clearedById: string }>>({})
+  const [clearingInProgress, setClearingInProgress] = useState(false)
+  // Calendar month for summary
+  const [calYear, setCalYear] = useState(new Date().getFullYear())
+  const [calMonth, setCalMonth] = useState(new Date().getMonth()) // 0-indexed
 
   useEffect(() => {
     fetch('/api/pos/payment-modes').then(r => r.json()).then(d => setModes(Array.isArray(d) ? d : [])).catch(() => {})
@@ -6116,7 +6123,34 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
     finally { setLoading(false) }
   }, [selectedBranch, dateFrom, dateTo])
 
+  // Fetch clearing records for current view (date range) + calendar month
+  const fetchClearing = useCallback(async () => {
+    try {
+      // Fetch for selected range + calendar month
+      const firstOfMonth = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-01`
+      const lastOfMonth = new Date(calYear, calMonth + 1, 0)
+      const lastDate = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(lastOfMonth.getDate()).padStart(2, '0')}`
+      const params = new URLSearchParams()
+      if (selectedBranch) params.set('branch', selectedBranch)
+      // Fetch a wide range covering both filters + calendar
+      const earliest = [dateFrom, firstOfMonth].filter(Boolean).sort()[0]
+      const latest = [dateTo, lastDate].filter(Boolean).sort().reverse()[0]
+      if (earliest) params.set('dateFrom', earliest)
+      if (latest) params.set('dateTo', latest)
+      const r = await fetch(`/api/pos/sales-clearing?${params}`)
+      const data = await r.json()
+      if (Array.isArray(data)) {
+        const map: Record<string, { clearedAt: string; clearedById: string }> = {}
+        for (const rec of data) {
+          map[`${rec.date}|${rec.branch}`] = { clearedAt: rec.clearedAt, clearedById: rec.clearedById }
+        }
+        setClearedDays(map)
+      }
+    } catch { /* ignore */ }
+  }, [selectedBranch, dateFrom, dateTo, calYear, calMonth])
+
   useEffect(() => { fetchOrders() }, [fetchOrders])
+  useEffect(() => { fetchClearing() }, [fetchClearing])
 
   // Group orders by date and payment method
   const activeOrders = orders.filter(o => o.status !== 'VOIDED')
@@ -6144,9 +6178,63 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
   const toggleConfirm = (day: string, method: string) => {
     setConfirmed(prev => ({ ...prev, [day]: { ...prev[day], [method]: !prev[day]?.[method] } }))
   }
+  const getRemark = (day: string, method: string) => remarks[day]?.[method] ?? ''
+  const setRemark = (day: string, method: string, val: string) => {
+    setRemarks(prev => ({ ...prev, [day]: { ...prev[day], [method]: val } }))
+  }
+
+  // "All cleared" = every method present for that day has OK checked
+  const isDayAllCleared = (day: string) => {
+    const methods = byDate.get(day)
+    if (!methods) return false
+    const presentMethods = sortedMethods.filter(m => methods.has(m))
+    if (presentMethods.length === 0) return false
+    return presentMethods.every(m => isConfirmed(day, m))
+  }
+
+  const isClearedInDB = (day: string, br: string) => !!clearedDays[`${day}|${br}`]
+
+  const clearDay = async (day: string) => {
+    const br = selectedBranch || branch
+    if (!br) return
+    setClearingInProgress(true)
+    try {
+      const remarksList = sortedMethods
+        .filter(m => byDate.get(day)?.has(m))
+        .map(m => ({ method: m, remarks: getRemark(day, m) }))
+        .filter(r => r.remarks)
+      await fetch('/api/pos/sales-clearing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: day, branch: br, remarks: remarksList.length ? remarksList : null }),
+      })
+      await fetchClearing()
+    } catch { /* ignore */ }
+    setClearingInProgress(false)
+  }
+
+  const unclearDay = async (day: string) => {
+    const br = selectedBranch || branch
+    if (!br) return
+    await fetch(`/api/pos/sales-clearing?date=${day}&branch=${br}`, { method: 'DELETE' })
+    await fetchClearing()
+  }
+
+  // Calendar: days that have sales data
+  const daysWithSales = new Set(Array.from(byDate.keys()))
+
+  // Days in calendar month with clearing status
+  const calDaysInMonth = new Date(calYear, calMonth + 1, 0).getDate()
+  const calFirstDow = new Date(calYear, calMonth, 1).getDay() // 0=Sun
+
+  const calBranches = selectedBranch
+    ? [selectedBranch]
+    : canSelectBranch
+    ? ['SANDBOX_EAST', 'SANDBOX_GREENHILLS']
+    : [branch]
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div>
         <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)' }}>Sales Checking</h2>
         <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
@@ -6180,9 +6268,16 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
           {sortedDates.map(day => {
             const methods = byDate.get(day)!
             const dayLabel = new Date(day + 'T00:00:00').toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+            const br = selectedBranch || branch
+            const cleared = br ? isClearedInDB(day, br) : false
+            const allOk = isDayAllCleared(day)
             return (
-              <div key={day} className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
-                <div className="px-4 py-2.5 font-semibold text-xs" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{dayLabel}</div>
+              <div key={day} className="rounded-2xl border overflow-hidden" style={{ borderColor: cleared ? '#16a34a' : 'var(--light-gray)' }}>
+                <div className="px-4 py-2.5 flex items-center justify-between"
+                  style={{ background: cleared ? '#dcfce7' : 'var(--pale-teal)', color: cleared ? '#166534' : 'var(--deep-teal)' }}>
+                  <span className="font-semibold text-xs">{dayLabel}</span>
+                  {cleared && <span className="text-xs font-semibold flex items-center gap-1"><CheckCircle size={12} /> Cleared</span>}
+                </div>
                 <table className="w-full text-xs">
                   <thead>
                     <tr style={{ background: 'var(--off-white)' }}>
@@ -6191,6 +6286,7 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
                       <th className="px-4 py-2 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>Actual Amount</th>
                       <th className="px-4 py-2 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>Difference</th>
                       <th className="px-4 py-2 text-center font-semibold" style={{ color: 'var(--charcoal)' }}>OK</th>
+                      <th className="px-4 py-2 text-left font-semibold" style={{ color: 'var(--charcoal)' }}>Remarks</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -6222,16 +6318,108 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
                               <span className="text-xs" style={{ color: 'var(--light-gray)' }}>—</span>
                             )}
                           </td>
+                          <td className="px-4 py-2">
+                            <input type="text" value={getRemark(day, method)}
+                              onChange={e => setRemark(day, method, e.target.value)}
+                              placeholder="Optional note..."
+                              className="w-full px-2 py-1 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                          </td>
                         </tr>
                       )
                     })}
                   </tbody>
                 </table>
+                {/* Cleared for the day button */}
+                {br && (
+                  <div className="px-4 py-3 border-t flex justify-end" style={{ borderColor: 'var(--light-gray)' }}>
+                    {cleared ? (
+                      <button onClick={() => unclearDay(day)}
+                        className="px-4 py-2 rounded-xl text-xs font-medium border"
+                        style={{ borderColor: '#16a34a', color: '#16a34a', background: 'transparent' }}>
+                        Undo Clearing
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => clearDay(day)}
+                        disabled={!allOk || clearingInProgress}
+                        className="px-4 py-2 rounded-xl text-xs font-semibold text-white transition-opacity"
+                        style={{ background: allOk ? '#16a34a' : '#9ca3af', opacity: clearingInProgress ? 0.7 : 1, cursor: allOk ? 'pointer' : 'not-allowed' }}>
+                        {clearingInProgress ? 'Saving…' : 'Cleared for the Day'}
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )
           })}
         </div>
       )}
+
+      {/* Calendar Summary */}
+      <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+          <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
+            Clearing Summary — {new Date(calYear, calMonth).toLocaleDateString('en-PH', { month: 'long', year: 'numeric' })}
+          </span>
+          <div className="flex items-center gap-2">
+            <button onClick={() => { const d = new Date(calYear, calMonth - 1); setCalYear(d.getFullYear()); setCalMonth(d.getMonth()) }}
+              className="p-1 rounded-lg hover:bg-gray-100 text-sm" style={{ color: 'var(--mid-gray)' }}>‹</button>
+            <button onClick={() => { const d = new Date(calYear, calMonth + 1); setCalYear(d.getFullYear()); setCalMonth(d.getMonth()) }}
+              className="p-1 rounded-lg hover:bg-gray-100 text-sm" style={{ color: 'var(--mid-gray)' }}>›</button>
+          </div>
+        </div>
+        <div className="p-4">
+          {calBranches.map(br => {
+            const brLabel = br === 'SANDBOX_EAST' ? 'Sandbox East' : br === 'SANDBOX_GREENHILLS' ? 'Sandbox Greenhills' : br
+            return (
+              <div key={br} className={calBranches.length > 1 ? 'mb-6' : ''}>
+                {calBranches.length > 1 && (
+                  <div className="text-xs font-semibold mb-2" style={{ color: 'var(--deep-teal)' }}>{brLabel}</div>
+                )}
+                {/* Day-of-week headers */}
+                <div className="grid grid-cols-7 mb-1">
+                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+                    <div key={d} className="text-center text-xs font-semibold py-1" style={{ color: 'var(--mid-gray)' }}>{d}</div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-7 gap-1">
+                  {/* Empty cells before first day */}
+                  {Array.from({ length: calFirstDow }).map((_, i) => <div key={`e${i}`} />)}
+                  {Array.from({ length: calDaysInMonth }).map((_, i) => {
+                    const d = i + 1
+                    const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+                    const isCleared = !!clearedDays[`${dateStr}|${br}`]
+                    const hasSales = daysWithSales.has(dateStr)
+                    const isToday = dateStr === today()
+                    let bg = 'transparent'
+                    let color = 'var(--mid-gray)'
+                    let border = '1px solid transparent'
+                    if (isCleared) { bg = '#dcfce7'; color = '#166534' }
+                    else if (hasSales) { bg = '#fef9c3'; color = '#92400e' }
+                    if (isToday) border = '1.5px solid var(--teal)'
+                    return (
+                      <div key={d} className="rounded-lg flex flex-col items-center justify-center py-1.5 text-xs font-medium"
+                        style={{ background: bg, color, border, minHeight: '36px' }}>
+                        <span>{d}</span>
+                        {isCleared && <span style={{ fontSize: '9px', lineHeight: 1 }}>✓</span>}
+                        {!isCleared && hasSales && <span style={{ fontSize: '9px', lineHeight: 1 }}>•</span>}
+                      </div>
+                    )
+                  })}
+                </div>
+                <div className="flex gap-4 mt-3">
+                  <span className="flex items-center gap-1 text-xs" style={{ color: '#166534' }}>
+                    <span className="inline-block w-3 h-3 rounded" style={{ background: '#dcfce7' }} /> Cleared
+                  </span>
+                  <span className="flex items-center gap-1 text-xs" style={{ color: '#92400e' }}>
+                    <span className="inline-block w-3 h-3 rounded" style={{ background: '#fef9c3' }} /> Pending
+                  </span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
     </div>
   )
 }

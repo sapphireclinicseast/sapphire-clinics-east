@@ -22,7 +22,7 @@ const ALL_MODULES = [
     icon: BookOpen,
     title: 'Chart of Accounts',
     description: 'Manage account categories, types, and balances',
-    status: 'coming-soon' as const,
+    status: 'active' as const,
   },
   {
     href: '/petty-cash',
@@ -36,7 +36,7 @@ const ALL_MODULES = [
     icon: Package,
     title: 'Inventory & Procurement',
     description: 'Manage stock levels and purchase orders',
-    status: 'coming-soon' as const,
+    status: 'active' as const,
   },
   {
     href: '/pos',
@@ -51,7 +51,7 @@ const ALL_MODULES = [
     icon: BadgeDollarSign,
     title: 'Payroll',
     description: 'Employee salary management and processing',
-    status: 'coming-soon' as const,
+    status: 'active' as const,
   },
   {
     href: '/bank-reconciliation',
@@ -65,7 +65,7 @@ const ALL_MODULES = [
     icon: BarChart3,
     title: 'Reports',
     description: 'Financial reports and analytics',
-    status: 'coming-soon' as const,
+    status: 'active' as const,
   },
   {
     href: '/budgets',

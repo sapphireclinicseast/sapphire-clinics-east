@@ -1389,3 +1389,18 @@ model BenefitPayment {
   @@index([paymentDate])
   @@index([cutoffPeriod])
 }
+
+// ── Sales Checking ────────────────────────────────────────────
+model SalesDayClearing {
+  id          String   @id @default(cuid())
+  date        String   // "YYYY-MM-DD"
+  branch      String
+  clearedById String
+  clearedAt   DateTime @default(now())
+  remarks     Json?    // { method: string, remarks: string }[]
+  updatedAt   DateTime @updatedAt
+
+  @@unique([date, branch])
+  @@index([date])
+  @@index([branch])
+}
