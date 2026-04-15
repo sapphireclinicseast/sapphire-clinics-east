@@ -225,18 +225,40 @@ function fmtSigned(n: number): string {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   SHARED ROW COMPONENTS
+   SHARED ROW COMPONENTS  (QuickBooks-style clean design)
    ═══════════════════════════════════════════════════════════════ */
 
-const rowBase = 'grid items-center py-2.5 px-4 text-sm'
+const ROW_FONT = '0.7rem'
+const ROW_FONT_MONO = '0.69rem'
+const GRID_MONTHLY = '210px repeat(12, minmax(0,1fr)) 108px'
 
-function SectionHeader({ label, colSpan }: { label: string; colSpan?: number }) {
+function SectionHeader({ label, collapsed, onToggle }: { label: string; collapsed?: boolean; onToggle?: () => void }) {
   return (
     <div
-      className="py-3 px-4 font-bold text-sm uppercase tracking-wide"
-      style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)', borderBottom: '2px solid var(--teal)' }}
+      className="flex items-center gap-1 select-none"
+      style={{
+        padding: '5px 12px',
+        background: '#f0f2f4',
+        borderTop: '1px solid #d1d5db',
+        borderBottom: '1px solid #d1d5db',
+        cursor: onToggle ? 'pointer' : 'default',
+      }}
+      onClick={onToggle}
     >
-      {label}
+      {onToggle !== undefined && (
+        <ChevronDown
+          size={11}
+          style={{
+            transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+            transition: 'transform 0.12s',
+            color: '#6b7280',
+            flexShrink: 0,
+          }}
+        />
+      )}
+      <span style={{ fontSize: ROW_FONT, fontWeight: 700, color: '#111827', letterSpacing: '0.01em' }}>
+        {label}
+      </span>
     </div>
   )
 }
@@ -244,8 +266,14 @@ function SectionHeader({ label, colSpan }: { label: string; colSpan?: number }) 
 function SubSectionHeader({ label }: { label: string }) {
   return (
     <div
-      className="py-2 px-4 pl-6 font-semibold text-sm"
-      style={{ color: 'var(--deep-teal)', fontFamily: 'var(--font-display)', background: 'var(--pale-teal)' }}
+      style={{
+        padding: '4px 12px 4px 24px',
+        background: '#f8f9fa',
+        borderBottom: '1px solid #e5e7eb',
+        fontSize: ROW_FONT,
+        fontWeight: 600,
+        color: '#374151',
+      }}
     >
       {label}
     </div>
@@ -260,28 +288,36 @@ function AnnualRow({
   label: string; amount: number; indent?: number; bold?: boolean
   isTotal?: boolean; isGrandTotal?: boolean; negative?: boolean; onDrillDown?: () => void
 }) {
+  const isNeg = negative && amount < 0
   return (
     <div
-      className={`${rowBase} grid-cols-[1fr_180px]`}
       style={{
-        paddingLeft: `${1 + indent * 1.25}rem`,
-        fontWeight: bold || isTotal || isGrandTotal ? 600 : 400,
-        borderTop: isTotal ? '1px solid var(--light-gray)' : undefined,
-        borderBottom: isGrandTotal ? '3px double var(--charcoal)' : isTotal ? '1px solid var(--light-gray)' : undefined,
-        background: isGrandTotal ? 'var(--pale-teal)' : undefined,
-        color: negative && amount < 0 ? '#dc2626' : 'var(--charcoal)',
-        fontFamily: isGrandTotal ? 'var(--font-display)' : undefined,
+        display: 'grid',
+        gridTemplateColumns: '1fr 160px',
+        alignItems: 'center',
+        padding: '3px 12px',
+        paddingLeft: `${0.75 + indent * 1.2}rem`,
+        fontSize: ROW_FONT,
+        fontWeight: isGrandTotal || isTotal || bold ? 600 : 400,
+        borderTop: isGrandTotal ? '2px solid #111827' : isTotal ? '1px solid #d1d5db' : undefined,
+        borderBottom: isGrandTotal ? '3px double #111827' : isTotal ? '1px solid #d1d5db' : undefined,
+        background: isGrandTotal ? '#f0f9f8' : undefined,
+        color: '#111827',
       }}
     >
       <span>{label}</span>
       <span
-        className={`text-right font-mono text-sm${onDrillDown ? ' cursor-pointer hover:underline' : ''}`}
         style={{
-          color: onDrillDown && amount !== 0 ? 'var(--teal)'
-            : amount === 0 && !isTotal && !isGrandTotal ? '#d1d5db'
-            : undefined,
+          textAlign: 'right',
+          fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
+          fontSize: ROW_FONT_MONO,
+          color: isNeg ? '#dc2626' : (onDrillDown && amount !== 0 ? '#0d9488' : amount === 0 && !isTotal && !isGrandTotal ? '#c4c9d0' : '#111827'),
+          cursor: onDrillDown ? 'pointer' : undefined,
+          textDecoration: 'none',
         }}
         onClick={onDrillDown}
+        onMouseEnter={e => { if (onDrillDown) (e.target as HTMLElement).style.textDecoration = 'underline' }}
+        onMouseLeave={e => { if (onDrillDown) (e.target as HTMLElement).style.textDecoration = 'none' }}
       >
         {negative ? fmtSigned(amount) : fmt(amount)}
       </span>
@@ -300,38 +336,50 @@ function MonthlyRow({
 }) {
   return (
     <div
-      className={`${rowBase} min-w-[1200px]`}
       style={{
         display: 'grid',
-        gridTemplateColumns: '220px repeat(12, 1fr) 110px',
-        paddingLeft: `${0.5 + indent * 0.75}rem`,
-        fontWeight: bold || isTotal || isGrandTotal ? 600 : 400,
-        borderTop: isTotal ? '1px solid var(--light-gray)' : undefined,
-        borderBottom: isGrandTotal ? '3px double var(--charcoal)' : isTotal ? '1px solid var(--light-gray)' : undefined,
-        background: isGrandTotal ? 'var(--pale-teal)' : undefined,
-        color: negative && total < 0 ? '#dc2626' : 'var(--charcoal)',
-        fontFamily: isGrandTotal ? 'var(--font-display)' : undefined,
-        fontSize: '0.72rem',
+        gridTemplateColumns: GRID_MONTHLY,
+        alignItems: 'center',
+        padding: '3px 12px',
+        paddingLeft: `${0.5 + indent * 0.85}rem`,
+        fontSize: ROW_FONT,
+        fontWeight: isGrandTotal || isTotal || bold ? 600 : 400,
+        borderTop: isGrandTotal ? '2px solid #111827' : isTotal ? '1px solid #d1d5db' : undefined,
+        borderBottom: isGrandTotal ? '3px double #111827' : isTotal ? '1px solid #d1d5db' : undefined,
+        background: isGrandTotal ? '#f0f9f8' : undefined,
+        color: '#111827',
+        minWidth: '1100px',
       }}
     >
-      <span className="truncate pr-2">{label}</span>
-      {values.map((v, i) => (
-        <span
-          key={i}
-          className={`text-right font-mono pr-1${onClickCell && v !== 0 ? ' cursor-pointer hover:underline' : ''}`}
-          style={{
-            color: onClickCell && v !== 0 ? 'var(--teal)'
-              : v === 0 && !isTotal && !isGrandTotal ? '#d1d5db'
-              : undefined,
-          }}
-          onClick={() => onClickCell?.(i + 1)}
-        >
-          {negative ? fmtSigned(v) : fmt(v)}
-        </span>
-      ))}
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: '6px' }}>{label}</span>
+      {values.map((v, i) => {
+        const isNeg = negative && v < 0
+        return (
+          <span
+            key={i}
+            style={{
+              textAlign: 'right',
+              fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
+              fontSize: ROW_FONT_MONO,
+              paddingRight: '4px',
+              color: isNeg ? '#dc2626' : (onClickCell && v !== 0 ? '#0d9488' : v === 0 && !isTotal && !isGrandTotal ? '#c4c9d0' : '#111827'),
+              cursor: onClickCell && v !== 0 ? 'pointer' : undefined,
+            }}
+            onClick={() => onClickCell?.(i + 1)}
+          >
+            {negative ? fmtSigned(v) : fmt(v)}
+          </span>
+        )
+      })}
       <span
-        className={`text-right font-mono font-semibold${onClickCell && total !== 0 ? ' cursor-pointer hover:underline' : ''}`}
-        style={{ color: onClickCell && total !== 0 ? 'var(--teal)' : undefined }}
+        style={{
+          textAlign: 'right',
+          fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
+          fontSize: ROW_FONT_MONO,
+          fontWeight: 600,
+          color: (negative && total < 0) ? '#dc2626' : (onClickCell && total !== 0 ? '#0d9488' : '#111827'),
+          cursor: onClickCell && total !== 0 ? 'pointer' : undefined,
+        }}
         onClick={() => onClickCell?.(null)}
       >
         {negative ? fmtSigned(total) : fmt(total)}
@@ -343,21 +391,27 @@ function MonthlyRow({
 function MonthlyHeader() {
   return (
     <div
-      className="min-w-[1200px] py-2 px-4 font-semibold uppercase tracking-wider sticky top-0 z-10"
       style={{
         display: 'grid',
-        gridTemplateColumns: '220px repeat(12, 1fr) 110px',
-        background: 'var(--charcoal)',
-        color: 'white',
-        fontFamily: 'var(--font-display)',
-        fontSize: '0.65rem',
+        gridTemplateColumns: GRID_MONTHLY,
+        padding: '6px 12px',
+        background: '#1f2937',
+        color: '#e5e7eb',
+        fontSize: '0.62rem',
+        fontWeight: 600,
+        letterSpacing: '0.04em',
+        textTransform: 'uppercase',
+        position: 'sticky',
+        top: 0,
+        zIndex: 10,
+        minWidth: '1100px',
       }}
     >
       <span>Line Item</span>
       {MONTHS.map((m) => (
-        <span key={m} className="text-right pr-1">{m}</span>
+        <span key={m} style={{ textAlign: 'right', paddingRight: '4px' }}>{m}</span>
       ))}
-      <span className="text-right">Total</span>
+      <span style={{ textAlign: 'right' }}>Total</span>
     </div>
   )
 }
@@ -765,6 +819,8 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
 function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; viewMode: ViewMode; onDrillDown: OnDrillDown }) {
   const { monthly, accounts, journalRevenueKeys = [] } = data
   const journalRevenueSet = new Set(journalRevenueKeys)
+  const [col, setCol] = useState<Record<string, boolean>>({})
+  const tog = (k: string) => setCol(p => ({ ...p, [k]: !p[k] }))
 
   // COA-driven: Revenue accounts — gather from ALL revenue subTypes, not just OPERATING/NON_OPERATING
   const allRevenueSubTypes = accounts.REVENUE ? Object.values(accounts.REVENUE).flat() : []
@@ -857,38 +913,43 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
     indirectExpenseAccts.reduce((s, a) => s + ((m.expenseByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
 
   if (viewMode === 'annual') {
+    const cogsByAcctAnnual: Record<string, number> = {}
+    for (let m = 1; m <= 12; m++) {
+      for (const [key, val] of Object.entries(monthly[m]?.cogsByAccount || {})) {
+        cogsByAcctAnnual[key] = (cogsByAcctAnnual[key] || 0) + val
+      }
+    }
     return (
       <div>
         {/* 7000 GROSS REVENUE */}
-        <SectionHeader label="7000 Gross Revenue" />
-        <div className="h-2" />
-        {grossRevenueAccts.map((a) => {
-          const acctKey = `${a.accountNumber} ${a.accountTitle}`
-          const isJournalSourced = journalRevenueSet.has(acctKey)
-          return (
-            <AnnualRow key={a.accountNumber} label={acctKey} amount={acctAmount(a.accountNumber, a.accountTitle)} indent={1}
-              onDrillDown={() => onDrillDown(a.accountTitle, isJournalSourced ? 'JOURNAL_ACCOUNT' : 'REVENUE', 0, isJournalSourced ? acctKey : acctKey)} />
-          )
-        })}
-        {unmatchedRevenueKeys.map((key) => {
-          const amt = sumMonths(monthly, (m) => (m.revenueByAccount || {})[key] || 0)
-          return amt > 0 ? (
-            <AnnualRow key={key} label={key} amount={amt} indent={1}
-              onDrillDown={() => onDrillDown(key, 'REVENUE', 0, key)} />
-          ) : null
-        })}
+        <SectionHeader label="7000 Gross Revenue" collapsed={!!col['gr']} onToggle={() => tog('gr')} />
+        {!col['gr'] && (
+          <>
+            {grossRevenueAccts.map((a) => {
+              const acctKey = `${a.accountNumber} ${a.accountTitle}`
+              const isJournalSourced = journalRevenueSet.has(acctKey)
+              return (
+                <AnnualRow key={a.accountNumber} label={acctKey} amount={acctAmount(a.accountNumber, a.accountTitle)} indent={1}
+                  onDrillDown={() => onDrillDown(a.accountTitle, isJournalSourced ? 'JOURNAL_ACCOUNT' : 'REVENUE', 0, acctKey)} />
+              )
+            })}
+            {unmatchedRevenueKeys.map((key) => {
+              const amt = sumMonths(monthly, (m) => (m.revenueByAccount || {})[key] || 0)
+              return amt > 0 ? (
+                <AnnualRow key={key} label={key} amount={amt} indent={1}
+                  onDrillDown={() => onDrillDown(key, 'REVENUE', 0, key)} />
+              ) : null
+            })}
+          </>
+        )}
         <AnnualRow label="Total for 7000 Gross Revenue" amount={effectiveGrossRevenue} indent={0} isTotal bold
           onDrillDown={() => onDrillDown('Total Gross Revenue', 'REVENUE', 0)} />
 
-        <div className="h-3" />
-
         {/* 7002 DISCOUNTS AND REFUNDS */}
-        <SectionHeader label="7002 Discounts and Refunds" />
-        <div className="h-2" />
-        {discountAccts.map((a) => {
+        <SectionHeader label="7002 Discounts and Refunds" collapsed={!!col['disc']} onToggle={() => tog('disc')} />
+        {!col['disc'] && discountAccts.map((a) => {
           const amt = acctAmount(a.accountNumber, a.accountTitle)
           const acctKey = `${a.accountNumber} ${a.accountTitle}`
-          // If this is a deduction-sourced account (like MDR), drill-down as DEDUCTION; otherwise as REVENUE
           const isDeductionSourced = Object.keys(deductionAccountTotals).includes(acctKey)
           return (
             <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={-amt} indent={1} negative
@@ -897,73 +958,55 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
         })}
         <AnnualRow label="Total for 7002 Discounts and Refunds" amount={-totalDiscounts} indent={0} isTotal bold negative />
 
-        <div className="h-3" />
-
         <AnnualRow label="Total for Net Sales" amount={netSales} isGrandTotal onDrillDown={() => onDrillDown('Net Sales', 'REVENUE', 0)} />
 
-        <div className="h-3" />
-
-        {/* COST OF SALES — broken down by expense account from inventory items */}
-        <SectionHeader label="Cost of Sales" />
-        <div className="h-2" />
-        {(() => {
-          const cogsByAcct: Record<string, number> = {}
-          for (let m = 1; m <= 12; m++) {
-            for (const [key, val] of Object.entries(monthly[m]?.cogsByAccount || {})) {
-              cogsByAcct[key] = (cogsByAcct[key] || 0) + val
-            }
-          }
-          const acctKeys = Object.keys(cogsByAcct).sort()
-          return (
-            <>
-              {acctKeys.map(key => (
-                <AnnualRow key={key} label={key} amount={cogsByAcct[key]} indent={1}
-                  onDrillDown={() => onDrillDown(key, 'COGS', 0)} />
-              ))}
-              {directExpenseAccts.map((a) => {
-                const amt = expenseAmount(a.accountNumber, a.accountTitle)
-                return amt > 0 ? (
-                  <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={amt} indent={1} />
-                ) : null
-              })}
-              {acctKeys.length === 0 && totalDirectExpJournal === 0 && sumMonths(monthly, m => m.cogs) === 0 && (
-                <AnnualRow label="(No cost of sales recorded)" amount={0} indent={1} />
-              )}
-            </>
-          )
-        })()}
+        {/* COST OF SALES */}
+        <SectionHeader label="Cost of Sales" collapsed={!!col['cos']} onToggle={() => tog('cos')} />
+        {!col['cos'] && (
+          <>
+            {Object.keys(cogsByAcctAnnual).sort().map(key => (
+              <AnnualRow key={key} label={key} amount={cogsByAcctAnnual[key]} indent={1}
+                onDrillDown={() => onDrillDown(key, 'COGS', 0)} />
+            ))}
+            {directExpenseAccts.map((a) => {
+              const amt = expenseAmount(a.accountNumber, a.accountTitle)
+              return amt > 0 ? (
+                <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={amt} indent={1} />
+              ) : null
+            })}
+            {Object.keys(cogsByAcctAnnual).length === 0 && totalDirectExpJournal === 0 && sumMonths(monthly, m => m.cogs) === 0 && (
+              <AnnualRow label="(No cost of sales recorded)" amount={0} indent={1} />
+            )}
+          </>
+        )}
         <AnnualRow label="Total for Cost of Sales" amount={totalCOGS} indent={0} isTotal bold
           onDrillDown={() => onDrillDown('Cost of Sales', 'COGS', 0)} />
 
-        <div className="h-3" />
-
         <AnnualRow label="Gross Profit" amount={grossProfit} isGrandTotal />
 
-        <div className="h-3" />
-
         {/* EXPENSES (Indirect) */}
-        <SectionHeader label="Expenses" />
-        <div className="h-2" />
-        {indirectExpenseAccts.map((a) => (
-          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={expenseAmount(a.accountNumber, a.accountTitle)} indent={1} />
-        ))}
-        {indirectExpenseAccts.length === 0 && (
-          <AnnualRow label="(No expense accounts set up)" amount={0} indent={1} />
+        <SectionHeader label="Expenses" collapsed={!!col['exp']} onToggle={() => tog('exp')} />
+        {!col['exp'] && (
+          <>
+            {indirectExpenseAccts.map((a) => (
+              <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={expenseAmount(a.accountNumber, a.accountTitle)} indent={1} />
+            ))}
+            {indirectExpenseAccts.length === 0 && (
+              <AnnualRow label="(No expense accounts set up)" amount={0} indent={1} />
+            )}
+          </>
         )}
         <AnnualRow label="Total for Expenses" amount={totalOpex} indent={0} isTotal bold />
 
-        <div className="h-3" />
-
         <AnnualRow label="EBITDA" amount={ebitda} isGrandTotal />
 
-        <div className="h-3" />
-
-        {/* NON-OPERATING EXPENSES (Depreciation, Interest) */}
-        {nonOpExpenseAccts.map((a) => (
+        {/* NON-OPERATING EXPENSES */}
+        {nonOpExpenseAccts.length > 0 && (
+          <SectionHeader label="Non-Operating Expenses" collapsed={!!col['nonop']} onToggle={() => tog('nonop')} />
+        )}
+        {!col['nonop'] && nonOpExpenseAccts.map((a) => (
           <AnnualRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`} amount={0} indent={1} />
         ))}
-
-        <div className="h-3" />
 
         <AnnualRow label="NET INCOME" amount={netIncome} isGrandTotal />
       </div>
@@ -980,66 +1023,56 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
       <MonthlyHeader />
 
       {/* 7000 GROSS REVENUE */}
-      <SectionHeader label="7000 Gross Revenue" />
-      {grossRevenueAccts.map((a) => {
-        const acctKey = `${a.accountNumber} ${a.accountTitle}`
-        const isJournalSourced = journalRevenueSet.has(acctKey)
-        return (
-          <MonthlyRow key={a.accountNumber} label={acctKey}
-            values={acctMonthly(a.accountNumber, a.accountTitle)}
-            total={acctAmount(a.accountNumber, a.accountTitle)} indent={1}
-            onClickCell={(m) => onDrillDown(a.accountTitle, isJournalSourced ? 'JOURNAL_ACCOUNT' : 'REVENUE', m ?? 0, acctKey)} />
-        )
-      })}
-      {unmatchedRevenueKeys.map((key) => {
-        const total = sumMonths(monthly, (m) => (m.revenueByAccount || {})[key] || 0)
-        return total > 0 ? (
-          <MonthlyRow key={key} label={key}
-            values={getMonthlyArray(monthly, (m) => (m.revenueByAccount || {})[key] || 0)}
-            total={total} indent={1}
-            onClickCell={(m) => onDrillDown(key, 'REVENUE', m ?? 0, key)} />
-        ) : null
-      })}
+      <SectionHeader label="7000 Gross Revenue" collapsed={!!col['gr']} onToggle={() => tog('gr')} />
+      {!col['gr'] && (
+        <>
+          {grossRevenueAccts.map((a) => {
+            const acctKey = `${a.accountNumber} ${a.accountTitle}`
+            const isJournalSourced = journalRevenueSet.has(acctKey)
+            return (
+              <MonthlyRow key={a.accountNumber} label={acctKey}
+                values={acctMonthly(a.accountNumber, a.accountTitle)}
+                total={acctAmount(a.accountNumber, a.accountTitle)} indent={1}
+                onClickCell={(m) => onDrillDown(a.accountTitle, isJournalSourced ? 'JOURNAL_ACCOUNT' : 'REVENUE', m ?? 0, acctKey)} />
+            )
+          })}
+          {unmatchedRevenueKeys.map((key) => {
+            const total = sumMonths(monthly, (m) => (m.revenueByAccount || {})[key] || 0)
+            return total > 0 ? (
+              <MonthlyRow key={key} label={key}
+                values={getMonthlyArray(monthly, (m) => (m.revenueByAccount || {})[key] || 0)}
+                total={total} indent={1}
+                onClickCell={(m) => onDrillDown(key, 'REVENUE', m ?? 0, key)} />
+            ) : null
+          })}
+        </>
+      )}
       <MonthlyRow label="Total for 7000 Gross Revenue"
         values={getMonthlyArray(monthly, (m) => grossRevenueForMonth(m))}
         total={effectiveGrossRevenue} bold isTotal
         onClickCell={(m) => onDrillDown('Total Gross Revenue', 'REVENUE', m ?? 0)} />
 
-      <div className="h-2" />
-
       {/* 7002 DISCOUNTS AND REFUNDS */}
-      <SectionHeader label="7002 Discounts and Refunds" />
-      {discountAccts.map((a) => {
+      <SectionHeader label="7002 Discounts and Refunds" collapsed={!!col['disc']} onToggle={() => tog('disc')} />
+      {!col['disc'] && discountAccts.map((a) => {
         const acctKey = `${a.accountNumber} ${a.accountTitle}`
         const isDeductionSourced = Object.keys(deductionAccountTotals).includes(acctKey)
         return (
           <MonthlyRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`}
             values={acctMonthly(a.accountNumber, a.accountTitle).map(v => -v)}
-            total={-acctAmount(a.accountNumber, a.accountTitle)} indent={1}
+            total={-acctAmount(a.accountNumber, a.accountTitle)} indent={1} negative
             onClickCell={(m) => onDrillDown(a.accountTitle, isDeductionSourced ? 'DEDUCTION' : 'REVENUE', m ?? 0, isDeductionSourced ? a.accountTitle : acctKey)} />
         )
       })}
       <MonthlyRow label="Total for 7002 Discounts and Refunds"
-        values={getMonthlyArray(monthly, (m) => {
-          // Sum all DEBIT revenue accounts monthly
-          let total = 0
-          for (const a of discountAccts) {
-            total += (m.revenueByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0
-          }
-          return -total
-        })}
-        total={-totalDiscounts} bold isTotal />
-
-      <div className="h-2" />
+        values={getMonthlyArray(monthly, (m) => -discountsForMonth(m))}
+        total={-totalDiscounts} bold isTotal negative />
 
       <MonthlyRow label="Total for Net Sales"
         values={getMonthlyArray(monthly, (m) => netSalesForMonth(m))}
         total={netSales} isGrandTotal />
 
-      <div className="h-2" />
-
-      {/* COST OF SALES — broken down by expense account */}
-      <SectionHeader label="Cost of Sales" />
+      {/* COST OF SALES */}
       {(() => {
         const cogsByAcct: Record<string, number> = {}
         for (let m = 1; m <= 12; m++) {
@@ -1050,20 +1083,25 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
         const acctKeys = Object.keys(cogsByAcct).sort()
         return (
           <>
-            {acctKeys.map(key => (
-              <MonthlyRow key={key} label={key}
-                values={getMonthlyArray(monthly, (m) => (m.cogsByAccount || {})[key] || 0)}
-                total={cogsByAcct[key]} indent={1}
-                onClickCell={(m) => onDrillDown(key, 'COGS', m ?? 0)} />
-            ))}
-            {directExpenseAccts.map((a) => {
-              const amt = expenseAmount(a.accountNumber, a.accountTitle)
-              return amt > 0 ? (
-                <MonthlyRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`}
-                  values={getMonthlyArray(monthly, (m) => (m.expenseByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0)}
-                  total={amt} indent={1} />
-              ) : null
-            })}
+            <SectionHeader label="Cost of Sales" collapsed={!!col['cos']} onToggle={() => tog('cos')} />
+            {!col['cos'] && (
+              <>
+                {acctKeys.map(key => (
+                  <MonthlyRow key={key} label={key}
+                    values={getMonthlyArray(monthly, (m) => (m.cogsByAccount || {})[key] || 0)}
+                    total={cogsByAcct[key]} indent={1}
+                    onClickCell={(m) => onDrillDown(key, 'COGS', m ?? 0)} />
+                ))}
+                {directExpenseAccts.map((a) => {
+                  const amt = expenseAmount(a.accountNumber, a.accountTitle)
+                  return amt > 0 ? (
+                    <MonthlyRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`}
+                      values={getMonthlyArray(monthly, (m) => (m.expenseByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0)}
+                      total={amt} indent={1} />
+                  ) : null
+                })}
+              </>
+            )}
           </>
         )
       })()}
@@ -1071,17 +1109,13 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
         values={getMonthlyArray(monthly, (m) => m.cogs + directExpForMonth(m))} total={totalCOGS} bold isTotal
         onClickCell={(m) => onDrillDown('Cost of Sales', 'COGS', m ?? 0)} />
 
-      <div className="h-2" />
-
       <MonthlyRow label="Gross Profit"
         values={getMonthlyArray(monthly, (m) => netSalesForMonth(m) - m.cogs - directExpForMonth(m))}
         total={grossProfit} isGrandTotal />
 
-      <div className="h-2" />
-
       {/* EXPENSES */}
-      <SectionHeader label="Expenses" />
-      {indirectExpenseAccts.map((a) => (
+      <SectionHeader label="Expenses" collapsed={!!col['exp']} onToggle={() => tog('exp')} />
+      {!col['exp'] && indirectExpenseAccts.map((a) => (
         <MonthlyRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`}
           values={getMonthlyArray(monthly, (m) => (m.expenseByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0)}
           total={expenseAmount(a.accountNumber, a.accountTitle)} indent={1} />
@@ -1090,21 +1124,18 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
         values={getMonthlyArray(monthly, (m) => indirectExpForMonth(m))}
         total={totalOpex} bold isTotal />
 
-      <div className="h-2" />
-
       <MonthlyRow label="EBITDA"
         values={getMonthlyArray(monthly, (m) => netSalesForMonth(m) - m.cogs - directExpForMonth(m) - indirectExpForMonth(m))}
         total={ebitda} isGrandTotal />
 
-      <div className="h-2" />
-
       {/* NON-OPERATING */}
-      {nonOpExpenseAccts.map((a) => (
+      {nonOpExpenseAccts.length > 0 && (
+        <SectionHeader label="Non-Operating Expenses" collapsed={!!col['nonop']} onToggle={() => tog('nonop')} />
+      )}
+      {!col['nonop'] && nonOpExpenseAccts.map((a) => (
         <MonthlyRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`}
           values={Array(12).fill(0)} total={0} indent={1} />
       ))}
-
-      <div className="h-2" />
 
       <MonthlyRow label="NET INCOME"
         values={getMonthlyArray(monthly, (m) => netSalesForMonth(m) - m.cogs - directExpForMonth(m) - indirectExpForMonth(m))}
@@ -1426,68 +1457,117 @@ export default function ReportsPage() {
 
     const rows: string[][] = []
 
+    // Per-month helpers for CSV
+    const mGross = (m: MonthData) => {
+      const r = grossRevAccts.reduce((s, a) => s + ((m.revenueByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
+      const u = Object.keys(m.revenueByAccount || {}).filter(k =>
+        !grossRevAccts.some(a => `${a.accountNumber} ${a.accountTitle}` === k) &&
+        !discAccts.some(a => `${a.accountNumber} ${a.accountTitle}` === k)
+      ).reduce((s, k) => s + ((m.revenueByAccount || {})[k] || 0), 0)
+      return (r + u) > 0 ? (r + u) : (m.serviceRevenue + m.productRevenue)
+    }
+    const mDisc = (m: MonthData) => discAccts.reduce((s, a) => s + ((m.revenueByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
+    const mDirExp = (m: MonthData) => dirExpAccts.reduce((s, a) => s + ((m.expenseByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
+    const mIndirExp = (m: MonthData) => indirExpAccts.reduce((s, a) => s + ((m.expenseByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
+
     if (activeTab === 'income-statement') {
       if (viewMode === 'annual') {
-        rows.push([`Income Statement — ${year} — ${branchLbl}`, ''])
-        rows.push(['Line Item', 'Amount (PHP)'])
+        rows.push([`Income Statement — ${year} — ${branchLbl}`, 'Amount (PHP)'])
         rows.push(['7000 GROSS REVENUE', ''])
         grossRevAccts.forEach(a => {
           const amt = acctAmt(a.accountNumber, a.accountTitle)
-          if (amt) rows.push([`  ${a.accountNumber} ${a.accountTitle}`, amt.toFixed(2)])
+          rows.push([`  ${a.accountNumber} ${a.accountTitle}`, amt.toFixed(2)])
         })
         rows.push(['Total for 7000 Gross Revenue', totalGross.toFixed(2)])
-        rows.push(['', ''])
         rows.push(['7002 DISCOUNTS AND REFUNDS', ''])
         discAccts.forEach(a => {
           const amt = acctAmt(a.accountNumber, a.accountTitle)
-          if (amt) rows.push([`  ${a.accountNumber} ${a.accountTitle}`, (-amt).toFixed(2)])
+          rows.push([`  ${a.accountNumber} ${a.accountTitle}`, (-amt).toFixed(2)])
         })
         rows.push(['Total for 7002 Discounts and Refunds', (-totalDisc).toFixed(2)])
-        rows.push(['', ''])
         rows.push(['TOTAL FOR NET SALES', ns.toFixed(2)])
-        rows.push(['', ''])
         rows.push(['COST OF SALES', ''])
+        // COGS by account
+        const cogsByAcctCSV: Record<string, number> = {}
+        for (let m = 1; m <= 12; m++) {
+          for (const [key, val] of Object.entries(monthly[m]?.cogsByAccount || {})) {
+            cogsByAcctCSV[key] = (cogsByAcctCSV[key] || 0) + val
+          }
+        }
+        Object.keys(cogsByAcctCSV).sort().forEach(key => rows.push([`  ${key}`, cogsByAcctCSV[key].toFixed(2)]))
         dirExpAccts.forEach(a => {
           const amt = expAmt(a.accountNumber, a.accountTitle)
           if (amt) rows.push([`  ${a.accountNumber} ${a.accountTitle}`, amt.toFixed(2)])
         })
         rows.push(['Total for Cost of Sales', tCOGS.toFixed(2)])
-        rows.push(['', ''])
         rows.push(['GROSS PROFIT', gp.toFixed(2)])
-        rows.push(['', ''])
-        rows.push(['EXPENSES (INDIRECT)', ''])
+        rows.push(['EXPENSES', ''])
         indirExpAccts.forEach(a => {
           const amt = expAmt(a.accountNumber, a.accountTitle)
-          if (amt) rows.push([`  ${a.accountNumber} ${a.accountTitle}`, amt.toFixed(2)])
+          rows.push([`  ${a.accountNumber} ${a.accountTitle}`, amt.toFixed(2)])
         })
         rows.push(['Total for Expenses', tOpex.toFixed(2)])
-        rows.push(['', ''])
         rows.push(['EBITDA', ebda.toFixed(2)])
         rows.push(['NET INCOME', ebda.toFixed(2)])
       } else {
-        rows.push([`Income Statement — ${year} — ${branchLbl}`, ...FULL_MONTHS, 'Total'])
         const mv = (getter: (m: MonthData) => number) =>
-          [...Array.from({ length: 12 }, (_, i) => getter(monthly[i + 1]).toFixed(2))]
-        const mGross = (m: MonthData) => {
-          const r = grossRevAccts.reduce((s, a) => s + ((m.revenueByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
-          const u = Object.keys(m.revenueByAccount || {}).filter(k => !grossRevAccts.some(a => `${a.accountNumber} ${a.accountTitle}` === k) && !discAccts.some(a => `${a.accountNumber} ${a.accountTitle}` === k)).reduce((s, k) => s + ((m.revenueByAccount || {})[k] || 0), 0)
-          return (r + u) > 0 ? (r + u) : (m.serviceRevenue + m.productRevenue)
+          Array.from({ length: 12 }, (_, i) => getter(monthly[i + 1]).toFixed(2))
+        const mAcctRev = (n: string, t: string) =>
+          Array.from({ length: 12 }, (_, i) => ((monthly[i + 1].revenueByAccount || {})[`${n} ${t}`] || 0).toFixed(2))
+        const mAcctExp = (n: string, t: string) =>
+          Array.from({ length: 12 }, (_, i) => ((monthly[i + 1].expenseByAccount || {})[`${n} ${t}`] || 0).toFixed(2))
+
+        rows.push([`Income Statement — ${year} — ${branchLbl}`, ...FULL_MONTHS, 'Total'])
+        // Gross Revenue section
+        rows.push(['7000 GROSS REVENUE', ...Array(12).fill(''), ''])
+        grossRevAccts.forEach(a => {
+          const mVals = mAcctRev(a.accountNumber, a.accountTitle)
+          const tot = mVals.reduce((s, v) => s + parseFloat(v), 0)
+          rows.push([`  ${a.accountNumber} ${a.accountTitle}`, ...mVals, tot.toFixed(2)])
+        })
+        rows.push(['Total for 7000 Gross Revenue', ...mv(mGross), totalGross.toFixed(2)])
+        // Discounts section
+        rows.push(['7002 DISCOUNTS AND REFUNDS', ...Array(12).fill(''), ''])
+        discAccts.forEach(a => {
+          const mVals = mAcctRev(a.accountNumber, a.accountTitle).map(v => (-parseFloat(v)).toFixed(2))
+          const tot = mVals.reduce((s, v) => s + parseFloat(v), 0)
+          rows.push([`  ${a.accountNumber} ${a.accountTitle}`, ...mVals, tot.toFixed(2)])
+        })
+        rows.push(['Total for 7002 Discounts and Refunds', ...mv(m => -mDisc(m)), (-totalDisc).toFixed(2)])
+        rows.push(['TOTAL FOR NET SALES', ...mv(m => mGross(m) - mDisc(m)), ns.toFixed(2)])
+        // Cost of Sales section
+        rows.push(['COST OF SALES', ...Array(12).fill(''), ''])
+        const cogsByAcctCSV: Record<string, number> = {}
+        for (let m = 1; m <= 12; m++) {
+          for (const [key, val] of Object.entries(monthly[m]?.cogsByAccount || {})) {
+            cogsByAcctCSV[key] = (cogsByAcctCSV[key] || 0) + val
+          }
         }
-        const mDisc = (m: MonthData) => discAccts.reduce((s, a) => s + ((m.revenueByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
-        const mDirExp = (m: MonthData) => dirExpAccts.reduce((s, a) => s + ((m.expenseByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
-        const mIndirExp = (m: MonthData) => indirExpAccts.reduce((s, a) => s + ((m.expenseByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
-        rows.push(['GROSS REVENUE', ...mv(mGross), totalGross.toFixed(2)])
-        rows.push(['DISCOUNTS', ...mv(m => -mDisc(m)), (-totalDisc).toFixed(2)])
-        rows.push(['NET SALES', ...mv(m => mGross(m) - mDisc(m)), ns.toFixed(2)])
-        rows.push(['COST OF SALES', ...mv(m => m.cogs + mDirExp(m)), tCOGS.toFixed(2)])
+        Object.keys(cogsByAcctCSV).sort().forEach(key => {
+          const mVals = Array.from({ length: 12 }, (_, i) => ((monthly[i + 1].cogsByAccount || {})[key] || 0).toFixed(2))
+          rows.push([`  ${key}`, ...mVals, cogsByAcctCSV[key].toFixed(2)])
+        })
+        dirExpAccts.forEach(a => {
+          const mVals = mAcctExp(a.accountNumber, a.accountTitle)
+          const tot = mVals.reduce((s, v) => s + parseFloat(v), 0)
+          if (tot > 0) rows.push([`  ${a.accountNumber} ${a.accountTitle}`, ...mVals, tot.toFixed(2)])
+        })
+        rows.push(['Total for Cost of Sales', ...mv(m => m.cogs + mDirExp(m)), tCOGS.toFixed(2)])
         rows.push(['GROSS PROFIT', ...mv(m => mGross(m) - mDisc(m) - m.cogs - mDirExp(m)), gp.toFixed(2)])
-        rows.push(['EXPENSES', ...mv(mIndirExp), tOpex.toFixed(2)])
+        // Expenses section
+        rows.push(['EXPENSES', ...Array(12).fill(''), ''])
+        indirExpAccts.forEach(a => {
+          const mVals = mAcctExp(a.accountNumber, a.accountTitle)
+          const tot = mVals.reduce((s, v) => s + parseFloat(v), 0)
+          rows.push([`  ${a.accountNumber} ${a.accountTitle}`, ...mVals, tot.toFixed(2)])
+        })
+        rows.push(['Total for Expenses', ...mv(mIndirExp), tOpex.toFixed(2)])
         rows.push(['EBITDA', ...mv(m => mGross(m) - mDisc(m) - m.cogs - mDirExp(m) - mIndirExp(m)), ebda.toFixed(2)])
         rows.push(['NET INCOME', ...mv(m => mGross(m) - mDisc(m) - m.cogs - mDirExp(m) - mIndirExp(m)), ebda.toFixed(2)])
       }
     } else {
       rows.push([`${reportTitle} — ${year} — ${branchLbl}`])
-      rows.push(['Note: CSV download is fully supported for Income Statement. For other reports, use Print (PDF).'])
+      rows.push(['Note: For Balance Sheet and Cash Flow, use Print (PDF) for a formatted version.'])
     }
 
     const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
@@ -1637,30 +1717,16 @@ export default function ReportsPage() {
           boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
         }}
       >
-        {/* Report header (visible in print) */}
-        <div className="text-center py-6 px-4" style={{ borderBottom: '2px solid var(--teal)' }}>
-          <h2
-            className="text-lg font-bold uppercase tracking-wider"
-            style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}
-          >
+        {/* Report header */}
+        <div className="px-5 py-4" style={{ borderBottom: '2px solid #e5e7eb' }}>
+          <p style={{ fontSize: '0.75rem', fontWeight: 700, color: '#111827', letterSpacing: '0.02em', textTransform: 'uppercase' }}>
             Sapphire Clinics East Incorporated
-          </h2>
-          <h3
-            className="text-base font-semibold mt-1"
-            style={{ fontFamily: 'var(--font-display)', color: 'var(--teal)' }}
-          >
-            {reportTitle}
-          </h3>
-          <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>
-            {reportSubtitle}
           </p>
-          {branch !== 'ALL' && (
-            <p className="text-sm mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-              Branch: {branchLabel}
-            </p>
-          )}
-          <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
-            (All amounts in Philippine Peso — foreign currency accounts converted at transaction-date exchange rate)
+          <p style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginTop: '2px' }}>
+            {reportTitle}
+          </p>
+          <p style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: '1px' }}>
+            {reportSubtitle}{branch !== 'ALL' ? ` · ${branchLabel}` : ''}
           </p>
         </div>
 
