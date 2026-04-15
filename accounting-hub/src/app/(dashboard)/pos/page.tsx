@@ -802,21 +802,33 @@ function OrderFormModal({
     }, 300)
   }, [clinicianSearch, branch])
 
-  // Service search
+  // Service search — load full list for price lookups, and search via API for dropdown
   useEffect(() => {
     clearTimeout(serviceTimer.current)
     serviceTimer.current = setTimeout(async () => {
       try {
-        const r = await fetch(`/api/services?pageSize=2000&branch=${branch}`)
+        const r = await fetch(`/api/services?pageSize=1000&branch=${branch}`)
         const d = await r.json()
         setServices(normalize(d) as ServiceItem[])
       } catch { setServices([]) }
     }, 200)
   }, [branch])
 
-  const filteredServices = services.filter(s =>
-    s.name.toLowerCase().includes(serviceSearch.toLowerCase())
-  )
+  const [serviceDropResults, setServiceDropResults] = useState<ServiceItem[]>([])
+  const serviceSearchTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  useEffect(() => {
+    if (serviceSearch.length < 1) { setServiceDropResults([]); return }
+    clearTimeout(serviceSearchTimer.current)
+    serviceSearchTimer.current = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/services?pageSize=50&branch=${branch}&search=${encodeURIComponent(serviceSearch)}`)
+        const d = await r.json()
+        setServiceDropResults(normalize(d) as ServiceItem[])
+      } catch { setServiceDropResults([]) }
+    }, 200)
+  }, [serviceSearch, branch])
+
+  const filteredServices = serviceDropResults
 
   // Compute the effective price for a service based on branch and effective dates
   const effectivePrice = (svc: ServiceItem) => {
@@ -1412,7 +1424,7 @@ function OrderFormModal({
             </div>
             {showServiceDrop && serviceSearch.length > 0 && filteredServices.length > 0 && (
               <div className="absolute z-10 w-full mt-1 bg-white border rounded-xl shadow-lg max-h-48 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
-                {filteredServices.slice(0, 20).map(s => (
+                {filteredServices.map(s => (
                   <button key={s.id} onClick={() => addItem(s)}
                     className="w-full text-left px-3 py-2.5 text-sm hover:bg-gray-50 flex items-center justify-between" style={{ color: 'var(--charcoal)' }}>
                     <span className="flex items-center gap-2 flex-wrap">
