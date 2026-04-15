@@ -68,6 +68,60 @@ export async function GET(req: Request) {
   })))
 }
 
+export async function DELETE(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+
+  const { searchParams } = new URL(req.url)
+  const id = searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+
+  try {
+    const payment = await prisma.salaryPayment.findUnique({ where: { id } })
+    if (!payment) return NextResponse.json({ error: 'Payment not found' }, { status: 404 })
+
+    await prisma.$transaction(async (tx) => {
+      // Un-remit PayrollEntry records linked directly via salaryPaymentId
+      await tx.payrollEntry.updateMany({
+        where: { salaryPaymentId: id },
+        data: { salariesRemitted: false, salaryPaymentId: null },
+      })
+
+      // Also un-remit via fallback (old records matched by branch + cutoffPeriod)
+      if (payment.branch && payment.cutoffPeriod) {
+        const periods = payment.cutoffPeriod.split(', ').map(s => s.trim()).filter(Boolean)
+        if (periods.length) {
+          await tx.payrollEntry.updateMany({
+            where: { branch: payment.branch, cutoffPeriod: { in: periods }, salariesRemitted: true, salaryPaymentId: null },
+            data: { salariesRemitted: false },
+          })
+        }
+      }
+
+      // Reset PayrollPayableStatus records that point to this payment
+      await tx.payrollPayableStatus.updateMany({
+        where: { salaryPaymentId: id },
+        data: { salariesRemitted: false, salaryPaymentId: null },
+      })
+
+      // Delete the journal entry (cascade deletes lines)
+      if (payment.journalEntryId) {
+        await tx.journalEntry.delete({ where: { id: payment.journalEntryId } })
+      }
+
+      // Delete the salary payment record
+      await tx.salaryPayment.delete({ where: { id } })
+    })
+
+    return NextResponse.json({ ok: true })
+  } catch (err) {
+    console.error('Salary payment delete error:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
 export async function PUT(req: Request) {
   const session = await auth()
   if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {

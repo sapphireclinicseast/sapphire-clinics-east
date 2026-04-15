@@ -34,6 +34,45 @@ export async function GET(req: Request) {
   })))
 }
 
+export async function DELETE(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+
+  const { searchParams } = new URL(req.url)
+  const id = searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+
+  try {
+    const payment = await prisma.taxPayment.findUnique({
+      where: { id },
+      include: { entries: { select: { payrollEntryId: true } } },
+    })
+    if (!payment) return NextResponse.json({ error: 'Payment not found' }, { status: 404 })
+
+    const entryIds = payment.entries.map(e => e.payrollEntryId)
+
+    await prisma.$transaction(async (tx) => {
+      // Un-remit PayrollEntry records
+      if (entryIds.length) {
+        await tx.payrollEntry.updateMany({
+          where: { id: { in: entryIds } },
+          data: { taxRemitted: false },
+        })
+      }
+
+      // Delete TaxPayment (cascades TaxPaymentEntry)
+      await tx.taxPayment.delete({ where: { id } })
+    })
+
+    return NextResponse.json({ ok: true })
+  } catch (err) {
+    console.error('Tax payment delete error:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
 export async function PUT(req: Request) {
   const session = await auth()
   if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {

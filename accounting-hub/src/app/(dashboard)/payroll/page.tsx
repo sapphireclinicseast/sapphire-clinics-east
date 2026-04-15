@@ -6,7 +6,7 @@ import {
   BadgeDollarSign, Users, Settings, FileText, Plus, Pencil, Save,
   ChevronUp, ChevronDown, ArrowUpDown, Search, X, AlertCircle,
   RefreshCw, Loader2, ChevronRight, Download, Mail, Trash2,
-  PlusCircle, CheckCircle2, ToggleLeft, ToggleRight, Receipt, ShieldOff,
+  PlusCircle, CheckCircle2, ToggleLeft, ToggleRight, Receipt, ShieldOff, Upload,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import EmployeePayroll from './EmployeePayroll'
@@ -786,6 +786,10 @@ export default function PayrollPage() {
   // Payment edit state
   const [editPayment, setEditPayment] = useState<{ id: string; type: 'tax' | 'salary'; paymentDate: string; proofUrl: string; notes: string } | null>(null)
   const [editPaymentSaving, setEditPaymentSaving] = useState(false)
+  const [editProofFile, setEditProofFile] = useState<File | null>(null)
+  const [editProofFileName, setEditProofFileName] = useState('')
+  const [editPaymentConfirmReverse, setEditPaymentConfirmReverse] = useState(false)
+  const [reversingPayment, setReversingPayment] = useState(false)
   // Salary payment history
   const [salaryPayments, setSalaryPayments] = useState<{ id: string; paymentDate: string; totalAmount: number; fromAccount: { accountNumber: string; accountTitle: string }; proofUrl: string | null; notes: string | null; cutoffPeriod: string; branch: string; consultants?: { name: string; department: string; netPay: number; cutoffPeriod: string }[] }[]>([])
 
@@ -843,6 +847,9 @@ export default function PayrollPage() {
   const [remitFromAccountId, setRemitFromAccountId] = useState('')
   const [remitFromSearch, setRemitFromSearch] = useState('')
   const [remitProofUrl, setRemitProofUrl] = useState('')
+  const [remitProofFile, setRemitProofFile] = useState<File | null>(null)
+  const [remitProofFileName, setRemitProofFileName] = useState('')
+  const [remitUploading, setRemitUploading] = useState(false)
   const [remitNotes, setRemitNotes] = useState('')
   const [remitFeeAmount, setRemitFeeAmount] = useState('')
   const [remitFeeExpenseAccountId, setRemitFeeExpenseAccountId] = useState('')
@@ -1087,6 +1094,17 @@ export default function PayrollPage() {
     if (!ids.length) return
     setRemitting(true)
     try {
+      let proofFinalUrl = remitProofUrl
+      if (remitProofFile) {
+        setRemitUploading(true)
+        const fd = new FormData()
+        fd.append('file', remitProofFile)
+        const upRes = await fetch('/api/upload', { method: 'POST', body: fd })
+        const upData = await upRes.json()
+        proofFinalUrl = upData.url || upData.fileUrl || ''
+        setRemitUploading(false)
+      }
+
       const endpoint = showRemitModal === 'salary' ? '/api/payroll/salary-payments' : '/api/payroll/benefit-payments'
       const hasFee = showRemitModal === 'salary' && Number(remitFeeAmount) > 0
       const isSalaryPerPerson = showRemitModal === 'salary' && salariesPayables.some(p => ids.includes(p.id) && !p.isAggregateRow)
@@ -1097,7 +1115,7 @@ export default function PayrollPage() {
           ...(isSalaryPerPerson ? { payrollEntryIds: ids } : { payableIds: ids }),
           paymentDate: remitDate,
           fromAccountId: remitFromAccountId,
-          proofUrl: remitProofUrl || null,
+          proofUrl: proofFinalUrl || null,
           notes: remitNotes || null,
           ...(hasFee ? {
             feeAmount: Number(remitFeeAmount),
@@ -1109,12 +1127,14 @@ export default function PayrollPage() {
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Failed to record payment'); return }
       setShowRemitModal(null)
+      setRemitProofFile(null)
+      setRemitProofFileName('')
       setSelectedSalaryPayableIds([])
       setSelectedBenefitPayableIds([])
       if (mainTab === 'salaries-payable') fetchSalariesPayable()
       if (mainTab === 'benefits-payable') fetchBenefitsPayable()
     } catch (e) { setError(String(e)) }
-    finally { setRemitting(false) }
+    finally { setRemitting(false); setRemitUploading(false) }
   }
 
   /* ── Record tax as Other Income ── */
@@ -1142,14 +1162,25 @@ export default function PayrollPage() {
     if (!editPayment) return
     setEditPaymentSaving(true)
     try {
+      let proofFinalUrl = editPayment.proofUrl
+      if (editProofFile) {
+        const fd = new FormData()
+        fd.append('file', editProofFile)
+        const upRes = await fetch('/api/upload', { method: 'POST', body: fd })
+        const upData = await upRes.json()
+        proofFinalUrl = upData.url || upData.fileUrl || proofFinalUrl
+      }
       const url = editPayment.type === 'tax' ? '/api/payroll/tax-payments' : '/api/payroll/salary-payments'
       const res = await fetch(url, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: editPayment.id, paymentDate: editPayment.paymentDate, proofUrl: editPayment.proofUrl || null, notes: editPayment.notes || null }),
+        body: JSON.stringify({ id: editPayment.id, paymentDate: editPayment.paymentDate, proofUrl: proofFinalUrl || null, notes: editPayment.notes || null }),
       })
       if (!res.ok) { const d = await res.json(); setError(d.error || 'Failed to save'); return }
       setEditPayment(null)
+      setEditProofFile(null)
+      setEditProofFileName('')
+      setEditPaymentConfirmReverse(false)
       if (editPayment.type === 'tax') await fetchTaxPayments()
       else {
         fetch('/api/payroll/salary-payments?paymentType=CONSULTANT')
@@ -1157,6 +1188,30 @@ export default function PayrollPage() {
       }
     } catch { setError('Failed to save payment') }
     finally { setEditPaymentSaving(false) }
+  }
+
+  /* ── Reverse remittance ── */
+  const reversePayment = async () => {
+    if (!editPayment) return
+    setReversingPayment(true)
+    try {
+      const url = editPayment.type === 'tax' ? `/api/payroll/tax-payments?id=${editPayment.id}` : `/api/payroll/salary-payments?id=${editPayment.id}`
+      const res = await fetch(url, { method: 'DELETE' })
+      if (!res.ok) { const d = await res.json(); setError(d.error || 'Failed to reverse remittance'); return }
+      setEditPayment(null)
+      setEditProofFile(null)
+      setEditProofFileName('')
+      setEditPaymentConfirmReverse(false)
+      if (editPayment.type === 'tax') {
+        await fetchTaxPayable()
+        await fetchTaxPayments()
+      } else {
+        fetchSalariesPayable()
+        fetch('/api/payroll/salary-payments?paymentType=CONSULTANT')
+          .then(r => r.json()).then(setSalaryPayments).catch(() => setSalaryPayments([]))
+      }
+    } catch { setError('Failed to reverse remittance') }
+    finally { setReversingPayment(false) }
   }
 
   /* ── Save COA mapping ── */
@@ -3658,7 +3713,7 @@ export default function PayrollPage() {
               <h3 className="text-base font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
                 Edit {editPayment.type === 'tax' ? 'Tax' : 'Salary'} Payment
               </h3>
-              <button onClick={() => setEditPayment(null)} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+              <button onClick={() => { setEditPayment(null); setEditProofFile(null); setEditProofFileName(''); setEditPaymentConfirmReverse(false) }} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
             </div>
             <div className="px-6 py-5 space-y-4">
               <div>
@@ -3668,11 +3723,20 @@ export default function PayrollPage() {
                   className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
               </div>
               <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Proof URL (optional)</label>
-                <input type="url" value={editPayment.proofUrl}
-                  onChange={e => setEditPayment(prev => prev ? { ...prev, proofUrl: e.target.value } : prev)}
-                  placeholder="https://..."
-                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Proof of Remittance (optional)</label>
+                {editPayment.proofUrl && !editProofFile && (
+                  <div className="flex items-center gap-2 mb-2">
+                    <a href={editPayment.proofUrl} target="_blank" rel="noreferrer" className="text-xs underline truncate max-w-[260px]" style={{ color: 'var(--teal)' }}>{editPayment.proofUrl}</a>
+                    <button onClick={() => setEditPayment(prev => prev ? { ...prev, proofUrl: '' } : prev)} className="text-xs shrink-0" style={{ color: 'var(--mid-gray)' }}>Remove</button>
+                  </div>
+                )}
+                <label className="flex items-center gap-2 px-3 py-2 rounded-xl border text-xs cursor-pointer" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                  <Upload size={14} />
+                  {editProofFileName || 'Upload new proof file'}
+                  <input type="file" accept="image/*,application/pdf" className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) { setEditProofFile(f); setEditProofFileName(f.name) } }} />
+                </label>
+                {editProofFile && <p className="text-[10px] mt-1" style={{ color: 'var(--teal)' }}>New file selected — will replace existing proof on save</p>}
               </div>
               <div>
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Notes (optional)</label>
@@ -3681,9 +3745,34 @@ export default function PayrollPage() {
                   rows={3}
                   className="w-full px-3 py-2 rounded-xl border text-sm outline-none resize-none" style={{ borderColor: 'var(--light-gray)' }} />
               </div>
+
+              {/* Reverse remittance section */}
+              <div className="pt-2 border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                {!editPaymentConfirmReverse ? (
+                  <button onClick={() => setEditPaymentConfirmReverse(true)}
+                    className="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-xl border"
+                    style={{ borderColor: '#fca5a5', color: '#ef4444' }}>
+                    <ShieldOff size={13} /> Reverse Remittance
+                  </button>
+                ) : (
+                  <div className="rounded-xl p-3 space-y-2" style={{ background: '#fff1f2' }}>
+                    <p className="text-xs font-semibold" style={{ color: '#dc2626' }}>This will undo the remittance and move the entries back to the unremitted list. The journal entry will be deleted. Are you sure?</p>
+                    <div className="flex gap-2">
+                      <button onClick={() => setEditPaymentConfirmReverse(false)}
+                        className="flex-1 py-1.5 rounded-lg border text-xs font-medium" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                        Cancel
+                      </button>
+                      <button onClick={reversePayment} disabled={reversingPayment}
+                        className="flex-1 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: '#ef4444' }}>
+                        {reversingPayment ? 'Reversing...' : 'Yes, Reverse'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="px-6 pb-5 flex gap-3">
-              <button onClick={() => setEditPayment(null)}
+              <button onClick={() => { setEditPayment(null); setEditProofFile(null); setEditProofFileName(''); setEditPaymentConfirmReverse(false) }}
                 className="flex-1 py-2.5 rounded-xl border text-sm font-medium" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
                 Cancel
               </button>
@@ -4204,6 +4293,17 @@ export default function PayrollPage() {
                 <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Notes (optional)</label>
                 <input value={remitNotes} onChange={e => setRemitNotes(e.target.value)} placeholder="Payment reference, check number, etc."
                   className="w-full px-3 py-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Proof of Remittance (optional)</label>
+                <label className="flex items-center gap-2 px-3 py-2 rounded-lg border text-xs cursor-pointer" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                  <Upload size={13} />
+                  {remitProofFileName || 'Upload proof file (image or PDF)'}
+                  <input type="file" accept="image/*,application/pdf" className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) { setRemitProofFile(f); setRemitProofFileName(f.name) } }} />
+                </label>
+                {remitUploading && <p className="text-[10px] mt-1" style={{ color: 'var(--teal)' }}>Uploading...</p>}
               </div>
             </div>
 
