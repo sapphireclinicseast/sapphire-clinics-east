@@ -23,8 +23,11 @@ export async function POST(
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })
   }
 
-  if (session.user.role !== 'ADMIN' && schedule.staffId !== session.user.staffId) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (session.user.role !== 'ADMIN') {
+    const allowedStaffIds = (session.user.branches ?? []).map((b: any) => b.staffId)
+    if (!allowedStaffIds.includes(schedule.staffId) && schedule.staffId !== session.user.staffId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
   }
 
   // If a session note already exists (e.g. created by QR capture), update it

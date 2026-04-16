@@ -40,9 +40,12 @@ export async function GET(
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })
   }
 
-  // Non-admin can only view their own sessions
-  if (session.user.role !== 'ADMIN' && schedule.staffId !== session.user.staffId) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  // Non-admin can only view their own sessions (including interbranch staff IDs)
+  if (session.user.role !== 'ADMIN') {
+    const allowedStaffIds = (session.user.branches ?? []).map((b: any) => b.staffId)
+    if (!allowedStaffIds.includes(schedule.staffId) && schedule.staffId !== session.user.staffId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
   }
 
   return NextResponse.json({ session: schedule })
