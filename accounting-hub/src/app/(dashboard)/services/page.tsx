@@ -334,16 +334,46 @@ export default function ServicesPage() {
 
   /* ── Download Handler ───────────────────────────────────── */
   const handleDownloadServices = (format: 'xlsx' | 'pdf') => {
-    const headers = ['Name', 'Department', 'Branch', 'Price', 'Price Type', 'Revenue Type', 'Doctor Fee', 'Clinic Fee', 'Has Doctor Fee', 'PWD Clinic Only', 'VIP Tier', 'Package Sessions', 'Status']
-    const rows = services.map(s => [
-      s.name, DEPT_LABELS[s.department] || s.department, BRANCH_LABELS[s.branch] || s.branch,
-      formatCurrency(Number(s.price)), s.priceType, s.revenueType,
-      s.doctorFee != null ? formatCurrency(Number(s.doctorFee)) : '', s.clinicFee != null ? formatCurrency(Number(s.clinicFee)) : '',
-      s.hasDoctorFee ? 'Yes' : 'No', s.pwdDiscountClinicOnly ? 'Yes' : 'No',
-      s.vipTier || '', s.packageSessions ?? '', s.isActive ? 'Active' : 'Inactive'
-    ])
-    if (format === 'xlsx') downloadXlsx('Services', [{ name: 'Services', headers, rows }])
-    else downloadPdf({ title: 'Services', subtitle: `${rows.length} services`, headers, rows, landscape: true })
+    // Determine the effective branch for price resolution
+    const effectiveBranch = filterBranch || (isFrontDesk ? userBranch : '') || ''
+
+    // Resolve branch-specific price for a service
+    const resolvePrice = (s: Service): { price: number; newPrice: number | null } => {
+      if (effectiveBranch && s.branchPrices?.length) {
+        const bp = s.branchPrices.find(b => b.branch === effectiveBranch)
+        if (bp) return { price: Number(bp.price), newPrice: bp.newPrice != null ? Number(bp.newPrice) : null }
+      }
+      return { price: Number(s.price), newPrice: s.newPrice != null ? Number(s.newPrice) : null }
+    }
+
+    // Build subtitle reflecting active filters
+    const subtitleParts: string[] = []
+    if (effectiveBranch) subtitleParts.push(BRANCH_LABELS[effectiveBranch] || effectiveBranch)
+    if (filterDept) subtitleParts.push(DEPT_LABELS[filterDept] || filterDept)
+    const subtitle = subtitleParts.length ? subtitleParts.join(' · ') : 'All Branches'
+
+    const headers = ['Name', 'Department', 'Branch', 'Price', 'New Price', 'Price Type', 'Revenue Type', 'Doctor Fee', 'Clinic Fee', 'PWD Rule', 'Status']
+    const rows = services.map(s => {
+      const { price, newPrice } = resolvePrice(s)
+      const pwdRule = s.noPwdDiscount ? 'No PWD Discount' : s.hasDoctorFee && s.pwdDiscountClinicOnly ? 'Clinic fee only (20%)' : 'Standard (20% total)'
+      return [
+        s.name,
+        DEPT_LABELS[s.department] || s.department,
+        BRANCH_LABELS[s.branch] || s.branch,
+        formatCurrency(price),
+        newPrice != null && newPrice > 0 ? formatCurrency(newPrice) : '',
+        s.priceType === 'FIXED' ? 'Fixed' : 'Adjustable',
+        s.revenueType === 'EARNED' ? 'Sales' : s.walletType ? s.walletType.replace('_', ' ') : 'Unearned',
+        s.doctorFee != null ? formatCurrency(Number(s.doctorFee)) : '',
+        s.clinicFee != null ? formatCurrency(Number(s.clinicFee)) : '',
+        pwdRule,
+        s.isActive ? 'Active' : 'Inactive',
+      ]
+    })
+
+    const title = effectiveBranch ? `Services — ${BRANCH_LABELS[effectiveBranch] || effectiveBranch}` : 'Services'
+    if (format === 'xlsx') downloadXlsx(title, [{ name: 'Services', headers, rows }])
+    else downloadPdf({ title, subtitle: `${rows.length} services · ${subtitle}`, headers, rows, landscape: true })
   }
 
   if (loading && !initialLoaded.current) {
