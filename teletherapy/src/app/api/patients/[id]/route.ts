@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth()
@@ -39,11 +39,25 @@ export async function GET(
     include: { staff: { select: { id: true, department: true } } },
   }) : null
 
+  // For interbranch clinicians: collect ALL their staffIds across branches
+  const allBranchStaffIds = (session.user.branches ?? []).map((b: any) => b.staffId)
   const currentStaffId = currentAccount?.staffId ?? session.user.staffId
+  const effectiveStaffIds = allBranchStaffIds.length > 0 ? allBranchStaffIds : [currentStaffId]
   const currentDepartment = currentAccount?.staff?.department ?? null
 
-  // For NON-ADMIN clinicians: only show sessions handled by THIS specific clinician
-  // Even endorsed patients — only show sessions where the clinician was the provider
+  const sessionNoteSelect = {
+    id: true,
+    status: true,
+    notes: true,
+    attachments: true,
+    discontinuedRemarks: true,
+    emailSentAt: true,
+    createdAt: true,
+  }
+
+  const staffSelect = { firstName: true, lastName: true, department: true }
+
+  // For NON-ADMIN clinicians: show sessions handled by THIS clinician across all branches
   // Admin sees everything
   let ownSessions
   if (isAdmin) {
@@ -53,49 +67,21 @@ export async function GET(
         status: 'CONFIRMED',
       },
       include: {
-        staff: {
-          select: { firstName: true, lastName: true, department: true },
-        },
-        sessionNote: {
-          select: {
-            id: true,
-            status: true,
-            notes: true,
-            attachments: true,
-            discontinuedRemarks: true,
-            emailSentAt: true,
-            createdAt: true,
-          },
-        },
+        staff: { select: staffSelect },
+        sessionNote: { select: sessionNoteSelect },
       },
       orderBy: { date: 'desc' },
     })
   } else {
-    // For endorsed patients, also include sessions from the original clinician who endorsed
-    // But ONLY if they are in the same department AND specifically endorsed to this clinician
-    // For confidentiality: only show sessions handled by THIS clinician
-    // Even if endorsed, the new clinician starts fresh — no access to previous notes
     ownSessions = await prisma.schedule.findMany({
       where: {
         patientId: id,
         status: 'CONFIRMED',
-        staffId: currentStaffId,
+        staffId: { in: effectiveStaffIds },
       },
       include: {
-        staff: {
-          select: { firstName: true, lastName: true, department: true },
-        },
-        sessionNote: {
-          select: {
-            id: true,
-            status: true,
-            notes: true,
-            attachments: true,
-            discontinuedRemarks: true,
-            emailSentAt: true,
-            createdAt: true,
-          },
-        },
+        staff: { select: staffSelect },
+        sessionNote: { select: sessionNoteSelect },
       },
       orderBy: { date: 'desc' },
     })
@@ -109,7 +95,7 @@ export async function GET(
       where: {
         patientId: id,
         status: 'CONFIRMED',
-        staffId: { not: currentStaffId },
+        staffId: { notIn: effectiveStaffIds },
       },
       select: {
         staff: {
