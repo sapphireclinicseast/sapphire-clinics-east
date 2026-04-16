@@ -148,6 +148,17 @@ export interface PsychFormData {
   section1: Section1Data
   section2?: Section2Data
   section3?: Section3Data
+  clinicianInfo?: {
+    licNo: string
+    ptrNo: string
+    signatureDataUrl?: string | null
+  }
+}
+
+interface ClinicianSettingsData {
+  licenseNo?: string | null
+  ptrNo?: string | null
+  signatureDataUrl?: string | null
 }
 
 interface Props {
@@ -159,6 +170,7 @@ interface Props {
   submitting: boolean
   onCancel: () => void
   initialData?: PsychFormData | null
+  clinicianSettings?: ClinicianSettingsData | null
 }
 
 // ── Collapsible Section ─────────────────────────────────────────────────────
@@ -273,6 +285,7 @@ export default function PsychologyForm({
   submitting,
   onCancel,
   initialData,
+  clinicianSettings,
 }: Props) {
   const [section1, setSection1] = useState<Section1Data>(
     initialData?.section1 ?? { modality: 'Online', emergencyContact: '' }
@@ -315,6 +328,10 @@ export default function PsychologyForm({
     }
   )
 
+  const [licNo, setLicNo] = useState(initialData?.clinicianInfo?.licNo ?? clinicianSettings?.licenseNo ?? '')
+  const [ptrNo, setPtrNo] = useState(initialData?.clinicianInfo?.ptrNo ?? clinicianSettings?.ptrNo ?? '')
+  const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(initialData?.clinicianInfo?.signatureDataUrl ?? clinicianSettings?.signatureDataUrl ?? null)
+
   const s2 = (key: keyof Section2Data, val: any) => setSection2((p) => ({ ...p, [key]: val }))
   const s3 = (key: keyof Section3Data, val: string) => setSection3((p) => ({ ...p, [key]: val }))
 
@@ -323,6 +340,7 @@ export default function PsychologyForm({
       formType: isFirstSession ? 'PSYCH_INITIAL' : 'PSYCH_PROGRESS',
       section1,
       ...(isFirstSession ? { section2 } : { section3 }),
+      clinicianInfo: { licNo, ptrNo, signatureDataUrl },
     }
     onSubmit(data)
   }
@@ -433,6 +451,38 @@ export default function PsychologyForm({
           <TextField label="Next Schedule" value={section3.nextSchedule} onChange={(v) => s3('nextSchedule', v)} />
         </CollapsibleSection>
       )}
+
+      {/* Clinician Information & Signature */}
+      <CollapsibleSection title="Clinician Information & Signature" defaultOpen={false}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+          <div>
+            <label className="block text-[12px] font-semibold text-[var(--charcoal)] mb-1">PRC License No.</label>
+            <input value={licNo} onChange={(e) => setLicNo(e.target.value)} className="input text-[13px]" placeholder="PRC License No." />
+            {clinicianSettings?.licenseNo && !initialData?.clinicianInfo?.licNo && <p className="text-[10px] text-green-600 mt-0.5">Auto-filled from Settings</p>}
+          </div>
+          <div>
+            <label className="block text-[12px] font-semibold text-[var(--charcoal)] mb-1">PTR No.</label>
+            <input value={ptrNo} onChange={(e) => setPtrNo(e.target.value)} className="input text-[13px]" placeholder="PTR No." />
+            {clinicianSettings?.ptrNo && !initialData?.clinicianInfo?.ptrNo && <p className="text-[10px] text-green-600 mt-0.5">Auto-filled from Settings</p>}
+          </div>
+        </div>
+        <div>
+          <label className="block text-[12px] font-semibold text-[var(--charcoal)] uppercase tracking-wider mb-2">Signature</label>
+          {signatureDataUrl ? (
+            <div className="border border-[var(--light-gray)] rounded-xl p-3 bg-white">
+              <img src={signatureDataUrl} alt="Signature" className="max-h-24 mx-auto" />
+              <div className="flex justify-center gap-3 mt-2">
+                {clinicianSettings?.signatureDataUrl && <p className="text-[10px] text-green-600">Auto-filled from Settings</p>}
+                <button type="button" onClick={() => setSignatureDataUrl(null)} className="text-[11px] text-red-500 hover:text-red-700 font-medium">Remove</button>
+              </div>
+            </div>
+          ) : (
+            <div className="border-2 border-dashed border-[var(--light-gray)] rounded-xl p-6 text-center">
+              <p className="text-[12px] text-[var(--mid-gray)]">No signature set. Go to <strong>Settings</strong> to set up your digital signature.</p>
+            </div>
+          )}
+        </div>
+      </CollapsibleSection>
 
       {/* Submit */}
       <div className="flex gap-3 mt-5">

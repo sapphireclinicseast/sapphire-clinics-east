@@ -756,6 +756,7 @@ export default function SessionDetailPage() {
             submitting={submitting}
             onCancel={() => { setActionMode(null); setFiles([]); setPsychEditUseForm(true) }}
             initialData={getPsychData()}
+            clinicianSettings={clinicianSettings}
           />
         </div>
       )}
@@ -1166,6 +1167,7 @@ export default function SessionDetailPage() {
             onSubmit={handlePsychComplete}
             submitting={submitting}
             onCancel={() => { setActionMode(null); setFiles([]); setOverrideToProgress(false); setPsychUseForm(true) }}
+            clinicianSettings={clinicianSettings}
           />
         </div>
       )}
