@@ -1440,3 +1440,10 @@ model Asset {
   @@index([classification])
   @@index([createdById])
 }
+
+// Per-classification default depreciation years (set in Depreciation Settings)
+model AssetDepreciationSetting {
+  classification String @id   // "2020", "2030", ... "2100"
+  years          Int           // 3, 5, or 10
+  updatedAt      DateTime @updatedAt
+}

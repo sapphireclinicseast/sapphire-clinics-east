@@ -37,6 +37,8 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY}
     ports:
       - "127.0.0.1:3001:3001"
+    volumes:
+      - /opt/accounting/uploads:/app/public/uploads
 
 volumes:
   accounting_postgres_data:

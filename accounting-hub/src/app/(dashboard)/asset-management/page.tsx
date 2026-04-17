@@ -12,6 +12,7 @@ import {
   AlertCircle,
   Building2,
   FileText,
+  Settings2,
 } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────
@@ -176,6 +177,12 @@ export default function AssetManagementPage() {
   // Supplier search
   const [supplierSearch, setSupplierSearch] = useState('')
 
+  // Depreciation defaults (classification → years)
+  const [depDefaults, setDepDefaults] = useState<Record<string, number>>({})
+  const [showDepSettings, setShowDepSettings] = useState(false)
+  const [depSettingsForm, setDepSettingsForm] = useState<Record<string, number>>({})
+  const [savingDepSettings, setSavingDepSettings] = useState(false)
+
   // ── Auth guard ───────────────────────────────────────────────
   if (status === 'unauthenticated') redirect('/login')
 
@@ -216,12 +223,24 @@ export default function AssetManagementPage() {
     }
   }, [])
 
+  const fetchDepDefaults = useCallback(async () => {
+    try {
+      const res = await fetch('/api/assets/depreciation-defaults')
+      if (!res.ok) return
+      const data = await res.json()
+      setDepDefaults(data)
+    } catch {
+      // non-critical
+    }
+  }, [])
+
   useEffect(() => {
     if (status === 'authenticated') {
       fetchAssets()
       fetchSuppliers()
+      fetchDepDefaults()
     }
-  }, [status, fetchAssets, fetchSuppliers])
+  }, [status, fetchAssets, fetchSuppliers, fetchDepDefaults])
 
   // ── Modal helpers ────────────────────────────────────────────
   function openAdd() {
@@ -311,6 +330,46 @@ export default function AssetManagementPage() {
     }))
   }
 
+  // ── Classification change → auto-fill depreciation years ────
+  function handleClassificationChange(value: string) {
+    const defaultYears = depDefaults[value]
+    setForm((f) => ({
+      ...f,
+      classification: value,
+      ...(defaultYears ? { yearsDepreciation: String(defaultYears) } : {}),
+    }))
+  }
+
+  // ── Depreciation Settings modal ──────────────────────────────
+  function openDepSettings() {
+    // Pre-fill form with current defaults
+    const initial: Record<string, number> = {}
+    for (const c of CLASSIFICATION_OPTIONS) {
+      initial[c.value] = depDefaults[c.value] ?? 5
+    }
+    setDepSettingsForm(initial)
+    setShowDepSettings(true)
+  }
+
+  async function saveDepSettings() {
+    setSavingDepSettings(true)
+    try {
+      const res = await fetch('/api/assets/depreciation-defaults', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(depSettingsForm),
+      })
+      if (!res.ok) throw new Error('Failed to save')
+      const updated = await res.json()
+      setDepDefaults(updated)
+      setShowDepSettings(false)
+    } catch {
+      // non-critical — keep modal open
+    } finally {
+      setSavingDepSettings(false)
+    }
+  }
+
   // ── Save ─────────────────────────────────────────────────────
   async function handleSave() {
     setFormError('')
@@ -396,14 +455,23 @@ export default function AssetManagementPage() {
           <h1 className="text-2xl font-semibold text-gray-900">Asset Management</h1>
         </div>
         {canWrite && (
-          <button
-            onClick={openAdd}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white"
-            style={{ background: 'var(--teal)' }}
-          >
-            <Plus size={16} />
-            Add Asset
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={openDepSettings}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50"
+            >
+              <Settings2 size={16} />
+              Depreciation Settings
+            </button>
+            <button
+              onClick={openAdd}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white"
+              style={{ background: 'var(--teal)' }}
+            >
+              <Plus size={16} />
+              Add Asset
+            </button>
+          </div>
         )}
       </div>
 
@@ -658,7 +726,7 @@ export default function AssetManagementPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Asset Classification <span className="text-red-500">*</span></label>
                   <select
                     value={form.classification}
-                    onChange={(e) => setForm((f) => ({ ...f, classification: e.target.value }))}
+                    onChange={(e) => handleClassificationChange(e.target.value)}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                   >
                     <option value="">Select classification…</option>
@@ -837,6 +905,67 @@ export default function AssetManagementPage() {
               >
                 {saving && <Loader2 size={14} className="animate-spin" />}
                 {editingAsset ? 'Save Changes' : 'Add Asset'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Depreciation Settings Modal ──────────────────────── */}
+      {showDepSettings && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <div className="flex items-center gap-2">
+                <Settings2 size={18} className="text-teal-600" />
+                <h2 className="text-lg font-semibold text-gray-900">Depreciation Settings</h2>
+              </div>
+              <button onClick={() => setShowDepSettings(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 py-5 space-y-4 overflow-y-auto max-h-[60vh]">
+              <p className="text-sm text-gray-500">
+                Set the default depreciation period for each asset classification. When adding a new asset,
+                selecting a classification will automatically fill in the years from these settings.
+              </p>
+              <div className="space-y-3">
+                {CLASSIFICATION_OPTIONS.map((c) => (
+                  <div key={c.value} className="flex items-center justify-between gap-4">
+                    <label className="text-sm text-gray-700 flex-1">{c.label}</label>
+                    <select
+                      value={depSettingsForm[c.value] ?? 5}
+                      onChange={(e) => setDepSettingsForm((prev) => ({ ...prev, [c.value]: Number(e.target.value) }))}
+                      className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-900 w-32 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    >
+                      <option value={3}>3 years</option>
+                      <option value={5}>5 years</option>
+                      <option value={10}>10 years</option>
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t flex justify-end gap-3">
+              <button
+                onClick={() => setShowDepSettings(false)}
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveDepSettings}
+                disabled={savingDepSettings}
+                className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 transition-colors"
+                style={{ background: 'var(--teal)' }}
+              >
+                {savingDepSettings && <Loader2 size={14} className="animate-spin" />}
+                Save Settings
               </button>
             </div>
           </div>
