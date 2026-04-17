@@ -73,6 +73,7 @@ model User {
   arPayments            ARPayment[]             @relation("ARPaymentCreatedBy")
   payrollEntries        PayrollEntry[]          @relation("PayrollCreatedBy")
   incentiveRules        IncentiveRule[]         @relation("IncentiveCreatedBy")
+  assets                Asset[]                 @relation("AssetCreatedBy")
 
   @@index([email])
   @@index([role])
@@ -273,6 +274,7 @@ model Supplier {
   updatedAt           DateTime  @updatedAt
 
   inventoryItems InventoryItem[]
+  assets         Asset[]
 
   @@index([isActive])
   @@index([createdById])
@@ -1406,4 +1408,35 @@ model SalesDayClearing {
   @@unique([date, branch])
   @@index([date])
   @@index([branch])
+}
+
+// ── Asset Management ──────────────────────────────────────────
+
+model Asset {
+  id                  String    @id @default(cuid())
+  branch              Branch
+  name                String
+  purchasePrice       Decimal
+  quantity            Int       @default(1)
+  totalAmount         Decimal
+  dateBought          DateTime
+  classification      String    // e.g. "2020", "2030", … "2100"
+  yearsDepreciation   Int       // 3, 5, or 10
+  monthlyDepreciation Decimal
+  depreciationEndDate DateTime
+  supplierId          String?
+  supplier            Supplier? @relation(fields: [supplierId], references: [id])
+  photoUrl            String?
+  departments         Json      @default("[]")  // string[] of dept names
+  utilized            Boolean   @default(true)
+  controlNumber       String?
+  remarks             String?
+  createdById         String
+  createdBy           User      @relation("AssetCreatedBy", fields: [createdById], references: [id])
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([branch])
+  @@index([classification])
+  @@index([createdById])
 }

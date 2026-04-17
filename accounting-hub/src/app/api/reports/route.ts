@@ -31,7 +31,7 @@ export async function GET(req: Request) {
   const branchFilter: any = branch !== 'ALL' ? { branch: orderBranch } : {}
 
   try {
-    const [accounts, orders, inventoryItems, wallets, paymentModes, arPayments, journalLines, discountSettings, allServices, allInventory] = await Promise.all([
+    const [accounts, orders, inventoryItems, wallets, paymentModes, arPayments, journalLines, discountSettings, allServices, allInventory, assets] = await Promise.all([
       // Chart of Accounts — structure for report line items
       prisma.account.findMany({
         where: { isActive: true },
@@ -168,6 +168,20 @@ export async function GET(req: Request) {
           revenueAccount: { select: { accountNumber: true, accountTitle: true } },
           expenseAccount: { select: { accountNumber: true, accountTitle: true } },
           unitCost: true,
+        },
+      }),
+
+      // Assets — for depreciation on Income Statement and Balance Sheet
+      prisma.asset.findMany({
+        where: branch !== 'ALL' ? { branch: orderBranch as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | 'VERDANA_STORE' } : {},
+        select: {
+          name: true,
+          classification: true,
+          branch: true,
+          totalAmount: true,
+          monthlyDepreciation: true,
+          dateBought: true,
+          depreciationEndDate: true,
         },
       }),
     ])
@@ -536,6 +550,43 @@ export async function GET(req: Request) {
       }
     }
 
+    /* ── Depreciation computation ─────────────────────────────── */
+
+    const depByMonth: Record<number, number> = {}
+    for (let m = 1; m <= 12; m++) depByMonth[m] = 0
+
+    for (const asset of assets) {
+      const monthlyDep = Number(asset.monthlyDepreciation)
+      for (let m = 1; m <= 12; m++) {
+        const monthStart = new Date(Date.UTC(year, m - 1, 1))
+        const monthEnd = new Date(Date.UTC(year, m, 1))
+        const depStart = new Date(asset.dateBought)
+        const depEnd = new Date(asset.depreciationEndDate)
+        if (depStart < monthEnd && depEnd > monthStart) {
+          depByMonth[m] += monthlyDep
+        }
+      }
+    }
+
+    let accumulatedDep = 0
+    for (const asset of assets) {
+      const monthlyDep = Number(asset.monthlyDepreciation)
+      const depStart = new Date(asset.dateBought)
+      const depEnd = new Date(asset.depreciationEndDate)
+      const yearEnd = new Date(Date.UTC(year + 1, 0, 1))
+      const effectiveEnd = depEnd < yearEnd ? depEnd : yearEnd
+      if (depStart >= yearEnd || effectiveEnd <= depStart) continue
+      let months = (effectiveEnd.getUTCFullYear() - depStart.getUTCFullYear()) * 12
+        + (effectiveEnd.getUTCMonth() - depStart.getUTCMonth())
+      if (months < 0) months = 0
+      accumulatedDep += monthlyDep * months
+    }
+
+    const assetsByClassification: Record<string, number> = {}
+    for (const asset of assets) {
+      assetsByClassification[asset.classification] = (assetsByClassification[asset.classification] || 0) + Number(asset.totalAmount)
+    }
+
     /* ── Group accounts ────────────────────────────────────────── */
 
     const groupedAccounts: Record<string, Record<string, { accountNumber: string; accountTitle: string; subSubType: string | null; normalBalance: string; currency: string }[]>> = {}
@@ -571,6 +622,11 @@ export async function GET(req: Request) {
       unclassifiedAP,
       journalBalances: Object.values(journalBalances),
       journalRevenueKeys: Array.from(journalRevenueKeys),
+      depreciation: {
+        byMonth: depByMonth,
+        accumulated: accumulatedDep,
+        assetsByClassification,
+      },
     })
   } catch (err) {
     console.error('Reports API error:', err)

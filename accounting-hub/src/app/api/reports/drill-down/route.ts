@@ -57,6 +57,77 @@ export async function GET(req: Request) {
   const branchFilter: any = branch !== 'ALL' ? { branch: orderBranch } : {}
 
   try {
+    // ── Depreciation expense detail (per-asset, per-month rows) ──
+    if (category === 'DEPRECIATION_EXPENSE') {
+      const assets = await prisma.asset.findMany({
+        where: branch !== 'ALL' ? { branch: orderBranch as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | 'VERDANA_STORE' } : {},
+        select: { name: true, classification: true, branch: true, totalAmount: true, monthlyDepreciation: true, dateBought: true, depreciationEndDate: true },
+        orderBy: { dateBought: 'asc' },
+      })
+      const CLASSIFICATION_LABELS: Record<string, string> = {
+        '2020': 'Buildings', '2030': 'Clinic Appliances', '2040': 'Educational Toys, Books & Others',
+        '2050': 'Furniture and Fixtures', '2060': 'Office Equipment & Electronic Devices',
+        '2070': 'PPE and Lease Improvements', '2080': 'Therapy Equipment',
+        '2090': 'Treatment and Assessment Tools', '2100': 'Vehicles',
+      }
+      const DEP_BRANCH_LABELS = { SANDBOX_EAST: 'Sandbox East', SANDBOX_GREENHILLS: 'Sandbox Greenhills', VERDANA_STORE: 'Verdana Store' }
+      const items: { date: string; type: string; branch: string; amount: number }[] = []
+      for (const asset of assets) {
+        const monthlyDep = Number(asset.monthlyDepreciation)
+        for (let d = new Date(startDate); d < endDate; d.setUTCMonth(d.getUTCMonth() + 1)) {
+          const monthStart = new Date(d)
+          const monthEnd = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1))
+          const depStart = new Date(asset.dateBought)
+          const depEnd = new Date(asset.depreciationEndDate)
+          if (depStart < monthEnd && depEnd > monthStart) {
+            items.push({
+              date: monthStart.toISOString().split('T')[0],
+              type: `${asset.name} — ${CLASSIFICATION_LABELS[asset.classification] || asset.classification}`,
+              branch: DEP_BRANCH_LABELS[asset.branch as keyof typeof DEP_BRANCH_LABELS] || asset.branch,
+              amount: monthlyDep,
+            })
+          }
+        }
+      }
+      return NextResponse.json({ items, total: items.reduce((s, i) => s + i.amount, 0) })
+    }
+
+    // ── Accumulated depreciation detail (per-asset total through period end) ──
+    if (category === 'ACCUMULATED_DEPRECIATION') {
+      const assets = await prisma.asset.findMany({
+        where: branch !== 'ALL' ? { branch: orderBranch as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | 'VERDANA_STORE' } : {},
+        select: { name: true, classification: true, branch: true, totalAmount: true, monthlyDepreciation: true, dateBought: true, depreciationEndDate: true },
+        orderBy: { dateBought: 'asc' },
+      })
+      const CLASSIFICATION_LABELS: Record<string, string> = {
+        '2020': 'Buildings', '2030': 'Clinic Appliances', '2040': 'Educational Toys, Books & Others',
+        '2050': 'Furniture and Fixtures', '2060': 'Office Equipment & Electronic Devices',
+        '2070': 'PPE and Lease Improvements', '2080': 'Therapy Equipment',
+        '2090': 'Treatment and Assessment Tools', '2100': 'Vehicles',
+      }
+      const DEP_BRANCH_LABELS = { SANDBOX_EAST: 'Sandbox East', SANDBOX_GREENHILLS: 'Sandbox Greenhills', VERDANA_STORE: 'Verdana Store' }
+      const items: { date: string; type: string; branch: string; amount: number }[] = []
+      for (const asset of assets) {
+        const monthlyDep = Number(asset.monthlyDepreciation)
+        const depStart = new Date(asset.dateBought)
+        const depEnd = new Date(asset.depreciationEndDate)
+        const effectiveEnd = depEnd < endDate ? depEnd : endDate
+        if (depStart >= endDate || effectiveEnd <= depStart) continue
+        let months = (effectiveEnd.getUTCFullYear() - depStart.getUTCFullYear()) * 12
+          + (effectiveEnd.getUTCMonth() - depStart.getUTCMonth())
+        if (months < 0) months = 0
+        const accumulated = monthlyDep * months
+        if (accumulated <= 0) continue
+        items.push({
+          date: depStart.toISOString().split('T')[0],
+          type: `${asset.name} — ${CLASSIFICATION_LABELS[asset.classification] || asset.classification} · ₱${monthlyDep.toFixed(2)}/mo × ${months} months`,
+          branch: DEP_BRANCH_LABELS[asset.branch as keyof typeof DEP_BRANCH_LABELS] || asset.branch,
+          amount: accumulated,
+        })
+      }
+      return NextResponse.json({ items, total: items.reduce((s, i) => s + i.amount, 0) })
+    }
+
     // ── Payroll expense detail (8190 Professional Fees — per consultant row) ──
     if (category === 'PAYROLL_EXPENSE_DETAIL') {
       const cutoffPrefix = month > 0

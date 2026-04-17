@@ -57,6 +57,11 @@ interface ReportData {
   unclassifiedAP?: number
   journalBalances?: { accountNumber: string; accountTitle: string; accountType: string; balance: number; entries: { date: string; description: string; referenceType: string; amount: number }[] }[]
   journalRevenueKeys?: string[]
+  depreciation?: {
+    byMonth: Record<number, number>
+    accumulated: number
+    assetsByClassification: Record<string, number>
+  }
 }
 
 type ReportTab = 'balance-sheet' | 'income-statement' | 'cash-flow'
@@ -526,7 +531,7 @@ function DrillDownPanel({
    ═══════════════════════════════════════════════════════════════ */
 
 function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewMode: ViewMode; onDrillDown: OnDrillDown }) {
-  const { accounts, inventory, wallets, monthly, inventorySourceAccounts = [], unclassifiedAP = 0, accountsReceivable, journalBalances = [] } = data
+  const { accounts, inventory, wallets, monthly, inventorySourceAccounts = [], unclassifiedAP = 0, accountsReceivable, journalBalances = [], depreciation } = data
 
   // Build journal balance lookup: accountKey → balance
   const journalBalanceMap: Record<string, number> = {}
@@ -600,7 +605,9 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
 
   // Computed totals
   const totalCurrentAssets = totalCashReceived + arCashReceived + invTotal + deductionAssetTotal + arTotal
-  const totalNonCurrentAssets = 0
+  const totalGrossAssets = Object.values(depreciation?.assetsByClassification || {}).reduce((s, v) => s + v, 0)
+  const accumulatedDep = depreciation?.accumulated || 0
+  const totalNonCurrentAssets = totalGrossAssets - accumulatedDep
   const totalAssets = totalCurrentAssets + totalNonCurrentAssets
 
   // Source account balances — only LIABILITY accounts are payables (ASSET accounts are cash purchases, not payables)
@@ -623,7 +630,8 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
     return rev
   })
   const totalCOGS = sumMonths(monthly, (m) => m.cogs)
-  const netIncome = totalRevenue - totalCOGS
+  const bsDepreciation = Object.values(depreciation?.byMonth || {}).reduce((s, v) => s + v, 0)
+  const netIncome = totalRevenue - totalCOGS - bsDepreciation
   const totalEquity = netIncome
   const totalLiabilitiesAndEquity = totalLiabilities + totalEquity
 
@@ -705,18 +713,25 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
         <AnnualRow label="Total Current Assets" amount={totalCurrentAssets} indent={1} isTotal bold />
 
         <SubSectionHeader label="Non-Current Assets" />
-        {ppeAccounts.map((a) => (
-          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={0} indent={2} />
-        ))}
+        {ppeAccounts.map((a) => {
+          const grossVal = depreciation?.assetsByClassification?.[a.accountNumber] || 0
+          return grossVal > 0 ? (
+            <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={grossVal} indent={2} />
+          ) : null
+        })}
+        {accumulatedDep > 0 && (
+          <AnnualRow label="2010 — Accumulated Depreciation" amount={-accumulatedDep} indent={2}
+            onDrillDown={() => onDrillDown('2010 Accumulated Depreciation', 'ACCUMULATED_DEPRECIATION', 0)} />
+        )}
+        {totalGrossAssets === 0 && accumulatedDep === 0 && ppeAccounts.length === 0 && intangibleAccounts.length === 0 && otherNCAAccounts.length === 0 && (
+          <AnnualRow label="(No non-current asset accounts set up)" amount={0} indent={2} />
+        )}
         {intangibleAccounts.map((a) => (
           <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={0} indent={2} />
         ))}
         {otherNCAAccounts.map((a) => (
           <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={0} indent={2} />
         ))}
-        {ppeAccounts.length === 0 && intangibleAccounts.length === 0 && otherNCAAccounts.length === 0 && (
-          <AnnualRow label="(No non-current asset accounts set up)" amount={0} indent={2} />
-        )}
         <AnnualRow label="Total Non-Current Assets" amount={totalNonCurrentAssets} indent={1} isTotal bold />
 
         <AnnualRow label="TOTAL ASSETS" amount={totalAssets} isGrandTotal />
@@ -898,8 +913,12 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
   // EBITDA
   const ebitda = grossProfit - totalOpex
 
-  // Net Income
-  const netIncome = ebitda
+  // Depreciation from assets
+  const depByMonth = data.depreciation?.byMonth || {}
+  const totalDepreciation = Object.values(depByMonth).reduce((s, v) => s + v, 0)
+
+  // Net Income = EBITDA - Depreciation
+  const netIncome = ebitda - totalDepreciation
 
   // Per-month helpers for consistent monthly formulas
   const grossRevenueForMonth = (m: MonthData) => {
@@ -1009,6 +1028,16 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
         <AnnualRow label="Total for Expenses" amount={totalOpex} indent={0} isTotal bold />
 
         <AnnualRow label="EBITDA" amount={ebitda} isGrandTotal />
+
+        {/* DEPRECIATION */}
+        {totalDepreciation > 0 && (
+          <>
+            <SectionHeader label="Depreciation" />
+            <AnnualRow label="8070 Depreciation Expense" amount={totalDepreciation} indent={1}
+              onDrillDown={() => onDrillDown('8070 Depreciation Expense', 'DEPRECIATION_EXPENSE', 0)} />
+            <AnnualRow label="Total Depreciation" amount={totalDepreciation} indent={0} isTotal bold />
+          </>
+        )}
 
         {/* NON-OPERATING EXPENSES */}
         {nonOpExpenseAccts.length > 0 && (
@@ -1138,6 +1167,20 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
         values={getMonthlyArray(monthly, (m) => netSalesForMonth(m) - m.cogs - directExpForMonth(m) - indirectExpForMonth(m))}
         total={ebitda} isGrandTotal />
 
+      {/* DEPRECIATION */}
+      {totalDepreciation > 0 && (
+        <>
+          <SectionHeader label="Depreciation" />
+          <MonthlyRow label="8070 Depreciation Expense"
+            values={Array.from({ length: 12 }, (_, i) => depByMonth[i + 1] || 0)}
+            total={totalDepreciation} indent={1}
+            onClickCell={(m) => onDrillDown('8070 Depreciation Expense', 'DEPRECIATION_EXPENSE', m ?? 0)} />
+          <MonthlyRow label="Total Depreciation"
+            values={Array.from({ length: 12 }, (_, i) => depByMonth[i + 1] || 0)}
+            total={totalDepreciation} bold isTotal />
+        </>
+      )}
+
       {/* NON-OPERATING */}
       {nonOpExpenseAccts.length > 0 && (
         <SectionHeader label="Non-Operating Expenses" collapsed={!!col['nonop']} onToggle={() => tog('nonop')} />
@@ -1148,7 +1191,10 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
       ))}
 
       <MonthlyRow label="NET INCOME"
-        values={getMonthlyArray(monthly, (m) => netSalesForMonth(m) - m.cogs - directExpForMonth(m) - indirectExpForMonth(m))}
+        values={Array.from({ length: 12 }, (_, i) => {
+          const m = monthly[i + 1]
+          return netSalesForMonth(m) - m.cogs - directExpForMonth(m) - indirectExpForMonth(m) - (depByMonth[i + 1] || 0)
+        })}
         total={netIncome} isGrandTotal />
     </div>
   )

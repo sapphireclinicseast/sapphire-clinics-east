@@ -17,6 +17,7 @@ import {
   Stethoscope,
   FileCheck,
   Receipt,
+  Building2,
   X,
 } from 'lucide-react'
 
@@ -56,6 +57,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: '/petty-cash', icon: Wallet, label: 'Petty Cash', roles: FULL_ACCESS },
       { href: '/inventory', icon: Package, label: 'Inventory & Procurement', roles: FULL_ACCESS },
+      { href: '/asset-management', icon: Building2, label: 'Asset Management', roles: SERVICES_POS_ACCESS },
       { href: '/services', icon: Stethoscope, label: 'Services', roles: SERVICES_POS_ACCESS },
       { href: '/pos', icon: ShoppingCart, label: 'Point of Sale', roles: SERVICES_POS_ACCESS },
       { href: '/accounts-receivable', icon: FileCheck, label: 'Accounts Receivable', roles: FULL_ACCESS },
