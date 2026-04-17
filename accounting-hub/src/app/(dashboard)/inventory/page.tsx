@@ -25,6 +25,12 @@ import {
   AlertCircle,
   Printer,
   FileText,
+  ChevronUp,
+  ChevronDown,
+  History,
+  TrendingUp,
+  TrendingDown,
+  Gift,
 } from 'lucide-react'
 import JsBarcode from 'jsbarcode'
 import { formatCurrency, formatDate } from '@/lib/utils'
@@ -433,6 +439,7 @@ interface InventoryItem {
   expenseAccount?: { id: string; accountNumber: string; accountTitle: string } | null
   variants?: { id: string; variantType: string; variantLabel: string; color?: string; quantity: number; variantSku: string; barcode?: string | null }[]
   isBundle?: boolean
+  issuedOfficialInvoice?: boolean
   bundleComponents?: { id: string; quantity: number; component: { id: string; name: string; sku: string; quantity: number } }[]
 }
 
@@ -565,7 +572,31 @@ export default function InventoryPage() {
   const [expenseAccounts, setExpenseAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
   // FIFO lot detail popup
   const [showLotDetail, setShowLotDetail] = useState<string | null>(null)
-  const [lotData, setLotData] = useState<{ lots: { id: string; adjustmentDate: string; quantityChange: number; remaining: number; costPerUnit: number; foreignCost: number | null; foreignCurrency: string | null; batchId: string | null; remarks: string }[]; summary: { totalLots: number; activeLots: number; totalRemaining: number; weightedAvgCost: number } } | null>(null)
+  const [lotData, setLotData] = useState<{ lots: { id: string; adjustmentDate: string; quantityChange: number; remaining: number; costPerUnit: number; foreignCost: number | null; foreignCurrency: string | null; batchId: string | null; remarks: string }[]; initialUnitCost: number | null; summary: { totalLots: number; activeLots: number; totalRemaining: number; weightedAvgCost: number } } | null>(null)
+  // Qty movement history popup
+  const [showMovements, setShowMovements] = useState<string | null>(null)
+  const [movementData, setMovementData] = useState<{
+    itemName: string
+    currentQty: number
+    startingQty: number
+    movements: {
+      date: string
+      type: 'STOCK_IN' | 'SHRINKAGE' | 'SALE' | 'FREE_SAMPLE'
+      qty: number
+      direction: number
+      balance: number
+      costPerUnit: number | null
+      reference: string
+      remarks: string
+      adjustedBy: string | null
+    }[]
+  } | null>(null)
+  // Inventory sort
+  const [invSortField, setInvSortField] = useState<'sku' | 'name' | 'branch' | 'dept' | 'qty' | 'unitCost' | 'supplier' | ''>('')
+  const [invSortDir, setInvSortDir] = useState<'asc' | 'desc'>('asc')
+  // Adjustment delete
+  const [deleteAdjConfirm, setDeleteAdjConfirm] = useState<string | null>(null)
+  const [deletingAdj, setDeletingAdj] = useState(false)
   // Variants (color, size, material, etc.)
   const [variants, setVariants] = useState<{ id?: string; variantType: string; variantLabel: string; quantity: number; variantSku?: string; barcode?: string }[]>([])
   const [newVariantType, setNewVariantType] = useState('Color')
@@ -662,9 +693,10 @@ export default function InventoryPage() {
   const [pdfReceivedName, setPdfReceivedName] = useState('')
   const [pdfReceivedDate, setPdfReceivedDate] = useState('')
   const [pdfReceivedContact, setPdfReceivedContact] = useState('')
+  const [issuedOfficialInvoice, setIssuedOfficialInvoice] = useState(false)
   // Bundle state
   const [isBundle, setIsBundle] = useState(false)
-  const [bundleComponents, setBundleComponents] = useState<{ id?: string; componentId: string; quantity: number; name?: string; sku?: string }[]>([])
+  const [bundleComponents, setBundleComponents] = useState<{ id?: string; componentId: string; quantity: number; name?: string; sku?: string; unitCost?: number }[]>([])
   const [bundleComponentId, setBundleComponentId] = useState('')
   const [bundleComponentQty, setBundleComponentQty] = useState(1)
 
@@ -686,6 +718,35 @@ export default function InventoryPage() {
     })
     return groups
   }, [consignments])
+
+  // Sorted inventory items
+  const sortedItems = useMemo(() => {
+    if (!invSortField) return items
+    const sorted = [...items].sort((a, b) => {
+      let cmp = 0
+      switch (invSortField) {
+        case 'sku': cmp = a.sku.localeCompare(b.sku); break
+        case 'name': cmp = a.name.localeCompare(b.name); break
+        case 'branch': cmp = a.branch.localeCompare(b.branch); break
+        case 'dept': cmp = (a.skuDepartment || '').localeCompare(b.skuDepartment || ''); break
+        case 'qty': cmp = a.quantity - b.quantity; break
+        case 'unitCost': cmp = Number(a.unitCost) - Number(b.unitCost); break
+        case 'supplier': cmp = (a.supplier?.supplierName || '').localeCompare(b.supplier?.supplierName || ''); break
+      }
+      return invSortDir === 'desc' ? -cmp : cmp
+    })
+    return sorted
+  }, [items, invSortField, invSortDir])
+
+  const toggleSort = (field: typeof invSortField) => {
+    if (invSortField === field) {
+      setInvSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setInvSortField(field)
+      setInvSortDir('asc')
+    }
+    setInvPage(1)
+  }
 
   /* ── Fetchers ──────────────────────────────────────────── */
 
@@ -849,6 +910,7 @@ export default function InventoryPage() {
     setFInitialQty(''); setFReorderLevel(''); setFSupplierId(''); setFExchangeRate('')
     setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFSourceAccountId(''); setFSourceAccountSearch(''); setFExpenseAccountId(''); setFExpenseAccountSearch('')
     setVariants([]); setNewVariantType('Color'); setNewVariantLabel(''); setNewVariantQty(0)
+    setIssuedOfficialInvoice(false)
     setIsBundle(false); setBundleComponents([]); setBundleComponentId(''); setBundleComponentQty(1)
     setShowInlineSupplier(false); setError('')
     setItemModalOpen(true)
@@ -881,9 +943,10 @@ export default function InventoryPage() {
       id: v.id, variantType: v.variantType || 'Color', variantLabel: v.variantLabel || v.color || '', quantity: v.quantity, variantSku: v.variantSku, barcode: v.barcode || undefined,
     })))
     setNewVariantType('Color'); setNewVariantLabel(''); setNewVariantQty(0)
+    setIssuedOfficialInvoice(item.issuedOfficialInvoice || false)
     setIsBundle(item.isBundle || false)
-    setBundleComponents((item.bundleComponents || []).map((bc: { id: string; quantity: number; component: { id: string; name: string; sku: string } }) => ({
-      id: bc.id, componentId: bc.component.id, quantity: bc.quantity, name: bc.component.name, sku: bc.component.sku,
+    setBundleComponents((item.bundleComponents || []).map((bc: { id: string; quantity: number; component: { id: string; name: string; sku: string; unitCost?: number } }) => ({
+      id: bc.id, componentId: bc.component.id, quantity: bc.quantity, name: bc.component.name, sku: bc.component.sku, unitCost: Number(bc.component.unitCost) || 0,
     })))
     setBundleComponentId(''); setBundleComponentQty(1)
     setShowInlineSupplier(false); setError('')
@@ -900,9 +963,15 @@ export default function InventoryPage() {
       })
       const d = await r.json()
       if (r.ok) {
-        setBundleComponents(prev => [...prev.filter(bc => bc.componentId !== bundleComponentId), {
-          id: d.id, componentId: d.component.id, quantity: d.quantity, name: d.component.name, sku: d.component.sku,
-        }])
+        setBundleComponents(prev => {
+          const newComponents = [...prev.filter(bc => bc.componentId !== bundleComponentId), {
+            id: d.id, componentId: d.component.id, quantity: d.quantity, name: d.component.name, sku: d.component.sku, unitCost: Number(d.component.unitCost) || 0,
+          }]
+          // Auto-compute bundle unit cost
+          const computedCost = newComponents.reduce((sum, bc) => sum + (bc.unitCost || 0) * bc.quantity, 0)
+          setFUnitCost(String(computedCost))
+          return newComponents
+        })
         setBundleComponentId(''); setBundleComponentQty(1)
         setIsBundle(true)
         fetchItems()
@@ -920,7 +989,12 @@ export default function InventoryPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: bcId }),
       })
-      setBundleComponents(prev => prev.filter(bc => bc.id !== bcId))
+      setBundleComponents(prev => {
+        const remaining = prev.filter(bc => bc.id !== bcId)
+        const computedCost = remaining.reduce((sum, bc) => sum + (bc.unitCost || 0) * bc.quantity, 0)
+        setFUnitCost(String(computedCost))
+        return remaining
+      })
       fetchItems()
     } catch {}
   }
@@ -996,6 +1070,7 @@ export default function InventoryPage() {
       revenueAccountId: fRevenueAccountId || null,
       sourceAccountId: fSourceAccountId || null,
       expenseAccountId: fExpenseAccountId || null,
+      issuedOfficialInvoice,
     }
     if (editingItem) body.id = editingItem.id
     try {
@@ -1032,7 +1107,7 @@ export default function InventoryPage() {
   }
 
   function toggleSelectAll() {
-    const pageItems = items.slice((invPage - 1) * invPageSize, invPage * invPageSize)
+    const pageItems = sortedItems.slice((invPage - 1) * invPageSize, invPage * invPageSize)
     const allSelected = pageItems.every(i => selectedItems.has(i.id))
     if (allSelected) {
       setSelectedItems(prev => {
@@ -1170,6 +1245,21 @@ export default function InventoryPage() {
       setAdjModalOpen(false); fetchAdjustments(); fetchItems(); fetchAllItems()
     } catch { setError('Network error') }
     finally { setSaving(false) }
+  }
+
+  async function handleAdjDelete(id: string) {
+    setDeletingAdj(true)
+    try {
+      const res = await fetch(`/api/inventory/adjustments?id=${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        setDeleteAdjConfirm(null)
+        fetchAdjustments(); fetchItems(); fetchAllItems()
+      } else {
+        const data = await res.json()
+        setError(data.error || 'Failed to delete adjustment')
+      }
+    } catch { setError('Network error') }
+    finally { setDeletingAdj(false) }
   }
 
   /* ═══════════════════════════════════════════════════════
@@ -1442,19 +1532,31 @@ setTimeout(()=>window.print(),500);
                     {canWrite && (
                       <th className="px-3 py-3 w-10">
                         <input type="checkbox"
-                          checked={items.slice((invPage - 1) * invPageSize, invPage * invPageSize).length > 0 &&
-                            items.slice((invPage - 1) * invPageSize, invPage * invPageSize).every(i => selectedItems.has(i.id))}
+                          checked={sortedItems.slice((invPage - 1) * invPageSize, invPage * invPageSize).length > 0 &&
+                            sortedItems.slice((invPage - 1) * invPageSize, invPage * invPageSize).every(i => selectedItems.has(i.id))}
                           onChange={toggleSelectAll}
                           className="rounded" style={{ accentColor: 'var(--teal)' }} />
                       </th>
                     )}
-                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>SKU</th>
-                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Name</th>
-                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Branch</th>
-                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Dept</th>
-                    <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Qty</th>
-                    <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Unit Cost</th>
-                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Supplier</th>
+                    {([
+                      { key: 'sku', label: 'SKU', align: 'left' },
+                      { key: 'name', label: 'Name', align: 'left' },
+                      { key: 'branch', label: 'Branch', align: 'left' },
+                      { key: 'dept', label: 'Dept', align: 'left' },
+                      { key: 'qty', label: 'Qty', align: 'right' },
+                      { key: 'unitCost', label: 'Unit Cost', align: 'right' },
+                      { key: 'supplier', label: 'Supplier', align: 'left' },
+                    ] as const).map(col => (
+                      <th key={col.key}
+                        className={`text-${col.align} px-4 py-3 font-semibold cursor-pointer select-none hover:bg-gray-100/50 transition-colors`}
+                        style={{ color: invSortField === col.key ? 'var(--teal)' : 'var(--charcoal)' }}
+                        onClick={() => toggleSort(col.key)}>
+                        <span className="inline-flex items-center gap-1">
+                          {col.label}
+                          {invSortField === col.key ? (invSortDir === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />) : <ArrowUpDown size={12} className="opacity-30" />}
+                        </span>
+                      </th>
+                    ))}
                     {canWrite && <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>}
                   </tr>
                 </thead>
@@ -1466,7 +1568,7 @@ setTimeout(()=>window.print(),500);
                         <p>No inventory items</p>
                       </td>
                     </tr>
-                  ) : items.slice((invPage - 1) * invPageSize, invPage * invPageSize).map((item) => (
+                  ) : sortedItems.slice((invPage - 1) * invPageSize, invPage * invPageSize).map((item) => (
                     <tr key={item.id} className={`border-t hover:bg-gray-50/50 transition-colors ${selectedItems.has(item.id) ? 'bg-teal-50/40' : ''}`} style={{ borderColor: 'var(--light-gray)' }}>
                       {canWrite && (
                         <td className="px-3 py-3 w-10">
@@ -1480,6 +1582,7 @@ setTimeout(()=>window.print(),500);
                       <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>
                         {item.name}
                         {item.isBundle && <span className="ml-2 px-1.5 py-0.5 rounded text-xs font-semibold" style={{ background: '#fef3c7', color: '#92400e' }}>Bundle</span>}
+                        {item.issuedOfficialInvoice && <span className="ml-1 px-1.5 py-0.5 rounded text-xs font-semibold" style={{ background: '#dcfce7', color: '#166534' }}>Invoice</span>}
                         {item.revenueAccount && (
                           <p className="text-xs mt-0.5" style={{ color: 'var(--teal)' }}>Rev: {item.revenueAccount.accountNumber} {item.revenueAccount.accountTitle}</p>
                         )}
@@ -1494,8 +1597,23 @@ setTimeout(()=>window.print(),500);
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
                         {item.skuDepartment ? (SKU_HIERARCHY[item.skuDepartment]?.label || item.skuDepartment) : '—'}
                       </td>
-                      <td className="px-4 py-3 text-right font-medium" style={{ color: item.reorderLevel && item.quantity <= item.reorderLevel ? '#dc2626' : 'var(--charcoal)' }}>
-                        {item.quantity}
+                      <td className="px-4 py-3 text-right font-medium">
+                        <button
+                          onClick={async () => {
+                            setShowMovements(item.id)
+                            setMovementData(null)
+                            try {
+                              const res = await fetch(`/api/inventory/${item.id}/movements`)
+                              if (res.ok) setMovementData(await res.json())
+                            } catch { /* ignore */ }
+                          }}
+                          className="underline decoration-dotted cursor-pointer hover:opacity-70 flex items-center gap-1 ml-auto"
+                          style={{ color: item.reorderLevel && item.quantity <= item.reorderLevel ? '#dc2626' : 'var(--teal)' }}
+                          title="Click to view quantity movement history"
+                        >
+                          {item.quantity}
+                          <History size={11} className="opacity-50" />
+                        </button>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <button
@@ -1543,6 +1661,136 @@ setTimeout(()=>window.print(),500);
             )}
           </div>
 
+          {/* Qty Movement History Modal */}
+          {showMovements && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowMovements(null)}>
+              <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                {/* Header */}
+                <div className="flex items-center justify-between px-6 py-5 border-b shrink-0" style={{ borderColor: 'var(--light-gray)' }}>
+                  <div>
+                    <h3 className="text-base font-bold flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                      <History size={16} style={{ color: 'var(--teal)' }} />
+                      Quantity Movement History
+                    </h3>
+                    {movementData && (
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                        {movementData.itemName} · Current stock: <strong style={{ color: 'var(--charcoal)' }}>{movementData.currentQty}</strong>
+                      </p>
+                    )}
+                  </div>
+                  <button onClick={() => setShowMovements(null)} className="p-1.5 rounded-lg hover:bg-gray-100">
+                    <X size={18} style={{ color: 'var(--mid-gray)' }} />
+                  </button>
+                </div>
+
+                {/* Body */}
+                <div className="overflow-y-auto flex-1 px-6 py-4">
+                  {!movementData ? (
+                    <p className="text-sm py-8 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</p>
+                  ) : movementData.movements.length === 0 ? (
+                    <p className="text-sm py-8 text-center" style={{ color: 'var(--mid-gray)' }}>No movements recorded yet.</p>
+                  ) : (
+                    <>
+                      {/* Summary bar */}
+                      <div className="flex flex-wrap gap-3 mb-4 p-3 rounded-xl text-xs" style={{ background: 'var(--pale-teal)' }}>
+                        <span style={{ color: 'var(--deep-teal)' }}>
+                          Total movements: <strong>{movementData.movements.length}</strong>
+                        </span>
+                        <span style={{ color: '#16a34a' }}>
+                          Stock in: <strong>{movementData.movements.filter(m => m.direction === 1).reduce((s, m) => s + m.qty, 0)}</strong>
+                        </span>
+                        <span style={{ color: '#dc2626' }}>
+                          Stock out: <strong>{movementData.movements.filter(m => m.direction === -1).reduce((s, m) => s + m.qty, 0)}</strong>
+                        </span>
+                        <span style={{ color: 'var(--charcoal)' }}>
+                          Current balance: <strong>{movementData.currentQty}</strong>
+                        </span>
+                      </div>
+
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b text-xs uppercase tracking-wide" style={{ color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>
+                            <th className="text-left py-2 px-2">Date</th>
+                            <th className="text-left py-2 px-2">Type</th>
+                            <th className="text-right py-2 px-2">Qty</th>
+                            <th className="text-right py-2 px-2">Balance</th>
+                            <th className="text-right py-2 px-2">Cost/Unit</th>
+                            <th className="text-left py-2 px-2">Reference / Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {/* Starting balance row */}
+                          {movementData.startingQty !== 0 && (
+                            <tr className="border-b" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                              <td className="py-2 px-2 text-xs" style={{ color: 'var(--mid-gray)' }}>—</td>
+                              <td className="py-2 px-2">
+                                <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: '#f3f4f6', color: '#374151' }}>
+                                  Opening
+                                </span>
+                              </td>
+                              <td className="py-2 px-2 text-right text-xs" style={{ color: 'var(--mid-gray)' }}>—</td>
+                              <td className="py-2 px-2 text-right font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>
+                                {movementData.startingQty}
+                              </td>
+                              <td className="py-2 px-2 text-right text-xs" style={{ color: 'var(--mid-gray)' }}>—</td>
+                              <td className="py-2 px-2 text-xs" style={{ color: 'var(--mid-gray)' }}>Balance before tracked movements</td>
+                            </tr>
+                          )}
+
+                          {movementData.movements.map((m, idx) => {
+                            const isIn = m.direction === 1
+                            const typeConfig = {
+                              STOCK_IN:    { label: 'Stock In',    bg: '#dcfce7', color: '#166534', icon: <TrendingUp size={10} /> },
+                              SHRINKAGE:   { label: 'Write-off',   bg: '#fff7ed', color: '#c2410c', icon: <TrendingDown size={10} /> },
+                              SALE:        { label: 'Sale',        bg: '#fee2e2', color: '#991b1b', icon: <TrendingDown size={10} /> },
+                              FREE_SAMPLE: { label: 'Free Sample', bg: '#fef3c7', color: '#92400e', icon: <Gift size={10} /> },
+                            }[m.type]
+
+                            return (
+                              <tr key={idx} className="border-b hover:bg-gray-50/60 transition-colors"
+                                style={{ borderColor: 'var(--light-gray)' }}>
+                                <td className="py-2.5 px-2 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                                  {new Date(m.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                </td>
+                                <td className="py-2.5 px-2">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
+                                    style={{ background: typeConfig.bg, color: typeConfig.color }}>
+                                    {typeConfig.icon} {typeConfig.label}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-2 text-right font-semibold text-sm"
+                                  style={{ color: isIn ? '#16a34a' : '#dc2626' }}>
+                                  {isIn ? '+' : '−'}{m.qty}
+                                </td>
+                                <td className="py-2.5 px-2 text-right font-semibold text-sm" style={{ color: 'var(--charcoal)' }}>
+                                  {m.balance}
+                                </td>
+                                <td className="py-2.5 px-2 text-right text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>
+                                  {m.costPerUnit != null ? formatCurrency(m.costPerUnit) : '—'}
+                                </td>
+                                <td className="py-2.5 px-2 text-xs max-w-[220px]">
+                                  {m.reference && (
+                                    <p className="font-medium truncate" style={{ color: 'var(--charcoal)' }}>{m.reference}</p>
+                                  )}
+                                  {m.remarks && (
+                                    <p className="truncate" style={{ color: 'var(--mid-gray)' }}>{m.remarks}</p>
+                                  )}
+                                  {m.adjustedBy && (
+                                    <p className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>by {m.adjustedBy}</p>
+                                  )}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Delete Confirm */}
           {/* FIFO Lot Detail Modal */}
           {showLotDetail && (
@@ -1588,6 +1836,12 @@ setTimeout(()=>window.print(),500);
                         ))}
                       </tbody>
                     </table>
+                    {lotData.initialUnitCost != null && (
+                      <div className="mt-3 px-3 py-2 rounded-lg text-sm" style={{ background: 'var(--off-white)', border: '1px solid var(--light-gray)' }}>
+                        <span style={{ color: 'var(--mid-gray)' }}>Initial Price (set at item creation): </span>
+                        <strong style={{ color: 'var(--charcoal)' }}>{formatCurrency(lotData.initialUnitCost)}</strong>
+                      </div>
+                    )}
                     <p className="mt-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
                       Oldest lots are consumed first (FIFO). Grayed-out lots are fully consumed.
                     </p>
@@ -1873,9 +2127,13 @@ setTimeout(()=>window.print(),500);
                   {/* Cost + Selling Price */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Unit Cost (PHP)</label>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: isBundle && bundleComponents.length > 0 ? 'var(--mid-gray)' : 'var(--charcoal)' }}>
+                        Unit Cost (PHP) {isBundle && bundleComponents.length > 0 && <span className="font-normal">(auto-computed from components)</span>}
+                      </label>
                       <input type="number" step="0.01" min="0" value={fUnitCost} onChange={(e) => setFUnitCost(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                        readOnly={isBundle && bundleComponents.length > 0}
+                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                        style={{ borderColor: 'var(--light-gray)', background: isBundle && bundleComponents.length > 0 ? 'var(--off-white)' : 'white' }} />
                     </div>
                     <div>
                       <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Selling Price (PHP)</label>
@@ -2128,6 +2386,16 @@ setTimeout(()=>window.print(),500);
                     </div>
                   )}
 
+                  {/* Issued Official Sales Invoice */}
+                  <div className="rounded-xl border p-3" style={{ borderColor: issuedOfficialInvoice ? '#86efac' : 'var(--light-gray)', background: issuedOfficialInvoice ? '#f0fdf4' : 'transparent' }}>
+                    <label className="flex items-center gap-2 text-sm font-medium cursor-pointer" style={{ color: issuedOfficialInvoice ? '#166534' : 'var(--charcoal)' }}>
+                      <input type="checkbox" checked={issuedOfficialInvoice}
+                        onChange={(e) => setIssuedOfficialInvoice(e.target.checked)}
+                        className="rounded" />
+                      Issued Official Sales Invoice
+                    </label>
+                  </div>
+
                   {/* Bundle Components */}
                   {editingItem && (
                     <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: isBundle ? '#fbbf24' : 'var(--light-gray)', background: isBundle ? '#fffbeb' : 'transparent' }}>
@@ -2147,6 +2415,7 @@ setTimeout(()=>window.print(),500);
                                 <span className="font-mono" style={{ color: 'var(--charcoal)' }}>{bc.sku}</span>
                                 <span className="ml-2" style={{ color: 'var(--mid-gray)' }}>{bc.name}</span>
                                 <span className="ml-2 font-semibold" style={{ color: '#92400e' }}>×{bc.quantity}</span>
+                                <span className="ml-2" style={{ color: 'var(--teal)' }}>@ {formatCurrency(bc.unitCost || 0)} = {formatCurrency((bc.unitCost || 0) * bc.quantity)}</span>
                               </div>
                               {bc.id && (
                                 <button type="button" onClick={() => removeBundleComponent(bc.id!)} className="p-1 rounded hover:bg-red-50">
@@ -2155,6 +2424,10 @@ setTimeout(()=>window.print(),500);
                               )}
                             </div>
                           ))}
+                          <div className="flex justify-between px-2 pt-1 border-t text-xs font-bold" style={{ borderColor: '#fbbf24', color: '#92400e' }}>
+                            <span>Total Bundle Unit Cost</span>
+                            <span>{formatCurrency(bundleComponents.reduce((sum, bc) => sum + (bc.unitCost || 0) * bc.quantity, 0))}</span>
+                          </div>
                         </div>
                       )}
                       <div className="flex gap-2 items-end">
@@ -2542,12 +2815,13 @@ setTimeout(()=>window.print(),500);
                     <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Prev → New</th>
                     <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Remarks</th>
                     <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Adjusted By</th>
+                    {canWrite && <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {adjustments.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
+                      <td colSpan={canWrite ? 8 : 7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
                         <ArrowUpDown size={32} className="mx-auto mb-2 opacity-40" />
                         <p>No adjustments</p>
                       </td>
@@ -2573,6 +2847,13 @@ setTimeout(()=>window.print(),500);
                       </td>
                       <td className="px-4 py-3 text-xs max-w-[180px] truncate" style={{ color: 'var(--mid-gray)' }}>{adj.remarks || '—'}</td>
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{adj.adjustedBy?.name || '—'}</td>
+                      {canWrite && (
+                        <td className="px-4 py-3 text-right">
+                          <button onClick={() => setDeleteAdjConfirm(adj.id)} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Delete Adjustment">
+                            <Trash2 size={15} className="text-red-500" />
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -2583,6 +2864,22 @@ setTimeout(()=>window.print(),500);
                 onPageChange={setAdjPage} onPageSizeChange={setAdjPageSize} />
             )}
           </div>
+
+          {/* Delete Adjustment Confirm */}
+          {deleteAdjConfirm && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl">
+                <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Delete Adjustment</h3>
+                <p className="text-sm mb-2" style={{ color: 'var(--mid-gray)' }}>Are you sure you want to delete this adjustment? This will reverse the quantity change on the item.</p>
+                <div className="flex gap-3 justify-end mt-6">
+                  <button onClick={() => setDeleteAdjConfirm(null)} className="px-4 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--light-gray)' }} disabled={deletingAdj}>Cancel</button>
+                  <button onClick={() => handleAdjDelete(deleteAdjConfirm)} className="px-4 py-2 rounded-lg text-sm text-white bg-red-500 hover:bg-red-600 flex items-center gap-2" disabled={deletingAdj}>
+                    {deletingAdj && <Loader2 size={14} className="animate-spin" />} Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* New Adjustment Modal */}
           {adjModalOpen && (
