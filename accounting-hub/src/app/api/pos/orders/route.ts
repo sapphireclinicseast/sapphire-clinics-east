@@ -4,6 +4,55 @@ import { prisma } from '@/lib/prisma'
 import { parsePagination, paginatedResult } from '@/lib/pagination'
 import { consumeFifoLots, recalcWeightedUnitCost } from '@/lib/fifo'
 
+/* ── Create a journal entry crediting Inventory / debiting 8120 Marketing Expense ── */
+async function createFreeSampleJournalEntry(
+  createdById: string,
+  branch: string,
+  transactionDate: string,
+  orderItemId: string,
+  itemName: string,
+  fifoAmount: number,
+) {
+  if (fifoAmount <= 0) return
+  // Look up 8120 Marketing and Advertising Expense account
+  const marketingAcct = await prisma.account.findFirst({ where: { accountNumber: '8120' } })
+  if (!marketingAcct) {
+    console.warn('[FREE_SAMPLE] Account 8120 not found — skipping marketing journal entry')
+    return
+  }
+  // Look up an inventory ASSET account to credit (merchandise / inventory / starts with 13)
+  const inventoryAcct = await prisma.account.findFirst({
+    where: {
+      accountType: 'ASSET',
+      OR: [
+        { accountTitle: { contains: 'inventory', mode: 'insensitive' } },
+        { accountTitle: { contains: 'merchandise', mode: 'insensitive' } },
+        { accountNumber: { startsWith: '13' } },
+      ],
+    },
+  })
+
+  const lines: { accountId: string; debit: number; credit: number; description: string }[] = [
+    { accountId: marketingAcct.id, debit: fifoAmount, credit: 0, description: `Free sample — ${itemName}` },
+  ]
+  if (inventoryAcct) {
+    lines.push({ accountId: inventoryAcct.id, debit: 0, credit: fifoAmount, description: `Free sample inventory out — ${itemName}` })
+  }
+
+  await prisma.journalEntry.create({
+    data: {
+      entryDate: new Date(`${transactionDate}T08:00:00+08:00`),
+      description: `Free sample (marketing) — ${itemName}`,
+      referenceType: 'FREE_SAMPLE',
+      referenceId: orderItemId,
+      totalAmount: fifoAmount,
+      branch,
+      createdById,
+      lines: { create: lines },
+    },
+  })
+}
+
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN', 'SBEA_FRONTDESK', 'SBGH_FRONTDESK']
 
 export async function GET(req: Request) {
@@ -135,6 +184,7 @@ export async function POST(req: Request) {
               quantity: number
               unitPrice: number
               lineTotal: number
+              isFreeSample?: boolean
             }) => ({
               serviceId: item.serviceId || null,
               inventoryItemId: item.inventoryItemId || null,
@@ -142,6 +192,7 @@ export async function POST(req: Request) {
               quantity: item.quantity || 1,
               unitPrice: Number(item.unitPrice),
               lineTotal: Number(item.lineTotal),
+              isFreeSample: !!item.isFreeSample,
             })),
           },
         },
@@ -180,8 +231,9 @@ export async function POST(req: Request) {
         })
         if (!invItem) continue
         const orderQty = item.quantity || 1
+        const isFreeSample = !!item.isFreeSample
 
-        // Find the created OrderItem to record COGS
+        // Find the created OrderItem to record COGS / free sample
         const orderItem = order.items.find(oi => oi.inventoryItemId === item.inventoryItemId)
 
         if (invItem.isBundle && invItem.bundleComponents.length > 0) {
@@ -201,9 +253,14 @@ export async function POST(req: Request) {
               await prisma.inventoryItem.update({ where: { id: bc.componentId }, data: { unitCost: newCost } })
             }
           }
-          // Record FIFO COGS on the order item
           if (orderItem) {
-            await prisma.orderItem.update({ where: { id: orderItem.id }, data: { cogsCost: bundleCogs } })
+            if (isFreeSample) {
+              // Free sample: FIFO cost → 8120 Marketing Expense journal entry, cogsCost = 0 (not COGS)
+              await createFreeSampleJournalEntry(session.user.id, branch, transactionDate, orderItem.id, item.name, bundleCogs)
+              await prisma.orderItem.update({ where: { id: orderItem.id }, data: { cogsCost: 0 } })
+            } else {
+              await prisma.orderItem.update({ where: { id: orderItem.id }, data: { cogsCost: bundleCogs } })
+            }
           }
         } else {
           // Regular item: FIFO consumption
@@ -212,9 +269,14 @@ export async function POST(req: Request) {
             where: { id: item.inventoryItemId },
             data: { quantity: { decrement: orderQty } },
           })
-          // Record FIFO COGS on the order item
           if (orderItem) {
-            await prisma.orderItem.update({ where: { id: orderItem.id }, data: { cogsCost: fifo.totalCost } })
+            if (isFreeSample) {
+              // Free sample: FIFO cost → 8120 Marketing Expense journal entry, cogsCost = 0 (not COGS)
+              await createFreeSampleJournalEntry(session.user.id, branch, transactionDate, orderItem.id, item.name, fifo.totalCost)
+              await prisma.orderItem.update({ where: { id: orderItem.id }, data: { cogsCost: 0 } })
+            } else {
+              await prisma.orderItem.update({ where: { id: orderItem.id }, data: { cogsCost: fifo.totalCost } })
+            }
           }
           // Update weighted-average unitCost
           const newCost = await recalcWeightedUnitCost(prisma, item.inventoryItemId)

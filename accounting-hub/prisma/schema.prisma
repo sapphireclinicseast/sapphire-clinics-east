@@ -627,6 +627,7 @@ model OrderItem {
   unitPrice       Decimal
   lineTotal       Decimal
   cogsCost        Decimal?       // FIFO cost of goods sold for this line item
+  isFreeSample    Boolean        @default(false) // Inventory out to marketing expense (8120)
   createdAt       DateTime       @default(now())
 
   @@index([orderId])

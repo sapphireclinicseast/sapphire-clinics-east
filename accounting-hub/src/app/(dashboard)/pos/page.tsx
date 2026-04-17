@@ -7,7 +7,7 @@ import {
   CreditCard, Wallet, FileText, Download, Printer,
   RefreshCw, Ban, Star, Filter,
   Loader2, AlertCircle, ScanLine, UserPlus,
-  Pencil, PlusCircle, ToggleLeft, ToggleRight, Eye, CheckCircle,
+  Pencil, PlusCircle, ToggleLeft, ToggleRight, Eye, CheckCircle, Gift,
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import Pagination from '@/components/ui/Pagination'
@@ -54,6 +54,7 @@ interface OrderLineItem {
   priceType?: string
   doctorFee?: number
   clinicFee?: number
+  isFreeSample?: boolean
 }
 
 interface PaymentLine {
@@ -5411,16 +5412,33 @@ function ProductsSection({
   const addToCart = (p: InventoryProduct) => {
     const existing = cart.findIndex(c => c.inventoryItemId === p.id)
     if (existing >= 0) {
-      setCart(prev => prev.map((c, i) => i === existing ? { ...c, quantity: c.quantity + 1, lineTotal: c.unitPrice * (c.quantity + 1) } : c))
+      setCart(prev => prev.map((c, i) => i === existing ? {
+        ...c, quantity: c.quantity + 1,
+        lineTotal: c.isFreeSample ? 0 : c.unitPrice * (c.quantity + 1),
+      } : c))
     } else {
       const price = toNum(p.sellingPrice)
-      setCart(prev => [...prev, { inventoryItemId: p.id, name: p.name, quantity: 1, unitPrice: price, lineTotal: price }])
+      setCart(prev => [...prev, { inventoryItemId: p.id, name: p.name, quantity: 1, unitPrice: price, lineTotal: price, isFreeSample: false }])
     }
   }
 
   const updateCartQty = (idx: number, qty: number) => {
     if (qty <= 0) { setCart(prev => prev.filter((_, i) => i !== idx)); return }
-    setCart(prev => prev.map((c, i) => i === idx ? { ...c, quantity: qty, lineTotal: c.unitPrice * qty } : c))
+    setCart(prev => prev.map((c, i) => i === idx ? { ...c, quantity: qty, lineTotal: c.isFreeSample ? 0 : c.unitPrice * qty } : c))
+  }
+
+  const toggleFreeSample = (idx: number) => {
+    setCart(prev => prev.map((c, i) => {
+      if (i !== idx) return c
+      const nowFree = !c.isFreeSample
+      if (nowFree) {
+        return { ...c, isFreeSample: true, unitPrice: 0, lineTotal: 0 }
+      } else {
+        // Restore original selling price from product catalog
+        const original = toNum(products.find(p => p.id === c.inventoryItemId)?.sellingPrice || 0)
+        return { ...c, isFreeSample: false, unitPrice: original, lineTotal: original * c.quantity }
+      }
+    }))
   }
 
   const subtotal = cart.reduce((s, c) => s + c.lineTotal, 0)
@@ -5515,10 +5533,21 @@ function ProductsSection({
         return
       }
     }
-    if (!hasRewardPointsPayment && totalPayments < netAmount) { setError('Payments do not cover the net amount'); return }
+    const allFreeSamples = cart.every(c => c.isFreeSample)
+    if (!allFreeSamples && !hasRewardPointsPayment && totalPayments < netAmount) { setError('Payments do not cover the net amount'); return }
     setSubmitting(true)
     setError('')
     try {
+      // For fully-free-sample orders (netAmount = 0), send a ₱0 CASH payment so the API accepts it
+      const paymentsPayload = allFreeSamples
+        ? [{ method: 'CASH', amount: 0, paymentModeId: null, walletId: null, reference: 'Free sample — marketing' }]
+        : payments.filter(p => toNum(p.amount) > 0 || p.method === 'REWARD_POINTS').map(p => ({
+            method: p.method,
+            paymentModeId: p.paymentModeId || null,
+            amount: p.method === 'REWARD_POINTS' ? rpMonetaryValue : toNum(p.amount),
+            walletId: p.method === 'REWARD_POINTS' ? rpSelectedWallet?.id : null,
+            reference: p.method === 'REWARD_POINTS' ? `${rpPointsToUse} pts from ${rpSelectedWallet?.patientName}${rpCoveragePercent < 1 ? ` (${(rpCoveragePercent * 100).toFixed(0)}% coverage)` : ''}` : null,
+          }))
       const body = {
         orderType: 'PRODUCT',
         branch: 'VERDANA_STORE',
@@ -5529,14 +5558,9 @@ function ProductsSection({
           quantity: c.quantity,
           unitPrice: c.unitPrice,
           lineTotal: c.lineTotal,
+          isFreeSample: !!c.isFreeSample,
         })),
-        payments: payments.filter(p => toNum(p.amount) > 0 || p.method === 'REWARD_POINTS').map(p => ({
-          method: p.method,
-          paymentModeId: p.paymentModeId || null,
-          amount: p.method === 'REWARD_POINTS' ? rpMonetaryValue : toNum(p.amount),
-          walletId: p.method === 'REWARD_POINTS' ? rpSelectedWallet?.id : null,
-          reference: p.method === 'REWARD_POINTS' ? `${rpPointsToUse} pts from ${rpSelectedWallet?.patientName}${rpCoveragePercent < 1 ? ` (${(rpCoveragePercent * 100).toFixed(0)}% coverage)` : ''}` : null,
-        })),
+        payments: paymentsPayload,
         discountType,
         discountAmount,
         discountLabel: discountLabel || null,
@@ -5632,7 +5656,7 @@ function ProductsSection({
         if (existing >= 0) {
           return prev.map((c, i) => i === existing ? { ...c, quantity: c.quantity + 1, lineTotal: c.unitPrice * (c.quantity + 1) } : c)
         }
-        return [...prev, { inventoryItemId: found.id, name: found.name, quantity: 1, unitPrice: price, lineTotal: price }]
+        return [...prev, { inventoryItemId: found.id, name: found.name, quantity: 1, unitPrice: price, lineTotal: price, isFreeSample: false }]
       })
       setBarcodeInput('')
       setScanSuccess(`✓ Added: ${found.name}`)
@@ -5748,17 +5772,39 @@ function ProductsSection({
           ) : (
             <div className="space-y-2">
               {cart.map((c, idx) => (
-                <div key={idx} className="flex items-center justify-between text-sm">
-                  <div className="flex-1 min-w-0">
-                    <p className="truncate" style={{ color: 'var(--charcoal)' }}>{c.name}</p>
-                    <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(c.unitPrice)} each</p>
+                <div key={idx} className={`rounded-xl p-2 space-y-1.5 ${c.isFreeSample ? 'border' : ''}`}
+                  style={c.isFreeSample ? { borderColor: '#d97706', background: '#fffbeb' } : {}}>
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex-1 min-w-0">
+                      <p className="truncate font-medium flex items-center gap-1" style={{ color: 'var(--charcoal)' }}>
+                        {c.isFreeSample && <Gift size={12} style={{ color: '#d97706' }} />}
+                        {c.name}
+                      </p>
+                      <p className="text-xs" style={{ color: c.isFreeSample ? '#d97706' : 'var(--mid-gray)' }}>
+                        {c.isFreeSample ? 'FREE SAMPLE — ₱0' : `${formatCurrency(c.unitPrice)} each`}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 ml-2">
+                      <button onClick={() => updateCartQty(idx, c.quantity - 1)} className="w-6 h-6 rounded-lg border flex items-center justify-center text-xs" style={{ borderColor: 'var(--light-gray)' }}>-</button>
+                      <span className="text-xs w-4 text-center">{c.quantity}</span>
+                      <button onClick={() => updateCartQty(idx, c.quantity + 1)} className="w-6 h-6 rounded-lg border flex items-center justify-center text-xs" style={{ borderColor: 'var(--light-gray)' }}>+</button>
+                      <span className="text-xs font-medium w-16 text-right" style={{ color: c.isFreeSample ? '#d97706' : 'var(--charcoal)' }}>
+                        {c.isFreeSample ? 'FREE' : formatCurrency(c.lineTotal)}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 ml-2">
-                    <button onClick={() => updateCartQty(idx, c.quantity - 1)} className="w-6 h-6 rounded-lg border flex items-center justify-center text-xs" style={{ borderColor: 'var(--light-gray)' }}>-</button>
-                    <span className="text-xs w-4 text-center">{c.quantity}</span>
-                    <button onClick={() => updateCartQty(idx, c.quantity + 1)} className="w-6 h-6 rounded-lg border flex items-center justify-center text-xs" style={{ borderColor: 'var(--light-gray)' }}>+</button>
-                    <span className="text-xs font-medium w-16 text-right" style={{ color: 'var(--charcoal)' }}>{formatCurrency(c.lineTotal)}</span>
-                  </div>
+                  {/* Free Sample toggle */}
+                  <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={!!c.isFreeSample}
+                      onChange={() => toggleFreeSample(idx)}
+                      className="rounded"
+                    />
+                    <span className="text-xs font-medium" style={{ color: '#d97706' }}>
+                      <Gift size={11} className="inline mr-0.5" /> Free Sample (marketing)
+                    </span>
+                  </label>
                 </div>
               ))}
             </div>
