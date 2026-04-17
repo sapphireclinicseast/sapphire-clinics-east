@@ -93,6 +93,38 @@ export async function consumeFifoLots(
 }
 
 /**
+ * Restore inventory using reverse-FIFO: add back to most recently depleted lots first.
+ * Called when a PRODUCT order is voided to undo lot consumption.
+ */
+export async function restoreFifoLots(
+  tx: TxClient,
+  itemId: string,
+  quantityToRestore: number,
+): Promise<void> {
+  // Most recently created / dated lots first (reverse of consumption order)
+  const lots = await tx.inventoryAdjustment.findMany({
+    where: { itemId, type: 'INCREASE' },
+    orderBy: [{ adjustmentDate: 'desc' }, { createdAt: 'desc' }],
+  })
+
+  let remaining = quantityToRestore
+
+  for (const lot of lots) {
+    if (remaining <= 0) break
+    const depleted = lot.quantityChange - (lot.remainingQuantity ?? 0)
+    if (depleted <= 0) continue
+
+    const restore = Math.min(depleted, remaining)
+    await tx.inventoryAdjustment.update({
+      where: { id: lot.id },
+      data: { remainingQuantity: (lot.remainingQuantity ?? 0) + restore },
+    })
+    remaining -= restore
+  }
+  // If remaining > 0 there were no lots to restore into (pre-FIFO data gap) — no-op
+}
+
+/**
  * Recalculate the weighted-average unit cost from remaining FIFO lots.
  * Useful after bulk import or consumption to keep unitCost current.
  */

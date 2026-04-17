@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { restoreFifoLots, recalcWeightedUnitCost } from '@/lib/fifo'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN', 'SBEA_FRONTDESK', 'SBGH_FRONTDESK']
 
@@ -126,6 +127,74 @@ export async function PUT(
                 createdById: session.user.id,
               },
             })
+          } else if (p.method === 'REWARD_POINTS') {
+            // Reward points were deducted → restore them to the wallet
+            // Parse the points from the reference (e.g. "500 pts from PATIENT NAME")
+            const ptsMatch = p.reference?.match(/^(\d+)\s*pts/)
+            const pointsToRestore = ptsMatch ? parseInt(ptsMatch[1]) : 0
+            if (pointsToRestore > 0) {
+              await prisma.digitalWallet.update({
+                where: { id: p.walletId },
+                data: { rewardPoints: { increment: pointsToRestore } },
+              })
+              await prisma.walletLog.create({
+                data: {
+                  walletId: p.walletId,
+                  action: 'VOID_REVERSAL',
+                  description: `Restored ${pointsToRestore} reward points (order voided)`,
+                  createdById: session.user.id,
+                },
+              })
+            }
+          }
+        }
+      }
+
+      // ── Void: restore inventory + delete free-sample journal entries ──
+      if (body.action === 'void' && updated.orderType === 'PRODUCT') {
+        for (const orderItem of updated.items) {
+          if (!orderItem.inventoryItemId) continue
+
+          const invItem = await prisma.inventoryItem.findUnique({
+            where: { id: orderItem.inventoryItemId },
+            include: { bundleComponents: true },
+          })
+          if (!invItem) continue
+
+          const qtyToRestore = orderItem.quantity
+
+          if (invItem.isBundle && invItem.bundleComponents.length > 0) {
+            // Bundle: restore each component's lots + quantity
+            for (const bc of invItem.bundleComponents) {
+              const compQty = bc.quantity * qtyToRestore
+              await restoreFifoLots(prisma, bc.componentId, compQty)
+              await prisma.inventoryItem.update({
+                where: { id: bc.componentId },
+                data: { quantity: { increment: compQty } },
+              })
+              const newCost = await recalcWeightedUnitCost(prisma, bc.componentId)
+              if (newCost > 0) {
+                await prisma.inventoryItem.update({ where: { id: bc.componentId }, data: { unitCost: newCost } })
+              }
+            }
+          } else {
+            // Regular item: restore lots + quantity
+            await restoreFifoLots(prisma, orderItem.inventoryItemId, qtyToRestore)
+            await prisma.inventoryItem.update({
+              where: { id: orderItem.inventoryItemId },
+              data: { quantity: { increment: qtyToRestore } },
+            })
+            const newCost = await recalcWeightedUnitCost(prisma, orderItem.inventoryItemId)
+            if (newCost > 0) {
+              await prisma.inventoryItem.update({ where: { id: orderItem.inventoryItemId }, data: { unitCost: newCost } })
+            }
+          }
+
+          // Delete free-sample marketing expense journal entry
+          if (orderItem.isFreeSample) {
+            await prisma.journalEntry.deleteMany({
+              where: { referenceType: 'FREE_SAMPLE', referenceId: orderItem.id },
+            })
           }
         }
       }
@@ -167,6 +236,9 @@ export async function PUT(
       revenueType,
       referrerId,
       notes,
+      issuedOfficialInvoice,
+      salesInvoiceNumber,
+      referenceNumber,
     } = body
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -182,6 +254,9 @@ export async function PUT(
     if (revenueType !== undefined) data.revenueType = revenueType
     if (referrerId !== undefined) data.referrerId = referrerId || null
     if (notes !== undefined) data.notes = notes || null
+    if (issuedOfficialInvoice !== undefined) data.issuedOfficialInvoice = !!issuedOfficialInvoice
+    if (salesInvoiceNumber !== undefined) data.salesInvoiceNumber = salesInvoiceNumber || null
+    if (referenceNumber !== undefined) data.referenceNumber = referenceNumber || null
 
     // If items are provided, recalculate subtotal and netAmount
     if (items?.length) {
