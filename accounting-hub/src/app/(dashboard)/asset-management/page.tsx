@@ -199,6 +199,9 @@ export default function AssetManagementPage() {
   const [depSettingsForm, setDepSettingsForm] = useState<Record<string, number>>({})
   const [savingDepSettings, setSavingDepSettings] = useState(false)
 
+  // Lightbox
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
+
   // ── Auth guard ───────────────────────────────────────────────
   if (status === 'unauthenticated') redirect('/login')
 
@@ -779,9 +782,20 @@ export default function AssetManagementPage() {
                         {asset.photoUrl && (
                           /\.(jpg|jpeg|png|webp)$/i.test(asset.photoUrl) ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={asset.photoUrl} alt="" className="w-8 h-8 rounded object-cover border border-gray-200" />
+                            <img
+                              src={asset.photoUrl}
+                              alt=""
+                              className="w-8 h-8 rounded object-cover border border-gray-200 cursor-pointer hover:opacity-80 transition-opacity"
+                              onClick={(e) => { e.stopPropagation(); setLightboxUrl(asset.photoUrl) }}
+                            />
                           ) : (
-                            <FileText size={16} className="text-gray-400" />
+                            <button
+                              onClick={(e) => { e.stopPropagation(); window.open(asset.photoUrl!, '_blank') }}
+                              className="text-gray-400 hover:text-teal-600 transition-colors"
+                              title="View PDF"
+                            >
+                              <FileText size={16} />
+                            </button>
                           )
                         )}
                         {asset.name}
@@ -1044,12 +1058,21 @@ export default function AssetManagementPage() {
                     <div className="flex items-center gap-2">
                       {photoPreview ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={photoPreview} alt="Asset preview" className="w-16 h-16 object-cover rounded border border-gray-200" />
+                        <img
+                          src={photoPreview}
+                          alt="Asset preview"
+                          className="w-16 h-16 object-cover rounded border border-gray-200 cursor-pointer hover:opacity-80 transition-opacity"
+                          onClick={() => setLightboxUrl(photoPreview)}
+                          title="Click to enlarge"
+                        />
                       ) : (
-                        <div className="flex items-center gap-1 text-gray-500">
+                        <button
+                          onClick={() => window.open(form.photoUrl, '_blank')}
+                          className="flex items-center gap-1 text-teal-600 hover:text-teal-800 transition-colors"
+                        >
                           <FileText size={20} />
-                          <span className="text-xs">{photoFilename}</span>
-                        </div>
+                          <span className="text-xs underline">{photoFilename}</span>
+                        </button>
                       )}
                       <button onClick={removePhoto} className="text-red-500 hover:text-red-700">
                         <X size={14} />
@@ -1201,6 +1224,29 @@ export default function AssetManagementPage() {
                 Save Settings
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Lightbox ─────────────────────────────────────────── */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <div className="relative max-w-5xl max-h-[90vh] w-full mx-4" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setLightboxUrl(null)}
+              className="absolute -top-10 right-0 text-white hover:text-gray-300 transition-colors"
+            >
+              <X size={28} />
+            </button>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={lightboxUrl}
+              alt="Asset"
+              className="w-full h-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+            />
           </div>
         </div>
       )}
