@@ -630,6 +630,8 @@ model OrderItem {
   lineTotal       Decimal
   cogsCost        Decimal?       // FIFO cost of goods sold for this line item
   isFreeSample    Boolean        @default(false) // Inventory out to marketing expense (8120)
+  variantId       String?        // Which variant was sold (if product has variants)
+  variantLabel    String?        // e.g. "Red / Large"
   createdAt       DateTime       @default(now())
 
   @@index([orderId])

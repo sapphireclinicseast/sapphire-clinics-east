@@ -184,6 +184,13 @@ export async function PUT(
               where: { id: orderItem.inventoryItemId },
               data: { quantity: { increment: qtyToRestore } },
             })
+            // Restore variant stock if applicable
+            if (orderItem.variantId) {
+              await prisma.inventoryVariant.update({
+                where: { id: orderItem.variantId },
+                data: { quantity: { increment: qtyToRestore } },
+              })
+            }
             const newCost = await recalcWeightedUnitCost(prisma, orderItem.inventoryItemId)
             if (newCost > 0) {
               await prisma.inventoryItem.update({ where: { id: orderItem.inventoryItemId }, data: { unitCost: newCost } })

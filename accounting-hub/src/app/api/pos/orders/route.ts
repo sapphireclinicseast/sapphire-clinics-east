@@ -185,6 +185,8 @@ export async function POST(req: Request) {
               unitPrice: number
               lineTotal: number
               isFreeSample?: boolean
+              variantId?: string
+              variantLabel?: string
             }) => ({
               serviceId: item.serviceId || null,
               inventoryItemId: item.inventoryItemId || null,
@@ -193,6 +195,8 @@ export async function POST(req: Request) {
               unitPrice: Number(item.unitPrice),
               lineTotal: Number(item.lineTotal),
               isFreeSample: !!item.isFreeSample,
+              variantId: item.variantId || null,
+              variantLabel: item.variantLabel || null,
             })),
           },
         },
@@ -269,6 +273,13 @@ export async function POST(req: Request) {
             where: { id: item.inventoryItemId },
             data: { quantity: { decrement: orderQty } },
           })
+          // If a specific variant was selected, deduct from variant stock too
+          if (item.variantId) {
+            await prisma.inventoryVariant.update({
+              where: { id: item.variantId },
+              data: { quantity: { decrement: orderQty } },
+            })
+          }
           if (orderItem) {
             if (isFreeSample) {
               // Free sample: FIFO cost → 8120 Marketing Expense journal entry, cogsCost = 0 (not COGS)

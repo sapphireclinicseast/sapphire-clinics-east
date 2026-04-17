@@ -55,6 +55,8 @@ interface OrderLineItem {
   doctorFee?: number
   clinicFee?: number
   isFreeSample?: boolean
+  variantId?: string
+  variantLabel?: string
 }
 
 interface PaymentLine {
@@ -185,6 +187,13 @@ interface StaffMember {
   [key: string]: unknown
 }
 
+interface InventoryVariant {
+  id: string
+  variantType: string
+  variantLabel: string
+  quantity: number
+}
+
 interface InventoryProduct {
   id: string
   name: string
@@ -194,6 +203,7 @@ interface InventoryProduct {
   rewardPointsPrice?: number | null
   unitCost?: string | number
   quantity?: number
+  variants?: InventoryVariant[]
   [key: string]: unknown
 }
 
@@ -5377,6 +5387,10 @@ function ProductsSection({
   const [prodInvoiceNumber, setProdInvoiceNumber] = useState('')
   const [prodReferenceNumber, setProdReferenceNumber] = useState('')
   const [prodNotes, setProdNotes] = useState('')
+  // Variant picker
+  const [variantPickerProduct, setVariantPickerProduct] = useState<InventoryProduct | null>(null)
+  const [selectedVariantId, setSelectedVariantId] = useState<string>('')
+
   // Reward points wallet state
   const [rpWalletSearch, setRpWalletSearch] = useState('')
   const [rpWalletResults, setRpWalletResults] = useState<DigitalWallet[]>([])
@@ -5409,8 +5423,10 @@ function ProductsSection({
     (p.barcode && p.barcode.toLowerCase().includes(productSearch.toLowerCase()))
   )
 
-  const addToCart = (p: InventoryProduct) => {
-    const existing = cart.findIndex(c => c.inventoryItemId === p.id)
+  const addToCart = (p: InventoryProduct, variantId?: string, variantLabel?: string) => {
+    const existing = cart.findIndex(c =>
+      c.inventoryItemId === p.id && c.variantId === (variantId ?? undefined)
+    )
     if (existing >= 0) {
       setCart(prev => prev.map((c, i) => i === existing ? {
         ...c, quantity: c.quantity + 1,
@@ -5418,8 +5434,37 @@ function ProductsSection({
       } : c))
     } else {
       const price = toNum(p.sellingPrice)
-      setCart(prev => [...prev, { inventoryItemId: p.id, name: p.name, quantity: 1, unitPrice: price, lineTotal: price, isFreeSample: false }])
+      setCart(prev => [...prev, {
+        inventoryItemId: p.id,
+        name: p.name,
+        quantity: 1,
+        unitPrice: price,
+        lineTotal: price,
+        isFreeSample: false,
+        variantId: variantId ?? undefined,
+        variantLabel: variantLabel ?? undefined,
+      }])
     }
+  }
+
+  const handleProductClick = (p: InventoryProduct) => {
+    const activeVariants = (p.variants ?? []).filter(v => v.quantity > 0)
+    if (activeVariants.length > 0) {
+      setVariantPickerProduct(p)
+      setSelectedVariantId(activeVariants[0].id)
+    } else {
+      addToCart(p)
+    }
+  }
+
+  const confirmVariantPicker = () => {
+    if (!variantPickerProduct) return
+    const variant = (variantPickerProduct.variants ?? []).find(v => v.id === selectedVariantId)
+    if (!variant) return
+    const label = `${variant.variantType}: ${variant.variantLabel}`
+    addToCart(variantPickerProduct, variant.id, label)
+    setVariantPickerProduct(null)
+    setSelectedVariantId('')
   }
 
   const updateCartQty = (idx: number, qty: number) => {
@@ -5672,6 +5717,7 @@ function ProductsSection({
   }
 
   return (
+    <>
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       {/* Product List */}
       <div className="lg:col-span-2 space-y-4">
@@ -5724,11 +5770,16 @@ function ProductsSection({
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-4">
               {filteredProducts.map(p => (
-                <button key={p.id} onClick={() => addToCart(p)}
+                <button key={p.id} onClick={() => handleProductClick(p)}
                   className="text-left p-3 rounded-xl border hover:shadow-md transition-shadow"
                   style={{ borderColor: 'var(--light-gray)' }}>
                   <p className="text-sm font-medium leading-snug" style={{ color: 'var(--charcoal)' }}>{p.name}</p>
                   {p.sku && <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{p.sku}</p>}
+                  {(p.variants ?? []).filter(v => v.quantity > 0).length > 0 && (
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--teal)' }}>
+                      {(p.variants ?? []).filter(v => v.quantity > 0).length} variant{(p.variants ?? []).filter(v => v.quantity > 0).length > 1 ? 's' : ''}
+                    </p>
+                  )}
                   <p className="text-sm font-bold mt-1" style={{ color: 'var(--teal)' }}>{formatCurrency(toNum(p.sellingPrice))}</p>
                   {p.rewardPointsPrice && (
                     <p className="text-xs mt-0.5 flex items-center gap-1" style={{ color: '#92400e' }}>
@@ -5780,6 +5831,9 @@ function ProductsSection({
                         {c.isFreeSample && <Gift size={12} style={{ color: '#d97706' }} />}
                         {c.name}
                       </p>
+                      {c.variantLabel && (
+                        <p className="text-xs font-medium" style={{ color: 'var(--teal)' }}>{c.variantLabel}</p>
+                      )}
                       <p className="text-xs" style={{ color: c.isFreeSample ? '#d97706' : 'var(--mid-gray)' }}>
                         {c.isFreeSample ? 'FREE SAMPLE — ₱0' : `${formatCurrency(c.unitPrice)} each`}
                       </p>
@@ -6098,6 +6152,62 @@ function ProductsSection({
         </div>
       </div>
     </div>
+
+    {/* ── Variant Picker Modal ─────────────────────────────────── */}
+    {variantPickerProduct && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-semibold" style={{ color: 'var(--charcoal)' }}>Select Variant</h3>
+            <button onClick={() => setVariantPickerProduct(null)} className="p-1 rounded hover:bg-gray-100">
+              <X size={16} />
+            </button>
+          </div>
+          <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>{variantPickerProduct.name}</p>
+          <div className="space-y-2">
+            {(variantPickerProduct.variants ?? []).map(v => (
+              <label key={v.id}
+                className={`flex items-center justify-between px-4 py-3 rounded-xl border cursor-pointer transition-colors ${selectedVariantId === v.id ? 'border-teal-500 bg-teal-50' : ''}`}
+                style={{ borderColor: selectedVariantId === v.id ? 'var(--teal)' : 'var(--light-gray)' }}>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="radio"
+                    name="variant"
+                    value={v.id}
+                    checked={selectedVariantId === v.id}
+                    onChange={() => setSelectedVariantId(v.id)}
+                    disabled={v.quantity <= 0}
+                    className="accent-teal-600"
+                  />
+                  <div>
+                    <p className={`text-sm font-medium ${v.quantity <= 0 ? 'text-gray-400' : ''}`} style={v.quantity > 0 ? { color: 'var(--charcoal)' } : {}}>
+                      {v.variantType}: {v.variantLabel}
+                    </p>
+                    <p className="text-xs" style={{ color: v.quantity > 0 ? 'var(--mid-gray)' : '#ef4444' }}>
+                      {v.quantity > 0 ? `${v.quantity} in stock` : 'Out of stock'}
+                    </p>
+                  </div>
+                </div>
+              </label>
+            ))}
+          </div>
+          <div className="flex gap-2 pt-2">
+            <button onClick={() => setVariantPickerProduct(null)}
+              className="flex-1 py-2.5 rounded-xl border text-sm font-medium" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+              Cancel
+            </button>
+            <button
+              onClick={confirmVariantPicker}
+              disabled={!selectedVariantId || (variantPickerProduct.variants ?? []).find(v => v.id === selectedVariantId)?.quantity === 0}
+              className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+              style={{ background: 'var(--teal)' }}>
+              Add to Cart
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }
 
