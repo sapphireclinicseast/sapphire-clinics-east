@@ -5727,7 +5727,7 @@ function ProductsSection({
                 <button key={p.id} onClick={() => addToCart(p)}
                   className="text-left p-3 rounded-xl border hover:shadow-md transition-shadow"
                   style={{ borderColor: 'var(--light-gray)' }}>
-                  <p className="text-sm font-medium truncate" style={{ color: 'var(--charcoal)' }}>{p.name}</p>
+                  <p className="text-sm font-medium leading-snug" style={{ color: 'var(--charcoal)' }}>{p.name}</p>
                   {p.sku && <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{p.sku}</p>}
                   <p className="text-sm font-bold mt-1" style={{ color: 'var(--teal)' }}>{formatCurrency(toNum(p.sellingPrice))}</p>
                   {p.rewardPointsPrice && (
