@@ -13,6 +13,11 @@ import {
   Building2,
   FileText,
   Settings2,
+  Search,
+  ChevronUp,
+  ChevronDown,
+  ChevronsUpDown,
+  Filter,
 } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────
@@ -176,6 +181,17 @@ export default function AssetManagementPage() {
 
   // Supplier search
   const [supplierSearch, setSupplierSearch] = useState('')
+
+  // Search & sort & column filters
+  const [search, setSearch] = useState('')
+  type SortKey = 'name' | 'classification' | 'branch' | 'totalAmount' | 'monthlyDepreciation' | 'depreciationEndDate' | 'utilized' | 'controlNumber'
+  const [sortKey, setSortKey] = useState<SortKey>('name')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  type ColFilters = {
+    name: string; classification: string; branch: string; utilized: string;
+  }
+  const [colFilters, setColFilters] = useState<ColFilters>({ name: '', classification: '', branch: '', utilized: '' })
+  const [openFilterCol, setOpenFilterCol] = useState<string | null>(null)
 
   // Depreciation defaults (classification → years)
   const [depDefaults, setDepDefaults] = useState<Record<string, number>>({})
@@ -445,6 +461,39 @@ export default function AssetManagementPage() {
     ? suppliers.filter((s) => s.supplierName.toLowerCase().includes(supplierSearch.toLowerCase()))
     : suppliers
 
+  // ── Sort + filter helpers ─────────────────────────────────────
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    else { setSortKey(key); setSortDir('asc') }
+    setOpenFilterCol(null)
+  }
+
+  const displayedAssets = assets
+    .filter((a) => {
+      const q = search.toLowerCase()
+      if (q && ![a.name, a.classification, classificationLabel(a.classification), branchLabel(a.branch), a.controlNumber ?? '', a.remarks ?? ''].some((v) => v.toLowerCase().includes(q))) return false
+      if (colFilters.name && !a.name.toLowerCase().includes(colFilters.name.toLowerCase())) return false
+      if (colFilters.classification && a.classification !== colFilters.classification) return false
+      if (colFilters.branch && a.branch !== colFilters.branch) return false
+      if (colFilters.utilized === 'yes' && !a.utilized) return false
+      if (colFilters.utilized === 'no' && a.utilized) return false
+      return true
+    })
+    .sort((a, b) => {
+      let av: string | number = '', bv: string | number = ''
+      if (sortKey === 'name') { av = a.name.toLowerCase(); bv = b.name.toLowerCase() }
+      else if (sortKey === 'classification') { av = a.classification; bv = b.classification }
+      else if (sortKey === 'branch') { av = a.branch; bv = b.branch }
+      else if (sortKey === 'totalAmount') { av = a.totalAmount; bv = b.totalAmount }
+      else if (sortKey === 'monthlyDepreciation') { av = a.monthlyDepreciation; bv = b.monthlyDepreciation }
+      else if (sortKey === 'depreciationEndDate') { av = a.depreciationEndDate; bv = b.depreciationEndDate }
+      else if (sortKey === 'utilized') { av = a.utilized ? 1 : 0; bv = b.utilized ? 1 : 0 }
+      else if (sortKey === 'controlNumber') { av = (a.controlNumber ?? '').toLowerCase(); bv = (b.controlNumber ?? '').toLowerCase() }
+      if (av < bv) return sortDir === 'asc' ? -1 : 1
+      if (av > bv) return sortDir === 'asc' ? 1 : -1
+      return 0
+    })
+
   // ── Render ────────────────────────────────────────────────────
   return (
     <div className="p-6 max-w-screen-xl mx-auto space-y-6">
@@ -485,7 +534,24 @@ export default function AssetManagementPage() {
       )}
 
       {/* Filter bar */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
+        {/* Global search */}
+        <div className="relative">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search assets…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9 pr-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 w-56"
+          />
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <X size={13} />
+            </button>
+          )}
+        </div>
+
         {!isBranchRestricted && (
           <div>
             <label className="text-xs font-medium text-gray-500 mr-2">Branch</label>
@@ -506,6 +572,39 @@ export default function AssetManagementPage() {
             Showing: <strong>{branchLabel(userBranch)}</strong>
           </span>
         )}
+
+        {/* Active filter chips */}
+        {(colFilters.name || colFilters.classification || colFilters.branch || colFilters.utilized) && (
+          <div className="flex items-center gap-2 flex-wrap">
+            {colFilters.name && (
+              <span className="inline-flex items-center gap-1 bg-teal-50 text-teal-700 border border-teal-200 rounded-full px-2.5 py-0.5 text-xs">
+                Name: {colFilters.name}
+                <button onClick={() => setColFilters(f => ({ ...f, name: '' }))}><X size={10} /></button>
+              </span>
+            )}
+            {colFilters.classification && (
+              <span className="inline-flex items-center gap-1 bg-teal-50 text-teal-700 border border-teal-200 rounded-full px-2.5 py-0.5 text-xs">
+                Class: {classificationLabel(colFilters.classification)}
+                <button onClick={() => setColFilters(f => ({ ...f, classification: '' }))}><X size={10} /></button>
+              </span>
+            )}
+            {colFilters.branch && (
+              <span className="inline-flex items-center gap-1 bg-teal-50 text-teal-700 border border-teal-200 rounded-full px-2.5 py-0.5 text-xs">
+                Branch: {branchLabel(colFilters.branch)}
+                <button onClick={() => setColFilters(f => ({ ...f, branch: '' }))}><X size={10} /></button>
+              </span>
+            )}
+            {colFilters.utilized && (
+              <span className="inline-flex items-center gap-1 bg-teal-50 text-teal-700 border border-teal-200 rounded-full px-2.5 py-0.5 text-xs">
+                Utilized: {colFilters.utilized === 'yes' ? 'Yes' : 'No'}
+                <button onClick={() => setColFilters(f => ({ ...f, utilized: '' }))}><X size={10} /></button>
+              </span>
+            )}
+            <button onClick={() => setColFilters({ name: '', classification: '', branch: '', utilized: '' })} className="text-xs text-gray-500 hover:text-red-600 underline">
+              Clear all
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Table */}
@@ -521,18 +620,145 @@ export default function AssetManagementPage() {
             <p>No assets found.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" onClick={() => setOpenFilterCol(null)}>
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Asset Name</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Classification</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Branch</th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Total Amount</th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Monthly Depr.</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">End Date</th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Utilized</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Control No.</th>
+
+                  {/* ── Asset Name ── */}
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    <div className="flex items-center gap-1">
+                      <button className="flex items-center gap-1 hover:text-gray-800" onClick={(e) => { e.stopPropagation(); toggleSort('name') }}>
+                        Asset Name
+                        {sortKey === 'name' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
+                      </button>
+                      <div className="relative" onClick={(e) => e.stopPropagation()}>
+                        <button onClick={() => setOpenFilterCol(openFilterCol === 'name' ? null : 'name')}
+                          className={`p-0.5 rounded hover:bg-gray-200 ${colFilters.name ? 'text-teal-600' : 'text-gray-400'}`}>
+                          <Filter size={11} />
+                        </button>
+                        {openFilterCol === 'name' && (
+                          <div className="absolute top-full left-0 mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg p-2 w-48">
+                            <input autoFocus type="text" placeholder="Filter name…" value={colFilters.name}
+                              onChange={(e) => setColFilters(f => ({ ...f, name: e.target.value }))}
+                              className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-teal-500" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </th>
+
+                  {/* ── Classification ── */}
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    <div className="flex items-center gap-1">
+                      <button className="flex items-center gap-1 hover:text-gray-800" onClick={(e) => { e.stopPropagation(); toggleSort('classification') }}>
+                        Classification
+                        {sortKey === 'classification' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
+                      </button>
+                      <div className="relative" onClick={(e) => e.stopPropagation()}>
+                        <button onClick={() => setOpenFilterCol(openFilterCol === 'classification' ? null : 'classification')}
+                          className={`p-0.5 rounded hover:bg-gray-200 ${colFilters.classification ? 'text-teal-600' : 'text-gray-400'}`}>
+                          <Filter size={11} />
+                        </button>
+                        {openFilterCol === 'classification' && (
+                          <div className="absolute top-full left-0 mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg p-2 w-56">
+                            <select value={colFilters.classification}
+                              onChange={(e) => setColFilters(f => ({ ...f, classification: e.target.value }))}
+                              className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-teal-500">
+                              <option value="">All</option>
+                              {CLASSIFICATION_OPTIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </th>
+
+                  {/* ── Branch ── */}
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    <div className="flex items-center gap-1">
+                      <button className="flex items-center gap-1 hover:text-gray-800" onClick={(e) => { e.stopPropagation(); toggleSort('branch') }}>
+                        Branch
+                        {sortKey === 'branch' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
+                      </button>
+                      <div className="relative" onClick={(e) => e.stopPropagation()}>
+                        <button onClick={() => setOpenFilterCol(openFilterCol === 'branch' ? null : 'branch')}
+                          className={`p-0.5 rounded hover:bg-gray-200 ${colFilters.branch ? 'text-teal-600' : 'text-gray-400'}`}>
+                          <Filter size={11} />
+                        </button>
+                        {openFilterCol === 'branch' && (
+                          <div className="absolute top-full left-0 mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg p-2 w-48">
+                            <select value={colFilters.branch}
+                              onChange={(e) => setColFilters(f => ({ ...f, branch: e.target.value }))}
+                              className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-teal-500">
+                              <option value="">All</option>
+                              {BRANCH_OPTIONS.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </th>
+
+                  {/* ── Total Amount ── */}
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    <button className="flex items-center gap-1 ml-auto hover:text-gray-800" onClick={() => toggleSort('totalAmount')}>
+                      {sortKey === 'totalAmount' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
+                      Total Amount
+                    </button>
+                  </th>
+
+                  {/* ── Monthly Depr. ── */}
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    <button className="flex items-center gap-1 ml-auto hover:text-gray-800" onClick={() => toggleSort('monthlyDepreciation')}>
+                      {sortKey === 'monthlyDepreciation' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
+                      Monthly Depr.
+                    </button>
+                  </th>
+
+                  {/* ── End Date ── */}
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    <button className="flex items-center gap-1 hover:text-gray-800" onClick={() => toggleSort('depreciationEndDate')}>
+                      End Date
+                      {sortKey === 'depreciationEndDate' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
+                    </button>
+                  </th>
+
+                  {/* ── Utilized ── */}
+                  <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    <div className="flex items-center justify-center gap-1">
+                      <button className="flex items-center gap-1 hover:text-gray-800" onClick={(e) => { e.stopPropagation(); toggleSort('utilized') }}>
+                        Utilized
+                        {sortKey === 'utilized' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
+                      </button>
+                      <div className="relative" onClick={(e) => e.stopPropagation()}>
+                        <button onClick={() => setOpenFilterCol(openFilterCol === 'utilized' ? null : 'utilized')}
+                          className={`p-0.5 rounded hover:bg-gray-200 ${colFilters.utilized ? 'text-teal-600' : 'text-gray-400'}`}>
+                          <Filter size={11} />
+                        </button>
+                        {openFilterCol === 'utilized' && (
+                          <div className="absolute top-full left-0 mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg p-2 w-32">
+                            <select value={colFilters.utilized}
+                              onChange={(e) => setColFilters(f => ({ ...f, utilized: e.target.value }))}
+                              className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-teal-500">
+                              <option value="">All</option>
+                              <option value="yes">Yes</option>
+                              <option value="no">No</option>
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </th>
+
+                  {/* ── Control No. ── */}
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    <button className="flex items-center gap-1 hover:text-gray-800" onClick={() => toggleSort('controlNumber')}>
+                      Control No.
+                      {sortKey === 'controlNumber' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
+                    </button>
+                  </th>
+
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Departments</th>
                   {canWrite && (
                     <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
@@ -540,7 +766,13 @@ export default function AssetManagementPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {assets.map((asset) => (
+                {displayedAssets.length === 0 ? (
+                  <tr>
+                    <td colSpan={canWrite ? 10 : 9} className="text-center py-10 text-gray-400 text-sm">
+                      No assets match your search or filters.
+                    </td>
+                  </tr>
+                ) : displayedAssets.map((asset) => (
                   <tr key={asset.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3 font-medium text-gray-900">
                       <div className="flex items-center gap-2">
@@ -801,8 +1033,9 @@ export default function AssetManagementPage() {
                     {uploading ? 'Uploading…' : 'Upload file'}
                     <input
                       type="file"
-                      accept="image/jpeg,image/png,application/pdf"
+                      accept="image/jpeg,image/png,image/webp,application/pdf"
                       className="hidden"
+                      key={form.photoUrl || 'empty'}
                       onChange={handlePhotoUpload}
                       disabled={uploading}
                     />
