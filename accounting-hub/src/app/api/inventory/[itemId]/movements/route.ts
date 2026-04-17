@@ -48,7 +48,10 @@ export async function GET(
     }),
 
     prisma.orderItem.findMany({
-      where: { inventoryItemId: itemId },
+      where: {
+        inventoryItemId: itemId,
+        order: { status: { not: 'VOIDED' } },
+      },
       select: {
         id: true,
         name: true,
