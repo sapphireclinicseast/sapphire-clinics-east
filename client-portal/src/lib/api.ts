@@ -55,9 +55,16 @@ export function listTherapists(branch: string, department: string) {
   return jsonFetch<{ therapists: Therapist[] }>(`/therapists?${qs}`)
 }
 
-export function listAvailableSlots(branch: string, department: string, from: string, to: string) {
-  const qs = new URLSearchParams({ branch, department, from, to }).toString()
-  return jsonFetch<{ slots: AvailableSlot[] }>(`/available-slots?${qs}`)
+export function listAvailableSlots(
+  branch: string,
+  department: string,
+  from: string,
+  to: string,
+  staffId?: string,
+) {
+  const qs = new URLSearchParams({ branch, department, from, to })
+  if (staffId) qs.set('staffId', staffId)
+  return jsonFetch<{ slots: AvailableSlot[] }>(`/available-slots?${qs.toString()}`)
 }
 
 export function lookupPatient(email: string, lastName: string) {

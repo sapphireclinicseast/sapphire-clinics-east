@@ -69,16 +69,16 @@ function BookSlotsPage() {
     return () => { cancelled = true }
   }, [branch, department])
 
-  // Load slots when therapist or week changes.
+  // Load slots when therapist or week changes. The endpoint now uses the
+  // Decking Module's work-hours + capacity logic, and staff-filters server-side.
   const loadSlots = useCallback(async () => {
     if (!selectedTherapist) return
     setLoadingSlots(true); setErr(null)
     try {
       const from = fmtYMD(weekStart)
       const to = fmtYMD(addDays(weekStart, 6))
-      const r = await listAvailableSlots(branch, department, from, to)
-      const filtered = r.slots.filter((s) => s.staffId === selectedTherapist.id)
-      setSlots(filtered)
+      const r = await listAvailableSlots(branch, department, from, to, selectedTherapist.id)
+      setSlots(r.slots)
     } catch (e) { setErr((e as Error).message) } finally { setLoadingSlots(false) }
   }, [branch, department, weekStart, selectedTherapist])
 
