@@ -262,8 +262,12 @@ jobs:
             echo "→ Pulling latest accounting-hub code..."
             cd "$ACCT_DIR"
             git fetch origin main
-            git reset --hard origin/main
-            echo "   Repo is now at: $(git log -1 --oneline)"
+            # Only update the accounting-hub/ subtree; preserve any in-flight edits
+            # to the marketing hub (src/, prisma/, etc.) living at the repo root.
+            # A blanket `git reset --hard origin/main` would discard them.
+            git checkout origin/main -- accounting-hub/
+            git checkout origin/main -- .github/ scripts/ 2>/dev/null || true
+            echo "   accounting-hub/ synced to: $(git log -1 --oneline origin/main -- accounting-hub/)"
 
             echo "→ Running DB migrations on accounting_db..."
             MIGRATION_DIR="$ACCT_DIR/accounting-hub/prisma/migrations"
