@@ -72,6 +72,15 @@ export function registerPatient(payload: {
   lastName: string
   email: string
   phone?: string
+  dob?: string
+  sex?: string
+  address?: string
+  city?: string
+  civilStatus?: string
+  religion?: string
+  nationality?: string
+  diagnosis?: string
+  pwdSeniorId?: string
   branch: 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS'
   patientType: 'PEDIATRIC' | 'ADULT'
 }) {
@@ -81,16 +90,20 @@ export function registerPatient(payload: {
   })
 }
 
-export function createBooking(payload: {
-  token: string
+export interface SlotChoice {
   staffId: string
-  branch: string
-  department: string
   date: string
   startTime: string
   endTime: string
+}
+
+export function createBooking(payload: {
+  token: string
+  branch: string
+  department: string
   isTeletherapy: boolean
   notes?: string
+  choices: SlotChoice[] // 1-3 choices
 }) {
   return jsonFetch<{ booking: { id: string; status: BookingStatus } }>(`/bookings`, {
     method: 'POST',

@@ -2,9 +2,17 @@
 
 // Self-contained Pending Patient Requests panel, rendered above the Decking
 // weekly grid. Pulls from /api/decking/bookings and exposes Approve, Reject,
-// Send-Email actions. Keeps integration with DeckingClient.tsx minimal.
+// Send-Email actions. Supports up to 3 slot choices per request.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+
+interface AltChoice {
+  staffId: string
+  date: string
+  startTime: string
+  endTime: string
+  initials: string
+}
 
 interface BookingRow {
   id: string
@@ -19,6 +27,7 @@ interface BookingRow {
   notes: string | null
   rejectionReason: string | null
   downpayment: string | number | null
+  alternateChoices: AltChoice[] | null
   patient: { id: string; firstName: string; lastName: string; email: string | null; phone: string | null }
   staff: { id: string; firstName: string; lastName: string; department: string; branch: string }
   payment: { status: string; amount: number | string; paidAt: string | null } | null
@@ -36,18 +45,13 @@ export default function PatientRequestsPanel({ branch }: Props) {
   const [expanded, setExpanded] = useState(true)
 
   const load = useCallback(async () => {
-    setLoading(true)
-    setErr(null)
+    setLoading(true); setErr(null)
     try {
       const r = await fetch(`/api/decking/bookings?branch=${branch}`)
       const data = await r.json()
       if (!r.ok) throw new Error(data.error || 'Failed to load')
       setBookings(data.bookings as BookingRow[])
-    } catch (e) {
-      setErr((e as Error).message)
-    } finally {
-      setLoading(false)
-    }
+    } catch (e) { setErr((e as Error).message) } finally { setLoading(false) }
   }, [branch])
 
   useEffect(() => { load() }, [load])
@@ -56,19 +60,20 @@ export default function PatientRequestsPanel({ branch }: Props) {
   const approved = useMemo(() => bookings.filter((b) => b.status === 'APPROVED'), [bookings])
   const paid = useMemo(() => bookings.filter((b) => b.status === 'PAID'), [bookings])
 
-  async function approve(id: string) {
-    if (!confirm('Approve this booking and send payment email?')) return
+  async function approve(id: string, choiceIndex: number) {
+    const label = choiceIndex === 0 ? '1st choice' : `choice #${choiceIndex + 1}`
+    if (!confirm(`Approve this booking using the patient's ${label}?`)) return
     setBusy(id)
     try {
-      const r = await fetch(`/api/decking/bookings/${id}/approve`, { method: 'POST' })
+      const r = await fetch(`/api/decking/bookings/${id}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ choiceIndex }),
+      })
       const data = await r.json()
       if (!r.ok) throw new Error(data.error || 'Approve failed')
       await load()
-    } catch (e) {
-      alert('Error: ' + (e as Error).message)
-    } finally {
-      setBusy(null)
-    }
+    } catch (e) { alert('Error: ' + (e as Error).message) } finally { setBusy(null) }
   }
 
   async function reject(id: string) {
@@ -84,11 +89,7 @@ export default function PatientRequestsPanel({ branch }: Props) {
       const data = await r.json()
       if (!r.ok) throw new Error(data.error || 'Reject failed')
       await load()
-    } catch (e) {
-      alert('Error: ' + (e as Error).message)
-    } finally {
-      setBusy(null)
-    }
+    } catch (e) { alert('Error: ' + (e as Error).message) } finally { setBusy(null) }
   }
 
   async function resend(id: string) {
@@ -98,72 +99,100 @@ export default function PatientRequestsPanel({ branch }: Props) {
       const data = await r.json()
       if (!r.ok) throw new Error(data.error || 'Send failed')
       alert('Payment email sent.')
-    } catch (e) {
-      alert('Error: ' + (e as Error).message)
-    } finally {
-      setBusy(null)
-    }
+    } catch (e) { alert('Error: ' + (e as Error).message) } finally { setBusy(null) }
   }
 
   const sectionRows = (rows: BookingRow[], showActions: 'pending' | 'approved' | 'paid') => (
     <div className="space-y-2">
-      {rows.length === 0 && (
-        <div className="text-sm text-gray-500 italic px-2 py-1">None</div>
-      )}
-      {rows.map((b) => (
-        <div
-          key={b.id}
-          className="flex items-center justify-between gap-4 bg-white border rounded-lg px-3 py-2 text-sm"
-        >
-          <div className="flex-1 min-w-0">
-            <div className="font-medium truncate">
-              {b.patient.firstName} {b.patient.lastName}
-              <span className="text-gray-500 font-normal"> · {b.department}</span>
-              {b.isTeletherapy && (
-                <span className="ml-2 text-xs bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded">tele</span>
-              )}
+      {rows.length === 0 && <div className="text-sm text-gray-500 italic px-2 py-1">None</div>}
+      {rows.map((b) => {
+        const alts = b.alternateChoices ?? []
+        const allChoices = [
+          { staffId: b.staff.id, date: b.date, startTime: b.startTime, endTime: b.endTime, initials: `${b.staff.firstName?.[0] ?? '?'}${b.staff.lastName?.[0] ?? '?'}`.toUpperCase() },
+          ...alts,
+        ]
+        return (
+          <div key={b.id} className="bg-white border rounded-lg px-3 py-2 text-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="font-medium truncate">
+                  {b.patient.firstName} {b.patient.lastName}
+                  <span className="text-gray-500 font-normal"> · {b.department}</span>
+                  {b.isTeletherapy && (
+                    <span className="ml-2 text-xs bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded">tele</span>
+                  )}
+                </div>
+                <div className="text-xs text-gray-600">
+                  {b.patient.email && <span>{b.patient.email}</span>}
+                  {b.patient.phone && <span className="ml-2">· {b.patient.phone}</span>}
+                </div>
+                {b.notes && <div className="text-xs text-gray-500 mt-0.5 italic">&ldquo;{b.notes}&rdquo;</div>}
+              </div>
+              <div className="shrink-0 flex items-center gap-2">
+                {showActions === 'approved' && (
+                  <>
+                    <span className="text-xs text-amber-700 bg-amber-100 px-2 py-0.5 rounded">
+                      Awaiting payment{b.downpayment ? ` · ₱${Number(b.downpayment).toLocaleString()}` : ''}
+                    </span>
+                    <button
+                      className="px-3 py-1 rounded border text-xs font-medium disabled:opacity-50"
+                      disabled={busy === b.id}
+                      onClick={() => resend(b.id)}
+                    >Send Email</button>
+                  </>
+                )}
+                {showActions === 'paid' && (
+                  <span className="text-xs text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                    💰 Paid Downpayment{b.payment?.amount ? ` · ₱${Number(b.payment.amount).toLocaleString()}` : ''}
+                  </span>
+                )}
+                {showActions === 'pending' && (
+                  <button
+                    className="px-3 py-1 rounded bg-rose-500 text-white text-xs font-medium disabled:opacity-50"
+                    disabled={busy === b.id}
+                    onClick={() => reject(b.id)}
+                  >Reject</button>
+                )}
+              </div>
             </div>
-            <div className="text-xs text-gray-600">
-              {b.date} · {b.startTime}–{b.endTime} · {b.staff.firstName?.[0]}{b.staff.lastName?.[0]}
-              {b.patient.email && <span className="ml-2">· {b.patient.email}</span>}
-            </div>
-            {b.notes && <div className="text-xs text-gray-500 mt-0.5 italic">&ldquo;{b.notes}&rdquo;</div>}
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
+
+            {/* Choices list (only for pending) */}
             {showActions === 'pending' && (
-              <>
-                <button
-                  className="px-3 py-1 rounded bg-emerald-600 text-white text-xs font-medium disabled:opacity-50"
-                  disabled={busy === b.id}
-                  onClick={() => approve(b.id)}
-                >Approve</button>
-                <button
-                  className="px-3 py-1 rounded bg-rose-500 text-white text-xs font-medium disabled:opacity-50"
-                  disabled={busy === b.id}
-                  onClick={() => reject(b.id)}
-                >Reject</button>
-              </>
+              <div className="mt-2 space-y-1.5">
+                {allChoices.map((c, idx) => {
+                  const label = idx === 0 ? '1st' : idx === 1 ? '2nd' : '3rd'
+                  return (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between gap-3 px-2 py-1.5 rounded border border-dashed border-gray-200 bg-slate-50"
+                    >
+                      <div className="flex items-center gap-2 text-xs text-gray-700">
+                        <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-bold ${
+                          idx === 0 ? 'bg-emerald-600 text-white' : idx === 1 ? 'bg-amber-500 text-white' : 'bg-slate-400 text-white'
+                        }`}>{label}</span>
+                        <span className="font-mono">{c.date} · {c.startTime}–{c.endTime}</span>
+                        <span className="text-gray-500">with {c.initials}</span>
+                      </div>
+                      <button
+                        className="px-2.5 py-1 rounded bg-emerald-600 text-white text-xs font-medium disabled:opacity-50"
+                        disabled={busy === b.id}
+                        onClick={() => approve(b.id, idx)}
+                      >Approve this</button>
+                    </div>
+                  )
+                })}
+              </div>
             )}
-            {showActions === 'approved' && (
-              <>
-                <span className="text-xs text-amber-700 bg-amber-100 px-2 py-0.5 rounded">
-                  Awaiting payment{b.downpayment ? ` · ₱${Number(b.downpayment).toLocaleString()}` : ''}
-                </span>
-                <button
-                  className="px-3 py-1 rounded border text-xs font-medium disabled:opacity-50"
-                  disabled={busy === b.id}
-                  onClick={() => resend(b.id)}
-                >Send Email</button>
-              </>
-            )}
-            {showActions === 'paid' && (
-              <span className="text-xs text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
-                💰 Paid Downpayment{b.payment?.amount ? ` · ₱${Number(b.payment.amount).toLocaleString()}` : ''}
-              </span>
+
+            {/* Show the approved choice for non-pending rows */}
+            {showActions !== 'pending' && (
+              <div className="text-xs text-gray-600 mt-1">
+                {b.date} · {b.startTime}–{b.endTime} · with {b.staff.firstName?.[0]}{b.staff.lastName?.[0]}
+              </div>
             )}
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 

@@ -21,6 +21,13 @@ export async function POST(
   const { id } = await params
   const userId = (session.user as { id?: string } | undefined)?.id ?? null
 
+  // Optional: { choiceIndex: 0 | 1 | 2 } — 0 = primary, 1/2 = alternates
+  const body = (await req.json().catch(() => ({}))) as { choiceIndex?: number }
+  const pickedIndex =
+    typeof body.choiceIndex === 'number' && body.choiceIndex >= 0 && body.choiceIndex <= 2
+      ? body.choiceIndex
+      : 0
+
   const booking = await prisma.patientBooking.findUnique({
     where: { id },
     include: {
@@ -37,28 +44,65 @@ export async function POST(
     )
   }
 
-  const downpaymentPhp = getDownpayment(booking.branch, booking.department)
+  // If the front desk picked an alternate, promote it to the primary slot.
+  let activeBooking = booking
+  if (pickedIndex > 0) {
+    const alts = (activeBooking.alternateChoices as Array<{
+      staffId: string
+      date: string
+      startTime: string
+      endTime: string
+    }> | null) ?? []
+    const pick = alts[pickedIndex - 1]
+    if (!pick) {
+      return NextResponse.json({ error: `Alternate choice #${pickedIndex} not found` }, { status: 400 })
+    }
+    // Re-fetch staff for picked alternate (may differ from original primary staff).
+    const pickedStaff = await prisma.staff.findUnique({
+      where: { id: pick.staffId },
+      select: { firstName: true, lastName: true },
+    })
+    activeBooking = await prisma.patientBooking.update({
+      where: { id },
+      data: {
+        staffId: pick.staffId,
+        date: new Date(`${pick.date}T00:00:00.000Z`),
+        startTime: pick.startTime,
+        endTime: pick.endTime,
+      },
+      include: {
+        patient: { select: { firstName: true, lastName: true, email: true } },
+        staff: { select: { firstName: true, lastName: true } },
+        payment: true,
+      },
+    })
+    if (pickedStaff) {
+      activeBooking.staff = pickedStaff as typeof activeBooking.staff
+    }
+  }
+
+  const downpaymentPhp = getDownpayment(activeBooking.branch, activeBooking.department)
 
   // Generate Jitsi link if teletherapy (only now, so it's fresh per appointment)
-  const meetLink = booking.isTeletherapy
+  const meetLink = activeBooking.isTeletherapy
     ? generateMeetLink(
-        `${booking.staff.firstName} ${booking.staff.lastName}`,
-        `${booking.patient.firstName} ${booking.patient.lastName}`,
-        booking.date.toISOString().slice(0, 10),
+        `${activeBooking.staff.firstName} ${activeBooking.staff.lastName}`,
+        `${activeBooking.patient.firstName} ${activeBooking.patient.lastName}`,
+        activeBooking.date.toISOString().slice(0, 10),
       )
     : null
 
   // Create PayMongo link if there's a downpayment due and none exists yet
-  let payment = booking.payment
+  let payment = activeBooking.payment
   if (downpaymentPhp > 0 && !payment) {
     const link = await createPaymongoLink({
       amountPhp: downpaymentPhp,
-      description: `Sapphire Clinics ${booking.branch} — ${booking.department} downpayment (${booking.date.toISOString().slice(0, 10)} ${booking.startTime})`,
-      remarks: `Booking ${booking.id} — ${booking.patient.firstName} ${booking.patient.lastName}`,
+      description: `Sapphire Clinics ${activeBooking.branch} — ${activeBooking.department} downpayment (${activeBooking.date.toISOString().slice(0, 10)} ${activeBooking.startTime})`,
+      remarks: `Booking ${activeBooking.id} — ${activeBooking.patient.firstName} ${activeBooking.patient.lastName}`,
     })
     payment = await prisma.patientPayment.create({
       data: {
-        bookingId: booking.id,
+        bookingId: activeBooking.id,
         amount: downpaymentPhp,
         currency: 'PHP',
         paymongoLinkId: link.id,
@@ -81,21 +125,21 @@ export async function POST(
   })
 
   // Email the patient. Non-fatal on failure so the approve action still succeeds.
-  if (booking.patient.email && payment?.checkoutUrl) {
+  if (activeBooking.patient.email && payment?.checkoutUrl) {
     try {
       const { subject, html } = renderApprovalEmail({
-        firstName: booking.patient.firstName,
-        branch: booking.branch,
-        department: booking.department,
-        date: booking.date.toDateString(),
-        startTime: booking.startTime,
-        endTime: booking.endTime,
+        firstName: activeBooking.patient.firstName,
+        branch: activeBooking.branch,
+        department: activeBooking.department,
+        date: activeBooking.date.toDateString(),
+        startTime: activeBooking.startTime,
+        endTime: activeBooking.endTime,
         downpaymentPhp,
         payUrl: payment.checkoutUrl,
         meetLink,
       })
       await sendTransactionalEmail({
-        to: booking.patient.email,
+        to: activeBooking.patient.email,
         subject,
         html,
       })

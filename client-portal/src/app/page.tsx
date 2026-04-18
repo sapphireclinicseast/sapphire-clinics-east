@@ -13,9 +13,7 @@ export default function HomePage() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (getSession()) router.push('/book')
-  }, [router])
+  useEffect(() => { if (getSession()) router.push('/book') }, [router])
 
   async function handleReturning(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -31,12 +29,22 @@ export default function HomePage() {
     e.preventDefault()
     setBusy(true); setErr(null)
     const f = new FormData(e.currentTarget)
+    const get = (k: string) => String(f.get(k) ?? '').trim() || undefined
     try {
       const res = await registerPatient({
         firstName: String(f.get('firstName')),
         lastName: String(f.get('lastName')),
         email: String(f.get('email')),
-        phone: String(f.get('phone') ?? '') || undefined,
+        phone: get('phone'),
+        dob: get('dob'),
+        sex: get('sex'),
+        address: get('address'),
+        city: get('city'),
+        civilStatus: get('civilStatus'),
+        religion: get('religion'),
+        nationality: get('nationality'),
+        diagnosis: get('diagnosis'),
+        pwdSeniorId: get('pwdSeniorId'),
         branch: f.get('branch') as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS',
         patientType: f.get('patientType') as 'PEDIATRIC' | 'ADULT',
       })
@@ -47,7 +55,7 @@ export default function HomePage() {
   return (
     <div className="grid md:grid-cols-5 gap-8 md:gap-10 items-start">
       {/* Hero */}
-      <section className="md:col-span-2 animate-fade-up">
+      <section className="md:col-span-2 animate-fade-up md:sticky md:top-24">
         <div className="hero-gradient rounded-3xl p-8 md:p-9 relative">
           <div className="relative z-10">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 backdrop-blur-sm text-[11px] uppercase tracking-[0.12em] mb-5" style={{ fontFamily: 'var(--font-display)' }}>
@@ -58,10 +66,10 @@ export default function HomePage() {
               Book your next<br/>appointment with ease.
             </h1>
             <p className="text-white/80 text-[15px] leading-relaxed mb-7 max-w-sm">
-              Pick from our team of therapists across Sandbox East and Greenhills. Your slot is confirmed once downpayment is received.
+              Pick a therapist, choose up to three possible slots, and the front desk will confirm your appointment.
             </p>
             <div className="flex flex-col gap-2.5 text-[13px] text-white/85" style={{ fontFamily: 'var(--font-display)' }}>
-              <div className="flex items-center gap-2"><Check/> 7 services · 2 branches</div>
+              <div className="flex items-center gap-2"><Check/> 9 services · 2 branches</div>
               <div className="flex items-center gap-2"><Check/> In-clinic or teletherapy</div>
               <div className="flex items-center gap-2"><Check/> Secure PayMongo checkout</div>
             </div>
@@ -115,34 +123,76 @@ export default function HomePage() {
               </p>
             </form>
           ) : (
-            <form className="space-y-4" onSubmit={handleNew} key="new">
+            <form className="space-y-3.5" onSubmit={handleNew} key="new">
+              <SectionLabel>Basic info</SectionLabel>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="First name"><input required name="firstName" className="input" /></Field>
                 <Field label="Last name"><input required name="lastName" className="input" /></Field>
               </div>
-              <Field label="Email"><input required name="email" type="email" className="input" placeholder="you@example.com" /></Field>
-              <Field label="Phone (optional)"><input name="phone" className="input" placeholder="+63 9XX XXX XXXX" /></Field>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Branch">
-                  <select required name="branch" className="select">
-                    <option value="SANDBOX_EAST">Sandbox East</option>
-                    <option value="SANDBOX_GREENHILLS">Sandbox Greenhills</option>
+                <Field label="Email"><input required name="email" type="email" className="input" placeholder="you@example.com" /></Field>
+                <Field label="Cellphone no."><input name="phone" className="input" placeholder="+63 9XX XXX XXXX" /></Field>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Date of birth"><input name="dob" type="date" className="input" /></Field>
+                <Field label="Sex">
+                  <select name="sex" className="select" defaultValue="">
+                    <option value="">—</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
                   </select>
                 </Field>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 <Field label="Patient type">
-                  <select required name="patientType" className="select">
+                  <select required name="patientType" className="select" defaultValue="ADULT">
                     <option value="PEDIATRIC">Pediatric</option>
                     <option value="ADULT">Adult</option>
                   </select>
                 </Field>
+                <Field label="Branch">
+                  <select required name="branch" className="select" defaultValue="SANDBOX_EAST">
+                    <option value="SANDBOX_EAST">Sandbox East</option>
+                    <option value="SANDBOX_GREENHILLS">Sandbox Greenhills</option>
+                  </select>
+                </Field>
               </div>
+
+              <SectionLabel>Address</SectionLabel>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Barangay / Address"><input name="address" className="input" /></Field>
+                <Field label="City"><input name="city" className="input" /></Field>
+              </div>
+
+              <SectionLabel>Additional</SectionLabel>
+              <Field label="Diagnosis / Condition"><input name="diagnosis" className="input" placeholder="Optional" /></Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Civil status"><input name="civilStatus" className="input" placeholder="Single / Married / …" /></Field>
+                <Field label="Religion"><input name="religion" className="input" /></Field>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Nationality"><input name="nationality" className="input" placeholder="e.g. Filipino" /></Field>
+                <Field label="PWD / Senior ID"><input name="pwdSeniorId" className="input" placeholder="Optional — for discount" /></Field>
+              </div>
+
               <button type="submit" disabled={busy} className="btn-primary w-full mt-2">
-                {busy ? 'Creating…' : 'Continue'}
+                {busy ? 'Creating…' : 'Create profile & continue'}
               </button>
+              <p className="text-[11px] text-[color:var(--mid-gray)] text-center" style={{ fontFamily: 'var(--font-display)' }}>
+                Your info will be saved to Patient CRM once the clinic confirms.
+              </p>
             </form>
           )}
         </div>
       </section>
+    </div>
+  )
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] pt-2" style={{ fontFamily: 'var(--font-display)' }}>
+      {children}
     </div>
   )
 }
@@ -157,7 +207,5 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function Check() {
-  return (
-    <span className="inline-flex w-4 h-4 rounded-full bg-white/20 items-center justify-center text-[10px]">✓</span>
-  )
+  return <span className="inline-flex w-4 h-4 rounded-full bg-white/20 items-center justify-center text-[10px]">✓</span>
 }

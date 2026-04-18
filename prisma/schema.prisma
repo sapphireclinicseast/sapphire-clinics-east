@@ -570,6 +570,7 @@ model PatientBooking {
   approvedAt      DateTime?
   approvedBy      String?
   paidAt          DateTime?
+  alternateChoices Json?        // up to 2 alternates the patient offered; {staffId,date,startTime,endTime}[]
   source          String        @default("PORTAL")
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt

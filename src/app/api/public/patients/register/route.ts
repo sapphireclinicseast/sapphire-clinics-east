@@ -1,5 +1,6 @@
-// POST /api/public/patients/register — open patient self-registration.
-// Body: { firstName, lastName, email, phone?, branch, patientType }
+// POST /api/public/patients/register — patient self-registration.
+// Accepts the same field set as the marketing CRM's Add Patient form so
+// the record lands cleanly in Patient CRM.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
@@ -10,20 +11,37 @@ export async function OPTIONS(req: NextRequest) {
   return preflight(req.headers.get('origin'))
 }
 
+type Body = {
+  firstName?: string
+  lastName?: string
+  email?: string
+  phone?: string
+  dob?: string              // "YYYY-MM-DD"
+  sex?: string              // "Male" | "Female" | free text
+  address?: string          // barangay / street
+  city?: string
+  civilStatus?: string
+  religion?: string
+  nationality?: string
+  diagnosis?: string
+  pwdSeniorId?: string
+  branch?: 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS'
+  patientType?: 'PEDIATRIC' | 'ADULT'
+}
+
+function uc(v: string | undefined): string | null {
+  if (v == null) return null
+  const s = v.trim()
+  return s.length > 0 ? s.toUpperCase() : null
+}
+
 export async function POST(req: NextRequest) {
   const origin = req.headers.get('origin')
-  const body = (await req.json().catch(() => ({}))) as {
-    firstName?: string
-    lastName?: string
-    email?: string
-    phone?: string
-    branch?: 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS'
-    patientType?: 'PEDIATRIC' | 'ADULT'
-  }
+  const body = (await req.json().catch(() => ({}))) as Body
+
   const firstName = (body.firstName ?? '').trim()
   const lastName = (body.lastName ?? '').trim()
   const email = (body.email ?? '').trim().toLowerCase()
-  const phone = (body.phone ?? '').trim() || null
   const branch = body.branch
   const patientType = body.patientType
 
@@ -43,11 +61,9 @@ export async function POST(req: NextRequest) {
     return withCors(NextResponse.json({ error: 'invalid patientType' }, { status: 400 }), origin)
   }
 
-  // If an existing patient with same email + lastName exists, return it (merge flow).
+  // Merge with existing patient if email+lastName already exist (returning user).
   const existing = await prisma.patient.findFirst({
-    where: {
-      email: { equals: email, mode: 'insensitive' },
-    },
+    where: { email: { equals: email, mode: 'insensitive' } },
     select: { id: true, firstName: true, lastName: true },
   })
   if (existing && existing.lastName.toLowerCase() === lastName.toLowerCase()) {
@@ -63,18 +79,30 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  // Match marketing CRM convention: UPPERCASE all text except email/dob.
+  const dob = (body.dob ?? '').trim()
   const created = await prisma.patient.create({
     data: {
-      firstName,
-      lastName,
+      firstName: firstName.toUpperCase(),
+      lastName: lastName.toUpperCase(),
       email,
-      phone,
+      phone: (body.phone ?? '').trim() || null,
+      dob: dob ? new Date(`${dob}T00:00:00.000Z`) : null,
+      sex: uc(body.sex),
+      address: uc(body.address),
+      city: uc(body.city),
+      civilStatus: uc(body.civilStatus),
+      religion: uc(body.religion),
+      nationality: uc(body.nationality),
+      diagnosis: uc(body.diagnosis),
+      pwdSeniorId: uc(body.pwdSeniorId),
       branch,
       branches: [branch],
       patientType,
     },
     select: { id: true, firstName: true },
   })
+
   const token = issuePatientToken(created.id)
   return withCors(
     NextResponse.json({ patientId: created.id, firstName: created.firstName, token }),
