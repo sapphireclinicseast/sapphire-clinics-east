@@ -27,7 +27,7 @@ export async function POST(
 
   const booking = await prisma.patientBooking.findUnique({
     where: { id },
-    select: { id: true, patientId: true, status: true, paymentId: true },
+    select: { id: true, patientId: true, status: true },
   })
   if (!booking || booking.patientId !== session.patientId) {
     return withCors(NextResponse.json({ error: 'Booking not found' }, { status: 404 }), origin)

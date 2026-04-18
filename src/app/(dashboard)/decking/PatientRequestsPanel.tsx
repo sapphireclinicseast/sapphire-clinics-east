@@ -154,6 +154,12 @@ export default function PatientRequestsPanel({ branch }: Props) {
                       disabled={busy === b.id}
                       onClick={() => resend(b.id)}
                     >Send Email</button>
+                    <button
+                      className="px-3 py-1 rounded border border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-medium disabled:opacity-50"
+                      disabled={busy === b.id}
+                      onClick={() => del(b)}
+                      title="Permanently delete this approved (but unpaid) booking"
+                    >Delete</button>
                   </>
                 )}
                 {showActions === 'paid' && (
