@@ -14,16 +14,25 @@ export default function BookSlotsPageWrapper() {
 }
 
 function addDays(d: Date, n: number) { const r = new Date(d); r.setDate(r.getDate() + n); return r }
-function fmtYMD(d: Date) { return d.toISOString().slice(0, 10) }
+// Format a Date as YYYY-MM-DD in the BROWSER's local calendar — NOT UTC.
+// Using toISOString() here would shift Asia/Manila (UTC+8) dates back by one
+// day at local midnight, labelling Monday's column as Sunday's YMD and
+// causing the server to confirm the wrong calendar day.
+function fmtYMD(d: Date) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
 function fmtWeekday(d: Date) { return d.toLocaleDateString('en-US', { weekday: 'short' }) }
 function fmtDay(d: Date) { return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) }
 function fmtRange(a: Date, b: Date) {
   return `${a.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${b.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
 }
 function isToday(d: Date) { const t = new Date(); return d.toDateString() === t.toDateString() }
-// Snap a date to the Sunday that starts its week.
+// Snap a date to the Sunday that starts its week (in local time).
 function startOfWeek(d: Date): Date {
-  const r = new Date(d); r.setHours(0,0,0,0)
+  const r = new Date(d.getFullYear(), d.getMonth(), d.getDate()) // local midnight
   r.setDate(r.getDate() - r.getDay())
   return r
 }

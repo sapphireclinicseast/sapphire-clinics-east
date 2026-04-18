@@ -21,13 +21,6 @@ export async function POST(
   const { id } = await params
   const userId = (session.user as { id?: string } | undefined)?.id ?? null
 
-  // Optional: { choiceIndex: 0 | 1 | 2 } — 0 = primary, 1/2 = alternates
-  const body = (await req.json().catch(() => ({}))) as { choiceIndex?: number }
-  const pickedIndex =
-    typeof body.choiceIndex === 'number' && body.choiceIndex >= 0 && body.choiceIndex <= 2
-      ? body.choiceIndex
-      : 0
-
   const booking = await prisma.patientBooking.findUnique({
     where: { id },
     include: {
@@ -44,65 +37,28 @@ export async function POST(
     )
   }
 
-  // If the front desk picked an alternate, promote it to the primary slot.
-  let activeBooking = booking
-  if (pickedIndex > 0) {
-    const alts = (activeBooking.alternateChoices as Array<{
-      staffId: string
-      date: string
-      startTime: string
-      endTime: string
-    }> | null) ?? []
-    const pick = alts[pickedIndex - 1]
-    if (!pick) {
-      return NextResponse.json({ error: `Alternate choice #${pickedIndex} not found` }, { status: 400 })
-    }
-    // Re-fetch staff for picked alternate (may differ from original primary staff).
-    const pickedStaff = await prisma.staff.findUnique({
-      where: { id: pick.staffId },
-      select: { firstName: true, lastName: true },
-    })
-    activeBooking = await prisma.patientBooking.update({
-      where: { id },
-      data: {
-        staffId: pick.staffId,
-        date: new Date(`${pick.date}T00:00:00.000Z`),
-        startTime: pick.startTime,
-        endTime: pick.endTime,
-      },
-      include: {
-        patient: { select: { firstName: true, lastName: true, email: true } },
-        staff: { select: { firstName: true, lastName: true } },
-        payment: true,
-      },
-    })
-    if (pickedStaff) {
-      activeBooking.staff = pickedStaff as typeof activeBooking.staff
-    }
-  }
-
-  const downpaymentPhp = getDownpayment(activeBooking.branch, activeBooking.department)
+  const downpaymentPhp = getDownpayment(booking.branch, booking.department)
 
   // Generate Jitsi link if teletherapy (only now, so it's fresh per appointment)
-  const meetLink = activeBooking.isTeletherapy
+  const meetLink = booking.isTeletherapy
     ? generateMeetLink(
-        `${activeBooking.staff.firstName} ${activeBooking.staff.lastName}`,
-        `${activeBooking.patient.firstName} ${activeBooking.patient.lastName}`,
-        activeBooking.date.toISOString().slice(0, 10),
+        `${booking.staff.firstName} ${booking.staff.lastName}`,
+        `${booking.patient.firstName} ${booking.patient.lastName}`,
+        booking.date.toISOString().slice(0, 10),
       )
     : null
 
   // Create PayMongo link if there's a downpayment due and none exists yet
-  let payment = activeBooking.payment
+  let payment = booking.payment
   if (downpaymentPhp > 0 && !payment) {
     const link = await createPaymongoLink({
       amountPhp: downpaymentPhp,
-      description: `Sapphire Clinics ${activeBooking.branch} — ${activeBooking.department} downpayment (${activeBooking.date.toISOString().slice(0, 10)} ${activeBooking.startTime})`,
-      remarks: `Booking ${activeBooking.id} — ${activeBooking.patient.firstName} ${activeBooking.patient.lastName}`,
+      description: `Sapphire Clinics ${booking.branch} — ${booking.department} downpayment (${booking.date.toISOString().slice(0, 10)} ${booking.startTime})`,
+      remarks: `Booking ${booking.id} — ${booking.patient.firstName} ${booking.patient.lastName}`,
     })
     payment = await prisma.patientPayment.create({
       data: {
-        bookingId: activeBooking.id,
+        bookingId: booking.id,
         amount: downpaymentPhp,
         currency: 'PHP',
         paymongoLinkId: link.id,
@@ -131,7 +87,11 @@ export async function POST(
         firstName: activeBooking.patient.firstName,
         branch: activeBooking.branch,
         department: activeBooking.department,
-        date: activeBooking.date.toDateString(),
+        // Format the calendar date in UTC so the displayed day-of-week matches
+        // what the patient picked on the portal (dates are stored as UTC midnight).
+        date: activeBooking.date.toLocaleDateString('en-US', {
+          weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC',
+        }),
         startTime: activeBooking.startTime,
         endTime: activeBooking.endTime,
         downpaymentPhp,

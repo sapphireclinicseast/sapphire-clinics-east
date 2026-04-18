@@ -32,7 +32,9 @@ export async function POST(
     firstName: booking.patient.firstName,
     branch: booking.branch,
     department: booking.department,
-    date: booking.date.toDateString(),
+    date: booking.date.toLocaleDateString('en-US', {
+      weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC',
+    }),
     startTime: booking.startTime,
     endTime: booking.endTime,
     downpaymentPhp: Number(booking.downpayment ?? 0),
