@@ -119,16 +119,17 @@ export async function GET(req: NextRequest) {
     select: { staffId: true, dayOfWeek: true, startTime: true, disabled: true, patientId: true },
   })
 
-  // Map (staffId|dayOfWeek|startTime) -> { filled, anyDisabled }
-  const deckingByCell = new Map<string, { filled: number; anyDisabled: boolean }>()
+  // Map (staffId|dayOfWeek|startTime) -> { anyPatient, anyDisabled }.
+  // Rule: if ANY patient name is already assigned in that cell in the Decking
+  // Module, we exclude the cell entirely from portal self-service (no
+  // double-booking even if the admin-side cap of 3 would allow it). Likewise
+  // for cells the admin has marked disabled (lunch breaks, etc.).
+  const deckingByCell = new Map<string, { anyPatient: boolean; anyDisabled: boolean }>()
   for (const d of deckingSlots) {
     const key = `${d.staffId}|${d.dayOfWeek}|${d.startTime}`
-    const cur = deckingByCell.get(key) ?? { filled: 0, anyDisabled: false }
+    const cur = deckingByCell.get(key) ?? { anyPatient: false, anyDisabled: false }
     if (d.disabled) cur.anyDisabled = true
-    // A DeckingSlot with patientId assigned consumes one of the 3 seats.
-    // A disabled slot also consumes the cell entirely (skip below), so the
-    // patientId count doesn't matter in that case.
-    if (d.patientId) cur.filled += 1
+    if (d.patientId) cur.anyPatient = true
     deckingByCell.set(key, cur)
   }
 
@@ -149,25 +150,25 @@ export async function GET(req: NextRequest) {
   }
 
   // Helper: resolve work window for a given therapist on a given dayOfWeek.
+  // The therapist MUST have a DeckingTherapistConfig row for portal bookings to
+  // be enabled — and that config's workDays list gates which days they consult.
+  // (Matches the Decking Module, where non-configured therapists have no cells.)
   function windowFor(staffIdLocal: string, dow: string): { startTime: string; endTime: string } | null {
     const cfg = configById.get(staffIdLocal)
-    const clinicDay = clinicSchedule?.[dow]
+    if (!cfg) return null
 
-    // Clinic closed on this day → no window.
+    const days = (cfg.workDays as string[] | null) ?? []
+    if (!days.includes(dow)) return null
+
+    const clinicDay = clinicSchedule?.[dow]
     if (clinicDay && clinicDay.open === false) return null
 
-    if (cfg && !cfg.useDefault) {
-      const days = (cfg.workDays as string[] | null) ?? []
-      if (!days.includes(dow)) return null
-      return { startTime: cfg.startTime, endTime: cfg.endTime }
+    if (cfg.useDefault) {
+      if (clinicDay) return { startTime: clinicDay.openTime, endTime: clinicDay.closeTime }
+      const fallback = DEFAULT_HOURS[branch]
+      return fallback ?? null
     }
-
-    // Using defaults: therapist works every clinic-open day, during clinic hours.
-    if (clinicDay) {
-      return { startTime: clinicDay.openTime, endTime: clinicDay.closeTime }
-    }
-    const fallback = DEFAULT_HOURS[branch]
-    return fallback ?? null
+    return { startTime: cfg.startTime, endTime: cfg.endTime }
   }
 
   type Out = {
@@ -206,10 +207,11 @@ export async function GET(req: NextRequest) {
         const templateKey = `${s.id}|${dow}|${cell.startTime}`
         const cellKey = `${s.id}|${dateStr}|${cell.startTime}`
         const info = deckingByCell.get(templateKey)
-        if (info?.anyDisabled) continue
-        const templateFilled = info?.filled ?? 0
+        // If admin disabled the cell (lunch, etc.) or already assigned any
+        // patient in the Decking Module, hide it from portal self-service.
+        if (info?.anyDisabled || info?.anyPatient) continue
         const bookingFilled = bookingByCell.get(cellKey) ?? 0
-        if (templateFilled + bookingFilled >= MAX_PATIENTS_PER_SLOT) continue
+        if (bookingFilled >= MAX_PATIENTS_PER_SLOT) continue
         out.push({
           staffId: s.id,
           initials,
