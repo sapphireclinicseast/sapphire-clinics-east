@@ -7,19 +7,19 @@ import { listMyBookings, type Booking } from '@/lib/api'
 
 export default function MyBookingsPageWrapper() {
   return (
-    <Suspense fallback={<div className="text-sm text-slate-500">Loading…</div>}>
+    <Suspense fallback={<div className="text-sm text-[color:var(--mid-gray)]">Loading…</div>}>
       <MyBookingsPage />
     </Suspense>
   )
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  PENDING: 'bg-amber-100 text-amber-800',
-  APPROVED: 'bg-sky-100 text-sky-800',
-  PAID: 'bg-emerald-100 text-emerald-800',
-  REJECTED: 'bg-rose-100 text-rose-800',
-  CANCELLED: 'bg-slate-200 text-slate-700',
-  COMPLETED: 'bg-slate-100 text-slate-600',
+const STATUS_BADGE: Record<string, string> = {
+  PENDING: 'badge badge-pending',
+  APPROVED: 'badge badge-approved',
+  PAID: 'badge badge-paid',
+  REJECTED: 'badge badge-rejected',
+  CANCELLED: 'badge badge-cancelled',
+  COMPLETED: 'badge badge-cancelled',
 }
 
 function MyBookingsPage() {
@@ -28,12 +28,14 @@ function MyBookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
+  const [firstName, setFirstName] = useState<string>('')
   const just = sp.get('new') === '1'
 
   useEffect(() => {
     const s = getSession()
     if (!s) { router.push('/'); return }
-    (async () => {
+    setFirstName(s.firstName)
+    ;(async () => {
       try {
         const r = await listMyBookings(s.token)
         setBookings(r.bookings)
@@ -47,68 +49,129 @@ function MyBookingsPage() {
 
   function signOut() { clearSession(); router.push('/') }
 
+  const grouped = bookings.reduce<{ upcoming: Booking[]; past: Booking[] }>(
+    (acc, b) => {
+      const d = new Date(b.date)
+      const today = new Date(); today.setHours(0,0,0,0)
+      ;(d >= today ? acc.upcoming : acc.past).push(b)
+      return acc
+    },
+    { upcoming: [], past: [] },
+  )
+
   return (
-    <div>
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-semibold">My bookings</h1>
-        <button className="text-xs text-slate-500 underline" onClick={signOut}>Sign out</button>
+    <div className="animate-fade-up">
+      <div className="flex items-start justify-between flex-wrap gap-3 mb-6">
+        <div>
+          <h1 className="text-[30px] text-[color:var(--deep-teal)] leading-tight">
+            {firstName ? <>Hi, <span className="italic">{firstName}</span>.</> : 'My bookings'}
+          </h1>
+          <p className="text-sm text-[color:var(--mid-gray)] mt-1">Manage your appointments and payments.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <a href="/book" className="btn-primary">+ Book appointment</a>
+          <button className="btn-secondary !py-2 !px-3 !text-[12.5px]" onClick={signOut}>Sign out</button>
+        </div>
       </div>
 
       {just && (
-        <div className="mb-4 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-sm text-emerald-800">
-          Your appointment request has been submitted. We&apos;ll email you once the front desk approves it.
+        <div className="mb-5 px-4 py-3 rounded-2xl bg-gradient-to-r from-emerald-50 to-white border border-emerald-200 text-sm text-emerald-900 flex items-start gap-3 animate-slide-down">
+          <span className="text-lg leading-none">✓</span>
+          <div>
+            <div className="font-semibold" style={{ fontFamily: 'var(--font-display)' }}>Request submitted</div>
+            <div className="text-xs text-emerald-800/80 mt-0.5">We&apos;ll email you once the front desk approves it, along with the payment link.</div>
+          </div>
         </div>
       )}
 
-      <div className="mb-4">
-        <a href="/book" className="inline-block bg-[color:var(--scei-teal)] text-white rounded-lg px-4 py-2 text-sm font-medium">
-          + Book another appointment
-        </a>
-      </div>
+      {err && <div className="mb-4 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
+      {loading && <div className="text-sm text-[color:var(--mid-gray)]">Loading your bookings…</div>}
 
-      {err && <div className="text-sm text-rose-600 mb-2">{err}</div>}
-      {loading && <div className="text-sm text-slate-500">Loading…</div>}
+      {!loading && bookings.length === 0 && (
+        <div className="card-static text-center py-12">
+          <div className="text-5xl mb-3">📭</div>
+          <h2 className="text-[22px] text-[color:var(--deep-teal)]">No bookings yet</h2>
+          <p className="text-sm text-[color:var(--mid-gray)] mt-1 mb-5">Your upcoming appointments will show up here.</p>
+          <a href="/book" className="btn-cta">Book your first appointment</a>
+        </div>
+      )}
 
-      <div className="space-y-2">
-        {!loading && bookings.length === 0 && (
-          <div className="text-sm text-slate-500 italic">No bookings yet.</div>
-        )}
-        {bookings.map((b) => (
-          <div key={b.id} className="bg-white border rounded-lg p-3 text-sm flex items-start gap-3">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className={`text-xs font-semibold px-2 py-0.5 rounded ${STATUS_COLOR[b.status] ?? ''}`}>
-                  {b.status}
-                </span>
-                {b.isTeletherapy && <span className="text-xs text-sky-700 bg-sky-50 border border-sky-100 px-1.5 py-0.5 rounded">tele</span>}
-              </div>
-              <div className="mt-1 font-medium">{b.department} · {b.branch}</div>
-              <div className="text-xs text-slate-600">
-                {b.date} · {b.startTime} – {b.endTime} · with {b.therapistInitials}
-              </div>
-              {b.downpayment != null && (
-                <div className="text-xs text-slate-500 mt-0.5">Downpayment: ₱{b.downpayment.toLocaleString()}</div>
-              )}
-              {b.rejectionReason && (
-                <div className="text-xs text-rose-600 mt-1">Reason: {b.rejectionReason}</div>
-              )}
-              {b.status === 'PAID' && b.isTeletherapy && b.meetLink && (
-                <div className="text-xs mt-1">
-                  Teletherapy link:&nbsp;
-                  <a className="text-sky-700 underline break-all" href={b.meetLink} target="_blank" rel="noreferrer">{b.meetLink}</a>
-                </div>
-              )}
-            </div>
-            <div className="shrink-0">
-              {b.status === 'APPROVED' && b.payment?.checkoutUrl && (
-                <a
-                  href={`/pay/${b.id}`}
-                  className="inline-block bg-[color:var(--scei-orange)] text-white rounded-lg px-3 py-1.5 text-xs font-medium"
-                >Pay Now</a>
-              )}
-            </div>
+      {grouped.upcoming.length > 0 && (
+        <section className="mb-8">
+          <h3 className="text-[11px] uppercase tracking-[0.14em] text-[color:var(--mid-gray)] font-semibold mb-3" style={{ fontFamily: 'var(--font-display)' }}>
+            Upcoming
+          </h3>
+          <div className="space-y-3">
+            {grouped.upcoming.map((b, i) => <BookingCard key={b.id} b={b} i={i} />)}
           </div>
-        ))}
+        </section>
+      )}
+
+      {grouped.past.length > 0 && (
+        <section>
+          <h3 className="text-[11px] uppercase tracking-[0.14em] text-[color:var(--mid-gray)] font-semibold mb-3" style={{ fontFamily: 'var(--font-display)' }}>
+            Past
+          </h3>
+          <div className="space-y-3 opacity-80">
+            {grouped.past.map((b, i) => <BookingCard key={b.id} b={b} i={i} />)}
+          </div>
+        </section>
+      )}
+    </div>
+  )
+}
+
+function BookingCard({ b, i }: { b: Booking; i: number }) {
+  const branchName = b.branch === 'SBEA' ? 'Sandbox East' : 'Sandbox Greenhills'
+  const dateNice = new Date(`${b.date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  return (
+    <div className={`card animate-fade-up stagger-${Math.min(i+1,7)}`}>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex-1 min-w-[220px]">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={STATUS_BADGE[b.status] ?? 'badge'}>{b.status}</span>
+            {b.isTeletherapy && <span className="badge badge-teletherapy">Teletherapy</span>}
+          </div>
+          <div className="mt-2 text-[18px] text-[color:var(--deep-teal)] font-semibold" style={{ fontFamily: 'var(--font-heading)' }}>
+            {b.department} · {branchName}
+          </div>
+          <div className="text-sm text-[color:var(--mid-gray)] mt-0.5 flex items-center gap-2 flex-wrap">
+            <span>🗓 {dateNice}</span>
+            <span className="w-1 h-1 rounded-full bg-[color:var(--mid-gray)]"></span>
+            <span>🕒 {b.startTime}–{b.endTime}</span>
+            <span className="w-1 h-1 rounded-full bg-[color:var(--mid-gray)]"></span>
+            <span>with <strong className="text-[color:var(--charcoal)]">{b.therapistInitials}</strong></span>
+          </div>
+          {b.downpayment != null && (
+            <div className="text-xs text-[color:var(--mid-gray)] mt-2">
+              Downpayment: <span className="text-[color:var(--charcoal)] font-semibold">₱{b.downpayment.toLocaleString()}</span>
+            </div>
+          )}
+          {b.rejectionReason && (
+            <div className="text-xs text-rose-700 mt-2 px-2 py-1 rounded bg-rose-50 inline-block">
+              Reason: {b.rejectionReason}
+            </div>
+          )}
+          {b.status === 'PAID' && b.isTeletherapy && b.meetLink && (
+            <a
+              href={b.meetLink}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs mt-2 px-3 py-1.5 rounded-lg bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)] hover:bg-[color:var(--bright-teal)] hover:text-white transition-colors font-semibold"
+              style={{ fontFamily: 'var(--font-display)' }}
+            >
+              🎥 Join teletherapy room
+            </a>
+          )}
+        </div>
+        <div className="shrink-0 flex flex-col gap-1.5 items-end">
+          {b.status === 'APPROVED' && b.payment?.checkoutUrl && (
+            <a href={`/pay/${b.id}`} className="btn-cta !py-2 !px-4">Pay Now</a>
+          )}
+          {b.status === 'APPROVED' && b.payment?.amount && (
+            <div className="text-[11px] text-[color:var(--mid-gray)]">₱{Number(b.payment.amount).toLocaleString()} due</div>
+          )}
+        </div>
       </div>
     </div>
   )
