@@ -15,6 +15,7 @@ interface StaffMember {
   lastName: string
   email: string | null
   phone: string | null
+  sex: string | null
   department: Department
   branch: string
   jobTitle: string | null
@@ -23,7 +24,7 @@ interface StaffMember {
   createdAt: string
 }
 
-type SortCol = 'name' | 'department' | 'branch' | 'email' | 'phone' | 'jobTitle'
+type SortCol = 'name' | 'department' | 'branch' | 'email' | 'phone' | 'jobTitle' | 'sex'
 type SortDir = 'asc' | 'desc'
 
 function branchFromRole(role: string): string | null {
@@ -42,6 +43,51 @@ function BranchChip({ branch }: { branch: string }) {
     }>
       {branch}
     </span>
+  )
+}
+
+function SexSelect({ staffId, value, onChange }: { staffId: string; value: string | null; onChange: (v: string | null) => void }) {
+  const [busy, setBusy] = useState(false)
+  async function update(next: string) {
+    setBusy(true)
+    try {
+      const res = await fetch('/api/staff', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: staffId, sex: next || null }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        throw new Error(d.error || 'Save failed')
+      }
+      onChange(next || null)
+    } catch (err) {
+      alert('Failed to save sex: ' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <select
+      disabled={busy}
+      value={value ?? ''}
+      onChange={(e) => update(e.target.value)}
+      style={{
+        fontSize: '11.5px',
+        padding: '3px 6px',
+        borderRadius: '6px',
+        border: '1px solid var(--light-gray)',
+        background: value === 'M' ? '#EBF5FB' : value === 'F' ? '#FCE4EC' : '#fff',
+        color: value === 'M' ? '#0369a1' : value === 'F' ? '#be185d' : 'var(--mid-gray)',
+        fontWeight: 600,
+        cursor: busy ? 'wait' : 'pointer',
+        outline: 'none',
+      }}
+    >
+      <option value="">—</option>
+      <option value="M">Male</option>
+      <option value="F">Female</option>
+    </select>
   )
 }
 
@@ -89,7 +135,7 @@ export default function StaffClient({ role }: { role: string }) {
   // Sort + filter
   const [sortCol, setSortCol] = useState<SortCol | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>('asc')
-  const [filters, setFilters] = useState({ name: '', department: '', branch: '', email: '', phone: '', jobTitle: '' })
+  const [filters, setFilters] = useState({ name: '', department: '', branch: '', email: '', phone: '', jobTitle: '', sex: '' })
 
   // Merge duplicates
   const [mergeGroup,  setMergeGroup]  = useState<StaffMember[] | null>(null)
@@ -143,6 +189,7 @@ export default function StaffClient({ role }: { role: string }) {
       if (filters.email      && !(s.email  ?? '').toLowerCase().includes(filters.email.toLowerCase())) return false
       if (filters.phone      && !(s.phone  ?? '').includes(filters.phone))                            return false
       if (filters.jobTitle   && !(s.jobTitle ?? '').toLowerCase().includes(filters.jobTitle.toLowerCase())) return false
+      if (filters.sex        && (s.sex ?? '') !== filters.sex) return false
       return true
     })
     .sort((a, b) => {
@@ -151,6 +198,7 @@ export default function StaffClient({ role }: { role: string }) {
         case 'name':       va = `${a.lastName} ${a.firstName}`;  vb = `${b.lastName} ${b.firstName}`; break
         case 'department': va = a.department;                     vb = b.department;                   break
         case 'branch':     va = a.branch;                         vb = b.branch;                       break
+        case 'sex':        va = a.sex ?? '';                      vb = b.sex ?? '';                    break
         case 'email':      va = a.email ?? '';                    vb = b.email ?? '';                  break
         case 'phone':      va = a.phone ?? '';                    vb = b.phone ?? '';                  break
         case 'jobTitle':   va = a.jobTitle ?? '';                  vb = b.jobTitle ?? '';                break
@@ -213,6 +261,7 @@ export default function StaffClient({ role }: { role: string }) {
     { col: 'department', label: 'Department' },
     { col: 'jobTitle',   label: 'Job Title' },
     { col: 'branch',     label: 'Branch' },
+    { col: 'sex',        label: 'Sex' },
     { col: 'email',      label: 'Email' },
     { col: 'phone',      label: 'Mobile' },
   ]
@@ -391,6 +440,16 @@ export default function StaffClient({ role }: { role: string }) {
                       <span style={{ fontSize: '11px', color: 'var(--mid-gray)', paddingLeft: '6px' }}>{autoBranch}</span>
                     )}
                   </th>
+                  {/* Sex */}
+                  <th className="px-3 py-1.5">
+                    <select value={filters.sex}
+                      onChange={e => setFilters(f => ({ ...f, sex: e.target.value }))}
+                      style={filterInputStyle}>
+                      <option value="">All</option>
+                      <option value="M">M</option>
+                      <option value="F">F</option>
+                    </select>
+                  </th>
                   {/* Email */}
                   <th className="px-3 py-1.5">
                     <input type="text" placeholder="Filter…" value={filters.email}
@@ -408,7 +467,7 @@ export default function StaffClient({ role }: { role: string }) {
               <tbody>
                 {displayed.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-10 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>
+                    <td colSpan={7} className="py-10 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>
                       No staff match your filters. Try syncing from HR Platform.
                     </td>
                   </tr>
@@ -423,6 +482,9 @@ export default function StaffClient({ role }: { role: string }) {
                       {s.jobTitle ? s.jobTitle.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '—'}
                     </td>
                     <td className="px-4 py-3"><BranchChip branch={s.branch} /></td>
+                    <td className="px-4 py-3">
+                      <SexSelect staffId={s.id} value={s.sex} onChange={(v) => setStaff(prev => prev.map(x => x.id === s.id ? { ...x, sex: v } : x))} />
+                    </td>
                     <td className="px-4 py-3 text-sm" style={{ color: 'var(--mid-gray)' }}>{s.email ?? '—'}</td>
                     <td className="px-4 py-3 text-sm" style={{ color: 'var(--mid-gray)' }}>{s.phone ?? '—'}</td>
                   </tr>

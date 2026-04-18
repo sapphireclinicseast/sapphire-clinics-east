@@ -24,6 +24,7 @@ interface HRStaff {
   email: string | null
   phone: string | null
   birthday: string | null
+  sex: string | null
 }
 
 export async function POST() {
@@ -98,12 +99,24 @@ export async function POST() {
       nameChanges.push(match.firstName + ' ' + match.lastName + ' -> ' + hr.firstName + ' ' + hr.lastName)
     }
 
+    // Normalize sex values from HR: accept "M"/"F"/"Male"/"Female" (case-insensitive)
+    // If HR doesn't provide a value, preserve the locally-set one (managed in
+    // the Staff Module UI) — don't overwrite to null.
+    let sexFromHr: string | null = null
+    if (hr.sex) {
+      const s = hr.sex.trim().toUpperCase()
+      if (s === 'M' || s === 'MALE')   sexFromHr = 'M'
+      else if (s === 'F' || s === 'FEMALE') sexFromHr = 'F'
+    }
+    const sex = sexFromHr ?? match?.sex ?? null
+
     const payload = {
       firstName:      hr.firstName,
       lastName:       hr.lastName,
       email:          hr.email,
       phone:          hr.phone,
       dob,
+      sex,
       department:     hr.department as StaffDepartment,
       branch:         hr.branch,
       jobTitle:       hr.jobTitle,

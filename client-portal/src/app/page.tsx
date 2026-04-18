@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { lookupPatient, registerPatient } from '@/lib/api'
 import { getSession, setSession } from '@/lib/session'
+import Chatbot from '@/components/Chatbot'
 
 type Tab = 'returning' | 'new'
 
@@ -12,8 +13,12 @@ export default function HomePage() {
   const [tab, setTab] = useState<Tab>('returning')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [signedIn, setSignedIn] = useState<{ firstName: string } | null>(null)
 
-  useEffect(() => { if (getSession()) router.push('/book') }, [router])
+  useEffect(() => {
+    const s = getSession()
+    if (s) setSignedIn({ firstName: s.firstName })
+  }, [])
 
   async function handleReturning(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -54,6 +59,7 @@ export default function HomePage() {
 
   return (
     <div className="grid md:grid-cols-5 gap-8 md:gap-10 items-start">
+      <Chatbot />
       {/* Hero */}
       <section className="md:col-span-2 animate-fade-up md:sticky md:top-24">
         <div className="hero-gradient rounded-3xl p-8 md:p-9 relative">
@@ -73,6 +79,17 @@ export default function HomePage() {
               <div className="flex items-center gap-2"><Check/> In-clinic or teletherapy</div>
               <div className="flex items-center gap-2"><Check/> Secure PayMongo checkout</div>
             </div>
+            {signedIn && (
+              <div className="mt-6 p-4 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.1em] text-white/60" style={{ fontFamily: 'var(--font-display)' }}>Signed in as</div>
+                  <div className="font-semibold">{signedIn.firstName}</div>
+                </div>
+                <a href="/book" className="inline-flex items-center gap-1.5 bg-[color:var(--gold)] hover:bg-[color:var(--gold-light)] text-white text-sm font-semibold px-3.5 py-2 rounded-lg transition-colors" style={{ fontFamily: 'var(--font-display)' }}>
+                  Continue booking →
+                </a>
+              </div>
+            )}
           </div>
         </div>
       </section>
