@@ -143,3 +143,10 @@ export function getPaymentUrl(bookingId: string, token: string) {
     `/bookings/${encodeURIComponent(bookingId)}/pay?token=${encodeURIComponent(token)}`,
   )
 }
+
+export function cancelBooking(bookingId: string, token: string) {
+  return jsonFetch<{ booking: { id: string; status: BookingStatus } }>(
+    `/bookings/${encodeURIComponent(bookingId)}/cancel`,
+    { method: 'POST', body: JSON.stringify({ token }) },
+  )
+}

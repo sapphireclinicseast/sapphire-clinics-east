@@ -103,6 +103,18 @@ export default function PatientRequestsPanel({ branch }: Props) {
     } catch (e) { alert('Error: ' + (e as Error).message) } finally { setBusy(null) }
   }
 
+  async function del(b: BookingRow) {
+    const who = `${b.patient.firstName ?? ''} ${b.patient.lastName ?? ''}`.trim() || 'this request'
+    if (!confirm(`Delete ${who}'s request (${b.date} ${b.startTime})? This cannot be undone.`)) return
+    setBusy(b.id)
+    try {
+      const r = await fetch(`/api/decking/bookings/${b.id}`, { method: 'DELETE' })
+      const data = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(data.error || 'Delete failed')
+      await load()
+    } catch (e) { alert('Error: ' + (e as Error).message) } finally { setBusy(null) }
+  }
+
   const sectionRows = (rows: BookingRow[], showActions: 'pending' | 'approved' | 'paid') => (
     <div className="space-y-2">
       {rows.length === 0 && <div className="text-sm text-gray-500 italic px-2 py-1">None</div>}
@@ -150,11 +162,19 @@ export default function PatientRequestsPanel({ branch }: Props) {
                   </span>
                 )}
                 {showActions === 'pending' && (
-                  <button
-                    className="px-3 py-1 rounded bg-rose-500 text-white text-xs font-medium disabled:opacity-50"
-                    disabled={busy === b.id}
-                    onClick={() => reject(b.id)}
-                  >Reject</button>
+                  <>
+                    <button
+                      className="px-3 py-1 rounded bg-rose-500 text-white text-xs font-medium disabled:opacity-50"
+                      disabled={busy === b.id}
+                      onClick={() => reject(b.id)}
+                    >Reject</button>
+                    <button
+                      className="px-3 py-1 rounded border border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-medium disabled:opacity-50"
+                      disabled={busy === b.id}
+                      onClick={() => del(b)}
+                      title="Permanently delete this request"
+                    >Delete</button>
+                  </>
                 )}
               </div>
             </div>

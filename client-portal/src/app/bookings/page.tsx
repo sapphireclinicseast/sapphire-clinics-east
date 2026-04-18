@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSession, clearSession } from '@/lib/session'
-import { InvalidTokenError, listMyBookings, type Booking } from '@/lib/api'
+import { InvalidTokenError, cancelBooking, listMyBookings, type Booking } from '@/lib/api'
 
 export default function MyBookingsPageWrapper() {
   return (
@@ -107,7 +107,7 @@ function MyBookingsPage() {
             Upcoming
           </h3>
           <div className="space-y-3">
-            {grouped.upcoming.map((b, i) => <BookingCard key={b.id} b={b} i={i} />)}
+            {grouped.upcoming.map((b, i) => <BookingCard key={b.id} b={b} i={i} onChange={(nb) => setBookings(prev => prev.map(x => x.id === nb.id ? { ...x, status: nb.status } : x))} />)}
           </div>
         </section>
       )}
@@ -118,7 +118,7 @@ function MyBookingsPage() {
             Past
           </h3>
           <div className="space-y-3 opacity-80">
-            {grouped.past.map((b, i) => <BookingCard key={b.id} b={b} i={i} />)}
+            {grouped.past.map((b, i) => <BookingCard key={b.id} b={b} i={i} onChange={(nb) => setBookings(prev => prev.map(x => x.id === nb.id ? { ...x, status: nb.status } : x))} />)}
           </div>
         </section>
       )}
@@ -126,9 +126,34 @@ function MyBookingsPage() {
   )
 }
 
-function BookingCard({ b, i }: { b: Booking; i: number }) {
+function BookingCard({ b, i, onChange }: { b: Booking; i: number; onChange: (nb: { id: string; status: Booking['status'] }) => void }) {
+  const router = useRouter()
+  const [busy, setBusy] = useState(false)
   const branchName = b.branch === 'SBEA' ? 'Sandbox East' : 'Sandbox Greenhills'
   const dateNice = new Date(`${b.date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  const canCancel = b.status === 'PENDING' || b.status === 'APPROVED'
+
+  async function handleCancel() {
+    if (!canCancel) return
+    const label = b.status === 'PENDING' ? 'this pending request' : 'this approved booking'
+    if (!confirm(`Cancel ${label} for ${b.department} on ${dateNice} ${b.startTime}?`)) return
+    const s = getSession()
+    if (!s) { clearSession(); router.push('/?expired=1'); return }
+    setBusy(true)
+    try {
+      const r = await cancelBooking(b.id, s.token)
+      onChange(r.booking)
+    } catch (e) {
+      if (e instanceof InvalidTokenError) {
+        clearSession()
+        router.push('/?expired=1')
+        return
+      }
+      alert('Could not cancel: ' + (e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
   return (
     <div className={`card animate-fade-up stagger-${Math.min(i+1,7)}`}>
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -175,6 +200,16 @@ function BookingCard({ b, i }: { b: Booking; i: number }) {
           )}
           {b.status === 'APPROVED' && b.payment?.amount && (
             <div className="text-[11px] text-[color:var(--mid-gray)]">₱{Number(b.payment.amount).toLocaleString()} due</div>
+          )}
+          {canCancel && (
+            <button
+              onClick={handleCancel}
+              disabled={busy}
+              className="text-[12px] text-rose-700 hover:text-rose-800 hover:underline disabled:opacity-40"
+              style={{ fontFamily: 'var(--font-display)' }}
+            >
+              {busy ? 'Cancelling…' : 'Cancel'}
+            </button>
           )}
         </div>
       </div>
