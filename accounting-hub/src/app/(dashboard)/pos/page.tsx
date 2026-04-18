@@ -1277,33 +1277,18 @@ function OrderFormModal({
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Failed to create order'); setSubmitting(false); return }
 
-      // Deduct wallet balance for wallet payments (VIP/Prepaid usage)
-      // 1. If activeWallet is set (VIP/Prepaid card applied), deduct the actual payment amount for that wallet
-      if (activeWallet?.id) {
-        // Find the payment entry that references this wallet to get the actual amount paid
-        const activeWalletPayment = payments.find(p => p.walletId === activeWallet.id)
-        const deductAmount = activeWalletPayment ? toNum(activeWalletPayment.amount) : netAmount
-        if (deductAmount > 0) {
-          try {
-            await fetch(`/api/pos/wallets/${activeWallet.id}/deduct`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                amount: deductAmount,
-                description: `Payment for order ${data.orderNumber} (${activeWallet.walletType || 'wallet'})`,
-                orderId: data.id,
-              }),
-            })
-          } catch (e) {
-            console.error('Wallet deduction error:', e)
-          }
-        }
-      }
-
-      // 2. Explicit WALLET payment lines (walletId on the payment)
-      // Exclude HMO and GL — those are accounts receivable, credited on the backend (not deducted)
+      // Deduct wallet balances after order is created
+      // Exclude HMO and GL — those are accounts receivable, handled on the backend
       const RECEIVABLE_METHODS = ['HMO', 'GL']
-      const walletPayments = payments.filter(p => p.walletId && toNum(p.amount) > 0 && p.walletId !== activeWallet?.id && !RECEIVABLE_METHODS.includes(p.method) && p.method !== 'PACKAGE')
+
+      // 1. Deduct any explicit wallet payment lines (excluding activeWallet — handled separately below)
+      const walletPayments = payments.filter(p =>
+        p.walletId &&
+        toNum(p.amount) > 0 &&
+        p.walletId !== activeWallet?.id &&
+        !RECEIVABLE_METHODS.includes(p.method) &&
+        p.method !== 'PACKAGE'
+      )
       for (const wp of walletPayments) {
         try {
           await fetch(`/api/pos/wallets/${wp.walletId}/deduct`, {
@@ -1319,10 +1304,9 @@ function OrderFormModal({
           console.error('Wallet deduction error:', e)
         }
       }
-      // 2. If a VIP/Prepaid wallet was used (activeWallet set via scan/search),
-      //    deduct the actual wallet payment amount (not netAmount) from that wallet
-      const alreadyDeductedWalletIds = walletPayments.map(wp => wp.walletId)
-      if (activeWallet && !alreadyDeductedWalletIds.includes(activeWallet.id)) {
+
+      // 2. Deduct the activeWallet (VIP/Prepaid scanned via barcode or search) — once only
+      if (activeWallet) {
         const walletPay = payments.find(p => p.walletId === activeWallet.id)
         const walletDeductAmt = walletPay ? toNum(walletPay.amount) : netAmount
         if (walletDeductAmt > 0) {
