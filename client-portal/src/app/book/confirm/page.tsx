@@ -2,8 +2,8 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { getSession } from '@/lib/session'
-import { createBooking, type SlotChoice } from '@/lib/api'
+import { clearSession, getSession } from '@/lib/session'
+import { createBooking, InvalidTokenError, type SlotChoice } from '@/lib/api'
 
 export default function BookConfirmPage() {
   return (
@@ -47,7 +47,14 @@ function BookConfirmInner() {
         choices: picks,
       })
       router.push('/bookings?new=1')
-    } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
+    } catch (e) {
+      if (e instanceof InvalidTokenError) {
+        clearSession()
+        router.push('/?expired=1')
+        return
+      }
+      setErr((e as Error).message)
+    } finally { setBusy(false) }
   }
 
   const branchName = branch === 'SBEA' ? 'Sandbox East' : 'Sandbox Greenhills'

@@ -133,12 +133,15 @@ export async function GET(req: NextRequest) {
     deckingByCell.set(key, cur)
   }
 
-  // PatientBooking records in the window that still hold a seat.
+  // PatientBooking records in the window that actually lock the slot.
+  // PENDING bookings intentionally do NOT hold a seat — multiple patients can
+  // submit for the same cell while front desk deliberates. The slot is only
+  // locked once the front desk approves (or payment lands).
   const bookings = await prisma.patientBooking.findMany({
     where: {
       staffId: { in: staffList.map((s) => s.id) },
       date: { gte: from, lte: to },
-      status: { in: ['PENDING', 'APPROVED', 'PAID', 'COMPLETED'] },
+      status: { in: ['APPROVED', 'PAID', 'COMPLETED'] },
     },
     select: { staffId: true, date: true, startTime: true },
   })

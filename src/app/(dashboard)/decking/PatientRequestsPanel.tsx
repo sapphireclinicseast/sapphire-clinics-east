@@ -1,8 +1,9 @@
 'use client'
 
 // Self-contained Pending Patient Requests panel, rendered above the Decking
-// weekly grid. Pulls from /api/decking/bookings and exposes Approve, Reject,
-// Send-Email actions. Supports up to 3 slot choices per request.
+// weekly grid. Pulls from /api/decking/bookings and exposes per-choice
+// Approve, Reject, and Send-Email actions. Each pending booking may carry
+// up to 3 slot choices (primary + 2 alternates).
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
@@ -116,15 +117,17 @@ export default function PatientRequestsPanel({ branch }: Props) {
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
                 <div className="font-medium truncate">
-                  {b.patient.firstName} {b.patient.lastName}
+                  {(b.patient.firstName || b.patient.lastName)
+                    ? `${b.patient.firstName ?? ''} ${b.patient.lastName ?? ''}`.trim()
+                    : <span className="text-rose-600">⚠ No name provided</span>}
                   <span className="text-gray-500 font-normal"> · {b.department}</span>
                   {b.isTeletherapy && (
                     <span className="ml-2 text-xs bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded">tele</span>
                   )}
                 </div>
-                <div className="text-xs text-gray-600">
-                  {b.patient.email && <span>{b.patient.email}</span>}
-                  {b.patient.phone && <span className="ml-2">· {b.patient.phone}</span>}
+                <div className="text-xs text-gray-600 mt-0.5 flex flex-wrap gap-x-3">
+                  {b.patient.email && <span>✉ {b.patient.email}</span>}
+                  {b.patient.phone && <span>☎ {b.patient.phone}</span>}
                 </div>
                 {b.notes && <div className="text-xs text-gray-500 mt-0.5 italic">&ldquo;{b.notes}&rdquo;</div>}
               </div>
@@ -156,16 +159,12 @@ export default function PatientRequestsPanel({ branch }: Props) {
               </div>
             </div>
 
-            {/* Choices list (only for pending) */}
             {showActions === 'pending' && (
               <div className="mt-2 space-y-1.5">
                 {allChoices.map((c, idx) => {
                   const label = idx === 0 ? '1st' : idx === 1 ? '2nd' : '3rd'
                   return (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between gap-3 px-2 py-1.5 rounded border border-dashed border-gray-200 bg-slate-50"
-                    >
+                    <div key={idx} className="flex items-center justify-between gap-3 px-2 py-1.5 rounded border border-dashed border-gray-200 bg-slate-50">
                       <div className="flex items-center gap-2 text-xs text-gray-700">
                         <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-bold ${
                           idx === 0 ? 'bg-emerald-600 text-white' : idx === 1 ? 'bg-amber-500 text-white' : 'bg-slate-400 text-white'
@@ -184,7 +183,6 @@ export default function PatientRequestsPanel({ branch }: Props) {
               </div>
             )}
 
-            {/* Show the approved choice for non-pending rows */}
             {showActions !== 'pending' && (
               <div className="text-xs text-gray-600 mt-1">
                 {b.date} · {b.startTime}–{b.endTime} · with {b.staff.firstName?.[0]}{b.staff.lastName?.[0]}
@@ -217,7 +215,6 @@ export default function PatientRequestsPanel({ branch }: Props) {
         <div className="mt-3 space-y-4">
           {err && <div className="text-rose-600 text-sm">{err}</div>}
           {loading && <div className="text-slate-500 text-sm">Loading…</div>}
-
           {!loading && (
             <>
               <div>

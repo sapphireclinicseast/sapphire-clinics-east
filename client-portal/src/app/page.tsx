@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { lookupPatient, registerPatient } from '@/lib/api'
 import { getSession, setSession } from '@/lib/session'
 import Chatbot from '@/components/Chatbot'
@@ -9,11 +9,21 @@ import Chatbot from '@/components/Chatbot'
 type Tab = 'returning' | 'new'
 
 export default function HomePage() {
+  return (
+    <Suspense fallback={null}>
+      <HomeInner />
+    </Suspense>
+  )
+}
+
+function HomeInner() {
   const router = useRouter()
+  const sp = useSearchParams()
   const [tab, setTab] = useState<Tab>('returning')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [signedIn, setSignedIn] = useState<{ firstName: string } | null>(null)
+  const expired = sp.get('expired') === '1'
 
   useEffect(() => {
     const s = getSession()
@@ -115,6 +125,11 @@ export default function HomePage() {
             >New patient</button>
           </div>
 
+          {expired && !err && (
+            <div className="mb-4 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-900 animate-fade-in">
+              Your session expired. Please sign in again to continue booking.
+            </div>
+          )}
           {err && (
             <div className="mb-4 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800 animate-fade-in">
               {err}

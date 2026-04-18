@@ -4,6 +4,13 @@
 
 export const API_BASE = '/api/booking-proxy'
 
+export class InvalidTokenError extends Error {
+  constructor(msg = 'Your session has expired. Please sign in again.') {
+    super(msg)
+    this.name = 'InvalidTokenError'
+  }
+}
+
 async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -13,7 +20,16 @@ async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
     },
   })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`)
+  if (!res.ok) {
+    // Treat any auth-scoped 401 as an expired/invalid session token.
+    if (res.status === 401 || (typeof data?.error === 'string' && data.error.toLowerCase().includes('token'))) {
+      if (typeof window !== 'undefined') {
+        try { localStorage.removeItem('scei_patient_session_v1') } catch { /* ignore */ }
+      }
+      throw new InvalidTokenError()
+    }
+    throw new Error(data?.error ?? `HTTP ${res.status}`)
+  }
   return data as T
 }
 

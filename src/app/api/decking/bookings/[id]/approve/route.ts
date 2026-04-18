@@ -1,7 +1,8 @@
 // POST /api/decking/bookings/[id]/approve
-// Marks a PatientBooking as APPROVED, computes downpayment, creates a PayMongo
-// payment link, optionally generates a Jitsi meet link, and emails the patient
-// a payment link.
+// Marks a PatientBooking as APPROVED. Optional body { choiceIndex: 0|1|2 }
+// lets the front desk pick the patient's 2nd or 3rd alternate instead of the
+// primary slot. A race guard refuses to approve if another booking at the
+// same (staff, date, time) has already been APPROVED/PAID/COMPLETED.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
@@ -21,6 +22,12 @@ export async function POST(
   const { id } = await params
   const userId = (session.user as { id?: string } | undefined)?.id ?? null
 
+  const body = (await req.json().catch(() => ({}))) as { choiceIndex?: number }
+  const pickedIndex =
+    typeof body.choiceIndex === 'number' && body.choiceIndex >= 0 && body.choiceIndex <= 2
+      ? body.choiceIndex
+      : 0
+
   const booking = await prisma.patientBooking.findUnique({
     where: { id },
     include: {
@@ -37,28 +44,83 @@ export async function POST(
     )
   }
 
-  const downpaymentPhp = getDownpayment(booking.branch, booking.department)
+  // If the front desk picked an alternate, promote it to the primary slot.
+  let activeBooking = booking
+  if (pickedIndex > 0) {
+    const alts = (booking.alternateChoices as Array<{
+      staffId: string
+      date: string
+      startTime: string
+      endTime: string
+    }> | null) ?? []
+    const pick = alts[pickedIndex - 1]
+    if (!pick) {
+      return NextResponse.json({ error: `Alternate choice #${pickedIndex} not found` }, { status: 400 })
+    }
+    const pickedStaff = await prisma.staff.findUnique({
+      where: { id: pick.staffId },
+      select: { firstName: true, lastName: true },
+    })
+    activeBooking = await prisma.patientBooking.update({
+      where: { id },
+      data: {
+        staffId: pick.staffId,
+        date: new Date(`${pick.date}T00:00:00.000Z`),
+        startTime: pick.startTime,
+        endTime: pick.endTime,
+      },
+      include: {
+        patient: { select: { firstName: true, lastName: true, email: true } },
+        staff: { select: { firstName: true, lastName: true } },
+        payment: true,
+      },
+    })
+    if (pickedStaff) {
+      activeBooking.staff = pickedStaff as typeof activeBooking.staff
+    }
+  }
 
-  // Generate Jitsi link if teletherapy (only now, so it's fresh per appointment)
-  const meetLink = booking.isTeletherapy
+  // Race guard: another booking may have been approved/paid for the same
+  // (staff, date, time) while this one was pending. If so, refuse to approve.
+  const conflict = await prisma.patientBooking.findFirst({
+    where: {
+      id: { not: activeBooking.id },
+      staffId: activeBooking.staffId,
+      date: activeBooking.date,
+      startTime: activeBooking.startTime,
+      status: { in: ['APPROVED', 'PAID', 'COMPLETED'] },
+    },
+    select: { status: true, patient: { select: { firstName: true, lastName: true } } },
+  })
+  if (conflict) {
+    return NextResponse.json(
+      {
+        error: `This time slot has already been ${conflict.status.toLowerCase()} for ${conflict.patient.firstName} ${conflict.patient.lastName}. Pick a different slot or one of the alternates.`,
+      },
+      { status: 409 },
+    )
+  }
+
+  const downpaymentPhp = getDownpayment(activeBooking.branch, activeBooking.department)
+
+  const meetLink = activeBooking.isTeletherapy
     ? generateMeetLink(
-        `${booking.staff.firstName} ${booking.staff.lastName}`,
-        `${booking.patient.firstName} ${booking.patient.lastName}`,
-        booking.date.toISOString().slice(0, 10),
+        `${activeBooking.staff.firstName} ${activeBooking.staff.lastName}`,
+        `${activeBooking.patient.firstName} ${activeBooking.patient.lastName}`,
+        activeBooking.date.toISOString().slice(0, 10),
       )
     : null
 
-  // Create PayMongo link if there's a downpayment due and none exists yet
-  let payment = booking.payment
+  let payment = activeBooking.payment
   if (downpaymentPhp > 0 && !payment) {
     const link = await createPaymongoLink({
       amountPhp: downpaymentPhp,
-      description: `Sapphire Clinics ${booking.branch} — ${booking.department} downpayment (${booking.date.toISOString().slice(0, 10)} ${booking.startTime})`,
-      remarks: `Booking ${booking.id} — ${booking.patient.firstName} ${booking.patient.lastName}`,
+      description: `Sapphire Clinics ${activeBooking.branch} — ${activeBooking.department} downpayment (${activeBooking.date.toISOString().slice(0, 10)} ${activeBooking.startTime})`,
+      remarks: `Booking ${activeBooking.id} — ${activeBooking.patient.firstName} ${activeBooking.patient.lastName}`,
     })
     payment = await prisma.patientPayment.create({
       data: {
-        bookingId: booking.id,
+        bookingId: activeBooking.id,
         amount: downpaymentPhp,
         currency: 'PHP',
         paymongoLinkId: link.id,
@@ -80,15 +142,13 @@ export async function POST(
     },
   })
 
-  // Email the patient. Non-fatal on failure so the approve action still succeeds.
   if (activeBooking.patient.email && payment?.checkoutUrl) {
     try {
       const { subject, html } = renderApprovalEmail({
         firstName: activeBooking.patient.firstName,
         branch: activeBooking.branch,
         department: activeBooking.department,
-        // Format the calendar date in UTC so the displayed day-of-week matches
-        // what the patient picked on the portal (dates are stored as UTC midnight).
+        // Format in UTC so the weekday matches the stored UTC-midnight date.
         date: activeBooking.date.toLocaleDateString('en-US', {
           weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC',
         }),
@@ -98,11 +158,7 @@ export async function POST(
         payUrl: payment.checkoutUrl,
         meetLink,
       })
-      await sendTransactionalEmail({
-        to: activeBooking.patient.email,
-        subject,
-        html,
-      })
+      await sendTransactionalEmail({ to: activeBooking.patient.email, subject, html })
     } catch (err) {
       console.error('Approval email failed:', err)
     }

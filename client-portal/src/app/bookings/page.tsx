@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { getSession, clearSession } from '@/lib/session'
-import { listMyBookings, type Booking } from '@/lib/api'
+import { InvalidTokenError, listMyBookings, type Booking } from '@/lib/api'
 
 export default function MyBookingsPageWrapper() {
   return (
@@ -40,6 +40,11 @@ function MyBookingsPage() {
         const r = await listMyBookings(s.token)
         setBookings(r.bookings)
       } catch (e) {
+        if (e instanceof InvalidTokenError) {
+          clearSession()
+          router.push('/?expired=1')
+          return
+        }
         setErr((e as Error).message)
       } finally {
         setLoading(false)
