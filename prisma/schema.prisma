@@ -57,6 +57,8 @@ enum StaffDepartment {
   ORTHOSIS
   FRONT_DESK
   ADMINISTRATION
+  PSYCHIATRY
+  DEVELOPMENTAL_PEDIATRICIAN
 }
 
 model User {
@@ -132,10 +134,12 @@ model Patient {
   nationality String?
   address     String?          // full address or barangay
   city        String?          // city/municipality (for map choropleth)
-  diagnosis   String?
-  notes       String?
-  referralUrl String?   // optional doctor's referral document URL
-  createdAt           DateTime             @default(now())
+  diagnosis          String?
+  notes              String?
+  referralUrl        String?    // optional doctor's referral document URL
+  firstDayOfConsult  DateTime?  // manual override: first day of consult/session (basis for cancellation reset & follow-up rules)
+  pwdSeniorId        String?    // PWD or Senior Citizen ID Number (optional, for discount eligibility)
+  createdAt          DateTime   @default(now())
   updatedAt           DateTime             @updatedAt
   schedules           Schedule[]
   viberSubscriptions  ViberSubscription[]
@@ -143,6 +147,8 @@ model Patient {
   deckingSlots        DeckingSlot[]
   referralTokens      ReferralUploadToken[]
   cancellationLogs    CancellationLog[]
+  noShowLogs          NoShowLog[]
+  patientBookings     PatientBooking[]
 }
 
 model ReferralUploadToken {
@@ -247,15 +253,23 @@ model QueueAd {
 
 model Staff {
   id              String          @id @default(cuid())
+  employeeId      String?         // Employee ID from HR Platform
   firstName       String          // stored ALL CAPS
   lastName        String          // stored ALL CAPS
   email           String?
   phone           String?
+  sex             String?         // "M" | "F" — shown in patient portal (icon only)
   department      StaffDepartment
   branch          String          // "SBEA" | "SBGH"
   dob             DateTime?       // Birthday — synced from HR Platform
   jobTitle        String?         // HR Platform job title slug (e.g. "front-desk-officer")
   employmentType  String?         // "employee" | "consultant"
+  tin             String?         // TIN from HR Platform
+  sss             String?         // SSS No. from HR Platform
+  pagibig         String?         // Pag-IBIG No. from HR Platform
+  philhealth      String?         // PhilHealth No. from HR Platform
+  bankName        String?         // Bank Name from HR Platform
+  bankAccountNo   String?         // Bank Account Number from HR Platform
   hrPlatformId    String?         // ID from HR Platform for sync matching
   createdById     String?
   createdBy       User?           @relation(fields: [createdById], references: [id])
@@ -272,6 +286,7 @@ model Staff {
   peerEvalRespAssor   PeerEvalResponse[]   @relation("PeerEvalRespAssor")
   peerEvalRespAssee   PeerEvalResponse[]   @relation("PeerEvalRespAssee")
   peerEvalAdminConfig PeerEvalAdminConfig?
+  patientBookings     PatientBooking[]
 }
 
 // ── Satisfaction Survey ──────────────────────────────────────────────────────
@@ -391,8 +406,10 @@ model DeckingSlot {
   branch     String
   department String
   notes      String?
+  disabled   Boolean  @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+  patientBookings PatientBooking[]
 }
 
 // ── Survey Settings (leaderboard metric weights) ─────────────────────────────
@@ -471,6 +488,33 @@ model CancellationLog {
   isValid         Boolean   @default(false)
   proofUrl        String?
   remarks         String?
+  feeDeducted     Boolean   @default(false)
+  feeDeductedAt   DateTime?
+  feePaidOnReturn Boolean   @default(false)
+  feePaidAt       DateTime?
+  deletedAt       DateTime?
+  deletedBy       String?
+  deleteReason    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([patientId])
+  @@index([createdAt])
+}
+
+// ── Patient No-Show Logs ─────────────────────────────────────────────────────
+
+model NoShowLog {
+  id              String    @id @default(cuid())
+  patientId       String
+  patient         Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  staffId         String?
+  branch          String    // "SANDBOX_EAST" | "SANDBOX_GREENHILLS"
+  remarks         String?
+  feeDeducted     Boolean   @default(false)
+  feeDeductedAt   DateTime?
+  feePaidOnReturn Boolean   @default(false)
+  feePaidAt       DateTime?
   deletedAt       DateTime?
   deletedBy       String?
   deleteReason    String?
@@ -491,4 +535,64 @@ model PeerEvalAdminConfig {
   branch    String   // "SBEA" | "SBGH"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ── Patient Appointment Portal (client.sapphireclinicseast.org) ──────────────
+
+enum BookingStatus {
+  PENDING
+  APPROVED
+  PAID
+  REJECTED
+  CANCELLED
+  COMPLETED
+}
+
+model PatientBooking {
+  id              String        @id @default(cuid())
+  patientId       String
+  patient         Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  staffId         String
+  staff           Staff         @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  deckingSlotId   String?
+  deckingSlot     DeckingSlot?  @relation(fields: [deckingSlotId], references: [id], onDelete: SetNull)
+  branch          String        // "SBEA" | "SBGH"
+  department      String        // StaffDepartment string
+  date            DateTime      // actual appointment date (UTC date)
+  startTime       String        // "10:00"
+  endTime         String        // "11:00"
+  isTeletherapy   Boolean       @default(false)
+  meetLink        String?
+  notes           String?
+  status          BookingStatus @default(PENDING)
+  rejectionReason String?
+  downpayment     Decimal?
+  approvedAt      DateTime?
+  approvedBy      String?
+  paidAt          DateTime?
+  source          String        @default("PORTAL")
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  payment         PatientPayment?
+
+  @@index([branch, department, date])
+  @@index([status])
+  @@index([patientId])
+  @@index([staffId, date])
+}
+
+model PatientPayment {
+  id             String         @id @default(cuid())
+  bookingId      String         @unique
+  booking        PatientBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  amount         Decimal
+  currency       String         @default("PHP")
+  paymongoLinkId String         @unique
+  paymongoRef    String?
+  checkoutUrl    String
+  status         String         @default("pending")
+  paidAt         DateTime?
+  webhookPayload Json?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 }

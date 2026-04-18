@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { ChevronDown, ChevronUp, Plus, X, Settings2, Layers } from 'lucide-react'
+import { ChevronDown, ChevronUp, Plus, X, Settings2, Layers, Ban } from 'lucide-react'
+import PatientRequestsPanel from './PatientRequestsPanel'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
@@ -18,7 +19,7 @@ const DEFAULT_HOURS: Record<string, { startTime: string; endTime: string }> = {
 interface StaffMember { id: string; firstName: string; lastName: string; department: string; branch: string }
 interface Patient { id: string; firstName: string; lastName: string }
 interface TherapistConfig { id: string; staffId: string; workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string }
-interface DeckingSlot { id: string; staffId: string; patientId: string | null; patient: Patient | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null }
+interface DeckingSlot { id: string; staffId: string; patientId: string | null; patient: Patient | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled: boolean }
 interface DayHours { open: boolean; openTime: string; closeTime: string }
 type ClinicSchedule = Record<string, DayHours>
 type AllClinicHours = Record<string, ClinicSchedule>
@@ -224,7 +225,7 @@ function TherapistRow({ staff, config, slots, defaultHours, onSaveConfig, onSave
   slots: DeckingSlot[]
   defaultHours: { startTime: string; endTime: string }
   onSaveConfig: (staffId: string, data: { workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string }) => Promise<void>
-  onSaveSlot: (data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null }) => Promise<void>
+  onSaveSlot: (data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled?: boolean }) => Promise<void>
   onDeleteSlot: (id: string) => Promise<void>
 }) {
   const [configOpen, setConfigOpen] = useState(!config)
@@ -266,7 +267,30 @@ function TherapistRow({ staff, config, slots, defaultHours, onSaveConfig, onSave
 
   // Returns ALL patients assigned to this time slot (up to 3)
   function getSlotsForCell(dayOfWeek: string, slotTime: string): DeckingSlot[] {
-    return slots.filter(s => s.dayOfWeek === dayOfWeek && s.startTime === slotTime)
+    return slots.filter(s => s.dayOfWeek === dayOfWeek && s.startTime === slotTime && !s.disabled)
+  }
+
+  // Check if a cell is disabled
+  function getDisabledSlot(dayOfWeek: string, slotTime: string): DeckingSlot | undefined {
+    return slots.find(s => s.dayOfWeek === dayOfWeek && s.startTime === slotTime && s.disabled)
+  }
+
+  async function handleDisableSlot(dayOfWeek: string, slotTime: string) {
+    await onSaveSlot({
+      staffId: staff.id,
+      patientId: null,
+      dayOfWeek,
+      startTime: slotTime,
+      endTime: addHour(slotTime),
+      branch: staff.branch,
+      department: staff.department,
+      notes: null,
+      disabled: true,
+    })
+  }
+
+  async function handleEnableSlot(disabledSlot: DeckingSlot) {
+    await onDeleteSlot(disabledSlot.id)
   }
 
   async function handlePatientSelect(dayOfWeek: string, slotTime: string, patient: Patient) {
@@ -434,8 +458,38 @@ function TherapistRow({ staff, config, slots, defaultHours, onSaveConfig, onSave
                     {formatTime(slot)}
                   </td>
                   {configuredDays.map(day => {
+                    const disabledSlot = getDisabledSlot(day, slot)
                     const cellSlots = getSlotsForCell(day, slot)
                     const isAdding = addingCell?.dayOfWeek === day && addingCell?.startTime === slot
+
+                    // ── Disabled cell ──
+                    if (disabledSlot) {
+                      return (
+                        <td key={day} style={{ padding: '0.25rem 0.4rem', verticalAlign: 'top', borderRight: '1px solid #f3f4f6', background: '#f3f4f6' }}>
+                          <div
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: '4px',
+                              background: '#e5e7eb', border: '1px solid #d1d5db', borderRadius: '0.3rem',
+                              padding: '0.18rem 0.4rem', justifyContent: 'center',
+                            }}
+                          >
+                            <Ban size={10} style={{ color: '#9ca3af', flexShrink: 0 }} />
+                            <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#9ca3af' }}>
+                              {disabledSlot.notes || 'Disabled'}
+                            </span>
+                            <button
+                              onClick={() => handleEnableSlot(disabledSlot)}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', padding: 0, lineHeight: 1, flexShrink: 0, marginLeft: 'auto' }}
+                              title="Re-enable this slot"
+                            >
+                              <X size={10} />
+                            </button>
+                          </div>
+                        </td>
+                      )
+                    }
+
+                    // ── Normal cell ──
                     return (
                       <td key={day} style={{ padding: '0.25rem 0.4rem', verticalAlign: 'top', borderRight: '1px solid #f3f4f6' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
@@ -464,29 +518,53 @@ function TherapistRow({ staff, config, slots, defaultHours, onSaveConfig, onSave
                             />
                           )}
 
-                          {/* Add button — shown when < 3 patients and not currently searching */}
+                          {/* Add / Disable buttons — shown when < 3 patients and not currently searching */}
                           {!isAdding && cellSlots.length < 3 && (
-                            <button
-                              onClick={() => setAddingCell({ dayOfWeek: day, startTime: slot })}
-                              style={{
-                                background: 'transparent',
-                                border: `1px ${cellSlots.length === 0 ? 'dashed' : 'solid'} ${cellSlots.length === 0 ? '#d1d5db' : '#FDE4CC'}`,
-                                borderRadius: '0.3rem',
-                                padding: '0.18rem 0.4rem',
-                                fontSize: '0.7rem',
-                                color: cellSlots.length === 0 ? '#9ca3af' : '#ED6823',
-                                cursor: 'pointer',
-                                width: '100%',
-                                textAlign: 'center',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: '2px',
-                              }}
-                            >
-                              <Plus size={9} />
-                              {cellSlots.length === 0 ? '' : <span style={{ fontSize: '0.65rem' }}>Add</span>}
-                            </button>
+                            <div style={{ display: 'flex', gap: '2px' }}>
+                              <button
+                                onClick={() => setAddingCell({ dayOfWeek: day, startTime: slot })}
+                                style={{
+                                  background: 'transparent',
+                                  border: `1px ${cellSlots.length === 0 ? 'dashed' : 'solid'} ${cellSlots.length === 0 ? '#d1d5db' : '#FDE4CC'}`,
+                                  borderRadius: '0.3rem',
+                                  padding: '0.18rem 0.4rem',
+                                  fontSize: '0.7rem',
+                                  color: cellSlots.length === 0 ? '#9ca3af' : '#ED6823',
+                                  cursor: 'pointer',
+                                  flex: 1,
+                                  textAlign: 'center',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '2px',
+                                }}
+                              >
+                                <Plus size={9} />
+                                {cellSlots.length === 0 ? '' : <span style={{ fontSize: '0.65rem' }}>Add</span>}
+                              </button>
+                              {cellSlots.length === 0 && (
+                                <button
+                                  onClick={() => handleDisableSlot(day, slot)}
+                                  style={{
+                                    background: 'transparent',
+                                    border: '1px dashed #d1d5db',
+                                    borderRadius: '0.3rem',
+                                    padding: '0.18rem 0.35rem',
+                                    fontSize: '0.6rem',
+                                    color: '#9ca3af',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '2px',
+                                    flexShrink: 0,
+                                  }}
+                                  title="Disable this slot (e.g. lunch break)"
+                                >
+                                  <Ban size={8} />
+                                </button>
+                              )}
+                            </div>
                           )}
                         </div>
                       </td>
@@ -715,7 +793,7 @@ export default function DeckingClient({ role }: { role: string }) {
     await loadBranchData(activeBranch)
   }
 
-  async function handleSaveSlot(data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null }) {
+  async function handleSaveSlot(data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled?: boolean }) {
     await fetch('/api/decking/slots', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -784,6 +862,8 @@ export default function DeckingClient({ role }: { role: string }) {
       {/* Decking Tab */}
       {activeMainTab === 'decking' && (
         <div>
+          {/* Patient appointment requests from client portal */}
+          <PatientRequestsPanel branch={activeBranch as 'SBEA' | 'SBGH'} />
           {/* Controls row */}
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
             {/* Branch toggle */}

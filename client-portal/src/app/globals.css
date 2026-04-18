@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+:root {
+  --scei-teal: #1a7b8a;
+  --scei-orange: #f97316;
+  --scei-charcoal: #0f172a;
+}
+
+html, body { min-height: 100%; }
+body {
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  color: var(--scei-charcoal);
+  background: linear-gradient(180deg, #f8fafc 0%, #fff 100%);
+}

@@ -83,12 +83,32 @@ services:
       EXTERNAL_API_KEY: ${EXTERNAL_API_KEY}
       HR_PLATFORM_URL: ${HR_PLATFORM_URL:-http://host.docker.internal:3457}
       HR_PLATFORM_API_KEY: ${HR_PLATFORM_API_KEY}
+      PAYMONGO_SECRET_KEY: ${PAYMONGO_SECRET_KEY}
+      PAYMONGO_PUBLIC_KEY: ${PAYMONGO_PUBLIC_KEY}
+      PAYMONGO_WEBHOOK_SECRET: ${PAYMONGO_WEBHOOK_SECRET}
+      PATIENT_PORTAL_SECRET: ${PATIENT_PORTAL_SECRET}
+      CLIENT_PORTAL_URL: ${CLIENT_PORTAL_URL:-https://client.sapphireclinicseast.org}
     extra_hosts:
       - "host.docker.internal:172.18.0.1"
     volumes:
       - /opt/sapphire/uploads:/app/uploads
     ports:
       - "3000:3000"
+
+  client-portal:
+    build:
+      context: ../client-portal
+      dockerfile: Dockerfile
+    container_name: sapphire_client_portal
+    restart: always
+    depends_on:
+      app:
+        condition: service_started
+    environment:
+      MARKETING_URL: ${MARKETING_URL:-https://marketing.sapphireclinicseast.org}
+      NODE_ENV: production
+    ports:
+      - "127.0.0.1:3001:3000"
 
 volumes:
   postgres_data:
