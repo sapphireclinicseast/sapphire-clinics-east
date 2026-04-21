@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Daily Survey Targets — SAPPHIRE Clinics</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<style>
+  :root {
+    --orange: #ED6823; --deep-orange: #C8541A; --pale-orange: #FFF3E8;
+    --teal: #0f766e; --green: #10b981; --amber: #f59e0b;
+    --gray-50: #f8fafc; --gray-100: #f1f5f9; --gray-200: #e2e8f0;
+    --gray-300: #cbd5e1; --gray-500: #64748b; --gray-700: #334155; --gray-900: #0f172a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', sans-serif; background: var(--gray-50); color: var(--gray-700); }
+  .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+  header { background: linear-gradient(135deg, var(--orange) 0%, var(--deep-orange) 100%); color: #fff; padding: 24px; border-radius: 16px; margin-bottom: 20px; }
+  header h1 { font-size: 24px; font-weight: 800; margin-bottom: 4px; }
+  header p { font-size: 13px; opacity: 0.9; }
+
+  .setup { background: #fff; padding: 32px; border-radius: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); max-width: 440px; margin: 60px auto; }
+  .setup h2 { color: var(--gray-900); font-size: 18px; margin-bottom: 6px; }
+  .setup p { font-size: 13px; color: var(--gray-500); margin-bottom: 20px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 11px; font-weight: 600; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+  .field input, .field select { width: 100%; padding: 10px 12px; border: 1.5px solid var(--gray-300); border-radius: 8px; font-size: 14px; font-family: inherit; outline: none; }
+  .field input:focus, .field select:focus { border-color: var(--orange); }
+  .btn { padding: 10px 18px; background: var(--orange); color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .btn:hover { background: var(--deep-orange); }
+  .btn.secondary { background: #fff; color: var(--gray-700); border: 1px solid var(--gray-300); }
+  .btn.secondary:hover { background: var(--gray-100); }
+
+  .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+  .toolbar .status { font-size: 12px; color: var(--gray-500); margin-left: auto; }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  .stat { background: #fff; padding: 14px; border-radius: 12px; border: 1px solid var(--gray-200); }
+  .stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--gray-500); font-weight: 600; }
+  .stat-value { font-size: 26px; font-weight: 800; margin-top: 4px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+  .card { background: #fff; border: 1px solid var(--gray-200); border-radius: 12px; overflow: hidden; }
+  .card.done { border-color: #bbf7d0; }
+  .card-head { padding: 12px 14px; background: var(--pale-orange); }
+  .card.done .card-head { background: #f0fdf4; }
+  .card-meta { font-size: 10px; font-weight: 600; text-transform: uppercase; color: var(--gray-500); letter-spacing: 0.05em; }
+  .card-name { font-size: 15px; font-weight: 700; color: var(--gray-900); margin-top: 2px; }
+  .card-staff { font-size: 12px; color: var(--gray-500); margin-top: 2px; }
+  .badge { display: inline-block; padding: 3px 8px; border-radius: 99px; font-size: 10px; font-weight: 700; }
+  .badge.pending { background: #fef3c7; color: #92400e; }
+  .badge.done { background: #bbf7d0; color: #166534; }
+  .qr-wrap { padding: 18px; display: flex; justify-content: center; background: #fafafa; }
+  .card-actions { display: flex; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--gray-100); }
+  .card-actions .btn-sm { flex: 1; padding: 6px 10px; font-size: 11px; background: #fff; color: var(--gray-700); border: 1px solid var(--gray-300); border-radius: 6px; cursor: pointer; font-family: inherit; }
+
+  .empty { text-align: center; padding: 60px 20px; color: var(--gray-500); font-size: 14px; }
+  .error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }
+
+  .hidden { display: none !important; }
+
+  @media print {
+    header, .toolbar, .stats, .card-actions, #logout-btn { display: none !important; }
+    body { background: #fff; }
+    .grid { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .card { break-inside: avoid; border: 1px solid #ddd; }
+    .qr-wrap { padding: 10px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Setup screen -->
+  <div id="setup" class="setup">
+    <h2>Daily Survey Targets</h2>
+    <p>Enter your access code and select your branch. These settings are remembered on this device.</p>
+    <div class="field">
+      <label>Branch</label>
+      <select id="branch-input">
+        <option value="SBEA">Sandbox East</option>
+        <option value="SBGH">Sandbox Greenhills</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Access Code</label>
+      <input id="code-input" type="password" placeholder="Access code" autocomplete="off">
+    </div>
+    <div id="setup-error" class="error hidden"></div>
+    <button class="btn" id="setup-save" style="width:100%;">Continue</button>
+  </div>
+
+  <!-- Main view -->
+  <div id="main" class="hidden">
+    <header>
+      <h1>Daily Survey Targets</h1>
+      <p id="branch-label"></p>
+    </header>
+
+    <div class="toolbar">
+      <button class="btn" id="refresh-btn">↻ Refresh</button>
+      <button class="btn secondary" onclick="window.print()">🖨 Print All</button>
+      <button class="btn secondary" id="logout-btn" onclick="logout()">⌫ Change branch/code</button>
+      <span class="status" id="updated-at"></span>
+    </div>
+
+    <div id="error-box" class="error hidden"></div>
+
+    <div class="stats" id="stats">
+      <div class="stat"><div class="stat-label">Total Targets</div><div class="stat-value" id="stat-total" style="color: var(--orange);">—</div></div>
+      <div class="stat"><div class="stat-label">Pending</div><div class="stat-value" id="stat-pending" style="color: var(--amber);">—</div></div>
+      <div class="stat"><div class="stat-label">Completed</div><div class="stat-value" id="stat-done" style="color: var(--green);">—</div></div>
+      <div class="stat"><div class="stat-label">Completion Rate</div><div class="stat-value" id="stat-rate" style="color: var(--teal);">—</div></div>
+    </div>
+
+    <div id="grid" class="grid"></div>
+    <div id="empty" class="empty hidden">No confirmed appointments for today, or all staff have met their yearly assessment target.</div>
+  </div>
+
+</div>
+
+<script>
+const LS_CODE = 'scei_survey_targets_code';
+const LS_BRANCH = 'scei_survey_targets_branch';
+let refreshTimer = null;
+
+// ─── Setup screen ──────────────────────────────────────────────────────────
+function showSetup() {
+  document.getElementById('setup').classList.remove('hidden');
+  document.getElementById('main').classList.add('hidden');
+  document.getElementById('branch-input').value = localStorage.getItem(LS_BRANCH) || 'SBEA';
+  document.getElementById('setup-error').classList.add('hidden');
+}
+
+function showMain() {
+  document.getElementById('setup').classList.add('hidden');
+  document.getElementById('main').classList.remove('hidden');
+  const branch = localStorage.getItem(LS_BRANCH);
+  document.getElementById('branch-label').textContent = branch === 'SBGH' ? 'Sandbox Greenhills' : 'Sandbox East';
+  load();
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(load, 3 * 60 * 1000); // auto-refresh every 3 min
+}
+
+function logout() {
+  localStorage.removeItem(LS_CODE);
+  if (refreshTimer) clearInterval(refreshTimer);
+  showSetup();
+}
+
+document.getElementById('setup-save').onclick = async () => {
+  const code = document.getElementById('code-input').value.trim();
+  const branch = document.getElementById('branch-input').value;
+  if (!code) {
+    const e = document.getElementById('setup-error');
+    e.textContent = 'Access code is required';
+    e.classList.remove('hidden');
+    return;
+  }
+  // Try a fetch to validate
+  try {
+    const r = await fetch('/api/customer-survey/daily-targets?token=' + encodeURIComponent(code) + '&branch=' + branch);
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      const e = document.getElementById('setup-error');
+      e.textContent = d.error || 'Invalid access code';
+      e.classList.remove('hidden');
+      return;
+    }
+    localStorage.setItem(LS_CODE, code);
+    localStorage.setItem(LS_BRANCH, branch);
+    showMain();
+  } catch (err) {
+    const e = document.getElementById('setup-error');
+    e.textContent = 'Network error: ' + err.message;
+    e.classList.remove('hidden');
+  }
+};
+
+// ─── Main view ─────────────────────────────────────────────────────────────
+async function load() {
+  const code = localStorage.getItem(LS_CODE);
+  const branch = localStorage.getItem(LS_BRANCH);
+  if (!code || !branch) { showSetup(); return; }
+
+  const errBox = document.getElementById('error-box');
+  errBox.classList.add('hidden');
+
+  try {
+    const r = await fetch('/api/customer-survey/daily-targets?token=' + encodeURIComponent(code) + '&branch=' + branch);
+    if (!r.ok) {
+      if (r.status === 401) { logout(); return; }
+      const d = await r.json().catch(() => ({}));
+      throw new Error(d.error || 'HTTP ' + r.status);
+    }
+    const data = await r.json();
+    renderTargets(data);
+  } catch (err) {
+    errBox.textContent = 'Error: ' + err.message;
+    errBox.classList.remove('hidden');
+  }
+}
+
+function renderTargets(data) {
+  const targets = data.targets || [];
+  const total = targets.length;
+  const pending = targets.filter(t => t.status === 'PENDING').length;
+  const done = targets.filter(t => t.status === 'COMPLETED').length;
+
+  document.getElementById('stat-total').textContent = total;
+  document.getElementById('stat-pending').textContent = pending;
+  document.getElementById('stat-done').textContent = done;
+  document.getElementById('stat-rate').textContent = total === 0 ? '0%' : Math.round((done / total) * 100) + '%';
+  document.getElementById('updated-at').textContent = 'Updated ' + new Date().toLocaleTimeString();
+
+  const grid = document.getElementById('grid');
+  const emptyEl = document.getElementById('empty');
+  grid.innerHTML = '';
+
+  if (total === 0) {
+    emptyEl.classList.remove('hidden');
+    return;
+  }
+  emptyEl.classList.add('hidden');
+
+  targets.forEach(t => {
+    const card = document.createElement('div');
+    card.className = 'card' + (t.status === 'COMPLETED' ? ' done' : '');
+    card.innerHTML = `
+      <div class="card-head">
+        <div class="card-meta">${t.department} · ${t.startTime}–${t.endTime}</div>
+        <div class="card-name">${escapeHtml(t.patientName)}</div>
+        <div class="card-staff">w/ ${escapeHtml(t.staffName)}</div>
+        <span class="badge ${t.status === 'COMPLETED' ? 'done' : 'pending'}" style="margin-top:6px;display:inline-block;">
+          ${t.status === 'COMPLETED' ? '✓ COMPLETED' : 'PENDING'}
+        </span>
+      </div>
+      <div class="qr-wrap"><div class="qr" id="qr-${t.assignmentId}"></div></div>
+      <div class="card-actions">
+        <button class="btn-sm" onclick="copyText('${t.surveyUrl}')">Copy link</button>
+        <a class="btn-sm" href="${t.surveyUrl}" target="_blank" rel="noreferrer" style="text-align:center;text-decoration:none;">Open ↗</a>
+      </div>
+    `;
+    grid.appendChild(card);
+
+    // Generate QR
+    new QRCode(document.getElementById('qr-' + t.assignmentId), {
+      text: t.surveyUrl,
+      width: 140, height: 140,
+      colorDark: '#0f766e', colorLight: '#ffffff',
+    });
+  });
+}
+
+function copyText(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    alert('Copied to clipboard');
+  });
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
+document.getElementById('refresh-btn').onclick = load;
+
+// ─── Boot ──────────────────────────────────────────────────────────────────
+if (localStorage.getItem(LS_CODE) && localStorage.getItem(LS_BRANCH)) {
+  showMain();
+} else {
+  showSetup();
+}
+</script>
+</body>
+</html>
