@@ -75,29 +75,32 @@ export async function GET(
   }))
 
   // ── Patient complaints — fetched from HR Platform ──────────────────────────
-  // The HR platform at hr.sapphireclinicseast.org stores patient complaints
-  // tagged by patient name. We attempt to fetch them via internal API.
-  let complaints: Array<{ date: string; text: string; status: string; reference?: string }> = []
-  const hrBaseUrl = process.env.HR_PLATFORM_URL || 'https://hr.sapphireclinicseast.org'
+  // Uses the /patient-complaints?patientName=... endpoint which handles name
+  // matching server-side and merges submissions + converted incidents.
+  let complaints: Array<{ date: string; text: string; status: string; reference?: string; concernType?: string; branch?: string; escalationLevel?: string }> = []
+  const hrBaseUrl = process.env.HR_PLATFORM_URL || 'http://127.0.0.1:3457'
   const hrApiKey = process.env.HR_PLATFORM_API_KEY
 
   if (hrApiKey) {
     try {
-      const patientName = `${patient.firstName} ${patient.lastName}`
-      const res = await fetch(
-        `${hrBaseUrl}/patient-complaints?patientName=${encodeURIComponent(patientName)}`,
-        {
-          headers: { Authorization: `Bearer ${hrApiKey}` },
-          signal: AbortSignal.timeout(5000),
-        },
-      )
+      const patientFullName = `${patient.firstName} ${patient.lastName}`
+      const url = `${hrBaseUrl}/patient-complaints?patientName=${encodeURIComponent(patientFullName)}`
+
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${hrApiKey}` },
+        signal: AbortSignal.timeout(8000),
+      })
       if (res.ok) {
         const data = await res.json()
-        complaints = (data.complaints ?? data ?? []).map((c: any) => ({
-          date: c.date ?? c.createdAt ?? '',
-          text: c.description ?? c.complaint ?? c.text ?? '',
-          status: c.status ?? 'Unknown',
+        const items = data.complaints ?? []
+        complaints = (Array.isArray(items) ? items : []).map((c: any) => ({
+          date: c.date ?? '',
+          text: c.description ?? '',
+          status: c.status ?? 'Pending Review',
           reference: c.referenceNo ?? c.id ?? '',
+          concernType: c.concernType ?? null,
+          branch: c.branch ?? null,
+          escalationLevel: c.escalationLevel ?? null,
         }))
       }
     } catch {
@@ -122,6 +125,7 @@ export async function GET(
       city: patient.city,
       diagnosis: patient.diagnosis,
       notes: patient.notes,
+      firstDayOfConsult: patient.firstDayOfConsult,
       branches: patient.branches,
       branch: patient.branch,
     },

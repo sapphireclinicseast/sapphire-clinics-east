@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   BarChart2, CalendarDays, Users, Settings, Star,
-  Filter, Lock,
+  Filter, Lock, Activity, ChevronDown, ChevronUp, User,
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
@@ -521,6 +521,11 @@ function DashboardContent() {
         </div>
       </div>
 
+      {/* Therapist Utilization */}
+      <div className="mt-6">
+        <TherapistUtilizationSection startDate={startDate} endDate={endDate} />
+      </div>
+
       {/* Settings Modal */}
       {settingsOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setSettingsOpen(false)}>
@@ -589,5 +594,326 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
         active ? 'text-blue-600 border-blue-600' : 'text-gray-400 border-transparent hover:text-gray-600'
       }`}
     >{children}</button>
+  )
+}
+
+
+// ── Therapist Utilization Section ───────────────────────────────────────────
+
+interface TherapistUtil {
+  staffId: string
+  staffName: string
+  department: string
+  branch: string
+  totalSlots: number
+  confirmed: number
+  rescheduled: number
+  cancelled: number
+  pending: number
+  blank: number
+}
+
+interface UtilSummary {
+  totalSlots: number
+  confirmed: number
+  rescheduled: number
+  cancelled: number
+  pending: number
+  blank: number
+}
+
+function pct(n: number, total: number): string {
+  if (total === 0) return '0.00'
+  return ((n / total) * 100).toFixed(2)
+}
+
+function UtilBar({ confirmed, rescheduled, cancelled, pending, blank, total }: {
+  confirmed: number; rescheduled: number; cancelled: number; pending: number; blank: number; total: number
+}) {
+  if (total === 0) return <div className="h-5 bg-gray-100 rounded-full" />
+  const segments = [
+    { value: confirmed,   color: '#10b981', label: 'Confirmed' },
+    { value: rescheduled, color: '#f59e0b', label: 'Rescheduled' },
+    { value: cancelled,   color: '#ef4444', label: 'Cancelled' },
+    { value: pending,     color: '#6366f1', label: 'Pending' },
+    { value: blank,       color: '#e5e7eb', label: 'Blank' },
+  ]
+  return (
+    <div className="flex h-5 rounded-full overflow-hidden" style={{ background: '#f3f4f6' }}>
+      {segments.map(seg => {
+        const w = (seg.value / total) * 100
+        if (w === 0) return null
+        return (
+          <div
+            key={seg.label}
+            title={`${seg.label}: ${seg.value} (${pct(seg.value, total)}%)`}
+            style={{ width: `${w}%`, background: seg.color, transition: 'width 0.3s' }}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
+function TherapistUtilizationSection({ startDate, endDate }: { startDate: string; endDate: string }) {
+  const [branch, setBranch]       = useState('all')
+  const [department, setDepartment] = useState('all')
+  const [staffFilter, setStaffFilter] = useState('')
+  const [data, setData]           = useState<TherapistUtil[]>([])
+  const [summary, setSummary]     = useState<UtilSummary | null>(null)
+  const [loading, setLoading]     = useState(false)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [viewMode, setViewMode]   = useState<'therapist' | 'department' | 'branch'>('therapist')
+
+  const fetchUtil = useCallback(async () => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({ startDate, endDate, branch, department })
+      const res = await fetch(`/api/scheduling-dashboard/therapist-utilization?${params}`)
+      if (res.ok) {
+        const json = await res.json()
+        setData(json.therapists ?? [])
+        setSummary(json.summary ?? null)
+      }
+    } finally { setLoading(false) }
+  }, [startDate, endDate, branch, department])
+
+  useEffect(() => { fetchUtil() }, [fetchUtil])
+
+  const byDept = useMemo(() => {
+    const map = new Map<string, { therapists: TherapistUtil[]; totals: UtilSummary }>()
+    for (const t of data) {
+      if (!map.has(t.department)) map.set(t.department, { therapists: [], totals: { totalSlots: 0, confirmed: 0, rescheduled: 0, cancelled: 0, pending: 0, blank: 0 } })
+      const g = map.get(t.department)!
+      g.therapists.push(t)
+      g.totals.totalSlots  += t.totalSlots
+      g.totals.confirmed   += t.confirmed
+      g.totals.rescheduled += t.rescheduled
+      g.totals.cancelled   += t.cancelled
+      g.totals.pending     += t.pending
+      g.totals.blank       += t.blank
+    }
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+  }, [data])
+
+  const byBranch = useMemo(() => {
+    const map = new Map<string, UtilSummary>()
+    for (const t of data) {
+      if (!map.has(t.branch)) map.set(t.branch, { totalSlots: 0, confirmed: 0, rescheduled: 0, cancelled: 0, pending: 0, blank: 0 })
+      const g = map.get(t.branch)!
+      g.totalSlots  += t.totalSlots
+      g.confirmed   += t.confirmed
+      g.rescheduled += t.rescheduled
+      g.cancelled   += t.cancelled
+      g.pending     += t.pending
+      g.blank       += t.blank
+    }
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+  }, [data])
+
+  const filtered = staffFilter.trim()
+    ? data.filter(t => t.staffName.toLowerCase().includes(staffFilter.toLowerCase()))
+    : data
+
+  const statBox = (label: string, value: number, total: number, color: string) => (
+    <div className="flex flex-col items-center px-3 py-2 rounded-lg" style={{ background: `${color}11`, border: `1px solid ${color}33` }}>
+      <span className="text-lg font-extrabold" style={{ color }}>{pct(value, total)}%</span>
+      <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">{label}</span>
+      <span className="text-[10px] text-gray-400">{value}/{total}</span>
+    </div>
+  )
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-200">
+        <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2 mb-3">
+          <Activity size={16} /> Therapist Utilization
+        </h3>
+        <div className="flex flex-wrap gap-3 items-end">
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-semibold text-gray-500 uppercase">Branch</label>
+            <select value={branch} onChange={e => setBranch(e.target.value)}
+              className="border border-gray-300 rounded-md px-2 py-1 text-xs">
+              <option value="all">All Branches</option>
+              {BRANCHES.map(b => <option key={b} value={b}>{BRANCH_LABELS[b]}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-semibold text-gray-500 uppercase">Department</label>
+            <select value={department} onChange={e => setDepartment(e.target.value)}
+              className="border border-gray-300 rounded-md px-2 py-1 text-xs">
+              <option value="all">All Departments</option>
+              {DEPARTMENTS.map(d => <option key={d} value={d}>{DEPT_LABELS[d]}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-semibold text-gray-500 uppercase">Therapist</label>
+            <input
+              placeholder="Filter by name…"
+              value={staffFilter}
+              onChange={e => setStaffFilter(e.target.value)}
+              className="border border-gray-300 rounded-md px-2 py-1 text-xs min-w-[160px]"
+            />
+          </div>
+          <div className="flex gap-0 ml-auto">
+            {(['therapist', 'department', 'branch'] as const).map(mode => (
+              <button key={mode} onClick={() => setViewMode(mode)}
+                className={`px-3 py-1 text-[11px] font-semibold border transition-all first:rounded-l-md last:rounded-r-md ${
+                  viewMode === mode
+                    ? 'bg-gray-900 text-white border-gray-900'
+                    : 'bg-white text-gray-500 border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                {mode === 'therapist' ? 'Per Therapist' : mode === 'department' ? 'Per Department' : 'Per Branch'}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="py-8 text-center text-sm text-gray-400">Loading utilization data…</div>
+      ) : data.length === 0 ? (
+        <div className="py-8 text-center text-sm text-gray-400">
+          No therapist configurations found. Set up therapists in the Decking Module first.
+        </div>
+      ) : (
+        <div>
+          {summary && summary.totalSlots > 0 && (
+            <div className="px-5 py-4 border-b border-gray-100 bg-gray-50">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">
+                  {viewMode === 'therapist' ? 'Overall' : 'Aggregate'} — {summary.totalSlots} total slots
+                </span>
+                <span className="text-xs text-gray-400">({startDate} to {endDate})</span>
+              </div>
+              <UtilBar {...summary} total={summary.totalSlots} />
+              <div className="flex flex-wrap gap-3 mt-3">
+                {statBox('Confirmed', summary.confirmed, summary.totalSlots, '#10b981')}
+                {statBox('Rescheduled', summary.rescheduled, summary.totalSlots, '#f59e0b')}
+                {statBox('Cancelled', summary.cancelled, summary.totalSlots, '#ef4444')}
+                {statBox('Pending', summary.pending, summary.totalSlots, '#6366f1')}
+                {statBox('Blank', summary.blank, summary.totalSlots, '#9ca3af')}
+              </div>
+            </div>
+          )}
+
+          {viewMode === 'therapist' && (
+            <div>
+              {filtered.length === 0 ? (
+                <div className="py-6 text-center text-sm text-gray-400">No therapists match the filter.</div>
+              ) : filtered.map(t => {
+                const isExpanded = expandedId === t.staffId
+                const utilizationPct = t.totalSlots > 0 ? (t.confirmed / t.totalSlots) * 100 : 0
+                return (
+                  <div key={t.staffId} className="border-b border-gray-100 last:border-b-0">
+                    <button
+                      onClick={() => setExpandedId(isExpanded ? null : t.staffId)}
+                      className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-teal-50 flex items-center justify-center flex-shrink-0">
+                        <User size={14} className="text-teal-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold text-gray-900">{t.staffName}</div>
+                        <div className="text-[11px] text-gray-400">{DEPT_LABELS[t.department] || t.department} · {BRANCH_LABELS[t.branch] || t.branch} · {t.totalSlots} slots</div>
+                      </div>
+                      <div className="flex-1 max-w-[200px] hidden sm:block">
+                        <UtilBar {...t} total={t.totalSlots} />
+                      </div>
+                      <div className="text-right min-w-[60px]">
+                        <div className="text-base font-extrabold" style={{ color: utilizationPct >= 80 ? '#10b981' : utilizationPct >= 50 ? '#f59e0b' : '#ef4444' }}>
+                          {pct(t.confirmed, t.totalSlots)}%
+                        </div>
+                        <div className="text-[10px] text-gray-400">confirmed</div>
+                      </div>
+                      {isExpanded ? <ChevronUp size={14} className="text-gray-400 flex-shrink-0" /> : <ChevronDown size={14} className="text-gray-400 flex-shrink-0" />}
+                    </button>
+                    {isExpanded && (
+                      <div className="px-5 pb-4 pt-1">
+                        <div className="flex flex-wrap gap-3">
+                          {statBox('Confirmed', t.confirmed, t.totalSlots, '#10b981')}
+                          {statBox('Rescheduled', t.rescheduled, t.totalSlots, '#f59e0b')}
+                          {statBox('Cancelled', t.cancelled, t.totalSlots, '#ef4444')}
+                          {statBox('Pending', t.pending, t.totalSlots, '#6366f1')}
+                          {statBox('Blank', t.blank, t.totalSlots, '#9ca3af')}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {viewMode === 'department' && (
+            <div>
+              {byDept.map(([dept, group]) => (
+                <div key={dept} className="border-b border-gray-100 last:border-b-0">
+                  <div className="px-5 py-3">
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="text-sm font-bold text-gray-900">{DEPT_LABELS[dept] || dept}</span>
+                      <span className="text-[11px] text-gray-400">{group.therapists.length} therapist{group.therapists.length !== 1 ? 's' : ''} · {group.totals.totalSlots} slots</span>
+                      <span className="ml-auto text-base font-extrabold" style={{ color: '#10b981' }}>
+                        {pct(group.totals.confirmed, group.totals.totalSlots)}%
+                      </span>
+                    </div>
+                    <UtilBar {...group.totals} total={group.totals.totalSlots} />
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {statBox('Confirmed', group.totals.confirmed, group.totals.totalSlots, '#10b981')}
+                      {statBox('Rescheduled', group.totals.rescheduled, group.totals.totalSlots, '#f59e0b')}
+                      {statBox('Cancelled', group.totals.cancelled, group.totals.totalSlots, '#ef4444')}
+                      {statBox('Pending', group.totals.pending, group.totals.totalSlots, '#6366f1')}
+                      {statBox('Blank', group.totals.blank, group.totals.totalSlots, '#9ca3af')}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {viewMode === 'branch' && (
+            <div>
+              {byBranch.map(([br, totals]) => (
+                <div key={br} className="border-b border-gray-100 last:border-b-0">
+                  <div className="px-5 py-3">
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="text-sm font-bold text-gray-900">{BRANCH_LABELS[br] || br}</span>
+                      <span className="text-[11px] text-gray-400">{totals.totalSlots} slots</span>
+                      <span className="ml-auto text-base font-extrabold" style={{ color: '#10b981' }}>
+                        {pct(totals.confirmed, totals.totalSlots)}%
+                      </span>
+                    </div>
+                    <UtilBar {...totals} total={totals.totalSlots} />
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {statBox('Confirmed', totals.confirmed, totals.totalSlots, '#10b981')}
+                      {statBox('Rescheduled', totals.rescheduled, totals.totalSlots, '#f59e0b')}
+                      {statBox('Cancelled', totals.cancelled, totals.totalSlots, '#ef4444')}
+                      {statBox('Pending', totals.pending, totals.totalSlots, '#6366f1')}
+                      {statBox('Blank', totals.blank, totals.totalSlots, '#9ca3af')}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="px-5 py-2 border-t border-gray-100 bg-gray-50 flex flex-wrap gap-4">
+            {[
+              { label: 'Confirmed', color: '#10b981' },
+              { label: 'Rescheduled', color: '#f59e0b' },
+              { label: 'Cancelled', color: '#ef4444' },
+              { label: 'Pending', color: '#6366f1' },
+              { label: 'Blank', color: '#e5e7eb' },
+            ].map(l => (
+              <div key={l.label} className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-sm" style={{ background: l.color }} />
+                <span className="text-[10px] text-gray-500 font-medium">{l.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   )
 }

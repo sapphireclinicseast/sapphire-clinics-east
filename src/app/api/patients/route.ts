@@ -323,6 +323,8 @@ export async function POST(req: NextRequest) {
       city:        uc(body.city)        || null,
       diagnosis:   uc(body.diagnosis)   || null,
       notes:       uc(body.notes)       || null,
+      pwdSeniorId: uc(body.pwdSeniorId) || null,
+      firstDayOfConsult: body.firstDayOfConsult ? new Date(body.firstDayOfConsult) : null,
     },
   })
 
@@ -339,6 +341,7 @@ export async function PUT(req: NextRequest) {
   const {
     id, firstName, lastName, email, phone, dob, branches,
     sex, civilStatus, religion, nationality, address, city, diagnosis, notes,
+    firstDayOfConsult, pwdSeniorId,
   } = body
 
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
@@ -367,6 +370,8 @@ export async function PUT(req: NextRequest) {
   if (city         !== undefined) updateData.city         = uc(city)         || null
   if (diagnosis    !== undefined) updateData.diagnosis    = uc(diagnosis)    || null
   if (notes        !== undefined) updateData.notes        = uc(notes)        || null
+  if (firstDayOfConsult !== undefined) updateData.firstDayOfConsult = firstDayOfConsult ? new Date(firstDayOfConsult) : null
+  if (pwdSeniorId       !== undefined) updateData.pwdSeniorId       = uc(pwdSeniorId) || null
 
   const patient = await prisma.patient.update({
     where: { id },

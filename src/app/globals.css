@@ -1,20 +1,27 @@
 @import "tailwindcss";
 
 :root {
-  --teal: #1A7B8A;
-  --deep-teal: #0D5B68;
-  --bright-teal: #2AAABB;
-  --pale-teal: #E4F3F5;
-  --gold: #C9A227;
-  --gold-light: #F0D582;
-  --charcoal: #1C2B30;
-  --near-black: #0A1012;
-  --off-white: #F7FAFB;
-  --light-gray: #E8EDEF;
-  --mid-gray: #9AABB0;
+  /* Primary — warm oranges */
+  --teal: #ED6823;
+  --deep-teal: #C8541A;
+  --bright-teal: #FFA235;
+  --pale-teal: #FFF3EA;
 
-  --font-display: var(--font-montserrat), 'Futura', 'Century Gothic', sans-serif;
-  --font-body: var(--font-open-sans), 'Gill Sans', sans-serif;
+  /* Secondary — sage greens */
+  --gold: #2E5E5A;
+  --gold-light: #6B9E8F;
+
+  /* Neutrals */
+  --charcoal: #2E3A3A;
+  --near-black: #1A2520;
+  --off-white: #FAFAF8;
+  --light-gray: #E8EDEB;
+  --mid-gray: #829995;
+
+  /* Fonts */
+  --font-display: var(--font-comfortaa), 'Century Gothic', sans-serif;
+  --font-heading: var(--font-cormorant-garamond), 'Georgia', serif;
+  --font-body: var(--font-dm-sans), 'Helvetica Neue', sans-serif;
 }
 
 * {
@@ -27,7 +34,11 @@ body {
   background: var(--off-white);
 }
 
-h1, h2, h3, h4, h5, h6 {
+h1, h2, h3 {
+  font-family: var(--font-heading);
+}
+
+h4, h5, h6 {
   font-family: var(--font-display);
 }
 

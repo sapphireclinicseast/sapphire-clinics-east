@@ -25,6 +25,7 @@ interface PatientInfo {
   city?: string | null
   diagnosis?: string | null
   notes?: string | null
+  firstDayOfConsult?: string | null
   branches?: string[]
   branch?: string | null
 }
@@ -59,6 +60,9 @@ interface Complaint {
   text: string
   status: string
   reference?: string
+  concernType?: string
+  staffInvolved?: string
+  location?: string
 }
 
 interface SearchResult {
@@ -314,6 +318,7 @@ export default function PatientProfilePage() {
                 <InfoRow label="Civil Status" value={titleCase(p.civilStatus)} />
                 <InfoRow label="Patient Type" value={p.patientType === 'PEDIATRIC' ? 'Pediatric' : 'Adult'} />
                 <InfoRow label="Diagnosis" value={titleCase(p.diagnosis)} />
+                <InfoRow label="1st Day of Consult" value={p.firstDayOfConsult ? formatDate(p.firstDayOfConsult) : 'Not set (uses 1st recorded session)'} />
                 <InfoRow label="Branch" value={
                   p.branches && p.branches.length > 0
                     ? p.branches.map(branchLabel).join(', ')
@@ -394,8 +399,21 @@ export default function PatientProfilePage() {
                 <div className="space-y-3">
                   {profileData.complaints.map((c, i) => (
                     <div key={i} className="py-3 border-b border-gray-100 last:border-b-0">
-                      <div className="text-xs text-gray-400 mb-1">{formatDate(c.date)}</div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs text-gray-400">{formatDate(c.date)}</span>
+                        {c.concernType && (
+                          <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200">
+                            {c.concernType}
+                          </span>
+                        )}
+                      </div>
                       <div className="text-sm text-gray-700 leading-relaxed">{c.text}</div>
+                      {(c.staffInvolved || c.location) && (
+                        <div className="mt-1.5 flex flex-wrap gap-3 text-xs text-gray-400">
+                          {c.staffInvolved && <span>Staff: <span className="text-gray-600">{c.staffInvolved}</span></span>}
+                          {c.location && <span>Location: <span className="text-gray-600">{c.location}</span></span>}
+                        </div>
+                      )}
                       <div className="mt-2 flex items-center gap-2">
                         <span
                           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${

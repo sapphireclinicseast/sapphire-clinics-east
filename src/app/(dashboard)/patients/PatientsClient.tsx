@@ -27,6 +27,8 @@ interface Patient {
   diagnosis?: string
   notes?: string
   referralUrl?: string | null
+  firstDayOfConsult?: string | null
+  pwdSeniorId?: string | null
 }
 
 const BRANCHES = [
@@ -44,6 +46,7 @@ const EMPTY_FORM = {
   firstName: '', lastName: '', email: '', phone: '', dob: '',
   patientType: 'ADULT', branches: [] as string[], sex: '',
   civilStatus: '', religion: '', nationality: '', address: '', city: '', diagnosis: '', notes: '',
+  firstDayOfConsult: '', pwdSeniorId: '',
 }
 
 type SortCol = 'name' | 'type' | 'branch' | 'sex' | 'city' | 'barangay' | 'diagnosis' | 'email' | 'dob' | ''
@@ -229,6 +232,7 @@ export default function PatientsPage({ role = '' }: { role?: string }) {
     new Set(['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE'])
   )
   const [showExportPanel, setShowExportPanel] = useState(false)
+  const [showRegisterQr, setShowRegisterQr] = useState(false)
 
   const [form, setForm]           = useState({ ...EMPTY_FORM, branches: forcedBranch ? [forcedBranch] : [] })
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -443,6 +447,8 @@ export default function PatientsPage({ role = '' }: { role?: string }) {
       city:        p.city        ?? '',
       diagnosis:   p.diagnosis   ?? '',
       notes:       p.notes       ?? '',
+      firstDayOfConsult: p.firstDayOfConsult ? p.firstDayOfConsult.slice(0, 10) : '',
+      pwdSeniorId: p.pwdSeniorId ?? '',
     })
     setEditError('')
   }
@@ -704,6 +710,14 @@ export default function PatientsPage({ role = '' }: { role?: string }) {
           )}
         </div>
 
+        <button onClick={() => setShowRegisterQr(true)}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
+          style={{ background: '#fff', color: 'var(--teal)', border: '1.5px solid var(--teal)', fontFamily: 'var(--font-display)' }}
+          title="Show QR code for patients to self-register">
+          <QrCode size={15} />
+          Patient QR
+        </button>
+
         <button onClick={() => setShowAddForm(!showAddForm)}
           className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
           style={{ background: 'var(--teal)', color: '#fff', fontFamily: 'var(--font-display)' }}>
@@ -711,6 +725,13 @@ export default function PatientsPage({ role = '' }: { role?: string }) {
           Add Patient
         </button>
       </div>
+
+      {showRegisterQr && (
+        <PatientRegisterQrModal
+          forcedBranch={forcedBranch}
+          onClose={() => setShowRegisterQr(false)}
+        />
+      )}
 
       {/* Import message */}
       {importMsg && (
@@ -872,6 +893,7 @@ export default function PatientsPage({ role = '' }: { role?: string }) {
               <Field label="Email" type="email"    value={form.email}        onChange={(v) => setForm((f) => ({ ...f, email: v }))} />
               <Field label="Cellphone No."         value={form.phone}        onChange={(v) => setForm((f) => ({ ...f, phone: v }))} />
               <Field label="Date of Birth" type="date" value={form.dob}      onChange={(v) => setForm((f) => ({ ...f, dob: v }))} />
+              <Field label="1st Day of Consult" type="date" value={form.firstDayOfConsult} onChange={(v) => setForm((f) => ({ ...f, firstDayOfConsult: v }))} placeholder="Leave blank to use 1st recorded session" />
               <Field label="Sex"                   value={form.sex}          onChange={(v) => setForm((f) => ({ ...f, sex: v }))} placeholder="Male / Female" />
               <Field label="Barangay / Address"    value={form.address}      onChange={(v) => setForm((f) => ({ ...f, address: v }))} />
               <Field label="City"                  value={form.city}         onChange={(v) => setForm((f) => ({ ...f, city: v }))} />
@@ -879,6 +901,7 @@ export default function PatientsPage({ role = '' }: { role?: string }) {
               <Field label="Civil Status"          value={form.civilStatus}  onChange={(v) => setForm((f) => ({ ...f, civilStatus: v }))} />
               <Field label="Religion"              value={form.religion}     onChange={(v) => setForm((f) => ({ ...f, religion: v }))} />
               <Field label="Nationality"           value={form.nationality}  onChange={(v) => setForm((f) => ({ ...f, nationality: v }))} />
+              <Field label="PWD/Senior ID Number"  value={form.pwdSeniorId}  onChange={(v) => setForm((f) => ({ ...f, pwdSeniorId: v }))} placeholder="Optional — for discount eligibility" />
             </div>
             <div>
               <label className="block text-xs font-semibold uppercase tracking-widest mb-1.5"
@@ -1067,6 +1090,7 @@ export default function PatientsPage({ role = '' }: { role?: string }) {
                         <Field label="Email" type="email"    value={editForm.email}       onChange={(v) => setEditForm((f) => ({ ...f, email: v }))} />
                         <Field label="Cellphone No."         value={editForm.phone}       onChange={(v) => setEditForm((f) => ({ ...f, phone: v }))} />
                         <Field label="Date of Birth" type="date" value={editForm.dob}     onChange={(v) => setEditForm((f) => ({ ...f, dob: v }))} />
+                        <Field label="1st Day of Consult" type="date" value={editForm.firstDayOfConsult} onChange={(v) => setEditForm((f) => ({ ...f, firstDayOfConsult: v }))} placeholder="Leave blank to use 1st recorded session" />
                         <Field label="Sex"                   value={editForm.sex}         onChange={(v) => setEditForm((f) => ({ ...f, sex: v }))} placeholder="Male / Female" />
                         <Field label="Barangay / Address"    value={editForm.address}     onChange={(v) => setEditForm((f) => ({ ...f, address: v }))} />
                         <Field label="City"                  value={editForm.city}        onChange={(v) => setEditForm((f) => ({ ...f, city: v }))} />
@@ -1074,6 +1098,7 @@ export default function PatientsPage({ role = '' }: { role?: string }) {
                         <Field label="Civil Status"          value={editForm.civilStatus} onChange={(v) => setEditForm((f) => ({ ...f, civilStatus: v }))} />
                         <Field label="Religion"              value={editForm.religion}    onChange={(v) => setEditForm((f) => ({ ...f, religion: v }))} />
                         <Field label="Nationality"           value={editForm.nationality} onChange={(v) => setEditForm((f) => ({ ...f, nationality: v }))} />
+                        <Field label="PWD/Senior ID Number"  value={editForm.pwdSeniorId} onChange={(v) => setEditForm((f) => ({ ...f, pwdSeniorId: v }))} placeholder="Optional — for discount eligibility" />
                       </div>
                       <div className="mt-3">
                         <label className="block text-xs font-semibold uppercase tracking-widest mb-1.5"
@@ -1283,6 +1308,143 @@ export default function PatientsPage({ role = '' }: { role?: string }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+
+// ─── Patient Self-Registration QR Modal ──────────────────────────────────────
+function PatientRegisterQrModal({
+  forcedBranch,
+  onClose,
+}: {
+  forcedBranch: string
+  onClose: () => void
+}) {
+  const [branch, setBranch] = useState(forcedBranch || '')
+  const [qrDataUrl, setQrDataUrl] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+  const registerUrl = branch
+    ? `${origin}/patient-register?branch=${encodeURIComponent(branch)}`
+    : `${origin}/patient-register`
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    import('qrcode').then(QR =>
+      QR.toDataURL(registerUrl, { width: 360, margin: 2, color: { dark: '#ED6823', light: '#ffffff' } })
+    ).then(url => {
+      if (!cancelled) { setQrDataUrl(url); setLoading(false) }
+    }).catch(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [registerUrl])
+
+  function handlePrint() {
+    const win = window.open('', '_blank', 'width=600,height=700')
+    if (!win) return
+    win.document.write(`
+      <html><head><title>Patient Registration QR</title>
+      <style>
+        body { font-family: system-ui, sans-serif; text-align: center; padding: 40px 20px; }
+        h1 { color: #ED6823; margin-bottom: 6px; }
+        p { color: #555; margin: 4px 0; font-size: 13px; }
+        img { margin: 20px 0; border: 1px solid #e5e7eb; border-radius: 12px; padding: 8px; }
+        .url { font-size: 11px; color: #888; word-break: break-all; max-width: 420px; margin: 0 auto; }
+      </style></head><body>
+        <h1>SAPPHIRE Clinics</h1>
+        <p>Patient Registration</p>
+        <img src=\"${qrDataUrl}\" />
+        <p>Scan this code to register as a patient</p>
+        <p class=\"url\">${registerUrl}</p>
+      </body></html>
+    `)
+    win.document.close()
+    setTimeout(() => win.print(), 500)
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.5)' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+          <div className="flex items-center gap-2">
+            <QrCode size={18} style={{ color: 'var(--teal)' }} />
+            <h3 className="text-base font-bold" style={{ color: 'var(--charcoal)' }}>Patient Self-Registration</h3>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="p-5">
+          <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+            Patients can scan this QR code with their phone to fill out their information.
+            Submitted records appear immediately in the Patient CRM.
+          </p>
+
+          {!forcedBranch && (
+            <div className="mb-4">
+              <label className="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">
+                Pre-fill Branch (optional)
+              </label>
+              <select
+                value={branch}
+                onChange={e => setBranch(e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+              >
+                <option value="">— Let patient choose —</option>
+                {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+              </select>
+            </div>
+          )}
+
+          <div style={{
+            display: 'flex', justifyContent: 'center', padding: 16,
+            background: '#f9fafb', borderRadius: 12, border: '1px solid #e5e7eb',
+          }}>
+            {loading ? (
+              <div style={{ width: 280, height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af' }}>
+                <Loader2 size={32} className="animate-spin" />
+              </div>
+            ) : qrDataUrl ? (
+              <img src={qrDataUrl} alt="Patient registration QR code" style={{ width: 280, height: 280 }} />
+            ) : (
+              <div style={{ width: 280, height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444', fontSize: 12 }}>
+                Unable to generate QR
+              </div>
+            )}
+          </div>
+
+          <div className="mt-3 px-3 py-2 bg-gray-50 rounded-md text-[11px] text-gray-500 break-all text-center">
+            {registerUrl}
+          </div>
+
+          <div className="flex gap-2 mt-4">
+            <button
+              onClick={handlePrint}
+              disabled={!qrDataUrl}
+              className="flex-1 py-2.5 rounded-lg text-sm font-semibold border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+              style={{ color: 'var(--charcoal)' }}
+            >
+              Print
+            </button>
+            <a
+              href={registerUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-center"
+              style={{ background: 'var(--teal)', color: '#fff' }}
+            >
+              Open Form ↗
+            </a>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

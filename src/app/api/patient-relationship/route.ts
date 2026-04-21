@@ -15,9 +15,13 @@ const DEPT_FOLLOWUP: Record<string, { days: number; label: string }> = {
 }
 const TOLERANCE_DAYS = 7
 
-// Max cancellations per patient per 6-month window
-const MAX_CANCELLATIONS = 2
+// Free cancellation allowance per 6-month window (before fees apply)
+const FREE_CANCELLATIONS = 2
 const CANCELLATION_WINDOW_DAYS = 180
+// Total cancellations before slot removal
+const MAX_CANCELLATIONS = 12
+// Max no-shows per patient (slot removal at limit)
+const MAX_NOSHOWS = 3
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -122,12 +126,12 @@ export async function GET(req: NextRequest) {
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
 
     const results = Array.from(patientMap.values()).map(({ patient: p, firstSession, clinician }) => {
-      // Reference date: doctorConsultDate if set, otherwise first session
+      // Reference date: firstDayOfConsult if set, otherwise first recorded session
       let referenceDate: Date
       let referenceSource: 'consult' | 'session'
 
-      if (p.doctorConsultDate) {
-        referenceDate = new Date(p.doctorConsultDate)
+      if ((p as any).firstDayOfConsult) {
+        referenceDate = new Date((p as any).firstDayOfConsult)
         referenceSource = 'consult'
       } else {
         referenceDate = new Date(firstSession.date)
@@ -177,6 +181,43 @@ export async function GET(req: NextRequest) {
     })
   }
 
+  // ── NO-SHOW TAB ──────────────────────────────────────────────
+  if (tab === 'noshow') {
+    const patients = await prisma.patient.findMany({
+      where: branchFilter,
+      include: {
+        noShowLogs: { orderBy: { createdAt: 'desc' } },
+      },
+      orderBy: { lastName: 'asc' },
+    })
+
+    const results = patients.map(p => {
+      const activeLogs = p.noShowLogs.filter(l => !l.deletedAt)
+      return {
+        id: p.id,
+        firstName: p.firstName,
+        lastName: p.lastName,
+        phone: p.phone,
+        email: p.email,
+        branch: p.branches?.[0] || p.branch,
+        noShowCount: activeLogs.length,
+        logs: p.noShowLogs.map(l => ({
+          id: l.id,
+          remarks: l.remarks,
+          createdAt: l.createdAt,
+          deletedAt: l.deletedAt,
+          deletedBy: l.deletedBy,
+          deleteReason: l.deleteReason,
+        })),
+      }
+    })
+
+    // Sort: most no-shows first
+    results.sort((a, b) => b.noShowCount - a.noShowCount)
+
+    return NextResponse.json({ patients: results, total: results.length })
+  }
+
   // ── CANCELLATION TAB ─────────────────────────────────────────
   if (tab === 'cancellation') {
     const patients = await prisma.patient.findMany({
@@ -191,12 +232,17 @@ export async function GET(req: NextRequest) {
     const today = new Date()
 
     const results = patients.map(p => {
-      // 6-month window starts from first session date
       const firstSession = p.schedules[0]
-      const windowStart = firstSession ? new Date(firstSession.date) : null
-
-      // Count active (non-deleted) cancellation logs within window
       const activeLogs = p.cancellationLogs.filter(l => !l.deletedAt)
+
+      // Total cancellations (for slot removal: 0/12)
+      const totalUsed = activeLogs.length
+
+      // 6-month window cancellations (for fee allowance: 0/2)
+      // Use firstDayOfConsult if set, otherwise fall back to first recorded session
+      const windowStart = (p as any).firstDayOfConsult
+        ? new Date((p as any).firstDayOfConsult)
+        : firstSession ? new Date(firstSession.date) : null
       const windowLogs = windowStart
         ? activeLogs.filter(l => {
             const logDate = new Date(l.createdAt)
@@ -204,9 +250,8 @@ export async function GET(req: NextRequest) {
             return daysSince >= 0 && daysSince <= CANCELLATION_WINDOW_DAYS
           })
         : activeLogs
-
-      const used = windowLogs.length
-      const remaining = Math.max(0, MAX_CANCELLATIONS - used)
+      const windowUsed = windowLogs.length
+      const freeRemaining = Math.max(0, FREE_CANCELLATIONS - windowUsed)
 
       return {
         id: p.id,
@@ -216,8 +261,10 @@ export async function GET(req: NextRequest) {
         email: p.email,
         branch: p.branches?.[0] || p.branch,
         firstSessionDate: firstSession?.date || null,
-        cancellationsUsed: used,
-        cancellationsRemaining: remaining,
+        cancellationsUsed: totalUsed,
+        cancellationsRemaining: Math.max(0, MAX_CANCELLATIONS - totalUsed),
+        windowUsed,
+        freeRemaining,
         logs: p.cancellationLogs.map(l => ({
           id: l.id,
           type: l.type,
@@ -281,6 +328,20 @@ export async function POST(req: NextRequest) {
 
   // Handle JSON body (create log)
   const body = await req.json()
+
+  // No-show log creation
+  if (body.tab === 'noshow') {
+    const { patientId, branch, remarks } = body
+    if (!patientId || !branch) {
+      return NextResponse.json({ error: 'patientId, branch required' }, { status: 400 })
+    }
+    const log = await prisma.noShowLog.create({
+      data: { patientId, branch, remarks },
+    })
+    return NextResponse.json({ ok: true, log })
+  }
+
+  // Cancellation log creation
   const { patientId, type, branch, remarks } = body
   if (!patientId || !type || !branch) {
     return NextResponse.json({ error: 'patientId, type, branch required' }, { status: 400 })
@@ -319,6 +380,22 @@ export async function DELETE(req: NextRequest) {
     } catch {
       return NextResponse.json({ error: 'HR platform unreachable' }, { status: 500 })
     }
+  }
+
+  // Delete no-show log (soft delete)
+  if (tab === 'noshow-delete') {
+    const logId = searchParams.get('logId')
+    const reason = searchParams.get('reason') || ''
+    if (!logId) return NextResponse.json({ error: 'logId required' }, { status: 400 })
+    await prisma.noShowLog.update({
+      where: { id: logId },
+      data: {
+        deletedAt: new Date(),
+        deletedBy: user?.name || user?.email || 'Unknown',
+        deleteReason: reason,
+      },
+    })
+    return NextResponse.json({ ok: true })
   }
 
   // Delete cancellation log (soft delete)

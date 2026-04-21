@@ -401,12 +401,27 @@ export default function FrontDeskWelcome({
   const [emailState, setEmailState] = useState<Record<string, EmailState>>({})
   const [sentEmailIds, setSentEmailIds] = useState<Set<string>>(new Set())
   const [sentSmsIds, setSentSmsIds] = useState<Set<string>>(new Set())
+  const [slotAlerts, setSlotAlerts] = useState<{ nearingNoShow: any[]; subjectNoShow: any[]; nearingCancel: any[]; subjectCancel: any[] }>({ nearingNoShow: [], subjectNoShow: [], nearingCancel: [], subjectCancel: [] })
 
   useEffect(() => {
     setQuote(getDailyQuote())
     setSentEmailIds(loadSentEmails())
     setSentSmsIds(loadSent('sms'))
-  }, [])
+
+    // Fetch slot removal alerts
+    const branchParam = branch === 'SBEA' ? 'SANDBOX_EAST' : branch === 'SBGH' ? 'SANDBOX_GREENHILLS' : ''
+    Promise.all([
+      fetch(`/api/patient-relationship?tab=noshow&branch=${branchParam}`).then(r => r.json()).catch(() => ({ patients: [] })),
+      fetch(`/api/patient-relationship?tab=cancellation&branch=${branchParam}`).then(r => r.json()).catch(() => ({ patients: [] })),
+    ]).then(([ns, ca]) => {
+      setSlotAlerts({
+        nearingNoShow: (ns.patients || []).filter((p: any) => p.noShowCount === 2),
+        subjectNoShow: (ns.patients || []).filter((p: any) => p.noShowCount >= 3),
+        nearingCancel: (ca.patients || []).filter((p: any) => p.cancellationsUsed >= 10 && p.cancellationsUsed < 12),
+        subjectCancel: (ca.patients || []).filter((p: any) => p.cancellationsUsed >= 12),
+      })
+    })
+  }, [branch])
 
   const branchLabel =
     branch === 'SBEA' ? 'Sandbox Clinic East'
@@ -512,8 +527,11 @@ export default function FrontDeskWelcome({
         ))}
       </div>
 
-      {/* ── Birthday Reminder ── */}
-      <div style={{ width: '100%', maxWidth: '560px', padding: '0 1.5rem' }}>
+      {/* ── Birthday + Slot Alerts side by side ── */}
+      <div style={{ width: '100%', maxWidth: '900px', padding: '0 1.5rem', display: 'flex', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+
+      {/* ── Birthday Reminder (left) ── */}
+      <div style={{ flex: '1 1 340px', minWidth: 0 }}>
         <div style={{
           background: '#fff',
           border: '1px solid #EDE5D8',
@@ -715,6 +733,62 @@ export default function FrontDeskWelcome({
           )}
         </div>
       </div>
+
+      {/* ── Slot Removal Alerts (right column) ── */}
+      {(slotAlerts.subjectNoShow.length > 0 || slotAlerts.nearingNoShow.length > 0 || slotAlerts.subjectCancel.length > 0 || slotAlerts.nearingCancel.length > 0) && (
+        <div style={{ flex: '1 1 280px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {slotAlerts.subjectNoShow.length > 0 && (
+            <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '0.875rem', padding: '1rem 1.25rem' }}>
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#DC2626', marginBottom: '0.5rem' }}>
+                Subject to Slot Removal — No-Shows ({slotAlerts.subjectNoShow.length})
+              </div>
+              {slotAlerts.subjectNoShow.map((p: any) => (
+                <div key={p.id} style={{ fontSize: '0.82rem', color: '#991B1B', fontWeight: 600, padding: '0.2rem 0' }}>
+                  {p.lastName}, {p.firstName} <span style={{ fontWeight: 400, fontSize: '0.75rem', color: '#DC2626' }}>— {p.noShowCount}/3</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {slotAlerts.nearingNoShow.length > 0 && (
+            <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '0.875rem', padding: '1rem 1.25rem' }}>
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#D97706', marginBottom: '0.5rem' }}>
+                Nearing Slot Removal — No-Shows ({slotAlerts.nearingNoShow.length})
+              </div>
+              {slotAlerts.nearingNoShow.map((p: any) => (
+                <div key={p.id} style={{ fontSize: '0.82rem', color: '#92400E', fontWeight: 600, padding: '0.2rem 0' }}>
+                  {p.lastName}, {p.firstName} <span style={{ fontWeight: 400, fontSize: '0.75rem', color: '#D97706' }}>— {p.noShowCount}/3</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {slotAlerts.subjectCancel.length > 0 && (
+            <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '0.875rem', padding: '1rem 1.25rem' }}>
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#DC2626', marginBottom: '0.5rem' }}>
+                Subject to Slot Removal — Cancellations ({slotAlerts.subjectCancel.length})
+              </div>
+              {slotAlerts.subjectCancel.map((p: any) => (
+                <div key={p.id} style={{ fontSize: '0.82rem', color: '#991B1B', fontWeight: 600, padding: '0.2rem 0' }}>
+                  {p.lastName}, {p.firstName} <span style={{ fontWeight: 400, fontSize: '0.75rem', color: '#DC2626' }}>— {p.cancellationsUsed}/12</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {slotAlerts.nearingCancel.length > 0 && (
+            <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '0.875rem', padding: '1rem 1.25rem' }}>
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#D97706', marginBottom: '0.5rem' }}>
+                Nearing Slot Removal — Cancellations ({slotAlerts.nearingCancel.length})
+              </div>
+              {slotAlerts.nearingCancel.map((p: any) => (
+                <div key={p.id} style={{ fontSize: '0.82rem', color: '#92400E', fontWeight: 600, padding: '0.2rem 0' }}>
+                  {p.lastName}, {p.firstName} <span style={{ fontWeight: 400, fontSize: '0.75rem', color: '#D97706' }}>— {p.cancellationsUsed}/12</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      </div>{/* end side-by-side wrapper */}
 
       {/* Spacer — ensures content sits above the alpaca row */}
       <div style={{ height: '330px', flexShrink: 0 }} />
