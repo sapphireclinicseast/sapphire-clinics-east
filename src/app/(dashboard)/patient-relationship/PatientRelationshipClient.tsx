@@ -7,7 +7,7 @@ import {
   Upload, Eye, Trash2, FileText, QrCode, Loader2, X,
 } from 'lucide-react'
 
-type Tab = 'waitlist' | 'followup' | 'cancellation'
+type Tab = 'waitlist' | 'followup' | 'noshow' | 'cancellation'
 
 const BRANCHES = [
   { value: 'SANDBOX_EAST', label: 'Sandbox East' },
@@ -452,6 +452,203 @@ function FollowUpTab({ branch }: { branch: string }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// NO SHOW TAB
+// ══════════════════════════════════════════════════════════════════════════════
+
+const MAX_NOSHOWS = 3
+
+function NoShowTab({ branch }: { branch: string }) {
+  const [patients, setPatients] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState(25)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [logForm, setLogForm] = useState<{ patientId: string; remarks: string } | null>(null)
+  const [logSaving, setLogSaving] = useState(false)
+  const [deleting, setDeleting] = useState<{ logId: string; reason: string } | null>(null)
+
+  const fetchData = useCallback(() => {
+    setLoading(true)
+    const params = new URLSearchParams({ tab: 'noshow' })
+    if (branch) params.set('branch', branch)
+    fetch(`/api/patient-relationship?${params}`)
+      .then(r => r.json())
+      .then(d => { setPatients(d.patients || []); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [branch])
+
+  useEffect(() => { fetchData() }, [fetchData])
+
+  const filtered = search
+    ? patients.filter((p: any) => `${p.firstName} ${p.lastName}`.toLowerCase().includes(search.toLowerCase()))
+    : patients
+  const paginated = filtered.slice((page - 1) * perPage, page * perPage)
+
+  async function saveLog() {
+    if (!logForm) return
+    setLogSaving(true)
+    try {
+      const res = await fetch('/api/patient-relationship', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tab: 'noshow', patientId: logForm.patientId, remarks: logForm.remarks, branch: branch || patients.find((p: any) => p.id === logForm.patientId)?.branch || '' }),
+      })
+      if (res.ok) { setLogForm(null); fetchData() }
+      else alert('Failed to save')
+    } catch { alert('Failed to save') }
+    finally { setLogSaving(false) }
+  }
+
+  async function deleteLog() {
+    if (!deleting) return
+    const params = new URLSearchParams({ tab: 'noshow-delete', logId: deleting.logId, reason: deleting.reason })
+    const res = await fetch(`/api/patient-relationship?${params}`, { method: 'DELETE' })
+    if (res.ok) { setDeleting(null); fetchData() }
+    else alert('Failed to delete')
+  }
+
+  if (loading) return <Loading />
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg p-3 text-xs" style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B' }}>
+        Patients are allowed a maximum of <strong>{MAX_NOSHOWS} no-shows</strong>. Upon reaching {MAX_NOSHOWS}/{MAX_NOSHOWS}, the patient is <strong>subject to slot removal</strong>.
+      </div>
+
+      <input type="text" placeholder="Search by name..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ ...selectStyle, width: '100%', maxWidth: 400 }} />
+
+      <div className="rounded-xl overflow-hidden" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+        <table className="w-full text-left" style={{ fontSize: '0.82rem' }}>
+          <thead>
+            <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+              {['', 'Patient', 'Branch', 'No-Shows'].map(h => (
+                <th key={h} className="px-4 py-3 font-semibold" style={{ color: 'var(--mid-gray)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {paginated.length === 0 ? (
+              <tr><td colSpan={4} className="text-center py-10" style={{ color: '#9ca3af' }}>No patients found.</td></tr>
+            ) : paginated.map((p: any) => {
+              const isExpanded = expandedId === p.id
+              const atLimit = p.noShowCount >= MAX_NOSHOWS
+              const nearing = p.noShowCount === MAX_NOSHOWS - 1
+              const rowColor = atLimit ? '#FEF2F2' : nearing ? '#FFFBEB' : undefined
+              const textColor = atLimit ? '#DC2626' : nearing ? '#D97706' : 'var(--charcoal)'
+              return (
+                <Fragment key={p.id}>
+                  <tr style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer', background: rowColor }}
+                    onClick={() => setExpandedId(isExpanded ? null : p.id)}>
+                    <td className="px-4 py-3" style={{ width: 30 }}>
+                      {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    </td>
+                    <td className="px-4 py-3 font-semibold" style={{ color: textColor }}>
+                      {p.lastName}, {p.firstName}
+                      {atLimit && <span className="ml-2 text-xs px-2 py-0.5 rounded-full font-bold" style={{ background: '#FEE2E2', color: '#DC2626' }}>SUBJECT TO SLOT REMOVAL</span>}
+                    </td>
+                    <td className="px-4 py-3" style={{ color: '#6B7280' }}>{branchLabel(p.branch)}</td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm font-bold" style={{ color: textColor }}>{p.noShowCount}</span>
+                      <span className="text-xs ml-1" style={{ color: '#9ca3af' }}>/ {MAX_NOSHOWS}</span>
+                    </td>
+                  </tr>
+                  {isExpanded && (
+                    <tr key={p.id + '-detail'}>
+                      <td colSpan={4} className="px-6 py-4" style={{ background: '#FAFBFC' }}>
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-bold uppercase" style={{ color: 'var(--teal)', letterSpacing: '0.05em' }}>No-Show Logs</p>
+                            <button onClick={() => setLogForm({ patientId: p.id, remarks: '' })}
+                              className="text-xs px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1"
+                              style={{ background: 'var(--teal)', color: '#fff', border: 'none', cursor: 'pointer' }}>
+                              + Log No-Show
+                            </button>
+                          </div>
+
+                          {logForm?.patientId === p.id && (
+                            <div className="rounded-lg p-3 space-y-2" style={{ background: '#fff', border: '1px solid #E2E8F0' }}>
+                              <input type="text" placeholder="Remarks (optional)" value={logForm.remarks} onChange={e => setLogForm({ ...logForm, remarks: e.target.value })} style={{ ...selectStyle, width: '100%' }} />
+                              <div className="flex gap-2">
+                                <button onClick={saveLog} disabled={logSaving} className="text-xs px-3 py-1.5 rounded-lg font-semibold"
+                                  style={{ background: 'var(--teal)', color: '#fff', border: 'none', cursor: 'pointer' }}>
+                                  {logSaving ? 'Saving...' : 'Save'}
+                                </button>
+                                <button onClick={() => setLogForm(null)} className="text-xs px-3 py-1.5 rounded-lg font-semibold"
+                                  style={{ background: '#fff', color: '#6B7280', border: '1px solid #d1d5db', cursor: 'pointer' }}>Cancel</button>
+                              </div>
+                            </div>
+                          )}
+
+                          {p.logs.length === 0 ? (
+                            <p className="text-xs" style={{ color: '#9ca3af' }}>No no-show logs yet.</p>
+                          ) : (
+                            <div className="space-y-2">
+                              {p.logs.map((log: any) => (
+                                <div key={log.id} className="rounded-lg p-3 flex flex-wrap items-center gap-3 text-xs"
+                                  style={{
+                                    background: log.deletedAt ? '#F9FAFB' : '#fff',
+                                    border: `1px solid ${log.deletedAt ? '#E5E7EB' : '#E2E8F0'}`,
+                                    opacity: log.deletedAt ? 0.6 : 1,
+                                  }}>
+                                  <div className="flex-1 min-w-0">
+                                    <span className="font-semibold px-2 py-0.5 rounded-full" style={{ background: '#FEF2F2', color: '#DC2626' }}>No-Show</span>
+                                    <span className="ml-2" style={{ color: '#6B7280' }}>
+                                      {new Date(log.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                    </span>
+                                    {log.remarks && <span className="ml-2" style={{ color: '#9ca3af' }}>- {log.remarks}</span>}
+                                    {log.deletedAt && (
+                                      <span className="ml-2 text-xs" style={{ color: '#DC2626' }}>
+                                        DELETED by {log.deletedBy} ({log.deleteReason || 'no reason'})
+                                      </span>
+                                    )}
+                                  </div>
+                                  {!log.deletedAt && (
+                                    <button onClick={(e) => { e.stopPropagation(); setDeleting({ logId: log.id, reason: '' }) }}
+                                      className="inline-flex items-center justify-center w-7 h-7 rounded-lg"
+                                      style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', cursor: 'pointer' }}>
+                                      <Trash2 size={13} />
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })}
+          </tbody>
+        </table>
+        <Pagination total={filtered.length} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
+      </div>
+
+      {/* Delete confirmation modal */}
+      {deleting && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 24, maxWidth: 400, width: '90%' }}>
+            <h3 className="text-sm font-bold mb-3" style={{ color: 'var(--charcoal)' }}>Delete No-Show Log</h3>
+            <p className="text-xs mb-3" style={{ color: '#6B7280' }}>Please provide a reason for deletion. This will be tracked.</p>
+            <textarea value={deleting.reason} onChange={e => setDeleting({ ...deleting, reason: e.target.value })}
+              placeholder="Reason for deletion..." rows={3}
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: '0.83rem', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+            <div className="flex gap-2 mt-3 justify-end">
+              <button onClick={() => setDeleting(null)} className="text-xs px-3 py-1.5 rounded-lg font-semibold"
+                style={{ background: '#fff', color: '#6B7280', border: '1px solid #d1d5db', cursor: 'pointer' }}>Cancel</button>
+              <button onClick={deleteLog} disabled={!deleting.reason.trim()} className="text-xs px-3 py-1.5 rounded-lg font-semibold"
+                style={{ background: deleting.reason.trim() ? '#DC2626' : '#ccc', color: '#fff', border: 'none', cursor: deleting.reason.trim() ? 'pointer' : 'not-allowed' }}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // CANCELLATION TAB
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -562,7 +759,8 @@ function CancellationTab({ branch }: { branch: string }) {
   return (
     <div className="space-y-4">
       <div className="rounded-lg p-3 text-xs" style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
-        Each patient is allowed a maximum of <strong>2 cancellations</strong> per 6-month window (from first session date). Yellow = 1 remaining, Red = none remaining.
+        <strong>Free Allowance:</strong> Each patient gets <strong>2 free cancellations</strong> per 6-month window (from first session). After that, a cancellation fee applies.<br />
+        <strong>Slot Removal:</strong> Upon reaching <strong>12 total cancellations</strong>, the patient is subject to slot removal.
       </div>
 
       <input type="text" placeholder="Search by name..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ ...selectStyle, width: '100%', maxWidth: 400 }} />
@@ -571,18 +769,23 @@ function CancellationTab({ branch }: { branch: string }) {
         <table className="w-full text-left" style={{ fontSize: '0.82rem' }}>
           <thead>
             <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-              {['', 'Patient', 'Branch', 'Cancellations Left'].map(h => (
+              {['', 'Patient', 'Branch', 'Free Allowance', 'Slot Removal'].map(h => (
                 <th key={h} className="px-4 py-3 font-semibold" style={{ color: 'var(--mid-gray)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {paginated.length === 0 ? (
-              <tr><td colSpan={4} className="text-center py-10" style={{ color: '#9ca3af' }}>No patients found.</td></tr>
+              <tr><td colSpan={5} className="text-center py-10" style={{ color: '#9ca3af' }}>No patients found.</td></tr>
             ) : paginated.map((p: any) => {
               const isExpanded = expandedId === p.id
-              const rowColor = p.cancellationsRemaining === 0 ? '#FEF2F2' : p.cancellationsRemaining === 1 ? '#FFFBEB' : undefined
-              const textColor = p.cancellationsRemaining === 0 ? '#DC2626' : p.cancellationsRemaining === 1 ? '#D97706' : 'var(--charcoal)'
+              const atSlotLimit = p.cancellationsUsed >= 12
+              const nearingSlot = p.cancellationsUsed >= 10 && p.cancellationsUsed < 12
+              const freeUsed = p.windowUsed ?? 0
+              const freeGone = freeUsed >= 2
+              const rowColor = atSlotLimit ? '#FEF2F2' : nearingSlot ? '#FFFBEB' : undefined
+              const slotColor = atSlotLimit ? '#DC2626' : nearingSlot ? '#D97706' : 'var(--charcoal)'
+              const freeColor = freeGone ? '#DC2626' : freeUsed === 1 ? '#D97706' : '#16a34a'
               return (
                 <Fragment key={p.id}>
                   <tr style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer', background: rowColor }}
@@ -590,16 +793,24 @@ function CancellationTab({ branch }: { branch: string }) {
                     <td className="px-4 py-3" style={{ width: 30 }}>
                       {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                     </td>
-                    <td className="px-4 py-3 font-semibold" style={{ color: textColor }}>{p.lastName}, {p.firstName}</td>
+                    <td className="px-4 py-3 font-semibold" style={{ color: slotColor }}>
+                      {p.lastName}, {p.firstName}
+                      {atSlotLimit && <span className="ml-2 text-xs px-2 py-0.5 rounded-full font-bold" style={{ background: '#FEE2E2', color: '#DC2626' }}>SUBJECT TO SLOT REMOVAL</span>}
+                    </td>
                     <td className="px-4 py-3" style={{ color: '#6B7280' }}>{branchLabel(p.branch)}</td>
                     <td className="px-4 py-3">
-                      <span className="text-sm font-bold" style={{ color: textColor }}>{p.cancellationsRemaining}</span>
+                      <span className="text-sm font-bold" style={{ color: freeColor }}>{freeUsed}</span>
                       <span className="text-xs ml-1" style={{ color: '#9ca3af' }}>/ 2</span>
+                      {freeGone && <span className="ml-1.5 text-xs" style={{ color: '#DC2626', fontWeight: 600 }}>Fee applies</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm font-bold" style={{ color: slotColor }}>{p.cancellationsUsed}</span>
+                      <span className="text-xs ml-1" style={{ color: '#9ca3af' }}>/ 12</span>
                     </td>
                   </tr>
                   {isExpanded && (
                     <tr key={p.id + '-detail'}>
-                      <td colSpan={4} className="px-6 py-4" style={{ background: '#FAFBFC' }}>
+                      <td colSpan={5} className="px-6 py-4" style={{ background: '#FAFBFC' }}>
                         <div className="space-y-3">
                           <div className="flex items-center justify-between">
                             <p className="text-xs font-bold uppercase" style={{ color: 'var(--teal)', letterSpacing: '0.05em' }}>Cancellation Logs</p>
@@ -802,6 +1013,7 @@ function Loading() {
 const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: 'waitlist',     label: 'Waitlist',      icon: Users },
   { key: 'followup',     label: 'Follow Up',     icon: Clock },
+  { key: 'noshow',       label: 'No-Show',       icon: AlertTriangle },
   { key: 'cancellation', label: 'Cancellations', icon: XCircle },
 ]
 
@@ -858,6 +1070,7 @@ export default function PatientRelationshipClient({ role }: { role: string }) {
 
       {activeTab === 'waitlist' && <WaitlistTab branch={effectiveBranch} />}
       {activeTab === 'followup' && <FollowUpTab branch={effectiveBranch} />}
+      {activeTab === 'noshow' && <NoShowTab branch={effectiveBranch} />}
       {activeTab === 'cancellation' && <CancellationTab branch={effectiveBranch} />}
     </div>
   )

@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Send, Calendar, Cake, Sparkles,
   Users, Mail, BookOpen, Clock, ChevronRight, Link2, ChevronDown, X, BarChart2,
   UserCog, ListOrdered, CalendarDays, ClipboardCheck, Layers, HeartHandshake,
-  UsersRound, FileText,
+  UsersRound, FileText, Activity,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useBrand } from '@/contexts/BrandContext'
@@ -22,6 +22,7 @@ const CLINIC_TOOLS_ALL = [
   { href: '/staff', icon: UserCog, label: 'Staff Module' },
   { href: '/queueing', icon: ListOrdered, label: 'Queueing' },
   { href: '/clinic-schedule', icon: CalendarDays, label: 'Clinic Schedule' },
+  { href: '/scheduling-dashboard', icon: Activity, label: 'Clinic Utilization' },
   { href: '/customer-survey', icon: ClipboardCheck, label: 'Customer Survey' },
   { href: '/registration-forms', icon: FileText, label: 'Registration Forms' },
   { href: '/decking', icon: Layers, label: 'Decking Module' },
@@ -64,6 +65,7 @@ function getFullNav(isAdmin: boolean, isMarketingAdmin: boolean) {
       label: 'Patients & Email',
       items: [
         { href: '/patients', icon: Users, label: 'Patient CRM' },
+        { href: '/patients/profile', icon: Users, label: 'Patient Profile' },
         { href: '/patients/dashboard', icon: BarChart2, label: 'Patient Dashboard' },
         { href: '/email', icon: Mail, label: 'Email Campaigns' },
       ],
@@ -97,6 +99,7 @@ const FRONT_DESK_NAV = [
     label: 'Clinic Tools',
     items: [
       { href: '/patients', icon: Users, label: 'Patient CRM' },
+      { href: '/patients/profile', icon: Users, label: 'Patient Profile' },
       { href: '/staff', icon: UserCog, label: 'Staff Module' },
       { href: '/queueing', icon: ListOrdered, label: 'Queueing' },
       { href: '/clinic-schedule', icon: CalendarDays, label: 'Clinic Schedule' },
@@ -124,17 +127,17 @@ export default function Sidebar({ onClose, role = 'MARKETING_ADMIN' }: { onClose
   return (
     <aside
       className="w-60 flex-shrink-0 flex flex-col h-full"
-      style={{ background: 'var(--near-black)', borderRight: '1px solid rgba(26,123,138,0.15)' }}
+      style={{ background: 'var(--near-black)', borderRight: '1px solid rgba(237,104,35,0.15)' }}
     >
       {/* Logo */}
-      <div className="flex items-center gap-3 px-5 py-4" style={{ borderBottom: '1px solid rgba(26,123,138,0.15)' }}>
+      <div className="flex items-center gap-3 px-5 py-4" style={{ borderBottom: '1px solid rgba(237,104,35,0.15)' }}>
         <Image src="/brand/mark-white-transparent.png" alt="SCEI" width={36} height={36} style={{ objectFit: 'contain' }} className="flex-shrink-0" />
         <div className="flex-1">
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.85rem', color: '#fff', letterSpacing: '0.05em' }}>
             SAPPHIRE
           </div>
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '0.55rem', color: 'var(--teal)', letterSpacing: '0.2em', textTransform: 'uppercase' }}>
-            Marketing Hub
+            Operations Hub
           </div>
         </div>
         {onClose && (
@@ -146,7 +149,7 @@ export default function Sidebar({ onClose, role = 'MARKETING_ADMIN' }: { onClose
 
       {/* Brand Switcher — hidden for front desk */}
       {!isFrontDesk && (
-        <div className="px-3 pt-3 pb-2" style={{ borderBottom: '1px solid rgba(26,123,138,0.1)' }}>
+        <div className="px-3 pt-3 pb-2" style={{ borderBottom: '1px solid rgba(237,104,35,0.1)' }}>
           <p className="px-2 mb-1 text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.25)' }}>
             Active Brand
           </p>
@@ -202,7 +205,7 @@ export default function Sidebar({ onClose, role = 'MARKETING_ADMIN' }: { onClose
                     <Link
                       href={href}
                       className={cn('flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all', active ? 'text-white' : 'text-gray-400 hover:text-white hover:bg-white/5')}
-                      style={active ? { background: 'rgba(26,123,138,0.2)', color: 'var(--bright-teal)' } : undefined}
+                      style={active ? { background: 'rgba(237,104,35,0.2)', color: 'var(--bright-teal)' } : undefined}
                     >
                       <Icon size={16} className="flex-shrink-0" />
                       <span style={{ fontFamily: 'var(--font-body)' }}>{label}</span>
@@ -217,7 +220,7 @@ export default function Sidebar({ onClose, role = 'MARKETING_ADMIN' }: { onClose
       </nav>
 
       {/* Bottom */}
-      <div className="px-4 py-3 text-xs" style={{ borderTop: '1px solid rgba(26,123,138,0.15)', color: 'rgba(255,255,255,0.2)', fontFamily: 'var(--font-body)' }}>
+      <div className="px-4 py-3 text-xs" style={{ borderTop: '1px solid rgba(237,104,35,0.15)', color: 'rgba(255,255,255,0.2)', fontFamily: 'var(--font-body)' }}>
         <span style={{ color: brand.color, fontWeight: 600 }}>{brand.shortName}</span>
         {' · '}Marketing Hub
         <br />

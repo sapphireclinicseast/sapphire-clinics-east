@@ -7,7 +7,7 @@ import {
   QrCode, Users, TrendingUp, Building2, X, ChevronUp, ChevronDown,
   ArrowUpDown, ExternalLink, Search, Baby, User, Trash2, FileText,
   Trophy, Award, MessageSquare, Calendar, Filter, ThumbsUp, AlertTriangle,
-  Sparkles, Copy, Check, Settings, Save,
+  Sparkles, Copy, Check, Settings, Save, RefreshCw, Printer,
 } from 'lucide-react'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -121,7 +121,7 @@ function getAge(dob: string): number {
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function SurveyClient({ role }: { role: string }) {
-  const [tab, setTab] = useState<'overview' | 'manage' | 'results'>('overview')
+  const [tab, setTab] = useState<'overview' | 'daily-target' | 'manage' | 'results'>('overview')
   const [dashboard, setDashboard] = useState<DashboardData | null>(null)
   const [staff, setStaff] = useState<StaffRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -478,6 +478,7 @@ export default function SurveyClient({ role }: { role: string }) {
   // ── Tabs ─────────────────────────────────────────────────────────────────
   const tabs = [
     { id: 'overview' as const, label: 'Overview', icon: BarChart3 },
+    { id: 'daily-target' as const, label: 'Daily Target', icon: Target },
     { id: 'manage' as const, label: 'Manage', icon: ListChecks },
     ...(isAdmin ? [{ id: 'results' as const, label: 'Results', icon: FileText }] : []),
   ]
@@ -544,6 +545,10 @@ export default function SurveyClient({ role }: { role: string }) {
       )}
 
       {/* Manage Tab */}
+      {tab === 'daily-target' && (
+        <DailyTargetTab isAdmin={isAdmin} isFrontDesk={isFrontDesk} role={role} />
+      )}
+
       {tab === 'manage' && (
         <div className="space-y-6">
           {/* Assessment Schedule — sortable/filterable table */}
@@ -1438,6 +1443,207 @@ function LeaderboardRow({ rank, performer: p }: { rank: number; performer: TopPe
         <div className="text-xl font-bold" style={{ color: rank === 1 ? '#f59e0b' : '#0f766e' }}>{p.compositeScore}</div>
         <div className="text-[9px] uppercase font-semibold" style={{ color: '#94a3b8' }}>Score</div>
       </div>
+    </div>
+  )
+}
+
+
+// ─── Daily Target Tab ────────────────────────────────────────────────────────
+
+interface DailyTarget {
+  assignmentId: string
+  staffId: string
+  staffName: string
+  department: string
+  branch: string
+  patientId: string
+  patientName: string
+  patientAge: number | null
+  startTime: string
+  endTime: string
+  sessionType: string
+  status: string
+  surveyUrl: string
+}
+
+function DailyTargetTab({ isAdmin, isFrontDesk, role }: { isAdmin: boolean; isFrontDesk: boolean; role: string }) {
+  const defaultBranch = role?.startsWith('SBGH_') ? 'SBGH' : 'SBEA'
+  const [branch, setBranch] = useState<string>(defaultBranch)
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState('')
+  const [date, setDate] = useState('')
+  const [targets, setTargets] = useState<DailyTarget[]>([])
+  const qrRefs = useRef<Record<string, HTMLDivElement | null>>({})
+
+  const load = useCallback(async () => {
+    setLoading(true); setErr('')
+    try {
+      const res = await fetch(`/api/customer-survey/daily-targets?branch=${branch}`)
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        throw new Error(d.error || `HTTP ${res.status}`)
+      }
+      const data = await res.json()
+      setDate(data.date)
+      setTargets(data.targets ?? [])
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally { setLoading(false) }
+  }, [branch])
+
+  useEffect(() => { load() }, [load])
+
+  // Render QRs when targets change. Uses global QRCode from Script-loaded CDN.
+  useEffect(() => {
+    const QRCode = (window as unknown as { QRCode?: { new(el: Element, opts: Record<string, unknown>): unknown } }).QRCode
+    if (!QRCode) return
+    targets.forEach(t => {
+      const el = qrRefs.current[t.assignmentId]
+      if (!el) return
+      el.innerHTML = ''
+      new QRCode(el, { text: t.surveyUrl, width: 128, height: 128, colorDark: '#0f766e', colorLight: '#ffffff' })
+    })
+  }, [targets])
+
+  function print() {
+    window.print()
+  }
+
+  function copyLink(url: string) {
+    navigator.clipboard.writeText(url)
+  }
+
+  const byStatus = {
+    pending: targets.filter(t => t.status === 'PENDING').length,
+    completed: targets.filter(t => t.status === 'COMPLETED').length,
+  }
+
+  return (
+    <div>
+      <Script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" strategy="afterInteractive" />
+
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div>
+          <h2 className="text-sm font-bold flex items-center gap-2" style={{ color: '#0f172a' }}>
+            <Target size={16} style={{ color: '#ED6823' }} />
+            Daily Targets {date && <span className="text-xs text-gray-400 font-normal">· {date}</span>}
+          </h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Today's randomized patients for customer satisfaction survey. QR codes are ready — hand off to clinic aides or print for the day.
+          </p>
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          {(isAdmin || (!isFrontDesk && !role?.startsWith('SBEA_') && !role?.startsWith('SBGH_'))) && (
+            <select
+              value={branch}
+              onChange={e => setBranch(e.target.value)}
+              className="border border-gray-300 rounded-md px-2 py-1.5 text-xs"
+            >
+              <option value="SBEA">Sandbox East</option>
+              <option value="SBGH">Sandbox Greenhills</option>
+            </select>
+          )}
+          <button
+            onClick={load}
+            disabled={loading}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-semibold border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+          <button
+            onClick={print}
+            disabled={targets.length === 0}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-semibold text-white disabled:opacity-50"
+            style={{ background: '#ED6823' }}
+          >
+            <Printer size={12} /> Print All
+          </button>
+        </div>
+      </div>
+
+      {err && (
+        <div className="mb-3 p-2 rounded text-xs" style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
+          {err}
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        <div className="rounded-lg p-3 bg-white border border-gray-200">
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Total Targets</div>
+          <div className="text-2xl font-extrabold mt-1" style={{ color: '#ED6823' }}>{loading ? '…' : targets.length}</div>
+        </div>
+        <div className="rounded-lg p-3 bg-white border border-gray-200">
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Pending</div>
+          <div className="text-2xl font-extrabold mt-1" style={{ color: '#f59e0b' }}>{loading ? '…' : byStatus.pending}</div>
+        </div>
+        <div className="rounded-lg p-3 bg-white border border-gray-200">
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Completed</div>
+          <div className="text-2xl font-extrabold mt-1" style={{ color: '#10b981' }}>{loading ? '…' : byStatus.completed}</div>
+        </div>
+        <div className="rounded-lg p-3 bg-white border border-gray-200">
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Completion Rate</div>
+          <div className="text-2xl font-extrabold mt-1" style={{ color: '#0f766e' }}>
+            {targets.length === 0 ? '0%' : `${Math.round((byStatus.completed / targets.length) * 100)}%`}
+          </div>
+        </div>
+      </div>
+
+      {!loading && targets.length === 0 && !err && (
+        <div className="text-center py-12 text-sm text-gray-400">
+          No confirmed appointments scheduled for today, or all staff have met their assessment targets for the year.
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 daily-target-grid">
+        {targets.map(t => (
+          <div key={t.assignmentId} className="rounded-xl border bg-white overflow-hidden daily-target-card" style={{ borderColor: t.status === 'COMPLETED' ? '#bbf7d0' : '#FDE4CC' }}>
+            <div className="px-4 py-3 flex items-start justify-between" style={{ background: t.status === 'COMPLETED' ? '#f0fdf4' : '#FFF3E8' }}>
+              <div>
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t.department} · {t.startTime}–{t.endTime}</div>
+                <div className="text-sm font-bold mt-0.5" style={{ color: '#0f172a' }}>{t.patientName}</div>
+                <div className="text-xs text-gray-500 mt-0.5">w/ {t.staffName}</div>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{
+                background: t.status === 'COMPLETED' ? '#bbf7d0' : '#fef3c7',
+                color:      t.status === 'COMPLETED' ? '#166534' : '#92400e',
+              }}>
+                {t.status === 'COMPLETED' ? '✓ DONE' : 'PENDING'}
+              </span>
+            </div>
+            <div className="flex items-center justify-center p-4" style={{ background: '#fafafa' }}>
+              <div ref={el => { qrRefs.current[t.assignmentId] = el }} />
+            </div>
+            <div className="px-3 py-2 flex items-center gap-2 border-t border-gray-100">
+              <button
+                onClick={() => copyLink(t.surveyUrl)}
+                className="flex-1 text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50 flex items-center justify-center gap-1"
+                title="Copy survey link"
+              >
+                <Copy size={11} /> Copy link
+              </button>
+              <a
+                href={t.surveyUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50 flex items-center gap-1"
+                title="Open survey"
+              >
+                <ExternalLink size={11} />
+              </a>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Print-specific styles */}
+      <style jsx>{`
+        @media print {
+          .daily-target-grid { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; gap: 12px; }
+          .daily-target-card { break-inside: avoid; border: 1px solid #ddd !important; }
+          nav, header, button { display: none !important; }
+        }
+      `}</style>
     </div>
   )
 }
