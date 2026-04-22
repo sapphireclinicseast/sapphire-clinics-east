@@ -12,6 +12,15 @@ export async function GET(req: NextRequest) {
   const status = searchParams.get('status')   // 'sent' | 'scheduled' | 'failed' | 'draft'
   const limit = Math.min(parseInt(searchParams.get('limit') ?? '50', 10) || 50, 200)
 
+  // Auto-recover campaigns stuck in "sending" status — if the server crashed
+  // mid-send (or the job timed out), the row would otherwise stay "sending"
+  // forever. 2 hours is comfortably longer than any legitimate large send.
+  const staleCutoff = new Date(Date.now() - 2 * 60 * 60 * 1000)
+  await prisma.emailCampaign.updateMany({
+    where: { status: 'sending', updatedAt: { lt: staleCutoff } },
+    data: { status: 'failed' },
+  })
+
   const where: Record<string, unknown> = {}
   if (status && status !== 'all') where.status = status
 
