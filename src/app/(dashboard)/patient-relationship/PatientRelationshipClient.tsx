@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, Fragment } from 'react'
 import {
-  HeartHandshake, Phone, Mail, Clock, AlertTriangle, CheckCircle,
+  HeartHandshake, Phone, Mail, Clock, AlertTriangle, CheckCircle, MessageSquare, Check,
   Calendar, Filter, Users, XCircle, ChevronDown, ChevronRight,
   Upload, Eye, Trash2, FileText, QrCode, Loader2, X,
 } from 'lucide-react'
@@ -437,7 +437,7 @@ function FollowUpTab({ branch }: { branch: string }) {
                           <Icon size={12} />{sc.label}
                         </span>
                       </td>
-                      <td className="px-4 py-3"><ContactBtns phone={p.phone} email={p.email} /></td>
+                      <td className="px-4 py-3"><FollowUpContactBtns patient={p} department={dept} onSent={(sentAt) => setPatients(prev => prev.map(x => x.id === p.id ? { ...x, reminderSentAt: sentAt } : x))} /></td>
                     </tr>
                   )
                 })}
@@ -993,6 +993,80 @@ function ContactBtns({ phone, email }: { phone?: string | null; email?: string |
       )}
       {email && (
         <a href={`mailto:${email}`} title={email} className="inline-flex items-center justify-center w-7 h-7 rounded-lg"
+          style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}><Mail size={13} /></a>
+      )}
+    </div>
+  )
+}
+
+// ── Follow-Up Contact Buttons ────────────────────────────────────────────────
+// Replaces the plain Call button with an SMS-send button that posts to
+// /api/patient-relationship/followup-sms. Once the reminder is sent, the
+// button switches to a permanent muted "Sent" chip.
+
+function FollowUpContactBtns({
+  patient,
+  department,
+  onSent,
+}: {
+  patient: { id: string; branch: string | null; phone: string | null; email: string | null; reminderSentAt: string | null }
+  department: string
+  onSent: (sentAt: string) => void
+}) {
+  const [sending, setSending] = useState(false)
+  const sent = !!patient.reminderSentAt
+
+  async function sendSms() {
+    if (sent || sending) return
+    if (!patient.phone) { alert('No phone on file'); return }
+    if (!patient.branch) { alert('No branch on record'); return }
+    if (!confirm('Send follow-up SMS reminder to ' + patient.phone + '?')) return
+    setSending(true)
+    try {
+      const branchCode = patient.branch === 'SANDBOX_EAST' ? 'SBEA'
+        : patient.branch === 'SANDBOX_GREENHILLS' ? 'SBGH' : patient.branch
+      const r = await fetch('/api/patient-relationship/followup-sms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patientId: patient.id, department, branch: branchCode }),
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data.error || 'Send failed')
+      onSent(data.sentAt || new Date().toISOString())
+    } catch (e) {
+      alert('Error: ' + (e as Error).message)
+    } finally { setSending(false) }
+  }
+
+  return (
+    <div className="flex gap-1.5">
+      {sent ? (
+        <span
+          title={'Sent ' + new Date(patient.reminderSentAt!).toLocaleDateString()}
+          className="inline-flex items-center justify-center gap-1 px-2 h-7 rounded-lg text-[10px] font-bold"
+          style={{ background: '#F1F5F9', color: '#64748B', border: '1px solid #CBD5E1' }}
+        >
+          <Check size={11} /> Sent
+        </span>
+      ) : (
+        <button
+          onClick={sendSms}
+          disabled={sending || !patient.phone}
+          title={patient.phone ? 'Send follow-up SMS' : 'No phone on file'}
+          className="inline-flex items-center justify-center w-7 h-7 rounded-lg"
+          style={{
+            background: patient.phone ? '#EFF6FF' : '#F1F5F9',
+            color: patient.phone ? '#1D4ED8' : '#94A3B8',
+            border: '1px solid ' + (patient.phone ? '#BFDBFE' : '#CBD5E1'),
+            cursor: patient.phone && !sending ? 'pointer' : 'not-allowed',
+            opacity: sending ? 0.6 : 1,
+          }}
+        >
+          {sending ? <Loader2 size={13} className="animate-spin" /> : <MessageSquare size={13} />}
+        </button>
+      )}
+      {patient.email && (
+        <a href={'mailto:' + patient.email} title={patient.email} className="inline-flex items-center justify-center w-7 h-7 rounded-lg"
           style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}><Mail size={13} /></a>
       )}
     </div>

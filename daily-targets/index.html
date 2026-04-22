@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Daily Survey Targets — SAPPHIRE Clinics</title>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<style>
+  :root {
+    --orange: #ED6823; --deep-orange: #C8541A; --pale-orange: #FFF3E8;
+    --teal: #0f766e; --green: #10b981; --amber: #f59e0b; --red: #ef4444;
+    --g50: #f8fafc; --g100: #f1f5f9; --g200: #e2e8f0;
+    --g300: #cbd5e1; --g500: #64748b; --g700: #334155; --g900: #0f172a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--g50); color: var(--g700); -webkit-text-size-adjust: 100%; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+  header { background: linear-gradient(135deg, var(--orange) 0%, var(--deep-orange) 100%); color: #fff; padding: 24px; border-radius: 16px; margin-bottom: 20px; }
+  header h1 { font-size: 24px; font-weight: 800; margin-bottom: 4px; }
+  header p { font-size: 13px; opacity: 0.9; }
+  .btn { padding: 10px 18px; background: var(--orange); color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; -webkit-appearance: none; }
+  .btn:active { background: var(--deep-orange); }
+  .btn.secondary { background: #fff; color: var(--g700); border: 1px solid var(--g300); }
+
+  .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+  .toolbar .status { font-size: 12px; color: var(--g500); margin-left: auto; }
+
+  .stats { display: -webkit-box; display: -webkit-flex; display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+  .stat { flex: 1 1 150px; background: #fff; padding: 14px; border-radius: 12px; border: 1px solid var(--g200); }
+  .stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--g500); font-weight: 600; }
+  .stat-value { font-size: 26px; font-weight: 800; margin-top: 4px; }
+
+  .grid { display: -webkit-box; display: -webkit-flex; display: flex; flex-wrap: wrap; gap: 16px; }
+  .card { flex: 1 1 280px; max-width: calc(33.333% - 11px); background: #fff; border: 1px solid var(--g200); border-radius: 12px; overflow: hidden; }
+  .card.done { border-color: #bbf7d0; }
+  .card-head { padding: 12px 14px; background: var(--pale-orange); }
+  .card.done .card-head { background: #f0fdf4; }
+  .card-meta { font-size: 10px; font-weight: 600; text-transform: uppercase; color: var(--g500); letter-spacing: 0.05em; }
+  .card-name { font-size: 15px; font-weight: 700; color: var(--g900); margin-top: 2px; }
+  .card-staff { font-size: 12px; color: var(--g500); margin-top: 2px; }
+  .badge { display: inline-block; padding: 3px 8px; border-radius: 99px; font-size: 10px; font-weight: 700; margin-top: 6px; }
+  .badge.pending { background: #fef3c7; color: #92400e; }
+  .badge.done { background: #bbf7d0; color: #166534; }
+  .qr-wrap { padding: 18px; text-align: center; background: #fafafa; }
+  .qr-wrap img, .qr-wrap canvas { display: inline-block; }
+  .card-actions { display: -webkit-box; display: -webkit-flex; display: flex; gap: 6px; padding: 10px 12px; border-top: 1px solid #f1f5f9; }
+  .btn-sm { flex: 1; padding: 6px 10px; font-size: 11px; background: #fff; color: var(--g700); border: 1px solid var(--g300); border-radius: 6px; cursor: pointer; font-family: inherit; text-align: center; text-decoration: none; display: inline-block; -webkit-appearance: none; }
+
+  .empty { text-align: center; padding: 60px 20px; color: var(--g500); font-size: 14px; }
+  .error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }
+  .hidden { display: none !important; }
+
+  @media (max-width: 640px) {
+    .card { max-width: 100%; flex: 1 1 100%; }
+  }
+
+  @media print {
+    header, .toolbar, .stats, .card-actions { display: none !important; }
+    body { background: #fff; }
+    .card { max-width: calc(33.333% - 11px); break-inside: avoid; border: 1px solid #ddd; }
+    .qr-wrap { padding: 10px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Daily Survey Targets</h1>
+    <p id="branch-label">Loading…</p>
+  </header>
+
+  <div class="toolbar">
+    <button class="btn" id="refresh-btn">Refresh</button>
+    <button class="btn secondary" onclick="window.print()">Print All</button>
+    <span class="status" id="updated-at"></span>
+  </div>
+
+  <div id="error-box" class="error hidden"></div>
+
+  <div class="stats">
+    <div class="stat"><div class="stat-label">Total Targets</div><div class="stat-value" id="stat-total" style="color: var(--orange);">—</div></div>
+    <div class="stat"><div class="stat-label">Pending</div><div class="stat-value" id="stat-pending" style="color: var(--amber);">—</div></div>
+    <div class="stat"><div class="stat-label">Completed</div><div class="stat-value" id="stat-done" style="color: var(--green);">—</div></div>
+    <div class="stat"><div class="stat-label">Completion Rate</div><div class="stat-value" id="stat-rate" style="color: var(--teal);">—</div></div>
+  </div>
+
+  <div id="grid" class="grid"></div>
+  <div id="empty" class="empty hidden">No confirmed appointments for today, or all staff have met their yearly assessment target.</div>
+</div>
+
+<script>
+// Determine branch from URL path: /daily-targets/sbea → SBEA, /daily-targets/sbgh → SBGH
+var BRANCH = (function () {
+  var m = location.pathname.toLowerCase().match(/\/daily-targets\/(sbea|sbgh)/);
+  if (m) return m[1].toUpperCase();
+  var q = location.search.match(/[?&]b=(sbea|sbgh|SBEA|SBGH)/);
+  if (q) return q[1].toUpperCase();
+  return 'SBEA';
+})();
+var TOKEN = 'scei';
+var BRANCH_LABEL = BRANCH === 'SBGH' ? 'Sandbox Greenhills' : 'Sandbox East';
+document.getElementById('branch-label').textContent = BRANCH_LABEL;
+
+var refreshTimer = null;
+
+function escapeHtml(s) {
+  if (s == null) s = '';
+  return String(s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+function copyText(text) {
+  // iOS 12 Safari does not have navigator.clipboard. Use legacy execCommand path.
+  try {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'absolute';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    var sel = document.getSelection();
+    var selected = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
+    ta.select();
+    ta.setSelectionRange(0, 999999);
+    var ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    if (selected && sel) { sel.removeAllRanges(); sel.addRange(selected); }
+    alert(ok ? 'Copied to clipboard' : text);
+  } catch (e) {
+    alert(text);
+  }
+}
+
+function load() {
+  var errBox = document.getElementById('error-box');
+  errBox.className = 'error hidden';
+  var url = '/api/customer-survey/daily-targets?token=' + encodeURIComponent(TOKEN) + '&branch=' + BRANCH;
+  fetch(url).then(function (r) {
+    if (!r.ok) return r.json().then(function (d) { throw new Error((d && d.error) || ('HTTP ' + r.status)); });
+    return r.json();
+  }).then(function (data) {
+    renderTargets(data);
+  }).catch(function (err) {
+    errBox.textContent = 'Error: ' + (err && err.message ? err.message : err);
+    errBox.className = 'error';
+  });
+}
+
+function renderTargets(data) {
+  var targets = (data && data.targets) ? data.targets : [];
+  var total = targets.length;
+  var pending = 0, done = 0;
+  for (var i = 0; i < targets.length; i++) {
+    if (targets[i].status === 'COMPLETED') done++;
+    else pending++;
+  }
+
+  document.getElementById('stat-total').textContent = total;
+  document.getElementById('stat-pending').textContent = pending;
+  document.getElementById('stat-done').textContent = done;
+  document.getElementById('stat-rate').textContent = total === 0 ? '0%' : (Math.round((done / total) * 100) + '%');
+
+  var d = new Date();
+  var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+  document.getElementById('updated-at').textContent = 'Updated ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+
+  var grid = document.getElementById('grid');
+  var emptyEl = document.getElementById('empty');
+  grid.innerHTML = '';
+
+  if (total === 0) { emptyEl.className = 'empty'; return; }
+  emptyEl.className = 'empty hidden';
+
+  for (var j = 0; j < targets.length; j++) {
+    var t = targets[j];
+    var card = document.createElement('div');
+    var isDone = t.status === 'COMPLETED';
+    card.className = 'card' + (isDone ? ' done' : '');
+    card.innerHTML =
+      '<div class="card-head">' +
+        '<div class="card-meta">' + escapeHtml(t.department) + ' · ' + escapeHtml(t.startTime) + '–' + escapeHtml(t.endTime) + '</div>' +
+        '<div class="card-name">' + escapeHtml(t.patientName) + '</div>' +
+        '<div class="card-staff">w/ ' + escapeHtml(t.staffName) + '</div>' +
+        '<span class="badge ' + (isDone ? 'done' : 'pending') + '">' + (isDone ? '&#10003; COMPLETED' : 'PENDING') + '</span>' +
+      '</div>' +
+      '<div class="qr-wrap"><div class="qr" id="qr-' + escapeHtml(t.assignmentId) + '"></div></div>' +
+      '<div class="card-actions">' +
+        '<button class="btn-sm" data-copy="' + escapeHtml(t.surveyUrl) + '">Copy link</button>' +
+        '<a class="btn-sm" href="' + escapeHtml(t.surveyUrl) + '" target="_blank" rel="noreferrer">Open</a>' +
+      '</div>';
+    grid.appendChild(card);
+    try {
+      new QRCode(document.getElementById('qr-' + t.assignmentId), {
+        text: t.surveyUrl,
+        width: 140, height: 140,
+        colorDark: '#0f766e', colorLight: '#ffffff'
+      });
+    } catch (e) {}
+  }
+
+  // Bind copy-link buttons (delegated so we don't rely on onclick with quotes)
+  var copyBtns = grid.querySelectorAll('button[data-copy]');
+  for (var k = 0; k < copyBtns.length; k++) {
+    (function (btn) {
+      btn.addEventListener('click', function () { copyText(btn.getAttribute('data-copy')); });
+    })(copyBtns[k]);
+  }
+}
+
+document.getElementById('refresh-btn').addEventListener('click', load);
+
+load();
+refreshTimer = setInterval(load, 3 * 60 * 1000);
+</script>
+</body>
+</html>
