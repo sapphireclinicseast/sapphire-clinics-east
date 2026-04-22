@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
       subject: true,
       recipientGroup: true,
       recipientCount: true,
+      sentCount: true,
       status: true,
       scheduledAt: true,
       sentAt: true,

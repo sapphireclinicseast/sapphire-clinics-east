@@ -429,6 +429,7 @@ interface HistoryRow {
   subject: string
   recipientGroup: string
   recipientCount: number
+  sentCount: number
   status: string
   scheduledAt: string | null
   sentAt: string | null
@@ -475,7 +476,25 @@ function CampaignHistory() {
     } catch (e) { alert((e as Error).message) }
   }
 
-  function statusBadge(status: string) {
+  function statusBadge(row: HistoryRow) {
+    // "Partial" — failed after some recipients received; show counts
+    if (row.status === 'failed' && row.sentCount > 0 && row.sentCount < row.recipientCount) {
+      return (
+        <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase"
+          style={{ background: '#FFEDD5', color: '#9A3412' }}>
+          Partial ({row.sentCount}/{row.recipientCount})
+        </span>
+      )
+    }
+    // Sent but with a sentCount < total (edge case — e.g. some had no email)
+    if (row.status === 'sent' && row.sentCount > 0 && row.sentCount < row.recipientCount) {
+      return (
+        <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase"
+          style={{ background: '#D1FAE5', color: '#065F46' }}>
+          Sent ({row.sentCount}/{row.recipientCount})
+        </span>
+      )
+    }
     const cfg: Record<string, { bg: string; color: string }> = {
       sent:      { bg: '#D1FAE5', color: '#065F46' },
       sending:   { bg: '#FEF3C7', color: '#92400E' },
@@ -483,10 +502,10 @@ function CampaignHistory() {
       failed:    { bg: '#FEE2E2', color: '#991B1B' },
       draft:     { bg: '#F1F5F9', color: '#475569' },
     }
-    const c = cfg[status] ?? cfg.draft
+    const c = cfg[row.status] ?? cfg.draft
     return (
       <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase"
-        style={{ background: c.bg, color: c.color }}>{status}</span>
+        style={{ background: c.bg, color: c.color }}>{row.status}</span>
     )
   }
 
@@ -535,7 +554,7 @@ function CampaignHistory() {
                     <div className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>{r.recipientGroup}</div>
                   </td>
                   <td className="px-4 py-3 text-xs" style={{ color: 'var(--charcoal)' }}>{r.recipientCount}</td>
-                  <td className="px-4 py-3">{statusBadge(r.status)}</td>
+                  <td className="px-4 py-3">{statusBadge(r)}</td>
                   <td className="px-4 py-3 text-xs" style={{ color: 'var(--charcoal)' }}>
                     {r.sentAt
                       ? new Date(r.sentAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })

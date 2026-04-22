@@ -203,6 +203,7 @@ model EmailCampaign {
   recipientGroup String
   status         String    @default("draft")
   recipientCount Int       @default(0)
+  sentCount      Int       @default(0)
   scheduledAt    DateTime?
   sentAt         DateTime?
   gmailAccountId String?

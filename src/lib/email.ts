@@ -119,22 +119,38 @@ export async function executeSendCampaign(campaignId: string): Promise<void> {
 
   await prisma.emailCampaign.update({
     where: { id: campaignId },
-    data: { status: 'sending', recipientCount: recipients.length },
+    data: { status: 'sending', recipientCount: recipients.length, sentCount: 0 },
   })
 
+  let sentCount = 0
   try {
     const gmail = await getGmailClient(refreshToken)
     for (const patient of recipients) {
       if (!patient.email) continue
       const raw = makeEmailBody(patient.email, campaign.subject, campaign.body, senderEmail)
       await gmail.users.messages.send({ userId: 'me', requestBody: { raw } })
+      sentCount++
+      // Persist progress periodically so the UI can show "Partial (x/N)"
+      // if the process later crashes. Every 10 sends is a good trade-off
+      // between write load and granularity.
+      if (sentCount % 10 === 0) {
+        await prisma.emailCampaign.update({
+          where: { id: campaignId },
+          data: { sentCount },
+        }).catch(() => undefined)
+      }
     }
     await prisma.emailCampaign.update({
       where: { id: campaignId },
-      data: { status: 'sent', sentAt: new Date() },
+      data: { status: 'sent', sentAt: new Date(), sentCount },
     })
   } catch (err) {
-    await prisma.emailCampaign.update({ where: { id: campaignId }, data: { status: 'failed' } })
+    // Preserve whatever we managed to send before the crash so the UI can
+    // render "Partial (x/N)" instead of just "Failed".
+    await prisma.emailCampaign.update({
+      where: { id: campaignId },
+      data: { status: 'failed', sentCount },
+    }).catch(() => undefined)
     throw err
   }
 }
