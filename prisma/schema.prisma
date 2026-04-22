@@ -7,6 +7,26 @@ datasource db {
   provider = "postgresql"
 }
 
+
+// ── Follow-Up SMS Reminder ────────────────────────────────────────────────────
+// Tracks SMS reminders sent from Patient Relationship → Follow Up tab.
+// Uniqueness on (patientId, department) enforces one reminder per patient per
+// department — so the UI can show a permanent "Sent" state after the first click.
+model FollowUpReminder {
+  id         String   @id @default(cuid())
+  patientId  String
+  patient    Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  department String   // "OT" | "PT" | "SLP" | "SPED" | "PSYCHOLOGY" | "MD"
+  branch     String   // "SBEA" | "SBGH"
+  message    String   // the actual SMS text sent
+  sentBy     String?  // user id who clicked Send
+  sentAt     DateTime @default(now())
+
+  @@unique([patientId, department])
+  @@index([patientId])
+  @@index([sentAt])
+}
+
 enum Role {
   ADMIN
   MARKETING_ADMIN
@@ -149,6 +169,7 @@ model Patient {
   cancellationLogs    CancellationLog[]
   noShowLogs          NoShowLog[]
   patientBookings     PatientBooking[]
+  followUpReminders   FollowUpReminder[]
 }
 
 model ReferralUploadToken {

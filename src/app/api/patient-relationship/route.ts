@@ -125,6 +125,15 @@ export async function GET(req: NextRequest) {
     const now = new Date()
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
 
+    // Fetch existing follow-up reminders for these patients in this dept —
+    // so the UI can show a permanent "Sent" state after the first click.
+    const patientIdsForDept = Array.from(patientMap.keys())
+    const reminders = await prisma.followUpReminder.findMany({
+      where: { patientId: { in: patientIdsForDept }, department: dept },
+      select: { patientId: true, sentAt: true },
+    })
+    const reminderMap = new Map(reminders.map(r => [r.patientId, r.sentAt]))
+
     const results = Array.from(patientMap.values()).map(({ patient: p, firstSession, clinician }) => {
       // Reference date: firstDayOfConsult if set, otherwise first recorded session
       let referenceDate: Date
@@ -160,6 +169,7 @@ export async function GET(req: NextRequest) {
         daysSince,
         dueIn,
         status,
+        reminderSentAt: reminderMap.get(p.id) ?? null,
       }
     })
 
