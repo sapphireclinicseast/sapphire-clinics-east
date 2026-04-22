@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   UsersRound, ClipboardList, BarChart3, Zap, Trash2, CheckCircle2,
   ChevronDown, ChevronUp, RefreshCw, X, AlertCircle,
-  Clock, CheckCircle, Ban, QrCode, Bell, Settings, Save, Users, ExternalLink,
+  Clock, CheckCircle, Ban, QrCode, Bell, Settings, Save, Users, ExternalLink, Download,
 } from 'lucide-react'
+import { generatePeerEvalResultPDF } from '@/lib/pdf-results'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1035,6 +1036,34 @@ function ResultsTab({ role }: { role: string }) {
                   <div style={{ padding: '4px 12px', borderRadius: 99, fontWeight: 700, fontSize: '0.9rem', background: '#f0fdf4', color: scoreColor(overall) }}>
                     {overall.toFixed(1)} / 5
                   </div>
+                  <span
+                    role="button"
+                    title="Download PDF"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      const formType = resps[0]?.formType ?? 'HR08_PEER'
+                      const qSet = getQuestions(formType)
+                      generatePeerEvalResultPDF({
+                        assesseeName: fullName(assessee),
+                        department: assessee.department,
+                        branch: (assessee as unknown as { branch?: string }).branch,
+                        overallAvg: overall,
+                        questions: qSet,
+                        averages: avgs,
+                        responses: resps.map(r => ({
+                          assessorName: fullName(r.assessor),
+                          submittedAt: r.submittedAt,
+                          overallAvg: overallAvg(r.scores),
+                          scores: r.scores,
+                          strengths: r.strengths,
+                          improvements: r.improvements,
+                        })),
+                      })
+                    }}
+                    style={{ padding: '4px 8px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', fontWeight: 600, color: '#ED6823', border: '1px solid #FDE4CC', background: '#fff', cursor: 'pointer' }}
+                  >
+                    <Download size={12} /> PDF
+                  </span>
                   <div style={{ display: 'flex', gap: 3, alignItems: 'flex-end', height: 28 }}>
                     {Object.keys(qSet).map(k => {
                       const val = avgs[k] ?? 0

@@ -7,8 +7,9 @@ import {
   QrCode, Users, TrendingUp, Building2, X, ChevronUp, ChevronDown,
   ArrowUpDown, ExternalLink, Search, Baby, User, Trash2, FileText,
   Trophy, Award, MessageSquare, Calendar, Filter, ThumbsUp, AlertTriangle,
-  Sparkles, Copy, Check, Settings, Save, RefreshCw, Printer,
+  Sparkles, Copy, Check, Settings, Save, RefreshCw, Printer, Download,
 } from 'lucide-react'
+import { generateSurveyResultPDF } from '@/lib/pdf-results'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -953,6 +954,33 @@ export default function SurveyClient({ role }: { role: string }) {
                       {/* Expanded details */}
                       {isExpanded && (
                         <div className="px-4 pb-4 space-y-4" style={{ borderTop: '1px solid #f1f5f9' }}>
+                          {/* PDF download */}
+                          <div className="flex justify-end pt-3">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                generateSurveyResultPDF({
+                                  staffName: s.name,
+                                  department: s.department,
+                                  branch: s.branch,
+                                  avgRating: s.avgRating,
+                                  sessionsTotal: s.sessionsTotal,
+                                  sessionsRescheduled: s.sessionsRescheduled,
+                                  sessionsCancelled: s.sessionsCancelled,
+                                  compositeScore: s.compositeScore,
+                                  surveyCount: s.surveyCount,
+                                  monthlyRatings: s.monthlyRatings,
+                                  feedback: s.feedback,
+                                  filterMonthLabel: rdFilterMonth ? 'Month ' + rdFilterMonth : undefined,
+                                })
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border"
+                              style={{ borderColor: '#0f766e', color: '#0f766e', background: '#fff' }}
+                              title="Download results as PDF"
+                            >
+                              <Download size={12} /> Download PDF
+                            </button>
+                          </div>
                           {/* Stats cards */}
                           <div className="grid grid-cols-3 gap-3 pt-3">
                             <div className="rounded-lg p-3 text-center" style={{ background: '#fffbeb' }}>
