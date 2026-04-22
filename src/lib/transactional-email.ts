@@ -1,24 +1,12 @@
-// Transactional email helper using Resend SMTP via nodemailer.
-// Reused by the patient booking portal (approval emails, payment links).
-
-import nodemailer, { type Transporter } from 'nodemailer'
+// Transactional email helper using the Resend HTTP API (port 443).
+//
+// Previously used nodemailer over SMTP (port 465) which the VPS was
+// blocking outbound, causing ETIMEDOUT. HTTP API works over standard
+// HTTPS and avoids the SMTP restriction.
+//
+// Docs: https://resend.com/docs/api-reference/emails/send-email
 
 const FROM = 'Sapphire Clinics East <noreply@do-not-reply.sapphireclinicseast.org>'
-
-let _transporter: Transporter | null = null
-
-function getTransporter(): Transporter {
-  if (_transporter) return _transporter
-  const apiKey = process.env.RESEND_API_KEY
-  if (!apiKey) throw new Error('RESEND_API_KEY is not set')
-  _transporter = nodemailer.createTransport({
-    host: 'smtp.resend.com',
-    port: 465,
-    secure: true,
-    auth: { user: 'resend', pass: apiKey },
-  })
-  return _transporter
-}
 
 export async function sendTransactionalEmail(params: {
   to: string
@@ -26,15 +14,31 @@ export async function sendTransactionalEmail(params: {
   html: string
   text?: string
 }): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey) throw new Error('RESEND_API_KEY is not set')
+
   const { to, subject, html, text } = params
-  const transporter = getTransporter()
-  await transporter.sendMail({
-    from: FROM,
-    to,
-    subject,
-    html,
-    text: text ?? html.replace(/<[^>]+>/g, ''),
+
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + apiKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: FROM,
+      to: [to],
+      subject,
+      html,
+      text: text ?? html.replace(/<[^>]+>/g, ''),
+    }),
+    signal: AbortSignal.timeout(10_000),
   })
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error('Resend API ' + res.status + ': ' + body.slice(0, 400))
+  }
 }
 
 /** Template: appointment approved, here's your payment link. */
@@ -50,9 +54,9 @@ export function renderApprovalEmail(params: {
   meetLink?: string | null
 }): { subject: string; html: string } {
   const branchName = params.branch === 'SBEA' ? 'Sandbox East' : 'Sandbox Greenhills'
-  const subject = `Your appointment is approved — please pay ₱${params.downpaymentPhp.toLocaleString()} to confirm`
+  const subject = 'Your appointment is approved — please pay ₱' + params.downpaymentPhp.toLocaleString() + ' to confirm'
   const tele = params.meetLink
-    ? `<p style="margin:16px 0 0"><strong>Teletherapy link (available after payment):</strong><br><a href="${params.meetLink}">${params.meetLink}</a></p>`
+    ? '<p style="margin:16px 0 0"><strong>Teletherapy link (available after payment):</strong><br><a href="' + params.meetLink + '">' + params.meetLink + '</a></p>'
     : ''
 
   const html = `

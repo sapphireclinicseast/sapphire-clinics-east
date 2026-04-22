@@ -29,14 +29,27 @@ export async function getGmailClient(refreshToken: string) {
 }
 
 export function makeEmailBody(to: string, subject: string, body: string, from: string): string {
+  // RFC 2047 encoded-word so non-ASCII/emoji in Subject is displayed correctly.
+  const subjectEncoded = `=?UTF-8?B?${Buffer.from(subject, 'utf-8').toString('base64')}?=`
+  // Auto-detect HTML vs plain text so campaigns with HTML content render correctly.
+  const isHtml = /<[a-z][\s\S]*>/i.test(body)
+  // Base64-encode the body with explicit UTF-8 so em-dashes, curly quotes and
+  // emoji don't get rendered as "Ã¢Â€Â"" when the client assumes Latin-1.
+  const bodyBase64 = Buffer.from(body, 'utf-8').toString('base64')
+  // Break base64 into 76-char lines (RFC 2045); Gmail is strict about this.
+  const bodyLines = bodyBase64.replace(/(.{76})/g, '$1\r\n')
+
   const message = [
     `From: Sapphire Clinics East <${from}>`,
     `To: ${to}`,
-    `Subject: ${subject}`,
-    'Content-Type: text/plain; charset=utf-8',
+    `Subject: ${subjectEncoded}`,
+    'MIME-Version: 1.0',
+    `Content-Type: ${isHtml ? 'text/html' : 'text/plain'}; charset=utf-8`,
+    'Content-Transfer-Encoding: base64',
     '',
-    body,
-  ].join('\n')
+    bodyLines,
+  ].join('\r\n')
+
   return Buffer.from(message).toString('base64url')
 }
 
