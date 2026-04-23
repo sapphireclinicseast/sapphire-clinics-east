@@ -13,6 +13,11 @@ interface ARWallet {
   id: string
   patientName: string
   balance: number | string
+  // Only returned for GL wallets — the approved amount on the Guarantee Letter.
+  totalGlAmount?: number | string | null
+  // Also returned: consumption-based outstanding (sum of unpaid orders), kept so
+  // the UI can show both 'approved AR' and 'consumed so far' side by side if needed.
+  consumedOutstanding?: number
   accountId?: string | null
   account?: { accountNumber: string; accountTitle: string } | null
 }
@@ -335,9 +340,17 @@ export default function AccountsReceivablePage() {
             onClick={() => setWalletFilter(walletFilter === w.id ? '' : w.id)}>
             <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{w.patientName}</p>
             {w.account && <p className="text-xs" style={{ color: 'var(--teal)' }}>{w.account.accountNumber} {w.account.accountTitle}</p>}
-            <p className="text-lg font-bold mt-1" style={{ color: toNum(w.balance) > 0 ? '#dc2626' : '#166534' }}>
+            <p className="text-[10px] uppercase tracking-wide mt-1" style={{ color: 'var(--mid-gray)' }}>
+              {tab === 'GL' ? 'Approved GL Amount' : 'Outstanding'}
+            </p>
+            <p className="text-lg font-bold" style={{ color: toNum(w.balance) > 0 ? '#dc2626' : '#166534' }}>
               {formatCurrency(toNum(w.balance))}
             </p>
+            {tab === 'GL' && typeof w.consumedOutstanding === 'number' && (
+              <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+                Consumed (unpaid orders): {formatCurrency(w.consumedOutstanding)}
+              </p>
+            )}
           </div>
         ))}
       </div>

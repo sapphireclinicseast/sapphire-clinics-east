@@ -23,7 +23,7 @@ export async function GET(req: Request) {
     // Get all active HMO or GL wallets
     const wallets = await prisma.digitalWallet.findMany({
       where: { walletType: type as 'HMO' | 'GL', isActive: true },
-      select: { id: true, patientName: true, balance: true, accountId: true,
+      select: { id: true, patientName: true, balance: true, totalGlAmount: true, accountId: true,
         account: { select: { accountNumber: true, accountTitle: true } } },
       orderBy: { patientName: 'asc' },
     })
@@ -95,8 +95,21 @@ export async function GET(req: Request) {
       if (!p.walletId) continue
       outstandingByWallet.set(p.walletId, (outstandingByWallet.get(p.walletId) || 0) + Number(p.amount))
     }
-    // Override stored balance with the computed outstanding so cards and table always agree
-    const walletsOut = wallets.map(w => ({ ...w, balance: outstandingByWallet.get(w.id) ?? 0 }))
+    // For HMO: balance = outstanding computed from unpaid orders (consumption-based AR).
+    // For GL: balance = totalGlAmount (approved-amount AR) — government agencies pay the
+    //   approved amount on the Guarantee Letter regardless of how much was consumed; the
+    //   consumption-based number is still exposed as `consumedOutstanding` for reference.
+    const walletsOut = wallets.map(w => {
+      const consumedOutstanding = outstandingByWallet.get(w.id) ?? 0
+      const isGL = type === 'GL'
+      const approved = w.totalGlAmount != null ? Number(w.totalGlAmount) : 0
+      return {
+        ...w,
+        balance: isGL ? approved : consumedOutstanding,
+        consumedOutstanding,
+        totalGlAmount: approved,
+      }
+    })
 
     // Get AR payments for these wallets
     const arPayments = await prisma.aRPayment.findMany({
