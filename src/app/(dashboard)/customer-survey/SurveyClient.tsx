@@ -858,7 +858,7 @@ export default function SurveyClient({ role }: { role: string }) {
               <div className="rounded-xl p-5" style={{ background: '#fff', border: '1px solid #e2e8f0' }}>
                 <div className="flex items-center gap-2 mb-4">
                   <Trophy size={18} style={{ color: '#f59e0b' }} />
-                  <h3 className="font-bold text-sm" style={{ color: '#1e293b' }}>Top 5 Performers — Overall</h3>
+                  <h3 className="font-bold text-sm" style={{ color: '#1e293b' }}>Top 5 Scores — Overall</h3>
                 </div>
                 {resultsDash.top5Overall.length > 0 ? (
                   <div className="space-y-2.5">
@@ -882,7 +882,7 @@ export default function SurveyClient({ role }: { role: string }) {
                 <div key={dept} className="rounded-xl p-5" style={{ background: '#fff', border: '1px solid #e2e8f0' }}>
                   <div className="flex items-center gap-2 mb-4">
                     <Award size={16} style={{ color: '#0f766e' }} />
-                    <h3 className="font-bold text-sm" style={{ color: '#1e293b' }}>Top 5 — {dept}</h3>
+                    <h3 className="font-bold text-sm" style={{ color: "#1e293b" }}>Top 5 Scores — {dept}</h3>
                   </div>
                   {list.length > 0 ? (
                     <div className="space-y-2.5">

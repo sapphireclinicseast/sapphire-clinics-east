@@ -265,17 +265,32 @@ export async function GET(req: NextRequest) {
       return { ...s, compositeScore }
     })
 
-    // Top 5 overall
-    const top5Overall = [...scored].sort((a, b) => b.compositeScore - a.compositeScore).slice(0, 5)
+    // Keep everyone whose compositeScore falls within the top N distinct
+    // scores. So if 5 people all tie for 1st place, they all appear in
+    // "Top 5" — along with everyone in scores 2 through 5.
+    function topNByDistinctScore<T extends { compositeScore: number }>(arr: T[], n: number): T[] {
+      const sorted = [...arr].sort((a, b) => b.compositeScore - a.compositeScore)
+      const distinct = new Set<number>()
+      const out: T[] = []
+      for (const row of sorted) {
+        if (!distinct.has(row.compositeScore) && distinct.size >= n) break
+        distinct.add(row.compositeScore)
+        out.push(row)
+      }
+      return out
+    }
 
-    // Top 5 per department
+    // Top 5 overall — up to 5 distinct scores, all ties included
+    const top5Overall = topNByDistinctScore(scored, 5)
+
+    // Top 5 per department — same rule, applied per dept slice
     const departments = [...new Set(scored.map(s => s.department))]
     const top5ByDept: Record<string, typeof scored> = {}
     for (const dept of departments) {
-      top5ByDept[dept] = scored
-        .filter(s => s.department === dept)
-        .sort((a, b) => b.compositeScore - a.compositeScore)
-        .slice(0, 5)
+      top5ByDept[dept] = topNByDistinctScore(
+        scored.filter(s => s.department === dept),
+        5,
+      )
     }
 
     // Get available branches for filter (main admin only)
