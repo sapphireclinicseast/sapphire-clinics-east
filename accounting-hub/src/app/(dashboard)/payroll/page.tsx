@@ -1044,8 +1044,14 @@ export default function PayrollPage() {
             .filter(p => p.existingStatus !== 'LOCKED')
             .map(p => buildEntry(
               p,
-              extraUnitPays[p.consultantId] || ((p.storedExtraItems as unknown as ExtraUnitPayLine[]) || []),
-              adjustments[p.consultantId] || ((p.storedAdjustments as unknown as AdjustmentLine[]) || []),
+              // undefined ⇒ state never loaded for this consultant ⇒ use stored.
+              // [] ⇒ user intentionally cleared ⇒ honour the empty.
+              extraUnitPays[p.consultantId] !== undefined
+                ? extraUnitPays[p.consultantId]
+                : ((p.storedExtraItems as unknown as ExtraUnitPayLine[]) || []),
+              adjustments[p.consultantId] !== undefined
+                ? adjustments[p.consultantId]
+                : ((p.storedAdjustments as unknown as AdjustmentLine[]) || []),
               'FINAL'
             ))
           if (entries.length > 0) {
@@ -1659,8 +1665,15 @@ export default function PayrollPage() {
   const saveSingleConsultant = async (cid: string) => {
     const p = payrollPreviews.find(pr => pr.consultantId === cid)
     if (!p || p.existingStatus === 'LOCKED') return
-    const extras = extraUnitPays[cid] || []
-    const adjs = adjustments[cid] || []
+    // Use state if it has been populated (undefined ⇒ never-loaded, fall back
+    // to stored). An empty array [] is treated as an intentional removal and
+    // kept as-is, so the user can delete all extras via the UI.
+    const extras = extraUnitPays[cid] !== undefined
+      ? extraUnitPays[cid]
+      : ((p.storedExtraItems as unknown as ExtraUnitPayLine[]) || [])
+    const adjs = adjustments[cid] !== undefined
+      ? adjustments[cid]
+      : ((p.storedAdjustments as unknown as AdjustmentLine[]) || [])
     const status = p.existingStatus === 'FINAL' ? 'FINAL' : 'DRAFT'
     setSavingMap(prev => ({ ...prev, [cid]: true }))
     try {
@@ -1683,8 +1696,15 @@ export default function PayrollPage() {
   const lockSingleConsultant = async (cid: string) => {
     const p = payrollPreviews.find(pr => pr.consultantId === cid)
     if (!p) return
-    const extras = extraUnitPays[cid] || []
-    const adjs = adjustments[cid] || []
+    if (p.existingStatus === 'LOCKED') { setError('Cannot modify a locked payslip. Unlock the consultant first.'); return }
+    // Same rule as saveSingleConsultant: undefined ⇒ use stored, [] ⇒ honour
+    // intentional removal.
+    const extras = extraUnitPays[cid] !== undefined
+      ? extraUnitPays[cid]
+      : ((p.storedExtraItems as unknown as ExtraUnitPayLine[]) || [])
+    const adjs = adjustments[cid] !== undefined
+      ? adjustments[cid]
+      : ((p.storedAdjustments as unknown as AdjustmentLine[]) || [])
     setLockingMap(prev => ({ ...prev, [cid]: true }))
     try {
       // Save current state as FINAL
@@ -3281,7 +3301,7 @@ export default function PayrollPage() {
                   </select>
                   {!allConsultantLocked && (
                     <>
-                      <button onClick={() => generatePayslips(true)} disabled={generating}
+                      <button onClick={() => generatePayslips(false)} disabled={generating}
                         className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50"
                         style={{ background: 'var(--teal)' }}>
                         {generating ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
