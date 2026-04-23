@@ -1599,24 +1599,73 @@ export default function PayrollPage() {
     finally { setGenerating(false) }
   }
 
-  const exportSalesCsv = async () => {
+  const exportPayrollCsv = () => {
     try {
-      const customDates = computeCustomDates(payrollSettings, cutoffYear, cutoffMonth, cutoffHalf)
-      const params = new URLSearchParams()
-      params.set('dateFrom', customDates.start.toISOString())
-      params.set('dateTo', customDates.end.toISOString())
-      if (branch) params.set('branch', branch)
-      const res = await fetch(`/api/payroll/sales-csv?${params}`)
-      if (!res.ok) { alert('Failed to export CSV'); return }
-      const blob = await res.blob()
+      const cutoffLabel = getCutoffLabel(cutoffPeriod)
+      // Include anyone who has numbers this cutoff (matches what the expanded
+      // consultant cards show) — LOCKED + FINAL + DRAFT with activity.
+      const rows = payrollPreviews.filter(p => p.grossPay > 0 || p.orderCount > 0 || p.existingStatus !== null)
+
+      // Sum helpers
+      const quote = (v: string) => `"${String(v).replace(/"/g, '""')}"`
+      const num = (n: number) => (Math.round(n * 100) / 100).toFixed(2)
+
+      const headers = ['Cutoff', 'Name', 'Unit Pay', 'Retainer', 'Adjustment', 'Gross', 'Tax', 'Net Pay']
+      const lines: string[] = [headers.map(quote).join(',')]
+
+      let totUnitPay = 0, totRetainer = 0, totAdj = 0, totGross = 0, totTax = 0, totNet = 0
+
+      for (const p of rows) {
+        const extras = extraUnitPays[p.consultantId] !== undefined
+          ? extraUnitPays[p.consultantId]
+          : ((p.storedExtraItems as unknown as ExtraUnitPayLine[]) || [])
+        const adjs = adjustments[p.consultantId] !== undefined
+          ? adjustments[p.consultantId]
+          : ((p.storedAdjustments as unknown as AdjustmentLine[]) || [])
+        const t = computeTotals(p, extras, adjs)
+        const adjSigned = (t.taxedAdj ?? 0) + (t.nonTaxedAdj ?? 0)
+
+        totUnitPay += t.totalUnitPay
+        totRetainer += p.retainerAmount
+        totAdj += adjSigned
+        totGross += t.gross
+        totTax += t.tax
+        totNet += t.net
+
+        lines.push([
+          quote(cutoffLabel),
+          quote(p.consultantName),
+          num(t.totalUnitPay),
+          num(p.retainerAmount),
+          num(adjSigned),
+          num(t.gross),
+          num(t.tax),
+          num(t.net),
+        ].join(','))
+      }
+
+      // TOTAL row
+      lines.push([
+        quote('TOTAL'),
+        quote(''),
+        num(totUnitPay),
+        num(totRetainer),
+        num(totAdj),
+        num(totGross),
+        num(totTax),
+        num(totNet),
+      ].join(','))
+
+      const csv = '\uFEFF' + lines.join('\r\n') // BOM for Excel UTF-8
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      const label = getCutoffLabel(cutoffPeriod).replace(/[^a-zA-Z0-9-]/g, '_')
-      a.download = `sales_summary_${label}.csv`
+      const labelSafe = cutoffLabel.replace(/[^a-zA-Z0-9-]/g, '_')
+      a.download = `payroll_${labelSafe}${branch ? '_' + branch : ''}.csv`
       a.click()
       URL.revokeObjectURL(url)
-    } catch { alert('Failed to export CSV') }
+    } catch { alert('Failed to export payroll CSV') }
   }
 
   const buildEntry = (p: PayrollPreview, extras: ExtraUnitPayLine[], adjs: AdjustmentLine[], status: string) => {
@@ -3347,11 +3396,11 @@ export default function PayrollPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {/* Export Sales CSV */}
-                  <button onClick={exportSalesCsv}
+                  {/* Export Payroll CSV — summary per consultant + totals row */}
+                  <button onClick={exportPayrollCsv}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border"
                     style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
-                    <Download size={14} /> Sales CSV
+                    <Download size={14} /> Download Payroll
                   </button>
 
                   {/* Download ALL PDFs */}
