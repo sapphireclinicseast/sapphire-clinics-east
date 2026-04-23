@@ -862,9 +862,13 @@ export default function SurveyClient({ role }: { role: string }) {
                 </div>
                 {resultsDash.top5Overall.length > 0 ? (
                   <div className="space-y-2.5">
-                    {resultsDash.top5Overall.map((p, i) => (
-                      <LeaderboardRow key={p.id} rank={i + 1} performer={p} />
-                    ))}
+                    {(() => {
+                      const ranks = computeTiedRanks(resultsDash.top5Overall)
+                      return resultsDash.top5Overall.map((p, i) => {
+                        const isTied = ranks.filter(r => r === ranks[i]).length > 1
+                        return <LeaderboardRow key={p.id} rank={ranks[i]} performer={p} tied={isTied} />
+                      })
+                    })()}
                   </div>
                 ) : (
                   <p className="text-sm text-center py-6" style={{ color: '#94a3b8' }}>No completed surveys yet</p>
@@ -882,9 +886,13 @@ export default function SurveyClient({ role }: { role: string }) {
                   </div>
                   {list.length > 0 ? (
                     <div className="space-y-2.5">
-                      {list.map((p, i) => (
-                        <LeaderboardRow key={p.id} rank={i + 1} performer={p} />
-                      ))}
+                      {(() => {
+                        const ranks = computeTiedRanks(list)
+                        return list.map((p, i) => {
+                          const isTied = ranks.filter(r => r === ranks[i]).length > 1
+                          return <LeaderboardRow key={p.id} rank={ranks[i]} performer={p} tied={isTied} />
+                        })
+                      })()}
                     </div>
                   ) : (
                     <p className="text-sm text-center py-4" style={{ color: '#94a3b8' }}>No data</p>
@@ -1439,17 +1447,41 @@ function ChartCard({ title, icon: Icon, data }: { title: string; icon: typeof Tr
   )
 }
 
-function LeaderboardRow({ rank, performer: p }: { rank: number; performer: TopPerformer }) {
+
+// Competition ranking: equal compositeScore shares the same rank number,
+// and the next distinct score skips to reflect the tie count.
+// e.g. [95, 95, 95, 90, 85] → [1, 1, 1, 4, 5]
+function computeTiedRanks(arr: { compositeScore: number }[]): number[] {
+  const ranks: number[] = []
+  for (let i = 0; i < arr.length; i++) {
+    if (i > 0 && arr[i].compositeScore === arr[i - 1].compositeScore) {
+      ranks.push(ranks[i - 1])
+    } else {
+      ranks.push(i + 1)
+    }
+  }
+  return ranks
+}
+
+function LeaderboardRow({ rank, performer: p, tied }: { rank: number; performer: TopPerformer; tied?: boolean }) {
   const medalColors = ['#f59e0b', '#94a3b8', '#cd7f32'] // gold, silver, bronze
   const medalColor = rank <= 3 ? medalColors[rank - 1] : undefined
   return (
     <div className="flex items-center gap-3 p-3 rounded-lg" style={{ background: rank === 1 ? '#fffbeb' : '#f8fafc' }}>
-      <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm"
+      <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm relative"
         style={medalColor
           ? { background: medalColor + '20', color: medalColor }
           : { background: '#f1f5f9', color: '#94a3b8' }
-        }>
+        }
+        title={tied ? `Tied at rank ${rank}` : undefined}
+      >
         {rank}
+        {tied && (
+          <span
+            className="absolute -top-1 -right-1 text-[8px] font-bold px-1 rounded-full"
+            style={{ background: '#fbbf24', color: '#78350f', lineHeight: 1.3 }}
+          >T</span>
+        )}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
