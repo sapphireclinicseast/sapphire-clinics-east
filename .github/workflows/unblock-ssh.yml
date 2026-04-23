@@ -6,7 +6,7 @@
 # Manual trigger only: Actions → "Unblock SSH + install fail2ban" → Run workflow.
 name: Unblock SSH + install fail2ban
 
-on:
+"on":
   workflow_dispatch:
     inputs:
       whitelist_ip:
