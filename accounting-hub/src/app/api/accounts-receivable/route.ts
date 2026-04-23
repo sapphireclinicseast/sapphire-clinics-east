@@ -63,6 +63,7 @@ export async function GET(req: Request) {
         clinicianName: true,
         branch: true,
         netAmount: true,
+        arProofUrl: true,
         items: { select: { name: true } },
         payments: {
           where: { method: type as 'HMO' | 'GL' },

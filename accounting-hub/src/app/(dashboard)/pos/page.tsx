@@ -3569,8 +3569,9 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
           dateObtained: walletEditForm.dateObtained || null,
           agency: walletEditForm.agency || null,
           vipTier: walletEditForm.vipTier || null,
-          // HMO and GL balances are read-only (computed from POS orders) — never send in edit
-          ...(!['HMO', 'GL'].includes(walletDetail.walletType) ? { balance: walletEditForm.balance } : {}),
+          // HMO balance stays read-only (computed from unpaid POS orders). GL balance
+          // = 'Remaining Balance (Usable Amount)' is manually maintained.
+          ...(walletDetail.walletType !== 'HMO' ? { balance: walletEditForm.balance } : {}),
           attachmentUrl: walletEditForm.attachmentUrl || null,
           accountId: walletEditForm.accountId || null,
           ...(['VIP', 'PREPAID_CARD'].includes(walletDetail.walletType) ? { rewardPoints: walletEditForm.rewardPoints } : {}),
@@ -4587,12 +4588,22 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                     <input type="date" value={walletEditForm.dateObtained || ''} onChange={e => setWalletEditForm(p => ({ ...p, dateObtained: e.target.value }))}
                       className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
-                  {/* HMO and GL balances are auto-computed from POS orders — not manually editable */}
-                  {!['HMO', 'GL'].includes(walletDetail.walletType) && (
+                  {/* HMO balance is still auto-computed from unpaid POS orders.
+                      GL 'Remaining Balance' is now manually editable — represents the
+                      usable amount still available on the Guarantee Letter (Total GL
+                      approved amount minus what's already consumed against real orders). */}
+                  {walletDetail.walletType !== 'HMO' && (
                     <div>
-                      <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Balance</label>
+                      <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>
+                        {walletDetail.walletType === 'GL' ? 'Remaining Balance (Usable Amount)' : 'Balance'}
+                      </label>
                       <input type="number" step="0.01" value={walletEditForm.balance || ''} onChange={e => setWalletEditForm(p => ({ ...p, balance: e.target.value }))}
                         className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      {walletDetail.walletType === 'GL' && (
+                        <p className="text-[10px] mt-1" style={{ color: 'var(--mid-gray)' }}>
+                          Amount still usable against future orders. For AR (what the agency owes), use the Total GL Amount field.
+                        </p>
+                      )}
                     </div>
                   )}
                   {walletDetail.walletType === 'VIP' && (

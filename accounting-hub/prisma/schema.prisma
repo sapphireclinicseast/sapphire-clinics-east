@@ -596,6 +596,7 @@ model Order {
   issuedOfficialInvoice  Boolean  @default(false)
   salesInvoiceNumber     String?
   referenceNumber        String?
+  arProofUrl             String?  // Per-transaction AR proof attachment (PDF or image)
   status          OrderStatus @default(COMPLETED)
   transactionDate DateTime
   createdById     String

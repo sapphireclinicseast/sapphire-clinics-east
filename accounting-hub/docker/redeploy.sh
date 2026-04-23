@@ -31,4 +31,9 @@ docker exec accounting_db psql -U sapphire -d sapphire_accounting \
   && echo "Password synced." \
   || echo "Warning: password sync failed — run ALTER USER manually if login fails."
 
+echo "Applying additive schema changes (IF NOT EXISTS — idempotent)..."
+docker exec accounting_db psql -U sapphire -d sapphire_accounting <<'SQL'
+ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "arProofUrl" TEXT;
+SQL
+
 echo "Redeploy complete."

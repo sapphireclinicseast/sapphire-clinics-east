@@ -120,8 +120,10 @@ export async function GET(
       return NextResponse.json({ ...wallet, ledger: enriched, computedEndingBalance, ledgerDiscrepancy })
     }
 
-    // For HMO/GL wallets, return only UNPAID orders and compute balance from them.
-    // Unpaid = not voided + no AR payment recorded against the order.
+    // For HMO wallets, balance is computed from unpaid orders (consumption-based AR).
+    // For GL wallets, balance is now the manually-maintained 'Remaining Balance
+    // (Usable Amount)' stored on the wallet itself — we keep returning unpaid
+    // orders for the detail view, but do NOT override balance with computed.
     if (['HMO', 'GL'].includes(wallet.walletType)) {
       const orders = await prisma.order.findMany({
         where: {
@@ -142,12 +144,15 @@ export async function GET(
         },
         take: 200,
       })
-      // Compute outstanding from the unpaid orders directly
-      const computedBalance = orders.reduce((sum, o) => {
-        const pay = o.payments.find(p => p.walletId === id)
-        return sum + (pay ? Number(pay.amount) : 0)
-      }, 0)
-      return NextResponse.json({ ...wallet, balance: computedBalance, orders })
+      if (wallet.walletType === 'HMO') {
+        const computedBalance = orders.reduce((sum, o) => {
+          const pay = o.payments.find(p => p.walletId === id)
+          return sum + (pay ? Number(pay.amount) : 0)
+        }, 0)
+        return NextResponse.json({ ...wallet, balance: computedBalance, orders })
+      }
+      // GL: return stored balance as-is
+      return NextResponse.json({ ...wallet, orders })
     }
 
     return NextResponse.json(wallet)
@@ -171,9 +176,12 @@ export async function PUT(
     const { patientName, patientEmail, patientId, isActive, deleteReason, accountId,
             dateObtained, paymentModeId, agency, vipTier, attachmentUrl, balance, rewardPoints, totalGlAmount, branch } = body
 
-    // Look up wallet type so we can protect AR wallet balance from manual edits
+    // Look up wallet type so we can protect HMO balance from manual edits.
+    // GL now allows a manually-maintained 'Remaining Balance (Usable Amount)' that
+    // represents how much of the Guarantee Letter approval is still consumable —
+    // distinct from totalGlAmount (AR / what the agency owes us).
     const existing = await prisma.digitalWallet.findUnique({ where: { id }, select: { walletType: true } })
-    const isArWallet = ['HMO', 'GL'].includes(existing?.walletType ?? '')
+    const isBalanceReadOnly = existing?.walletType === 'HMO'
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = {}
@@ -187,8 +195,9 @@ export async function PUT(
     if (agency !== undefined) data.agency = agency?.trim() || null
     if (vipTier !== undefined) data.vipTier = vipTier || null
     if (attachmentUrl !== undefined) data.attachmentUrl = attachmentUrl || null
-    // HMO and GL wallet balances are computed from actual POS orders — never allow manual edits
-    if (balance !== undefined && !isArWallet) data.balance = parseFloat(balance)
+    // HMO balance is computed from unpaid POS orders — never allow manual edits.
+    // VIP / PREPAID_CARD / DOWNPAYMENT / ADVANCE / PACKAGE / GL balances are user-maintained.
+    if (balance !== undefined && !isBalanceReadOnly) data.balance = parseFloat(balance)
     if (rewardPoints !== undefined) data.rewardPoints = parseInt(rewardPoints) || 0
     if (totalGlAmount !== undefined) data.totalGlAmount = parseFloat(totalGlAmount) || null
     if (branch !== undefined) data.branch = branch || 'ALL'

@@ -75,14 +75,15 @@ export async function GET(req: Request) {
     prisma.digitalWallet.count({ where }),
   ])
 
-  // For HMO and GL wallets, override stored balance with the actual outstanding
-  // computed from real unpaid POS orders (status ≠ VOIDED, no AR payment recorded).
-  if (['HMO', 'GL'].includes(walletType)) {
+  // For HMO wallets, override stored balance with outstanding consumption
+  // (unpaid POS orders). GL balance is now manually maintained as the
+  // 'Remaining Balance (Usable Amount)' — return it as stored.
+  if (walletType === 'HMO') {
     const wIds = wallets.map(w => w.id)
     const unpaidPayments = await prisma.orderPayment.findMany({
       where: {
         walletId: { in: wIds },
-        method: walletType as 'HMO' | 'GL',
+        method: 'HMO',
         order: {
           status: { not: 'VOIDED' },
           arPaymentItems: { none: {} },
@@ -188,8 +189,10 @@ export async function POST(req: Request) {
         accountId: resolvedAccountId,
         dateObtained: dateObtained ? new Date(dateObtained) : null,
         paymentModeId: paymentModeId || null,
-        // HMO and GL balances are computed from actual POS orders — always start at 0
-        balance: ['HMO', 'GL'].includes(walletType) ? 0 : (initialBalance ? Number(initialBalance) : 0),
+        // HMO balance is computed from unpaid orders — always starts at 0.
+        // GL balance is manually maintained ('Remaining Balance (Usable Amount)') —
+        // if an initialBalance was provided at creation, use it.
+        balance: walletType === 'HMO' ? 0 : (initialBalance ? Number(initialBalance) : 0),
         rewardPoints: walletType === 'VIP' && initialRewardPoints ? Number(initialRewardPoints) : 0,
         attachmentUrl: attachmentUrl || null,
         agency: walletType === 'GL' ? (agency?.trim() || null) : null,

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useSearchParams } from 'next/navigation'
 import {
@@ -30,6 +30,7 @@ interface AROrder {
   clinicianName: string
   branch: string
   netAmount: number | string
+  arProofUrl?: string | null
   items: { name: string }[]
   payments: { amount: number | string; walletId?: string }[]
   arPaymentItems: { paymentId: string }[]
@@ -62,6 +63,79 @@ function formatDate(d: string) {
   return new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+// Per-transaction proof upload cell. Accepts PDF or image. Stores to uploads
+// via /api/upload, persists the URL via PATCH /api/accounts-receivable/proof.
+function ProofCell({ orderId, currentUrl, onChange }: {
+  orderId: string; currentUrl: string | null; onChange: (url: string | null) => void;
+}) {
+  const [busy, setBusy] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const upload = async (file: File) => {
+    setBusy(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const up = await fetch('/api/upload', { method: 'POST', body: fd })
+      const ud = await up.json()
+      if (!up.ok || !ud.url) throw new Error(ud.error || 'Upload failed')
+      const r = await fetch('/api/accounts-receivable/proof', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, arProofUrl: ud.url }),
+      })
+      if (!r.ok) throw new Error('Save failed')
+      onChange(ud.url)
+    } catch (e) {
+      alert((e as Error).message || 'Failed to attach proof')
+    } finally {
+      setBusy(false)
+      if (inputRef.current) inputRef.current.value = ''
+    }
+  }
+
+  const clear = async () => {
+    if (!confirm('Remove the attached proof?')) return
+    setBusy(true)
+    try {
+      const r = await fetch(`/api/accounts-receivable/proof?orderId=${orderId}`, { method: 'DELETE' })
+      if (!r.ok) throw new Error('Failed to clear')
+      onChange(null)
+    } catch (e) {
+      alert((e as Error).message || 'Failed to clear proof')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="flex items-center justify-center gap-1.5">
+      {currentUrl ? (
+        <>
+          <a href={currentUrl} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-xs"
+            style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+            <FileCheck size={12} /> View
+          </a>
+          <button onClick={clear} disabled={busy} className="p-1 rounded hover:bg-red-50 disabled:opacity-50" title="Remove proof">
+            <X size={12} className="text-red-400" />
+          </button>
+        </>
+      ) : (
+        <label className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border cursor-pointer text-xs"
+          style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)', opacity: busy ? 0.5 : 1 }}>
+          <Upload size={12} />
+          {busy ? 'Uploading…' : 'Upload'}
+          <input ref={inputRef} type="file" accept="image/*,.pdf,application/pdf" className="hidden"
+            disabled={busy}
+            onChange={async (e) => {
+              const f = e.target.files?.[0]
+              if (f) await upload(f)
+            }} />
+        </label>
+      )}
+    </div>
+  )
+}
+
 export default function AccountsReceivablePage() {
   const { data: session } = useSession()
   const searchParams = useSearchParams()
@@ -80,6 +154,21 @@ export default function AccountsReceivablePage() {
   const [orders, setOrders] = useState<AROrder[]>([])
   const [arPayments, setArPayments] = useState<ARPaymentRecord[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Aging dashboard state
+  type AgingBucket = 'b0_30' | 'b31_60' | 'b61_90' | 'b90plus'
+  interface AgingRow {
+    walletId: string; walletName: string; ar: number; revenue: number; arDays: number;
+    aging: { b0_30: number; b31_60: number; b61_90: number; b90plus: number };
+    orderIdsByBucket: Record<AgingBucket, string[]>;
+  }
+  const [agingData, setAgingData] = useState<{
+    periodDays: number; totalAR: number; totalRevenue: number; arDaysOverall: number; perWallet: AgingRow[];
+  } | null>(null)
+  const [agingPeriodDays, setAgingPeriodDays] = useState(90)
+  // When user clicks a cell, filter the orders table to that bucket's ids
+  const [bucketFilterIds, setBucketFilterIds] = useState<string[] | null>(null)
+  const [bucketFilterLabel, setBucketFilterLabel] = useState('')
 
   // Record Payment modal
   const [showPaymentModal, setShowPaymentModal] = useState(false)
@@ -123,6 +212,23 @@ export default function AccountsReceivablePage() {
   }, [tab, branch, dateFrom, dateTo, walletFilter, sortField, sortDir])
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  // Fetch aging dashboard data whenever tab / branch / period changes
+  useEffect(() => {
+    const ctl = new AbortController()
+    const load = async () => {
+      try {
+        const p = new URLSearchParams({ type: tab, periodDays: String(agingPeriodDays) })
+        if (branch) p.set('branch', branch)
+        const r = await fetch(`/api/accounts-receivable/aging?${p}`, { signal: ctl.signal })
+        if (!r.ok) return
+        const d = await r.json()
+        setAgingData(d)
+      } catch { /* ignore abort / network */ }
+    }
+    load()
+    return () => ctl.abort()
+  }, [tab, branch, agingPeriodDays])
 
   // Fetch discount COA accounts (REVENUE with DEBIT balance)
   useEffect(() => {
@@ -293,7 +399,7 @@ export default function AccountsReceivablePage() {
       {/* Tabs */}
       <div className="flex gap-2">
         {(['HMO', 'GL'] as const).map(t => (
-          <button key={t} onClick={() => { setTab(t); setWalletFilter('') }}
+          <button key={t} onClick={() => { setTab(t); setWalletFilter(''); setBucketFilterIds(null); setBucketFilterLabel('') }}
             className="px-4 py-2 rounded-xl text-sm font-medium transition-colors"
             style={tab === t
               ? { background: 'var(--teal)', color: 'white' }
@@ -301,6 +407,150 @@ export default function AccountsReceivablePage() {
             {t === 'HMO' ? 'HMO Providers' : 'Guarantee Letters (GL)'}
           </button>
         ))}
+      </div>
+
+      {/* ── Dashboard: AR Days + Aging Receivable Details ── */}
+      <div className="rounded-2xl border p-4 space-y-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>AR Dashboard — {tab}</h2>
+            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+              Days Sales Outstanding and aging buckets. AR Days = (average AR ÷ period revenue) × period days.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Period:</label>
+            <select value={agingPeriodDays} onChange={e => setAgingPeriodDays(parseInt(e.target.value))}
+              className="px-3 py-1.5 rounded-lg border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+              <option value={30}>Last 30 days</option>
+              <option value={60}>Last 60 days</option>
+              <option value={90}>Last 90 days</option>
+              <option value={180}>Last 180 days</option>
+              <option value={365}>Last 365 days</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Overall AR Days card */}
+        <div className="rounded-xl p-4 grid grid-cols-3 gap-4" style={{ background: 'white', border: '1px solid var(--light-gray)' }}>
+          <div>
+            <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>AR Days (Overall)</p>
+            <p className="text-2xl font-bold mt-1" style={{ color: 'var(--deep-teal)' }}>
+              {agingData ? agingData.arDaysOverall.toFixed(1) : '—'}
+              <span className="text-sm font-normal ml-1" style={{ color: 'var(--mid-gray)' }}>days</span>
+            </p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Total AR</p>
+            <p className="text-xl font-bold mt-1" style={{ color: '#dc2626' }}>
+              {agingData ? formatCurrency(agingData.totalAR) : '—'}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Period Revenue</p>
+            <p className="text-xl font-bold mt-1" style={{ color: '#166534' }}>
+              {agingData ? formatCurrency(agingData.totalRevenue) : '—'}
+            </p>
+          </div>
+        </div>
+
+        {/* AR Days per wallet — compact strip */}
+        {agingData && agingData.perWallet.filter(w => w.ar > 0 || w.revenue > 0).length > 0 && (
+          <div>
+            <p className="text-xs font-semibold mb-2" style={{ color: 'var(--mid-gray)' }}>AR Days per {tab === 'HMO' ? 'HMO' : 'Agency'}</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {agingData.perWallet.filter(w => w.ar > 0 || w.revenue > 0).map(w => (
+                <div key={w.walletId} className="rounded-lg px-3 py-2" style={{ background: 'white', border: '1px solid var(--light-gray)' }}>
+                  <p className="text-xs font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{w.walletName}</p>
+                  <p className="text-sm font-bold" style={{ color: 'var(--deep-teal)' }}>{w.arDays.toFixed(1)} days</p>
+                  <p className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>AR {formatCurrency(w.ar)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Aging Receivable Details */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>
+              Aging Receivable Details — click an amount to see the transactions included
+            </p>
+            {bucketFilterIds && (
+              <button onClick={() => { setBucketFilterIds(null); setBucketFilterLabel('') }}
+                className="text-xs font-semibold px-2 py-1 rounded-lg" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+                Viewing: {bucketFilterLabel} · Clear
+              </button>
+            )}
+          </div>
+          <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ background: 'var(--pale-teal)' }}>
+                  <th className="px-3 py-2 text-left text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>{tab === 'HMO' ? 'HMO' : 'Agency'}</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>0–30 days</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>31–60 days</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>61–90 days</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>&gt;90 days</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {!agingData ? (
+                  <tr><td colSpan={6} className="px-3 py-6 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>Loading aging…</td></tr>
+                ) : agingData.perWallet.filter(w => w.ar > 0).length === 0 ? (
+                  <tr><td colSpan={6} className="px-3 py-6 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>No outstanding receivables.</td></tr>
+                ) : (() => {
+                  const rows = agingData.perWallet.filter(w => w.ar > 0)
+                  const buckets: AgingBucket[] = ['b0_30', 'b31_60', 'b61_90', 'b90plus']
+                  const bucketLabels: Record<AgingBucket, string> = { b0_30: '0–30 days', b31_60: '31–60 days', b61_90: '61–90 days', b90plus: '>90 days' }
+                  const clickCell = (w: AgingRow, b: AgingBucket) => {
+                    const ids = w.orderIdsByBucket[b]
+                    if (!ids || ids.length === 0) return
+                    setBucketFilterIds(ids)
+                    setBucketFilterLabel(`${w.walletName} · ${bucketLabels[b]}`)
+                    setWalletFilter(w.walletId)
+                    // Nudge the user to the table below
+                    setTimeout(() => {
+                      const el = document.querySelector('[data-ar-transactions-table]')
+                      if (el) (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'start' })
+                    }, 50)
+                  }
+                  const totals = buckets.reduce((acc, b) => ({ ...acc, [b]: rows.reduce((s, r) => s + r.aging[b], 0) }), {} as Record<AgingBucket, number>)
+                  const grandTotal = rows.reduce((s, r) => s + r.ar, 0)
+                  return (
+                    <>
+                      {rows.map(w => (
+                        <tr key={w.walletId} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                          <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{w.walletName}</td>
+                          {buckets.map(b => (
+                            <td key={b} className="px-3 py-2 text-right">
+                              {w.aging[b] > 0 ? (
+                                <button onClick={() => clickCell(w, b)}
+                                  className="font-mono underline hover:opacity-80"
+                                  style={{ color: b === 'b90plus' ? '#dc2626' : b === 'b61_90' ? '#c44b00' : 'var(--charcoal)' }}>
+                                  {formatCurrency(w.aging[b])}
+                                </button>
+                              ) : <span className="font-mono" style={{ color: 'var(--light-gray)' }}>—</span>}
+                            </td>
+                          ))}
+                          <td className="px-3 py-2 text-right font-mono font-bold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(w.ar)}</td>
+                        </tr>
+                      ))}
+                      <tr style={{ background: 'var(--off-white)' }}>
+                        <td className="px-3 py-2 font-bold text-xs" style={{ color: 'var(--charcoal)' }}>TOTAL</td>
+                        {buckets.map(b => (
+                          <td key={b} className="px-3 py-2 text-right font-mono font-bold text-xs" style={{ color: 'var(--charcoal)' }}>{formatCurrency(totals[b])}</td>
+                        ))}
+                        <td className="px-3 py-2 text-right font-mono font-bold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(grandTotal)}</td>
+                      </tr>
+                    </>
+                  )
+                })()}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
       {/* Filters */}
@@ -356,7 +606,7 @@ export default function AccountsReceivablePage() {
       </div>
 
       {/* Transactions table */}
-      <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+      <div data-ar-transactions-table className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: 'var(--off-white)' }}>
@@ -377,14 +627,15 @@ export default function AccountsReceivablePage() {
                 <span className="flex items-center justify-end gap-1">Amount <SortIcon field="netAmount" /></span>
               </th>
               <th className="text-center px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Status</th>
+              <th className="text-center px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Proof</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</td></tr>
-            ) : orders.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>No receivable transactions found</td></tr>
-            ) : orders.map(o => {
+              <tr><td colSpan={7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</td></tr>
+            ) : (bucketFilterIds ? orders.filter(o => bucketFilterIds.includes(o.id)) : orders).length === 0 ? (
+              <tr><td colSpan={7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>No receivable transactions found</td></tr>
+            ) : (bucketFilterIds ? orders.filter(o => bucketFilterIds.includes(o.id)) : orders).map(o => {
               // Sum all HMO/GL payments on this order (should normally be 1)
               const amt = o.payments.reduce((s, p) => s + toNum(p.amount), 0)
               const wallet = wallets.find(w => w.id === o.payments[0]?.walletId)
@@ -401,6 +652,10 @@ export default function AccountsReceivablePage() {
                       style={isPaid ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>
                       {isPaid ? 'Paid' : 'Unpaid'}
                     </span>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <ProofCell orderId={o.id} currentUrl={o.arProofUrl || null}
+                      onChange={(url) => setOrders(prev => prev.map(x => x.id === o.id ? { ...x, arProofUrl: url } : x))} />
                   </td>
                 </tr>
               )
