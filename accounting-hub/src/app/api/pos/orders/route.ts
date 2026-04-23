@@ -151,9 +151,9 @@ export async function POST(req: Request) {
       referenceNumber,
     } = body
 
-    if (!orderType || !branch || !items?.length || !payments?.length) {
+    if (!orderType || !branch || !items?.length) {
       return NextResponse.json(
-        { error: 'orderType, branch, items, and payments are required' },
+        { error: 'orderType, branch, and items are required' },
         { status: 400 }
       )
     }
@@ -165,6 +165,14 @@ export async function POST(req: Request) {
     )
 
     const netAmount = subtotal - Number(discountAmount)
+
+    // Payments required only when there's something to pay (e.g., 100% discount → net 0 is allowed with no payments)
+    if (netAmount > 0 && !payments?.length) {
+      return NextResponse.json(
+        { error: 'payments are required when net amount is greater than 0' },
+        { status: 400 }
+      )
+    }
 
     const order = await prisma.order.create({
       data: {

@@ -1028,6 +1028,36 @@ export default function PayrollPage() {
     if (!confirm(`Lock and finalize all ${payrollType === 'CONSULTANT' ? 'consultant' : 'employee'} payslips for ${cutoffPeriod} — ${branch || 'all branches'}? This cannot be undone.`)) return
     setFinalizing(true)
     try {
+      // Consultant payroll: save a fresh FINAL snapshot from live orders before locking,
+      // so Lock can never freeze stale items left behind by an un-saved Re-run.
+      if (payrollType === 'CONSULTANT') {
+        const lockBranch = branch || 'SBEA'
+        const customDates = computeCustomDates(payrollSettings, cutoffYear, cutoffMonth, cutoffHalf)
+        const freshParams = new URLSearchParams({ cutoffPeriod, branch: lockBranch })
+        freshParams.set('dateFrom', customDates.start.toISOString())
+        freshParams.set('dateTo', customDates.end.toISOString())
+        const freshRes = await fetch(`/api/payroll/generate?${freshParams}`)
+        if (freshRes.ok) {
+          const freshData = await freshRes.json()
+          const freshPreviews = (freshData.payrolls || []) as PayrollPreview[]
+          const entries = freshPreviews
+            .filter(p => p.existingStatus !== 'LOCKED')
+            .map(p => buildEntry(
+              p,
+              extraUnitPays[p.consultantId] || ((p.storedExtraItems as unknown as ExtraUnitPayLine[]) || []),
+              adjustments[p.consultantId] || ((p.storedAdjustments as unknown as AdjustmentLine[]) || []),
+              'FINAL'
+            ))
+          if (entries.length > 0) {
+            await fetch('/api/payroll/generate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ cutoffPeriod, branch: lockBranch, entries }),
+            })
+          }
+        }
+      }
+
       const res = await fetch('/api/payroll/finalize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1693,6 +1723,11 @@ export default function PayrollPage() {
     setRerunningMap(prev => ({ ...prev, [cid]: true }))
     try {
       const params = new URLSearchParams({ cutoffPeriod, consultantId: cid })
+      // Match the date range used by Generate Payslip so per-consultant Re-run
+      // returns the same numbers as the main generate flow.
+      const customDates = computeCustomDates(payrollSettings, cutoffYear, cutoffMonth, cutoffHalf)
+      params.set('dateFrom', customDates.start.toISOString())
+      params.set('dateTo', customDates.end.toISOString())
       if (branch) params.set('branch', branch)
       const res = await fetch(`/api/payroll/generate?${params}`)
       if (res.ok) {
