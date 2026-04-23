@@ -7,6 +7,7 @@ import {
   ChevronUp, ChevronDown, ArrowUpDown, Search, X, AlertCircle,
   RefreshCw, Loader2, ChevronRight, Download, Mail, Trash2,
   PlusCircle, CheckCircle2, ToggleLeft, ToggleRight, Receipt, ShieldOff, Upload,
+  Lock, LockOpen,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import EmployeePayroll from './EmployeePayroll'
@@ -58,7 +59,7 @@ interface PayrollPreview {
   department: string
   branch: string
   taxDeduction: string
-  items: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean; sessions?: { date: string; patientName: string; serviceName: string; orderNetAmount: number; orderStatus?: string }[] }[]
+  items: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean; sessions?: { date: string; patientName: string; serviceName: string; quantity: number; orderNetAmount: number; orderStatus?: string }[] }[]
   unitPayTotal: number
   retainerAmount: number
   incentives: IncentiveLine[]
@@ -602,7 +603,8 @@ async function buildPayslipPdf(
       doc.setFontSize(10)
       doc.setFont('helvetica', 'bold')
       doc.setTextColor(...ORANGE)
-      doc.text(`${item.unitPayName}  (${item.sessions!.length} session${item.sessions!.length !== 1 ? 's' : ''})`, margin, y2)
+      const sessionQtyTotal = item.sessions!.reduce((s, x) => s + (x.quantity ?? 1), 0)
+      doc.text(`${item.unitPayName}  (${sessionQtyTotal} session${sessionQtyTotal !== 1 ? 's' : ''})`, margin, y2)
       y2 += 2
 
       const sessionRows = [...item.sessions!].sort((a, b) => a.date.localeCompare(b.date)).map(s => {
@@ -611,26 +613,27 @@ async function buildPayslipPdf(
         const status = (s.orderStatus || 'COMPLETED').toUpperCase()
         const statusLabel = status === 'CANCELLED' || status === 'VOIDED' ? 'Voided'
           : status === 'REOPENED' ? 'Reopened' : 'Completed'
-        return [dateStr, s.patientName || '\u2014', s.serviceName || '\u2014', statusLabel]
+        return [dateStr, s.patientName || '\u2014', s.serviceName || '\u2014', String(s.quantity ?? 1), statusLabel]
       })
 
       autoTable(doc, {
         startY: y2,
-        head: [['Date', 'Patient', 'Service', 'Status']],
+        head: [['Date', 'Patient', 'Service', 'Qty', 'Status']],
         body: sessionRows,
         theme: 'grid',
         headStyles: { ...tableHeadStyles, fontSize: 8 },
         bodyStyles: { ...tableBodyStyles, fontSize: 8 },
         columnStyles: {
-          0: { cellWidth: 30 },
-          1: { cellWidth: 'auto' },
-          2: { cellWidth: 'auto' },
-          3: { cellWidth: 22, halign: 'center' },
+          0: { cellWidth: 28 },
+          1: { cellWidth: 38 },
+          2: { cellWidth: 'auto' },   // service — takes remaining width; wraps if long
+          3: { cellWidth: 12, halign: 'center' },
+          4: { cellWidth: 22, halign: 'center' },
         },
         margin: { left: margin, right: margin },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         didParseCell: (data: any) => {
-          if (data.section === 'body' && data.column.index === 3) {
+          if (data.section === 'body' && data.column.index === 4) {
             const val = data.cell.raw as string
             if (val === 'Voided') {
               data.cell.styles.textColor = [180, 40, 40]
@@ -683,7 +686,7 @@ export default function PayrollPage() {
   const [cSortField, setCSortField] = useState('name')
   const [cSortDir, setCSortDir] = useState<'asc' | 'desc'>('asc')
   const [expandedConsultant, setExpandedConsultant] = useState<string | null>(null)
-  const [editingRates, setEditingRates] = useState<Record<string, { amount: number; disabled: boolean }>>({})
+  const [editingRates, setEditingRates] = useState<Record<string, { amount: number; disabled: boolean; thresholdEnabled: boolean; thresholdAmount: number | null; reducedAmount: number | null }>>({})
   const [editingTax, setEditingTax] = useState('')
   const [editingRetainer, setEditingRetainer] = useState('')
   const [savingConsultant, setSavingConsultant] = useState(false)
@@ -743,13 +746,16 @@ export default function PayrollPage() {
   const [generating, setGenerating] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  const [sessionBreakdown, setSessionBreakdown] = useState<{ unitPayName: string; sessions: { date: string; patientName: string; serviceName: string; orderNetAmount: number; orderStatus?: string }[] } | null>(null)
+  const [sessionBreakdown, setSessionBreakdown] = useState<{ unitPayName: string; sessions: { date: string; patientName: string; serviceName: string; quantity: number; orderNetAmount: number; orderStatus?: string }[] } | null>(null)
 
   /* ── Payslip generation — per-consultant extras ── */
   const [extraUnitPays, setExtraUnitPays] = useState<Record<string, ExtraUnitPayLine[]>>({})
   const [adjustments, setAdjustments] = useState<Record<string, AdjustmentLine[]>>({})
   const [savingMap, setSavingMap] = useState<Record<string, boolean>>({})
   const [savedMap, setSavedMap] = useState<Record<string, boolean>>({})
+  const [lockingMap, setLockingMap] = useState<Record<string, boolean>>({})
+  const [unlockingMap, setUnlockingMap] = useState<Record<string, boolean>>({})
+  const [rerunningMap, setRerunningMap] = useState<Record<string, boolean>>({})
 
   // Per-card UI state for adding
   const [showUpAdd, setShowUpAdd] = useState<Record<string, boolean>>({})
@@ -1269,8 +1275,14 @@ export default function PayrollPage() {
   const expandConsultant = (c: Consultant) => {
     if (expandedConsultant === c.id) { setExpandedConsultant(null); return }
     setExpandedConsultant(c.id)
-    const rateMap: Record<string, { amount: number; disabled: boolean }> = {}
-    for (const r of c.unitPayRates) rateMap[r.unitPayId] = { amount: toNum(r.amount), disabled: r.disabled || false }
+    const rateMap: Record<string, { amount: number; disabled: boolean; thresholdEnabled: boolean; thresholdAmount: number | null; reducedAmount: number | null }> = {}
+    for (const r of c.unitPayRates) rateMap[r.unitPayId] = {
+      amount: toNum(r.amount),
+      disabled: r.disabled || false,
+      thresholdEnabled: r.thresholdEnabled || false,
+      thresholdAmount: r.thresholdAmount != null ? toNum(r.thresholdAmount) : null,
+      reducedAmount: r.reducedAmount != null ? toNum(r.reducedAmount) : null,
+    }
     setEditingRates(rateMap)
     setEditingTax(c.taxDeduction)
     setEditingRetainer(String(toNum(c.monthlyRetainer)))
@@ -1293,7 +1305,14 @@ export default function PayrollPage() {
     try {
       const unitPayRates = Object.entries(editingRates)
         .filter(([, r]) => r.amount > 0 || r.disabled)
-        .map(([unitPayId, r]) => ({ unitPayId, amount: r.amount, disabled: r.disabled }))
+        .map(([unitPayId, r]) => ({
+          unitPayId,
+          amount: r.amount,
+          disabled: r.disabled,
+          thresholdEnabled: r.thresholdEnabled || false,
+          thresholdAmount: r.thresholdAmount ?? null,
+          reducedAmount: r.reducedAmount ?? null,
+        }))
       await fetch('/api/payroll/consultants', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -1348,7 +1367,9 @@ export default function PayrollPage() {
       })
       if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed') }
       setTrFormOpen(false); setTrUnitPayId(''); setTrThreshold(''); setTrReduced(''); setTrSelectedConsultants([])
-      await fetchThresholdRules()
+      // Refetch consultants so the Clinician List reflects the new threshold settings
+      // (prevents stale expand→save from wiping the threshold)
+      await Promise.all([fetchThresholdRules(), fetchConsultants()])
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Failed to save rule') }
     finally { setTrSaving(false) }
   }
@@ -1362,7 +1383,8 @@ export default function PayrollPage() {
         body: JSON.stringify({ unitPayId, consultantIds }),
       })
       if (!res.ok) throw new Error('Failed')
-      await fetchThresholdRules()
+      // Refetch consultants too so expand→save won't incorrectly restore a deleted threshold
+      await Promise.all([fetchThresholdRules(), fetchConsultants()])
     } catch { setError('Failed to remove rule') }
   }
 
@@ -1622,6 +1644,68 @@ export default function PayrollPage() {
       ))
     } catch { setError('Failed to save') }
     finally { setSavingMap(prev => ({ ...prev, [cid]: false })) }
+  }
+
+  /* ── Per-consultant Lock (→ FINAL) ── */
+  const lockSingleConsultant = async (cid: string) => {
+    const p = payrollPreviews.find(pr => pr.consultantId === cid)
+    if (!p) return
+    const extras = extraUnitPays[cid] || []
+    const adjs = adjustments[cid] || []
+    setLockingMap(prev => ({ ...prev, [cid]: true }))
+    try {
+      // Save current state as FINAL
+      await fetch('/api/payroll/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cutoffPeriod, branch, entries: [buildEntry(p, extras, adjs, 'FINAL')] }),
+      })
+      setPayrollPreviews(prev => prev.map(pr =>
+        pr.consultantId === cid ? { ...pr, existingStatus: 'FINAL' } : pr
+      ))
+    } catch { setError('Failed to lock') }
+    finally { setLockingMap(prev => ({ ...prev, [cid]: false })) }
+  }
+
+  /* ── Per-consultant Unlock (→ DRAFT) ── */
+  const unlockSingleConsultant = async (cid: string) => {
+    const p = payrollPreviews.find(pr => pr.consultantId === cid)
+    if (!p) return
+    if (!confirm(`Unlock ${p.consultantName}? This will allow re-editing their payslip.`)) return
+    setUnlockingMap(prev => ({ ...prev, [cid]: true }))
+    try {
+      const res = await fetch('/api/payroll/generate', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cutoffPeriod, branch: branch || p.branch || '', consultantId: cid, action: 'unlock' }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setError(d.error || 'Failed to unlock'); return }
+      setPayrollPreviews(prev => prev.map(pr =>
+        pr.consultantId === cid ? { ...pr, existingStatus: 'DRAFT' } : pr
+      ))
+    } catch { setError('Failed to unlock') }
+    finally { setUnlockingMap(prev => ({ ...prev, [cid]: false })) }
+  }
+
+  /* ── Per-consultant Re-run (refresh from POS orders) ── */
+  const rerunSingleConsultant = async (cid: string) => {
+    setRerunningMap(prev => ({ ...prev, [cid]: true }))
+    try {
+      const params = new URLSearchParams({ cutoffPeriod, consultantId: cid })
+      if (branch) params.set('branch', branch)
+      const res = await fetch(`/api/payroll/generate?${params}`)
+      if (res.ok) {
+        const d = await res.json()
+        const fresh: PayrollPreview | undefined = d.payrolls?.[0]
+        if (fresh) {
+          setPayrollPreviews(prev => prev.map(pr =>
+            pr.consultantId === cid ? { ...fresh, existingStatus: pr.existingStatus } : pr
+          ))
+        }
+      }
+    } catch { setError('Failed to re-run') }
+    finally { setRerunningMap(prev => ({ ...prev, [cid]: false })) }
   }
 
   const finalizeConsultantPayslips = async () => {
@@ -2412,7 +2496,7 @@ export default function PayrollPage() {
                                     ) : (
                                       <div className="space-y-2">
                                         {applicableUPs.map(up => {
-                                          const r = editingRates[up.id] || { amount: 0, disabled: false }
+                                          const r = editingRates[up.id] || { amount: 0, disabled: false, thresholdEnabled: false, thresholdAmount: null, reducedAmount: null }
                                           return (
                                             <div key={up.id} className="flex items-center gap-3">
                                               <label className="flex items-center gap-1.5 w-40 cursor-pointer">
@@ -3638,18 +3722,48 @@ export default function PayrollPage() {
                                         </div>
 
                                         {/* ── Actions ── */}
-                                        <div className="flex items-center gap-2 pt-2 border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                                        <div className="flex items-center gap-2 pt-2 border-t flex-wrap" style={{ borderColor: 'var(--light-gray)' }}>
                                           <button onClick={(e) => { e.stopPropagation(); downloadPdf(p) }}
                                             className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium border"
                                             style={{ borderColor: 'var(--charcoal)', color: 'var(--charcoal)' }}>
                                             <Download size={13} /> PDF
                                           </button>
-                                          {p.existingStatus !== 'LOCKED' && (
+                                          {p.existingStatus !== 'LOCKED' && p.existingStatus !== 'FINAL' && (
                                             <button onClick={(e) => { e.stopPropagation(); saveSingleConsultant(p.consultantId) }} disabled={savingMap[p.consultantId]}
                                               className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium text-white disabled:opacity-50"
                                               style={{ background: savedMap[p.consultantId] ? '#059669' : 'var(--deep-teal)', transition: 'background 0.3s' }}>
                                               {savingMap[p.consultantId] ? <Loader2 size={13} className="animate-spin" /> : savedMap[p.consultantId] ? <CheckCircle2 size={13} /> : <Save size={13} />}
                                               {savingMap[p.consultantId] ? 'Saving...' : savedMap[p.consultantId] ? 'Saved!' : 'Save'}
+                                            </button>
+                                          )}
+                                          {/* Re-run: only when DRAFT (not locked/finalized) */}
+                                          {(!p.existingStatus || p.existingStatus === 'DRAFT') && (
+                                            <button onClick={(e) => { e.stopPropagation(); rerunSingleConsultant(p.consultantId) }} disabled={rerunningMap[p.consultantId]}
+                                              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium border disabled:opacity-50"
+                                              style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}
+                                              title="Re-fetch from POS orders">
+                                              {rerunningMap[p.consultantId] ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                                              {rerunningMap[p.consultantId] ? 'Running...' : 'Re-run'}
+                                            </button>
+                                          )}
+                                          {/* Lock per person: DRAFT → FINAL */}
+                                          {(!p.existingStatus || p.existingStatus === 'DRAFT') && (
+                                            <button onClick={(e) => { e.stopPropagation(); lockSingleConsultant(p.consultantId) }} disabled={lockingMap[p.consultantId]}
+                                              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium text-white disabled:opacity-50"
+                                              style={{ background: '#4338ca' }}
+                                              title="Lock this payslip (freeze numbers)">
+                                              {lockingMap[p.consultantId] ? <Loader2 size={13} className="animate-spin" /> : <Lock size={13} />}
+                                              {lockingMap[p.consultantId] ? 'Locking...' : 'Lock'}
+                                            </button>
+                                          )}
+                                          {/* Unlock per person: FINAL or LOCKED → DRAFT */}
+                                          {(p.existingStatus === 'FINAL' || p.existingStatus === 'LOCKED') && (
+                                            <button onClick={(e) => { e.stopPropagation(); unlockSingleConsultant(p.consultantId) }} disabled={unlockingMap[p.consultantId]}
+                                              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium border disabled:opacity-50"
+                                              style={{ borderColor: '#4338ca', color: '#4338ca' }}
+                                              title="Unlock to allow corrections">
+                                              {unlockingMap[p.consultantId] ? <Loader2 size={13} className="animate-spin" /> : <LockOpen size={13} />}
+                                              {unlockingMap[p.consultantId] ? 'Unlocking...' : 'Unlock'}
                                             </button>
                                           )}
                                           <button onClick={(e) => { e.stopPropagation(); emailClinician(p) }} disabled={isSendingThis || emailSt === 'success'}
@@ -4366,12 +4480,12 @@ export default function PayrollPage() {
       {/* Session Breakdown Modal */}
       {sessionBreakdown && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setSessionBreakdown(null)}>
-          <div className="w-full max-w-2xl max-h-[80vh] overflow-auto rounded-2xl p-6 space-y-3" style={{ background: 'white' }} onClick={e => e.stopPropagation()}>
+          <div className="w-full max-w-4xl max-h-[85vh] overflow-auto rounded-2xl p-6 space-y-3" style={{ background: 'white' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Session Details: {sessionBreakdown.unitPayName}</h3>
               <button onClick={() => setSessionBreakdown(null)} className="p-1 rounded-lg hover:bg-gray-100"><X size={16} /></button>
             </div>
-            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{sessionBreakdown.sessions.length} session(s) counted</p>
+            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{sessionBreakdown.sessions.reduce((s, x) => s + (x.quantity ?? 1), 0)} session(s) counted</p>
             <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
               <table className="w-full text-xs">
                 <thead>
@@ -4379,6 +4493,7 @@ export default function PayrollPage() {
                     <th className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--deep-teal)' }}>Date</th>
                     <th className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--deep-teal)' }}>Patient</th>
                     <th className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--deep-teal)' }}>Service</th>
+                    <th className="px-3 py-2 text-center font-semibold" style={{ color: 'var(--deep-teal)' }}>Qty</th>
                     <th className="px-3 py-2 text-right font-semibold" style={{ color: 'var(--deep-teal)' }}>Order Net</th>
                     <th className="px-3 py-2 text-center font-semibold" style={{ color: 'var(--deep-teal)' }}>Status</th>
                   </tr>
@@ -4393,6 +4508,7 @@ export default function PayrollPage() {
                         <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{new Date(s.date + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}</td>
                         <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{s.patientName}</td>
                         <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{s.serviceName}</td>
+                        <td className="px-3 py-2 text-center font-semibold" style={{ color: 'var(--charcoal)' }}>{s.quantity ?? 1}</td>
                         <td className="px-3 py-2 text-right font-medium" style={{ color: isVoided ? '#991b1b' : 'var(--charcoal)', textDecoration: isVoided ? 'line-through' : 'none' }}>{formatCurrency(s.orderNetAmount)}</td>
                         <td className="px-3 py-2 text-center">
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"

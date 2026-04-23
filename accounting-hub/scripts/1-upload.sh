@@ -31,6 +31,7 @@ rsync -avz --progress \
   --exclude 'node_modules' \
   --exclude '.next' \
   --exclude '.env' \
+  --exclude 'docker/.env' \
   --exclude '.git' \
   --exclude '*.log' \
   "$PROJECT_ROOT/" \

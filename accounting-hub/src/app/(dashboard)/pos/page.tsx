@@ -8,6 +8,7 @@ import {
   RefreshCw, Ban, Star, Filter,
   Loader2, AlertCircle, ScanLine, UserPlus,
   Pencil, PlusCircle, ToggleLeft, ToggleRight, Eye, CheckCircle, Gift,
+  Globe, Truck, Phone, MapPin, Package, Clock,
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import Pagination from '@/components/ui/Pagination'
@@ -213,6 +214,7 @@ const PAYMENT_METHODS_SERVICE = [
   { value: 'CASH', label: 'Cash' },
   { value: 'GCASH', label: 'GCash' },
   { value: 'PAYMAYA', label: 'PayMaya' },
+  { value: 'PAYMONGO', label: 'Paymongo' },
   { value: 'DEBIT', label: 'Debit Card' },
   { value: 'CREDIT_CARD', label: 'Credit Card' },
   { value: 'HMO', label: 'HMO' },
@@ -955,12 +957,16 @@ function OrderFormModal({
   }
 
   const netAmount = Math.max(0, subtotal - discountAmount)
+  const netAmountDisplay = parseFloat(netAmount.toFixed(2))
   // For Package payments, always use netAmount (items prices are already set to per-session rate)
   const totalPayments = payments.reduce((s, p) => {
     if (p.method === 'PACKAGE') return s + netAmount
     return s + toNum(p.amount)
   }, 0)
   const changeDue = totalPayments - netAmount
+  // Snap net to displayed 2-dp precision so floating-point arithmetic in stacked
+  // discounts never creates a sub-cent gap between what's shown and what's compared.
+  const servicePaymentShort = totalPayments < netAmountDisplay - 0.005
 
   // Search package wallets by patient name
   // Search HMO/GL wallets
@@ -1158,7 +1164,7 @@ function OrderFormModal({
   // Submit order
   const handleSubmit = async () => {
     if (items.length === 0) { setError('Add at least one item'); return }
-    if (totalPayments < netAmount) { setError('Payments do not cover the net amount'); return }
+    if (servicePaymentShort) { setError('Payments do not cover the net amount'); return }
     if ((effectiveRevenueType === 'UNEARNED' || isAdvancePayment) && !patientName.trim()) {
       setError('Patient name is required for unearned revenue / advance payment orders')
       return
@@ -1215,10 +1221,11 @@ function OrderFormModal({
           }
           // Reload wallet with the payment amount
           if (walletData.id) {
-            // Use packageSessions from the service if available, otherwise fall back to item quantity
+            // Total sessions = sessions-per-package × quantity purchased
+            const totalQty = items.reduce((s, it) => s + it.quantity, 0)
             const sessionCount = (svc as Record<string, unknown>)?.packageSessions
-              ? Number((svc as Record<string, unknown>).packageSessions)
-              : items.reduce((s, it) => s + it.quantity, 0)
+              ? Number((svc as Record<string, unknown>).packageSessions) * totalQty
+              : totalQty
             await fetch(`/api/pos/wallets/${walletData.id}/reload`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -2119,7 +2126,7 @@ function OrderFormModal({
           {/* Submit */}
           <button
             onClick={handleSubmit}
-            disabled={submitting || items.length === 0 || totalPayments < netAmount}
+            disabled={submitting || items.length === 0 || servicePaymentShort}
             className="w-full py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2"
             style={{ background: 'var(--teal)' }}
           >
@@ -2179,6 +2186,8 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
   const [ordPage, setOrdPage] = useState(1)
   const [ordPageSize, setOrdPageSize] = useState(25)
   const [orderSearch, setOrderSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [ordSortField, setOrdSortField] = useState('orderNumber')
   const [ordSortDir, setOrdSortDir] = useState<'asc' | 'desc'>('desc')
   const [viewOrder, setViewOrder] = useState<Order | null>(null)
@@ -2207,6 +2216,9 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
   const [editPatientSearch, setEditPatientSearch] = useState('')
   const editPatientTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const editClinicianTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Per-item service search for the line-items list in Edit Order
+  const [editItemResults, setEditItemResults] = useState<ServiceItem[][]>([])
+  const editItemTimers = useRef<(ReturnType<typeof setTimeout> | null)[]>([])
   const [editConfiguredModes, setEditConfiguredModes] = useState<PaymentModeType[]>([])
   const [editIssuedOfficialInvoice, setEditIssuedOfficialInvoice] = useState(false)
   const [editSalesInvoiceNumber, setEditSalesInvoiceNumber] = useState('')
@@ -2319,7 +2331,8 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
       if (dateFrom) params.set('dateFrom', dateFrom)
       if (dateTo) params.set('dateTo', dateTo)
       if (statusFilter) params.set('status', statusFilter)
-      params.set('pageSize', '200')
+      if (debouncedSearch) params.set('search', debouncedSearch)
+      params.set('pageSize', '500')
       const r = await fetch(`/api/pos/orders?${params}`)
       const d = await r.json()
       setOrders(normalize(d) as Order[])
@@ -2328,7 +2341,7 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
     } finally {
       setLoading(false)
     }
-  }, [selectedBranch, dateFrom, dateTo, statusFilter])
+  }, [selectedBranch, dateFrom, dateTo, statusFilter, debouncedSearch])
 
   useEffect(() => { fetchOrders() }, [fetchOrders])
 
@@ -2368,6 +2381,8 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
       lineTotal: toNum(it.lineTotal),
       serviceId: it.serviceId,
     })))
+    setEditItemResults(o.items.map(() => []))
+    editItemTimers.current = o.items.map(() => null)
     setEditPayments(o.payments.map(p => ({ method: p.method, amount: toNum(p.amount), walletId: p.walletId })))
     setEditDate(o.transactionDate ? o.transactionDate.split('T')[0] : today())
     setEditDateReason('')
@@ -2469,7 +2484,13 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
         <input
           value={orderSearch}
-          onChange={e => { setOrderSearch(e.target.value); setOrdPage(1) }}
+          onChange={e => {
+            const val = e.target.value
+            setOrderSearch(val)
+            setOrdPage(1)
+            if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+            searchDebounceRef.current = setTimeout(() => setDebouncedSearch(val), 350)
+          }}
           placeholder="Search by order #, patient, clinician, or item..."
           className="w-full pl-9 pr-3 py-2.5 rounded-xl border text-sm outline-none"
           style={{ borderColor: 'var(--light-gray)' }}
@@ -2479,17 +2500,17 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
         {canSelectBranch && (
-          <select value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)}
+          <select value={selectedBranch} onChange={e => { setSelectedBranch(e.target.value); setOrdPage(1) }}
             className="px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
             {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
           </select>
         )}
-        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+        <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setOrdPage(1) }}
           className="px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
         <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</span>
-        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+        <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setOrdPage(1) }}
           className="px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+        <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setOrdPage(1) }}
           className="px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
           <option value="">All Status</option>
           <option value="COMPLETED">Completed</option>
@@ -2509,9 +2530,16 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
             <Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} />
           </div>
         ) : (() => {
-          const q = orderSearch.trim().toLowerCase()
+          // Search is server-side; apply voided toggle + date + branch guards client-side
+          // Guards ensure correct results even if the API returns unfiltered data (e.g. old server code)
           const displayOrders = (showVoided || statusFilter === 'VOIDED' ? orders : orders.filter(o => o.status !== 'VOIDED'))
-            .filter(o => !q || String(o.orderNumber).includes(q) || (o.patientName || '').toLowerCase().includes(q) || (o.clinicianName || '').toLowerCase().includes(q) || (o.referenceNumber || '').toLowerCase().includes(q) || o.items.some(it => it.name.toLowerCase().includes(q)))
+            .filter(o => {
+              const d = new Date(o.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+              if (dateFrom && d < dateFrom) return false
+              if (dateTo && d > dateTo) return false
+              if (selectedBranch && o.branch !== selectedBranch) return false
+              return true
+            })
           return displayOrders.length === 0 ? (
           <div className="text-center py-12 text-sm" style={{ color: 'var(--mid-gray)' }}>No orders found.</div>
         ) : (
@@ -2837,14 +2865,66 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>LINE ITEMS</h4>
-                  <button onClick={() => setEditItems(prev => [...prev, { name: '', quantity: 1, unitPrice: 0, lineTotal: 0 }])}
+                  <button onClick={() => {
+                    setEditItems(prev => [...prev, { name: '', quantity: 1, unitPrice: 0, lineTotal: 0 }])
+                    setEditItemResults(prev => [...prev, []])
+                    editItemTimers.current = [...editItemTimers.current, null]
+                  }}
                     className="text-xs font-medium" style={{ color: 'var(--teal)' }}>+ Add Item</button>
                 </div>
                 <div className="space-y-2">
                   {editItems.map((it, idx) => (
                     <div key={idx} className="flex items-center gap-2 p-2 rounded-xl" style={{ background: 'var(--off-white)' }}>
-                      <input value={it.name} onChange={e => setEditItems(prev => prev.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))}
-                        className="flex-1 px-2 py-1.5 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      {/* Service name with search dropdown */}
+                      <div className="flex-1 relative">
+                        <input
+                          value={it.name}
+                          onChange={e => {
+                            const val = e.target.value
+                            setEditItems(prev => prev.map((x, i) => i === idx ? { ...x, name: val, serviceId: undefined } : x))
+                            // Debounced service search
+                            if (editItemTimers.current[idx]) clearTimeout(editItemTimers.current[idx]!)
+                            if (val.length >= 1) {
+                              editItemTimers.current[idx] = setTimeout(async () => {
+                                try {
+                                  const r = await fetch(`/api/services?pageSize=20&branch=${editOrder?.branch || ''}&search=${encodeURIComponent(val)}`)
+                                  const d = await r.json()
+                                  setEditItemResults(prev => {
+                                    const next = [...prev]
+                                    next[idx] = (Array.isArray(d) ? d : d.data || []) as ServiceItem[]
+                                    return next
+                                  })
+                                } catch { /* ignore */ }
+                              }, 300)
+                            } else {
+                              setEditItemResults(prev => { const next = [...prev]; next[idx] = []; return next })
+                            }
+                          }}
+                          placeholder="Search service…"
+                          className="w-full px-2 py-1.5 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}
+                        />
+                        {(editItemResults[idx]?.length ?? 0) > 0 && (
+                          <div className="absolute top-full left-0 right-0 z-30 mt-1 bg-white border rounded-xl shadow-lg max-h-48 overflow-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                            {editItemResults[idx].map(svc => (
+                              <button key={svc.id} onMouseDown={e => e.preventDefault()} onClick={() => {
+                                setEditItems(prev => prev.map((x, i) => i === idx ? {
+                                  ...x,
+                                  name: svc.name,
+                                  unitPrice: Number(svc.price),
+                                  lineTotal: Number(svc.price) * x.quantity,
+                                  serviceId: svc.id,
+                                } : x))
+                                setEditItemResults(prev => { const next = [...prev]; next[idx] = []; return next })
+                              }}
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50" style={{ color: 'var(--charcoal)' }}>
+                                {svc.name}
+                                {svc.department && <span className="ml-1 text-xs" style={{ color: 'var(--mid-gray)' }}>({svc.department})</span>}
+                                <span className="ml-2 text-xs font-medium" style={{ color: 'var(--teal)' }}>{formatCurrency(Number(svc.price))}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                       <input type="number" min={1} value={it.quantity}
                         onChange={e => {
                           const qty = parseInt(e.target.value) || 1
@@ -2859,7 +2939,11 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                         className="w-28 px-2 py-1.5 rounded-lg border text-sm text-right outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                       <span className="text-sm font-medium w-24 text-right" style={{ color: 'var(--charcoal)' }}>{formatCurrency(it.lineTotal)}</span>
                       {editItems.length > 1 && (
-                        <button onClick={() => setEditItems(prev => prev.filter((_, i) => i !== idx))} className="p-1 rounded hover:bg-red-50">
+                        <button onClick={() => {
+                          setEditItems(prev => prev.filter((_, i) => i !== idx))
+                          setEditItemResults(prev => prev.filter((_, i) => i !== idx))
+                          editItemTimers.current = editItemTimers.current.filter((_, i) => i !== idx)
+                        }} className="p-1 rounded hover:bg-red-50">
                           <Trash2 size={12} className="text-red-500" />
                         </button>
                       )}
@@ -3469,7 +3553,8 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
           dateObtained: walletEditForm.dateObtained || null,
           agency: walletEditForm.agency || null,
           vipTier: walletEditForm.vipTier || null,
-          balance: walletEditForm.balance,
+          // HMO and GL balances are read-only (computed from POS orders) — never send in edit
+          ...(!['HMO', 'GL'].includes(walletDetail.walletType) ? { balance: walletEditForm.balance } : {}),
           attachmentUrl: walletEditForm.attachmentUrl || null,
           accountId: walletEditForm.accountId || null,
           ...(['VIP', 'PREPAID_CARD'].includes(walletDetail.walletType) ? { rewardPoints: walletEditForm.rewardPoints } : {}),
@@ -4486,11 +4571,14 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                     <input type="date" value={walletEditForm.dateObtained || ''} onChange={e => setWalletEditForm(p => ({ ...p, dateObtained: e.target.value }))}
                       className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
-                  <div>
-                    <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Balance</label>
-                    <input type="number" step="0.01" value={walletEditForm.balance || ''} onChange={e => setWalletEditForm(p => ({ ...p, balance: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-                  </div>
+                  {/* HMO and GL balances are auto-computed from POS orders — not manually editable */}
+                  {!['HMO', 'GL'].includes(walletDetail.walletType) && (
+                    <div>
+                      <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Balance</label>
+                      <input type="number" step="0.01" value={walletEditForm.balance || ''} onChange={e => setWalletEditForm(p => ({ ...p, balance: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                    </div>
+                  )}
                   {walletDetail.walletType === 'VIP' && (
                     <div>
                       <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>VIP Tier</label>
@@ -4599,7 +4687,8 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 )
               })()}
               <span className="text-sm font-semibold" style={{ color: 'var(--deep-teal)' }}>
-                Balance: {formatCurrency(toNum(walletDetail.balance))}
+                {['HMO', 'GL'].includes(walletDetail.walletType) ? 'Outstanding: ' : 'Balance: '}
+                {formatCurrency(toNum(walletDetail.balance))}
               </span>
               {walletDetail.walletType === 'GL' && (walletDetail as unknown as { totalGlAmount?: number }).totalGlAmount != null && (
                 <span className="text-sm font-semibold" style={{ color: '#15803d' }}>
@@ -4793,7 +4882,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                         </tbody>
                         <tfoot>
                           <tr style={{ background: '#f0fdf4' }}>
-                            <td colSpan={5} className="px-3 py-2 text-right font-bold text-xs">TOTAL RECEIVABLE</td>
+                            <td colSpan={5} className="px-3 py-2 text-right font-bold text-xs">TOTAL OUTSTANDING (UNPAID)</td>
                             <td className="px-3 py-2 text-right font-bold text-sm" style={{ color: '#166534' }}>
                               {formatCurrency(((walletDetail as unknown as { orders?: { payments: { amount: string | number; walletId?: string }[]; arPaymentItems?: { paymentId: string }[] }[] }).orders || []).filter(o => !(o.arPaymentItems || []).length).reduce((s, o) => {
                                 const pay = o.payments.find(p => p.walletId === walletDetail.id)
@@ -5338,6 +5427,223 @@ function DiscountSettingsPanel() {
 }
 
 /* ══════════════════════════════════════════════════════════════
+   ONLINE ORDERS WIDGET (verdanarehab.com)
+   ══════════════════════════════════════════════════════════════ */
+
+interface OnlineOrder {
+  id: string
+  paymongoId: string
+  status: string
+  amount: number
+  customerName: string
+  customerPhone: string
+  customerEmail: string
+  customerAddress: string
+  customerCity: string
+  customerZip: string
+  shippingFee: number
+  items: Array<{ productId: string; title: string; variantLabel?: string; quantity: number; price: number }>
+  paidAt: string
+  deliveryStatus: 'pending' | 'preparing' | 'shipped' | 'delivered'
+}
+
+function OnlineOrdersWidget() {
+  const [orders, setOrders] = useState<OnlineOrder[]>([])
+  const [loading, setLoading] = useState(true)
+  const [expanded, setExpanded] = useState(true)
+  const [updatingId, setUpdatingId] = useState<string | null>(null)
+
+  const loadOrders = useCallback(async () => {
+    try {
+      const res = await fetch('https://verdanarehab.com/api/orders?limit=20')
+      const data = await res.json()
+      setOrders(data.orders || [])
+    } catch (err) {
+      console.error('Failed to fetch online orders:', err)
+    }
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { loadOrders() }, [loadOrders])
+
+  async function updateDeliveryStatus(orderId: string, status: string) {
+    setUpdatingId(orderId)
+    try {
+      await fetch('https://verdanarehab.com/api/orders', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, deliveryStatus: status }),
+      })
+      await loadOrders()
+    } catch (err) {
+      console.error('Failed to update delivery status:', err)
+    }
+    setUpdatingId(null)
+  }
+
+  const pendingOrders = orders.filter(o => o.deliveryStatus === 'pending' || o.deliveryStatus === 'preparing')
+  const otherOrders = orders.filter(o => o.deliveryStatus === 'shipped' || o.deliveryStatus === 'delivered')
+
+  const statusColors: Record<string, string> = {
+    pending: '#fef3c7',
+    preparing: '#dbeafe',
+    shipped: '#d1fae5',
+    delivered: '#f3f4f6',
+  }
+  const statusTextColors: Record<string, string> = {
+    pending: '#92400e',
+    preparing: '#1e40af',
+    shipped: '#065f46',
+    delivered: '#6b7280',
+  }
+
+  return (
+    <div className="rounded-2xl border overflow-hidden" style={{ borderColor: pendingOrders.length > 0 ? 'var(--orange)' : 'var(--light-gray)', background: 'white' }}>
+      {/* Header */}
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between px-4 py-3"
+        style={{ background: pendingOrders.length > 0 ? '#fff7ed' : '#f8fafc' }}
+      >
+        <div className="flex items-center gap-2.5">
+          <Globe size={16} style={{ color: 'var(--teal)' }} />
+          <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
+            Online Orders (verdanarehab.com)
+          </span>
+          {pendingOrders.length > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-xs font-bold text-white" style={{ background: 'var(--orange)' }}>
+              {pendingOrders.length} new
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={e => { e.stopPropagation(); loadOrders() }}
+            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+            title="Refresh"
+          >
+            <RefreshCw size={14} style={{ color: 'var(--mid-gray)' }} />
+          </button>
+          {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        </div>
+      </button>
+
+      {/* Body */}
+      {expanded && (
+        <div className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="animate-spin" size={18} style={{ color: 'var(--teal)' }} />
+            </div>
+          ) : orders.length === 0 ? (
+            <div className="text-center py-8 text-sm" style={{ color: 'var(--mid-gray)' }}>
+              No online orders yet.
+            </div>
+          ) : (
+            <div className="divide-y" style={{ borderColor: 'var(--light-gray)' }}>
+              {/* Pending orders first */}
+              {pendingOrders.map(order => (
+                <div key={order.id} className="p-4 space-y-3" style={{ background: order.deliveryStatus === 'pending' ? '#fffbeb' : 'white' }}>
+                  {/* Order header */}
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>{order.id}</span>
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium"
+                          style={{ background: statusColors[order.deliveryStatus], color: statusTextColors[order.deliveryStatus] }}>
+                          {order.deliveryStatus}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                        <span className="flex items-center gap-1"><Clock size={11} /> {new Date(order.paidAt).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                        <span className="font-semibold" style={{ color: 'var(--teal)' }}>₱{order.amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-1.5">
+                      {order.deliveryStatus === 'pending' && (
+                        <button
+                          onClick={() => updateDeliveryStatus(order.id, 'preparing')}
+                          disabled={updatingId === order.id}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium text-white flex items-center gap-1"
+                          style={{ background: 'var(--teal)' }}>
+                          {updatingId === order.id ? <Loader2 className="animate-spin" size={12} /> : <Package size={12} />}
+                          Prepare
+                        </button>
+                      )}
+                      {order.deliveryStatus === 'preparing' && (
+                        <button
+                          onClick={() => updateDeliveryStatus(order.id, 'shipped')}
+                          disabled={updatingId === order.id}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium text-white flex items-center gap-1"
+                          style={{ background: '#2563eb' }}>
+                          {updatingId === order.id ? <Loader2 className="animate-spin" size={12} /> : <Truck size={12} />}
+                          Ship
+                        </button>
+                      )}
+                      {order.deliveryStatus === 'shipped' && (
+                        <button
+                          onClick={() => updateDeliveryStatus(order.id, 'delivered')}
+                          disabled={updatingId === order.id}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium text-white flex items-center gap-1"
+                          style={{ background: '#059669' }}>
+                          {updatingId === order.id ? <Loader2 className="animate-spin" size={12} /> : <CheckCircle size={12} />}
+                          Delivered
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Customer info */}
+                  <div className="rounded-xl p-3 space-y-1.5" style={{ background: '#f8fafc', border: '1px solid var(--light-gray)' }}>
+                    <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>{order.customerName}</p>
+                    <p className="text-xs flex items-center gap-1.5" style={{ color: 'var(--mid-gray)' }}>
+                      <Phone size={11} /> {order.customerPhone}
+                    </p>
+                    <p className="text-xs flex items-start gap-1.5" style={{ color: 'var(--mid-gray)' }}>
+                      <MapPin size={11} className="mt-0.5 shrink-0" />
+                      <span>{order.customerAddress}, {order.customerCity} {order.customerZip}</span>
+                    </p>
+                  </div>
+
+                  {/* Items */}
+                  <div className="space-y-1">
+                    {order.items.map((item, idx) => (
+                      <div key={idx} className="flex justify-between text-xs px-1">
+                        <span style={{ color: 'var(--charcoal)' }}>
+                          {item.quantity}× {item.title}{item.variantLabel ? ` (${item.variantLabel})` : ''}
+                        </span>
+                        <span style={{ color: 'var(--mid-gray)' }}>₱{(item.price * item.quantity).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    ))}
+                    {order.shippingFee > 0 && (
+                      <div className="flex justify-between text-xs px-1 pt-1 border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                        <span className="flex items-center gap-1" style={{ color: 'var(--mid-gray)' }}>
+                          <Truck size={10} /> Shipping
+                        </span>
+                        <span style={{ color: 'var(--mid-gray)' }}>₱{order.shippingFee.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {/* Completed orders (collapsed) */}
+              {otherOrders.length > 0 && (
+                <div className="px-4 py-3">
+                  <p className="text-xs font-medium" style={{ color: 'var(--mid-gray)' }}>
+                    {otherOrders.length} shipped/delivered order{otherOrders.length > 1 ? 's' : ''}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════
    PRODUCTS SECTION
    ══════════════════════════════════════════════════════════════ */
 
@@ -5507,7 +5813,11 @@ function ProductsSection({
   }
 
   const netAmount = Math.max(0, subtotal - discountAmount)
+  // Snap to displayed 2-dp precision so floating-point arithmetic never creates
+  // a sub-cent gap between what the user sees and what we compare against.
+  const netAmountDisplay = parseFloat(netAmount.toFixed(2))
   const totalPayments = payments.reduce((s, p) => s + toNum(p.amount), 0)
+  const productPaymentShort = totalPayments < netAmountDisplay - 0.005
 
   // Calculate reward points total for cart items
   const rewardPointsTotal = cart.reduce((s, c) => {
@@ -5563,7 +5873,7 @@ function ProductsSection({
       }
     }
     const allFreeSamples = cart.every(c => c.isFreeSample)
-    if (!allFreeSamples && !hasRewardPointsPayment && totalPayments < netAmount) { setError('Payments do not cover the net amount'); return }
+    if (!allFreeSamples && !hasRewardPointsPayment && productPaymentShort) { setError('Payments do not cover the net amount'); return }
     setSubmitting(true)
     setError('')
     try {
@@ -5702,6 +6012,11 @@ function ProductsSection({
 
   return (
     <>
+    {/* Online Orders from verdanarehab.com */}
+    <div className="mb-4">
+      <OnlineOrdersWidget />
+    </div>
+
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       {/* Product List */}
       <div className="lg:col-span-2 space-y-4">
@@ -6086,12 +6401,12 @@ function ProductsSection({
               <div className="flex justify-between text-xs"><span style={{ color: '#ED6823' }}><Star size={10} className="inline" /> Points needed</span><span style={{ color: '#ED6823' }}>{rewardPointsTotal.toLocaleString()} pts</span></div>
             )}
             {!hasRewardPointsPayment && <div className="flex justify-between text-xs"><span style={{ color: 'var(--mid-gray)' }}>Paid</span><span>{formatCurrency(totalPayments)}</span></div>}
-            {!hasRewardPointsPayment && totalPayments >= netAmount && netAmount > 0 && (
-              <div className="flex justify-between text-xs"><span style={{ color: 'var(--mid-gray)' }}>Change</span><span className="text-green-700">{formatCurrency(totalPayments - netAmount)}</span></div>
+            {!hasRewardPointsPayment && totalPayments >= netAmountDisplay - 0.005 && netAmount > 0 && (
+              <div className="flex justify-between text-xs"><span style={{ color: 'var(--mid-gray)' }}>Change</span><span className="text-green-700">{formatCurrency(Math.max(0, totalPayments - netAmountDisplay))}</span></div>
             )}
           </div>
 
-          <button onClick={handleSubmit} disabled={submitting || cart.length === 0 || (!hasRewardPointsPayment && totalPayments < netAmount) || (hasRewardPointsPayment && rpCoveragePercent < 1 && otherPaymentsTotal < rpRemainingBalance - 0.01)}
+          <button onClick={handleSubmit} disabled={submitting || cart.length === 0 || (!hasRewardPointsPayment && productPaymentShort) || (hasRewardPointsPayment && rpCoveragePercent < 1 && otherPaymentsTotal < rpRemainingBalance - 0.01)}
             className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2"
             style={{ background: 'var(--teal)' }}>
             {submitting && <Loader2 className="animate-spin" size={14} />}
@@ -6307,7 +6622,7 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
   }
 
   const sortedDates = Array.from(byDate.keys()).sort()
-  const CHECKING_METHODS = ['CASH', 'CREDIT_CARD', 'DEBIT', 'GCASH', 'PAYMAYA']
+  const CHECKING_METHODS = ['CASH', 'CREDIT_CARD', 'DEBIT', 'GCASH', 'PAYMAYA', 'PAYMONGO']
   const sortedMethods = CHECKING_METHODS
 
   const getActual = (day: string, method: string) => actualAmounts[day]?.[method] ?? ''
@@ -7317,6 +7632,7 @@ function PaymentModeSettingsPanel() {
                   <option value="CASH">Cash</option>
                   <option value="GCASH">GCash</option>
                   <option value="PAYMAYA">PayMaya</option>
+                  <option value="PAYMONGO">Paymongo</option>
                   <option value="DEBIT">Debit Card</option>
                   <option value="CREDIT_CARD">Credit Card</option>
                   <option value="SHOPEE">Shopee</option>

@@ -37,12 +37,14 @@ export async function GET(
       return NextResponse.json({ error: 'Wallet not found' }, { status: 404 })
     }
 
-    // For HMO/GL wallets, also fetch orders that used this wallet as payment
+    // For HMO/GL wallets, return only UNPAID orders and compute balance from them.
+    // Unpaid = not voided + no AR payment recorded against the order.
     if (['HMO', 'GL'].includes(wallet.walletType)) {
       const orders = await prisma.order.findMany({
         where: {
           payments: { some: { walletId: id } },
           status: { not: 'VOIDED' },
+          arPaymentItems: { none: {} },   // ← only unpaid orders
         },
         orderBy: { transactionDate: 'desc' },
         select: {
@@ -55,9 +57,14 @@ export async function GET(
           payments: { select: { method: true, amount: true, walletId: true } },
           arPaymentItems: { select: { paymentId: true } },
         },
-        take: 100,
+        take: 200,
       })
-      return NextResponse.json({ ...wallet, orders })
+      // Compute outstanding from the unpaid orders directly
+      const computedBalance = orders.reduce((sum, o) => {
+        const pay = o.payments.find(p => p.walletId === id)
+        return sum + (pay ? Number(pay.amount) : 0)
+      }, 0)
+      return NextResponse.json({ ...wallet, balance: computedBalance, orders })
     }
 
     return NextResponse.json(wallet)
@@ -81,6 +88,10 @@ export async function PUT(
     const { patientName, patientEmail, patientId, isActive, deleteReason, accountId,
             dateObtained, paymentModeId, agency, vipTier, attachmentUrl, balance, rewardPoints, totalGlAmount, branch } = body
 
+    // Look up wallet type so we can protect AR wallet balance from manual edits
+    const existing = await prisma.digitalWallet.findUnique({ where: { id }, select: { walletType: true } })
+    const isArWallet = ['HMO', 'GL'].includes(existing?.walletType ?? '')
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = {}
     if (patientName !== undefined) data.patientName = patientName.trim()
@@ -93,7 +104,8 @@ export async function PUT(
     if (agency !== undefined) data.agency = agency?.trim() || null
     if (vipTier !== undefined) data.vipTier = vipTier || null
     if (attachmentUrl !== undefined) data.attachmentUrl = attachmentUrl || null
-    if (balance !== undefined) data.balance = parseFloat(balance)
+    // HMO and GL wallet balances are computed from actual POS orders — never allow manual edits
+    if (balance !== undefined && !isArWallet) data.balance = parseFloat(balance)
     if (rewardPoints !== undefined) data.rewardPoints = parseInt(rewardPoints) || 0
     if (totalGlAmount !== undefined) data.totalGlAmount = parseFloat(totalGlAmount) || null
     if (branch !== undefined) data.branch = branch || 'ALL'

@@ -50,6 +50,8 @@ export async function GET(req: Request) {
             name: true,
             quantity: true,
             lineTotal: true,
+            service: { select: { issuedOfficialInvoice: true } },
+            inventoryItem: { select: { issuedOfficialInvoice: true } },
           },
         },
       },
@@ -84,6 +86,7 @@ export async function GET(req: Request) {
           netAmount: itemNet,
           branch: order.branch,
           issuedOfficialInvoice: order.issuedOfficialInvoice,
+          itemIssuedOfficialInvoice: item.service?.issuedOfficialInvoice || item.inventoryItem?.issuedOfficialInvoice || false,
         }
       })
     })

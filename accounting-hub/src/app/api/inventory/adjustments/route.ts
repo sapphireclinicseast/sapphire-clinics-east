@@ -142,3 +142,58 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+// Delete an adjustment and reverse its effect
+export async function DELETE(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+
+  try {
+    const { searchParams } = new URL(req.url)
+    const id = searchParams.get('id')
+    if (!id) return NextResponse.json({ error: 'Adjustment ID is required' }, { status: 400 })
+
+    const adjustment = await prisma.inventoryAdjustment.findUnique({ where: { id } })
+    if (!adjustment) return NextResponse.json({ error: 'Adjustment not found' }, { status: 404 })
+
+    await prisma.$transaction(async (tx) => {
+      // Reverse the quantity change on the item
+      const item = await tx.inventoryItem.findUnique({ where: { id: adjustment.itemId } })
+      if (!item) throw new Error('Item not found')
+
+      const reversedQty = adjustment.type === 'INCREASE'
+        ? Math.max(0, item.quantity - adjustment.quantityChange)
+        : item.quantity + adjustment.quantityChange
+
+      await tx.inventoryItem.update({
+        where: { id: adjustment.itemId },
+        data: { quantity: reversedQty },
+      })
+
+      // Delete the adjustment record
+      await tx.inventoryAdjustment.delete({ where: { id } })
+
+      // Recalculate weighted-average unit cost
+      const newUnitCost = await recalcWeightedUnitCost(tx, adjustment.itemId)
+      if (newUnitCost > 0) {
+        await tx.inventoryItem.update({ where: { id: adjustment.itemId }, data: { unitCost: newUnitCost } })
+      }
+    })
+
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: 'DELETE_ADJUSTMENT',
+        entity: 'inventoryItem',
+        entityId: adjustment.itemId,
+        details: { adjustmentId: id, type: adjustment.type, quantityChange: adjustment.quantityChange },
+      },
+    })
+
+    return NextResponse.json({ message: 'Adjustment deleted' })
+  } catch {
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}

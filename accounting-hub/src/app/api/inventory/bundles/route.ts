@@ -4,6 +4,19 @@ import { prisma } from '@/lib/prisma'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
+// Recompute bundle unit cost as sum of (component unitCost * quantity)
+async function recomputeBundleCost(bundleId: string) {
+  const components = await prisma.bundleComponent.findMany({
+    where: { bundleId },
+    include: { component: { select: { unitCost: true } } },
+  })
+  const totalCost = components.reduce((sum, bc) => sum + Number(bc.component.unitCost) * bc.quantity, 0)
+  await prisma.inventoryItem.update({
+    where: { id: bundleId },
+    data: { unitCost: totalCost },
+  })
+}
+
 // GET /api/inventory/bundles?bundleId=xxx — get bundle components
 export async function GET(req: Request) {
   const session = await auth()
@@ -70,8 +83,10 @@ export async function POST(req: Request) {
       const updated = await prisma.bundleComponent.update({
         where: { id: existing.id },
         data: { quantity: quantity ? parseInt(quantity) : 1 },
-        include: { component: { select: { id: true, name: true, sku: true, quantity: true } } },
+        include: { component: { select: { id: true, name: true, sku: true, quantity: true, unitCost: true } } },
       })
+      // Auto-compute bundle cost
+      await recomputeBundleCost(bundleId)
       return NextResponse.json(updated)
     }
 
@@ -82,9 +97,11 @@ export async function POST(req: Request) {
         quantity: quantity ? parseInt(quantity) : 1,
       },
       include: {
-        component: { select: { id: true, name: true, sku: true, quantity: true } },
+        component: { select: { id: true, name: true, sku: true, quantity: true, unitCost: true } },
       },
     })
+    // Auto-compute bundle cost
+    await recomputeBundleCost(bundleId)
 
     await prisma.auditLog.create({
       data: {
@@ -111,11 +128,14 @@ export async function DELETE(req: Request) {
 
   try {
     const { id } = await req.json()
+    // Get bundleId before deleting so we can recompute cost
+    const toDelete = await prisma.bundleComponent.findUnique({ where: { id }, select: { bundleId: true } })
     await prisma.bundleComponent.delete({ where: { id } })
 
-    // Check if bundle still has components
-    const bc = await prisma.bundleComponent.findFirst({ where: { bundleId: id } })
-    // If no more components, we could unmark isBundle, but leave it for now
+    // Recompute bundle cost after removal
+    if (toDelete?.bundleId) {
+      await recomputeBundleCost(toDelete.bundleId)
+    }
 
     return NextResponse.json({ success: true })
   } catch {

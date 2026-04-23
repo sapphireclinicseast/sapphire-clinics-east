@@ -65,6 +65,14 @@ docker compose --env-file "$ENV_FILE" up -d
 echo "  Waiting for the app to finish starting (20 seconds)..."
 sleep 20
 
+# ── Sync postgres user password to match .env
+echo "  Syncing database user password..."
+PGPASS=$(grep '^POSTGRES_PASSWORD=' "$ENV_FILE" | cut -d'=' -f2- | tr -d '"' | tr -d "'")
+docker exec accounting_db psql -U sapphire -d sapphire_accounting \
+  -c "ALTER USER sapphire WITH PASSWORD '$PGPASS';" 2>/dev/null \
+  && echo "  Database password synced." \
+  || echo "  Warning: Could not sync password — run manually if login fails."
+
 # ── Seed the default admin user via SQL
 echo "  Creating default admin user..."
 # bcrypt hash for "SCEIAccounting2026!" generated with 12 rounds

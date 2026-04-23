@@ -10,7 +10,7 @@ export async function GET() {
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const rates = await prisma.consultantUnitPay.findMany({
-    where: { thresholdEnabled: true },
+    where: { thresholdEnabled: true, consultant: { isActive: true } },
     include: {
       consultant: { select: { id: true, name: true, department: true, branch: true } },
       unitPay: { select: { id: true, name: true } },

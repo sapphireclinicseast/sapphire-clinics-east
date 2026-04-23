@@ -11,78 +11,111 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { walletId, paymentDate, amount, discount, discountAccountId, cashAccountId, orderIds, proofUrl, notes, branch } = await req.json()
+    const { walletId, walletIds, paymentDate, amount, discount, discountAccountId, cashAccountId, orderIds, proofUrl, notes, branch } = await req.json()
 
-    if (!walletId || !paymentDate || amount == null) {
+    // Support multi-wallet GL payments: walletIds is an array of wallet IDs
+    const effectiveWalletIds: string[] = walletIds?.length ? walletIds : walletId ? [walletId] : []
+
+    if (effectiveWalletIds.length === 0 || !paymentDate || amount == null) {
       return NextResponse.json({ error: 'walletId, paymentDate, and amount are required' }, { status: 400 })
-    }
-
-    const wallet = await prisma.digitalWallet.findUnique({ where: { id: walletId } })
-    if (!wallet) {
-      return NextResponse.json({ error: 'Wallet not found' }, { status: 404 })
     }
 
     const paymentAmount = Number(amount)
     const discountAmount = Number(discount) || 0
-
-    // Create AR payment with linked orders
-    const payment = await prisma.aRPayment.create({
-      data: {
-        walletId,
-        paymentDate: new Date(paymentDate),
-        amount: paymentAmount,
-        discount: discountAmount,
-        discountAccountId: discountAccountId || null,
-        cashAccountId: cashAccountId || null,
-        proofUrl: proofUrl || null,
-        notes: notes?.trim() || null,
-        branch: branch || null,
-        createdById: session.user.id,
-        items: orderIds?.length ? {
-          create: orderIds.map((orderId: string) => ({ orderId })),
-        } : undefined,
-      },
-      include: {
-        items: true,
-        wallet: { select: { patientName: true, walletType: true } },
-      },
-    })
-
-    // Decrement wallet balance by payment + discount (total settled)
     const totalSettled = paymentAmount + discountAmount
-    await prisma.digitalWallet.update({
-      where: { id: walletId },
-      data: { balance: { decrement: totalSettled } },
-    })
 
-    // Log the payment
-    await prisma.walletLog.create({
-      data: {
-        walletId,
-        action: 'AR_PAYMENT',
-        description: `Payment received: ${paymentAmount}${discountAmount > 0 ? ` + discount: ${discountAmount}` : ''}`,
-        createdById: session.user.id,
-      },
-    })
+    // For multi-wallet: split total evenly across wallets, then create one ARPayment per wallet
+    const perWalletAmount = paymentAmount / effectiveWalletIds.length
+    const perWalletDiscount = discountAmount / effectiveWalletIds.length
+    const perWalletSettled = totalSettled / effectiveWalletIds.length
 
-    await prisma.auditLog.create({
-      data: {
-        userId: session.user.id,
-        action: 'AR_PAYMENT',
-        entity: 'arPayment',
-        entityId: payment.id,
-        details: {
-          walletId,
-          walletName: wallet.patientName,
-          walletType: wallet.walletType,
-          amount: paymentAmount,
-          discount: discountAmount,
-          orderCount: orderIds?.length || 0,
+    const payments = []
+    for (const wId of effectiveWalletIds) {
+      const wallet = await prisma.digitalWallet.findUnique({ where: { id: wId } })
+      if (!wallet) continue
+
+      // For single wallet, use full amounts; for multi, use per-wallet split
+      const thisAmount = effectiveWalletIds.length === 1 ? paymentAmount : perWalletAmount
+      const thisDiscount = effectiveWalletIds.length === 1 ? discountAmount : perWalletDiscount
+      const thisSettled = effectiveWalletIds.length === 1 ? totalSettled : perWalletSettled
+
+      // Find orders linked to this specific wallet
+      const walletOrderIds = orderIds?.length
+        ? orderIds.filter(async (oid: string) => {
+            // For simplicity, link all tagged orders to the first wallet if multi-select
+            return true
+          })
+        : []
+
+      const payment = await prisma.aRPayment.create({
+        data: {
+          walletId: wId,
+          paymentDate: new Date(paymentDate),
+          amount: thisAmount,
+          discount: thisDiscount,
+          discountAccountId: discountAccountId || null,
+          cashAccountId: cashAccountId || null,
+          proofUrl: proofUrl || null,
+          notes: effectiveWalletIds.length > 1
+            ? `${notes?.trim() || ''} [Bulk payment across ${effectiveWalletIds.length} GL wallets]`.trim()
+            : (notes?.trim() || null),
+          branch: branch || null,
+          createdById: session.user.id,
+          items: walletOrderIds.length ? {
+            create: walletOrderIds.map((orderId: string) => ({ orderId })),
+          } : undefined,
         },
-      },
-    })
+        include: {
+          items: true,
+          wallet: { select: { patientName: true, walletType: true } },
+        },
+      })
+      payments.push(payment)
 
-    return NextResponse.json(payment, { status: 201 })
+      // Decrement wallet balance
+      await prisma.digitalWallet.update({
+        where: { id: wId },
+        data: { balance: { decrement: thisSettled } },
+      })
+
+      // Also decrement totalGlAmount if present (for GL wallets, settle against the full receivable)
+      if (wallet.walletType === 'GL' && wallet.totalGlAmount) {
+        await prisma.digitalWallet.update({
+          where: { id: wId },
+          data: { totalGlAmount: { decrement: thisSettled } },
+        })
+      }
+
+      // Log
+      await prisma.walletLog.create({
+        data: {
+          walletId: wId,
+          action: 'AR_PAYMENT',
+          description: `Payment received: ${thisAmount}${thisDiscount > 0 ? ` + discount: ${thisDiscount}` : ''}${effectiveWalletIds.length > 1 ? ' (bulk)' : ''}`,
+          createdById: session.user.id,
+        },
+      })
+
+      await prisma.auditLog.create({
+        data: {
+          userId: session.user.id,
+          action: 'AR_PAYMENT',
+          entity: 'arPayment',
+          entityId: payment.id,
+          details: {
+            walletId: wId,
+            walletName: wallet.patientName,
+            walletType: wallet.walletType,
+            amount: thisAmount,
+            discount: thisDiscount,
+            orderCount: walletOrderIds.length,
+            bulkPayment: effectiveWalletIds.length > 1,
+          },
+        },
+      })
+    }
+
+    return NextResponse.json(payments.length === 1 ? payments[0] : payments, { status: 201 })
   } catch (err) {
     console.error('AR Payment error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

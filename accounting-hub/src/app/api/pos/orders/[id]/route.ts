@@ -77,7 +77,9 @@ export async function PUT(
       // When voiding, reverse ALL wallet changes
       if (body.action === 'void') {
         for (const p of updated.payments) {
-          if (!p.walletId || Number(p.amount) <= 0) continue
+          if (!p.walletId) continue
+          // Allow PACKAGE through even at amount=0 — session still needs to be restored
+          if (Number(p.amount) <= 0 && p.method !== 'PACKAGE') continue
 
           if (p.method === 'GL') {
             // GL: was decremented on creation → increment to restore
@@ -91,9 +93,18 @@ export async function PUT(
               where: { id: p.walletId },
               data: { balance: { decrement: Number(p.amount) } },
             })
-          } else if (p.method === 'PACKAGE' && p.reference?.startsWith('PKG:')) {
-            // Package: session was incremented → decrement to restore
-            const pkgId = p.reference.replace('PKG:', '')
+          } else if (p.method === 'PACKAGE') {
+            // Package: session was consumed → restore it (decrement usedSessions)
+            // Try to get pkgId from reference first; fall back to most-recently-used package on wallet
+            let pkgId = p.reference?.startsWith('PKG:') ? p.reference.replace('PKG:', '') : null
+            if (!pkgId) {
+              // Legacy orders may have no PKG: reference — find the wallet's package with usedSessions > 0
+              const fallback = await prisma.walletPackage.findFirst({
+                where: { walletId: p.walletId, usedSessions: { gt: 0 } },
+                orderBy: { purchaseDate: 'desc' },
+              })
+              pkgId = fallback?.id ?? null
+            }
             if (pkgId) {
               const pkg = await prisma.walletPackage.findUnique({ where: { id: pkgId } })
               if (pkg && pkg.usedSessions > 0) {
@@ -113,7 +124,7 @@ export async function PUT(
                 })
               }
             }
-          } else if (['VIP_CARD', 'PREPAID_CARD', 'DOWNPAYMENT'].includes(p.method)) {
+          } else if (['VIP_CARD', 'PREPAID_CARD', 'DOWNPAYMENT', 'ADVANCE'].includes(p.method)) {
             // Wallet balance was deducted → increment to restore
             await prisma.digitalWallet.update({
               where: { id: p.walletId },

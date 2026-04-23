@@ -68,6 +68,7 @@ export async function GET(req: Request) {
   const status = searchParams.get('status')
   const dateFrom = searchParams.get('dateFrom')
   const dateTo = searchParams.get('dateTo')
+  const search = searchParams.get('search')?.trim() || ''
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = {}
@@ -80,6 +81,17 @@ export async function GET(req: Request) {
     where.transactionDate = {}
     if (dateFrom) where.transactionDate.gte = new Date(`${dateFrom}T00:00:00+08:00`)
     if (dateTo) where.transactionDate.lte = new Date(`${dateTo}T23:59:59.999+08:00`)
+  }
+
+  if (search) {
+    const num = parseInt(search, 10)
+    where.OR = [
+      { patientName: { contains: search, mode: 'insensitive' } },
+      { clinicianName: { contains: search, mode: 'insensitive' } },
+      { referenceNumber: { contains: search, mode: 'insensitive' } },
+      { items: { some: { name: { contains: search, mode: 'insensitive' } } } },
+      ...(!isNaN(num) ? [{ orderNumber: num }] : []),
+    ]
   }
 
   try {

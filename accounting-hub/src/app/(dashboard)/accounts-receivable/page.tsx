@@ -79,6 +79,7 @@ export default function AccountsReceivablePage() {
   // Record Payment modal
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [payWalletId, setPayWalletId] = useState('')
+  const [payWalletIds, setPayWalletIds] = useState<string[]>([])
   const [payDate, setPayDate] = useState(new Date().toISOString().split('T')[0])
   const [payAmount, setPayAmount] = useState('')
   const [payDiscount, setPayDiscount] = useState('')
@@ -161,6 +162,7 @@ export default function AccountsReceivablePage() {
   const openPaymentModal = () => {
     setEditingPaymentId(null)
     setPayWalletId(walletFilter || '')
+    setPayWalletIds(walletFilter ? [walletFilter] : [])
     setPayDate(new Date().toISOString().split('T')[0])
     setPayAmount('')
     setPayDiscount('')
@@ -178,6 +180,7 @@ export default function AccountsReceivablePage() {
   const openEditPaymentModal = (p: ARPaymentRecord) => {
     setEditingPaymentId(p.id)
     setPayWalletId(p.walletId)
+    setPayWalletIds([p.walletId])
     setPayDate(new Date(p.paymentDate).toISOString().split('T')[0])
     setPayAmount(String(toNum(p.amount)))
     setPayDiscount(toNum(p.discount) > 0 ? String(toNum(p.discount)) : '')
@@ -193,18 +196,22 @@ export default function AccountsReceivablePage() {
   }
 
   const savePayment = async () => {
-    if (!payWalletId) { setPayError('Select an HMO/Agency'); return }
+    // For GL multi-select, use payWalletIds; for HMO use payWalletId
+    const effectiveWalletIds = tab === 'GL' && !editingPaymentId ? payWalletIds : (payWalletId ? [payWalletId] : [])
+    if (effectiveWalletIds.length === 0) { setPayError('Select an HMO/Agency'); return }
     if (!payAmount || toNum(payAmount) <= 0) { setPayError('Amount is required'); return }
     setPaySaving(true)
     setPayError('')
     try {
       const isEdit = !!editingPaymentId
+      // For GL multi-select (new payment), create one payment per wallet splitting evenly, or single bulk
       const res = await fetch('/api/accounts-receivable/payments', {
         method: isEdit ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...(isEdit ? { id: editingPaymentId } : {}),
-          walletId: payWalletId,
+          walletId: effectiveWalletIds[0],
+          walletIds: effectiveWalletIds.length > 1 ? effectiveWalletIds : undefined,
           paymentDate: payDate,
           amount: toNum(payAmount),
           discount: toNum(payDiscount),
@@ -365,9 +372,9 @@ export default function AccountsReceivablePage() {
             ) : orders.length === 0 ? (
               <tr><td colSpan={6} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>No receivable transactions found</td></tr>
             ) : orders.map(o => {
-              const payment = o.payments[0]
-              const amt = payment ? toNum(payment.amount) : 0
-              const wallet = wallets.find(w => w.id === payment?.walletId)
+              // Sum all HMO/GL payments on this order (should normally be 1)
+              const amt = o.payments.reduce((s, p) => s + toNum(p.amount), 0)
+              const wallet = wallets.find(w => w.id === o.payments[0]?.walletId)
               const isPaid = o.arPaymentItems.length > 0
               return (
                 <tr key={o.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
@@ -445,16 +452,43 @@ export default function AccountsReceivablePage() {
 
             <div className="space-y-4">
               {/* Provider/Agency */}
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
-                  {tab === 'HMO' ? 'HMO Provider' : 'Agency (GL)'}
-                </label>
-                <select value={payWalletId} onChange={e => setPayWalletId(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
-                  <option value="">— Select —</option>
-                  {wallets.map(w => <option key={w.id} value={w.id}>{w.patientName} (Balance: {formatCurrency(toNum(w.balance))})</option>)}
-                </select>
-              </div>
+              {tab === 'GL' && !editingPaymentId ? (
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
+                    Select GL Patients (tick all that apply)
+                  </label>
+                  <div className="rounded-xl border max-h-48 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                    {wallets.map(w => (
+                      <label key={w.id} className="flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-gray-50 cursor-pointer border-b" style={{ borderColor: 'var(--light-gray)' }}>
+                        <input type="checkbox" checked={payWalletIds.includes(w.id)}
+                          onChange={() => {
+                            setPayWalletIds(prev => prev.includes(w.id) ? prev.filter(id => id !== w.id) : [...prev, w.id])
+                            if (!payWalletId) setPayWalletId(w.id)
+                          }}
+                          className="rounded" />
+                        <span className="flex-1 font-medium" style={{ color: 'var(--charcoal)' }}>{w.patientName}</span>
+                        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>Balance: {formatCurrency(toNum(w.balance))}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {payWalletIds.length > 1 && (
+                    <p className="text-xs mt-1 font-medium" style={{ color: 'var(--deep-teal)' }}>
+                      {payWalletIds.length} selected &middot; Combined balance: {formatCurrency(wallets.filter(w => payWalletIds.includes(w.id)).reduce((s, w) => s + toNum(w.balance), 0))}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
+                    {tab === 'HMO' ? 'HMO Provider' : 'Agency (GL)'}
+                  </label>
+                  <select value={payWalletId} onChange={e => setPayWalletId(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                    <option value="">— Select —</option>
+                    {wallets.map(w => <option key={w.id} value={w.id}>{w.patientName} (Balance: {formatCurrency(toNum(w.balance))})</option>)}
+                  </select>
+                </div>
+              )}
 
               {/* Payment Date */}
               <div>
@@ -529,17 +563,18 @@ export default function AccountsReceivablePage() {
               </div>
 
               {/* Tag transactions */}
-              {payWalletId && (() => {
+              {(payWalletId || payWalletIds.length > 0) && (() => {
                 // When editing, show all orders for this wallet (paid or unpaid); when creating, show only unpaid
+                const selectedIds = tab === 'GL' && !editingPaymentId ? payWalletIds : (payWalletId ? [payWalletId] : [])
                 const eligibleOrders = editingPaymentId
-                  ? orders.filter(o => o.payments.some(p => p.walletId === payWalletId))
-                  : unpaidOrders.filter(o => o.payments.some(p => p.walletId === payWalletId))
+                  ? orders.filter(o => o.payments.some(p => selectedIds.includes(p.walletId || '')))
+                  : unpaidOrders.filter(o => o.payments.some(p => selectedIds.includes(p.walletId || '')))
                 return eligibleOrders.length > 0 ? (
                 <div>
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Tag Transactions Included</label>
                   <div className="rounded-xl border max-h-40 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
                     {eligibleOrders.map(o => {
-                      const amt = o.payments.find(p => p.walletId === payWalletId)
+                      const amt = o.payments.find(p => selectedIds.includes(p.walletId || ''))
                       return (
                         <label key={o.id} className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-gray-50 cursor-pointer border-b" style={{ borderColor: 'var(--light-gray)' }}>
                           <input type="checkbox" checked={paySelectedOrders.includes(o.id)}

@@ -75,6 +75,29 @@ export async function GET(req: Request) {
       take: 500,
     })
 
+    // ── Compute outstanding balance per wallet from actual unpaid orders ──
+    // This is more reliable than the stored balance field which can drift
+    // (e.g. voided orders whose reversal predates the void-handler code).
+    const walletIds = wallets.map(w => w.id)
+    const unpaidPayments = await prisma.orderPayment.findMany({
+      where: {
+        walletId: { in: walletIds },
+        method: type as 'HMO' | 'GL',
+        order: {
+          status: { not: 'VOIDED' },
+          arPaymentItems: { none: {} },
+        },
+      },
+      select: { walletId: true, amount: true },
+    })
+    const outstandingByWallet = new Map<string, number>()
+    for (const p of unpaidPayments) {
+      if (!p.walletId) continue
+      outstandingByWallet.set(p.walletId, (outstandingByWallet.get(p.walletId) || 0) + Number(p.amount))
+    }
+    // Override stored balance with the computed outstanding so cards and table always agree
+    const walletsOut = wallets.map(w => ({ ...w, balance: outstandingByWallet.get(w.id) ?? 0 }))
+
     // Get AR payments for these wallets
     const arPayments = await prisma.aRPayment.findMany({
       where: {
@@ -99,7 +122,7 @@ export async function GET(req: Request) {
       take: 200,
     })
 
-    return NextResponse.json({ wallets, orders, arPayments })
+    return NextResponse.json({ wallets: walletsOut, orders, arPayments })
   } catch (err) {
     console.error('AR API error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

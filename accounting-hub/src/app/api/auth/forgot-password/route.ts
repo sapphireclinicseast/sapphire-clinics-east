@@ -10,7 +10,7 @@ function createTransport() {
     secure: true,
     auth: {
       user: 'resend',
-      pass: process.env.RESEND_API_KEY ?? 're_CbH3Pirt_JqAd3RJ3TXwaFNmxckQ7GVwK',
+      pass: process.env.RESEND_API_KEY || '',
     },
   })
 }

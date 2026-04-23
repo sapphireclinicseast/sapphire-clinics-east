@@ -19,6 +19,12 @@ export async function GET(
 
   const { itemId } = await params
 
+  // Get the item's initial unit cost (set at creation)
+  const item = await prisma.inventoryItem.findUnique({
+    where: { id: itemId },
+    select: { initialUnitCost: true, unitCost: true },
+  })
+
   const lots = await prisma.inventoryAdjustment.findMany({
     where: {
       itemId,
@@ -77,6 +83,7 @@ export async function GET(
 
   return NextResponse.json({
     lots: enriched,
+    initialUnitCost: item?.initialUnitCost ? Number(item.initialUnitCost) : (item?.unitCost ? Number(item.unitCost) : null),
     summary: {
       totalLots: enriched.length,
       activeLots: enriched.filter(l => l.remaining > 0).length,

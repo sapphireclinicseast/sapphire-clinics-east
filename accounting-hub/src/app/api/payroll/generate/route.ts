@@ -2,6 +2,17 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
+/** Safely convert a Prisma Decimal (or any value) to a plain JS number */
+function toFloat(v: unknown): number {
+  if (v == null) return 0
+  if (typeof v === 'number') return v
+  // Prisma Decimal objects have .toNumber() or toString()
+  if (typeof (v as { toNumber?: () => number }).toNumber === 'function') {
+    return (v as { toNumber: () => number }).toNumber()
+  }
+  return parseFloat(String(v)) || 0
+}
+
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
 function allowedBranches(role: string): string[] | null {
@@ -190,7 +201,7 @@ export async function GET(req: Request) {
       )
 
       // Group by unit pay — with threshold logic per order
-      const unitPayBreakdown: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean; sessions: { orderId: string; date: string; patientName: string; serviceName: string; orderNetAmount: number; orderStatus: string }[] }[] = []
+      const unitPayBreakdown: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean; sessions: { orderId: string; date: string; patientName: string; serviceName: string; quantity: number; orderNetAmount: number; orderStatus: string }[] }[] = []
 
       for (const order of consultantOrders) {
         const orderNet = Number(order.netAmount) || 0
@@ -203,10 +214,13 @@ export async function GET(req: Request) {
           if (!item.service?.unitPayId || item.service.unitPayEnabled === false) continue
           const r = c.unitPayRates.find(r => r.unitPayId === item.service!.unitPayId)
           if (r && !r.disabled && !r.thresholdEnabled) {
-            thresholdDeductions += Number(item.lineTotal) || 0
+            thresholdDeductions += toFloat(item.lineTotal)
           }
         }
         const thresholdBasis = orderNet - thresholdDeductions
+
+        // Full list of all service names on this order (shown in payslip session details)
+        const allOrderServices = order.items.map(i => i.name).join(', ')
 
         for (const item of order.items) {
           if (!item.service?.unitPayId) continue
@@ -215,16 +229,28 @@ export async function GET(req: Request) {
           if (!rate || rate.disabled) continue
 
           // Determine effective rate: check threshold rule using adjusted basis
-          let effectiveAmount = Number(rate.amount)
+          // Use toFloat() to safely convert Prisma Decimal objects to plain JS numbers
+          const fullAmount = toFloat(rate.amount)
+          let effectiveAmount = fullAmount
           let isReduced = false
-          if (rate.thresholdEnabled && rate.thresholdAmount != null && rate.reducedAmount != null) {
-            if (thresholdBasis < Number(rate.thresholdAmount)) {
-              effectiveAmount = Number(rate.reducedAmount)
+
+          const rateThresholdEnabled = rate.thresholdEnabled === true
+          const rateThresholdAmount = rate.thresholdAmount != null ? toFloat(rate.thresholdAmount) : null
+          const rateReducedAmount = rate.reducedAmount != null ? toFloat(rate.reducedAmount) : null
+
+          // Debug log — remove once threshold bug is confirmed resolved
+          if (c.name.toUpperCase().includes('DENISE') || c.name.toUpperCase().includes('SALAO')) {
+            console.log(`[THRESHOLD-DEBUG] consultant=${c.name} unitPay=${rate.unitPay.name} | thresholdEnabled=${rate.thresholdEnabled} (${typeof rate.thresholdEnabled}) | thresholdAmount=${rate.thresholdAmount} (${typeof rate.thresholdAmount}) | reducedAmount=${rate.reducedAmount} (${typeof rate.reducedAmount}) | orderNet=${orderNet} | thresholdBasis=${thresholdBasis} | rateThresholdEnabled=${rateThresholdEnabled} | rateThresholdAmount=${rateThresholdAmount} | rateReducedAmount=${rateReducedAmount} | willReduce=${rateThresholdEnabled && rateThresholdAmount != null && rateReducedAmount != null && thresholdBasis < (rateThresholdAmount ?? Infinity)}`)
+          }
+
+          if (rateThresholdEnabled && rateThresholdAmount != null && rateReducedAmount != null) {
+            if (thresholdBasis < rateThresholdAmount) {
+              effectiveAmount = rateReducedAmount
               isReduced = true
             }
           }
 
-          const sessionEntry = { orderId: order.id, date: orderDate, patientName: order.patientName || 'N/A', serviceName: item.name, orderNetAmount: orderNet, orderStatus: 'COMPLETED' as string }
+          const sessionEntry = { orderId: order.id, date: orderDate, patientName: order.patientName || 'N/A', serviceName: allOrderServices, quantity: item.quantity, orderNetAmount: orderNet, orderStatus: 'COMPLETED' as string }
 
           // Aggregate by unitPayId + effectiveRate (so normal and reduced show separately)
           const existing = unitPayBreakdown.find(b =>
@@ -237,7 +263,7 @@ export async function GET(req: Request) {
           } else {
             unitPayBreakdown.push({
               unitPayId: item.service.unitPayId,
-              unitPayName: rate.unitPay.name + (isReduced ? ' (reduced)' : ''),
+              unitPayName: rate.unitPay.name + (isReduced ? ' (Adjusted)' : ''),
               unitAmount: effectiveAmount,
               quantity: item.quantity,
               lineTotal: effectiveAmount * item.quantity,
@@ -320,6 +346,54 @@ export async function GET(req: Request) {
     })
   } catch (err) {
     console.error('Payroll generate error:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+// PATCH: per-consultant lock / unlock
+export async function PATCH(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+
+  try {
+    const { cutoffPeriod, branch, consultantId, action } = await req.json()
+    if (!cutoffPeriod || !consultantId || !['lock', 'unlock'].includes(action)) {
+      return NextResponse.json({ error: 'cutoffPeriod, consultantId, and action (lock|unlock) are required' }, { status: 400 })
+    }
+
+    const newStatus = action === 'lock' ? 'FINAL' : 'DRAFT'
+
+    // Find the entry — branch may be empty string or null
+    const entry = await prisma.payrollEntry.findFirst({
+      where: { consultantId, cutoffPeriod, branch: branch || '' },
+    })
+
+    if (!entry) {
+      return NextResponse.json({ error: 'No payroll entry found for this consultant / cutoff' }, { status: 404 })
+    }
+
+    // Prevent unlocking if a salary remittance has been recorded against this entry
+    if (action === 'unlock' && entry.status === 'LOCKED') {
+      // Check if this entry's payable status has been remitted
+      const payable = await prisma.payrollPayableStatus.findFirst({
+        where: { cutoffPeriod, branch: branch || '', payrollType: 'CONSULTANT' },
+        select: { salariesRemitted: true },
+      })
+      if (payable?.salariesRemitted) {
+        return NextResponse.json({ error: 'Cannot unlock — salary has already been remitted for this period.' }, { status: 400 })
+      }
+    }
+
+    await prisma.payrollEntry.update({
+      where: { id: entry.id },
+      data: { status: newStatus },
+    })
+
+    return NextResponse.json({ success: true, newStatus })
+  } catch (err) {
+    console.error('Payroll per-person lock/unlock error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

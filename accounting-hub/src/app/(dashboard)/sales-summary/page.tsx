@@ -22,6 +22,7 @@ interface SalesSummaryRow {
   netAmount: number
   branch: string
   issuedOfficialInvoice: boolean
+  itemIssuedOfficialInvoice?: boolean
 }
 
 const BRANCHES = [
@@ -184,7 +185,16 @@ function ReportTable({
                       <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>{row.date}</td>
                       <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--charcoal)' }}>#{row.orderNumber}</td>
                       <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{row.patientName}</td>
-                      <td className="px-4 py-3" style={{ color: 'var(--charcoal)' }}>{row.serviceAvailed}</td>
+                      <td className="px-4 py-3" style={{ color: 'var(--charcoal)' }}>
+                        <span className="flex items-center gap-1">
+                          {row.serviceAvailed}
+                          {row.itemIssuedOfficialInvoice && (
+                            <span title="Service/Product has Official Sales Invoice" className="flex-shrink-0">
+                              <FileText size={13} className="text-emerald-600" />
+                            </span>
+                          )}
+                        </span>
+                      </td>
                       <td className="px-4 py-3 text-center" style={{ color: 'var(--charcoal)' }}>{row.quantity}</td>
                       <td className="px-4 py-3">
                         {row.salesInvoiceNumber ? (
