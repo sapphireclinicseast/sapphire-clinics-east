@@ -26,15 +26,15 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            set -eo pipefail
+            set -e
             HOME_IP="${{ inputs.whitelist_ip }}"
             echo "→ Home IP to whitelist: $HOME_IP"
 
             echo ""
             echo "→ Flush any existing iptables bans for our IP..."
-            iptables -S INPUT | grep "$HOME_IP" | awk '{$1="-D"; print}' | while read rule; do
+            iptables -S INPUT 2>/dev/null | grep "$HOME_IP" 2>/dev/null | awk '{$1="-D"; print}' | while read rule; do
               iptables $rule 2>/dev/null || true
-            done
+            done || true
             # fail2ban may have also added it — unban via client if jail exists
             if systemctl is-active fail2ban >/dev/null 2>&1; then
               fail2ban-client set sshd unbanip "$HOME_IP" 2>/dev/null || true
