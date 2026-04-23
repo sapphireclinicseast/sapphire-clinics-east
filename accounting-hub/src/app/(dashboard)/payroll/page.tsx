@@ -1617,7 +1617,10 @@ export default function PayrollPage() {
     const t = computeTotals(p, extras, adjs)
     return {
       consultantId: p.consultantId, branch: p.branch,
-      items: [...p.items, ...extras.map(e => ({ unitPayId: e.unitPayId, unitPayName: e.unitPayName, unitAmount: e.unitAmount, quantity: e.qty, lineTotal: e.unitAmount * e.qty }))],
+      // items = order-derived lines only. extras live separately in extraItems.
+      // Merging them into items caused double-display (items list + extras list)
+      // and double-counting in computeTotals on LOCKED reloads.
+      items: [...p.items],
       extraItems: extras,
       adjustments: adjs,
       grossPay: t.gross, retainerAmount: p.retainerAmount, taxAmount: t.tax, netPay: t.net, status,

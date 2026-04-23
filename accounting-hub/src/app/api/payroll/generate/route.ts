@@ -167,13 +167,27 @@ export async function GET(req: Request) {
       // For LOCKED entries, return stored data with current order statuses
       const existingEntry = existingDataMap.get(c.id)
       if (existingEntry && existingEntry.status === 'LOCKED') {
-        const storedItems = (existingEntry.items as { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean; sessions?: { orderId?: string; date: string; patientName: string; serviceName: string; orderNetAmount: number; orderStatus?: string }[] }[]).map(item => ({
+        const rawStoredItems = (existingEntry.items as { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean; sessions?: { orderId?: string; date: string; patientName: string; serviceName: string; orderNetAmount: number; orderStatus?: string }[] }[]).map(item => ({
           ...item,
           sessions: (item.sessions || []).map(s => ({
             ...s,
             orderStatus: s.orderId ? (lockedOrderStatuses.get(s.orderId) || s.orderStatus || 'COMPLETED') : (s.orderStatus || 'COMPLETED'),
           })),
         }))
+        // Backward-compat: older saves merged extraItems INTO items, so stored
+        // items can duplicate what's in extraItems. Dedupe here — drop any item
+        // whose (unitPayId, unitAmount, quantity) matches an extraItem, and that
+        // has no session detail (genuine order-derived items have sessions).
+        const storedExtrasRaw = (existingEntry.extraItems as { unitPayId?: string; unitAmount?: number; qty?: number }[]) || []
+        const storedItems = rawStoredItems.filter(item => {
+          const hasSessions = (item.sessions || []).length > 0
+          if (hasSessions) return true
+          return !storedExtrasRaw.some(e =>
+            e.unitPayId === item.unitPayId &&
+            Math.abs(Number(e.unitAmount ?? 0) - Number(item.unitAmount)) < 0.01 &&
+            Number(e.qty ?? 0) === Number(item.quantity)
+          )
+        })
         return {
           consultantId: c.id,
           consultantName: c.name,
