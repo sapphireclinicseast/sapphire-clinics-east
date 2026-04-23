@@ -85,7 +85,78 @@ export async function POST(req: Request) {
     const existingPayable = await prisma.payrollPayableStatus.findUnique({
       where: { cutoffPeriod_branch_payrollType: { cutoffPeriod, branch, payrollType } },
     })
+
+    // If a payable already exists but there are FINAL entries that weren't in the
+    // original lock (e.g. someone got unlocked and re-finalized later), add them
+    // to the existing journal entry and payable instead of refusing. Remittance
+    // guard: if the period has already been remitted, refuse.
     if (existingPayable) {
+      if (existingPayable.salariesRemitted || existingPayable.benefitsRemitted || existingPayable.taxRemitted) {
+        return NextResponse.json({ error: 'Cannot lock more payslips — this period has already been remitted. Unlock the remittance first.' }, { status: 400 })
+      }
+
+      if (payrollType === 'CONSULTANT') {
+        if (!mapping.professionalFeesAccountId || !mapping.salariesPayableAccountId) {
+          return NextResponse.json({ error: 'Professional Fees and Salaries Payable accounts must be configured.' }, { status: 400 })
+        }
+
+        const addEntries = await prisma.payrollEntry.findMany({ where: { cutoffPeriod, branch, status: 'FINAL' } })
+        if (addEntries.length === 0) {
+          return NextResponse.json({ error: 'This payroll period has already been finalized and locked.' }, { status: 400 })
+        }
+        if (!existingPayable.journalEntryId) {
+          return NextResponse.json({ error: 'Existing payable has no linked journal entry — unlock the period and re-lock.' }, { status: 400 })
+        }
+        const journalEntryId: string = existingPayable.journalEntryId
+
+        let addGross = 0, addTax = 0, addNet = 0
+        for (const e of addEntries) { addGross += Number(e.grossPay); addTax += Number(e.taxAmount); addNet += Number(e.netPay) }
+
+        const result = await prisma.$transaction(async (tx) => {
+          const lines = await tx.journalEntryLine.findMany({ where: { journalEntryId } })
+          for (const line of lines) {
+            if (line.accountId === mapping.professionalFeesAccountId) {
+              await tx.journalEntryLine.update({ where: { id: line.id }, data: { debit: (Number(line.debit) + addGross) } })
+            } else if (line.accountId === mapping.salariesPayableAccountId) {
+              await tx.journalEntryLine.update({ where: { id: line.id }, data: { credit: (Number(line.credit) + addNet) } })
+            } else if (mapping.taxPayableAccountId && line.accountId === mapping.taxPayableAccountId) {
+              await tx.journalEntryLine.update({ where: { id: line.id }, data: { credit: (Number(line.credit) + addTax) } })
+            }
+          }
+          const hasTaxLine = lines.some(l => mapping.taxPayableAccountId && l.accountId === mapping.taxPayableAccountId)
+          if (addTax > 0 && mapping.taxPayableAccountId && !hasTaxLine) {
+            await tx.journalEntryLine.create({
+              data: { journalEntryId, accountId: mapping.taxPayableAccountId, debit: 0, credit: addTax, description: 'Withholding Tax Payable — Consultants' },
+            })
+          }
+
+          const je = await tx.journalEntry.findUnique({ where: { id: journalEntryId } })
+          if (je) {
+            await tx.journalEntry.update({ where: { id: je.id }, data: { totalAmount: (Number(je.totalAmount) + addGross) } })
+          }
+
+          await tx.payrollPayableStatus.update({
+            where: { id: existingPayable.id },
+            data: {
+              totalSalariesPayable: (Number(existingPayable.totalSalariesPayable) + addNet),
+              totalTaxPayable: (Number(existingPayable.totalTaxPayable) + addTax),
+            },
+          })
+
+          await tx.payrollEntry.updateMany({ where: { cutoffPeriod, branch, status: 'FINAL' }, data: { status: 'LOCKED' } })
+          return { lockedCount: addEntries.length }
+        })
+
+        const journalEntry = await prisma.journalEntry.findUnique({
+          where: { id: journalEntryId },
+          include: { lines: { include: { account: { select: { id: true, accountNumber: true, accountTitle: true } } } } },
+        })
+        const payable = await prisma.payrollPayableStatus.findUnique({ where: { id: existingPayable.id } })
+        return NextResponse.json({ journalEntry, payable, lockedCount: result.lockedCount, supplemented: true }, { status: 201 })
+      }
+
+      // For EMPLOYEE payroll, the supplement path is not yet implemented — keep
+      // the original guard so nothing weird happens.
       return NextResponse.json({ error: 'This payroll period has already been finalized and locked.' }, { status: 400 })
     }
 
