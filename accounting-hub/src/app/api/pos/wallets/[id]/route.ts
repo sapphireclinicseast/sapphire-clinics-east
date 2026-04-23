@@ -37,6 +37,89 @@ export async function GET(
       return NextResponse.json({ error: 'Wallet not found' }, { status: 404 })
     }
 
+    // For monetary wallets (VIP, PREPAID_CARD, DOWNPAYMENT, ADVANCE), build a
+    // running-balance ledger from OrderPayments (debits), WalletPackage purchases
+    // (credits), and VOID_REVERSAL logs (credits). Lets the user audit that
+    // stored balance matches what the deductions add up to.
+    const MONETARY_TYPES = ['VIP', 'PREPAID_CARD', 'DOWNPAYMENT', 'ADVANCE']
+    const METHOD_BY_WALLET: Record<string, string> = {
+      VIP: 'VIP_CARD',
+      PREPAID_CARD: 'PREPAID_CARD',
+      DOWNPAYMENT: 'DOWNPAYMENT',
+      ADVANCE: 'ADVANCE',
+    }
+
+    if (MONETARY_TYPES.includes(wallet.walletType)) {
+      const method = METHOD_BY_WALLET[wallet.walletType]
+
+      const [payments, voidLogs] = await Promise.all([
+        prisma.orderPayment.findMany({
+          where: { walletId: id, ...(method ? { method: method as 'VIP_CARD' | 'PREPAID_CARD' | 'DOWNPAYMENT' | 'ADVANCE' } : {}) },
+          include: {
+            order: { select: { id: true, orderNumber: true, transactionDate: true, status: true, patientName: true } },
+          },
+        }),
+        prisma.walletLog.findMany({
+          where: { walletId: id, action: 'VOID_REVERSAL' },
+          select: { id: true, createdAt: true, description: true },
+        }),
+      ])
+
+      // WalletPackage purchases represent monetary loads for non-PACKAGE wallets
+      const reloads = (wallet.packages || []).map(pkg => ({
+        date: new Date(pkg.purchaseDate),
+        type: 'RELOAD' as const,
+        description: `Load: ${pkg.serviceName}${pkg.department ? ` (${pkg.department})` : ''}`,
+        credit: Number(pkg.amountPaid),
+        debit: 0,
+        orderNumber: null as number | null,
+        orderId: null as string | null,
+        voided: false,
+      }))
+
+      const deductions = payments.map(p => ({
+        date: new Date(p.order.transactionDate),
+        type: 'DEDUCTION' as const,
+        description: `Order #${p.order.orderNumber} · ${p.order.patientName || '—'}`,
+        credit: 0,
+        debit: Number(p.amount),
+        orderNumber: p.order.orderNumber,
+        orderId: p.order.id,
+        voided: p.order.status === 'VOIDED',
+      }))
+
+      const reversals = voidLogs.map(log => {
+        const m = log.description.match(/[\d,]+\.\d{1,2}/)
+        const amount = m ? parseFloat(m[0].replace(/,/g, '')) : 0
+        return {
+          date: new Date(log.createdAt),
+          type: 'VOID_REVERSAL' as const,
+          description: log.description,
+          credit: amount,
+          debit: 0,
+          orderNumber: null as number | null,
+          orderId: null as string | null,
+          voided: false,
+        }
+      })
+
+      const ledger = [...reloads, ...deductions, ...reversals]
+        .sort((a, b) => a.date.getTime() - b.date.getTime())
+
+      let running = 0
+      const enriched = ledger.map(entry => {
+        const balanceBefore = running
+        running += entry.credit - entry.debit
+        return { ...entry, date: entry.date.toISOString(), balanceBefore, balanceAfter: running }
+      })
+
+      const computedEndingBalance = running
+      const storedBalance = Number(wallet.balance)
+      const ledgerDiscrepancy = Number((storedBalance - computedEndingBalance).toFixed(2))
+
+      return NextResponse.json({ ...wallet, ledger: enriched, computedEndingBalance, ledgerDiscrepancy })
+    }
+
     // For HMO/GL wallets, return only UNPAID orders and compute balance from them.
     // Unpaid = not voided + no AR payment recorded against the order.
     if (['HMO', 'GL'].includes(wallet.walletType)) {

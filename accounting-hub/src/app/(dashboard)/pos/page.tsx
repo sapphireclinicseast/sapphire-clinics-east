@@ -102,6 +102,19 @@ interface Referrer {
   specialization?: string | null
 }
 
+interface WalletLedgerEntry {
+  date: string
+  type: 'RELOAD' | 'DEDUCTION' | 'VOID_REVERSAL'
+  description: string
+  credit: number
+  debit: number
+  balanceBefore: number
+  balanceAfter: number
+  orderNumber?: number | null
+  orderId?: string | null
+  voided?: boolean
+}
+
 interface DigitalWallet {
   id: string
   barcode: string
@@ -119,6 +132,9 @@ interface DigitalWallet {
   _count?: { packages: number }
   packages?: WalletPackage[]
   logs?: WalletLog[]
+  ledger?: WalletLedgerEntry[]
+  computedEndingBalance?: number
+  ledgerDiscrepancy?: number
   [key: string]: unknown
 }
 
@@ -4899,6 +4915,57 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 </>
               ) : (
                 <>
+              {/* Running Balance — only for monetary wallets */}
+              {['VIP', 'PREPAID_CARD', 'DOWNPAYMENT', 'ADVANCE'].includes(walletDetail.walletType) && (
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Running Balance</h4>
+                    {typeof walletDetail.ledgerDiscrepancy === 'number' && Math.abs(walletDetail.ledgerDiscrepancy) > 0.01 && (
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: '#fef3c7', color: '#92400e' }}>
+                        Discrepancy: {formatCurrency(walletDetail.ledgerDiscrepancy)} (stored {formatCurrency(toNum(walletDetail.balance))} vs computed {formatCurrency(walletDetail.computedEndingBalance || 0)})
+                      </span>
+                    )}
+                  </div>
+                  {(walletDetail.ledger || []).length === 0 ? (
+                    <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>No money movements recorded yet.</p>
+                  ) : (
+                    <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr style={{ background: 'var(--off-white)' }}>
+                            {['Date', 'Description', 'Starting', 'Deduction', 'Credit', 'Remaining'].map(h => (
+                              <th key={h} className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--mid-gray)' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(walletDetail.ledger || []).map((e, i) => {
+                            const rowStyle: React.CSSProperties = e.voided ? { opacity: 0.55 } : {}
+                            const typeBadge = e.type === 'DEDUCTION'
+                              ? { bg: '#fee2e2', color: '#991b1b', label: 'Deduction' }
+                              : e.type === 'RELOAD'
+                              ? { bg: '#dcfce7', color: '#166534', label: 'Load' }
+                              : { bg: '#dbeafe', color: '#1e40af', label: 'Reversal' }
+                            return (
+                              <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)', ...rowStyle }}>
+                                <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{formatDate(e.date)}</td>
+                                <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>
+                                  <span className="inline-block px-1.5 py-0.5 mr-1.5 rounded text-[10px] font-semibold align-middle" style={{ background: typeBadge.bg, color: typeBadge.color }}>{typeBadge.label}</span>
+                                  {e.description}{e.voided ? ' (voided)' : ''}
+                                </td>
+                                <td className="px-3 py-2 text-right whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(e.balanceBefore)}</td>
+                                <td className="px-3 py-2 text-right whitespace-nowrap" style={{ color: e.debit > 0 ? '#991b1b' : 'var(--mid-gray)' }}>{e.debit > 0 ? `− ${formatCurrency(e.debit)}` : '—'}</td>
+                                <td className="px-3 py-2 text-right whitespace-nowrap" style={{ color: e.credit > 0 ? '#166534' : 'var(--mid-gray)' }}>{e.credit > 0 ? `+ ${formatCurrency(e.credit)}` : '—'}</td>
+                                <td className="px-3 py-2 text-right whitespace-nowrap font-semibold" style={{ color: 'var(--charcoal)' }}>{formatCurrency(e.balanceAfter)}</td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
               <h4 className="text-sm font-semibold mb-2" style={{ color: 'var(--charcoal)' }}>Activity Logs</h4>
               {(() => {
                 const isRewardEligible = ['VIP', 'PREPAID_CARD'].includes(walletDetail.walletType)

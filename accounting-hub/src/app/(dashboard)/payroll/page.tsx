@@ -3786,9 +3786,9 @@ export default function PayrollPage() {
                                             <button onClick={(e) => { e.stopPropagation(); lockSingleConsultant(p.consultantId) }} disabled={lockingMap[p.consultantId]}
                                               className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium text-white disabled:opacity-50"
                                               style={{ background: '#4338ca' }}
-                                              title="Lock this payslip (freeze numbers)">
+                                              title="Finalize this payslip (status → FINAL). Full LOCKED status with journal entry requires clicking 'Lock Payroll' at the top of the page.">
                                               {lockingMap[p.consultantId] ? <Loader2 size={13} className="animate-spin" /> : <Lock size={13} />}
-                                              {lockingMap[p.consultantId] ? 'Locking...' : 'Lock'}
+                                              {lockingMap[p.consultantId] ? 'Finalizing...' : 'Finalize'}
                                             </button>
                                           )}
                                           {/* Unlock per person: FINAL or LOCKED → DRAFT */}

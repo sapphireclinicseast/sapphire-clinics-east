@@ -8,7 +8,10 @@ echo "Building app image..."
 docker compose build --no-cache app
 
 echo "Restarting containers..."
-docker compose up -d
+# Force-recreate the app so any .env changes (DATABASE_URL etc.) are picked up.
+# Without this, docker compose can leave the old container running with stale env.
+docker compose up -d --force-recreate --no-deps app
+docker compose up -d postgres
 
 echo "Syncing database password..."
 PGPASS=$(grep "^POSTGRES_PASSWORD=" .env | cut -d= -f2-)
