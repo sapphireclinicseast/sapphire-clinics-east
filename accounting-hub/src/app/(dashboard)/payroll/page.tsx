@@ -3348,14 +3348,18 @@ export default function PayrollPage() {
                     <option value="">All Consultants</option>
                     {consultants.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
+                  {/* Regenerate — always available so branch/cutoff/department filter changes
+                      can be re-run without refreshing the page, even when every consultant
+                      is already locked. Re-save-protected: LOCKED entries are skipped
+                      server-side, and this is a GET-only preview refresh anyway. */}
+                  <button onClick={() => generatePayslips(false)} disabled={generating}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50"
+                    style={{ background: 'var(--teal)' }}>
+                    {generating ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                    {payrollPreviews.length > 0 ? 'Regenerate' : 'Generate Payslips'}
+                  </button>
                   {!allConsultantLocked && (
                     <>
-                      <button onClick={() => generatePayslips(false)} disabled={generating}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50"
-                        style={{ background: 'var(--teal)' }}>
-                        {generating ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
-                        Generate Payslips
-                      </button>
                       <button onClick={() => createBankFile('CONSULTANT')}
                         className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border"
                         style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
