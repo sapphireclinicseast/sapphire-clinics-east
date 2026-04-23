@@ -453,7 +453,7 @@ async function buildPayslipPdf(
 
     autoTable(doc, {
       startY: y,
-      head: [['Description', 'Patients', 'Rate / Patient', 'Total']],
+      head: [['Description', 'Sessions', 'Rate / Session', 'Total']],
       body: incBody,
       theme: 'grid',
       headStyles: tableHeadStyles,
@@ -2697,7 +2697,7 @@ export default function PayrollPage() {
                   <div>
                     <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Incentives</h3>
                     <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-                      Rules that grant additional pay when a clinician reaches a daily patient threshold
+                      Rules that grant additional pay when a clinician reaches a daily session threshold (order quantity counts: one order of qty 2 = 2 sessions)
                     </p>
                   </div>
                   {canWrite && (
@@ -2727,10 +2727,10 @@ export default function PayrollPage() {
                               {rule.description && <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{rule.description}</p>}
                             </td>
                             <td className="px-4 py-3 text-xs" style={{ color: 'var(--charcoal)' }}>
-                              ≥ <span className="font-bold">{rule.threshold}</span> patients/day
+                              ≥ <span className="font-bold">{rule.threshold}</span> sessions/day
                             </td>
                             <td className="px-4 py-3 text-xs font-semibold" style={{ color: 'var(--teal)' }}>
-                              +{formatCurrency(Number(rule.bonusPerUnit))} / patient
+                              +{formatCurrency(Number(rule.bonusPerUnit))} / session
                             </td>
                             <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
                               {rule.departments && rule.departments.length > 0 ? rule.departments.join(', ') : 'All depts'}
@@ -2775,7 +2775,7 @@ export default function PayrollPage() {
                       <div>
                         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Rule Name *</label>
                         <input value={incForm.name} onChange={e => setIncForm({ ...incForm, name: e.target.value })}
-                          placeholder="e.g. Daily Patient Threshold Bonus"
+                          placeholder="e.g. Daily Session Threshold Bonus"
                           className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                       </div>
                       <div>
@@ -2786,25 +2786,25 @@ export default function PayrollPage() {
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Min. Patients / Day *</label>
+                          <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Min. Sessions / Day *</label>
                           <input type="number" min={1} value={incForm.threshold}
                             onChange={e => setIncForm({ ...incForm, threshold: parseInt(e.target.value) || 1 })}
                             className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-                          <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Trigger threshold</p>
+                          <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Trigger threshold (counts order qty — one order of qty 2 = 2 sessions)</p>
                         </div>
                         <div>
-                          <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Bonus per Patient (₱) *</label>
+                          <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Bonus per Session (₱) *</label>
                           <input type="number" min={0.01} step={0.01} value={incForm.bonusPerUnit}
                             onChange={e => setIncForm({ ...incForm, bonusPerUnit: parseFloat(e.target.value) || 0 })}
                             className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-                          <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Per all patients that day</p>
+                          <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Paid for every session on qualifying days</p>
                         </div>
                       </div>
                       {/* Preview calculation */}
                       <div className="rounded-xl p-3 text-xs" style={{ background: 'var(--pale-teal)' }}>
                         <p style={{ color: 'var(--deep-teal)' }}>
                           <span className="font-semibold">Preview: </span>
-                          {incForm.threshold} patients → {incForm.threshold} × ₱{incForm.bonusPerUnit.toFixed(2)} = <span className="font-bold">₱{(incForm.threshold * incForm.bonusPerUnit).toFixed(2)}</span> bonus for that day
+                          {incForm.threshold} sessions → {incForm.threshold} × ₱{incForm.bonusPerUnit.toFixed(2)} = <span className="font-bold">₱{(incForm.threshold * incForm.bonusPerUnit).toFixed(2)}</span> bonus for that day
                         </p>
                       </div>
                       <div>

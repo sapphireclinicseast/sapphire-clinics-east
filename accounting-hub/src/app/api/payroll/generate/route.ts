@@ -292,11 +292,22 @@ export async function GET(req: Request) {
       const retainerAmount = Number(c.monthlyRetainer) / 2
 
       // ── Incentive calculation ────────────────────────────────
-      // Count distinct orders (patients) per calendar day (Asia/Manila)
-      const ordersByDay = new Map<string, number>()
+      // Count sessions per calendar day (Asia/Manila). A single order with
+      // quantity=2 counts as 2 sessions, not 1 — matches how therapists
+      // actually deliver care. Only unit-pay-eligible items are counted so
+      // that product add-ons don't inflate a therapist's session total.
+      const sessionsByDay = new Map<string, number>()
       for (const order of consultantOrders) {
         const dayKey = new Date(order.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }) // YYYY-MM-DD
-        ordersByDay.set(dayKey, (ordersByDay.get(dayKey) || 0) + 1)
+        let sessions = 0
+        for (const item of order.items) {
+          if (!item.service?.unitPayId) continue
+          if (item.service.unitPayEnabled === false) continue
+          sessions += Number(item.quantity) || 1
+        }
+        if (sessions > 0) {
+          sessionsByDay.set(dayKey, (sessionsByDay.get(dayKey) || 0) + sessions)
+        }
       }
 
       const incentiveLines: {
@@ -311,13 +322,13 @@ export async function GET(req: Request) {
         // Branch filter — null means all branches
         if (rule.branch && rule.branch !== c.branch) continue
 
-        for (const [dayKey, count] of ordersByDay) {
+        for (const [dayKey, count] of sessionsByDay) {
           if (count >= rule.threshold) {
             incentiveLines.push({
               ruleId: rule.id,
               ruleName: rule.name,
               date: dayKey,
-              patientCount: count,
+              patientCount: count, // field kept for backward-compat; semantically = session count
               bonusPerUnit: Number(rule.bonusPerUnit),
               bonus: Number(rule.bonusPerUnit) * count,
             })
