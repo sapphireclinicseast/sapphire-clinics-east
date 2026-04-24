@@ -34,6 +34,7 @@ docker exec accounting_db psql -U sapphire -d sapphire_accounting \
 echo "Applying additive schema changes (IF NOT EXISTS — idempotent)..."
 docker exec accounting_db psql -U sapphire -d sapphire_accounting <<'SQL'
 ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "arProofUrl" TEXT;
+ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'HMO_OFFICER';
 SQL
 
 echo "Redeploy complete."

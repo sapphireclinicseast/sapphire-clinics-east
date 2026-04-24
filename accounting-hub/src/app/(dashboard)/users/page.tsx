@@ -33,6 +33,7 @@ const ROLE_OPTIONS = [
   { value: 'VERDANA_ADMIN', label: 'Verdana Admin' },
   { value: 'SBEA_FRONTDESK', label: 'SBEA Front Desk' },
   { value: 'SBGH_FRONTDESK', label: 'SBGH Front Desk' },
+  { value: 'HMO_OFFICER', label: 'HMO Officer' },
 ]
 
 const BRANCH_OPTIONS = [
@@ -51,6 +52,7 @@ const ROLE_LABELS: Record<string, string> = {
   VERDANA_ADMIN: 'Verdana Admin',
   SBEA_FRONTDESK: 'SBEA Front Desk',
   SBGH_FRONTDESK: 'SBGH Front Desk',
+  HMO_OFFICER: 'HMO Officer',
 }
 
 const BRANCH_LABELS: Record<string, string> = {

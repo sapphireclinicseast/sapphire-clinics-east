@@ -20,7 +20,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN', 'HMO_OFFICER']
 const DAY_MS = 24 * 60 * 60 * 1000
 
 export async function GET(req: Request) {
@@ -42,7 +42,7 @@ export async function GET(req: Request) {
     })
     const walletIds = wallets.map(w => w.id)
     if (walletIds.length === 0) {
-      return NextResponse.json({ periodDays, totalAR: 0, totalRevenue: 0, arDaysOverall: 0, perWallet: [] })
+      return NextResponse.json({ periodDays, totalAR: 0, totalRevenue: 0, totalAllDeptRevenue: 0, arDaysOverall: 0, perWallet: [] })
     }
 
     // Unpaid outstanding orders — no ARPayment has been applied yet
@@ -74,7 +74,7 @@ export async function GET(req: Request) {
           ...(branch ? { branch } : {}),
         },
       },
-      select: { walletId: true, amount: true },
+      select: { walletId: true, amount: true, orderId: true },
     })
     const revenueByWallet = new Map<string, number>()
     for (const p of periodPayments) {
@@ -82,6 +82,33 @@ export async function GET(req: Request) {
       revenueByWallet.set(p.walletId, (revenueByWallet.get(p.walletId) || 0) + Number(p.amount))
     }
     const totalRevenue = [...revenueByWallet.values()].reduce((s, v) => s + v, 0)
+
+    // All-department revenue: sum netAmount of ALL completed orders in period
+    // whose departments appear in at least one HMO/GL order in the same period.
+    // Step 1: find distinct departments from HMO/GL period orders
+    const hmoOrderIds = periodPayments.map(p => p.orderId).filter(Boolean) as string[]
+
+    // Get departments from order items of those HMO orders
+    const hmoOrderItems = hmoOrderIds.length > 0 ? await prisma.orderItem.findMany({
+      where: { orderId: { in: hmoOrderIds }, service: { isNot: null } },
+      select: { service: { select: { department: true } } },
+    }) : []
+    const hmoDepts = new Set(hmoOrderItems.map(i => i.service?.department).filter(Boolean) as string[])
+
+    // Step 2: Sum ALL completed orders in period from those departments
+    let totalAllDeptRevenue = 0
+    if (hmoDepts.size > 0) {
+      const allDeptOrders = await prisma.order.findMany({
+        where: {
+          status: 'COMPLETED',
+          transactionDate: { gte: periodStart, lte: now },
+          ...(branch ? { branch } : {}),
+          items: { some: { service: { department: { in: Array.from(hmoDepts) } } } },
+        },
+        select: { netAmount: true },
+      })
+      totalAllDeptRevenue = allDeptOrders.reduce((s, o) => s + Number(o.netAmount), 0)
+    }
 
     // Aggregate AR + aging per wallet
     type Bucket = 'b0_30' | 'b31_60' | 'b61_90' | 'b90plus'
@@ -138,6 +165,7 @@ export async function GET(req: Request) {
       periodDays,
       totalAR,
       totalRevenue,
+      totalAllDeptRevenue,
       arDaysOverall,
       perWallet,
     })

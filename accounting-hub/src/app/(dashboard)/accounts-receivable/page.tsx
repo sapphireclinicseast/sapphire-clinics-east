@@ -5,7 +5,8 @@ import { useSession } from 'next-auth/react'
 import { useSearchParams } from 'next/navigation'
 import {
   FileCheck, Search, ChevronUp, ChevronDown, ArrowUpDown,
-  X, AlertCircle, DollarSign, Calendar, Building2, Upload, Trash2, Pencil,
+  X, AlertCircle, DollarSign, Calendar, Upload, Trash2, Pencil,
+  Download, Filter,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
@@ -15,9 +16,10 @@ interface ARWallet {
   balance: number | string
   // Only returned for GL wallets — the approved amount on the Guarantee Letter.
   totalGlAmount?: number | string | null
-  // Also returned: consumption-based outstanding (sum of unpaid orders), kept so
-  // the UI can show both 'approved AR' and 'consumed so far' side by side if needed.
+  // Consumption-based outstanding (sum of unpaid orders)
   consumedOutstanding?: number
+  // Total consumed (paid + unpaid, GL only)
+  totalConsumedAmount?: number
   accountId?: string | null
   account?: { accountNumber: string; accountTitle: string } | null
 }
@@ -31,7 +33,7 @@ interface AROrder {
   branch: string
   netAmount: number | string
   arProofUrl?: string | null
-  items: { name: string }[]
+  items: { name: string; service?: { department?: string | null } | null }[]
   payments: { amount: number | string; walletId?: string }[]
   arPaymentItems: { paymentId: string }[]
 }
@@ -51,25 +53,48 @@ interface ARPaymentRecord {
   items: { orderId: string }[]
 }
 
-const BRANCHES = [
-  { value: '', label: 'All Branches' },
-  { value: 'SBEA', label: 'Sandbox East' },
-  { value: 'SBGH', label: 'Sandbox Greenhills' },
-]
-
 const toNum = (v: unknown) => Number(v) || 0
 
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-// Per-transaction proof upload cell. Accepts PDF or image. Stores to uploads
-// via /api/upload, persists the URL via PATCH /api/accounts-receivable/proof.
+// Helper: parse arProofUrl which may be a plain URL or a JSON array of URLs.
+function parseProofUrls(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  try {
+    const p = JSON.parse(raw)
+    if (Array.isArray(p)) return p.filter(Boolean) as string[]
+  } catch { /* plain URL */ }
+  return [raw]
+}
+function serializeProofUrls(urls: string[]): string | null {
+  const clean = urls.filter(Boolean)
+  if (clean.length === 0) return null
+  if (clean.length === 1) return clean[0]
+  return JSON.stringify(clean)
+}
+
+// Per-transaction proof upload cell — supports multiple files per order.
+// Files are stored as a JSON array in arProofUrl (or plain string for single).
 function ProofCell({ orderId, currentUrl, onChange }: {
   orderId: string; currentUrl: string | null; onChange: (url: string | null) => void;
 }) {
   const [busy, setBusy] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const urls = parseProofUrls(currentUrl)
+
+  const persist = async (newUrls: string[]) => {
+    const serialized = serializeProofUrls(newUrls)
+    const r = await fetch('/api/accounts-receivable/proof', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId, arProofUrl: serialized }),
+    })
+    if (!r.ok) throw new Error((await r.json()).error || 'Save failed')
+    onChange(serialized)
+  }
 
   const upload = async (file: File) => {
     setBusy(true)
@@ -79,13 +104,7 @@ function ProofCell({ orderId, currentUrl, onChange }: {
       const up = await fetch('/api/upload', { method: 'POST', body: fd })
       const ud = await up.json()
       if (!up.ok || !ud.url) throw new Error(ud.error || 'Upload failed')
-      const r = await fetch('/api/accounts-receivable/proof', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId, arProofUrl: ud.url }),
-      })
-      if (!r.ok) throw new Error('Save failed')
-      onChange(ud.url)
+      await persist([...urls, ud.url])
     } catch (e) {
       alert((e as Error).message || 'Failed to attach proof')
     } finally {
@@ -94,52 +113,50 @@ function ProofCell({ orderId, currentUrl, onChange }: {
     }
   }
 
-  const clear = async () => {
-    if (!confirm('Remove the attached proof?')) return
+  const remove = async (urlToRemove: string) => {
+    if (!confirm('Remove this proof file?')) return
     setBusy(true)
     try {
-      const r = await fetch(`/api/accounts-receivable/proof?orderId=${orderId}`, { method: 'DELETE' })
-      if (!r.ok) throw new Error('Failed to clear')
-      onChange(null)
+      await persist(urls.filter(u => u !== urlToRemove))
     } catch (e) {
-      alert((e as Error).message || 'Failed to clear proof')
+      alert((e as Error).message || 'Failed to remove proof')
     } finally { setBusy(false) }
   }
 
   return (
-    <div className="flex items-center justify-center gap-1.5">
-      {currentUrl ? (
-        <>
-          <a href={currentUrl} target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-xs"
+    <div className="flex flex-col items-center gap-1 min-w-[90px]">
+      {urls.map((url, i) => (
+        <div key={url} className="flex items-center gap-1">
+          <a href={url} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-lg border text-[10px] font-medium"
             style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
-            <FileCheck size={12} /> View
+            <FileCheck size={10} /> {urls.length > 1 ? `File ${i + 1}` : 'View'}
           </a>
-          <button onClick={clear} disabled={busy} className="p-1 rounded hover:bg-red-50 disabled:opacity-50" title="Remove proof">
-            <X size={12} className="text-red-400" />
+          <button onClick={() => remove(url)} disabled={busy}
+            className="p-0.5 rounded hover:bg-red-50 disabled:opacity-40" title="Remove this file">
+            <X size={10} className="text-red-400" />
           </button>
-        </>
-      ) : (
-        <label className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border cursor-pointer text-xs"
-          style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)', opacity: busy ? 0.5 : 1 }}>
-          <Upload size={12} />
-          {busy ? 'Uploading…' : 'Upload'}
-          <input ref={inputRef} type="file" accept="image/*,.pdf,application/pdf" className="hidden"
-            disabled={busy}
-            onChange={async (e) => {
-              const f = e.target.files?.[0]
-              if (f) await upload(f)
-            }} />
-        </label>
-      )}
+        </div>
+      ))}
+      <label
+        className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-lg border cursor-pointer text-[10px] font-medium"
+        style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)', opacity: busy ? 0.5 : 1 }}>
+        <Upload size={10} />
+        {busy ? '…' : urls.length > 0 ? '+ Add' : 'Upload'}
+        <input ref={inputRef} type="file" accept="image/*,.pdf,application/pdf" className="hidden"
+          disabled={busy}
+          onChange={async (e) => { const f = e.target.files?.[0]; if (f) await upload(f) }} />
+      </label>
     </div>
   )
 }
 
 export default function AccountsReceivablePage() {
   const { data: session } = useSession()
+  const isHmoOfficer = session?.user?.role === 'HMO_OFFICER'
   const searchParams = useSearchParams()
-  const initialType = searchParams.get('type') === 'GL' ? 'GL' : 'HMO'
+  // HMO Officers are locked to the HMO tab only
+  const initialType = !isHmoOfficer && searchParams.get('type') === 'GL' ? 'GL' : 'HMO'
   const initialWallet = searchParams.get('wallet') || ''
 
   const [tab, setTab] = useState<'HMO' | 'GL'>(initialType as 'HMO' | 'GL')
@@ -163,7 +180,7 @@ export default function AccountsReceivablePage() {
     orderIdsByBucket: Record<AgingBucket, string[]>;
   }
   const [agingData, setAgingData] = useState<{
-    periodDays: number; totalAR: number; totalRevenue: number; arDaysOverall: number; perWallet: AgingRow[];
+    periodDays: number; totalAR: number; totalRevenue: number; totalAllDeptRevenue: number; arDaysOverall: number; perWallet: AgingRow[];
   } | null>(null)
   const [agingPeriodDays, setAgingPeriodDays] = useState(90)
   // When user clicks a cell, filter the orders table to that bucket's ids
@@ -190,6 +207,17 @@ export default function AccountsReceivablePage() {
   const [payCashAccountId, setPayCashAccountId] = useState('')
   const [payCashAccountSearch, setPayCashAccountSearch] = useState('')
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null)
+
+  // HMO sub-tab state
+  const [hmoSubTab, setHmoSubTab] = useState<'overview' | 'per-hmo'>('overview')
+  // Per HMO sub-tab state
+  const [perHmoWallet, setPerHmoWallet] = useState('')
+  const [perHmoFrom, setPerHmoFrom] = useState('')
+  const [perHmoTo, setPerHmoTo] = useState('')
+  const [perHmoSortField, setPerHmoSortField] = useState('transactionDate')
+  const [perHmoSortDir, setPerHmoSortDir] = useState<'asc' | 'desc'>('desc')
+  const [perHmoColSearch, setPerHmoColSearch] = useState<Record<string, string>>({})
+  const [showDownloadMenu, setShowDownloadMenu] = useState(false)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -398,8 +426,8 @@ export default function AccountsReceivablePage() {
 
       {/* Tabs */}
       <div className="flex gap-2">
-        {(['HMO', 'GL'] as const).map(t => (
-          <button key={t} onClick={() => { setTab(t); setWalletFilter(''); setBucketFilterIds(null); setBucketFilterLabel('') }}
+        {(['HMO', 'GL'] as const).filter(t => !(isHmoOfficer && t === 'GL')).map(t => (
+          <button key={t} onClick={() => { setTab(t); setWalletFilter(''); setBucketFilterIds(null); setBucketFilterLabel(''); setHmoSubTab('overview') }}
             className="px-4 py-2 rounded-xl text-sm font-medium transition-colors"
             style={tab === t
               ? { background: 'var(--teal)', color: 'white' }
@@ -408,6 +436,229 @@ export default function AccountsReceivablePage() {
           </button>
         ))}
       </div>
+
+      {/* HMO Sub-tabs */}
+      {tab === 'HMO' && (
+        <div className="flex gap-2 border-b pb-0" style={{ borderColor: 'var(--light-gray)' }}>
+          {(['overview', 'per-hmo'] as const).map(st => (
+            <button key={st} onClick={() => setHmoSubTab(st)}
+              className="px-4 py-2 text-sm font-medium transition-colors"
+              style={hmoSubTab === st
+                ? { color: 'var(--teal)', borderBottom: '2px solid var(--teal)' }
+                : { color: 'var(--mid-gray)', borderBottom: '2px solid transparent' }}>
+              {st === 'overview' ? 'Overview' : 'Per HMO'}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── GL Summary: % consumed, % paid, department pie chart ── */}
+      {tab === 'GL' && (() => {
+        const totalApproved = wallets.reduce((s, w) => s + toNum(w.totalGlAmount), 0)
+        const totalConsumed = wallets.reduce((s, w) => s + (w.totalConsumedAmount ?? 0), 0)
+        const totalPaid = arPayments.reduce((s, p) => s + toNum(p.amount), 0)
+        const pctConsumed = totalApproved > 0 ? Math.min(100, (totalConsumed / totalApproved) * 100) : 0
+        const pctPaid = totalApproved > 0 ? Math.min(100, (totalPaid / totalApproved) * 100) : 0
+
+        // Department breakdown from GL orders
+        const deptMap = new Map<string, number>()
+        for (const o of orders) {
+          for (const it of o.items) {
+            const dept = it.service?.department || 'Other'
+            const pay = o.payments.find(p => p.walletId && wallets.some(w => w.id === p.walletId))
+            const amt = pay ? toNum(pay.amount) : toNum(o.netAmount)
+            deptMap.set(dept, (deptMap.get(dept) || 0) + amt)
+          }
+        }
+        const deptTotal = Array.from(deptMap.values()).reduce((s, v) => s + v, 0)
+        const deptEntries = Array.from(deptMap.entries())
+          .sort((a, b) => b[1] - a[1])
+        const PIE_COLORS = ['#0d9488','#0891b2','#7c3aed','#db2777','#d97706','#16a34a','#dc2626','#9333ea','#0ea5e9','#f59e0b']
+
+        // Build SVG pie chart
+        let cumAngle = -90 // start at top
+        const pieSlices = deptEntries.map(([ dept, val ], i) => {
+          const pct = deptTotal > 0 ? val / deptTotal : 0
+          const sweep = pct * 360
+          const startRad = (cumAngle * Math.PI) / 180
+          const endRad = ((cumAngle + sweep) * Math.PI) / 180
+          const r = 60
+          const x1 = 70 + r * Math.cos(startRad)
+          const y1 = 70 + r * Math.sin(startRad)
+          const x2 = 70 + r * Math.cos(endRad)
+          const y2 = 70 + r * Math.sin(endRad)
+          const large = sweep > 180 ? 1 : 0
+          const d = pct === 1
+            ? `M70,70 m-${r},0 a${r},${r} 0 1,1 ${r*2},0 a${r},${r} 0 1,1 -${r*2},0`
+            : `M70,70 L${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} Z`
+          const result = { dept, val, pct, color: PIE_COLORS[i % PIE_COLORS.length], d }
+          cumAngle += sweep
+          return result
+        })
+
+        return (
+          <div className="rounded-2xl border p-4 space-y-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+            <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>GL Summary</h2>
+
+            {/* % cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Approved */}
+              <div className="rounded-xl p-4 border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Total Approved (SOA)</p>
+                <p className="text-xl font-bold" style={{ color: 'var(--charcoal)' }}>{formatCurrency(totalApproved)}</p>
+                <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Amount government agency will pay</p>
+              </div>
+
+              {/* % Consumed */}
+              <div className="rounded-xl p-4 border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Consumed vs Approved</p>
+                <p className="text-xl font-bold" style={{ color: pctConsumed >= 90 ? '#dc2626' : pctConsumed >= 70 ? '#d97706' : '#0d9488' }}>
+                  {pctConsumed.toFixed(1)}%
+                </p>
+                <div className="mt-2 rounded-full overflow-hidden h-2" style={{ background: 'var(--light-gray)' }}>
+                  <div style={{ width: `${pctConsumed}%`, background: pctConsumed >= 90 ? '#dc2626' : pctConsumed >= 70 ? '#d97706' : '#0d9488', height: '100%', transition: 'width 0.4s' }} />
+                </div>
+                <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(totalConsumed)} consumed of {formatCurrency(totalApproved)}</p>
+              </div>
+
+              {/* % Paid */}
+              <div className="rounded-xl p-4 border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Paid vs Approved</p>
+                <p className="text-xl font-bold" style={{ color: '#166534' }}>
+                  {pctPaid.toFixed(1)}%
+                </p>
+                <div className="mt-2 rounded-full overflow-hidden h-2" style={{ background: 'var(--light-gray)' }}>
+                  <div style={{ width: `${pctPaid}%`, background: '#16a34a', height: '100%', transition: 'width 0.4s' }} />
+                </div>
+                <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(totalPaid)} received of {formatCurrency(totalApproved)}</p>
+              </div>
+            </div>
+
+            {/* Department pie chart */}
+            {deptEntries.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold mb-3" style={{ color: 'var(--mid-gray)' }}>GL Orders by Department</p>
+                <div className="flex flex-wrap items-center gap-6">
+                  <svg viewBox="0 0 140 140" width={140} height={140} className="flex-shrink-0">
+                    {pieSlices.map((s, i) => (
+                      <path key={i} d={s.d} fill={s.color} stroke="white" strokeWidth={1.5} />
+                    ))}
+                  </svg>
+                  <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                    {pieSlices.map((s, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: s.color }} />
+                        <span className="text-xs font-medium truncate" style={{ color: 'var(--charcoal)' }}>{s.dept}</span>
+                        <span className="text-xs ml-auto flex-shrink-0" style={{ color: 'var(--mid-gray)' }}>
+                          {formatCurrency(s.val)} <span className="font-semibold">({(s.pct * 100).toFixed(1)}%)</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
+      {/* ── HMO Summary ── */}
+      {tab === 'HMO' && hmoSubTab === 'overview' && (() => {
+        const totalProviders = wallets.length
+        // Total HMO order amount
+        const totalHmoOrders = orders.reduce((s, o) => s + o.payments.reduce((ps, p) => ps + toNum(p.amount), 0), 0)
+        const totalPaid = arPayments.reduce((s, p) => s + toNum(p.amount), 0)
+        const pctPaid = totalHmoOrders > 0 ? Math.min(100, (totalPaid / totalHmoOrders) * 100) : 0
+
+        // Department breakdown from HMO orders (use service.department from items)
+        const deptMap = new Map<string, number>()
+        for (const o of orders) {
+          for (const it of o.items) {
+            const dept = it.service?.department || 'Other'
+            const pay = o.payments[0]
+            const amt = pay ? toNum(pay.amount) : 0
+            deptMap.set(dept, (deptMap.get(dept) || 0) + amt)
+          }
+        }
+        const deptTotal = Array.from(deptMap.values()).reduce((s, v) => s + v, 0)
+        const deptEntries = Array.from(deptMap.entries()).sort((a, b) => b[1] - a[1])
+        const PIE_COLORS = ['#0d9488','#0891b2','#7c3aed','#db2777','#d97706','#16a34a','#dc2626','#9333ea','#0ea5e9','#f59e0b']
+
+        // SVG pie chart (same pattern as GL summary)
+        let cumAngle = -90
+        const pieSlices = deptEntries.map(([dept, val], i) => {
+          const pct = deptTotal > 0 ? val / deptTotal : 0
+          const sweep = pct * 360
+          const startRad = (cumAngle * Math.PI) / 180
+          const endRad = ((cumAngle + sweep) * Math.PI) / 180
+          const r = 60
+          const x1 = 70 + r * Math.cos(startRad)
+          const y1 = 70 + r * Math.sin(startRad)
+          const x2 = 70 + r * Math.cos(endRad)
+          const y2 = 70 + r * Math.sin(endRad)
+          const large = sweep > 180 ? 1 : 0
+          const d = pct === 1
+            ? `M70,70 m-${r},0 a${r},${r} 0 1,1 ${r*2},0 a${r},${r} 0 1,1 -${r*2},0`
+            : `M70,70 L${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} Z`
+          const result = { dept, val, pct, color: PIE_COLORS[i % PIE_COLORS.length], d }
+          cumAngle += sweep
+          return result
+        })
+
+        return (
+          <div className="rounded-2xl border p-4 space-y-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+            <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>HMO Summary</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Total HMO Providers */}
+              <div className="rounded-xl p-4 border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Total HMO Providers</p>
+                <p className="text-3xl font-bold" style={{ color: 'var(--charcoal)' }}>{totalProviders}</p>
+                <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Active HMO wallets</p>
+              </div>
+              {/* % Paid */}
+              <div className="rounded-xl p-4 border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>% Paid vs HMO Orders</p>
+                <p className="text-xl font-bold" style={{ color: '#166534' }}>{pctPaid.toFixed(1)}%</p>
+                <div className="mt-2 rounded-full overflow-hidden h-2" style={{ background: 'var(--light-gray)' }}>
+                  <div style={{ width: `${pctPaid}%`, background: '#16a34a', height: '100%', transition: 'width 0.4s' }} />
+                </div>
+                <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(totalPaid)} received of {formatCurrency(totalHmoOrders)}</p>
+              </div>
+              {/* Total HMO Billed */}
+              <div className="rounded-xl p-4 border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Total HMO Billed</p>
+                <p className="text-xl font-bold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(totalHmoOrders)}</p>
+                <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Total outstanding: {formatCurrency(totalHmoOrders - totalPaid)}</p>
+              </div>
+            </div>
+            {/* Dept pie chart */}
+            {deptEntries.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold mb-3" style={{ color: 'var(--mid-gray)' }}>HMO Orders by Department</p>
+                <div className="flex flex-wrap items-center gap-6">
+                  <svg viewBox="0 0 140 140" width={140} height={140} className="flex-shrink-0">
+                    {pieSlices.map((s, i) => <path key={i} d={s.d} fill={s.color} stroke="white" strokeWidth={1.5} />)}
+                  </svg>
+                  <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                    {pieSlices.map((s, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: s.color }} />
+                        <span className="text-xs font-medium truncate" style={{ color: 'var(--charcoal)' }}>{s.dept}</span>
+                        <span className="text-xs ml-auto flex-shrink-0" style={{ color: 'var(--mid-gray)' }}>
+                          {formatCurrency(s.val)} <span className="font-semibold">({(s.pct * 100).toFixed(1)}%)</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
+      {/* ── Overview content (AR Dashboard + Filters + Cards + Table + Payment History) ── */}
+      {(tab !== 'HMO' || hmoSubTab === 'overview') && <>
 
       {/* ── Dashboard: AR Days + Aging Receivable Details ── */}
       <div className="rounded-2xl border p-4 space-y-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
@@ -449,8 +700,11 @@ export default function AccountsReceivablePage() {
           <div>
             <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Period Revenue</p>
             <p className="text-xl font-bold mt-1" style={{ color: '#166534' }}>
-              {agingData ? formatCurrency(agingData.totalRevenue) : '—'}
+              {agingData ? formatCurrency(tab === 'HMO' ? (agingData.totalAllDeptRevenue ?? agingData.totalRevenue) : agingData.totalRevenue) : '—'}
             </p>
+            {tab === 'HMO' && agingData?.totalAllDeptRevenue != null && (
+              <p className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>All dept. revenue (HMO depts)</p>
+            )}
           </div>
         </div>
 
@@ -556,13 +810,6 @@ export default function AccountsReceivablePage() {
       {/* Filters */}
       <div className="flex flex-wrap items-end gap-3">
         <div>
-          <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Branch</label>
-          <select value={branch} onChange={e => setBranch(e.target.value)}
-            className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
-            {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
-          </select>
-        </div>
-        <div>
           <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>From</label>
           <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
             className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
@@ -605,8 +852,8 @@ export default function AccountsReceivablePage() {
         ))}
       </div>
 
-      {/* Transactions table */}
-      <div data-ar-transactions-table className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+      {/* Transactions table — hidden on HMO Overview (use Per HMO sub-tab instead) */}
+      {!(tab === 'HMO' && hmoSubTab === 'overview') && <div data-ar-transactions-table className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: 'var(--off-white)' }}>
@@ -662,7 +909,7 @@ export default function AccountsReceivablePage() {
             })}
           </tbody>
         </table>
-      </div>
+      </div>}
 
       {/* Payment History */}
       {arPayments.length > 0 && (
@@ -706,6 +953,257 @@ export default function AccountsReceivablePage() {
           </div>
         </div>
       )}
+
+      </>}
+
+      {/* ── Per HMO sub-tab content ── */}
+      {tab === 'HMO' && hmoSubTab === 'per-hmo' && (() => {
+        // Filter the main orders data
+        let perHmoOrders = orders
+        if (perHmoWallet) perHmoOrders = perHmoOrders.filter(o => o.payments.some(p => p.walletId === perHmoWallet))
+        if (perHmoFrom) perHmoOrders = perHmoOrders.filter(o => {
+          const d = new Date(o.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+          return d >= perHmoFrom
+        })
+        if (perHmoTo) perHmoOrders = perHmoOrders.filter(o => {
+          const d = new Date(o.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+          return d <= perHmoTo
+        })
+        // Apply column searches
+        if (perHmoColSearch.patient) {
+          const q = perHmoColSearch.patient.toLowerCase()
+          perHmoOrders = perHmoOrders.filter(o => (o.patientName || '').toLowerCase().includes(q))
+        }
+        if (perHmoColSearch.service) {
+          const q = perHmoColSearch.service.toLowerCase()
+          perHmoOrders = perHmoOrders.filter(o => o.items.map(i => i.name).join(', ').toLowerCase().includes(q))
+        }
+        if (perHmoColSearch.hmo) {
+          const q = perHmoColSearch.hmo.toLowerCase()
+          perHmoOrders = perHmoOrders.filter(o => {
+            const w = wallets.find(w => w.id === o.payments[0]?.walletId)
+            return (w?.patientName || '').toLowerCase().includes(q)
+          })
+        }
+
+        // Sort
+        perHmoOrders = [...perHmoOrders].sort((a, b) => {
+          let aVal: string | number = '', bVal: string | number = ''
+          if (perHmoSortField === 'transactionDate') { aVal = a.transactionDate; bVal = b.transactionDate }
+          else if (perHmoSortField === 'patientName') { aVal = a.patientName || ''; bVal = b.patientName || '' }
+          else if (perHmoSortField === 'amount') {
+            aVal = a.payments.reduce((s, p) => s + toNum(p.amount), 0)
+            bVal = b.payments.reduce((s, p) => s + toNum(p.amount), 0)
+          } else if (perHmoSortField === 'service') {
+            aVal = a.items.map(i => i.name).join(', ')
+            bVal = b.items.map(i => i.name).join(', ')
+          }
+          if (aVal < bVal) return perHmoSortDir === 'asc' ? -1 : 1
+          if (aVal > bVal) return perHmoSortDir === 'asc' ? 1 : -1
+          return 0
+        })
+
+        const togglePerHmoSort = (field: string) => {
+          if (perHmoSortField === field) setPerHmoSortDir(d => d === 'asc' ? 'desc' : 'asc')
+          else { setPerHmoSortField(field); setPerHmoSortDir('asc') }
+        }
+
+        const downloadPdf = () => {
+          // Use jsPDF — dynamic import
+          import('jspdf').then(({ jsPDF }) => {
+            const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+            const margin = 15
+            let y = margin
+            doc.setFontSize(14)
+            doc.text('HMO AR Report', margin, y); y += 8
+            doc.setFontSize(9)
+            doc.text(`Generated: ${new Date().toLocaleDateString('en-PH')}`, margin, y); y += 6
+            if (perHmoWallet) {
+              const w = wallets.find(w => w.id === perHmoWallet)
+              doc.text(`HMO: ${w?.patientName || perHmoWallet}`, margin, y); y += 6
+            }
+            if (perHmoFrom || perHmoTo) {
+              doc.text(`Period: ${perHmoFrom || '—'} to ${perHmoTo || '—'}`, margin, y); y += 6
+            }
+            y += 2
+            // Header
+            const cols = ['Date', 'Service', 'Patient', 'HMO', 'Amount', 'Status']
+            const colWidths = [28, 65, 45, 45, 25, 22]
+            let x = margin
+            doc.setFontSize(8); doc.setFont('helvetica', 'bold')
+            cols.forEach((c, i) => { doc.text(c, x, y); x += colWidths[i] }); y += 5
+            doc.setFont('helvetica', 'normal')
+            for (const o of perHmoOrders) {
+              if (y > 185) { doc.addPage(); y = margin }
+              x = margin
+              const wallet = wallets.find(w => w.id === o.payments[0]?.walletId)
+              const amt = o.payments.reduce((s, p) => s + toNum(p.amount), 0)
+              const isPaid = o.arPaymentItems.length > 0
+              const row = [
+                formatDate(o.transactionDate),
+                o.items.map(i => i.name).join(', '),
+                o.patientName || '—',
+                wallet?.patientName || '—',
+                `₱${amt.toFixed(2)}`,
+                isPaid ? 'Paid' : 'Unpaid',
+              ]
+              row.forEach((cell, i) => {
+                const maxW = colWidths[i] - 2
+                const text = doc.splitTextToSize(String(cell), maxW)[0] || ''
+                doc.text(text, x, y); x += colWidths[i]
+              })
+              y += 5
+            }
+            doc.save('hmo-ar-report.pdf')
+          })
+          setShowDownloadMenu(false)
+        }
+
+        const downloadExcel = () => {
+          import('xlsx').then((XLSX) => {
+            const rows = perHmoOrders.map(o => {
+              const wallet = wallets.find(w => w.id === o.payments[0]?.walletId)
+              const amt = o.payments.reduce((s, p) => s + toNum(p.amount), 0)
+              return {
+                Date: formatDate(o.transactionDate),
+                Service: o.items.map(i => i.name).join(', '),
+                Patient: o.patientName || '—',
+                HMO: wallet?.patientName || '—',
+                Amount: amt,
+                Status: o.arPaymentItems.length > 0 ? 'Paid' : 'Unpaid',
+                Proof: o.arProofUrl || '',
+              }
+            })
+            const ws = XLSX.utils.json_to_sheet(rows)
+            const wb = XLSX.utils.book_new()
+            XLSX.utils.book_append_sheet(wb, ws, 'HMO AR')
+            XLSX.writeFile(wb, 'hmo-ar-report.xlsx')
+          })
+          setShowDownloadMenu(false)
+        }
+
+        return (
+          <div className="space-y-4">
+            {/* Filters + Download */}
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>HMO Provider</label>
+                <select value={perHmoWallet} onChange={e => setPerHmoWallet(e.target.value)}
+                  className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                  <option value="">All Providers</option>
+                  {wallets.map(w => <option key={w.id} value={w.id}>{w.patientName}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>From</label>
+                <input type="date" value={perHmoFrom} onChange={e => setPerHmoFrom(e.target.value)}
+                  className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>To</label>
+                <input type="date" value={perHmoTo} onChange={e => setPerHmoTo(e.target.value)}
+                  className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+              <div className="relative ml-auto">
+                <button
+                  onClick={() => setShowDownloadMenu(v => !v)}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium border"
+                  style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                  <Download size={14} /> Download
+                </button>
+                {showDownloadMenu && (
+                  <div className="absolute right-0 top-full mt-1 z-20 rounded-xl border bg-white shadow-lg" style={{ borderColor: 'var(--light-gray)', minWidth: 150 }}>
+                    <button onClick={downloadPdf} className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 rounded-t-xl" style={{ color: 'var(--charcoal)' }}>
+                      Download as PDF
+                    </button>
+                    <button onClick={downloadExcel} className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 rounded-b-xl" style={{ color: 'var(--charcoal)' }}>
+                      Download as Excel
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Sortable/filterable table */}
+            <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{ background: 'var(--off-white)' }}>
+                    {[
+                      { label: 'Date', field: 'transactionDate', searchKey: 'date' },
+                      { label: 'Service', field: 'service', searchKey: 'service' },
+                      { label: 'Patient', field: 'patientName', searchKey: 'patient' },
+                      { label: 'HMO', field: 'hmo', searchKey: 'hmo' },
+                      { label: 'Amount', field: 'amount', searchKey: 'amount' },
+                      { label: 'Status', field: 'status', searchKey: 'status' },
+                      { label: 'Proof', field: '', searchKey: '' },
+                    ].map(col => (
+                      <th key={col.label} className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>
+                        <div className={`flex items-center gap-1 ${col.field ? 'cursor-pointer select-none' : ''}`}
+                          onClick={() => col.field && togglePerHmoSort(col.field)}>
+                          <span className="text-xs font-semibold">{col.label}</span>
+                          {col.field && perHmoSortField === col.field && (
+                            <span className="text-[10px]">{perHmoSortDir === 'asc' ? '▲' : '▼'}</span>
+                          )}
+                          {col.field && perHmoSortField !== col.field && <ArrowUpDown size={10} style={{ color: 'var(--light-gray)' }} />}
+                        </div>
+                        {col.searchKey && ['service', 'patient', 'hmo'].includes(col.searchKey) && (
+                          <input
+                            className="mt-1 w-full px-2 py-0.5 rounded border text-xs outline-none"
+                            style={{ borderColor: 'var(--light-gray)' }}
+                            placeholder={`Filter…`}
+                            value={perHmoColSearch[col.searchKey] || ''}
+                            onChange={e => setPerHmoColSearch(prev => ({ ...prev, [col.searchKey]: e.target.value }))}
+                            onClick={e => e.stopPropagation()}
+                          />
+                        )}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr><td colSpan={7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</td></tr>
+                  ) : perHmoOrders.length === 0 ? (
+                    <tr><td colSpan={7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>No transactions found</td></tr>
+                  ) : perHmoOrders.map(o => {
+                    const wallet = wallets.find(w => w.id === o.payments[0]?.walletId)
+                    const amt = o.payments.reduce((s, p) => s + toNum(p.amount), 0)
+                    const isPaid = o.arPaymentItems.length > 0
+                    return (
+                      <tr key={o.id} className="border-t hover:bg-gray-50/50" style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{formatDate(o.transactionDate)}</td>
+                        <td className="px-3 py-2 text-xs" style={{ color: 'var(--charcoal)' }}>{o.items.map(i => i.name).join(', ')}</td>
+                        <td className="px-3 py-2 text-xs" style={{ color: 'var(--charcoal)' }}>{o.patientName || '—'}</td>
+                        <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{wallet?.patientName || '—'}</td>
+                        <td className="px-3 py-2 text-xs text-right font-medium" style={{ color: 'var(--charcoal)' }}>
+                          <div className="relative group inline-block cursor-default">
+                            {formatCurrency(amt)}
+                            <span className="absolute bottom-full right-0 mb-1.5 hidden group-hover:block z-20 text-[10px] font-normal rounded-lg px-3 py-2 shadow-xl pointer-events-none"
+                              style={{ background: '#1f2937', color: 'white', width: 220, whiteSpace: 'normal', lineHeight: 1.5 }}>
+                              To revise this amount, coordinate with front desk so it is reflected here.
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                            style={isPaid ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>
+                            {isPaid ? 'Paid' : 'Unpaid'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          <ProofCell orderId={o.id} currentUrl={o.arProofUrl || null}
+                            onChange={(url) => setOrders(prev => prev.map(x => x.id === o.id ? { ...x, arProofUrl: url } : x))} />
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Record Payment Modal */}
       {showPaymentModal && (

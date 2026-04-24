@@ -104,7 +104,7 @@ interface Referrer {
 
 interface WalletLedgerEntry {
   date: string
-  type: 'RELOAD' | 'DEDUCTION' | 'VOID_REVERSAL'
+  type: 'RELOAD' | 'DEDUCTION' | 'VOID_REVERSAL' | 'STARTING_BALANCE'
   description: string
   credit: number
   debit: number
@@ -133,8 +133,7 @@ interface DigitalWallet {
   packages?: WalletPackage[]
   logs?: WalletLog[]
   ledger?: WalletLedgerEntry[]
-  computedEndingBalance?: number
-  ledgerDiscrepancy?: number
+  initialBalance?: number
   [key: string]: unknown
 }
 
@@ -303,6 +302,12 @@ function toNum(v: string | number | undefined | null): number {
 
 function today(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+}
+
+function firstOfMonth(): string {
+  const now = new Date()
+  const manila = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }))
+  return `${manila.getFullYear()}-${String(manila.getMonth() + 1).padStart(2, '0')}-01`
 }
 
 function printThermalReceipt(order: {
@@ -2193,7 +2198,7 @@ function OrderFormModal({
 
 function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBranch: boolean }) {
   const [selectedBranch, setSelectedBranch] = useState(canSelectBranch ? '' : branch)
-  const [dateFrom, setDateFrom] = useState(today())
+  const [dateFrom, setDateFrom] = useState(firstOfMonth())
   const [dateTo, setDateTo] = useState(today())
   const [statusFilter, setStatusFilter] = useState('')
   const [showVoided, setShowVoided] = useState(false)
@@ -4713,16 +4718,32 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                   </>
                 )
               })()}
-              <span className="text-sm font-semibold" style={{ color: 'var(--deep-teal)' }}>
-                {['HMO', 'GL'].includes(walletDetail.walletType) ? 'Outstanding: ' : 'Balance: '}
-                {formatCurrency(toNum(walletDetail.balance))}
-              </span>
-              {walletDetail.walletType === 'GL' && (walletDetail as unknown as { totalGlAmount?: number }).totalGlAmount != null && (
-                <span className="text-sm font-semibold" style={{ color: '#15803d' }}>
-                  &nbsp;&middot;&nbsp;Total GL: {formatCurrency(toNum((walletDetail as unknown as { totalGlAmount?: number }).totalGlAmount))}
+              {walletDetail.walletType !== 'GL' && (
+                <span className="text-sm font-semibold" style={{ color: 'var(--deep-teal)' }}>
+                  {walletDetail.walletType === 'HMO' ? 'Outstanding: ' : 'Balance: '}
+                  {formatCurrency(toNum(walletDetail.balance))}
                 </span>
               )}
             </div>
+            {/* GL: two prominent metric cards — #1 AR tracking, #2 consumable balance */}
+            {walletDetail.walletType === 'GL' && (
+              <div className="grid grid-cols-2 gap-3 mt-2 mb-3">
+                <div className="rounded-xl p-3" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide mb-0.5" style={{ color: '#15803d' }}>① Total Approved (SOA)</p>
+                  <p className="text-lg font-bold" style={{ color: '#15803d' }}>
+                    {formatCurrency(toNum((walletDetail as unknown as { totalGlAmount?: number }).totalGlAmount))}
+                  </p>
+                  <p className="text-[10px] mt-0.5" style={{ color: '#6b7280' }}>AR amount — what the agency owes us</p>
+                </div>
+                <div className="rounded-xl p-3" style={{ background: '#eff6ff', border: '1px solid #bfdbfe' }}>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide mb-0.5" style={{ color: 'var(--deep-teal)' }}>② Consumable Balance</p>
+                  <p className="text-lg font-bold" style={{ color: 'var(--deep-teal)' }}>
+                    {formatCurrency(toNum(walletDetail.balance))}
+                  </p>
+                  <p className="text-[10px] mt-0.5" style={{ color: '#6b7280' }}>Remaining usable amount for orders</p>
+                </div>
+              </div>
+            )}
             <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
               {walletDetail.patientEmail || 'No email'}
               {walletDetail.dateObtained && <> &middot; Obtained: {formatDate(String(walletDetail.dateObtained))}</>}
@@ -4750,9 +4771,11 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
             <div className="mb-4">
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Packages</h4>
-                <button onClick={() => setShowAddPackage(true)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
-                  <Plus size={12} /> Add Package
-                </button>
+                {!['VIP', 'PREPAID_CARD'].includes(walletDetail.walletType) && (
+                  <button onClick={() => setShowAddPackage(true)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
+                    <Plus size={12} /> Add Package
+                  </button>
+                )}
               </div>
               {(walletDetail.packages || []).length === 0 ? (
                 <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>No packages.</p>
@@ -4867,11 +4890,11 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
 
             {/* Wallet Logs */}
             <div>
-              {['HMO', 'GL'].includes(walletDetail.walletType) ? (
+              {walletDetail.walletType === 'HMO' ? (
                 <>
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Transactions</h4>
-                    <a href={`/accounts-receivable?type=${walletDetail.walletType}&wallet=${walletDetail.id}`}
+                    <a href={`/accounts-receivable?type=HMO&wallet=${walletDetail.id}`}
                       className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
                       See Accounts Receivables
                     </a>
@@ -4926,17 +4949,23 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 </>
               ) : (
                 <>
-              {/* Running Balance — only for monetary wallets */}
-              {['VIP', 'PREPAID_CARD', 'DOWNPAYMENT', 'ADVANCE'].includes(walletDetail.walletType) && (
+              {/* Running Balance — monetary wallets and GL (consumable balance tracking) */}
+              {['VIP', 'PREPAID_CARD', 'DOWNPAYMENT', 'ADVANCE', 'GL'].includes(walletDetail.walletType) && (
                 <div className="mb-4">
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between mb-1">
                     <h4 className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Running Balance</h4>
-                    {typeof walletDetail.ledgerDiscrepancy === 'number' && Math.abs(walletDetail.ledgerDiscrepancy) > 0.01 && (
-                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: '#fef3c7', color: '#92400e' }}>
-                        Discrepancy: {formatCurrency(walletDetail.ledgerDiscrepancy)} (stored {formatCurrency(toNum(walletDetail.balance))} vs computed {formatCurrency(walletDetail.computedEndingBalance || 0)})
-                      </span>
+                    {walletDetail.walletType === 'GL' && (
+                      <a href={`/accounts-receivable?type=GL&wallet=${walletDetail.id}`}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
+                        See Accounts Receivables
+                      </a>
                     )}
                   </div>
+                  {walletDetail.walletType === 'GL' && (
+                    <p className="text-[10px] mb-2" style={{ color: 'var(--mid-gray)' }}>
+                      Tracks consumption of the Consumable Balance (②). Starting balance reflects the usable amount at the time this GL wallet was created or imported.
+                    </p>
+                  )}
                   {(walletDetail.ledger || []).length === 0 ? (
                     <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>No money movements recorded yet.</p>
                   ) : (
@@ -4956,6 +4985,8 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                               ? { bg: '#fee2e2', color: '#991b1b', label: 'Deduction' }
                               : e.type === 'RELOAD'
                               ? { bg: '#dcfce7', color: '#166534', label: 'Load' }
+                              : e.type === 'STARTING_BALANCE'
+                              ? { bg: '#e0e7ff', color: '#3730a3', label: 'Starting Balance' }
                               : { bg: '#dbeafe', color: '#1e40af', label: 'Reversal' }
                             return (
                               <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)', ...rowStyle }}>

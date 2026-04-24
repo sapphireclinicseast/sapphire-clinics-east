@@ -106,24 +106,59 @@ export async function GET(
       const ledger = [...reloads, ...deductions, ...reversals]
         .sort((a, b) => a.date.getTime() - b.date.getTime())
 
+      // First pass: compute balance from transactions only (starting at 0)
+      // so we can derive the initial/starting balance
+      let runningCheck = 0
+      for (const entry of ledger) {
+        runningCheck += entry.credit - entry.debit
+      }
+      const storedBalance = Number(wallet.balance)
+      const initialBalance = Number((storedBalance - runningCheck).toFixed(2))
+
+      // Build enriched ledger, prepending a "Starting Balance" row when > 0
       let running = 0
-      const enriched = ledger.map(entry => {
+      const enriched: {
+        date: string
+        type: string
+        description: string
+        credit: number
+        debit: number
+        orderNumber: number | null
+        orderId: string | null
+        voided: boolean
+        balanceBefore: number
+        balanceAfter: number
+      }[] = []
+
+      if (initialBalance > 0.005) {
+        // Prepend the opening/initial balance row using the wallet creation date
+        enriched.push({
+          date: wallet.createdAt.toISOString(),
+          type: 'STARTING_BALANCE',
+          description: 'Starting Balance',
+          credit: initialBalance,
+          debit: 0,
+          orderNumber: null,
+          orderId: null,
+          voided: false,
+          balanceBefore: 0,
+          balanceAfter: initialBalance,
+        })
+        running = initialBalance
+      }
+
+      for (const entry of ledger) {
         const balanceBefore = running
         running += entry.credit - entry.debit
-        return { ...entry, date: entry.date.toISOString(), balanceBefore, balanceAfter: running }
-      })
+        enriched.push({ ...entry, date: entry.date.toISOString(), balanceBefore, balanceAfter: running })
+      }
 
-      const computedEndingBalance = running
-      const storedBalance = Number(wallet.balance)
-      const ledgerDiscrepancy = Number((storedBalance - computedEndingBalance).toFixed(2))
-
-      return NextResponse.json({ ...wallet, ledger: enriched, computedEndingBalance, ledgerDiscrepancy })
+      return NextResponse.json({ ...wallet, ledger: enriched, initialBalance })
     }
 
     // For HMO wallets, balance is computed from unpaid orders (consumption-based AR).
-    // For GL wallets, balance is now the manually-maintained 'Remaining Balance
-    // (Usable Amount)' stored on the wallet itself — we keep returning unpaid
-    // orders for the detail view, but do NOT override balance with computed.
+    // For GL wallets, balance is the manually-maintained 'Remaining Balance (Usable Amount)'.
+    // GL also gets a running-balance ledger so frontdesk can see how much has been consumed.
     if (['HMO', 'GL'].includes(wallet.walletType)) {
       const orders = await prisma.order.findMany({
         where: {
@@ -144,6 +179,7 @@ export async function GET(
         },
         take: 200,
       })
+
       if (wallet.walletType === 'HMO') {
         const computedBalance = orders.reduce((sum, o) => {
           const pay = o.payments.find(p => p.walletId === id)
@@ -151,8 +187,93 @@ export async function GET(
         }, 0)
         return NextResponse.json({ ...wallet, balance: computedBalance, orders })
       }
-      // GL: return stored balance as-is
-      return NextResponse.json({ ...wallet, orders })
+
+      // GL: build a running-balance ledger so frontdesk can see consumption
+      const [glPayments, glVoidLogs] = await Promise.all([
+        prisma.orderPayment.findMany({
+          where: { walletId: id, method: 'GL' },
+          include: {
+            order: { select: { id: true, orderNumber: true, transactionDate: true, status: true, patientName: true } },
+          },
+        }),
+        prisma.walletLog.findMany({
+          where: { walletId: id, action: 'VOID_REVERSAL' },
+          select: { id: true, createdAt: true, description: true },
+        }),
+      ])
+
+      // Exclude voided-order payments — the balance was already restored on void,
+      // and including them (without a matching VOID_REVERSAL log) would inflate
+      // the derived starting balance.  Voided activity is still visible in the
+      // Activity Logs section below.
+      const glDeductions = glPayments
+        .filter(p => p.order.status !== 'VOIDED')
+        .map(p => ({
+          date: new Date(p.order.transactionDate),
+          type: 'DEDUCTION' as const,
+          description: `Order #${p.order.orderNumber} · ${p.order.patientName || '—'}`,
+          credit: 0,
+          debit: Number(p.amount),
+          orderNumber: p.order.orderNumber,
+          orderId: p.order.id,
+          voided: false,
+        }))
+
+      const glReversals = glVoidLogs.map(log => {
+        const m = log.description.match(/[\d,]+\.\d{1,2}/)
+        const amount = m ? parseFloat(m[0].replace(/,/g, '')) : 0
+        return {
+          date: new Date(log.createdAt),
+          type: 'VOID_REVERSAL' as const,
+          description: log.description,
+          credit: amount,
+          debit: 0,
+          orderNumber: null as number | null,
+          orderId: null as string | null,
+          voided: false,
+        }
+      })
+
+      const glLedger = [...glDeductions, ...glReversals]
+        .sort((a, b) => a.date.getTime() - b.date.getTime())
+
+      // Derive starting balance from stored balance and all transaction movements
+      let glRunningCheck = 0
+      for (const entry of glLedger) glRunningCheck += entry.credit - entry.debit
+      const glStoredBalance = Number(wallet.balance)
+      const glInitialBalance = Number((glStoredBalance - glRunningCheck).toFixed(2))
+
+      let glRunning = 0
+      const glEnriched: {
+        date: string; type: string; description: string
+        credit: number; debit: number; orderNumber: number | null
+        orderId: string | null; voided: boolean
+        balanceBefore: number; balanceAfter: number
+      }[] = []
+
+      if (glInitialBalance > 0.005) {
+        glEnriched.push({
+          date: wallet.createdAt.toISOString(),
+          type: 'STARTING_BALANCE',
+          description: 'Starting Balance',
+          credit: glInitialBalance,
+          debit: 0,
+          orderNumber: null,
+          orderId: null,
+          voided: false,
+          balanceBefore: 0,
+          balanceAfter: glInitialBalance,
+        })
+        glRunning = glInitialBalance
+      }
+
+      for (const entry of glLedger) {
+        const balanceBefore = glRunning
+        glRunning += entry.credit - entry.debit
+        glEnriched.push({ ...entry, date: entry.date.toISOString(), balanceBefore, balanceAfter: glRunning })
+      }
+
+      return NextResponse.json({ ...wallet, ledger: glEnriched, initialBalance: glInitialBalance, orders })
     }
 
     return NextResponse.json(wallet)

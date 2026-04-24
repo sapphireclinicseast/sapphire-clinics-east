@@ -18,6 +18,7 @@ enum Role {
   VERDANA_ADMIN
   SBEA_FRONTDESK
   SBGH_FRONTDESK
+  HMO_OFFICER
 }
 
 enum Branch {

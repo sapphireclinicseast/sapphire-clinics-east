@@ -13,7 +13,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN', 'SBEA_FRONTDESK', 'SBGH_FRONTDESK']
 
 export async function PATCH(req: Request) {
   const session = await auth()
@@ -23,7 +23,7 @@ export async function PATCH(req: Request) {
 
   try {
     const { orderId, arProofUrl } = await req.json()
-    if (!orderId || typeof arProofUrl !== 'string') {
+    if (!orderId || arProofUrl === undefined) {
       return NextResponse.json({ error: 'orderId and arProofUrl are required' }, { status: 400 })
     }
     const updated = await prisma.order.update({

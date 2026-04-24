@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN', 'HMO_OFFICER']
 
 export async function GET(req: Request) {
   const session = await auth()
@@ -64,7 +64,7 @@ export async function GET(req: Request) {
         branch: true,
         netAmount: true,
         arProofUrl: true,
-        items: { select: { name: true } },
+        items: { select: { name: true, service: { select: { department: true } } } },
         payments: {
           where: { method: type as 'HMO' | 'GL' },
           select: { amount: true, walletId: true },
@@ -80,28 +80,49 @@ export async function GET(req: Request) {
     // This is more reliable than the stored balance field which can drift
     // (e.g. voided orders whose reversal predates the void-handler code).
     const walletIds = wallets.map(w => w.id)
-    const unpaidPayments = await prisma.orderPayment.findMany({
-      where: {
-        walletId: { in: walletIds },
-        method: type as 'HMO' | 'GL',
-        order: {
-          status: { not: 'VOIDED' },
-          arPaymentItems: { none: {} },
+    const [unpaidPayments, allConsumedPayments] = await Promise.all([
+      prisma.orderPayment.findMany({
+        where: {
+          walletId: { in: walletIds },
+          method: type as 'HMO' | 'GL',
+          order: {
+            status: { not: 'VOIDED' },
+            arPaymentItems: { none: {} },
+          },
         },
-      },
-      select: { walletId: true, amount: true },
-    })
+        select: { walletId: true, amount: true },
+      }),
+      // For GL: also compute TOTAL consumed (paid + unpaid) for the summary dashboard
+      type === 'GL'
+        ? prisma.orderPayment.findMany({
+            where: {
+              walletId: { in: walletIds },
+              method: 'GL',
+              order: { status: { not: 'VOIDED' } },
+            },
+            select: { walletId: true, amount: true },
+          })
+        : Promise.resolve([]),
+    ])
+
     const outstandingByWallet = new Map<string, number>()
     for (const p of unpaidPayments) {
       if (!p.walletId) continue
       outstandingByWallet.set(p.walletId, (outstandingByWallet.get(p.walletId) || 0) + Number(p.amount))
     }
+    const totalConsumedByWallet = new Map<string, number>()
+    for (const p of allConsumedPayments) {
+      if (!p.walletId) continue
+      totalConsumedByWallet.set(p.walletId, (totalConsumedByWallet.get(p.walletId) || 0) + Number(p.amount))
+    }
+
     // For HMO: balance = outstanding computed from unpaid orders (consumption-based AR).
     // For GL: balance = totalGlAmount (approved-amount AR) — government agencies pay the
     //   approved amount on the Guarantee Letter regardless of how much was consumed; the
     //   consumption-based number is still exposed as `consumedOutstanding` for reference.
     const walletsOut = wallets.map(w => {
       const consumedOutstanding = outstandingByWallet.get(w.id) ?? 0
+      const totalConsumedAmount = totalConsumedByWallet.get(w.id) ?? 0
       const isGL = type === 'GL'
       const approved = w.totalGlAmount != null ? Number(w.totalGlAmount) : 0
       return {
@@ -109,6 +130,7 @@ export async function GET(req: Request) {
         balance: isGL ? approved : consumedOutstanding,
         consumedOutstanding,
         totalGlAmount: approved,
+        totalConsumedAmount,
       }
     })
 
