@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma'
 const SURVEY_SCHEMAS: Record<string, object> = {
   HR10: {
     title: 'HR10 — Pedia Patient Satisfaction Survey Form',
-    description: 'Thank you for taking this short survey to help us assess our services.\nNOTE: This is only for parents and guardians of PEDIA PATIENTS/CLIENTS.',
+    description: 'Thank you for taking this short survey to help us assess our services.\nNOTE: Adult patients/clients may answer for themselves. Parents or guardians may answer on behalf of pediatric patients/clients.',
     privacy: 'All information disclosed in this assessment will be treated with strict confidentiality in accordance with the Data Privacy Act of 2012 (Republic Act No. 10173). While summary results may be shared with the assessed individual for the purpose of professional development, the identity of the assessor will remain anonymous and will not be disclosed.',
     thankYou: {
       title: 'Thank you for helping us improve by answering this short survey.',
@@ -16,14 +16,14 @@ const SURVEY_SCHEMAS: Record<string, object> = {
       {
         title: 'Therapist Assessment',
         questions: [
-          { id: 'q1', text: "To what extent do you agree that your child's teacher/therapist has effectively addressed their educational and/or therapeutic needs?", type: 'rating', scale: { steps: 6, startAtOne: false, left: 'Strongly Disagree', right: 'Strongly Agree' } },
-          { id: 'q2', text: "How would you rate the consistency and effectiveness of communication and collaboration between you and the teachers/therapists regarding your child's progress and needs?", type: 'rating', scale: { steps: 6, startAtOne: false, left: 'Strongly Disagree', right: 'Strongly Agree' } },
-          { id: 'q3', text: "To what extent do you agree that your child has shown improvement in managing their emotions and self-regulation?", type: 'rating', scale: { steps: 6, startAtOne: false, left: 'Strongly Disagree', right: 'Strongly Agree' } },
-          { id: 'q4', text: "How would you rate the quality of your child's interaction with peers or other individuals while in the program?", type: 'rating', scale: { steps: 6, startAtOne: false, left: 'Strongly Disagree', right: 'Strongly Agree' } },
-          { id: 'q5', text: "To what extent do you agree that your child's social or communication skills have developed positively during their time in the program?", type: 'rating', scale: { steps: 6, startAtOne: false, left: 'Strongly Disagree', right: 'Strongly Agree' } },
-          { id: 'q6', text: "To what extent do you agree that your child has demonstrated improvement in their behavior and/or ability to follow instructions?", type: 'rating', scale: { steps: 6, startAtOne: false, left: 'Strongly Disagree', right: 'Strongly Agree' } },
-          { id: 'q7', text: "To what extent do you agree that your child has shown improvement in their academic, communication, or functional skills while enrolled in this program?", type: 'rating', scale: { steps: 6, startAtOne: false, left: 'Strongly Disagree', right: 'Strongly Agree' } },
-          { id: 'q8', text: "How well do you feel informed about your child's Individualized Education Plan (IEP) or Therapy Goals and progress?", type: 'rating', scale: { steps: 6, startAtOne: false, left: 'Strongly Disagree', right: 'Strongly Agree' } },
+          { id: 'q1', text: "To what extent do you agree that the therapist has effectively addressed the patient's educational and/or therapeutic needs?", type: 'rating', scale: { steps: 6, startAtOne: false, left: 'Strongly Disagree', right: 'Strongly Agree' } },
+          { id: 'q2', text: "How would you rate the consistency and effectiveness of communication and collaboration with the therapist regarding the patient's progress and needs?", type: 'rating', scale: { steps: 6, startAtOne: false, left: 'Strongly Disagree', right: 'Strongly Agree' } },
+          { id: 'q3', text: "To what extent do you agree that the patient has shown improvement in managing their emotions and self-regulation?", type: 'rating', scale: { steps: 6, startAtOne: false, left: 'Strongly Disagree', right: 'Strongly Agree' } },
+          { id: 'q4', text: "How would you rate the quality of the patient's interaction with peers or other individuals while in the program?", type: 'rating', scale: { steps: 6, startAtOne: false, left: 'Strongly Disagree', right: 'Strongly Agree' } },
+          { id: 'q5', text: "To what extent do you agree that the patient's social or communication skills have developed positively during their time in the program?", type: 'rating', scale: { steps: 6, startAtOne: false, left: 'Strongly Disagree', right: 'Strongly Agree' } },
+          { id: 'q6', text: "To what extent do you agree that the patient has demonstrated improvement in their behavior and/or ability to follow instructions?", type: 'rating', scale: { steps: 6, startAtOne: false, left: 'Strongly Disagree', right: 'Strongly Agree' } },
+          { id: 'q7', text: "To what extent do you agree that the patient has shown improvement in their academic, communication, or functional skills while enrolled in this program?", type: 'rating', scale: { steps: 6, startAtOne: false, left: 'Strongly Disagree', right: 'Strongly Agree' } },
+          { id: 'q8', text: "How well do you feel informed about the patient's Individualized Education Plan (IEP), Therapy Goals, and progress?", type: 'rating', scale: { steps: 6, startAtOne: false, left: 'Strongly Disagree', right: 'Strongly Agree' } },
         ],
       },
       {
