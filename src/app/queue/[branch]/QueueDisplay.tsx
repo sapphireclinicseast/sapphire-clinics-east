@@ -48,6 +48,7 @@ interface LeaderboardData {
   year: number
   byDept: Record<string, LeaderboardEntry[]>
   departments: string[]
+  overall?: { rank: number; score: number; members: { id: string; name: string; dept: string; branch: string; avgRating: number; sessions: number; score: number }[] }[]
 }
 
 function formatTime(t: string): string {
@@ -165,9 +166,9 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
       } else {
         const nextIdx = (adIdx + 1) % Math.max(1, currentLength)
         const cycleEnd = nextIdx === 0 || currentLength <= 1
-        if (cycleEnd && lbEnabled && leaderboard && leaderboard.departments.length > 0) {
+        if (cycleEnd && lbEnabled && leaderboard && (((leaderboard.overall?.length ?? 0) > 0) || leaderboard.departments.length > 0)) {
           setShowLeaderboard(true)
-          setLbDeptIdx(prev => (prev + 1) % (leaderboard?.departments.length ?? 1))
+          setLbDeptIdx(prev => (prev + 1) % Math.max(((leaderboard?.overall?.length ?? 0) > 0 ? 1 : 0) + (leaderboard?.departments?.length ?? 0), 1))
         } else if (cycleEnd && cfEnabled) {
           setShowComplaintQR(true)
         } else {
@@ -235,11 +236,22 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
   const hours = Object.keys(byHour).map(Number).sort((a, b) => a - b)
 
   // Current leaderboard department to show
-  const lbDept = leaderboard?.departments[lbDeptIdx % (leaderboard?.departments.length || 1)]
-  const lbEntries = lbDept ? (leaderboard?.byDept[lbDept] ?? []) : []
+  // Leaderboard cycle: Overall (first) + each department
+  const lbSlides: { label: string; entries: { rank: number; score: number; members: { id: string; name: string; dept: string; branch: string; avgRating: number; sessions: number; score: number }[] }[] }[] = []
+  if (leaderboard?.overall && leaderboard.overall.length > 0) {
+    lbSlides.push({ label: 'Overall', entries: leaderboard.overall })
+  }
+  if (leaderboard?.departments) {
+    for (const d of leaderboard.departments) {
+      lbSlides.push({ label: d, entries: leaderboard.byDept[d] ?? [] })
+    }
+  }
+  const currentSlide = lbSlides[lbDeptIdx % Math.max(lbSlides.length, 1)]
+  const lbDept = currentSlide?.label ?? ''
+  const lbEntries = currentSlide?.entries ?? []
 
-  // Total slides count for dots (ads + leaderboard departments + complaint form)
-  const totalSlides = ads.length + (lbEnabled ? (leaderboard?.departments.length ?? 0) : 0) + (cfEnabled ? 1 : 0)
+  // Total slides count for dots (ads + leaderboard slides + complaint form)
+  const totalSlides = ads.length + (lbEnabled ? lbSlides.length : 0) + (cfEnabled ? 1 : 0)
 
   return (
     <div style={{
@@ -473,7 +485,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                       ★ Patient Satisfaction Leaderboard ★
                     </p>
                     <p style={{ fontSize: '1.6rem', fontWeight: 800, color: '#fff', lineHeight: 1.2 }}>
-                      Top 5 — {lbDept}
+                      {lbDept === 'Overall' ? 'Top 5 — Overall' : `Top 5 — ${lbDept}`}
                     </p>
                     <p style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '0.25rem' }}>
                       {leaderboard?.year} — {branch === 'SBEA' ? 'Sandbox East' : branch === 'SBGH' ? 'Greenhills' : branch}
@@ -509,33 +521,54 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                             </span>
                           </div>
 
-                          {/* Names (comma-joined for ties) + dept */}
+                          {/* Names — each on its own line for tied rows */}
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <p style={{
-                              fontSize: isTied ? '0.85rem' : '1rem',
-                              fontWeight: 700, color: '#fff', lineHeight: 1.25,
-                              wordBreak: 'break-word',
-                            }}>
-                              {memberNames}
-                            </p>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.15rem' }}>
-                              <span style={{
-                                fontSize: '0.6rem', fontWeight: 700, padding: '0.1rem 0.4rem',
-                                borderRadius: '99px', background: deptColor.bg, color: deptColor.text,
-                                textTransform: 'uppercase',
-                              }}>
-                                {firstMember?.dept}
-                              </span>
-                              {isTied ? (
-                                <span style={{ fontSize: '0.7rem', color: '#F59E0B', fontWeight: 700 }}>
-                                  TIED · {group.members.length} therapists
-                                </span>
-                              ) : (
-                                <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
-                                  ★ {avgRating.toFixed(1)}/6 · {totalSessions} sessions
-                                </span>
-                              )}
-                            </div>
+                            {isTied ? (
+                              <>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.3rem' }}>
+                                  <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#F59E0B', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                    TIED · {group.members.length} therapists
+                                  </span>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                                  {group.members.map(m => (
+                                    <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                      <span style={{ width: '0.3rem', height: '0.3rem', borderRadius: '50%', background: '#F59E0B', flexShrink: 0 }} />
+                                      <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff', lineHeight: 1.2 }}>{m.name}</span>
+                                      {lbDept === 'Overall' && (
+                                        <span style={{
+                                          fontSize: '0.55rem', fontWeight: 700, padding: '0.05rem 0.35rem',
+                                          borderRadius: '99px',
+                                          background: (DEPT_COLORS[m.dept] ?? deptColor).bg,
+                                          color: (DEPT_COLORS[m.dept] ?? deptColor).text,
+                                          textTransform: 'uppercase', flexShrink: 0,
+                                        }}>
+                                          {m.dept}
+                                        </span>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <p style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', lineHeight: 1.25 }}>
+                                  {memberNames}
+                                </p>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.15rem' }}>
+                                  <span style={{
+                                    fontSize: '0.6rem', fontWeight: 700, padding: '0.1rem 0.4rem',
+                                    borderRadius: '99px', background: deptColor.bg, color: deptColor.text,
+                                    textTransform: 'uppercase',
+                                  }}>
+                                    {firstMember?.dept}
+                                  </span>
+                                  <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                                    ★ {avgRating.toFixed(1)}/6 · {totalSessions} sessions
+                                  </span>
+                                </div>
+                              </>
+                            )}
                           </div>
 
                           {/* Score */}
@@ -594,7 +627,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                   transition: 'width 0.3s',
                 }} />
               ))}
-              {lbEnabled && leaderboard && leaderboard.departments.length > 0 && (
+              {lbEnabled && leaderboard && (((leaderboard.overall?.length ?? 0) > 0) || leaderboard.departments.length > 0) && (
                 <div style={{
                   width: showLeaderboard ? '1.5rem' : '0.4rem', height: '0.4rem',
                   borderRadius: '99px',
