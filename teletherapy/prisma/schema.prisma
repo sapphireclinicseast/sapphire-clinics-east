@@ -58,6 +58,25 @@ model Staff {
   updatedAt       DateTime        @updatedAt
   schedules       Schedule[]
   therapistAccount TherapistAccount?
+  surveyResponses  SurveyResponse[]
+}
+
+// Survey response (from marketing hub's Customer Survey module)
+// Read-only from teletherapy perspective
+model SurveyResponse {
+  id              String   @id @default(cuid())
+  assignmentId    String   @unique
+  staffId         String
+  staff           Staff    @relation(fields: [staffId], references: [id])
+  surveyType      String   // HR10|HR11|HR12|HR16
+  branch          String
+  respondentName  String?
+  respondentEmail String?
+  respondentPhone String?
+  responsesJson   Json
+  submittedAt     DateTime @default(now())
+
+  @@index([staffId])
 }
 
 model Patient {
