@@ -105,8 +105,28 @@ export async function GET(req: NextRequest) {
     return { id: s.id, name: s.name, dept: s.dept, avgRating: s.avgRating, surveyCount: s.surveyCount, score }
   }).sort((a, b) => b.score - a.score)
 
-  const branchTop5 = scored.slice(0, 5)
-  const deptTop5   = scored.filter(s => s.dept === department).slice(0, 5)
+  // Group into the top 5 distinct scores, ties collapsed into one rank bucket
+  type Entry = { id: string; name: string; dept: string; avgRating: number; surveyCount: number; score: number }
+  type RankGroup = { rank: number; score: number; members: Entry[] }
+
+  function groupByDistinctScore(rows: Entry[], n: number): RankGroup[] {
+    const sorted = [...rows].sort((a, b) => b.score - a.score)
+    const groups: RankGroup[] = []
+    const distinctScores: number[] = []
+    for (const r of sorted) {
+      if (distinctScores.length === 0 || r.score !== distinctScores[distinctScores.length - 1]) {
+        if (distinctScores.length >= n) break
+        distinctScores.push(r.score)
+        groups.push({ rank: distinctScores.length, score: r.score, members: [r] })
+      } else {
+        groups[groups.length - 1].members.push(r)
+      }
+    }
+    return groups
+  }
+
+  const branchTop5 = groupByDistinctScore(scored, 5)
+  const deptTop5   = groupByDistinctScore(scored.filter(s => s.dept === department), 5)
 
   return NextResponse.json({ year, branchTop5, deptTop5 })
 }

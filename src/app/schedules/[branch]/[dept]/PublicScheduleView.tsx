@@ -30,7 +30,8 @@ interface PublicSchedule {
   staff: StaffInfo; patient: PatientInfo | null
 }
 interface LeaderboardEntry { id: string; name: string; dept: string; avgRating: number; surveyCount: number; score: number }
-interface LeaderboardData  { year: number; branchTop5: LeaderboardEntry[]; deptTop5: LeaderboardEntry[] }
+interface LeaderboardRankGroup { rank: number; score: number; members: LeaderboardEntry[] }
+interface LeaderboardData  { year: number; branchTop5: LeaderboardRankGroup[]; deptTop5: LeaderboardRankGroup[] }
 
 type SortCol = 'staff' | 'patient' | 'time' | 'sessionType' | 'status'
 type SortDir = 'asc' | 'desc'
@@ -56,78 +57,6 @@ function getSortVal(s: PublicSchedule, col: SortCol): string {
 // ── Orange theme helpers ──────────────────────────────────────────────────────
 const O  = '#ED6823'
 const OL = '#FFA235'
-
-// ── Enter Code overlay ────────────────────────────────────────────────────────
-function CodeGate({ onVerified }: { onVerified: () => void }) {
-  const [input, setInput] = useState('')
-  const [error, setError] = useState(false)
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault()
-    if (input.trim() === 'scei') {
-      // Set a session cookie (no maxAge = expires when browser closes)
-      document.cookie = 'sched_access=scei; path=/; SameSite=Strict'
-      onVerified()
-    } else {
-      setError(true)
-      setInput('')
-    }
-  }
-
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 9999,
-      background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(6px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: '0 16px',
-    }}>
-      <div style={{
-        width: '100%', maxWidth: '360px',
-        border: '1px solid #f0e8e2', borderRadius: '16px',
-        overflow: 'hidden', boxShadow: '0 8px 32px rgba(237,104,35,0.15)',
-        background: '#fff',
-      }}>
-        <div style={{ height: '5px', background: `linear-gradient(90deg,${O},${OL})` }} />
-        <div style={{ padding: '28px 24px 24px' }}>
-          <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#000', margin: '0 0 4px' }}>
-            Schedule Access
-          </h2>
-          <p style={{ fontSize: '13px', color: '#777', margin: '0 0 20px' }}>
-            Enter the access code to continue.
-          </p>
-          <form onSubmit={submit}>
-            <input
-              autoFocus
-              autoComplete="off"
-              type="text"
-              placeholder="Access code"
-              value={input}
-              onChange={e => { setInput(e.target.value); setError(false) }}
-              style={{
-                width: '100%', boxSizing: 'border-box',
-                padding: '10px 13px', fontSize: '15px', marginBottom: '8px',
-                border: error ? '1.5px solid #dc2626' : '1.5px solid #e5e7eb',
-                borderRadius: '8px', outline: 'none', color: '#111',
-              }}
-            />
-            {error && (
-              <p style={{ fontSize: '12px', color: '#dc2626', margin: '0 0 10px' }}>
-                Incorrect code. Please try again.
-              </p>
-            )}
-            <button type="submit" style={{
-              width: '100%', padding: '10px',
-              background: O, color: '#fff', fontWeight: 700,
-              fontSize: '14px', border: 'none', borderRadius: '8px', cursor: 'pointer',
-            }}>
-              Continue
-            </button>
-          </form>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 const pillBtn = (active: boolean): CSSProperties => ({
   padding: '7px 18px', borderRadius: '999px', fontSize: '13px', fontWeight: 600,
@@ -159,15 +88,7 @@ export default function PublicScheduleView({
 }: {
   branchCode: string; deptCode: string; branchLabel: string; deptLabel: string
 }) {
-  // ── Passcode gate — resets on every page refresh (React state is not persisted) ──
-  const [verified, setVerified] = useState(false)
-
-  // Clear the cookie on every mount so API calls are blocked until code is re-entered
-  useEffect(() => {
-    document.cookie = 'sched_access=; path=/; max-age=0; SameSite=Strict'
-  }, [])
-
-  const [view,         setView]         = useState<'daily' | 'calendar'>('daily')
+  const [view,         setView]         = useState<'weekly' | 'daily' | 'calendar'>('weekly')
   const [showLb,       setShowLb]       = useState(false)
   const [selectedDate, setSelectedDate] = useState(todayStr)
   const [staffFilter,  setStaffFilter]  = useState('All')
@@ -177,6 +98,15 @@ export default function PublicScheduleView({
   const [calYear,  setCalYear]  = useState(today.getFullYear())
   const [calMonth, setCalMonth] = useState(today.getMonth())
   const [selDay,   setSelDay]   = useState<number | null>(null)
+
+  // weekly state — weekStart is the Sunday of the viewed week (local time, midnight)
+  const [weekStart, setWeekStart] = useState<Date>(() => {
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    d.setDate(d.getDate() - d.getDay())
+    return d
+  })
+  const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null)
 
   // data
   const [schedules,    setSchedules]    = useState<PublicSchedule[]>([])
@@ -189,31 +119,28 @@ export default function PublicScheduleView({
   const [sortDir,  setSortDir]  = useState<SortDir>('asc')
   const [colFilters, setColFilters] = useState({ staff: '', patient: '', time: '', sessionType: '', status: '' })
 
-  // ── Fetch leaderboard (once, on verify) ──
+  // ── Fetch leaderboard (once) ──
   useEffect(() => {
-    if (!verified) return
     setLbLoading(true)
     fetch(`/api/public-schedules/leaderboard?branch=${branchCode}&department=${deptCode}`)
       .then(r => r.json())
       .then(d => setLeaderboard(d.branchTop5 ? d : null))
       .catch(() => setLeaderboard(null))
       .finally(() => setLbLoading(false))
-  }, [verified, branchCode, deptCode])
+  }, [branchCode, deptCode])
 
   // ── Fetch daily ──
   useEffect(() => {
-    if (!verified) return
     if (view !== 'daily') return
     setLoading(true)
     fetch(`/api/public-schedules?branch=${branchCode}&department=${deptCode}&date=${selectedDate}`)
       .then(r => r.json())
       .then(d => setSchedules(Array.isArray(d) ? d : []))
       .finally(() => setLoading(false))
-  }, [verified, view, selectedDate, branchCode, deptCode])
+  }, [view, selectedDate, branchCode, deptCode])
 
   // ── Fetch calendar (full month) ──
   useEffect(() => {
-    if (!verified) return
     if (view !== 'calendar') return
     const firstDay = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-01`
     const lastDay  = new Date(calYear, calMonth + 1, 0)
@@ -223,7 +150,20 @@ export default function PublicScheduleView({
       .then(r => r.json())
       .then(d => setSchedules(Array.isArray(d) ? d : []))
       .finally(() => setLoading(false))
-  }, [verified, view, calYear, calMonth, branchCode, deptCode])
+  }, [view, calYear, calMonth, branchCode, deptCode])
+
+  // ── Fetch weekly (Sunday–Saturday) ──
+  useEffect(() => {
+    if (view !== 'weekly') return
+    const startStr = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`
+    const end = new Date(weekStart); end.setDate(end.getDate() + 6)
+    const endStr = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`
+    setLoading(true)
+    fetch(`/api/public-schedules?branch=${branchCode}&department=${deptCode}&startDate=${startStr}&endDate=${endStr}&withDecking=1`)
+      .then(r => r.json())
+      .then(d => setSchedules(Array.isArray(d) ? d : []))
+      .finally(() => setLoading(false))
+  }, [view, weekStart, branchCode, deptCode])
 
   // ── Staff list for dropdown ──
   const allStaff = Array.from(
@@ -297,19 +237,62 @@ export default function PublicScheduleView({
     ? `${calYear}-${String(calMonth + 1).padStart(2,'0')}-${String(selDay).padStart(2,'0')}`
     : ''
 
+  // ── Weekly processing ──
+  const weekDays: Date[] = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart); d.setDate(d.getDate() + i); return d
+  })
+  const weekStaff = Array.from(
+    new Map(schedules.map(s => [s.staff.id, s.staff])).values()
+  ).sort((a, b) =>
+    a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName)
+  )
+  // Auto-pick first therapist when data changes & current selection is absent
+  useEffect(() => {
+    if (view !== 'weekly') return
+    if (weekStaff.length === 0) { if (selectedStaffId !== null) setSelectedStaffId(null); return }
+    if (!selectedStaffId || !weekStaff.find(s => s.id === selectedStaffId)) {
+      setSelectedStaffId(weekStaff[0].id)
+    }
+  }, [view, weekStaff, selectedStaffId])
+
+  const weekSessionsByDay: Record<string, PublicSchedule[]> = {}
+  if (selectedStaffId) {
+    schedules
+      .filter(s => s.staff.id === selectedStaffId)
+      .forEach(s => {
+        const key = s.date.split('T')[0]
+        if (!weekSessionsByDay[key]) weekSessionsByDay[key] = []
+        weekSessionsByDay[key].push(s)
+      })
+  }
+  Object.values(weekSessionsByDay).forEach(list =>
+    list.sort((a, b) => a.startTime.localeCompare(b.startTime))
+  )
+
+  function shiftWeek(n: number) {
+    const d = new Date(weekStart); d.setDate(d.getDate() + n * 7)
+    setWeekStart(d)
+  }
+  function gotoThisWeek() {
+    const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - d.getDay())
+    setWeekStart(d)
+  }
+  const weekEnd = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 6)
+  const DAY_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+
   // ─────────────────────────────────────────────────────────────────────────────
   return (
     <div>
-      {!verified && (
-        <CodeGate onVerified={() => setVerified(true)} />
-      )}
-
       {/* Global mobile tweaks */}
       <style>{`
         @media (max-width: 640px) {
           .cal-cell { min-height: 56px !important; padding: 4px 2px !important; }
           .cal-session-pill { font-size: 9px !important; }
           .cal-day-num { width: 20px !important; height: 20px !important; font-size: 11px !important; }
+          .week-layout { flex-direction: column !important; align-items: stretch !important; gap: 12px !important; }
+          .week-sidebar { width: 100% !important; max-height: 180px !important; }
+          .week-grid-col { width: 100% !important; min-width: 0 !important; }
+          .week-grid-wrap { min-width: 560px !important; }
         }
       `}</style>
 
@@ -332,10 +315,193 @@ export default function PublicScheduleView({
 
       {/* View toggle */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
+        <button style={pillBtn(!showLb && view === 'weekly')}   onClick={() => { setView('weekly');   setShowLb(false) }}>Weekly View</button>
         <button style={pillBtn(!showLb && view === 'daily')}    onClick={() => { setView('daily');    setShowLb(false) }}>Daily View</button>
-        <button style={pillBtn(!showLb && view === 'calendar')} onClick={() => { setView('calendar'); setShowLb(false) }}>Calendar View</button>
+        <button style={pillBtn(!showLb && view === 'calendar')} onClick={() => { setView('calendar'); setShowLb(false) }}>Monthly View</button>
         <button style={pillBtn(showLb)} onClick={() => setShowLb(s => !s)}>🏆 Leaderboard</button>
       </div>
+
+      {/* ── WEEKLY VIEW ── */}
+      {!showLb && view === 'weekly' && (
+        <>
+          {/* Week nav */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
+            <button onClick={() => shiftWeek(-1)}
+              style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px',
+                padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+              <ChevronLeft size={16} style={{ color: O }} />
+            </button>
+            <span style={{ fontWeight: 700, fontSize: '15px', color: '#111', flex: 1, textAlign: 'center', minWidth: '200px' }}>
+              {weekStart.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+              {' – '}
+              {weekEnd.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+            </span>
+            <button onClick={() => shiftWeek(1)}
+              style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px',
+                padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+              <ChevronRight size={16} style={{ color: O }} />
+            </button>
+            <button onClick={gotoThisWeek}
+              style={{ background: '#fff', border: `1.5px solid ${OL}55`, borderRadius: '8px',
+                padding: '6px 12px', fontSize: '12px', fontWeight: 600, color: O, cursor: 'pointer' }}>
+              This week
+            </button>
+            {loading && <span style={{ fontSize: '12px', color: '#aaa' }}>Loading…</span>}
+          </div>
+
+          {/* Main layout */}
+          <div className="week-layout" style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+            {/* Therapist sidebar */}
+            <div className="week-sidebar" style={{
+              width: '200px', flexShrink: 0,
+              background: '#fff', border: '1px solid #f0f0f0', borderRadius: '12px',
+              boxShadow: '0 1px 4px rgba(0,0,0,0.04)', overflow: 'auto', maxHeight: '560px',
+            }}>
+              <div style={{ background: '#FFF0E8', padding: '10px 14px',
+                borderBottom: '1px solid #F5D5C0', fontSize: '11px', fontWeight: 700,
+                color: O, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Therapists
+              </div>
+              {weekStaff.length === 0 ? (
+                <div style={{ padding: '20px 14px', fontSize: '12px', color: '#aaa' }}>
+                  {loading ? 'Loading…' : 'No therapists with schedules this week.'}
+                </div>
+              ) : (
+                weekStaff.map(s => {
+                  const active = s.id === selectedStaffId
+                  return (
+                    <button key={s.id} onClick={() => setSelectedStaffId(s.id)}
+                      style={{
+                        display: 'block', width: '100%', textAlign: 'left',
+                        padding: '9px 14px', fontSize: '13px',
+                        background: active ? '#FFF0E8' : '#fff',
+                        color: active ? O : '#222',
+                        fontWeight: active ? 700 : 500,
+                        borderLeft: `3px solid ${active ? O : 'transparent'}`,
+                        borderTop: 'none', borderRight: 'none', borderBottom: '1px solid #f5f5f5',
+                        cursor: 'pointer', whiteSpace: 'nowrap',
+                        overflow: 'hidden', textOverflow: 'ellipsis',
+                      }}>
+                      {s.lastName}, {s.firstName}
+                    </button>
+                  )
+                })
+              )}
+            </div>
+
+            {/* Weekly grid */}
+            <div className="week-grid-col" style={{ flex: 1, minWidth: 0 }}>
+              <div style={scrollOuter}>
+                <div className="week-grid-wrap" style={{ minWidth: '700px' }}>
+                  <div style={{
+                    border: '1px solid #f0f0f0', borderRadius: '12px', overflow: 'hidden',
+                    boxShadow: '0 1px 4px rgba(0,0,0,0.04)', background: '#fff',
+                  }}>
+                    {/* Day headers */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)',
+                      background: '#FFF0E8', borderBottom: '1px solid #F5D5C0' }}>
+                      {weekDays.map((d, i) => {
+                        const isToday = d.toDateString() === new Date().toDateString()
+                        return (
+                          <div key={i} style={{
+                            padding: '10px 6px', textAlign: 'center',
+                            borderRight: i < 6 ? '1px solid #F5D5C0' : 'none',
+                          }}>
+                            <div style={{ fontSize: '10px', fontWeight: 700, color: O,
+                              textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                              {DAY_LABELS[i]}
+                            </div>
+                            <div style={{
+                              fontSize: '14px', fontWeight: 700, marginTop: '2px',
+                              color: isToday ? '#fff' : '#111',
+                              background: isToday ? O : 'transparent',
+                              borderRadius: '999px', display: 'inline-block',
+                              minWidth: '22px', padding: '1px 6px',
+                            }}>
+                              {d.getDate()}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    {/* Day cells */}
+                    {selectedStaffId ? (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
+                        {weekDays.map((d, i) => {
+                          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+                          const daySessions = weekSessionsByDay[key] ?? []
+                          const todayMid = new Date(); todayMid.setHours(0,0,0,0)
+                          const isPast = d < todayMid
+                          return (
+                            <div key={i} style={{
+                              minHeight: '220px', padding: '6px',
+                              borderRight: i < 6 ? '1px solid #f5f5f5' : 'none',
+                              background: '#fff',
+                            }}>
+                              {daySessions.length === 0 ? (
+                                <div style={{ height: '100%' }} />
+                              ) : (
+                                daySessions.map(s => {
+                                  const isDecking = s.id.startsWith('decking-')
+                                  const colors = (isPast && isDecking)
+                                    ? { background: '#F3F4F6', color: '#6B7280' }
+                                    : (STATUS_COLORS[s.status] ?? { background: '#f3f4f6', color: '#374151' })
+                                  return (
+                                    <div key={s.id} style={{
+                                      background: colors.background, color: colors.color,
+                                      borderRadius: '6px', padding: '5px 7px', marginBottom: '4px',
+                                      fontSize: '11px', lineHeight: 1.35,
+                                    }}>
+                                      <div style={{ fontWeight: 700, whiteSpace: 'nowrap',
+                                        overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        {formatTime(s.startTime)}
+                                      </div>
+                                      <div style={{ fontSize: '10px', opacity: 0.85, whiteSpace: 'nowrap',
+                                        overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        {s.patient
+                                          ? `${s.patient.firstName?.charAt(0)}.${s.patient.lastName?.charAt(0)}.`
+                                          : '—'}
+                                      </div>
+                                    </div>
+                                  )
+                                })
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <div style={{ padding: '48px 24px', textAlign: 'center', color: '#aaa', fontSize: '13px' }}>
+                        {loading ? 'Loading schedules…' : 'Select a therapist to view their week.'}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Legend */}
+                  <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap',
+                    padding: '10px 4px', fontSize: '11px', color: '#666' }}>
+                    {[
+                      ['Confirmed',   STATUS_COLORS.CONFIRMED],
+                      ['Rescheduled', STATUS_COLORS.RESCHEDULED],
+                      ['Cancelled',   STATUS_COLORS.CANCELLED],
+                      ['Pending',     STATUS_COLORS.PENDING],
+                    ].map(([label, c]) => {
+                      const col = c as { background: string; color: string }
+                      return (
+                        <span key={label as string} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ width: '12px', height: '12px', borderRadius: '3px',
+                            background: col.background, border: `1px solid ${col.color}22` }} />
+                          {label as string}
+                        </span>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* ── DAILY VIEW ── */}
       {!showLb && view === 'daily' && (
@@ -709,9 +875,10 @@ function LeaderboardCard({
 }: {
   title: string
   subtitle: string
-  entries: LeaderboardEntry[]
+  entries: LeaderboardRankGroup[]
   highlightDept?: string
 }) {
+  const [expandedRank, setExpandedRank] = useState<number | null>(null)
   return (
     <div style={{
       background: '#fff', border: '1px solid #f0f0f0',
@@ -737,43 +904,79 @@ function LeaderboardCard({
         </div>
       ) : (
         <div>
-          {entries.map((e, i) => (
-            <div key={e.id} style={{
-              display: 'flex', alignItems: 'center', gap: '12px',
-              padding: '10px 16px',
-              borderBottom: i < entries.length - 1 ? '1px solid #f5f5f5' : 'none',
-              background: i === 0 ? '#FFFBF5' : '#fff',
-            }}>
-              {/* Rank badge */}
-              <div style={{
-                width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0,
-                background: i < 3 ? RANK_COLORS[i] : '#f0f0f0',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
+          {entries.map((group, i) => {
+            const isTied = group.members.length > 1
+            const expanded = expandedRank === group.rank
+            const rankIdx = group.rank - 1
+            return (
+              <div key={'r' + group.rank} style={{
+                borderBottom: i < entries.length - 1 ? '1px solid #f5f5f5' : 'none',
+                background: group.rank === 1 ? '#FFFBF5' : '#fff',
               }}>
-                <span style={{ fontSize: '10px', fontWeight: 800, color: i < 3 ? '#fff' : '#999' }}>
-                  {RANK_LABELS[i]}
-                </span>
-              </div>
+                <div
+                  onClick={() => isTied && setExpandedRank(expanded ? null : group.rank)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '12px',
+                    padding: '10px 16px',
+                    cursor: isTied ? 'pointer' : 'default',
+                  }}
+                >
+                  {/* Rank badge */}
+                  <div style={{
+                    width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0,
+                    background: rankIdx < 3 ? RANK_COLORS[rankIdx] : '#f0f0f0',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <span style={{ fontSize: '10px', fontWeight: 800, color: rankIdx < 3 ? '#fff' : '#999' }}>
+                      {RANK_LABELS[rankIdx] ?? (group.rank + 'th')}
+                    </span>
+                  </div>
 
-              {/* Name + dept */}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: '13px', fontWeight: 600, color: '#111', margin: 0,
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {e.name}
-                </p>
-                {highlightDept !== undefined && (
-                  <p style={{ fontSize: '10px', color: '#aaa', margin: 0 }}>{e.dept}</p>
+                  {/* Name(s) + dept */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{
+                      fontSize: isTied ? '12px' : '13px', fontWeight: 600, color: '#111',
+                      margin: 0, lineHeight: 1.3, wordBreak: 'break-word',
+                    }}>
+                      {group.members.map(m => m.name).join(', ')}
+                    </p>
+                    {isTied ? (
+                      <p style={{ fontSize: '10px', color: '#ED6823', margin: '2px 0 0', fontWeight: 700 }}>
+                        Tied · {group.members.length} therapists {expanded ? '▾' : '▸'} tap for breakdown
+                      </p>
+                    ) : highlightDept !== undefined ? (
+                      <p style={{ fontSize: '10px', color: '#aaa', margin: 0 }}>{group.members[0].dept}</p>
+                    ) : null}
+                  </div>
+
+                  {/* Score */}
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <p style={{ fontSize: '15px', fontWeight: 700, color: '#ED6823', margin: 0, lineHeight: 1 }}>
+                      {group.score.toFixed(1)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Expanded breakdown for tied rank */}
+                {isTied && expanded && (
+                  <div style={{ padding: '6px 16px 10px 56px', background: '#FFF8EC' }}>
+                    {group.members.map(m => (
+                      <div key={m.id} style={{
+                        display: 'flex', alignItems: 'center', gap: '10px',
+                        padding: '6px 0', borderTop: '1px dashed #F5E8D8', fontSize: '12px',
+                      }}>
+                        <span style={{ color: '#333', flex: 1 }}>{m.name}</span>
+                        {highlightDept !== undefined && (
+                          <span style={{ color: '#aaa', fontSize: '10px' }}>{m.dept}</span>
+                        )}
+                        <span style={{ color: '#888', fontSize: '10px' }}>★ {m.avgRating.toFixed(2)} · {m.surveyCount} surveys</span>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
-
-              {/* Score */}
-              <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                <p style={{ fontSize: '15px', fontWeight: 700, color: '#ED6823', margin: 0, lineHeight: 1 }}>
-                  {e.score.toFixed(1)}
-                </p>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

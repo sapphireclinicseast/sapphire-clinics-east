@@ -482,15 +482,20 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
 
                   {/* Entries */}
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.6rem', justifyContent: 'center' }}>
-                    {lbEntries.length > 0 ? lbEntries.map((entry, i) => {
-                      const medalColor = i < 3 ? MEDAL_COLORS[i] : undefined
-                      const deptColor = DEPT_COLORS[entry.dept] ?? { bg: '#475569', text: '#fff' }
+                    {lbEntries.length > 0 ? lbEntries.map((group, i) => {
+                      const medalColor = group.rank <= 3 ? MEDAL_COLORS[group.rank - 1] : undefined
+                      const firstMember = group.members[0]
+                      const deptColor = DEPT_COLORS[firstMember?.dept] ?? { bg: '#475569', text: '#fff' }
+                      const memberNames = group.members.map(m => m.name).join(', ')
+                      const isTied = group.members.length > 1
+                      const avgRating = group.members.reduce((sum, m) => sum + m.avgRating, 0) / group.members.length
+                      const totalSessions = group.members.reduce((sum, m) => sum + m.sessions, 0)
                       return (
-                        <div key={entry.id} style={{
+                        <div key={'r' + group.rank + '_' + i} style={{
                           display: 'flex', alignItems: 'center', gap: '0.75rem',
                           padding: '0.75rem 1rem', borderRadius: '0.6rem',
-                          background: i === 0 ? 'rgba(245,158,11,0.08)' : 'rgba(255,255,255,0.03)',
-                          border: i === 0 ? '1px solid rgba(245,158,11,0.25)' : '1px solid rgba(255,255,255,0.06)',
+                          background: group.rank === 1 ? 'rgba(245,158,11,0.08)' : 'rgba(255,255,255,0.03)',
+                          border: group.rank === 1 ? '1px solid rgba(245,158,11,0.25)' : '1px solid rgba(255,255,255,0.06)',
                         }}>
                           {/* Rank */}
                           <div style={{
@@ -500,14 +505,18 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                             border: medalColor ? `2px solid ${medalColor}` : '2px solid #334155',
                           }}>
                             <span style={{ fontSize: '0.9rem', fontWeight: 800, color: medalColor ?? '#64748B' }}>
-                              {i + 1}
+                              {group.rank}
                             </span>
                           </div>
 
-                          {/* Name & dept */}
-                          <div style={{ flex: 1 }}>
-                            <p style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', lineHeight: 1.2 }}>
-                              {entry.name}
+                          {/* Names (comma-joined for ties) + dept */}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{
+                              fontSize: isTied ? '0.85rem' : '1rem',
+                              fontWeight: 700, color: '#fff', lineHeight: 1.25,
+                              wordBreak: 'break-word',
+                            }}>
+                              {memberNames}
                             </p>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.15rem' }}>
                               <span style={{
@@ -515,11 +524,17 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                                 borderRadius: '99px', background: deptColor.bg, color: deptColor.text,
                                 textTransform: 'uppercase',
                               }}>
-                                {entry.dept}
+                                {firstMember?.dept}
                               </span>
-                              <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
-                                ★ {entry.avgRating.toFixed(1)}/6 · {entry.sessions} sessions
-                              </span>
+                              {isTied ? (
+                                <span style={{ fontSize: '0.7rem', color: '#F59E0B', fontWeight: 700 }}>
+                                  TIED · {group.members.length} therapists
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                                  ★ {avgRating.toFixed(1)}/6 · {totalSessions} sessions
+                                </span>
+                              )}
                             </div>
                           </div>
 
@@ -527,10 +542,10 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                           <div style={{ textAlign: 'right' }}>
                             <p style={{
                               fontSize: '1.5rem', fontWeight: 800,
-                              color: i === 0 ? '#F59E0B' : '#0D9488',
+                              color: group.rank === 1 ? '#F59E0B' : '#0D9488',
                               lineHeight: 1,
                             }}>
-                              {entry.score}
+                              {group.score}
                             </p>
                             <p style={{ fontSize: '0.55rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                               Score
