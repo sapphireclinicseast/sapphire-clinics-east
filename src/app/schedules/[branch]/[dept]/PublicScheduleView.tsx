@@ -18,8 +18,9 @@ const MONTHS = ['January','February','March','April','May','June','July','August
 // Departments where the satisfaction leaderboard is intentionally hidden
 // on the public schedules page (too few clinicians / private context / etc.)
 const HIDE_LEADERBOARD_DEPTS = new Set(['PSYCHOLOGY'])
-// Departments with few therapists — cap the per-department leaderboard at top 3
-const TOP_3_DEPTS = new Set(['SPED', 'SLP', 'PT'])
+// Per-department leaderboard is always capped at top 3 (keeps the page
+// readable across depts regardless of how many clinicians they have).
+const DEPT_TOP_N = 3
 
 function formatTime(t: string): string {
   const [h, m] = t.split(':').map(Number)
@@ -96,7 +97,7 @@ export default function PublicScheduleView({
 }) {
   const [view,         setView]         = useState<'weekly' | 'daily' | 'calendar'>('weekly')
   const leaderboardHidden = HIDE_LEADERBOARD_DEPTS.has(deptCode)
-  const deptTopN = TOP_3_DEPTS.has(deptCode) ? 3 : 5
+  const deptTopN = DEPT_TOP_N
   const [showLb,       setShowLb]       = useState(false)
   const [selectedDate, setSelectedDate] = useState(todayStr)
   const [staffFilter,  setStaffFilter]  = useState('All')
@@ -832,7 +833,7 @@ export default function PublicScheduleView({
           </div>
           {leaderboard && (
             <span style={{ fontSize: '11px', color: '#aaa', fontStyle: 'italic', flexShrink: 0 }}>
-              {leaderboard.year} · Branch Top 5 · Dept Top {deptTopN}
+              {leaderboard.year} · Branch Top 5 · Dept Top 3
             </span>
           )}
         </div>
