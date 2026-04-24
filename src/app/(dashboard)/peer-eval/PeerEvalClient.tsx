@@ -772,6 +772,49 @@ function AssignmentsTab({ role }: { role: string }) {
         </div>
       )}
 
+      {/* Search bar */}
+      <div style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: 1, maxWidth: 420 }}>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Search by name or department..."
+            style={{
+              width: '100%', padding: '8px 12px 8px 36px', borderRadius: 8,
+              border: '1.5px solid #d1d5db', fontSize: '0.85rem', outline: 'none',
+              background: '#fff',
+            }}
+          />
+          <span style={{
+            position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
+            color: '#9ca3af', fontSize: '0.9rem', pointerEvents: 'none',
+          }}>🔍</span>
+        </div>
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery('')}
+            style={{
+              padding: '6px 12px', borderRadius: 6, border: '1px solid #e5e7eb',
+              background: '#fff', fontSize: '0.78rem', fontWeight: 600,
+              color: '#6b7280', cursor: 'pointer',
+            }}
+          >Clear</button>
+        )}
+        <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+          {searchQuery ? `${assesseeGroups.length} of ${allAssesseeGroups.length}` : `${allAssesseeGroups.length} assessees`}
+        </span>
+      </div>
+
+      {/* Leaderboards (hidden when user is searching) */}
+      {!searchQuery && allAssesseeGroups.length > 0 && (
+        <PeerEvalLeaderboards
+          groups={allAssesseeGroups}
+          expandedRank={expandedRank}
+          onExpand={setExpandedRank}
+        />
+      )}
+
       {loading ? (
         <div style={{ textAlign: 'center', padding: '40px 0', color: '#9ca3af', fontSize: '0.85rem' }}>Loading…</div>
       ) : assignments.length === 0 ? (
@@ -942,6 +985,8 @@ function ResultsTab({ role }: { role: string }) {
   const [responses, setResponses]       = useState<EvalResponse[]>([])
   const [loading, setLoading]           = useState(false)
   const [expandedAssessee, setExpandedAssessee] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [expandedRank, setExpandedRank] = useState<string | null>(null) // 'overall-1', 'dept-OT-2', etc
 
   const fetchResponses = useCallback(async () => {
     setLoading(true)
@@ -962,7 +1007,15 @@ function ResultsTab({ role }: { role: string }) {
     if (!byAssessee.has(r.assesseeId)) byAssessee.set(r.assesseeId, { assessee: r.assessee, responses: [] })
     byAssessee.get(r.assesseeId)!.responses.push(r)
   }
-  const assesseeGroups = Array.from(byAssessee.values()).sort((a, b) => a.assessee.lastName.localeCompare(b.assessee.lastName))
+  const allAssesseeGroups = Array.from(byAssessee.values()).sort((a, b) => a.assessee.lastName.localeCompare(b.assessee.lastName))
+  const assesseeGroups = searchQuery.trim()
+    ? allAssesseeGroups.filter(g => {
+        const q = searchQuery.toLowerCase().trim()
+        const fn = g.assessee.firstName.toLowerCase()
+        const ln = g.assessee.lastName.toLowerCase()
+        return fn.includes(q) || ln.includes(q) || (ln + ' ' + fn).includes(q) || (fn + ' ' + ln).includes(q) || g.assessee.department.toLowerCase().includes(q)
+      })
+    : allAssesseeGroups
 
   function avgScores(resps: EvalResponse[]) {
     if (resps.length === 0) return {}
@@ -1533,3 +1586,249 @@ export default function PeerEvalClient({ role }: { role: string }) {
     </div>
   )
 }
+
+
+// ─── Peer Eval Leaderboards ──────────────────────────────────────────────────
+// Top 5 by overall average score, across three groupings:
+//   • Overall (all branches, all depts)
+//   • Per branch (SBEA / SBGH)
+//   • Per department (OT, PT, SLP, etc.)
+// Tied ranks are collapsed into one row; click to reveal each member.
+
+interface PeerEvalLeaderEntry {
+  id: string
+  name: string
+  department: string
+  branch?: string
+  overall: number
+  responseCount: number
+}
+
+interface PeerEvalRankGroup {
+  rank: number
+  score: number
+  members: PeerEvalLeaderEntry[]
+}
+
+function groupByScoreDesc(entries: PeerEvalLeaderEntry[], n: number): PeerEvalRankGroup[] {
+  const sorted = [...entries].sort((a, b) => b.overall - a.overall)
+  const groups: PeerEvalRankGroup[] = []
+  const seen: number[] = []
+  for (const e of sorted) {
+    // round to 2 decimals for grouping so 4.15 and 4.1500001 count the same
+    const k = Math.round(e.overall * 100) / 100
+    if (seen.length === 0 || k !== seen[seen.length - 1]) {
+      if (seen.length >= n) break
+      seen.push(k)
+      groups.push({ rank: seen.length, score: k, members: [e] })
+    } else {
+      groups[groups.length - 1].members.push(e)
+    }
+  }
+  return groups
+}
+
+function PeerEvalLeaderboards({
+  groups,
+  expandedRank,
+  onExpand,
+}: {
+  groups: { assessee: StaffMini; responses: EvalResponse[] }[]
+  expandedRank: string | null
+  onExpand: (key: string | null) => void
+}) {
+  // Flatten to entries with each assessee's overall average
+  const entries: PeerEvalLeaderEntry[] = groups.map(g => {
+    const allScores = g.responses.flatMap(r => Object.values(r.scores))
+    const overall = allScores.length > 0 ? allScores.reduce((a, b) => a + b, 0) / allScores.length : 0
+    return {
+      id:           g.assessee.id,
+      name:         `${g.assessee.firstName} ${g.assessee.lastName}`,
+      department:   g.assessee.department,
+      branch:       (g.assessee as unknown as { branch?: string }).branch,
+      overall,
+      responseCount: g.responses.length,
+    }
+  })
+
+  const overallTop = groupByScoreDesc(entries, 5)
+
+  // Per branch
+  const branches = [...new Set(entries.map(e => e.branch).filter(Boolean) as string[])].sort()
+  const byBranch: Record<string, PeerEvalRankGroup[]> = {}
+  for (const b of branches) {
+    byBranch[b] = groupByScoreDesc(entries.filter(e => e.branch === b), 5)
+  }
+
+  // Per department
+  const depts = [...new Set(entries.map(e => e.department))].sort()
+  const byDept: Record<string, PeerEvalRankGroup[]> = {}
+  for (const d of depts) {
+    byDept[d] = groupByScoreDesc(entries.filter(e => e.department === d), 5)
+  }
+
+  return (
+    <div style={{ marginBottom: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <LeaderboardSection title="Top 5 — Overall" groups={overallTop} keyPrefix="overall" expandedRank={expandedRank} onExpand={onExpand} />
+
+      {branches.length > 0 && (
+        <div>
+          <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151', marginBottom: 8 }}>
+            Top 5 — Per Branch
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 12 }}>
+            {branches.map(b => (
+              <LeaderboardSection
+                key={b}
+                title={b === 'SBEA' ? 'Sandbox East' : b === 'SBGH' ? 'Sandbox Greenhills' : b}
+                subtitle="Branch"
+                groups={byBranch[b]}
+                keyPrefix={'branch-' + b}
+                expandedRank={expandedRank}
+                onExpand={onExpand}
+                compact
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {depts.length > 0 && (
+        <div>
+          <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151', marginBottom: 8 }}>
+            Top 5 — Per Department
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 12 }}>
+            {depts.map(d => (
+              <LeaderboardSection
+                key={d}
+                title={d}
+                subtitle="Department"
+                groups={byDept[d]}
+                keyPrefix={'dept-' + d}
+                expandedRank={expandedRank}
+                onExpand={onExpand}
+                compact
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function LeaderboardSection({
+  title,
+  subtitle,
+  groups,
+  keyPrefix,
+  expandedRank,
+  onExpand,
+  compact,
+}: {
+  title: string
+  subtitle?: string
+  groups: PeerEvalRankGroup[]
+  keyPrefix: string
+  expandedRank: string | null
+  onExpand: (key: string | null) => void
+  compact?: boolean
+}) {
+  const medalColors = ['#f59e0b', '#94a3b8', '#cd7f32']
+
+  return (
+    <div style={{
+      background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden',
+    }}>
+      <div style={{
+        padding: compact ? '10px 12px' : '12px 16px',
+        background: '#FFF3E8', borderBottom: '1px solid #FDE4CC',
+      }}>
+        {subtitle && (
+          <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#9a3412', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            {subtitle}
+          </div>
+        )}
+        <div style={{ fontSize: compact ? '0.88rem' : '1rem', fontWeight: 700, color: '#7c2d12' }}>
+          {title}
+        </div>
+      </div>
+      {groups.length === 0 ? (
+        <div style={{ padding: 20, textAlign: 'center', color: '#9ca3af', fontSize: '0.78rem' }}>
+          No data yet
+        </div>
+      ) : (
+        <div>
+          {groups.map(g => {
+            const tied = g.members.length > 1
+            const key = keyPrefix + '-' + g.rank
+            const expanded = expandedRank === key
+            const medal = g.rank <= 3 ? medalColors[g.rank - 1] : undefined
+            const names = g.members.map(m => m.name).join(', ')
+            return (
+              <div key={key} style={{ borderTop: '1px solid #f3f4f6' }}>
+                <div
+                  onClick={() => tied && onExpand(expanded ? null : key)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: compact ? '8px 12px' : '10px 16px',
+                    background: g.rank === 1 ? '#FFFBEB' : '#fff',
+                    cursor: tied ? 'pointer' : 'default',
+                  }}
+                >
+                  <div style={{
+                    width: compact ? 26 : 30, height: compact ? 26 : 30, borderRadius: '50%',
+                    flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: medal ? medal + '20' : '#f1f5f9',
+                    color: medal ?? '#94a3b8',
+                    fontWeight: 800, fontSize: '0.82rem',
+                  }}>
+                    {g.rank}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: compact ? '0.78rem' : '0.85rem', fontWeight: 700, color: '#111827', lineHeight: 1.3, wordBreak: 'break-word' }}>
+                      {names}
+                    </div>
+                    {tied ? (
+                      <div style={{ fontSize: '0.68rem', color: '#ED6823', fontWeight: 600, marginTop: 2 }}>
+                        {expanded ? '▾ Hide' : '▸ Tap'} · {g.members.length} tied
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '0.68rem', color: '#6b7280', marginTop: 2 }}>
+                        {g.members[0].department}{g.members[0].branch ? ' · ' + g.members[0].branch : ''} · {g.members[0].responseCount} eval{g.members[0].responseCount !== 1 ? 's' : ''}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: compact ? '0.95rem' : '1.1rem', fontWeight: 800, color: g.rank === 1 ? '#f59e0b' : '#0f766e', lineHeight: 1 }}>
+                      {g.score.toFixed(2)}
+                    </div>
+                    <div style={{ fontSize: '0.56rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      of 5
+                    </div>
+                  </div>
+                </div>
+
+                {tied && expanded && (
+                  <div style={{ background: '#FFFBEB', padding: '4px 12px 10px 44px', borderTop: '1px dashed #FDE4CC' }}>
+                    {g.members.map(m => (
+                      <div key={m.id} style={{
+                        padding: '6px 0', borderTop: '1px dashed #FDE4CC', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: 8,
+                      }}>
+                        <span style={{ color: '#1f2937', flex: 1, fontWeight: 600 }}>{m.name}</span>
+                        <span style={{ color: '#6b7280', fontSize: '0.7rem' }}>{m.department}{m.branch ? ' · ' + m.branch : ''}</span>
+                        <span style={{ color: '#6b7280', fontSize: '0.7rem' }}>{m.responseCount} eval{m.responseCount !== 1 ? 's' : ''}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
