@@ -878,7 +878,7 @@ function LeaderboardCard({
   entries: LeaderboardRankGroup[]
   highlightDept?: string
 }) {
-  const [expandedRank, setExpandedRank] = useState<number | null>(null)
+
   return (
     <div style={{
       background: '#fff', border: '1px solid #f0f0f0',
@@ -906,74 +906,66 @@ function LeaderboardCard({
         <div>
           {entries.map((group, i) => {
             const isTied = group.members.length > 1
-            const expanded = expandedRank === group.rank
             const rankIdx = group.rank - 1
             return (
               <div key={'r' + group.rank} style={{
+                display: 'flex', alignItems: 'flex-start', gap: '12px',
+                padding: '10px 16px',
                 borderBottom: i < entries.length - 1 ? '1px solid #f5f5f5' : 'none',
                 background: group.rank === 1 ? '#FFFBF5' : '#fff',
               }}>
-                <div
-                  onClick={() => isTied && setExpandedRank(expanded ? null : group.rank)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '12px',
-                    padding: '10px 16px',
-                    cursor: isTied ? 'pointer' : 'default',
-                  }}
-                >
-                  {/* Rank badge */}
-                  <div style={{
-                    width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0,
-                    background: rankIdx < 3 ? RANK_COLORS[rankIdx] : '#f0f0f0',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    <span style={{ fontSize: '10px', fontWeight: 800, color: rankIdx < 3 ? '#fff' : '#999' }}>
-                      {RANK_LABELS[rankIdx] ?? (group.rank + 'th')}
-                    </span>
-                  </div>
-
-                  {/* Name(s) + dept */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{
-                      fontSize: isTied ? '12px' : '13px', fontWeight: 600, color: '#111',
-                      margin: 0, lineHeight: 1.3, wordBreak: 'break-word',
-                    }}>
-                      {group.members.map(m => m.name).join(', ')}
-                    </p>
-                    {isTied ? (
-                      <p style={{ fontSize: '10px', color: '#ED6823', margin: '2px 0 0', fontWeight: 700 }}>
-                        Tied · {group.members.length} therapists {expanded ? '▾' : '▸'} tap for breakdown
-                      </p>
-                    ) : highlightDept !== undefined ? (
-                      <p style={{ fontSize: '10px', color: '#aaa', margin: 0 }}>{group.members[0].dept}</p>
-                    ) : null}
-                  </div>
-
-                  {/* Score */}
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <p style={{ fontSize: '15px', fontWeight: 700, color: '#ED6823', margin: 0, lineHeight: 1 }}>
-                      {group.score.toFixed(1)}
-                    </p>
-                  </div>
+                {/* Rank badge */}
+                <div style={{
+                  width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0, marginTop: '2px',
+                  background: rankIdx < 3 ? RANK_COLORS[rankIdx] : '#f0f0f0',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <span style={{ fontSize: '10px', fontWeight: 800, color: rankIdx < 3 ? '#fff' : '#999' }}>
+                    {RANK_LABELS[rankIdx] ?? (group.rank + 'th')}
+                  </span>
                 </div>
 
-                {/* Expanded breakdown for tied rank */}
-                {isTied && expanded && (
-                  <div style={{ padding: '6px 16px 10px 56px', background: '#FFF8EC' }}>
-                    {group.members.map(m => (
-                      <div key={m.id} style={{
-                        display: 'flex', alignItems: 'center', gap: '10px',
-                        padding: '6px 0', borderTop: '1px dashed #F5E8D8', fontSize: '12px',
-                      }}>
-                        <span style={{ color: '#333', flex: 1 }}>{m.name}</span>
-                        {highlightDept !== undefined && (
-                          <span style={{ color: '#aaa', fontSize: '10px' }}>{m.dept}</span>
-                        )}
-                        <span style={{ color: '#888', fontSize: '10px' }}>★ {m.avgRating.toFixed(2)} · {m.surveyCount} surveys</span>
+                {/* Name(s) + dept — vertical stack for ties */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {isTied ? (
+                    <>
+                      <p style={{ fontSize: '10px', color: '#ED6823', margin: '0 0 4px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        Tied · {group.members.length} therapists
+                      </p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        {group.members.map(m => (
+                          <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#ED6823', flexShrink: 0 }} />
+                            <span style={{ fontSize: '13px', fontWeight: 600, color: '#111', lineHeight: 1.3 }}>
+                              {m.name}
+                            </span>
+                            {highlightDept !== undefined && (
+                              <span style={{ fontSize: '10px', color: '#aaa' }}>{m.dept}</span>
+                            )}
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                )}
+                    </>
+                  ) : (
+                    <>
+                      <p style={{
+                        fontSize: '13px', fontWeight: 600, color: '#111', margin: 0, lineHeight: 1.3,
+                      }}>
+                        {group.members[0].name}
+                      </p>
+                      {highlightDept !== undefined && (
+                        <p style={{ fontSize: '10px', color: '#aaa', margin: 0 }}>{group.members[0].dept}</p>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Score */}
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <p style={{ fontSize: '15px', fontWeight: 700, color: '#ED6823', margin: 0, lineHeight: 1 }}>
+                    {group.score.toFixed(1)}
+                  </p>
+                </div>
               </div>
             )
           })}
