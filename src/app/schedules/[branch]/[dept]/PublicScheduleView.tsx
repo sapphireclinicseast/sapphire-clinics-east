@@ -15,6 +15,12 @@ const STATUS_COLORS: Record<string, { background: string; color: string }> = {
 const CAL_DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
+// Departments where the satisfaction leaderboard is intentionally hidden
+// on the public schedules page (too few clinicians / private context / etc.)
+const HIDE_LEADERBOARD_DEPTS = new Set(['PSYCHOLOGY'])
+// Departments with few therapists — cap the per-department leaderboard at top 3
+const TOP_3_DEPTS = new Set(['SPED', 'SLP', 'PT'])
+
 function formatTime(t: string): string {
   const [h, m] = t.split(':').map(Number)
   return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`
@@ -89,6 +95,8 @@ export default function PublicScheduleView({
   branchCode: string; deptCode: string; branchLabel: string; deptLabel: string
 }) {
   const [view,         setView]         = useState<'weekly' | 'daily' | 'calendar'>('weekly')
+  const leaderboardHidden = HIDE_LEADERBOARD_DEPTS.has(deptCode)
+  const deptTopN = TOP_3_DEPTS.has(deptCode) ? 3 : 5
   const [showLb,       setShowLb]       = useState(false)
   const [selectedDate, setSelectedDate] = useState(todayStr)
   const [staffFilter,  setStaffFilter]  = useState('All')
@@ -122,6 +130,7 @@ export default function PublicScheduleView({
   // ── Fetch leaderboard (once) ──
   useEffect(() => {
     setLbLoading(true)
+    if (leaderboardHidden) return
     fetch(`/api/public-schedules/leaderboard?branch=${branchCode}&department=${deptCode}`)
       .then(r => r.json())
       .then(d => setLeaderboard(d.branchTop5 ? d : null))
@@ -318,7 +327,9 @@ export default function PublicScheduleView({
         <button style={pillBtn(!showLb && view === 'weekly')}   onClick={() => { setView('weekly');   setShowLb(false) }}>Weekly View</button>
         <button style={pillBtn(!showLb && view === 'daily')}    onClick={() => { setView('daily');    setShowLb(false) }}>Daily View</button>
         <button style={pillBtn(!showLb && view === 'calendar')} onClick={() => { setView('calendar'); setShowLb(false) }}>Monthly View</button>
-        <button style={pillBtn(showLb)} onClick={() => setShowLb(s => !s)}>🏆 Leaderboard</button>
+        {!leaderboardHidden && (
+          <button style={pillBtn(showLb)} onClick={() => setShowLb(s => !s)}>🏆 Leaderboard</button>
+        )}
       </div>
 
       {/* ── WEEKLY VIEW ── */}
@@ -808,7 +819,7 @@ export default function PublicScheduleView({
       )}
 
       {/* ── LEADERBOARD ── */}
-      {showLb && <div style={{ marginTop: '40px', paddingTop: '32px', borderTop: '2px solid #F5E8D8' }}>
+      {showLb && !leaderboardHidden && <div style={{ marginTop: '40px', paddingTop: '32px', borderTop: '2px solid #F5E8D8' }}>
         {/* Section header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -821,7 +832,7 @@ export default function PublicScheduleView({
           </div>
           {leaderboard && (
             <span style={{ fontSize: '11px', color: '#aaa', fontStyle: 'italic', flexShrink: 0 }}>
-              {leaderboard.year} · Top 5
+              {leaderboard.year} · Branch Top 5 · Dept Top {deptTopN}
             </span>
           )}
         </div>
@@ -838,15 +849,15 @@ export default function PublicScheduleView({
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
             <LeaderboardCard
-              title="Overall for Branch"
+              title="Top 5 — Branch"
               subtitle={branchLabel}
               entries={leaderboard.branchTop5}
               highlightDept={deptCode}
             />
             <LeaderboardCard
-              title="Overall for Department"
+              title={`Top ${deptTopN} — Department`}
               subtitle={deptLabel}
-              entries={leaderboard.deptTop5}
+              entries={leaderboard.deptTop5.slice(0, deptTopN)}
             />
           </div>
         )}
