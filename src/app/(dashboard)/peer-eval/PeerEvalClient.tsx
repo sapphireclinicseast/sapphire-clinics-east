@@ -772,49 +772,6 @@ function AssignmentsTab({ role }: { role: string }) {
         </div>
       )}
 
-      {/* Search bar */}
-      <div style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
-        <div style={{ position: 'relative', flex: 1, maxWidth: 420 }}>
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search by name or department..."
-            style={{
-              width: '100%', padding: '8px 12px 8px 36px', borderRadius: 8,
-              border: '1.5px solid #d1d5db', fontSize: '0.85rem', outline: 'none',
-              background: '#fff',
-            }}
-          />
-          <span style={{
-            position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
-            color: '#9ca3af', fontSize: '0.9rem', pointerEvents: 'none',
-          }}>🔍</span>
-        </div>
-        {searchQuery && (
-          <button
-            onClick={() => setSearchQuery('')}
-            style={{
-              padding: '6px 12px', borderRadius: 6, border: '1px solid #e5e7eb',
-              background: '#fff', fontSize: '0.78rem', fontWeight: 600,
-              color: '#6b7280', cursor: 'pointer',
-            }}
-          >Clear</button>
-        )}
-        <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
-          {searchQuery ? `${assesseeGroups.length} of ${allAssesseeGroups.length}` : `${allAssesseeGroups.length} assessees`}
-        </span>
-      </div>
-
-      {/* Leaderboards (hidden when user is searching) */}
-      {!searchQuery && allAssesseeGroups.length > 0 && (
-        <PeerEvalLeaderboards
-          groups={allAssesseeGroups}
-          expandedRank={expandedRank}
-          onExpand={setExpandedRank}
-        />
-      )}
-
       {loading ? (
         <div style={{ textAlign: 'center', padding: '40px 0', color: '#9ca3af', fontSize: '0.85rem' }}>Loading…</div>
       ) : assignments.length === 0 ? (
@@ -1061,6 +1018,49 @@ function ResultsTab({ role }: { role: string }) {
           <RefreshCw size={15} />
         </button>
       </div>
+
+      {/* Search bar */}
+      <div style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: 1, maxWidth: 420 }}>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Search by name or department..."
+            style={{
+              width: '100%', padding: '8px 12px 8px 36px', borderRadius: 8,
+              border: '1.5px solid #d1d5db', fontSize: '0.85rem', outline: 'none',
+              background: '#fff',
+            }}
+          />
+          <span style={{
+            position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
+            color: '#9ca3af', fontSize: '0.9rem', pointerEvents: 'none',
+          }}>🔍</span>
+        </div>
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery('')}
+            style={{
+              padding: '6px 12px', borderRadius: 6, border: '1px solid #e5e7eb',
+              background: '#fff', fontSize: '0.78rem', fontWeight: 600,
+              color: '#6b7280', cursor: 'pointer',
+            }}
+          >Clear</button>
+        )}
+        <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+          {searchQuery ? `${assesseeGroups.length} of ${allAssesseeGroups.length}` : `${allAssesseeGroups.length} assessees`}
+        </span>
+      </div>
+
+      {/* Leaderboards (hidden when user is searching) */}
+      {!searchQuery && allAssesseeGroups.length > 0 && (
+        <PeerEvalLeaderboards
+          groups={allAssesseeGroups}
+          expandedRank={expandedRank}
+          onExpand={setExpandedRank}
+        />
+      )}
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: '40px 0', color: '#9ca3af', fontSize: '0.85rem' }}>Loading…</div>
