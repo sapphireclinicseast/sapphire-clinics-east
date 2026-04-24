@@ -125,8 +125,12 @@ export async function GET(req: NextRequest) {
     byDept[dept] = groupByDistinctScore(scored.filter(s => s.dept === dept), 5)
   }
 
+  // Top 5 OVERALL for the clinic (across all departments, filtered by branch)
+  const overall = groupByDistinctScore(scored, 5)
+
   return NextResponse.json({
     year,
+    overall,
     byDept,
     departments,
   })
