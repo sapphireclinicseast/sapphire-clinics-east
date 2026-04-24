@@ -192,10 +192,7 @@ export default function PatientsLovePage() {
       <div className="mt-8 p-4 rounded-2xl bg-[var(--pale-teal)] border border-[var(--light-gray)] flex items-start gap-3">
         <Info size={16} className="text-[var(--deep-teal)] mt-0.5 shrink-0" />
         <div className="text-[12px] text-[var(--mid-gray)] leading-relaxed">
-          <strong className="text-[var(--deep-teal)]">Note:</strong> These are actual comments from patients who were randomly chosen to participate in our customer survey. All responses are anonymous.
-          {strengths.length === 0 && (
-            <> If nothing appears here yet, it is possible that your patients have not yet been chosen for the survey.</>
-          )}
+          <strong className="text-[var(--deep-teal)]">Note:</strong> These are actual comments from patients who were randomly chosen to participate in our customer survey. All responses are anonymous. If nothing appears here yet, it is possible that your patients have not yet been chosen for the survey, or they have not provided subjective feedback.
         </div>
       </div>
     </div>
