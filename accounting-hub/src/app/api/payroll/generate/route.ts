@@ -107,7 +107,7 @@ export async function GET(req: Request) {
       status: 'COMPLETED',
       transactionDate: { gte: start, lte: end },
     }
-    if (branch) orderWhere.branch = BRANCH_TO_ORDER[branch] || branch
+    if (branch) orderWhere.branch = { in: [BRANCH_TO_ORDER[branch] || branch, 'ALL'] }
 
     const orders = await prisma.order.findMany({
       where: orderWhere,
