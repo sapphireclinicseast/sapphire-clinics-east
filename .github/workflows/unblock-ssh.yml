@@ -1,0 +1,128 @@
+# One-shot workflow: unban & whitelist operator IP(s) in fail2ban + iptables.
+# Runs from GitHub's IP pool, so it works even when your home IP is blocked.
+# Trigger: Actions → "Unblock SSH + install fail2ban" → Run workflow.
+name: Unblock SSH + install fail2ban
+
+"on":
+  workflow_dispatch:
+    inputs:
+      whitelist_ips:
+        description: "Comma-separated IPs to whitelist (will bypass fail2ban bans)"
+        required: true
+        default: "119.93.111.198,180.190.223.214"
+
+jobs:
+  fix:
+    name: Apply fail2ban + whitelist
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apply over SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            IPS_CSV="${{ inputs.whitelist_ips }}"
+            IPS=$(echo "$IPS_CSV" | tr ',' ' ')
+            echo "→ Whitelisting: $IPS"
+
+            echo ""
+            echo "→ Unban from every active fail2ban jail..."
+            JAILS=$(fail2ban-client status 2>/dev/null | grep 'Jail list' | sed 's/.*://' | tr ',' ' ' || true)
+            for jail in $JAILS; do
+              jail=$(echo "$jail" | xargs)
+              [ -z "$jail" ] && continue
+              for ip in $IPS; do
+                fail2ban-client set "$jail" unbanip "$ip" 2>&1 | tail -1 || true
+              done
+            done
+
+            echo ""
+            echo "→ Flush any DROP/REJECT iptables rules for our IPs..."
+            for ip in $IPS; do
+              iptables -S 2>/dev/null | grep "$ip" | grep -E 'DROP|REJECT' | sed 's/^-A/-D/' | while read rule; do
+                iptables $rule 2>/dev/null || true
+              done || true
+            done
+
+            echo ""
+            echo "→ Remove any UFW deny rules for our IPs..."
+            for ip in $IPS; do
+              while ufw status numbered 2>/dev/null | grep -q "$ip"; do
+                RULE_NUM=$(ufw status numbered | grep "$ip" | head -1 | awk -F'[][]' '{print $2}')
+                [ -n "$RULE_NUM" ] && echo "y" | ufw delete "$RULE_NUM" || break
+              done || true
+            done
+
+            echo ""
+            echo "→ Install fail2ban (if missing)..."
+            if ! dpkg -s fail2ban >/dev/null 2>&1; then
+              apt-get update -qq
+              apt-get install -y fail2ban
+            else
+              echo "   already installed"
+            fi
+
+            echo ""
+            echo "→ Rewrite /etc/fail2ban/jail.local with fresh whitelist..."
+            IGNORE_IPS=$(echo "$IPS" | tr ' ' ' ')
+            cat > /etc/fail2ban/jail.local <<EOF
+            [DEFAULT]
+            ignoreip = 127.0.0.1/8 ::1 $IGNORE_IPS
+            bantime  = 3600
+            findtime = 600
+            maxretry = 5
+            banaction = iptables-multiport
+            backend   = systemd
+
+            [sshd]
+            enabled  = true
+            port     = 22
+            filter   = sshd
+            logpath  = %(sshd_log)s
+            maxretry = 5
+            EOF
+
+            echo ""
+            echo "→ Restart fail2ban..."
+            systemctl enable fail2ban >/dev/null 2>&1 || true
+            systemctl restart fail2ban
+            sleep 2
+
+            echo ""
+            echo "→ Ensure UFW allows 22/tcp plain (no LIMIT)..."
+            while ufw status 2>/dev/null | grep -q "22/tcp.*LIMIT"; do
+              echo "y" | ufw delete limit 22/tcp 2>&1 | tail -1 || break
+            done
+            ufw allow 22/tcp comment "SSH (rate-limited by fail2ban)" 2>&1 | tail -1 || true
+
+            echo ""
+            echo "→ Top-priority iptables ACCEPT for each whitelisted IP..."
+            for ip in $IPS; do
+              # remove prior duplicate if present, then re-insert at top
+              iptables -D INPUT -s "$ip" -p tcp --dport 22 -j ACCEPT 2>/dev/null || true
+              iptables -I INPUT 1 -s "$ip" -p tcp --dport 22 -j ACCEPT
+            done
+
+            # Persist iptables so it survives reboots
+            if command -v netfilter-persistent >/dev/null 2>&1; then
+              netfilter-persistent save 2>&1 | tail -1 || true
+            elif command -v iptables-save >/dev/null 2>&1; then
+              iptables-save > /etc/iptables/rules.v4 2>/dev/null || iptables-save > /etc/iptables.rules 2>/dev/null || true
+            fi
+
+            echo ""
+            echo "━━━ STATUS ━━━"
+            echo ""
+            echo "▶ fail2ban jails:"
+            fail2ban-client status || true
+            echo ""
+            echo "▶ sshd jail:"
+            fail2ban-client status sshd || true
+            echo ""
+            echo "▶ iptables INPUT (first 10):"
+            iptables -L INPUT -n --line-numbers | head -12
+            echo ""
+            echo "✅ Done. IPs $IPS are whitelisted."
