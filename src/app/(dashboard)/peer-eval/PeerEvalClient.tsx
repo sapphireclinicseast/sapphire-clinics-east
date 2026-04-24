@@ -944,6 +944,13 @@ function ResultsTab({ role }: { role: string }) {
   const [expandedAssessee, setExpandedAssessee] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedRank, setExpandedRank] = useState<string | null>(null) // 'overall-1', 'dept-OT-2', etc
+  const [subTab, setSubTab] = useState<'overview' | 'by-department'>('overview')
+  const [allStaff, setAllStaff] = useState<Array<{ id: string; firstName: string; lastName: string; department: string; branch: string }>>([])
+
+  // Load full staff list (for "Per Department" view — so staff w/o evals still show)
+  useEffect(() => {
+    fetch('/api/staff').then(r => r.ok ? r.json() : []).then(setAllStaff).catch(() => undefined)
+  }, [])
 
   const fetchResponses = useCallback(async () => {
     setLoading(true)
@@ -1019,8 +1026,49 @@ function ResultsTab({ role }: { role: string }) {
         </button>
       </div>
 
-      {/* Search bar */}
-      <div style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+      {/* Sub-tab switcher inside Results */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid #e5e7eb' }}>
+        {([
+          { id: 'overview' as const,      label: 'Overview' },
+          { id: 'by-department' as const, label: 'Per Department Rankings' },
+        ]).map(t => (
+          <button
+            key={t.id}
+            onClick={() => setSubTab(t.id)}
+            style={{
+              padding: '8px 16px', background: 'none', border: 'none', cursor: 'pointer',
+              fontSize: '0.82rem', fontWeight: 600,
+              color: subTab === t.id ? '#ED6823' : '#6b7280',
+              borderBottom: subTab === t.id ? '2px solid #ED6823' : '2px solid transparent',
+              marginBottom: -1,
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {subTab === 'by-department' && (
+        <PerDepartmentRankings
+          groups={allAssesseeGroups}
+          allStaff={allStaff}
+          filterBranch={filterBranch}
+        />
+      )}
+
+      {subTab === 'overview' && (
+        <>
+      {/* Leaderboards first (hidden when user is searching) */}
+      {!searchQuery && allAssesseeGroups.length > 0 && (
+        <PeerEvalLeaderboards
+          groups={allAssesseeGroups}
+          expandedRank={expandedRank}
+          onExpand={setExpandedRank}
+        />
+      )}
+
+      {/* Search bar BELOW the Top 5 */}
+      <div style={{ marginTop: 20, marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
         <div style={{ position: 'relative', flex: 1, maxWidth: 420 }}>
           <input
             type="text"
@@ -1052,15 +1100,6 @@ function ResultsTab({ role }: { role: string }) {
           {searchQuery ? `${assesseeGroups.length} of ${allAssesseeGroups.length}` : `${allAssesseeGroups.length} assessees`}
         </span>
       </div>
-
-      {/* Leaderboards (hidden when user is searching) */}
-      {!searchQuery && allAssesseeGroups.length > 0 && (
-        <PeerEvalLeaderboards
-          groups={allAssesseeGroups}
-          expandedRank={expandedRank}
-          onExpand={setExpandedRank}
-        />
-      )}
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: '40px 0', color: '#9ca3af', fontSize: '0.85rem' }}>Loading…</div>
@@ -1177,6 +1216,8 @@ function ResultsTab({ role }: { role: string }) {
             )
           })}
         </div>
+      )}
+        </>
       )}
     </div>
   )
@@ -1587,6 +1628,166 @@ export default function PeerEvalClient({ role }: { role: string }) {
   )
 }
 
+
+// ─── Per-Department Rankings (all staff, high → low) ────────────────────────
+// Shows every staff member in each department ranked by overall peer-eval
+// score. Staff without any evaluations still appear at the bottom so gaps
+// in coverage are visible at a glance.
+
+function PerDepartmentRankings({
+  groups,
+  allStaff,
+  filterBranch,
+}: {
+  groups: { assessee: StaffMini; responses: EvalResponse[] }[]
+  allStaff: Array<{ id: string; firstName: string; lastName: string; department: string; branch: string }>
+  filterBranch: string
+}) {
+  // Build lookup of peer-eval data per staffId
+  const evalByStaff = new Map<string, { overall: number; responseCount: number }>()
+  for (const g of groups) {
+    const allScores = g.responses.flatMap(r => Object.values(r.scores))
+    const overall = allScores.length > 0 ? allScores.reduce((a, b) => a + b, 0) / allScores.length : 0
+    evalByStaff.set(g.assessee.id, { overall, responseCount: g.responses.length })
+  }
+
+  // Filter by branch if set
+  const staffPool = filterBranch ? allStaff.filter(s => s.branch === filterBranch) : allStaff
+
+  // Group by department
+  const deptMap = new Map<string, Array<{
+    id: string; name: string; department: string; branch: string;
+    overall: number; responseCount: number; hasData: boolean
+  }>>()
+  for (const st of staffPool) {
+    const ev = evalByStaff.get(st.id)
+    const entry = {
+      id: st.id,
+      name: st.firstName + ' ' + st.lastName,
+      department: st.department,
+      branch: st.branch,
+      overall: ev?.overall ?? 0,
+      responseCount: ev?.responseCount ?? 0,
+      hasData: !!ev,
+    }
+    if (!deptMap.has(st.department)) deptMap.set(st.department, [])
+    deptMap.get(st.department)!.push(entry)
+  }
+
+  // Sort depts alphabetically, sort entries high→low (eval-less staff last)
+  const depts = Array.from(deptMap.keys()).sort()
+  const medalColors = ['#f59e0b', '#94a3b8', '#cd7f32']
+
+  if (depts.length === 0) {
+    return (
+      <div style={{ textAlign: 'center', padding: '40px 0', color: '#9ca3af', fontSize: '0.85rem' }}>
+        No staff on record{filterBranch ? ' for this branch' : ''}.
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 16 }}>
+      {depts.map(dept => {
+        const ranked = deptMap.get(dept)!.slice().sort((a, b) => {
+          if (a.hasData !== b.hasData) return a.hasData ? -1 : 1
+          return b.overall - a.overall
+        })
+        // Compute rank positions (tied = same rank, next rank skips)
+        let prevScore: number | null = null
+        let currentRank = 0
+        const ranks: number[] = []
+        ranked.forEach((r, i) => {
+          if (!r.hasData) {
+            ranks.push(-1)
+            return
+          }
+          if (prevScore === null || r.overall !== prevScore) {
+            currentRank = i + 1
+            prevScore = r.overall
+          }
+          ranks.push(currentRank)
+        })
+
+        const withData = ranked.filter(r => r.hasData).length
+
+        return (
+          <div key={dept} style={{
+            background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden',
+          }}>
+            <div style={{
+              padding: '12px 16px', background: '#FFF3E8', borderBottom: '1px solid #FDE4CC',
+            }}>
+              <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#9a3412', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Department{filterBranch ? ` · ${filterBranch}` : ''}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+                <div style={{ fontSize: '1rem', fontWeight: 700, color: '#7c2d12' }}>{dept}</div>
+                <div style={{ fontSize: '0.7rem', color: '#9a3412' }}>
+                  {ranked.length} staff · {withData} with evals
+                </div>
+              </div>
+            </div>
+
+            <div>
+              {ranked.map((r, i) => {
+                const rank = ranks[i]
+                const medal = rank > 0 && rank <= 3 ? medalColors[rank - 1] : undefined
+                return (
+                  <div key={r.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '9px 14px', borderTop: '1px solid #f3f4f6',
+                    background: rank === 1 ? '#FFFBEB' : r.hasData ? '#fff' : '#fafafa',
+                  }}>
+                    <div style={{
+                      width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: medal ? medal + '20' : r.hasData ? '#f1f5f9' : '#f3f4f6',
+                      color: medal ?? '#94a3b8',
+                      fontWeight: 800, fontSize: '0.78rem',
+                    }}>
+                      {r.hasData ? rank : '—'}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{
+                        fontSize: '0.85rem', fontWeight: 600,
+                        color: r.hasData ? '#111827' : '#9ca3af',
+                        lineHeight: 1.3,
+                      }}>
+                        {r.name}
+                      </div>
+                      <div style={{ fontSize: '0.68rem', color: '#6b7280', marginTop: 1 }}>
+                        {r.hasData
+                          ? (r.responseCount + ' eval' + (r.responseCount !== 1 ? 's' : ''))
+                          : 'No evaluations yet'}
+                        {' · '}
+                        <span style={{ color: '#9ca3af' }}>{r.branch}</span>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      {r.hasData ? (
+                        <>
+                          <div style={{ fontSize: '1rem', fontWeight: 800, color: rank === 1 ? '#f59e0b' : '#0f766e', lineHeight: 1 }}>
+                            {r.overall.toFixed(2)}
+                          </div>
+                          <div style={{ fontSize: '0.55rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                            of 5
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ fontSize: '0.7rem', color: '#d1d5db', fontStyle: 'italic' }}>no data</div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 // ─── Peer Eval Leaderboards ──────────────────────────────────────────────────
 // Top 5 by overall average score, across three groupings:
