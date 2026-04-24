@@ -99,11 +99,30 @@ export async function GET(req: NextRequest) {
     return { id: s.id, name: s.name, dept: s.dept, branch: s.branch, avgRating: s.avgRating, sessions: s.confirmed, score }
   })
 
-  // Top 5 per department
+  // Group into the top 5 distinct scores, ties collapsed into one rank bucket
+  type Entry = { id: string; name: string; dept: string; branch: string; avgRating: number; sessions: number; score: number }
+  type RankGroup = { rank: number; score: number; members: Entry[] }
+
+  function groupByDistinctScore(rows: Entry[], n: number): RankGroup[] {
+    const sorted = [...rows].sort((a, b) => b.score - a.score)
+    const groups: RankGroup[] = []
+    const distinctScores: number[] = []
+    for (const r of sorted) {
+      if (distinctScores.length === 0 || r.score !== distinctScores[distinctScores.length - 1]) {
+        if (distinctScores.length >= n) break
+        distinctScores.push(r.score)
+        groups.push({ rank: distinctScores.length, score: r.score, members: [r] })
+      } else {
+        groups[groups.length - 1].members.push(r)
+      }
+    }
+    return groups
+  }
+
   const departments = [...new Set(scored.map(s => s.dept))].sort()
-  const byDept: Record<string, typeof scored> = {}
+  const byDept: Record<string, RankGroup[]> = {}
   for (const dept of departments) {
-    byDept[dept] = scored.filter(s => s.dept === dept).sort((a, b) => b.score - a.score).slice(0, 5)
+    byDept[dept] = groupByDistinctScore(scored.filter(s => s.dept === dept), 5)
   }
 
   return NextResponse.json({

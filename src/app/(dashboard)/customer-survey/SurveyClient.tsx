@@ -861,15 +861,7 @@ export default function SurveyClient({ role }: { role: string }) {
                   <h3 className="font-bold text-sm" style={{ color: '#1e293b' }}>Top 5 Scores — Overall</h3>
                 </div>
                 {resultsDash.top5Overall.length > 0 ? (
-                  <div className="space-y-2.5">
-                    {(() => {
-                      const ranks = computeTiedRanks(resultsDash.top5Overall)
-                      return resultsDash.top5Overall.map((p, i) => {
-                        const isTied = ranks.filter(r => r === ranks[i]).length > 1
-                        return <LeaderboardRow key={p.id} rank={ranks[i]} performer={p} tied={isTied} />
-                      })
-                    })()}
-                  </div>
+                  <LeaderboardGroupList performers={resultsDash.top5Overall} />
                 ) : (
                   <p className="text-sm text-center py-6" style={{ color: '#94a3b8' }}>No completed surveys yet</p>
                 )}
@@ -885,15 +877,7 @@ export default function SurveyClient({ role }: { role: string }) {
                     <h3 className="font-bold text-sm" style={{ color: "#1e293b" }}>Top 5 Scores — {dept}</h3>
                   </div>
                   {list.length > 0 ? (
-                    <div className="space-y-2.5">
-                      {(() => {
-                        const ranks = computeTiedRanks(list)
-                        return list.map((p, i) => {
-                          const isTied = ranks.filter(r => r === ranks[i]).length > 1
-                          return <LeaderboardRow key={p.id} rank={ranks[i]} performer={p} tied={isTied} />
-                        })
-                      })()}
-                    </div>
+                    <LeaderboardGroupList performers={list} />
                   ) : (
                     <p className="text-sm text-center py-4" style={{ color: '#94a3b8' }}>No data</p>
                   )}
@@ -1461,6 +1445,118 @@ function computeTiedRanks(arr: { compositeScore: number }[]): number[] {
     }
   }
   return ranks
+}
+
+
+// Renders top-5 as distinct-score rank buckets. A bucket with >1 member shows
+// a single collapsed row with comma-joined names; clicking expands it into
+// individual LeaderboardRows for the tied people.
+function LeaderboardGroupList({ performers }: { performers: TopPerformer[] }) {
+  const [expandedRank, setExpandedRank] = useState<number | null>(null)
+  // Group by distinct score, keeping the order (already sorted desc on the server)
+  const groups: { rank: number; score: number; members: TopPerformer[] }[] = []
+  const seenScores: number[] = []
+  for (const p of performers) {
+    if (seenScores.length === 0 || p.compositeScore !== seenScores[seenScores.length - 1]) {
+      seenScores.push(p.compositeScore)
+      groups.push({ rank: seenScores.length, score: p.compositeScore, members: [p] })
+    } else {
+      groups[groups.length - 1].members.push(p)
+    }
+  }
+
+  const medalColors = ['#f59e0b', '#94a3b8', '#cd7f32']
+
+  return (
+    <div className="space-y-2.5">
+      {groups.map(g => {
+        const tied = g.members.length > 1
+        const expanded = expandedRank === g.rank
+        const medal = g.rank <= 3 ? medalColors[g.rank - 1] : undefined
+        const names = g.members.map(m => m.name).join(', ')
+        return (
+          <div key={'g' + g.rank} className="rounded-lg overflow-hidden"
+            style={{ background: g.rank === 1 ? '#fffbeb' : '#f8fafc', border: '1px solid transparent' }}
+          >
+            <div
+              onClick={() => tied && setExpandedRank(expanded ? null : g.rank)}
+              className="flex items-center gap-3 p-3"
+              style={{ cursor: tied ? 'pointer' : 'default' }}
+            >
+              <div
+                className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm"
+                style={medal ? { background: medal + '20', color: medal } : { background: '#f1f5f9', color: '#94a3b8' }}
+              >
+                {g.rank}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-sm" style={{ color: '#1e293b' }}>
+                    {names}
+                  </span>
+                  {tied && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold"
+                      style={{ background: '#fbbf24', color: '#78350f' }}
+                    >
+                      TIED · {g.members.length} people
+                    </span>
+                  )}
+                </div>
+                {tied ? (
+                  <div className="text-[11px] text-gray-500 mt-0.5">
+                    {expanded ? '▾ Hide details' : '▸ Tap to see individual stats'}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3 mt-0.5 text-xs" style={{ color: '#64748b' }}>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                      style={{ background: '#f0fdfa', color: '#0f766e' }}>
+                      {g.members[0].department}
+                    </span>
+                    <span className="text-[10px]" style={{ color: '#94a3b8' }}>
+                      {g.members[0].branch === 'SBEA' ? 'East' : g.members[0].branch === 'SBGH' ? 'GH' : g.members[0].branch}
+                    </span>
+                    <span className="flex items-center gap-1"><Star size={10} style={{ color: '#f59e0b' }} /> {g.members[0].avgRating.toFixed(2)}</span>
+                    <span className="flex items-center gap-1"><Calendar size={10} /> {g.members[0].sessionsTotal} sessions</span>
+                    <span className="flex items-center gap-1"><ClipboardCheck size={10} /> {g.members[0].surveyCount} surveys</span>
+                  </div>
+                )}
+              </div>
+              <div className="text-right">
+                <div className="text-xl font-bold" style={{ color: g.rank === 1 ? '#f59e0b' : '#0f766e' }}>{g.score}</div>
+                <div className="text-[9px] uppercase font-semibold" style={{ color: '#94a3b8' }}>Score</div>
+              </div>
+            </div>
+
+            {tied && expanded && (
+              <div className="px-3 pb-3 pt-0 space-y-2" style={{ borderTop: '1px dashed #e2e8f0' }}>
+                {g.members.map(m => (
+                  <div key={m.id} className="flex items-center gap-3 p-2 rounded-md bg-white">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-sm" style={{ color: '#1e293b' }}>{m.name}</span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                          style={{ background: '#f0fdfa', color: '#0f766e' }}>
+                          {m.department}
+                        </span>
+                        <span className="text-[10px]" style={{ color: '#94a3b8' }}>
+                          {m.branch === 'SBEA' ? 'East' : m.branch === 'SBGH' ? 'GH' : m.branch}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 mt-0.5 text-xs" style={{ color: '#64748b' }}>
+                        <span className="flex items-center gap-1"><Star size={10} style={{ color: '#f59e0b' }} /> {m.avgRating.toFixed(2)}</span>
+                        <span className="flex items-center gap-1"><Calendar size={10} /> {m.sessionsTotal} sessions</span>
+                        <span className="flex items-center gap-1"><ClipboardCheck size={10} /> {m.surveyCount} surveys</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 
 function LeaderboardRow({ rank, performer: p, tied }: { rank: number; performer: TopPerformer; tied?: boolean }) {
