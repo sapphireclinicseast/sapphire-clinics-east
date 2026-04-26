@@ -35,6 +35,38 @@ echo "Applying additive schema changes (IF NOT EXISTS — idempotent)..."
 docker exec accounting_db psql -U sapphire -d sapphire_accounting <<'SQL'
 ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "arProofUrl" TEXT;
 ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'HMO_OFFICER';
+
+-- Tier 2.1: Beginning Balances per account per fiscal year.
+-- Required so the Balance Sheet reflects cumulative state (opening Cash,
+-- Owner's Equity, Retained Earnings) instead of just current-year flows.
+CREATE TABLE IF NOT EXISTS "BeginningBalance" (
+    "id" TEXT NOT NULL,
+    "accountId" TEXT NOT NULL,
+    "periodYear" INTEGER NOT NULL,
+    "amount" DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "notes" TEXT,
+    "createdById" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "BeginningBalance_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "BeginningBalance_accountId_periodYear_key"
+    ON "BeginningBalance"("accountId", "periodYear");
+CREATE INDEX IF NOT EXISTS "BeginningBalance_periodYear_idx"
+    ON "BeginningBalance"("periodYear");
+CREATE INDEX IF NOT EXISTS "BeginningBalance_accountId_idx"
+    ON "BeginningBalance"("accountId");
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'BeginningBalance_accountId_fkey'
+  ) THEN
+    ALTER TABLE "BeginningBalance"
+      ADD CONSTRAINT "BeginningBalance_accountId_fkey"
+      FOREIGN KEY ("accountId") REFERENCES "Account"("id")
+      ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END$$;
 SQL
 
 echo "Redeploy complete."

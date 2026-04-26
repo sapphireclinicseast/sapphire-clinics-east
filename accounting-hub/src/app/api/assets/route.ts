@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { postAssetJournal, reverseAssetJournal } from '@/lib/accounting/post-asset'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -100,6 +101,18 @@ export async function POST(req: Request) {
       },
     })
 
+    // Tier 3 Step 6: Auto-post the asset acquisition (DR PPE / CR Cash).
+    try {
+      const r = await postAssetJournal(prisma, asset.id, session.user.id)
+      if (r.posted) {
+        console.log(`[GL] Posted asset purchase JE ${r.journalEntryId} for asset ${asset.id}`)
+      } else if (process.env.ENABLE_GL_POSTING === 'true') {
+        console.warn(`[GL] Skipped asset purchase posting for ${asset.id}: ${r.reason}`)
+      }
+    } catch (postErr) {
+      console.error(`[GL] Asset purchase posting threw for ${asset.id}:`, postErr)
+    }
+
     return NextResponse.json({
       ...asset,
       purchasePrice: Number(asset.purchasePrice),
@@ -143,6 +156,12 @@ export async function PUT(req: Request) {
       remarks,
     } = body
 
+    // Capture pre-edit state to detect material changes affecting the JE.
+    const prior = await prisma.asset.findUnique({
+      where: { id },
+      select: { totalAmount: true, classification: true, dateBought: true, branch: true },
+    })
+
     const asset = await prisma.asset.update({
       where: { id },
       data: {
@@ -169,6 +188,21 @@ export async function PUT(req: Request) {
       },
     })
 
+    // Tier 3 Step 6: Reverse and re-post if any GL-affecting field changed.
+    const materialChange = !prior
+      || Number(prior.totalAmount) !== Number(asset.totalAmount)
+      || prior.classification !== asset.classification
+      || prior.dateBought.getTime() !== asset.dateBought.getTime()
+      || prior.branch !== asset.branch
+    if (materialChange) {
+      try {
+        await reverseAssetJournal(prisma, id, session.user.id, 'asset edited')
+        await postAssetJournal(prisma, id, session.user.id)
+      } catch (postErr) {
+        console.error(`[GL] Asset update posting threw for ${id}:`, postErr)
+      }
+    }
+
     return NextResponse.json({
       ...asset,
       purchasePrice: Number(asset.purchasePrice),
@@ -192,6 +226,15 @@ export async function DELETE(req: Request) {
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
   try {
+    // Tier 3 Step 6: Reverse the GL entry BEFORE deleting the asset row so
+    // referenceId lookup still works. Reversal stays as the audit trail.
+    try {
+      const r = await reverseAssetJournal(prisma, id, session.user.id, 'asset deleted')
+      if (r.posted) console.log(`[GL] Reversed asset ${id} via JE ${r.journalEntryId}`)
+    } catch (postErr) {
+      console.error(`[GL] Asset reversal threw for ${id}:`, postErr)
+    }
+
     await prisma.asset.delete({ where: { id } })
     return NextResponse.json({ success: true })
   } catch (err) {

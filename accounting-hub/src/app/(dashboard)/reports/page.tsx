@@ -7,6 +7,7 @@ import {
   Calendar, Building2, LayoutList, BarChart3, X,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { computeIncomeStatementTotals } from '@/lib/reports/income-statement-totals'
 
 /* ═══════════════════════════════════════════════════════════════
    TYPES
@@ -62,6 +63,21 @@ interface ReportData {
     accumulated: number
     assetsByClassification: Record<string, number>
   }
+  // Tier 2.1: Opening balances per account for the fiscal year.
+  beginningBalances?: { accountNumber: string; accountTitle: string; accountType: string; amount: number }[]
+  // Tier 2.2: Cash on the BS = balance, not just receipts. The reports API now
+  // computes cash outflows from inventory cash purchases, asset cash purchases,
+  // and journal-entry credits to cash accounts.
+  cashAdjustments?: {
+    openingByAccount: Record<string, number>            // accountKey → opening cash balance
+    inventoryCashOutflowsByAccount: Record<string, number>
+    assetCashOutflows: number                           // total — applied against the default cash account
+    journalCashFlowByAccount: Record<string, number>    // accountKey → net JE-derived cash delta (debit − credit)
+    defaultCashAccountKey: string | null
+  }
+  // Tier 2.3: Unearned-revenue liability accrued by HMO/GL UNEARNED orders this year.
+  // Mirrors the AR booked on the asset side so A = L + E for those orders.
+  unearnedRevenueFromAR?: number
 }
 
 type ReportTab = 'balance-sheet' | 'income-statement' | 'cash-flow'
@@ -540,7 +556,6 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
   }
 
   // Calculate totals from available data
-  const totalCashReceived = sumMonths(monthly, (m) => m.cashReceived)
   const invByDept = inventory.byDepartment
   const invTotal = inventory.total
 
@@ -600,11 +615,49 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
 
   // Accounts Receivable from HMO/GL wallets
   const arTotal = accountsReceivable?.total || 0
-  // AR payments received add to cash equivalents
-  const arCashReceived = accountsReceivable?.paymentsReceived || 0
+
+  /* ── Cash balance per bank account (Tier 2.2) ─────────────────
+     Cash is a BALANCE, not a flow. We compute:
+       opening balance + POS receipts + AR collections + JE-driven deltas
+       − inventory paid in cash − asset cash purchases */
+  const cashAdj = data.cashAdjustments || {
+    openingByAccount: {}, inventoryCashOutflowsByAccount: {},
+    assetCashOutflows: 0, journalCashFlowByAccount: {}, defaultCashAccountKey: null,
+  }
+  const cashByAccountBalance: Record<string, number> = {}
+  // a) opening cash
+  for (const [k, v] of Object.entries(cashAdj.openingByAccount)) cashByAccountBalance[k] = (cashByAccountBalance[k] || 0) + v
+  // b) POS cash receipts (already routed by paymentMode COA)
+  for (let m = 1; m <= 12; m++) {
+    for (const [k, v] of Object.entries(monthly[m].cashByAccount || {})) {
+      cashByAccountBalance[k] = (cashByAccountBalance[k] || 0) + v
+    }
+  }
+  // c) AR cash collections (already routed by AR payment cashAccount)
+  if (accountsReceivable?.byCashAccount) {
+    for (const ca of accountsReceivable.byCashAccount) {
+      const k = `${ca.accountNumber} ${ca.accountTitle}`
+      cashByAccountBalance[k] = (cashByAccountBalance[k] || 0) + ca.amount
+    }
+  }
+  // d) JE-driven cash flows (e.g. SalaryPayment credits cash, BenefitPayment, TaxPayment)
+  for (const [k, v] of Object.entries(cashAdj.journalCashFlowByAccount)) {
+    cashByAccountBalance[k] = (cashByAccountBalance[k] || 0) + v
+  }
+  // e) Inventory paid in cash (sourceAccount.accountType=ASSET) — outflow per cash account
+  for (const [k, v] of Object.entries(cashAdj.inventoryCashOutflowsByAccount)) {
+    cashByAccountBalance[k] = (cashByAccountBalance[k] || 0) - v
+  }
+  // f) Asset cash purchases — applied against the default cash account (no per-asset
+  //    payment account exists yet; user can later add Asset.sourceAccountId to refine).
+  if (cashAdj.assetCashOutflows > 0 && cashAdj.defaultCashAccountKey) {
+    cashByAccountBalance[cashAdj.defaultCashAccountKey] =
+      (cashByAccountBalance[cashAdj.defaultCashAccountKey] || 0) - cashAdj.assetCashOutflows
+  }
+  const totalCash = Object.values(cashByAccountBalance).reduce((s, v) => s + v, 0)
 
   // Computed totals
-  const totalCurrentAssets = totalCashReceived + arCashReceived + invTotal + deductionAssetTotal + arTotal
+  const totalCurrentAssets = totalCash + invTotal + deductionAssetTotal + arTotal
   const totalGrossAssets = Object.values(depreciation?.assetsByClassification || {}).reduce((s, v) => s + v, 0)
   const accumulatedDep = depreciation?.accumulated || 0
   const totalNonCurrentAssets = totalGrossAssets - accumulatedDep
@@ -618,21 +671,33 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
   const payrollPayableAccounts = journalBalances.filter(jb => jb.accountType === 'LIABILITY' && jb.balance > 0)
   const payrollPayableTotal = payrollPayableAccounts.reduce((s, a) => s + a.balance, 0)
 
-  const totalCurrentLiabilities = wallets.total + sourceAccountTotal + payrollPayableTotal
+  // Tier 2.3: Unearned Revenue accrued by HMO/GL UNEARNED orders this year.
+  // Mirrors the AR booked on the asset side so A = L + E even when business uses
+  // revenueType=UNEARNED for receivables (which would otherwise leave AR un-offset).
+  const unearnedRevFromAR = data.unearnedRevenueFromAR || 0
+
+  const totalCurrentLiabilities = wallets.total + sourceAccountTotal + payrollPayableTotal + unearnedRevFromAR
   const totalNonCurrentLiabilities = 0
   const totalLiabilities = totalCurrentLiabilities + totalNonCurrentLiabilities
 
-  // Net income for retained earnings — should match Income Statement logic
-  // Include all revenue by account (POS + journal entries) minus discounts and COGS
-  const totalRevenue = sumMonths(monthly, (m) => {
-    let rev = 0
-    for (const [, v] of Object.entries(m.revenueByAccount || {})) rev += v
-    return rev
-  })
-  const totalCOGS = sumMonths(monthly, (m) => m.cogs)
-  const bsDepreciation = Object.values(depreciation?.byMonth || {}).reduce((s, v) => s + v, 0)
-  const netIncome = totalRevenue - totalCOGS - bsDepreciation
-  const totalEquity = netIncome
+  // Net income for retained earnings — MUST match Income Statement logic.
+  // Use the shared helper so BS equity and IS net income can never drift apart.
+  const { netIncome } = computeIncomeStatementTotals(data)
+
+  // Opening balances for Cash, Owner's Equity, and Retained Earnings come from
+  // the BeginningBalance table (one row per account per fiscal year). They are
+  // required to make the BS reflect cumulative state, not just current-year flows.
+  const openingByAcctNum: Record<string, number> = {}
+  for (const ob of (data.beginningBalances || [])) {
+    openingByAcctNum[ob.accountNumber] = ob.amount
+  }
+  const sumOpeningForAccts = (accts: AccountEntry[]) =>
+    accts.reduce((s, a) => s + (openingByAcctNum[a.accountNumber] || 0), 0)
+
+  const openingOwnersEquity = sumOpeningForAccts(ownersEquityAccounts)
+  const openingRetainedEarnings = sumOpeningForAccts(retainedEarningsAccounts)
+
+  const totalEquity = openingOwnersEquity + openingRetainedEarnings + netIncome
   const totalLiabilitiesAndEquity = totalLiabilities + totalEquity
 
   // Balance sheet equation check
@@ -658,30 +723,12 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
         {/* ASSETS */}
         <SectionHeader label="Assets" />
         <SubSectionHeader label="Current Assets" />
-        <AnnualRow label="Cash and Cash Equivalents" amount={totalCashReceived + arCashReceived} indent={2} bold onDrillDown={() => onDrillDown('Cash and Cash Equivalents', 'CASH_BALANCE', 0)} />
-        {/* Cash breakdown by bank account from payment mode COA */}
-        {(() => {
-          const cashAccts: Record<string, number> = {}
-          for (let m = 1; m <= 12; m++) {
-            for (const [k, v] of Object.entries(monthly[m].cashByAccount || {})) {
-              cashAccts[k] = (cashAccts[k] || 0) + v
-            }
-          }
-          // Add AR cash received by account
-          if (accountsReceivable?.byCashAccount) {
-            for (const ca of accountsReceivable.byCashAccount) {
-              const k = `${ca.accountNumber} ${ca.accountTitle}`
-              cashAccts[k] = (cashAccts[k] || 0) + ca.amount
-            }
-          }
-          const unclassifiedCash = (totalCashReceived + arCashReceived) - Object.values(cashAccts).reduce((s, v) => s + v, 0)
-          return <>
-            {Object.entries(cashAccts).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => (
-              <AnnualRow key={k} label={k} amount={v} indent={3} />
-            ))}
-            {unclassifiedCash > 0.01 && <AnnualRow label="Unclassified Cash" amount={unclassifiedCash} indent={3} />}
-          </>
-        })()}
+        <AnnualRow label="Cash and Cash Equivalents" amount={totalCash} indent={2} bold
+          onDrillDown={() => onDrillDown('Cash and Cash Equivalents', 'CASH_BALANCE', 0)} />
+        {/* Cash by bank account — opening + receipts + JE − cash purchases */}
+        {Object.entries(cashByAccountBalance).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => (
+          <AnnualRow key={k} label={k} amount={v} indent={3} negative />
+        ))}
         {arTotal > 0 && (
           <AnnualRow label="1010 — Accounts Receivable" amount={arTotal} indent={2}
             onDrillDown={() => onDrillDown('Accounts Receivable', 'AR_PAYMENTS', 0)} />
@@ -771,6 +818,11 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
             ))}
           </>
         )}
+        {/* Tier 2.3: Mirror liability for HMO/GL orders booked as UNEARNED revenue. */}
+        {unearnedRevFromAR > 0 && (
+          <AnnualRow label="4055 — Unearned Revenue (HMO/GL receivables)" amount={unearnedRevFromAR} indent={2}
+            onDrillDown={() => onDrillDown('Unearned Revenue from HMO/GL', 'UNEARNED_AR', 0)} />
+        )}
         {/* Inventory source accounts (only liability/payable accounts) */}
         {liabilitySourceAccounts.length > 0 && liabilitySourceAccounts.map((a) => (
           <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={a.amount} indent={2} />
@@ -799,10 +851,12 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
         {/* EQUITY */}
         <SectionHeader label="Equity" />
         {ownersEquityAccounts.map((a) => (
-          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={0} indent={1} />
+          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`}
+            amount={openingByAcctNum[a.accountNumber] || 0} indent={1} />
         ))}
         {retainedEarningsAccounts.map((a) => (
-          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle}`} amount={0} indent={1} />
+          <AnnualRow key={a.accountNumber} label={`${a.accountNumber} — ${a.accountTitle} (Opening)`}
+            amount={openingByAcctNum[a.accountNumber] || 0} indent={1} />
         ))}
         <AnnualRow label="Net Income (Current Year)" amount={netIncome} indent={1} />
         <AnnualRow label="TOTAL EQUITY" amount={totalEquity} isGrandTotal />
@@ -887,52 +941,17 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
     return sumMonths(monthly, (m) => (m.expenseByAccount || {})[key] || 0)
   }
 
-  // Gross Revenue = sum of all CREDIT revenue accounts + unmatched revenue keys
-  const totalGrossRevenue = grossRevenueAccts.reduce((s, a) => s + acctAmount(a.accountNumber, a.accountTitle), 0)
-  const unmatchedRevenueTotal = unmatchedRevenueKeys.reduce((s, key) => s + sumMonths(monthly, (m) => (m.revenueByAccount || {})[key] || 0), 0)
-  // If no COA-tagged transactions yet, fall back to computed totals
-  const fallbackGrossRevenue = sumMonths(monthly, (m) => m.serviceRevenue + m.productRevenue)
-  const effectiveGrossRevenue = (totalGrossRevenue + unmatchedRevenueTotal) > 0 ? totalGrossRevenue + unmatchedRevenueTotal : fallbackGrossRevenue
-
-  // Discounts = sum of DEBIT revenue accounts (shown as negative)
-  const totalDiscounts = discountAccts.reduce((s, a) => s + acctAmount(a.accountNumber, a.accountTitle), 0)
-
-  // Net Sales
-  const netSales = effectiveGrossRevenue - totalDiscounts
-
-  // Cost of Sales: inventory COGS + direct expense accounts from journal entries (e.g. 8190 Professional Fees)
-  const totalDirectExpJournal = directExpenseAccts.reduce((s, a) => s + expenseAmount(a.accountNumber, a.accountTitle), 0)
-  const totalCOGS = sumMonths(monthly, (m) => m.cogs) + totalDirectExpJournal
-
-  // Gross Profit
-  const grossProfit = netSales - totalCOGS
-
-  // Operating Expenses (indirect) — from journal entry lines
-  const totalOpex = indirectExpenseAccts.reduce((s, a) => s + expenseAmount(a.accountNumber, a.accountTitle), 0)
-
-  // EBITDA
-  const ebitda = grossProfit - totalOpex
-
-  // Depreciation from assets
+  // Income Statement totals — computed once via the shared helper so the BS and IS
+  // can never produce different Net Income figures.
+  const totals = computeIncomeStatementTotals(data)
+  const {
+    effectiveGrossRevenue, totalDiscounts, netSales, totalCOGS,
+    directJournalExpenses: totalDirectExpJournal,
+    grossProfit, totalOpex, ebitda, totalDepreciation, netIncome,
+    grossRevenueForMonth, discountsForMonth, netSalesForMonth,
+    directExpForMonth, indirectExpForMonth,
+  } = totals
   const depByMonth = data.depreciation?.byMonth || {}
-  const totalDepreciation = Object.values(depByMonth).reduce((s, v) => s + v, 0)
-
-  // Net Income = EBITDA - Depreciation
-  const netIncome = ebitda - totalDepreciation
-
-  // Per-month helpers for consistent monthly formulas
-  const grossRevenueForMonth = (m: MonthData) => {
-    const coaRev = grossRevenueAccts.reduce((s, a) => s + ((m.revenueByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
-    const unmatched = unmatchedRevenueKeys.reduce((s, k) => s + ((m.revenueByAccount || {})[k] || 0), 0)
-    return (coaRev + unmatched) > 0 ? (coaRev + unmatched) : (m.serviceRevenue + m.productRevenue)
-  }
-  const discountsForMonth = (m: MonthData) =>
-    discountAccts.reduce((s, a) => s + ((m.revenueByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
-  const netSalesForMonth = (m: MonthData) => grossRevenueForMonth(m) - discountsForMonth(m)
-  const directExpForMonth = (m: MonthData) =>
-    directExpenseAccts.reduce((s, a) => s + ((m.expenseByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
-  const indirectExpForMonth = (m: MonthData) =>
-    indirectExpenseAccts.reduce((s, a) => s + ((m.expenseByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0), 0)
 
   if (viewMode === 'annual') {
     const cogsByAcctAnnual: Record<string, number> = {}

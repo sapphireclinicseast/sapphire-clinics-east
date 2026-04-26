@@ -31,7 +31,7 @@ export async function GET(req: Request) {
   const branchFilter: any = branch !== 'ALL' ? { branch: orderBranch } : {}
 
   try {
-    const [accounts, orders, inventoryItems, wallets, paymentModes, arPayments, journalLines, discountSettings, allServices, allInventory, assets] = await Promise.all([
+    const [accounts, orders, inventoryItems, wallets, paymentModes, arPayments, journalLines, discountSettings, allServices, allInventory, assets, beginningBalances] = await Promise.all([
       // Chart of Accounts — structure for report line items
       prisma.account.findMany({
         where: { isActive: true },
@@ -184,6 +184,16 @@ export async function GET(req: Request) {
           depreciationEndDate: true,
         },
       }),
+
+      // Tier 2.1: Opening balances for the fiscal year (Cash, Owner's Equity,
+      // Retained Earnings). Without these the BS reflects only flows, not state.
+      prisma.beginningBalance.findMany({
+        where: { periodYear: year },
+        select: {
+          amount: true,
+          account: { select: { accountNumber: true, accountTitle: true, accountType: true } },
+        },
+      }),
     ])
 
     // Build deduction rate map: paymentModeId → total deduction %
@@ -298,6 +308,12 @@ export async function GET(req: Request) {
       }
     }
 
+    // Tier 2.3: Sum HMO/GL portions of UNEARNED orders. These create AR on the
+    // asset side via the wallet balance — without an offsetting Unearned Revenue
+    // liability the BS would tilt by exactly this amount.
+    let unearnedRevenueFromAR = 0
+    const AR_PAYMENT_METHODS = new Set(['HMO', 'GL'])
+
     for (const order of orders) {
       const month = new Date(order.transactionDate).getMonth() + 1
       const net = Number(order.netAmount)
@@ -306,6 +322,10 @@ export async function GET(req: Request) {
       // Revenue classification
       if (order.revenueType === 'UNEARNED') {
         m.unearnedRevenue += net
+        // Track the HMO/GL portion that creates AR but no recognized revenue.
+        for (const p of order.payments) {
+          if (AR_PAYMENT_METHODS.has(p.method)) unearnedRevenueFromAR += Number(p.amount)
+        }
       } else if (order.orderType === 'SERVICE') {
         m.serviceRevenue += net
       } else {
@@ -587,6 +607,64 @@ export async function GET(req: Request) {
       assetsByClassification[asset.classification] = (assetsByClassification[asset.classification] || 0) + Number(asset.totalAmount)
     }
 
+    /* ── Tier 2.2: Cash adjustments ─────────────────────────────
+       The BS Cash row used to be just POS+AR receipts. To reflect a real
+       balance we additionally need:
+         a) Opening cash from BeginningBalance for cash-typed ASSET accounts.
+         b) JE-driven cash flows: every JournalEntryLine touching an ASSET
+            account whose number starts with '10' or whose title contains
+            "cash"/"bank" — this captures salary/benefit/tax payments that
+            credit cash.
+         c) Inventory paid in cash: inventory items whose sourceAccount is an
+            ASSET (i.e. paid from a cash/bank account, not a payable).
+         d) Asset (PPE) cash purchases: lacking a per-asset payment account,
+            treat all asset acquisitions as cash outflows; the BS routes the
+            total against a default cash account so it shows up somewhere. */
+
+    const isCashAccountKey = (acctNum: string, acctTitle: string) =>
+      /^10/.test(acctNum) || /cash|bank/i.test(acctTitle)
+
+    // a) Opening cash by account
+    const openingByAccountKey: Record<string, number> = {}
+    for (const ob of beginningBalances) {
+      if (!ob.account) continue
+      if (ob.account.accountType !== 'ASSET') continue
+      if (!isCashAccountKey(ob.account.accountNumber, ob.account.accountTitle)) continue
+      const key = `${ob.account.accountNumber} ${ob.account.accountTitle}`
+      openingByAccountKey[key] = (openingByAccountKey[key] || 0) + Number(ob.amount)
+    }
+
+    // b) Net JE-derived cash deltas (debit − credit) per cash account
+    const journalCashFlowByAccount: Record<string, number> = {}
+    for (const line of journalLines) {
+      if (!line.account || line.account.accountType !== 'ASSET') continue
+      if (!isCashAccountKey(line.account.accountNumber, line.account.accountTitle)) continue
+      const key = `${line.account.accountNumber} ${line.account.accountTitle}`
+      const delta = Number(line.debit) - Number(line.credit)
+      journalCashFlowByAccount[key] = (journalCashFlowByAccount[key] || 0) + delta
+    }
+
+    // c) Inventory paid in cash — value bought through ASSET-typed sourceAccount.
+    //    Approximation: current on-hand value (already net of COGS via FIFO).
+    const inventoryCashOutflowsByAccount: Record<string, number> = {}
+    for (const item of inventoryItems) {
+      if (!item.sourceAccount || item.sourceAccount.accountType !== 'ASSET') continue
+      if (!isCashAccountKey(item.sourceAccount.accountNumber, item.sourceAccount.accountTitle)) continue
+      const key = `${item.sourceAccount.accountNumber} ${item.sourceAccount.accountTitle}`
+      const val = Number(item.unitCost) * item.quantity
+      inventoryCashOutflowsByAccount[key] = (inventoryCashOutflowsByAccount[key] || 0) + val
+    }
+
+    // d) Asset cash purchases — total, applied against the first/lowest cash
+    //    account number we know about (deterministic). User can later add a
+    //    per-asset sourceAccountId to refine this.
+    const assetCashOutflows = assets.reduce((s, a) => s + Number(a.totalAmount), 0)
+    const cashAccountKeys = accounts
+      .filter(a => a.accountType === 'ASSET' && isCashAccountKey(a.accountNumber, a.accountTitle))
+      .map(a => `${a.accountNumber} ${a.accountTitle}`)
+      .sort()
+    const defaultCashAccountKey = cashAccountKeys[0] || null
+
     /* ── Group accounts ────────────────────────────────────────── */
 
     const groupedAccounts: Record<string, Record<string, { accountNumber: string; accountTitle: string; subSubType: string | null; normalBalance: string; currency: string }[]>> = {}
@@ -627,6 +705,28 @@ export async function GET(req: Request) {
         accumulated: accumulatedDep,
         assetsByClassification,
       },
+      // Tier 2.1: Beginning balances for the fiscal year (every account that
+      // has one stored). Consumed by the BS to populate Owner's Equity, Retained
+      // Earnings, and the opening side of Cash.
+      beginningBalances: beginningBalances
+        .filter(b => b.account)
+        .map(b => ({
+          accountNumber: b.account!.accountNumber,
+          accountTitle: b.account!.accountTitle,
+          accountType: b.account!.accountType,
+          amount: Number(b.amount),
+        })),
+      // Tier 2.2: Cash balance components, see comment block above.
+      cashAdjustments: {
+        openingByAccount: openingByAccountKey,
+        journalCashFlowByAccount,
+        inventoryCashOutflowsByAccount,
+        assetCashOutflows,
+        defaultCashAccountKey,
+      },
+      // Tier 2.3: Liability mirroring HMO/GL receivables booked against
+      // UNEARNED orders (revenue not yet recognized).
+      unearnedRevenueFromAR,
     })
   } catch (err) {
     console.error('Reports API error:', err)

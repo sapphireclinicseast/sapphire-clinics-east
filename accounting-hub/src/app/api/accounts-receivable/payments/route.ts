@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { postARPaymentJournal, reverseARPaymentJournal } from '@/lib/accounting/post-ar-payment'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -96,6 +97,19 @@ export async function POST(req: Request) {
         },
       })
 
+      // Tier 3 Step 4: Post the AR collection JE.
+      let arPostResult: Awaited<ReturnType<typeof postARPaymentJournal>> | null = null
+      try {
+        arPostResult = await postARPaymentJournal(prisma, payment.id, session.user.id)
+        if (arPostResult.posted) {
+          console.log(`[GL] Posted AR payment JE ${arPostResult.journalEntryId} for payment ${payment.id}`)
+        } else if (process.env.ENABLE_GL_POSTING === 'true') {
+          console.warn(`[GL] Skipped AR payment posting for ${payment.id}: ${arPostResult.reason}`)
+        }
+      } catch (postErr) {
+        console.error(`[GL] AR payment posting threw for ${payment.id}:`, postErr)
+      }
+
       await prisma.auditLog.create({
         data: {
           userId: session.user.id,
@@ -110,6 +124,8 @@ export async function POST(req: Request) {
             discount: thisDiscount,
             orderCount: walletOrderIds.length,
             bulkPayment: effectiveWalletIds.length > 1,
+            glPosted: arPostResult?.posted ?? false,
+            glReason: arPostResult?.posted ? undefined : arPostResult?.reason,
           },
         },
       })
@@ -204,6 +220,16 @@ export async function PUT(req: Request) {
       })
     }
 
+    // Tier 3 Step 4: Reverse the old JE then post the new one (never mutate
+    // historical journal entries — always reverse + re-post for an audit trail).
+    let updatePostResult: Awaited<ReturnType<typeof postARPaymentJournal>> | null = null
+    try {
+      await reverseARPaymentJournal(prisma, id, session.user.id, 'AR payment edited')
+      updatePostResult = await postARPaymentJournal(prisma, id, session.user.id)
+    } catch (postErr) {
+      console.error(`[GL] AR payment update posting threw for ${id}:`, postErr)
+    }
+
     await prisma.auditLog.create({
       data: {
         userId: session.user.id,
@@ -216,6 +242,8 @@ export async function PUT(req: Request) {
           discount: newDiscount,
           balanceDiff,
           orderCount: orderIds?.length || 0,
+          glPosted: updatePostResult?.posted ?? false,
+          glReason: updatePostResult?.posted ? undefined : updatePostResult?.reason,
         },
       },
     })
@@ -253,6 +281,19 @@ export async function DELETE(req: Request) {
     }
 
     const totalSettled = Number(payment.amount) + Number(payment.discount)
+
+    // Tier 3 Step 4: Reverse the JE BEFORE deleting the payment row so the
+    // referenceId is still valid when we look up the original entry. The
+    // reversal stays in the books as an audit trail.
+    let reverseResult: Awaited<ReturnType<typeof reverseARPaymentJournal>> | null = null
+    try {
+      reverseResult = await reverseARPaymentJournal(prisma, id, session.user.id, reason || 'AR payment deleted')
+      if (reverseResult.posted) {
+        console.log(`[GL] Reversed AR payment ${id} via JE ${reverseResult.journalEntryId}`)
+      }
+    } catch (postErr) {
+      console.error(`[GL] AR payment reversal threw for ${id}:`, postErr)
+    }
 
     // Restore wallet balance
     await prisma.digitalWallet.update({

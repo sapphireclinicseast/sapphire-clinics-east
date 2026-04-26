@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parsePagination, paginatedResult } from '@/lib/pagination'
 import { consumeFifoLots, recalcWeightedUnitCost } from '@/lib/fifo'
+import { postInventoryAdjustmentJournal, reverseInventoryAdjustmentJournal } from '@/lib/accounting/post-inventory-adjustment'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -127,13 +128,30 @@ export async function POST(req: Request) {
       return adj
     })
 
+    // Tier 3 Step 5: Post the inventory movement to the GL.
+    let invPostResult: Awaited<ReturnType<typeof postInventoryAdjustmentJournal>> | null = null
+    try {
+      invPostResult = await postInventoryAdjustmentJournal(prisma, adjustment.id, session.user.id)
+      if (invPostResult.posted) {
+        console.log(`[GL] Posted inventory ${type} JE ${invPostResult.journalEntryId} for adj ${adjustment.id}`)
+      } else if (process.env.ENABLE_GL_POSTING === 'true') {
+        console.warn(`[GL] Skipped inventory ${type} posting for ${adjustment.id}: ${invPostResult.reason}`)
+      }
+    } catch (postErr) {
+      console.error(`[GL] Inventory ${type} posting threw for ${adjustment.id}:`, postErr)
+    }
+
     await prisma.auditLog.create({
       data: {
         userId: session.user.id,
         action: 'ADJUSTMENT',
         entity: 'inventoryItem',
         entityId: itemId,
-        details: { type, quantityChange: change, previousQuantity, newQuantity, remarks: remarks.trim() },
+        details: {
+          type, quantityChange: change, previousQuantity, newQuantity, remarks: remarks.trim(),
+          glPosted: invPostResult?.posted ?? false,
+          glReason: invPostResult?.posted ? undefined : invPostResult?.reason,
+        },
       },
     })
 
@@ -157,6 +175,15 @@ export async function DELETE(req: Request) {
 
     const adjustment = await prisma.inventoryAdjustment.findUnique({ where: { id } })
     if (!adjustment) return NextResponse.json({ error: 'Adjustment not found' }, { status: 404 })
+
+    // Tier 3 Step 5: Reverse the GL entry BEFORE deleting the adjustment row
+    // so referenceId lookup still works. Reversal stays as the audit trail.
+    try {
+      const r = await reverseInventoryAdjustmentJournal(prisma, id, session.user.id, 'inventory adjustment deleted')
+      if (r.posted) console.log(`[GL] Reversed inventory adj ${id} via JE ${r.journalEntryId}`)
+    } catch (postErr) {
+      console.error(`[GL] Inventory reversal threw for ${id}:`, postErr)
+    }
 
     await prisma.$transaction(async (tx) => {
       // Reverse the quantity change on the item

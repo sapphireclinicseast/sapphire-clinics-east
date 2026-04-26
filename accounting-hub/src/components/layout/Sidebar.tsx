@@ -53,6 +53,7 @@ const NAV_SECTIONS: NavSection[] = [
     label: 'General Ledger',
     items: [
       { href: '/chart-of-accounts', icon: BookOpen, label: 'Chart of Accounts', roles: COA_ACCESS },
+      { href: '/beginning-balances', icon: BookOpen, label: 'Beginning Balances', roles: COA_ACCESS },
       { href: '/bank-reconciliation', icon: ArrowLeftRight, label: 'Bank Reconciliation', roles: FULL_ACCESS },
     ],
   },
@@ -73,6 +74,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: '/budgets', icon: Target, label: 'Budgets', roles: FULL_ACCESS },
       { href: '/reports', icon: BarChart3, label: 'Reports', roles: FULL_ACCESS },
+      { href: '/reports/v2', icon: BarChart3, label: 'Reports (v2 / GL)', roles: FULL_ACCESS },
       { href: '/sales-summary', icon: Receipt, label: 'Sales Summary', roles: FULL_ACCESS },
     ],
   },

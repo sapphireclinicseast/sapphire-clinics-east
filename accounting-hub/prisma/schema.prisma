@@ -141,6 +141,7 @@ model Account {
   coaSalariesPayable       PayrollCOAMapping[] @relation("COASalPayable")
   coaBenefitsPayable       PayrollCOAMapping[] @relation("COABenPayable")
   coaTaxPayable            PayrollCOAMapping[] @relation("COATaxPayable")
+  beginningBalances        BeginningBalance[]
 
   @@index([accountType])
   @@index([isActive])
@@ -1450,4 +1451,24 @@ model AssetDepreciationSetting {
   classification String @id   // "2020", "2030", ... "2100"
   years          Int           // 3, 5, or 10
   updatedAt      DateTime @updatedAt
+}
+
+// ── Beginning Balances ───────────────────────────────────────
+// One row per (Account, fiscal year) capturing the opening balance for the
+// period. Required so the Balance Sheet reflects cumulative state — Cash,
+// Owner's Equity, and Retained Earnings — instead of just current-year flows.
+model BeginningBalance {
+  id          String  @id @default(cuid())
+  accountId   String
+  account     Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  periodYear  Int
+  amount      Decimal @default(0)
+  notes       String?
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([accountId, periodYear])
+  @@index([periodYear])
+  @@index([accountId])
 }

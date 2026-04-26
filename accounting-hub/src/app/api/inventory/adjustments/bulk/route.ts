@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { postInventoryAdjustmentJournal } from '@/lib/accounting/post-inventory-adjustment'
 import { recalcWeightedUnitCost } from '@/lib/fifo'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
@@ -149,8 +150,21 @@ export async function POST(req: Request) {
       })
     }
 
-    // Execute all in one transaction
-    await prisma.$transaction([...adjustmentOps, ...updateOps])
+    // Execute all in one transaction. The result preserves order, so the first
+    // adjustmentOps.length entries are the created InventoryAdjustment rows.
+    const txResults = await prisma.$transaction([...adjustmentOps, ...updateOps])
+    const createdAdjustments = txResults.slice(0, adjustmentOps.length) as { id: string }[]
+
+    // Tier 3 Step 5: Post each inventory movement to the GL. Non-fatal.
+    for (const adj of createdAdjustments) {
+      try {
+        const r = await postInventoryAdjustmentJournal(prisma, adj.id, session.user.id)
+        if (r.posted) console.log(`[GL] Posted bulk inventory JE ${r.journalEntryId} for adj ${adj.id}`)
+        else if (process.env.ENABLE_GL_POSTING === 'true') console.warn(`[GL] Skipped bulk inventory posting for ${adj.id}: ${r.reason}`)
+      } catch (postErr) {
+        console.error(`[GL] Bulk inventory posting threw for ${adj.id}:`, postErr)
+      }
+    }
 
     // Recalculate weighted-average unitCost from FIFO lots for each affected item
     const affectedItemIds = [...new Set(results.map(r => skuMap.get(r.sku)?.id).filter(Boolean))] as string[]

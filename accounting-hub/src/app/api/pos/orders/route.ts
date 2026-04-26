@@ -3,8 +3,13 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parsePagination, paginatedResult } from '@/lib/pagination'
 import { consumeFifoLots, recalcWeightedUnitCost } from '@/lib/fifo'
+import { postJournalEntry, UnbalancedJournalEntryError } from '@/lib/accounting/posting'
+import { postOrderJournal } from '@/lib/accounting/post-order'
 
-/* ── Create a journal entry crediting Inventory / debiting 8120 Marketing Expense ── */
+/* ── Free-sample JE: DR 8120 Marketing, CR Inventory ──────────────
+   Tier 3: routed through the central posting service so any future
+   imbalance (e.g. missing inventory account) raises an error instead
+   of silently writing a one-sided entry. */
 async function createFreeSampleJournalEntry(
   createdById: string,
   branch: string,
@@ -14,13 +19,11 @@ async function createFreeSampleJournalEntry(
   fifoAmount: number,
 ) {
   if (fifoAmount <= 0) return
-  // Look up 8120 Marketing and Advertising Expense account
   const marketingAcct = await prisma.account.findFirst({ where: { accountNumber: '8120' } })
   if (!marketingAcct) {
     console.warn('[FREE_SAMPLE] Account 8120 not found — skipping marketing journal entry')
     return
   }
-  // Look up an inventory ASSET account to credit (merchandise / inventory / starts with 13)
   const inventoryAcct = await prisma.account.findFirst({
     where: {
       accountType: 'ASSET',
@@ -31,26 +34,32 @@ async function createFreeSampleJournalEntry(
       ],
     },
   })
-
-  const lines: { accountId: string; debit: number; credit: number; description: string }[] = [
-    { accountId: marketingAcct.id, debit: fifoAmount, credit: 0, description: `Free sample — ${itemName}` },
-  ]
-  if (inventoryAcct) {
-    lines.push({ accountId: inventoryAcct.id, debit: 0, credit: fifoAmount, description: `Free sample inventory out — ${itemName}` })
+  if (!inventoryAcct) {
+    // Without a credit side this would be unbalanced. Refuse rather than half-post.
+    console.warn('[FREE_SAMPLE] No inventory ASSET account found — skipping JE to keep books balanced')
+    return
   }
 
-  await prisma.journalEntry.create({
-    data: {
+  try {
+    await postJournalEntry(prisma, {
       entryDate: new Date(`${transactionDate}T08:00:00+08:00`),
       description: `Free sample (marketing) — ${itemName}`,
       referenceType: 'FREE_SAMPLE',
       referenceId: orderItemId,
-      totalAmount: fifoAmount,
       branch,
       createdById,
-      lines: { create: lines },
-    },
-  })
+      lines: [
+        { accountId: marketingAcct.id, debit: fifoAmount, description: `Free sample — ${itemName}` },
+        { accountId: inventoryAcct.id, credit: fifoAmount, description: `Free sample inventory out — ${itemName}` },
+      ],
+    })
+  } catch (e) {
+    if (e instanceof UnbalancedJournalEntryError) {
+      console.error('[FREE_SAMPLE] refused unbalanced JE:', e.message)
+      return
+    }
+    throw e
+  }
 }
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN', 'SBEA_FRONTDESK', 'SBGH_FRONTDESK']
@@ -343,6 +352,21 @@ export async function POST(req: Request) {
       }
     }
 
+    // Tier 3 Step 3: Auto-post the order to the General Ledger.
+    // Gated by ENABLE_GL_POSTING=true. Non-fatal — order succeeds even if the
+    // JE can't be built (e.g. accounts not yet configured); we log and move on.
+    let postingResult: Awaited<ReturnType<typeof postOrderJournal>> | null = null
+    try {
+      postingResult = await postOrderJournal(prisma, order.id, session.user.id)
+      if (postingResult.posted) {
+        console.log(`[GL] Posted JE ${postingResult.journalEntryId} for order ${order.orderNumber}`)
+      } else if (process.env.ENABLE_GL_POSTING === 'true') {
+        console.warn(`[GL] Skipped posting for order ${order.orderNumber}: ${postingResult.reason}`)
+      }
+    } catch (postErr) {
+      console.error(`[GL] Posting threw for order ${order.orderNumber}:`, postErr)
+    }
+
     await prisma.auditLog.create({
       data: {
         userId: session.user.id,
@@ -355,6 +379,8 @@ export async function POST(req: Request) {
           branch,
           netAmount,
           itemCount: items.length,
+          glPosted: postingResult?.posted ?? false,
+          glReason: postingResult?.posted ? undefined : postingResult?.reason,
         },
       },
     })
