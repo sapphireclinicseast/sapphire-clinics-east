@@ -31,6 +31,7 @@ export interface PostOrderResult {
   posted: boolean
   reason?: string
   journalEntryId?: string
+  alreadyPosted?: boolean
 }
 
 export async function postOrderJournal(
@@ -41,6 +42,14 @@ export async function postOrderJournal(
   if (process.env.ENABLE_GL_POSTING !== 'true') {
     return { posted: false, reason: 'ENABLE_GL_POSTING flag is off' }
   }
+
+  // Idempotency: if a forward JE already exists for this order, skip.
+  // (Reversals don't count — they have referenceType=POS_ORDER_REVERSAL, etc.)
+  const existing = await prisma.journalEntry.findFirst({
+    where: { referenceType: 'POS_ORDER', referenceId: orderId },
+    select: { id: true },
+  })
+  if (existing) return { posted: false, alreadyPosted: true, journalEntryId: existing.id }
 
   // Pull everything we need in one round-trip.
   const order = await prisma.order.findUnique({

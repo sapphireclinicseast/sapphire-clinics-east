@@ -16,6 +16,7 @@ export interface PostARResult {
   posted: boolean
   reason?: string
   journalEntryId?: string
+  alreadyPosted?: boolean
 }
 
 export async function postARPaymentJournal(
@@ -26,6 +27,13 @@ export async function postARPaymentJournal(
   if (process.env.ENABLE_GL_POSTING !== 'true') {
     return { posted: false, reason: 'ENABLE_GL_POSTING flag is off' }
   }
+
+  // Idempotency
+  const existing = await prisma.journalEntry.findFirst({
+    where: { referenceType: 'AR_PAYMENT', referenceId: paymentId },
+    select: { id: true },
+  })
+  if (existing) return { posted: false, alreadyPosted: true, journalEntryId: existing.id }
 
   const payment = await prisma.aRPayment.findUnique({
     where: { id: paymentId },

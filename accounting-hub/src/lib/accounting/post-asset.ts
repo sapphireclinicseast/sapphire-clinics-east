@@ -19,6 +19,7 @@ export interface PostAssetResult {
   posted: boolean
   reason?: string
   journalEntryId?: string
+  alreadyPosted?: boolean
 }
 
 async function findDefaultCashAccount(prisma: PrismaClient) {
@@ -44,6 +45,13 @@ export async function postAssetJournal(
   if (process.env.ENABLE_GL_POSTING !== 'true') {
     return { posted: false, reason: 'ENABLE_GL_POSTING flag is off' }
   }
+
+  // Idempotency
+  const existing = await prisma.journalEntry.findFirst({
+    where: { referenceType: 'ASSET_PURCHASE', referenceId: assetId },
+    select: { id: true },
+  })
+  if (existing) return { posted: false, alreadyPosted: true, journalEntryId: existing.id }
 
   const asset = await prisma.asset.findUnique({
     where: { id: assetId },

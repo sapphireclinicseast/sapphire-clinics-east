@@ -21,6 +21,7 @@ export interface PostInvAdjResult {
   posted: boolean
   reason?: string
   journalEntryId?: string
+  alreadyPosted?: boolean
 }
 
 async function findShrinkageAccount(prisma: PrismaClient) {
@@ -77,6 +78,13 @@ export async function postInventoryAdjustmentJournal(
   if (process.env.ENABLE_GL_POSTING !== 'true') {
     return { posted: false, reason: 'ENABLE_GL_POSTING flag is off' }
   }
+
+  // Idempotency: skip if forward JE already exists.
+  const existing = await prisma.journalEntry.findFirst({
+    where: { referenceType: { in: ['INVENTORY_INCREASE', 'INVENTORY_SHRINKAGE'] }, referenceId: adjustmentId },
+    select: { id: true },
+  })
+  if (existing) return { posted: false, alreadyPosted: true, journalEntryId: existing.id }
 
   const adj = await prisma.inventoryAdjustment.findUnique({
     where: { id: adjustmentId },
