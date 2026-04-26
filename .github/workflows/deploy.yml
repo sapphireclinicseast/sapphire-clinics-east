@@ -297,6 +297,18 @@ jobs:
             fi
             echo "   .env.production status: $([ -f .env.production ] && echo 'found' || echo 'MISSING')"
 
+            # Tier 3: Enable General Ledger auto-posting. Idempotent — sets the
+            # flag if missing, leaves it alone if already present.
+            if [ -f .env.production ]; then
+              if grep -q "^ENABLE_GL_POSTING=" .env.production; then
+                sed -i 's|^ENABLE_GL_POSTING=.*|ENABLE_GL_POSTING=true|' .env.production
+                echo "   ENABLE_GL_POSTING already present — set to true."
+              else
+                echo "ENABLE_GL_POSTING=true" >> .env.production
+                echo "   ENABLE_GL_POSTING=true appended."
+              fi
+            fi
+
             echo "→ Ensuring NEXTAUTH_URL is correct for accounting hub..."
             # The env file may have been copied from the marketing hub — fix the URL
             if grep -q "NEXTAUTH_URL" .env.production 2>/dev/null; then

@@ -35,6 +35,10 @@ services:
       HR_PLATFORM_URL: ${HR_PLATFORM_URL:-http://host.docker.internal:3457}
       EXTERNAL_API_KEY: ${EXTERNAL_API_KEY}
       RESEND_API_KEY: ${RESEND_API_KEY}
+      # Tier 3: Enable General Ledger auto-posting (POS Order, AR Payment,
+      # Inventory Adjustment, Asset, Depreciation, Closing Entry). Defaults
+      # to false so a fresh install stays inert until the operator opts in.
+      ENABLE_GL_POSTING: ${ENABLE_GL_POSTING:-false}
     ports:
       - "127.0.0.1:3001:3001"
     volumes:
