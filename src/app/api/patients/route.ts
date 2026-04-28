@@ -81,6 +81,8 @@ function branchLabel(branch: string): string {
 
 // ─── GET: list patients or export as CSV ─────────────────────────────────────
 
+const MAIN_ADMIN_EMAIL = 'main@sapphireclinicseast.org'
+
 const ROLE_BRANCH: Record<string, string> = {
   SBEA_FRONT_DESK: 'SANDBOX_EAST',
   SBGH_FRONT_DESK: 'SANDBOX_GREENHILLS',
@@ -99,6 +101,15 @@ export async function GET(req: NextRequest) {
   // Front desk users are always scoped to their branch regardless of query param
   const branch = forcedBranch ?? searchParams.get('branch')
   const exportCsv = searchParams.get('export') === 'csv'
+  if (exportCsv) {
+    const userEmail = (session.user as { email?: string }).email ?? ''
+    if (userEmail.toLowerCase() !== MAIN_ADMIN_EMAIL) {
+      return NextResponse.json(
+        { error: 'CSV export is restricted to the main admin account.' },
+        { status: 403 },
+      )
+    }
+  }
   // Front desk export is also scoped to their branch
   const exportBranches = forcedBranch
     ? [forcedBranch]
