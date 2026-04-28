@@ -205,7 +205,8 @@ const ROLE_TO_BRANCH: Record<string, string> = {
   SBGH_FRONT_DESK: 'SANDBOX_GREENHILLS',
 }
 
-export default function PatientsPage({ role = '' }: { role?: string }) {
+export default function PatientsPage({ role = '', userEmail = '' }: { role?: string; userEmail?: string }) {
+  const isMainAdmin = userEmail.toLowerCase() === 'main@sapphireclinicseast.org'
   const isFrontDesk  = role === 'SBEA_FRONT_DESK' || role === 'SBGH_FRONT_DESK'
   const forcedBranch = ROLE_TO_BRANCH[role] ?? ''
 
@@ -673,7 +674,8 @@ export default function PatientsPage({ role = '' }: { role?: string }) {
           </button>
         )}
 
-        {/* Export */}
+        {/* Export — restricted to the main admin account */}
+        {isMainAdmin && (
         <div className="relative">
           <button onClick={() => setShowExportPanel(!showExportPanel)}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
@@ -709,6 +711,7 @@ export default function PatientsPage({ role = '' }: { role?: string }) {
             </div>
           )}
         </div>
+        )}
 
         <button onClick={() => setShowRegisterQr(true)}
           className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
