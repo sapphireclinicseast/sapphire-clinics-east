@@ -336,6 +336,7 @@ export async function POST(req: NextRequest) {
       notes:       uc(body.notes)       || null,
       pwdSeniorId: uc(body.pwdSeniorId) || null,
       firstDayOfConsult: body.firstDayOfConsult ? new Date(body.firstDayOfConsult) : null,
+      unsubscribed: !!body.unsubscribed,
     },
   })
 
@@ -352,7 +353,7 @@ export async function PUT(req: NextRequest) {
   const {
     id, firstName, lastName, email, phone, dob, branches,
     sex, civilStatus, religion, nationality, address, city, diagnosis, notes,
-    firstDayOfConsult, pwdSeniorId,
+    firstDayOfConsult, pwdSeniorId, unsubscribed,
   } = body
 
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })

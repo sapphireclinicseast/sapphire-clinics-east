@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Mail, Sparkles, Send, Users, ChevronDown, Clock, Calendar, CheckCircle2, CheckSquare, Square, FileText, Trash2, Eye, X } from 'lucide-react'
 
 const BRANCH_FILTERS = [
@@ -25,6 +25,8 @@ function toDatetimeLocal(d: Date): string {
 export default function EmailPage() {
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
+  const [pasteUploading, setPasteUploading] = useState(false)
+  const bodyRef = useRef<HTMLTextAreaElement | null>(null)
   const [recipientGroup, setRecipientGroup] = useState('all')
   const [branchFilter, setBranchFilter] = useState<Set<string>>(new Set())  // empty = no filter
   const [recipientCount, setRecipientCount] = useState<number | null>(null)
@@ -88,6 +90,62 @@ export default function EmailPage() {
       alert('AI generation failed.')
     } finally {
       setGenerating(false)
+    }
+  }
+
+
+  // Handle paste: if it contains an image, upload it and insert <img> tag at
+  // the cursor. Plain text falls through to default browser behavior.
+  async function handleBodyPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const items = e.clipboardData?.items
+    if (!items) return
+    const imageItems: File[] = []
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i]
+      if (it.kind === 'file' && it.type.startsWith('image/')) {
+        const f = it.getAsFile()
+        if (f) imageItems.push(f)
+      }
+    }
+    if (imageItems.length === 0) return // let default paste happen
+    e.preventDefault()
+    setPasteUploading(true)
+    try {
+      const ta = bodyRef.current
+      const cursorStart = ta?.selectionStart ?? body.length
+      const cursorEnd   = ta?.selectionEnd   ?? body.length
+      const before = body.slice(0, cursorStart)
+      const after  = body.slice(cursorEnd)
+      const inserts: string[] = []
+      const origin = typeof window !== 'undefined' ? window.location.origin : ''
+      for (const file of imageItems) {
+        const fd = new FormData()
+        fd.append('file', file, file.name || 'pasted.png')
+        fd.append('folder', 'email-campaigns')
+        const res = await fetch('/api/upload', { method: 'POST', body: fd })
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}))
+          throw new Error(d.error || 'Upload failed')
+        }
+        const data = await res.json() as { url: string }
+        const absoluteUrl = data.url.startsWith('http') ? data.url : origin + data.url
+        inserts.push(`<img src="${absoluteUrl}" alt="" style="max-width:100%;height:auto;display:block;margin:8px 0;" />`)
+      }
+      const insertText = inserts.join('\n')
+      const newBody = before + insertText + after
+      setBody(newBody)
+      // Restore cursor position after the inserted text
+      setTimeout(() => {
+        if (ta) {
+          const pos = cursorStart + insertText.length
+          ta.focus()
+          ta.setSelectionRange(pos, pos)
+        }
+      }, 0)
+    } catch (err) {
+      alert('Image paste failed: ' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setPasteUploading(false)
     }
   }
 
@@ -337,13 +395,20 @@ export default function EmailPage() {
             Email Body
           </label>
           <textarea
+            ref={bodyRef}
             value={body}
             onChange={(e) => setBody(e.target.value)}
+            onPaste={handleBodyPaste}
             rows={10}
-            placeholder="Write your email content here, or generate with AI above…"
+            placeholder="Write your email content here, or generate with AI above… You can paste (Ctrl+V) images to embed them."
             className="w-full px-4 py-3 rounded-lg text-sm outline-none resize-none"
             style={{ border: '1.5px solid var(--light-gray)', color: 'var(--charcoal)' }}
           />
+          <p className="text-[11px] mt-1.5" style={{ color: pasteUploading ? '#1d4ed8' : 'var(--mid-gray)' }}>
+            {pasteUploading
+              ? '⏳ Uploading pasted image…'
+              : '💡 Tip: Paste images directly with Ctrl+V — they\'ll be uploaded and embedded as HTML in the email.'}
+          </p>
         </div>
 
         {/* Send mode toggle */}

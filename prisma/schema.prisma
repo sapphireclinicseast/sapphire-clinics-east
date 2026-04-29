@@ -159,6 +159,7 @@ model Patient {
   referralUrl        String?    // optional doctor's referral document URL
   firstDayOfConsult  DateTime?  // manual override: first day of consult/session (basis for cancellation reset & follow-up rules)
   pwdSeniorId        String?    // PWD or Senior Citizen ID Number (optional, for discount eligibility)
+  unsubscribed       Boolean    @default(false)  // opt-out from email campaigns
   createdAt          DateTime   @default(now())
   updatedAt           DateTime             @updatedAt
   schedules           Schedule[]

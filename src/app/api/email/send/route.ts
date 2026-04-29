@@ -28,7 +28,10 @@ export async function POST(req: NextRequest) {
 
   // Resolve recipient count (include branch filter)
   let patients = await prisma.patient.findMany({
-    where: patientIds !== null ? { id: { in: patientIds } } : {},
+    where: {
+      ...(patientIds !== null ? { id: { in: patientIds } } : {}),
+      unsubscribed: false,
+    },
     select: { email: true, patientType: true, dob: true },
   })
   if (recipientGroup === 'pediatric') patients = patients.filter((p) => p.patientType === 'PEDIATRIC')
