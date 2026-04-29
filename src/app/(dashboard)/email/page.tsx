@@ -121,7 +121,7 @@ export default function EmailPage() {
       for (const file of imageItems) {
         const fd = new FormData()
         fd.append('file', file, file.name || 'pasted.png')
-        fd.append('folder', 'email-campaigns')
+        fd.append('folder', 'email-images')
         const res = await fetch('/api/upload', { method: 'POST', body: fd })
         if (!res.ok) {
           const d = await res.json().catch(() => ({}))
