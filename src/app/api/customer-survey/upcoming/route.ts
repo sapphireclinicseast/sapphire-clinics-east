@@ -67,6 +67,25 @@ export async function GET() {
   })
   const targetMap = new Map(targets.map(t => [t.staffId, t]))
 
+  // Build a set of (staffId|patientId) pairs that already have a survey
+  // assignment for THIS YEAR — so the same patient is never picked twice
+  // to assess the same therapist within the year.
+  const yearStart = new Date(`${year}-01-01T00:00:00`)
+  const yearEnd   = new Date(`${year + 1}-01-01T00:00:00`)
+  const priorAssignments = await prisma.surveyAssignment.findMany({
+    where: {
+      branch,
+      createdAt: { gte: yearStart, lt: yearEnd },
+      patientId: { not: null },
+    },
+    select: { staffId: true, patientId: true },
+  })
+  const alreadyAssessed = new Set(
+    priorAssignments
+      .filter(a => a.patientId)
+      .map(a => `${a.staffId}|${a.patientId}`)
+  )
+
   // Find schedules that need survey prompts:
   // 1. No survey assignment created yet for this schedule
   // 2. The therapist is behind on their assessment target
@@ -92,6 +111,9 @@ export async function GET() {
         a.status === 'COMPLETED' || (a.status !== 'EXPIRED' && a.expiresAt > now)
     )
     if (hasActiveOrCompleted) continue
+
+    // Skip if this patient has already assessed this therapist this year
+    if (alreadyAssessed.has(`${sched.staffId}|${sched.patientId}`)) continue
 
     const target = targetMap.get(sched.staffId)
     const targetCount = target?.targetCount ?? 10

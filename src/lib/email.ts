@@ -120,22 +120,59 @@ export async function executeSendCampaign(campaignId: string): Promise<void> {
     throw new Error('No patients with email addresses in this group')
   }
 
+  // Resume support: if the campaign was previously partially sent (status
+  // 'failed' with sentCount > 0), pick up where it left off. Otherwise start
+  // fresh and reset sentCount to 0.
+  const resuming = campaign.status === 'failed' && campaign.sentCount > 0 && campaign.sentCount < recipients.length
+  const startFrom = resuming ? campaign.sentCount : 0
+
   await prisma.emailCampaign.update({
     where: { id: campaignId },
-    data: { status: 'sending', recipientCount: recipients.length, sentCount: 0 },
+    data: {
+      status: 'sending',
+      recipientCount: recipients.length,
+      ...(resuming ? {} : { sentCount: 0 }),
+    },
   })
 
-  let sentCount = 0
+  let sentCount = startFrom
+  let rateLimitHit = false
   try {
     const gmail = await getGmailClient(refreshToken)
-    for (const patient of recipients) {
+    for (let i = startFrom; i < recipients.length; i++) {
+      const patient = recipients[i]
       if (!patient.email) continue
       const raw = makeEmailBody(patient.email, campaign.subject, campaign.body, senderEmail)
-      await gmail.users.messages.send({ userId: 'me', requestBody: { raw } })
+      try {
+        await gmail.users.messages.send({ userId: 'me', requestBody: { raw } })
+      } catch (sendErr) {
+        // Detect rate-limit / quota errors and stop gracefully so the operator
+        // can resume later. Gmail returns 429 / 403 with rateLimitExceeded.
+        const errObj = sendErr as { code?: number; message?: string; errors?: Array<{ reason?: string }> }
+        const reason = errObj?.errors?.[0]?.reason ?? ''
+        const status = errObj?.code
+        if (status === 429 || status === 403 ||
+            reason === 'rateLimitExceeded' || reason === 'quotaExceeded' ||
+            reason === 'userRateLimitExceeded' ||
+            (errObj?.message ?? '').toLowerCase().includes('rate limit')) {
+          rateLimitHit = true
+          // One short retry after a 5s pause in case it's a transient burst
+          await new Promise(r => setTimeout(r, 5000))
+          try {
+            await gmail.users.messages.send({ userId: 'me', requestBody: { raw } })
+            rateLimitHit = false
+          } catch {
+            // Still hitting the limit — bail out, leave sentCount where it is
+            break
+          }
+        } else {
+          throw sendErr
+        }
+      }
       sentCount++
-      // Persist progress periodically so the UI can show "Partial (x/N)"
-      // if the process later crashes. Every 10 sends is a good trade-off
-      // between write load and granularity.
+      // Throttle ~4 messages/sec to stay safely under Gmail per-user limits.
+      await new Promise(r => setTimeout(r, 250))
+      // Persist progress every 10 sends so the UI can show "Partial (x/N)".
       if (sentCount % 10 === 0) {
         await prisma.emailCampaign.update({
           where: { id: campaignId },
@@ -143,6 +180,17 @@ export async function executeSendCampaign(campaignId: string): Promise<void> {
         }).catch(() => undefined)
       }
     }
+
+    if (rateLimitHit) {
+      // Mark as failed so the operator sees a Resume button. The UI shows
+      // "Partial (x/N)" because sentCount < recipientCount.
+      await prisma.emailCampaign.update({
+        where: { id: campaignId },
+        data: { status: 'failed', sentCount },
+      })
+      throw new Error(`Rate limit hit at ${sentCount}/${recipients.length}. Resume later when the quota resets.`)
+    }
+
     await prisma.emailCampaign.update({
       where: { id: campaignId },
       data: { status: 'sent', sentAt: new Date(), sentCount },

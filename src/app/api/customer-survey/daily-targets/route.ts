@@ -109,6 +109,24 @@ export async function GET(req: NextRequest) {
   })
   const targetMap = new Map(targets.map(t => [t.staffId, t]))
 
+  // Build a set of (staffId|patientId) pairs already assigned this year
+  // so we never pick the same patient twice to assess the same therapist.
+  const yearStart = new Date(`${year}-01-01T00:00:00`)
+  const yearEnd   = new Date(`${year + 1}-01-01T00:00:00`)
+  const priorAssignments = await prisma.surveyAssignment.findMany({
+    where: {
+      branch: authedBranch,
+      createdAt: { gte: yearStart, lt: yearEnd },
+      patientId: { not: null },
+    },
+    select: { staffId: true, patientId: true },
+  })
+  const alreadyAssessed = new Set(
+    priorAssignments
+      .filter(a => a.patientId)
+      .map(a => `${a.staffId}|${a.patientId}`)
+  )
+
   // ── Group schedules by staff ──
   const byStaff = new Map<string, typeof schedules>()
   for (const sch of schedules) {
@@ -117,6 +135,8 @@ export async function GET(req: NextRequest) {
     const targetCount = t?.targetCount ?? 10
     const completed   = t?.completed   ?? 0
     if (completed >= targetCount) continue  // already met target
+    // Skip if this patient already assessed this therapist this year
+    if (alreadyAssessed.has(`${sch.staffId}|${sch.patientId}`)) continue
     if (!byStaff.has(sch.staffId)) byStaff.set(sch.staffId, [])
     byStaff.get(sch.staffId)!.push(sch)
   }

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Mail, Sparkles, Send, Users, ChevronDown, Clock, Calendar, CheckCircle2, CheckSquare, Square, FileText, Trash2, Eye, X } from 'lucide-react'
+import { Mail, Sparkles, Send, Users, ChevronDown, Clock, Calendar, CheckCircle2, CheckSquare, Square, FileText, Trash2, Eye, X, RotateCw } from 'lucide-react'
 
 const BRANCH_FILTERS = [
   { value: 'SANDBOX_EAST',       label: 'East Branch' },
@@ -528,6 +528,21 @@ function CampaignHistory() {
     }
   }
 
+
+  async function resumeCampaign(id: string) {
+    if (!confirm('Resume sending this campaign from where it stopped?')) return
+    try {
+      const r = await fetch('/api/email/campaigns/' + id + '/resume', { method: 'POST' })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || 'Resume failed')
+      const msg = d.resuming
+        ? 'Resuming from ' + d.startFrom + '/' + d.total + ' — refresh in a few minutes to see updated progress.'
+        : 'Sending started.'
+      alert(msg)
+      await load()
+    } catch (e) { alert((e as Error).message) }
+  }
+
   async function deleteCampaign(id: string) {
     if (!confirm('Delete this campaign record? The email that was already sent cannot be recalled.')) return
     try {
@@ -631,6 +646,11 @@ function CampaignHistory() {
                     <button onClick={() => openPreview(r.id)} title="Preview" className="p-1.5 rounded hover:bg-gray-100 inline-block">
                       <Eye size={13} style={{ color: 'var(--mid-gray)' }} />
                     </button>
+                    {(r.status === 'failed' && r.sentCount < r.recipientCount) && (
+                      <button onClick={() => resumeCampaign(r.id)} title="Resume sending" className="p-1.5 rounded hover:bg-emerald-50 inline-block">
+                        <RotateCw size={13} style={{ color: '#059669' }} />
+                      </button>
+                    )}
                     <button onClick={() => deleteCampaign(r.id)} title="Delete record" className="p-1.5 rounded hover:bg-red-50 inline-block">
                       <Trash2 size={13} style={{ color: '#DC2626' }} />
                     </button>
