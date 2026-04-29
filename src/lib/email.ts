@@ -95,7 +95,10 @@ export async function executeSendCampaign(campaignId: string): Promise<void> {
   }
 
   let patients = await prisma.patient.findMany({
-    where: patientIds !== null ? { id: { in: patientIds } } : {},
+    where: {
+      ...(patientIds !== null ? { id: { in: patientIds } } : {}),
+      unsubscribed: false,
+    },
     select: { email: true, firstName: true, lastName: true, dob: true, patientType: true },
   })
 

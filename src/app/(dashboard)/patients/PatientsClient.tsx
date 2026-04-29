@@ -29,6 +29,7 @@ interface Patient {
   referralUrl?: string | null
   firstDayOfConsult?: string | null
   pwdSeniorId?: string | null
+  unsubscribed?: boolean
 }
 
 const BRANCHES = [
@@ -46,7 +47,7 @@ const EMPTY_FORM = {
   firstName: '', lastName: '', email: '', phone: '', dob: '',
   patientType: 'ADULT', branches: [] as string[], sex: '',
   civilStatus: '', religion: '', nationality: '', address: '', city: '', diagnosis: '', notes: '',
-  firstDayOfConsult: '', pwdSeniorId: '',
+  firstDayOfConsult: '', pwdSeniorId: '', unsubscribed: false,
 }
 
 type SortCol = 'name' | 'type' | 'branch' | 'sex' | 'city' | 'barangay' | 'diagnosis' | 'email' | 'dob' | ''
@@ -450,6 +451,7 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
       notes:       p.notes       ?? '',
       firstDayOfConsult: p.firstDayOfConsult ? p.firstDayOfConsult.slice(0, 10) : '',
       pwdSeniorId: p.pwdSeniorId ?? '',
+      unsubscribed: !!p.unsubscribed,
     })
     setEditError('')
   }
@@ -1102,6 +1104,7 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
                         <Field label="Religion"              value={editForm.religion}    onChange={(v) => setEditForm((f) => ({ ...f, religion: v }))} />
                         <Field label="Nationality"           value={editForm.nationality} onChange={(v) => setEditForm((f) => ({ ...f, nationality: v }))} />
                         <Field label="PWD/Senior ID Number"  value={editForm.pwdSeniorId} onChange={(v) => setEditForm((f) => ({ ...f, pwdSeniorId: v }))} placeholder="Optional — for discount eligibility" />
+                        <UnsubscribeToggle value={!!editForm.unsubscribed} onChange={(v) => setEditForm((f) => ({ ...f, unsubscribed: v }))} />
                       </div>
                       <div className="mt-3">
                         <label className="block text-xs font-semibold uppercase tracking-widest mb-1.5"
@@ -1448,6 +1451,49 @@ function PatientRegisterQrModal({
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Unsubscribe Newsletter Toggle ───────────────────────────────────────────
+function UnsubscribeToggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div>
+      <label className="block text-xs font-semibold uppercase tracking-widest mb-1.5"
+        style={{ color: 'var(--mid-gray)' }}>Email Newsletter</label>
+      <button
+        type="button"
+        onClick={() => onChange(!value)}
+        className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all"
+        style={{
+          border: `1.5px solid ${value ? '#fecaca' : 'var(--light-gray)'}`,
+          background: value ? '#fef2f2' : '#fff',
+          color: value ? '#b91c1c' : 'var(--charcoal)',
+        }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {value ? (
+            <XCircle size={15} style={{ color: '#dc2626' }} />
+          ) : (
+            <CheckCircle size={15} style={{ color: '#10b981' }} />
+          )}
+          {value ? 'Unsubscribed from Newsletter' : 'Subscribed to Newsletter'}
+        </span>
+        <span
+          style={{
+            width: 36, height: 20, borderRadius: 99,
+            background: value ? '#dc2626' : '#d1d5db',
+            position: 'relative', flexShrink: 0,
+            transition: 'background 0.15s',
+          }}
+        >
+          <span style={{
+            position: 'absolute', top: 2, left: value ? 18 : 2,
+            width: 16, height: 16, borderRadius: '50%', background: '#fff',
+            transition: 'left 0.15s',
+          }} />
+        </span>
+      </button>
     </div>
   )
 }
