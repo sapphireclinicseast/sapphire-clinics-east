@@ -736,21 +736,20 @@ export default function FrontDeskWelcome({
         </div>
       </div>
 
-      {/* ── Slot Removal Alerts (right column) ── */}
-      {(slotAlerts.subjectNoShow.length > 0 || slotAlerts.nearingNoShow.length > 0 || slotAlerts.subjectCancel.length > 0 || slotAlerts.nearingCancel.length > 0) && (
-        <div style={{ flex: '1 1 280px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {slotAlerts.subjectNoShow.length > 0 && (
-            <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '0.875rem', padding: '1rem 1.25rem' }}>
-              <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#DC2626', marginBottom: '0.5rem' }}>
-                Subject to Slot Removal — No-Shows ({slotAlerts.subjectNoShow.length})
-              </div>
-              {slotAlerts.subjectNoShow.map((p: any) => (
-                <div key={p.id} style={{ fontSize: '0.82rem', color: '#991B1B', fontWeight: 600, padding: '0.2rem 0' }}>
-                  {p.lastName}, {p.firstName} <span style={{ fontWeight: 400, fontSize: '0.75rem', color: '#DC2626' }}>— {p.noShowCount}/3</span>
-                </div>
-              ))}
+      {/* ── Slot Removal Alerts + PR widgets (right column — always shown) ── */}
+      <div style={{ flex: '1 1 280px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '0.875rem', padding: '1rem 1.25rem' }}>
+            <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#DC2626', marginBottom: '0.5rem' }}>
+              Subject to Slot Removal — No-Shows ({slotAlerts.subjectNoShow.length})
             </div>
-          )}
+            {slotAlerts.subjectNoShow.length === 0 ? (
+              <div style={{ fontSize: '0.82rem', color: '#991B1B', fontStyle: 'italic', padding: '0.2rem 0' }}>None</div>
+            ) : slotAlerts.subjectNoShow.map((p: any) => (
+              <div key={p.id} style={{ fontSize: '0.82rem', color: '#991B1B', fontWeight: 600, padding: '0.2rem 0' }}>
+                {p.lastName}, {p.firstName} <span style={{ fontWeight: 400, fontSize: '0.75rem', color: '#DC2626' }}>— {p.noShowCount}/3</span>
+              </div>
+            ))}
+          </div>
           <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '0.875rem', padding: '1rem 1.25rem' }}>
             <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#D97706', marginBottom: '0.5rem' }}>
               Nearing Slot Removal — No-Shows ({slotAlerts.nearingNoShow.length})
@@ -763,18 +762,18 @@ export default function FrontDeskWelcome({
               </div>
             ))}
           </div>
-          {slotAlerts.subjectCancel.length > 0 && (
-            <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '0.875rem', padding: '1rem 1.25rem' }}>
-              <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#DC2626', marginBottom: '0.5rem' }}>
-                Subject to Slot Removal — Cancellations ({slotAlerts.subjectCancel.length})
-              </div>
-              {slotAlerts.subjectCancel.map((p: any) => (
-                <div key={p.id} style={{ fontSize: '0.82rem', color: '#991B1B', fontWeight: 600, padding: '0.2rem 0' }}>
-                  {p.lastName}, {p.firstName} <span style={{ fontWeight: 400, fontSize: '0.75rem', color: '#DC2626' }}>— {p.cancellationsUsed}/12</span>
-                </div>
-              ))}
+          <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '0.875rem', padding: '1rem 1.25rem' }}>
+            <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#DC2626', marginBottom: '0.5rem' }}>
+              Subject to Slot Removal — Cancellations ({slotAlerts.subjectCancel.length})
             </div>
-          )}
+            {slotAlerts.subjectCancel.length === 0 ? (
+              <div style={{ fontSize: '0.82rem', color: '#991B1B', fontStyle: 'italic', padding: '0.2rem 0' }}>None</div>
+            ) : slotAlerts.subjectCancel.map((p: any) => (
+              <div key={p.id} style={{ fontSize: '0.82rem', color: '#991B1B', fontWeight: 600, padding: '0.2rem 0' }}>
+                {p.lastName}, {p.firstName} <span style={{ fontWeight: 400, fontSize: '0.75rem', color: '#DC2626' }}>— {p.cancellationsUsed}/12</span>
+              </div>
+            ))}
+          </div>
           <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '0.875rem', padding: '1rem 1.25rem' }}>
             <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#D97706', marginBottom: '0.5rem' }}>
               Nearing Slot Removal — Cancellations ({slotAlerts.nearingCancel.length})
@@ -794,7 +793,6 @@ export default function FrontDeskWelcome({
           {/* Past Progress Reports — searchable history */}
           <PastProgressReports />
         </div>
-      )}
 
       </div>{/* end side-by-side wrapper */}
 
