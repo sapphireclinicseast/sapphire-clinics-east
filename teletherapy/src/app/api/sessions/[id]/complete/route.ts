@@ -48,6 +48,7 @@ export async function POST(
         notes: body.notes || schedule.sessionNote.notes || null,
         attachments: mergedAttachments.length > 0 ? (mergedAttachments as any) : undefined,
         therapistAccountId: session.user.id,
+        ...(body.isInitialEvaluation === true ? { isInitialEvaluation: true } : {}),
       },
     })
 
@@ -62,6 +63,7 @@ export async function POST(
       status: 'COMPLETED',
       notes: body.notes || null,
       attachments: body.attachments || null,
+      isInitialEvaluation: body.isInitialEvaluation === true,
     },
   })
 

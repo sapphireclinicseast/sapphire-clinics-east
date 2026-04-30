@@ -102,6 +102,34 @@ model Patient {
   updatedAt   DateTime    @updatedAt
   schedules           Schedule[]
   patientAssignments  PatientAssignment[]
+  documents           PatientDocument[]
+}
+
+// Documents uploaded per patient per department
+// (Initial Evaluations, Progress Reports, Other Documents)
+enum PatientDocumentType {
+  INITIAL_EVALUATION
+  PROGRESS_REPORT
+  OTHER_DOCUMENT
+}
+
+model PatientDocument {
+  id           String              @id @default(cuid())
+  patientId    String
+  patient      Patient             @relation(fields: [patientId], references: [id])
+  uploadedById String              // therapistAccount.id of uploader
+  department   String              // PT, OT, SLP, SPED, PSYCHOLOGY, ORTHOSIS
+  documentType PatientDocumentType
+  fileName     String
+  filePath     String
+  mimeType     String
+  description  String?
+  scheduleId   String?             // optional link to a session (e.g. IE flagged from session)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@index([patientId, department])
+  @@index([documentType])
 }
 
 model Schedule {
@@ -183,6 +211,7 @@ model SessionNote {
   notes               String?
   attachments         Json?
   discontinuedRemarks String?
+  isInitialEvaluation Boolean           @default(false)
   emailSentAt         DateTime?
   emailSentTo         String?
   createdAt           DateTime          @default(now())

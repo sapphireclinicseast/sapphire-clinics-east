@@ -19,6 +19,7 @@ import {
   Calendar,
   Stethoscope,
   Pencil,
+  ClipboardList,
 } from 'lucide-react'
 import { formatTime, formatDate } from '@/lib/utils'
 import { useSession } from 'next-auth/react'
@@ -98,12 +99,16 @@ export default function SessionDetailPage() {
   const isSPEDDept = sessionDept === 'SPED' || sessionDept === 'SPECIAL EDUCATION'
   const isPTDept = sessionDept === 'PT' || sessionDept === 'PHYSICAL THERAPY'
   const hasStructuredForm = isPsychDept || isOTDept || isSLPDept || isSPEDDept || isPTDept // departments with structured note forms
+  const supportsIEFlag = isPTDept || isOTDept || isSLPDept || isSPEDDept // depts that can flag a session as Initial Evaluation
   const [isFirstSession, setIsFirstSession] = useState(true)
   const [overrideToProgress, setOverrideToProgress] = useState(false)
   const [psychUseForm, setPsychUseForm] = useState(true) // true = structured form, false = upload/QR/write
   const [psychEditUseForm, setPsychEditUseForm] = useState(true) // same toggle for edit mode
   const [captureReceived, setCaptureReceived] = useState<string | null>(null) // filename of received capture
   const [spedFormVariant, setSPEDFormVariant] = useState<'SPED16' | 'SPED18'>('SPED16') // SPED form selector
+  const [ieMode, setIEMode] = useState<'PENDING' | 'DAILY_NOTES' | 'INITIAL_EVAL'>('PENDING') // PT/OT/SLP/SPED IE flag
+  const [ieFile, setIEFile] = useState<File | null>(null)
+  const [ieDescription, setIEDescription] = useState('')
   const [showClearFormPrompt, setShowClearFormPrompt] = useState(false) // psych: ask to clear form when switching to upload
   const [clearFormTarget, setClearFormTarget] = useState<'complete' | 'edit' | null>(null) // which mode triggered the prompt
   const qrPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -1116,6 +1121,150 @@ export default function SessionDetailPage() {
         </div>
       )}
 
+      {/* IE Flag Gate — for PT/OT/SLP/SPED only, shown after clicking Complete */}
+      {actionMode === 'complete' && supportsIEFlag && ieMode === 'PENDING' && session.patient && (
+        <div className="card-static animate-gate mb-6">
+          <h2 className="font-bold text-[var(--charcoal)] mb-2 flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
+            <CheckCircle2 size={20} className="text-green-500" />
+            Complete Session
+          </h2>
+          <p className="text-[12px] text-[var(--mid-gray)] mb-4">Choose how you want to record this session.</p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
+            <button
+              onClick={() => setIEMode('DAILY_NOTES')}
+              className="flex flex-col items-start gap-2 p-4 rounded-xl border-2 border-[var(--light-gray)] hover:border-[var(--teal)] hover:bg-[var(--pale-teal)] transition-all text-left"
+            >
+              <FileText size={20} className="text-[var(--teal)]" />
+              <span className="font-bold text-[14px] text-[var(--charcoal)]" style={{ fontFamily: 'var(--font-display)' }}>
+                Regular Daily Notes
+              </span>
+              <span className="text-[11px] text-[var(--mid-gray)] leading-snug">
+                Fill out the standard Daily Notes form for this session.
+              </span>
+            </button>
+            <button
+              onClick={() => setIEMode('INITIAL_EVAL')}
+              className="flex flex-col items-start gap-2 p-4 rounded-xl border-2 border-[#ED6823]/30 bg-[#ED6823]/5 hover:border-[#ED6823] hover:bg-[#ED6823]/10 transition-all text-left"
+            >
+              <ClipboardList size={20} style={{ color: '#ED6823' }} />
+              <span className="font-bold text-[14px] text-[var(--charcoal)]" style={{ fontFamily: 'var(--font-display)' }}>
+                ✓ This session is Initial Evaluation
+              </span>
+              <span className="text-[11px] text-[var(--mid-gray)] leading-snug">
+                Skip Daily Notes — upload IE Report directly to the patient&apos;s Initial Evaluation section.
+              </span>
+            </button>
+          </div>
+
+          <button
+            onClick={() => { setActionMode(null); setIEMode('PENDING') }}
+            className="text-[12px] text-[var(--mid-gray)] hover:text-[var(--teal)] font-medium"
+          >
+            ← Cancel
+          </button>
+        </div>
+      )}
+
+      {/* Initial Evaluation upload form (when user chose IE for PT/OT/SLP/SPED) */}
+      {actionMode === 'complete' && supportsIEFlag && ieMode === 'INITIAL_EVAL' && session.patient && (
+        <div className="card-static animate-gate mb-6">
+          <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+            <ClipboardList size={20} style={{ color: '#ED6823' }} />
+            Upload Initial Evaluation Report
+          </h2>
+
+          <p className="text-[12px] text-[var(--mid-gray)] mb-4 leading-relaxed">
+            This will mark the session as completed (Initial Evaluation) and save the IE report directly under the patient&apos;s <strong>Initial Evaluation/Re-evaluation</strong> section. No Daily Notes form will be filled out.
+          </p>
+
+          <div className="mb-4">
+            <label className="block text-[12px] font-semibold text-[var(--charcoal)] uppercase tracking-wider mb-2">IE Report File</label>
+            <label className="flex items-center justify-center gap-2 w-full py-4 px-4 rounded-xl border-2 border-dashed border-[var(--light-gray)] text-[13px] font-medium text-[var(--teal)] hover:border-[var(--teal)] hover:bg-[var(--pale-teal)] transition-all cursor-pointer">
+              <Upload size={16} />
+              {ieFile ? ieFile.name : 'Choose PDF or Word document'}
+              <input
+                type="file"
+                accept=".pdf,.doc,.docx"
+                className="hidden"
+                onChange={(e) => setIEFile(e.target.files?.[0] ?? null)}
+              />
+            </label>
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-[12px] font-semibold text-[var(--charcoal)] uppercase tracking-wider mb-2">Description (optional)</label>
+            <input
+              value={ieDescription}
+              onChange={(e) => setIEDescription(e.target.value)}
+              className="input text-[13px]"
+              placeholder="e.g. Initial Evaluation - PT, March 2026"
+            />
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={async () => {
+                if (!ieFile) { showToast('Please select an IE report file'); return }
+                if (!session.patient) return
+                setSubmitting(true)
+                try {
+                  // Step 1: upload to patient documents (INITIAL_EVALUATION)
+                  const fd = new FormData()
+                  fd.append('file', ieFile)
+                  fd.append('documentType', 'INITIAL_EVALUATION')
+                  if (ieDescription) fd.append('description', ieDescription)
+                  fd.append('scheduleId', scheduleId)
+                  const upRes = await fetch(`/api/patients/${session.patient.id}/documents`, {
+                    method: 'POST',
+                    body: fd,
+                  })
+                  if (!upRes.ok) {
+                    const e = await upRes.json()
+                    showToast(e.error ?? 'Upload failed')
+                    setSubmitting(false)
+                    return
+                  }
+                  // Step 2: mark session as Completed + isInitialEvaluation
+                  const compRes = await fetch(`/api/sessions/${scheduleId}/complete`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      notes: 'Initial Evaluation — see uploaded IE report.',
+                      attachments: [],
+                      isInitialEvaluation: true,
+                    }),
+                  })
+                  if (compRes.ok) {
+                    showToast('Session completed as Initial Evaluation')
+                    setActionMode(null)
+                    setIEMode('PENDING')
+                    setIEFile(null)
+                    setIEDescription('')
+                    fetchSession()
+                  } else {
+                    const e = await compRes.json()
+                    showToast(e.error ?? 'Failed')
+                  }
+                } catch { showToast('Failed') }
+                setSubmitting(false)
+              }}
+              disabled={submitting || !ieFile}
+              className="btn-primary flex-1 py-3 rounded-xl !bg-gradient-to-r !from-[#ED6823] !to-[#FFA235]"
+            >
+              {submitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+              Save IE & Complete Session
+            </button>
+            <button
+              onClick={() => { setIEMode('PENDING'); setIEFile(null); setIEDescription('') }}
+              className="btn-secondary px-6 rounded-xl"
+            >
+              Back
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Complete form */}
       {actionMode === 'complete' && isPsychDept && session.patient && psychUseForm && (
         <div className="card-static animate-gate">
@@ -1173,7 +1322,7 @@ export default function SessionDetailPage() {
       )}
 
       {/* OT Complete form */}
-      {actionMode === 'complete' && isOTDept && session.patient && psychUseForm && (
+      {actionMode === 'complete' && isOTDept && session.patient && psychUseForm && ieMode === 'DAILY_NOTES' && (
         <div className="card-static animate-gate">
           <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <CheckCircle2 size={20} className="text-green-500" />
@@ -1230,7 +1379,7 @@ export default function SessionDetailPage() {
       )}
 
       {/* SLP Complete form */}
-      {actionMode === 'complete' && isSLPDept && session.patient && psychUseForm && (
+      {actionMode === 'complete' && isSLPDept && session.patient && psychUseForm && ieMode === 'DAILY_NOTES' && (
         <div className="card-static animate-gate">
           <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <CheckCircle2 size={20} className="text-green-500" />
@@ -1283,7 +1432,7 @@ export default function SessionDetailPage() {
       )}
 
       {/* SPED Complete form — with 3-way toggle */}
-      {actionMode === 'complete' && isSPEDDept && session.patient && psychUseForm && (
+      {actionMode === 'complete' && isSPEDDept && session.patient && psychUseForm && ieMode === 'DAILY_NOTES' && (
         <div className="card-static animate-gate">
           <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <CheckCircle2 size={20} className="text-green-500" />
@@ -1340,7 +1489,7 @@ export default function SessionDetailPage() {
       )}
 
       {/* PT Complete form */}
-      {actionMode === 'complete' && isPTDept && session.patient && psychUseForm && (
+      {actionMode === 'complete' && isPTDept && session.patient && psychUseForm && ieMode === 'DAILY_NOTES' && (
         <div className="card-static animate-gate">
           <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <CheckCircle2 size={20} className="text-green-500" />
@@ -1390,7 +1539,7 @@ export default function SessionDetailPage() {
       )}
 
       {/* Upload/QR/Write mode — shown for non-structured-form depts OR structured-form depts when they chose Upload mode */}
-      {actionMode === 'complete' && (!hasStructuredForm || !psychUseForm) && (
+      {actionMode === 'complete' && (!hasStructuredForm || !psychUseForm) && (!supportsIEFlag || ieMode === 'DAILY_NOTES') && (
         <div className="card-static animate-gate">
           <h2 className="font-bold text-[var(--charcoal)] mb-5 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <CheckCircle2 size={20} className="text-green-500" />

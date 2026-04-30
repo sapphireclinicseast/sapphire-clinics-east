@@ -29,6 +29,7 @@ import OTNoteDisplay from '@/components/OTNoteDisplay'
 import SLPNoteDisplay from '@/components/SLPNoteDisplay'
 import SPEDNoteDisplay from '@/components/SPEDNoteDisplay'
 import PTNoteDisplay from '@/components/PTNoteDisplay'
+import PatientWidgets from '@/components/PatientWidgets'
 
 interface PatientDetail {
   id: string
@@ -40,6 +41,9 @@ interface PatientDetail {
   diagnosis: string | null
   dob: string | null
   sex: string | null
+  city?: string | null
+  address?: string | null
+  referralUrl?: string | null
 }
 
 interface SessionItem {
@@ -231,7 +235,7 @@ export default function PatientDetailPage() {
   const totalCount = sessions.length
 
   return (
-    <div className="max-w-3xl mx-auto">
+    <div className="max-w-7xl mx-auto">
       {toast && <div className="toast">{toast}</div>}
 
       {/* Back */}
@@ -242,6 +246,9 @@ export default function PatientDetailPage() {
         <ArrowLeft size={16} />
         Back to Patients
       </button>
+
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
+        <div className="min-w-0">
 
       {/* Patient header */}
       <div className="hero-gradient rounded-2xl p-6 mb-6 animate-fade-up">
@@ -541,6 +548,12 @@ export default function PatientDetailPage() {
             })}
           </div>
         )}
+        </div>
+
+        {/* Right sidebar: Patient Widgets */}
+        <aside className="lg:sticky lg:top-4 lg:self-start space-y-3">
+          <PatientWidgets patient={patient} canManage={true} />
+        </aside>
       </div>
     </div>
   )

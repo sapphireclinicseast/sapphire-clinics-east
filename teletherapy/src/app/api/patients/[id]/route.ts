@@ -26,6 +26,9 @@ export async function GET(
       diagnosis: true,
       dob: true,
       sex: true,
+      city: true,
+      address: true,
+      referralUrl: true,
     },
   })
 

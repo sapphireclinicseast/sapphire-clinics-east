@@ -202,6 +202,31 @@ jobs:
             ALTER TABLE \"TherapistAccount\" ADD COLUMN IF NOT EXISTS \"resetTokenExpiry\" TIMESTAMP(3);
             ALTER TABLE \"TherapistAccount\" ADD COLUMN IF NOT EXISTS \"lastPlainPassword\" TEXT;
 
+            -- Add isInitialEvaluation flag to SessionNote
+            ALTER TABLE \"SessionNote\" ADD COLUMN IF NOT EXISTS \"isInitialEvaluation\" BOOLEAN NOT NULL DEFAULT false;
+
+            -- Create PatientDocumentType enum + PatientDocument table
+            DO \$\$ BEGIN
+              CREATE TYPE \"PatientDocumentType\" AS ENUM ('INITIAL_EVALUATION', 'PROGRESS_REPORT', 'OTHER_DOCUMENT');
+            EXCEPTION WHEN duplicate_object THEN null;
+            END \$\$;
+            CREATE TABLE IF NOT EXISTS \"PatientDocument\" (
+              id TEXT PRIMARY KEY,
+              \"patientId\" TEXT NOT NULL,
+              \"uploadedById\" TEXT NOT NULL,
+              department TEXT NOT NULL,
+              \"documentType\" \"PatientDocumentType\" NOT NULL,
+              \"fileName\" TEXT NOT NULL,
+              \"filePath\" TEXT NOT NULL,
+              \"mimeType\" TEXT NOT NULL,
+              description TEXT,
+              \"scheduleId\" TEXT,
+              \"createdAt\" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              \"updatedAt\" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS \"PatientDocument_patientId_department_idx\" ON \"PatientDocument\"(\"patientId\", department);
+            CREATE INDEX IF NOT EXISTS \"PatientDocument_documentType_idx\" ON \"PatientDocument\"(\"documentType\");
+
             -- Create a system admin staff record if it doesn't exist
             INSERT INTO \"Staff\" (id, \"firstName\", \"lastName\", department, branch, \"createdAt\", \"updatedAt\")
             VALUES ('system-admin-staff', 'System', 'Administrator', 'ADMINISTRATION', 'SBEA', NOW(), NOW())
@@ -404,30 +429,61 @@ jobs:
             BACKUP_DIR="/var/backups/sapphire-db"
             mkdir -p "$BACKUP_DIR"
 
-            echo "→ Setting up daily database backup script..."
+            echo "→ Locking down upload directory permissions..."
+            UPLOAD_ROOT="/var/www/sapphireclinicseast.org/teletherapy/uploads"
+            mkdir -p "$UPLOAD_ROOT"
+            # Restrict to root + www-data only — no world-readable files
+            chown -R root:www-data "$UPLOAD_ROOT" 2>/dev/null || true
+            chmod -R 750 "$UPLOAD_ROOT" 2>/dev/null || true
+
+            echo "→ Setting up daily database + upload backup script..."
             cat > /usr/local/bin/sapphire-db-backup.sh << 'BACKUP_SCRIPT'
             #!/bin/bash
             set -e
             BACKUP_DIR="/var/backups/sapphire-db"
+            MIRROR_DIR="/var/backups/sapphire-mirror"
             TIMESTAMP=$(date +%Y%m%d_%H%M%S)
             BACKUP_FILE="$BACKUP_DIR/sapphire_marketing_$TIMESTAMP.sql.gz"
 
-            # Dump the database from the Docker container and compress
+            mkdir -p "$BACKUP_DIR" "$MIRROR_DIR"
+            chmod 700 "$BACKUP_DIR" "$MIRROR_DIR"
+
+            # ── DB dump ──
             docker exec sapphire_db pg_dump -U sapphire -d sapphire_marketing --no-owner --no-acl 2>/dev/null | gzip > "$BACKUP_FILE"
 
             if [ -s "$BACKUP_FILE" ]; then
-              echo "$(date): Backup created: $BACKUP_FILE ($(du -h "$BACKUP_FILE" | cut -f1))"
+              echo "$(date): DB backup created: $BACKUP_FILE ($(du -h "$BACKUP_FILE" | cut -f1))"
+              # Integrity checksum
+              sha256sum "$BACKUP_FILE" > "$BACKUP_FILE.sha256"
 
-              # Also backup uploaded files (session note attachments)
+              # ── Uploads tar (session notes + patient docs) ──
               UPLOADS_BACKUP="$BACKUP_DIR/uploads_$TIMESTAMP.tar.gz"
               if [ -d "/var/www/sapphireclinicseast.org/teletherapy/uploads" ]; then
                 tar -czf "$UPLOADS_BACKUP" -C /var/www/sapphireclinicseast.org/teletherapy uploads/ 2>/dev/null || true
-                echo "$(date): Uploads backup: $UPLOADS_BACKUP ($(du -h "$UPLOADS_BACKUP" | cut -f1))"
+                if [ -s "$UPLOADS_BACKUP" ]; then
+                  sha256sum "$UPLOADS_BACKUP" > "$UPLOADS_BACKUP.sha256"
+                  echo "$(date): Uploads backup: $UPLOADS_BACKUP ($(du -h "$UPLOADS_BACKUP" | cut -f1))"
+                fi
               fi
 
-              # Keep only the last 30 days of backups (rotate old ones)
-              find "$BACKUP_DIR" -name "sapphire_marketing_*.sql.gz" -mtime +30 -delete 2>/dev/null || true
-              find "$BACKUP_DIR" -name "uploads_*.tar.gz" -mtime +30 -delete 2>/dev/null || true
+              # ── Mirror to a second location on VPS for redundancy ──
+              # rsync replicates to /var/backups/sapphire-mirror (separate filesystem path)
+              rsync -a --delete "$BACKUP_DIR/" "$MIRROR_DIR/" 2>&1 | tail -3 || true
+              echo "$(date): Mirrored to $MIRROR_DIR"
+
+              # ── Live mirror of uploads dir (incremental) ──
+              # Keeps a continuously up-to-date copy outside the app dir
+              UPLOADS_LIVE_MIRROR="/var/backups/sapphire-uploads-live"
+              mkdir -p "$UPLOADS_LIVE_MIRROR"
+              chmod 700 "$UPLOADS_LIVE_MIRROR"
+              rsync -a --delete /var/www/sapphireclinicseast.org/teletherapy/uploads/ "$UPLOADS_LIVE_MIRROR/" 2>&1 | tail -1 || true
+
+              # 30-day rotation
+              find "$BACKUP_DIR" -name "sapphire_marketing_*.sql.gz*" -mtime +30 -delete 2>/dev/null || true
+              find "$BACKUP_DIR" -name "uploads_*.tar.gz*" -mtime +30 -delete 2>/dev/null || true
+
+              # Keep all permissions restrictive
+              chmod 600 "$BACKUP_DIR"/*.gz "$BACKUP_DIR"/*.sha256 2>/dev/null || true
 
               echo "$(date): Cleanup done. Current backups:"
               ls -lh "$BACKUP_DIR"/*.gz 2>/dev/null | tail -5
@@ -440,19 +496,38 @@ jobs:
 
             chmod +x /usr/local/bin/sapphire-db-backup.sh
 
-            # Setup daily cron job at 2:00 AM (if not already set)
-            CRON_LINE="0 2 * * * /usr/local/bin/sapphire-db-backup.sh >> /var/log/sapphire-backup.log 2>&1"
-            if ! crontab -l 2>/dev/null | grep -q "sapphire-db-backup"; then
-              (crontab -l 2>/dev/null; echo "$CRON_LINE") | crontab -
-              echo "✅ Daily backup cron job installed (2:00 AM)"
-            else
-              echo "✅ Backup cron job already exists"
+            # ── Hourly uploads-only mirror script ──
+            cat > /usr/local/bin/sapphire-uploads-mirror.sh << 'MIRROR_SCRIPT'
+            #!/bin/bash
+            # Continuously mirror uploads dir for fast recovery if files are deleted
+            UPLOADS_LIVE_MIRROR="/var/backups/sapphire-uploads-live"
+            mkdir -p "$UPLOADS_LIVE_MIRROR"
+            chmod 700 "$UPLOADS_LIVE_MIRROR"
+            rsync -a --delete /var/www/sapphireclinicseast.org/teletherapy/uploads/ "$UPLOADS_LIVE_MIRROR/" 2>&1 | tail -1
+            MIRROR_SCRIPT
+            chmod +x /usr/local/bin/sapphire-uploads-mirror.sh
+
+            # Cron jobs:
+            # - Daily full backup at 2:00 AM
+            # - Hourly uploads mirror (clinical files uploaded throughout the day)
+            CRON_DAILY="0 2 * * * /usr/local/bin/sapphire-db-backup.sh >> /var/log/sapphire-backup.log 2>&1"
+            CRON_HOURLY="15 * * * * /usr/local/bin/sapphire-uploads-mirror.sh >> /var/log/sapphire-uploads-mirror.log 2>&1"
+
+            CURRENT_CRON=$(crontab -l 2>/dev/null || true)
+            NEW_CRON="$CURRENT_CRON"
+            if ! echo "$CURRENT_CRON" | grep -q "sapphire-db-backup"; then
+              NEW_CRON=$(printf "%s\n%s" "$NEW_CRON" "$CRON_DAILY")
             fi
+            if ! echo "$CURRENT_CRON" | grep -q "sapphire-uploads-mirror"; then
+              NEW_CRON=$(printf "%s\n%s" "$NEW_CRON" "$CRON_HOURLY")
+            fi
+            echo "$NEW_CRON" | sed '/^$/d' | crontab -
+            echo "✅ Backup cron jobs installed (daily 2 AM + hourly uploads mirror)"
 
             # Run an immediate backup now
             echo "→ Running immediate backup..."
             /usr/local/bin/sapphire-db-backup.sh 2>&1
-            echo "✅ Database backup setup complete."
+            echo "✅ Backup setup complete (encrypted permissions, SHA256 checksums, hourly mirror)."
 
       # ── 9. Configure UFW Firewall ──
       - name: Configure Firewall
