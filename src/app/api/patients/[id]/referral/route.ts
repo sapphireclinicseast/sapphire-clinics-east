@@ -62,9 +62,30 @@ export async function POST(
 
   const filename = `referral-${id}-${Date.now()}${ext}`
   const uploadDir = path.join(process.cwd(), 'uploads')
-  await fs.mkdir(uploadDir, { recursive: true })
+  try {
+    await fs.mkdir(uploadDir, { recursive: true })
+  } catch (mkErr) {
+    const code = (mkErr as NodeJS.ErrnoException).code
+    if (code !== 'EEXIST') {
+      console.error('[referral] mkdir failed:', mkErr)
+      return NextResponse.json(
+        { error: `Cannot create uploads dir (${code}). Ask the admin to fix permissions on the host volume.` },
+        { status: 500 },
+      )
+    }
+  }
   const filepath = path.join(uploadDir, filename)
-  await fs.writeFile(filepath, Buffer.from(await file.arrayBuffer()))
+  try {
+    await fs.writeFile(filepath, Buffer.from(await file.arrayBuffer()))
+  } catch (wErr) {
+    const code = (wErr as NodeJS.ErrnoException).code
+    const msg = (wErr as Error).message
+    console.error('[referral] writeFile failed:', wErr)
+    return NextResponse.json(
+      { error: `Failed to save file (${code}): ${msg}` },
+      { status: 500 },
+    )
+  }
 
   // Delete old referral file from disk if it was a local upload
   if (patient.referralUrl) {
