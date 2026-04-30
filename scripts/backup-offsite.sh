@@ -1,13 +1,25 @@
 #!/bin/bash
 # ============================================================
 # Daily SECOND backup — runs at 3 AM after the primary 2 AM dumps.
-# Combines marketing + accounting DBs, marketing uploads, and
-# encrypted env files into /opt/backups-offsite/ (a separate dir
-# on the VPS so you have a local mirror to copy off-server).
+# Combines:
+#   - Marketing DB (sapphire_marketing)
+#   - Accounting DB (sapphire_accounting, if container exists)
+#   - Marketing uploads (referrals, queue ads, email images, …)
+#   - Teletherapy uploads (session notes + patient documents:
+#       Initial Evaluation, Progress Reports, Other Documents)
+#   - Encrypted env files (.env.production)
+# All into /opt/backups-offsite/ — local mirror on the VPS.
 #
-# OFFSITE PUSH: see the bottom of this script. Three options
-# (rclone / B2 / rsync) are commented out — uncomment ONE and
-# fill in your destination to start shipping daily off-VPS.
+# OFFSITE PUSH (rclone): runs automatically if a remote called
+# "offsite" exists in rclone config. Pushes nightly to:
+#   <remote>:sapphire/db/         → DB dumps
+#   <remote>:sapphire/uploads/    → marketing uploads
+#   <remote>:sapphire/teletherapy/→ teletherapy uploads
+#   <remote>:sapphire/env/        → encrypted env files
+#
+# To enable Google Drive backup, run ONCE on the VPS:
+#     rclone config
+# and add a remote called "offsite" pointing at Google Drive.
 # ============================================================
 set -e
 
@@ -32,6 +44,21 @@ if [ -d /opt/sapphire/uploads ]; then
   tar czf "$DEST/sapphire_uploads_${TS}.tar.gz" \
     -C /opt/sapphire uploads 2>/dev/null
   echo "[offsite] Uploads: $(du -h "$DEST/sapphire_uploads_${TS}.tar.gz" | cut -f1)"
+fi
+
+# ── Teletherapy uploads (session notes, patient docs: IE/Progress/Other)
+# Lives under the deployed app dir, separate filesystem path from marketing
+TELE_UPLOADS=/var/www/sapphireclinicseast.org/teletherapy/uploads
+if [ -d "$TELE_UPLOADS" ]; then
+  echo "[offsite] Tarring teletherapy uploads (session notes + patient docs)..."
+  tar czf "$DEST/teletherapy_uploads_${TS}.tar.gz" \
+    -C /var/www/sapphireclinicseast.org/teletherapy uploads 2>/dev/null
+  if [ -s "$DEST/teletherapy_uploads_${TS}.tar.gz" ]; then
+    echo "[offsite] Teletherapy uploads: $(du -h "$DEST/teletherapy_uploads_${TS}.tar.gz" | cut -f1)"
+  else
+    rm -f "$DEST/teletherapy_uploads_${TS}.tar.gz"
+    echo "[offsite] Teletherapy uploads dir empty — skipped tarball"
+  fi
 fi
 
 # ── Accounting DB ────────────────────────────────────────────
@@ -86,6 +113,12 @@ if rclone listremotes 2>/dev/null | grep -q "^offsite:$"; then
   rclone copy --no-traverse --transfers=2 \
     "$DEST/sapphire_uploads_${TS}.tar.gz" offsite:sapphire/uploads/ 2>&1 \
     | tail -3
+  # Teletherapy uploads (session notes + patient documents)
+  if [ -f "$DEST/teletherapy_uploads_${TS}.tar.gz" ]; then
+    rclone copy --no-traverse --transfers=2 \
+      "$DEST/teletherapy_uploads_${TS}.tar.gz" offsite:sapphire/teletherapy/ 2>&1 \
+      | tail -3
+  fi
   if [ -f "$DEST/accounting_${TS}.sql.gz" ]; then
     rclone copy --no-traverse --transfers=2 \
       "$DEST/accounting_${TS}.sql.gz" offsite:sapphire/db/ 2>&1 \
@@ -97,6 +130,7 @@ if rclone listremotes 2>/dev/null | grep -q "^offsite:$"; then
   # Mirror the retention policy on the remote
   rclone delete --min-age ${KEEP_DAYS}d offsite:sapphire/db/ 2>/dev/null || true
   rclone delete --min-age ${KEEP_DAYS}d offsite:sapphire/uploads/ 2>/dev/null || true
+  rclone delete --min-age ${KEEP_DAYS}d offsite:sapphire/teletherapy/ 2>/dev/null || true
   rclone delete --min-age ${KEEP_DAYS}d offsite:sapphire/env/ 2>/dev/null || true
   echo "[offsite] â Pushed to offsite"
 else
