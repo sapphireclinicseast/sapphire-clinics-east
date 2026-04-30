@@ -116,6 +116,20 @@ const FRONT_DESK_NAV = [
 
 export default function Sidebar({ onClose, role = 'MARKETING_ADMIN' }: { onClose?: () => void; role?: string }) {
   const pathname = usePathname()
+
+  // Pick the longest nav href that prefixes the current pathname (with a /
+  // boundary). Prevents /patients/profile from also lighting up /patients.
+  const activeHref = (() => {
+    const all: string[] = []
+    for (const g of nav) for (const it of g.items) all.push(it.href)
+    let best = ''
+    for (const h of all) {
+      if (pathname === h || pathname.startsWith(h + '/')) {
+        if (h.length > best.length) best = h
+      }
+    }
+    return best
+  })()
   const { brand, setBrand, brands } = useBrand()
   const [brandOpen, setBrandOpen] = useState(false)
 
@@ -199,7 +213,7 @@ export default function Sidebar({ onClose, role = 'MARKETING_ADMIN' }: { onClose
             </p>
             <ul className="space-y-0.5">
               {group.items.map(({ href, icon: Icon, label }) => {
-                const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href))
+                const active = href === activeHref
                 return (
                   <li key={href}>
                     <Link
