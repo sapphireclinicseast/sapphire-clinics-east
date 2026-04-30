@@ -39,14 +39,17 @@ export async function POST(
     return NextResponse.json({ error: 'File not found on disk: ' + msg }, { status: 500 })
   }
 
-  const subject = `Your Progress Report from SAPPHIRE Clinics`
+  const subject = `Your Progress Report from Sapphire Clinics East Inc.`
   const html = `
-    <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#0f172a">
-      <h2 style="color:#0f172a;margin:0 0 12px">Hi ${doc.patient.firstName},</h2>
-      <p>Please find your <strong>Progress Report</strong> attached to this email.</p>
-      <p>If you have any questions about the contents of the report, feel free to reach out to your therapist or our front desk team.</p>
-      <p>Thank you for trusting <strong>SAPPHIRE Clinics</strong> with your care.</p>
-      <p style="color:#94a3b8;font-size:12px;margin-top:32px">Sapphire Clinics East — sapphireclinicseast.org</p>
+    <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#0f172a;line-height:1.6">
+      <p style="margin:0 0 16px">Hi ${doc.patient.firstName},</p>
+      <p style="margin:0 0 16px">Please find your <strong>Progress Report</strong> attached to this email.</p>
+      <p style="margin:0 0 16px">If you have any questions about the contents of the report, feel free to reach out to our front desk team.</p>
+      <p style="margin:0 0 24px">Thank you for trusting <strong>Sapphire Clinics East Inc.</strong> with your care.</p>
+      <p style="margin:0;color:#475569;font-size:13px">
+        <strong style="color:#0f172a">Sapphire Clinics East Inc.</strong><br>
+        <a href="https://sapphireclinicseast.org" style="color:#ED6823;text-decoration:none">sapphireclinicseast.org</a>
+      </p>
     </div>`
 
   const res = await fetch('https://api.resend.com/emails', {
