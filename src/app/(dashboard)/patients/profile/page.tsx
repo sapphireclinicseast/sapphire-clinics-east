@@ -6,7 +6,6 @@ import {
   AlertTriangle, Users, Activity, CheckCircle, XCircle,
   Clock, RotateCcw, Loader2,
 } from 'lucide-react'
-import PatientPRSection from '@/components/patients/PatientPRSection'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -347,7 +346,7 @@ export default function PatientProfilePage() {
           </div>
 
           {/* Progress Reports */}
-          <PatientPRSection patientId={p.id} />
+          <ProgressReportsCard patientId={p?.id ?? null} />
 
           {/* Session Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -507,3 +506,97 @@ function StatCard({ value, label, color }: { value: number; label: string; color
     </div>
   )
 }
+
+
+// ── Progress Reports card for Patient Profile ────────────────────────────────
+interface PRRow {
+  id: string
+  fileName: string
+  mimeType: string | null
+  department: string
+  createdAt: string
+  informedFrontDeskAt: string | null
+  paidForAt: string | null
+  emailedToPatientAt: string | null
+}
+
+function ProgressReportsCard({ patientId }: { patientId: string | null }) {
+  const [docs, setDocs] = useState<PRRow[]>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!patientId) { setDocs([]); return }
+    setLoading(true)
+    fetch(`/api/patients/${patientId}/progress-reports`)
+      .then(r => r.json())
+      .then(d => setDocs(d.docs || []))
+      .finally(() => setLoading(false))
+  }, [patientId])
+
+  if (!patientId) return null
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-5 mb-5">
+      <h3 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
+        <Activity size={16} className="text-orange-600" />
+        Progress Reports
+        <span className="text-xs text-gray-400 font-normal ml-1">({docs.length})</span>
+      </h3>
+      {loading ? (
+        <p className="text-xs text-gray-400 italic">Loading…</p>
+      ) : docs.length === 0 ? (
+        <p className="text-xs text-gray-400 italic">No progress reports on file.</p>
+      ) : (
+        <div className="space-y-2">
+          {docs.map(d => (
+            <div key={d.id} className="flex items-center gap-3 p-2.5 rounded-lg" style={{ background: '#FFF7ED', border: '1px solid #FED7AA' }}>
+              <div className="flex-1 min-w-0">
+                <a
+                  href={`/api/progress-reports/${d.id}/file`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sm font-semibold truncate block"
+                  style={{ color: '#7C2D12' }}
+                  title={d.fileName}
+                >
+                  {d.fileName}
+                </a>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <span className="text-[10px]" style={{ color: '#9A3412' }}>{d.department}</span>
+                  <span className="text-[10px]" style={{ color: '#9A3412' }}>{new Date(d.createdAt).toLocaleDateString()}</span>
+                </div>
+                <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                  {d.informedFrontDeskAt && (
+                    <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase" style={{ background: '#FFEDD5', color: '#9A3412' }}>
+                      🟠 Informed · {new Date(d.informedFrontDeskAt).toLocaleDateString()}
+                    </span>
+                  )}
+                  {d.paidForAt && (
+                    <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase" style={{ background: '#DBEAFE', color: '#1E40AF' }}>
+                      🔵 Paid · {new Date(d.paidForAt).toLocaleDateString()}
+                    </span>
+                  )}
+                  {d.emailedToPatientAt && (
+                    <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase" style={{ background: '#BBF7D0', color: '#14532D' }}>
+                      🟢 Sent · {new Date(d.emailedToPatientAt).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <a
+                href={`/api/progress-reports/${d.id}/file`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs font-semibold px-3 py-1.5 rounded-md"
+                style={{ background: '#fff', color: '#7C2D12', border: '1px solid #FED7AA' }}
+              >
+                View
+              </a>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+

@@ -92,6 +92,7 @@ services:
       - "host.docker.internal:172.18.0.1"
     volumes:
       - /opt/sapphire/uploads:/app/uploads
+      - /var/www/sapphireclinicseast.org/teletherapy/uploads:/app/teletherapy-uploads:ro
     ports:
       - "3000:3000"
 
