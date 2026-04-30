@@ -54,6 +54,57 @@ export function makeEmailBody(to: string, subject: string, body: string, from: s
 }
 
 /**
+ * Build an RFC 2045 multipart/mixed message with an HTML body and ONE
+ * binary attachment. Used for sending Progress Reports / Initial Evaluation
+ * documents to patients via Gmail.
+ */
+export function makeEmailBodyWithAttachment(args: {
+  to: string
+  cc?: string
+  subject: string
+  htmlBody: string
+  from: string
+  attachment: { filename: string; mimeType: string; content: Buffer }
+}): string {
+  const { to, cc, subject, htmlBody, from, attachment } = args
+  const subjectEncoded = `=?UTF-8?B?${Buffer.from(subject, 'utf-8').toString('base64')}?=`
+  const boundary = `=_SCEI_${Math.random().toString(36).slice(2)}_${Date.now()}_=`
+
+  const htmlBase64 = Buffer.from(htmlBody, 'utf-8').toString('base64').replace(/(.{76})/g, '$1\r\n')
+  const fileBase64 = attachment.content.toString('base64').replace(/(.{76})/g, '$1\r\n')
+
+  const headers = [
+    `From: Sapphire Clinics East <${from}>`,
+    `To: ${to}`,
+    ...(cc ? [`Cc: ${cc}`] : []),
+    `Subject: ${subjectEncoded}`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+    '',
+  ]
+
+  const parts = [
+    `--${boundary}`,
+    'Content-Type: text/html; charset=utf-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    htmlBase64,
+    '',
+    `--${boundary}`,
+    `Content-Type: ${attachment.mimeType}; name="${attachment.filename}"`,
+    `Content-Disposition: attachment; filename="${attachment.filename}"`,
+    'Content-Transfer-Encoding: base64',
+    '',
+    fileBase64,
+    '',
+    `--${boundary}--`,
+  ]
+
+  const message = [...headers, ...parts].join('\r\n')
+  return Buffer.from(message).toString('base64url')
+}
+
+/**
  * Actually sends the emails for a campaign. Called by both the route (send-now)
  * and the BullMQ worker (scheduled delivery).
  */

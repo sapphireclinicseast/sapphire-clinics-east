@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Image from 'next/image'
+import { ActiveProgressReports, SentProgressReports } from '@/components/dashboard/ProgressReportsWidget'
 
 type BirthdayPatient = { id: string; firstName: string; lastName: string; birthday: string; hasPhone: boolean }
 type SmsState = 'idle' | 'sending' | 'sent' | 'error'
@@ -785,6 +786,12 @@ export default function FrontDeskWelcome({
               ))}
             </div>
           )}
+
+          {/* ── Progress Reports widget — clinician-flagged PRs awaiting payment + email */}
+          <ActiveProgressReports />
+
+          {/* ── Past PRs (searchable history) */}
+          <SentProgressReports />
         </div>
       )}
 

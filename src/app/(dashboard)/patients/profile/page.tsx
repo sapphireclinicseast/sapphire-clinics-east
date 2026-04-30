@@ -6,6 +6,7 @@ import {
   AlertTriangle, Users, Activity, CheckCircle, XCircle,
   Clock, RotateCcw, Loader2,
 } from 'lucide-react'
+import PatientPRSection from '@/components/patients/PatientPRSection'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -344,6 +345,9 @@ export default function PatientProfilePage() {
               </div>
             </div>
           </div>
+
+          {/* Progress Reports */}
+          <PatientPRSection patientId={p.id} />
 
           {/* Session Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">

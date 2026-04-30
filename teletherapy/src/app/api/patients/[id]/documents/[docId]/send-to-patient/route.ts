@@ -82,24 +82,28 @@ export async function POST(
   const fileBuffer = await readFile(fullPath)
 
   const patientName = `${patient.firstName} ${patient.lastName}`
-  const branchLabel = branchKey ? BRANCH_LABEL[branchKey] ?? branchKey : 'Sapphire Clinics East'
+  // Department label preserves abbreviations (OT, PT, SLP, SPED) and capitalizes others
+  const DEPT_LABEL: Record<string, string> = {
+    OT: 'OT', PT: 'PT', SLP: 'SLP', SPED: 'SPED',
+    PSYCHOLOGY: 'Psychology', ORTHOSIS: 'Orthosis & Prosthesis',
+  }
+  const deptLabel = DEPT_LABEL[doc.department] ?? doc.department
 
   const html = `
     <div style="font-family: Arial, sans-serif; color: #1A2E2B; max-width: 600px; margin: 0 auto;">
       <div style="background: linear-gradient(135deg, #2E5E5A, #1F4944); color: white; padding: 24px; border-radius: 12px 12px 0 0;">
         <h1 style="margin: 0; font-size: 22px;">Initial Evaluation Report</h1>
-        <p style="margin: 6px 0 0; opacity: 0.85; font-size: 14px;">${branchLabel}</p>
       </div>
       <div style="background: #F7FAF9; padding: 24px; border-radius: 0 0 12px 12px;">
         <p style="font-size: 15px;">Dear ${patientName},</p>
         <p style="font-size: 14px; line-height: 1.6;">
-          Please find attached your Initial Evaluation report from your ${doc.department.toLowerCase().replace(/_/g, ' ')} sessions at Sapphire Clinics East.
+          Please find attached your Initial Evaluation report from your ${deptLabel} sessions at our clinic.
         </p>
         <p style="font-size: 14px; line-height: 1.6;">
           For questions or concerns, please reach out to our front desk team.
         </p>
         <p style="font-size: 13px; color: #7A908C; margin-top: 24px;">
-          — Sapphire Clinics East
+          — Sapphire Clinics East Inc.
         </p>
       </div>
     </div>
