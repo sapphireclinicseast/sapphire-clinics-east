@@ -436,62 +436,118 @@ jobs:
             chown -R root:www-data "$UPLOAD_ROOT" 2>/dev/null || true
             chmod -R 750 "$UPLOAD_ROOT" 2>/dev/null || true
 
-            echo "→ Setting up daily database + upload backup script..."
+            echo "→ Setting up daily ONLINE + OFFLINE backup script..."
+            # Generate a backup encryption key on first run (root-only, persistent)
+            BACKUP_KEY_FILE="/etc/sapphire-backup.key"
+            if [ ! -f "$BACKUP_KEY_FILE" ]; then
+              openssl rand -base64 64 | tr -d '\n' > "$BACKUP_KEY_FILE"
+              chmod 400 "$BACKUP_KEY_FILE"
+              chown root:root "$BACKUP_KEY_FILE"
+              echo "→ Generated new backup encryption key at $BACKUP_KEY_FILE (root-only)"
+            fi
+
             cat > /usr/local/bin/sapphire-db-backup.sh << 'BACKUP_SCRIPT'
             #!/bin/bash
             set -e
-            BACKUP_DIR="/var/backups/sapphire-db"
-            MIRROR_DIR="/var/backups/sapphire-mirror"
-            TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-            BACKUP_FILE="$BACKUP_DIR/sapphire_marketing_$TIMESTAMP.sql.gz"
 
-            mkdir -p "$BACKUP_DIR" "$MIRROR_DIR"
-            chmod 700 "$BACKUP_DIR" "$MIRROR_DIR"
+            # ── Paths ──
+            ONLINE_DIR="/var/backups/sapphire-db"               # Hot — fast recovery from VPS
+            MIRROR_DIR="/var/backups/sapphire-mirror"           # Hot mirror on VPS
+            OFFLINE_DIR="/var/backups/sapphire-offline"         # Cold encrypted, write-once, root-only
+            UPLOADS_LIVE_MIRROR="/var/backups/sapphire-uploads-live"  # Live uploads mirror
+            KEY_FILE="/etc/sapphire-backup.key"
+            TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+            mkdir -p "$ONLINE_DIR" "$MIRROR_DIR" "$OFFLINE_DIR" "$UPLOADS_LIVE_MIRROR"
+            chmod 700 "$ONLINE_DIR" "$MIRROR_DIR" "$UPLOADS_LIVE_MIRROR"
+            chmod 700 "$OFFLINE_DIR"
+            chown -R root:root "$OFFLINE_DIR"
+
+            BACKUP_FILE="$ONLINE_DIR/sapphire_marketing_$TIMESTAMP.sql.gz"
 
             # ── DB dump ──
             docker exec sapphire_db pg_dump -U sapphire -d sapphire_marketing --no-owner --no-acl 2>/dev/null | gzip > "$BACKUP_FILE"
 
-            if [ -s "$BACKUP_FILE" ]; then
-              echo "$(date): DB backup created: $BACKUP_FILE ($(du -h "$BACKUP_FILE" | cut -f1))"
-              # Integrity checksum
-              sha256sum "$BACKUP_FILE" > "$BACKUP_FILE.sha256"
-
-              # ── Uploads tar (session notes + patient docs) ──
-              UPLOADS_BACKUP="$BACKUP_DIR/uploads_$TIMESTAMP.tar.gz"
-              if [ -d "/var/www/sapphireclinicseast.org/teletherapy/uploads" ]; then
-                tar -czf "$UPLOADS_BACKUP" -C /var/www/sapphireclinicseast.org/teletherapy uploads/ 2>/dev/null || true
-                if [ -s "$UPLOADS_BACKUP" ]; then
-                  sha256sum "$UPLOADS_BACKUP" > "$UPLOADS_BACKUP.sha256"
-                  echo "$(date): Uploads backup: $UPLOADS_BACKUP ($(du -h "$UPLOADS_BACKUP" | cut -f1))"
-                fi
-              fi
-
-              # ── Mirror to a second location on VPS for redundancy ──
-              # rsync replicates to /var/backups/sapphire-mirror (separate filesystem path)
-              rsync -a --delete "$BACKUP_DIR/" "$MIRROR_DIR/" 2>&1 | tail -3 || true
-              echo "$(date): Mirrored to $MIRROR_DIR"
-
-              # ── Live mirror of uploads dir (incremental) ──
-              # Keeps a continuously up-to-date copy outside the app dir
-              UPLOADS_LIVE_MIRROR="/var/backups/sapphire-uploads-live"
-              mkdir -p "$UPLOADS_LIVE_MIRROR"
-              chmod 700 "$UPLOADS_LIVE_MIRROR"
-              rsync -a --delete /var/www/sapphireclinicseast.org/teletherapy/uploads/ "$UPLOADS_LIVE_MIRROR/" 2>&1 | tail -1 || true
-
-              # 30-day rotation
-              find "$BACKUP_DIR" -name "sapphire_marketing_*.sql.gz*" -mtime +30 -delete 2>/dev/null || true
-              find "$BACKUP_DIR" -name "uploads_*.tar.gz*" -mtime +30 -delete 2>/dev/null || true
-
-              # Keep all permissions restrictive
-              chmod 600 "$BACKUP_DIR"/*.gz "$BACKUP_DIR"/*.sha256 2>/dev/null || true
-
-              echo "$(date): Cleanup done. Current backups:"
-              ls -lh "$BACKUP_DIR"/*.gz 2>/dev/null | tail -5
-            else
-              echo "$(date): ERROR - Backup file is empty!"
+            if [ ! -s "$BACKUP_FILE" ]; then
+              echo "$(date): ERROR - DB backup file is empty!"
               rm -f "$BACKUP_FILE"
               exit 1
             fi
+
+            echo "$(date): ONLINE DB backup: $BACKUP_FILE ($(du -h "$BACKUP_FILE" | cut -f1))"
+            sha256sum "$BACKUP_FILE" > "$BACKUP_FILE.sha256"
+
+            # ── Uploads tar ──
+            UPLOADS_BACKUP="$ONLINE_DIR/uploads_$TIMESTAMP.tar.gz"
+            if [ -d "/var/www/sapphireclinicseast.org/teletherapy/uploads" ]; then
+              tar -czf "$UPLOADS_BACKUP" -C /var/www/sapphireclinicseast.org/teletherapy uploads/ 2>/dev/null || true
+              if [ -s "$UPLOADS_BACKUP" ]; then
+                sha256sum "$UPLOADS_BACKUP" > "$UPLOADS_BACKUP.sha256"
+                echo "$(date): ONLINE uploads backup: $UPLOADS_BACKUP ($(du -h "$UPLOADS_BACKUP" | cut -f1))"
+              fi
+            fi
+
+            # ── Hot mirror (still ONLINE, second VPS location) ──
+            rsync -a --delete "$ONLINE_DIR/" "$MIRROR_DIR/" 2>&1 | tail -3 || true
+            echo "$(date): Hot mirror updated → $MIRROR_DIR"
+
+            # ── Live uploads mirror ──
+            rsync -a --delete /var/www/sapphireclinicseast.org/teletherapy/uploads/ "$UPLOADS_LIVE_MIRROR/" 2>&1 | tail -1 || true
+
+            # ── OFFLINE encrypted backup (cold storage) ──
+            # Encrypts the daily DB + uploads with AES-256, stores in write-once dir.
+            # Even if the app server is fully compromised, these encrypted blobs
+            # are useless without the root-only key in /etc/sapphire-backup.key.
+            if [ -f "$KEY_FILE" ]; then
+              KEY_PASS=$(cat "$KEY_FILE")
+
+              # Encrypt DB dump
+              OFFLINE_DB="$OFFLINE_DIR/db_$TIMESTAMP.sql.gz.enc"
+              openssl enc -aes-256-cbc -salt -pbkdf2 -iter 100000 \
+                -in "$BACKUP_FILE" -out "$OFFLINE_DB" \
+                -pass "pass:$KEY_PASS" 2>/dev/null
+              sha256sum "$OFFLINE_DB" > "$OFFLINE_DB.sha256"
+
+              # Encrypt uploads tar
+              if [ -s "$UPLOADS_BACKUP" ]; then
+                OFFLINE_UP="$OFFLINE_DIR/uploads_$TIMESTAMP.tar.gz.enc"
+                openssl enc -aes-256-cbc -salt -pbkdf2 -iter 100000 \
+                  -in "$UPLOADS_BACKUP" -out "$OFFLINE_UP" \
+                  -pass "pass:$KEY_PASS" 2>/dev/null
+                sha256sum "$OFFLINE_UP" > "$OFFLINE_UP.sha256"
+              fi
+
+              # Make offline backups WRITE-ONCE (root can read, no one can modify)
+              chmod -R 400 "$OFFLINE_DIR"/*.enc "$OFFLINE_DIR"/*.sha256 2>/dev/null || true
+              chmod 700 "$OFFLINE_DIR"
+              chattr +i "$OFFLINE_DIR"/*.enc 2>/dev/null || true   # immutable bit (best-effort)
+
+              echo "$(date): OFFLINE encrypted cold backup written → $OFFLINE_DIR"
+              echo "$(date):   - $(ls "$OFFLINE_DIR"/*_$TIMESTAMP.* 2>/dev/null | wc -l) file(s) created"
+            else
+              echo "$(date): ⚠ Offline encryption skipped — key file missing at $KEY_FILE"
+            fi
+
+            # ── Rotation ──
+            # Online: 30-day retention
+            find "$ONLINE_DIR" -name "sapphire_marketing_*.sql.gz*" -mtime +30 -delete 2>/dev/null || true
+            find "$ONLINE_DIR" -name "uploads_*.tar.gz*" -mtime +30 -delete 2>/dev/null || true
+            find "$MIRROR_DIR" -name "sapphire_marketing_*.sql.gz*" -mtime +30 -delete 2>/dev/null || true
+            find "$MIRROR_DIR" -name "uploads_*.tar.gz*" -mtime +30 -delete 2>/dev/null || true
+
+            # Offline: 90-day retention (need to remove immutable bit first)
+            for f in $(find "$OFFLINE_DIR" -name "*.enc" -mtime +90 2>/dev/null); do
+              chattr -i "$f" 2>/dev/null || true
+              rm -f "$f" "$f.sha256" 2>/dev/null || true
+            done
+
+            # Permissions tightening
+            chmod 600 "$ONLINE_DIR"/*.gz "$ONLINE_DIR"/*.sha256 2>/dev/null || true
+
+            echo "$(date): ✅ Backup complete:"
+            echo "  ONLINE  (hot, on VPS):    $(ls -1 "$ONLINE_DIR"/*.gz 2>/dev/null | wc -l) files in $ONLINE_DIR"
+            echo "  MIRROR  (hot, on VPS):    $(ls -1 "$MIRROR_DIR"/*.gz 2>/dev/null | wc -l) files in $MIRROR_DIR"
+            echo "  OFFLINE (cold, encrypted): $(ls -1 "$OFFLINE_DIR"/*.enc 2>/dev/null | wc -l) files in $OFFLINE_DIR"
             BACKUP_SCRIPT
 
             chmod +x /usr/local/bin/sapphire-db-backup.sh

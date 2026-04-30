@@ -548,6 +548,7 @@ export default function PatientDetailPage() {
             })}
           </div>
         )}
+      </div>
         </div>
 
         {/* Right sidebar: Patient Widgets */}
