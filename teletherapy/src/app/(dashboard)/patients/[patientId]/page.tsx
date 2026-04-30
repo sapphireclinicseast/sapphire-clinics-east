@@ -83,6 +83,11 @@ export default function PatientDetailPage() {
   const [loading, setLoading] = useState(true)
   const [expandedSession, setExpandedSession] = useState<string | null>(null)
 
+  // Session history filters + collapsibility
+  const [historyOpen, setHistoryOpen] = useState(true)
+  const [filterFrom, setFilterFrom] = useState('')
+  const [filterTo, setFilterTo] = useState('')
+
   // Endorse state
   const [showEndorse, setShowEndorse] = useState(false)
   const [endorseStaff, setEndorseStaff] = useState<StaffOption[]>([])
@@ -382,10 +387,67 @@ export default function PatientDetailPage() {
 
       {/* Session history */}
       <div className="animate-fade-up stagger-4">
-        <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
+        <button
+          type="button"
+          onClick={() => setHistoryOpen(!historyOpen)}
+          className="w-full flex items-center gap-2 mb-4 group"
+        >
           <FileText size={18} className="text-[var(--teal)]" />
-          Session History
-        </h2>
+          <h2 className="font-bold text-[var(--charcoal)] flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
+            Session History
+            <span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full bg-[var(--teal)] text-white text-[10px] font-bold">
+              {(() => {
+                const from = filterFrom ? new Date(filterFrom).getTime() : -Infinity
+                const to = filterTo ? new Date(filterTo).getTime() + 86400000 : Infinity
+                return sessions.filter(s => {
+                  const t = new Date(s.date).getTime()
+                  return t >= from && t < to
+                }).length
+              })()}
+            </span>
+          </h2>
+          <div className="ml-auto text-[var(--mid-gray)] group-hover:text-[var(--teal)] transition-colors">
+            {historyOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+          </div>
+        </button>
+
+        {historyOpen && (
+        <>
+        {/* Date range filter */}
+        <div className="card-static !p-3 mb-3 flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1.5 text-[12px] font-semibold text-[var(--mid-gray)] uppercase tracking-wider shrink-0">
+            <Calendar size={13} />
+            Filter by date
+          </div>
+          <div className="flex flex-wrap items-center gap-2 flex-1 w-full">
+            <div className="flex items-center gap-1.5">
+              <label className="text-[11px] text-[var(--mid-gray)]">From</label>
+              <input
+                type="date"
+                value={filterFrom}
+                onChange={(e) => setFilterFrom(e.target.value)}
+                className="px-2 py-1 text-[12px] rounded-lg border border-[var(--light-gray)] bg-white"
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <label className="text-[11px] text-[var(--mid-gray)]">To</label>
+              <input
+                type="date"
+                value={filterTo}
+                onChange={(e) => setFilterTo(e.target.value)}
+                className="px-2 py-1 text-[12px] rounded-lg border border-[var(--light-gray)] bg-white"
+              />
+            </div>
+            {(filterFrom || filterTo) && (
+              <button
+                onClick={() => { setFilterFrom(''); setFilterTo('') }}
+                className="text-[11px] text-[var(--mid-gray)] hover:text-[var(--teal)] underline ml-auto"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
 
         {sessions.length === 0 ? (
           <div className="card-static text-center py-12">
@@ -394,7 +456,12 @@ export default function PatientDetailPage() {
           </div>
         ) : (
           <div className="space-y-2">
-            {sessions.map((s) => {
+            {sessions.filter(s => {
+              const t = new Date(s.date).getTime()
+              const from = filterFrom ? new Date(filterFrom).getTime() : -Infinity
+              const to = filterTo ? new Date(filterTo).getTime() + 86400000 : Infinity
+              return t >= from && t < to
+            }).map((s) => {
               const expanded = expandedSession === s.id
               return (
                 <div key={s.id} className="card-static !p-0 overflow-hidden">
@@ -439,14 +506,14 @@ export default function PatientDetailPage() {
                         </p>
                         <div className="flex gap-3">
                           <button
-                            onClick={() => router.push(`/session/${s.id}`)}
+                            onClick={() => router.push(`/session/${s.id}?action=complete`)}
                             className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold bg-green-600 text-white hover:bg-green-700 transition-colors"
                           >
                             <CheckCircle2 size={16} />
                             Completed
                           </button>
                           <button
-                            onClick={() => router.push(`/session/${s.id}`)}
+                            onClick={() => router.push(`/session/${s.id}?action=discontinue`)}
                             className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors"
                           >
                             <XCircle size={16} />
@@ -547,6 +614,8 @@ export default function PatientDetailPage() {
               )
             })}
           </div>
+        )}
+        </>
         )}
       </div>
         </div>

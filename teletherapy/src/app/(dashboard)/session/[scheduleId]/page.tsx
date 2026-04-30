@@ -74,6 +74,7 @@ export default function SessionDetailPage() {
   const scheduleId = params.scheduleId as string
   const searchParams = useSearchParams()
   const autoEdit = searchParams.get('edit') === 'true'
+  const autoAction = searchParams.get('action') // 'complete' | 'discontinue' | null
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [session, setSession] = useState<SessionDetail | null>(null)
@@ -132,6 +133,18 @@ export default function SessionDetailPage() {
       startEdit()
     }
   }, [autoEdit, session?.sessionNote?.id])
+
+  // Auto-enter complete/discontinue mode when navigated with ?action=complete|discontinue
+  // (skips the intermediate "Completed/Discontinued" buttons on the session page)
+  useEffect(() => {
+    if (!session || actionMode !== null) return
+    if (session.sessionNote) return // session already has a note — don't auto-trigger
+    if (autoAction === 'complete') {
+      setActionMode('complete')
+    } else if (autoAction === 'discontinue') {
+      setActionMode('discontinue')
+    }
+  }, [autoAction, session?.id])
 
   useEffect(() => {
     if (isPsychDept && session?.id) {
@@ -1256,12 +1269,40 @@ export default function SessionDetailPage() {
               Save IE & Complete Session
             </button>
             <button
-              onClick={() => { setIEMode('PENDING'); setIEFile(null); setIEDescription('') }}
+              onClick={() => { setIEMode('DAILY_NOTES'); setIEFile(null); setIEDescription('') }}
               className="btn-secondary px-6 rounded-xl"
+              title="Switch to the regular Daily Notes form instead"
             >
-              Back
+              <FileText size={14} className="-ml-1 mr-1" />
+              Use Daily Notes instead
             </button>
           </div>
+
+          {/* Footer hint: way back to the choice screen */}
+          <div className="mt-3 pt-3 border-t border-[var(--light-gray)] text-center">
+            <button
+              onClick={() => { setIEMode('PENDING'); setIEFile(null); setIEDescription('') }}
+              className="text-[11px] text-[var(--mid-gray)] hover:text-[var(--teal)] underline"
+            >
+              ← Back to choice screen
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* IE toggle banner — shown above daily-notes form so user can switch to IE upload if they misclicked */}
+      {actionMode === 'complete' && supportsIEFlag && ieMode === 'DAILY_NOTES' && session.patient && (
+        <div className="mb-3 rounded-xl border-2 border-[#FFA235]/30 bg-[#FFA235]/5 px-4 py-3 flex items-center gap-3 animate-fade-up">
+          <ClipboardList size={16} style={{ color: '#ED6823' }} className="shrink-0" />
+          <p className="flex-1 text-[12px] text-[var(--charcoal)] leading-snug">
+            Was this an <strong>Initial Evaluation</strong> instead?
+          </p>
+          <button
+            onClick={() => { setIEMode('INITIAL_EVAL'); setNotes(''); setFiles([]) }}
+            className="text-[12px] font-semibold whitespace-nowrap px-3 py-1.5 rounded-lg bg-[#ED6823] text-white hover:bg-[#FFA235] transition-colors"
+          >
+            Switch to IE upload
+          </button>
         </div>
       )}
 

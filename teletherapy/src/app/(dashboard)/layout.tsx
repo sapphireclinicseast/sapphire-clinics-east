@@ -83,7 +83,12 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
         <nav className="flex-1 py-5 px-3 space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon
-            const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
+            // Match exact path, or descendant routes — but NOT lookalike prefixes
+            // (e.g. /patients-love must NOT match /patients)
+            const active =
+              item.href === '/'
+                ? pathname === '/'
+                : pathname === item.href || pathname.startsWith(item.href + '/')
             return (
               <Link
                 key={item.href}

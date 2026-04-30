@@ -14,6 +14,10 @@ import {
   AlertCircle,
   Calendar,
   RefreshCw,
+  ChevronDown,
+  ChevronUp,
+  AlertTriangle,
+  X,
 } from 'lucide-react'
 
 export interface PatientProfile {
@@ -75,6 +79,66 @@ function formatDate(d: string | null | undefined): string {
   return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
+// ─── Delete Confirmation Modal ───────────────────────────────────────────────
+
+function DeleteConfirmModal({
+  fileName,
+  onConfirm,
+  onCancel,
+}: {
+  fileName: string
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in p-4"
+      onClick={onCancel}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-gate"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+            <AlertTriangle size={20} className="text-red-500" />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-bold text-[var(--charcoal)] text-[15px]" style={{ fontFamily: 'var(--font-display)' }}>
+              Delete this document?
+            </h3>
+            <p className="text-[13px] text-[var(--mid-gray)] mt-1">
+              This will permanently remove <strong className="text-[var(--charcoal)] break-all">{fileName}</strong>. This action cannot be undone.
+            </p>
+          </div>
+          <button
+            onClick={onCancel}
+            className="p-1 text-[var(--mid-gray)] hover:text-[var(--charcoal)] transition-colors shrink-0"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="flex gap-3 pt-2 border-t border-[var(--light-gray)]">
+          <button
+            onClick={onCancel}
+            className="btn-secondary flex-1 py-2.5 rounded-xl text-[13px]"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="btn-danger flex-1 py-2.5 rounded-xl text-[13px]"
+          >
+            <Trash2 size={14} />
+            Yes, Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Generic Document Section ────────────────────────────────────────────────
 
 function DocumentSection({
@@ -96,8 +160,10 @@ function DocumentSection({
   onChange: () => void
   canManage: boolean
 }) {
+  const [open, setOpen] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [reuploadingId, setReuploadingId] = useState<string | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; fileName: string } | null>(null)
   const items = documents.filter((d) => d.documentType === documentType)
 
   async function handleUpload(file: File, replaceDocId?: string) {
@@ -116,6 +182,7 @@ function DocumentSection({
       })
       if (res.ok) {
         onChange()
+        setOpen(true) // auto-expand after upload so user sees the file
       } else {
         const err = await res.json()
         alert(err.error ?? 'Upload failed')
@@ -127,26 +194,52 @@ function DocumentSection({
     setReuploadingId(null)
   }
 
-  async function handleDelete(docId: string) {
-    if (!confirm('Delete this document?')) return
+  async function performDelete(docId: string) {
     try {
       await fetch(`/api/patients/${patientId}/documents/${docId}`, { method: 'DELETE' })
       onChange()
     } catch {}
+    setPendingDelete(null)
   }
 
   return (
     <div className="card-static p-4">
-      <div className="flex items-start gap-2 mb-2">
+      {pendingDelete && (
+        <DeleteConfirmModal
+          fileName={pendingDelete.fileName}
+          onConfirm={() => performDelete(pendingDelete.id)}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
+
+      {/* Header — clickable to expand/collapse */}
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-start gap-2 mb-0 text-left group"
+      >
         <Icon size={16} className="text-[var(--teal)] mt-0.5 shrink-0" />
         <div className="flex-1 min-w-0">
-          <h4 className="text-[13px] font-bold text-[var(--charcoal)]" style={{ fontFamily: 'var(--font-display)' }}>
+          <h4 className="text-[13px] font-bold text-[var(--charcoal)] flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
             {title}
+            {items.length > 0 && (
+              <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-[var(--teal)] text-white text-[10px] font-bold">
+                {items.length}
+              </span>
+            )}
           </h4>
-          <p className="text-[11px] text-[var(--mid-gray)] leading-snug mt-0.5">{description}</p>
+          {open && (
+            <p className="text-[11px] text-[var(--mid-gray)] leading-snug mt-0.5">{description}</p>
+          )}
         </div>
-      </div>
+        <div className="text-[var(--mid-gray)] group-hover:text-[var(--teal)] transition-colors shrink-0">
+          {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        </div>
+      </button>
 
+      {/* Body — only when expanded */}
+      {open && (
+      <div className="mt-3">
       {/* Document list */}
       {items.length > 0 ? (
         <div className="space-y-1.5 mb-2">
@@ -193,7 +286,7 @@ function DocumentSection({
                       />
                     </label>
                     <button
-                      onClick={() => handleDelete(doc.id)}
+                      onClick={() => setPendingDelete({ id: doc.id, fileName: doc.fileName })}
                       className="p-1.5 rounded-md text-red-500 hover:bg-red-50 transition-colors"
                       title="Delete"
                     >
@@ -232,6 +325,8 @@ function DocumentSection({
             }}
           />
         </label>
+      )}
+      </div>
       )}
     </div>
   )
