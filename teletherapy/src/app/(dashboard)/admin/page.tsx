@@ -15,6 +15,7 @@ import {
   ToggleRight,
   Clock,
   Mail,
+  Trash2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -66,6 +67,14 @@ export default function AdminPage() {
   const [newEmail, setNewEmail] = useState('')
   const [savingEmail, setSavingEmail] = useState(false)
 
+  // Branch CC emails (for IE email tracking)
+  const [ccEmails, setCcEmails] = useState<{ branch: string; email: string; notes?: string | null }[]>([])
+  const [knownBranches, setKnownBranches] = useState<string[]>([])
+  const [ccBranch, setCcBranch] = useState('')
+  const [ccEmail, setCcEmail] = useState('')
+  const [ccNotes, setCcNotes] = useState('')
+  const [savingCc, setSavingCc] = useState(false)
+
   useEffect(() => {
     if (session?.user?.role !== 'ADMIN') { router.push('/'); return }
     fetchData()
@@ -73,13 +82,57 @@ export default function AdminPage() {
 
   async function fetchData() {
     setLoading(true)
-    const [staffRes, accountsRes] = await Promise.all([
+    const [staffRes, accountsRes, ccRes] = await Promise.all([
       fetch('/api/staff'),
       fetch('/api/therapist-accounts'),
+      fetch('/api/admin/branch-cc-emails'),
     ])
     if (staffRes.ok) setStaffList((await staffRes.json()).staff ?? [])
     if (accountsRes.ok) setAccounts((await accountsRes.json()).accounts ?? [])
+    if (ccRes.ok) {
+      const ccData = await ccRes.json()
+      setCcEmails(ccData.ccEmails ?? [])
+      setKnownBranches(ccData.knownBranches ?? [])
+      if (!ccBranch && ccData.knownBranches?.length) setCcBranch(ccData.knownBranches[0])
+    }
     setLoading(false)
+  }
+
+  async function saveCcEmail() {
+    if (!ccBranch || !ccEmail) {
+      setToast('Branch and email required')
+      setTimeout(() => setToast(null), 3000)
+      return
+    }
+    setSavingCc(true)
+    try {
+      const res = await fetch('/api/admin/branch-cc-emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch: ccBranch, email: ccEmail, notes: ccNotes || undefined }),
+      })
+      if (!res.ok) {
+        const e = await res.json()
+        setToast(e.error ?? 'Failed to save')
+      } else {
+        setToast('Branch CC email saved')
+        setCcEmail('')
+        setCcNotes('')
+        fetchData()
+      }
+    } catch {
+      setToast('Failed to save')
+    }
+    setTimeout(() => setToast(null), 3000)
+    setSavingCc(false)
+  }
+
+  async function removeCcEmail(branch: string) {
+    if (!confirm(`Remove CC email for ${branch}?`)) return
+    try {
+      await fetch(`/api/admin/branch-cc-emails?branch=${encodeURIComponent(branch)}`, { method: 'DELETE' })
+      fetchData()
+    } catch {}
   }
 
   function onStaffSelect(staffId: string) {
@@ -384,6 +437,72 @@ export default function AdminPage() {
                   </button>
                 </div>
               )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ─── Branch CC Emails for IE tracking ─────────────────────────────────── */}
+      <div className="card-static">
+        <div className="flex items-start gap-3 mb-4 pb-4 border-b border-[var(--light-gray)]">
+          <Mail size={20} className="text-[var(--teal)] mt-0.5" />
+          <div className="flex-1">
+            <h2 className="font-bold text-[var(--charcoal)] text-[16px]" style={{ fontFamily: 'var(--font-display)' }}>
+              Branch CC Emails (Initial Evaluation tracking)
+            </h2>
+            <p className="text-[12px] text-[var(--mid-gray)] mt-1 leading-relaxed">
+              When a clinician sends an Initial Evaluation report to a patient, the email is also CC'd
+              to the address you set here for that patient's branch. Use this to track which IE reports
+              have been sent.
+            </p>
+          </div>
+        </div>
+
+        {/* Add / update form */}
+        <div className="grid grid-cols-1 md:grid-cols-[140px_1fr_1fr_auto] gap-2 mb-5 items-end">
+          <div>
+            <label className="block text-[11px] font-semibold text-[var(--charcoal)] uppercase tracking-wider mb-1">Branch</label>
+            <select value={ccBranch} onChange={(e) => setCcBranch(e.target.value)} className="input text-[13px]">
+              {knownBranches.map((b) => <option key={b} value={b}>{b}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-[var(--charcoal)] uppercase tracking-wider mb-1">CC Email</label>
+            <input type="email" value={ccEmail} onChange={(e) => setCcEmail(e.target.value)}
+              placeholder="frontdesk-east@sapphireclinicseast.org" className="input text-[13px]" />
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-[var(--charcoal)] uppercase tracking-wider mb-1">Notes (optional)</label>
+            <input value={ccNotes} onChange={(e) => setCcNotes(e.target.value)}
+              placeholder="e.g. Front desk team" className="input text-[13px]" />
+          </div>
+          <button onClick={saveCcEmail} disabled={savingCc || !ccEmail}
+            className="btn-primary !py-2 !px-4 !text-[12px] !rounded-lg shrink-0">
+            {savingCc ? <Loader2 size={14} className="animate-spin" /> : 'Save'}
+          </button>
+        </div>
+
+        {/* Existing entries */}
+        {ccEmails.length === 0 ? (
+          <p className="text-[12px] text-[var(--mid-gray)] italic text-center py-4">
+            No branch CC emails configured yet. Add one above.
+          </p>
+        ) : (
+          <div className="space-y-1.5">
+            {ccEmails.map((cc) => (
+              <div key={cc.branch} className="flex items-center gap-3 p-3 rounded-lg bg-[var(--off-white)] border border-[var(--light-gray)]">
+                <span className="px-2 py-0.5 rounded-md bg-[var(--pale-teal)] text-[var(--deep-teal)] text-[11px] font-bold uppercase tracking-wider shrink-0">
+                  {cc.branch}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-medium text-[var(--charcoal)] truncate">{cc.email}</p>
+                  {cc.notes && <p className="text-[11px] text-[var(--mid-gray)] truncate">{cc.notes}</p>}
+                </div>
+                <button onClick={() => removeCcEmail(cc.branch)}
+                  className="p-1.5 text-red-500 hover:bg-red-50 rounded-md transition-colors shrink-0" title="Remove">
+                  <Trash2 size={14} />
+                </button>
               </div>
             ))}
           </div>

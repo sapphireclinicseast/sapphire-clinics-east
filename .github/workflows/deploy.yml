@@ -227,6 +227,30 @@ jobs:
             CREATE INDEX IF NOT EXISTS \"PatientDocument_patientId_department_idx\" ON \"PatientDocument\"(\"patientId\", department);
             CREATE INDEX IF NOT EXISTS \"PatientDocument_documentType_idx\" ON \"PatientDocument\"(\"documentType\");
 
+            -- IE/PR workflow tracking columns on PatientDocument
+            ALTER TABLE \"PatientDocument\" ADD COLUMN IF NOT EXISTS \"sentToPatientAt\" TIMESTAMP(3);
+            ALTER TABLE \"PatientDocument\" ADD COLUMN IF NOT EXISTS \"sentToPatientBy\" TEXT;
+            ALTER TABLE \"PatientDocument\" ADD COLUMN IF NOT EXISTS \"sentToPatientCc\" TEXT;
+            ALTER TABLE \"PatientDocument\" ADD COLUMN IF NOT EXISTS \"informedFrontDeskAt\" TIMESTAMP(3);
+            ALTER TABLE \"PatientDocument\" ADD COLUMN IF NOT EXISTS \"informedById\" TEXT;
+            ALTER TABLE \"PatientDocument\" ADD COLUMN IF NOT EXISTS \"paidForAt\" TIMESTAMP(3);
+            ALTER TABLE \"PatientDocument\" ADD COLUMN IF NOT EXISTS \"paidById\" TEXT;
+            ALTER TABLE \"PatientDocument\" ADD COLUMN IF NOT EXISTS \"emailedToPatientAt\" TIMESTAMP(3);
+            ALTER TABLE \"PatientDocument\" ADD COLUMN IF NOT EXISTS \"emailedById\" TEXT;
+            CREATE INDEX IF NOT EXISTS \"PatientDocument_informedFrontDeskAt_idx\" ON \"PatientDocument\"(\"informedFrontDeskAt\");
+            CREATE INDEX IF NOT EXISTS \"PatientDocument_emailedToPatientAt_idx\" ON \"PatientDocument\"(\"emailedToPatientAt\");
+
+            -- BranchCCEmail table for per-branch IE cc emails
+            CREATE TABLE IF NOT EXISTS \"BranchCCEmail\" (
+              id TEXT PRIMARY KEY,
+              branch TEXT NOT NULL UNIQUE,
+              email TEXT NOT NULL,
+              notes TEXT,
+              \"updatedById\" TEXT,
+              \"createdAt\" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              \"updatedAt\" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
             -- Create a system admin staff record if it doesn't exist
             INSERT INTO \"Staff\" (id, \"firstName\", \"lastName\", department, branch, \"createdAt\", \"updatedAt\")
             VALUES ('system-admin-staff', 'System', 'Administrator', 'ADMINISTRATION', 'SBEA', NOW(), NOW())

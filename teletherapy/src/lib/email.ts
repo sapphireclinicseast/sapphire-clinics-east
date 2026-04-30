@@ -10,18 +10,22 @@ interface Attachment {
 
 export async function sendEmail({
   to,
+  cc,
   subject,
   html,
   attachments,
 }: {
   to: string
+  cc?: string | string[]
   subject: string
   html: string
   attachments?: Attachment[]
 }) {
+  const ccList = !cc ? undefined : Array.isArray(cc) ? cc : [cc]
   const { data, error } = await resend.emails.send({
     from: FROM_EMAIL,
     to,
+    cc: ccList,
     subject,
     html,
     attachments: attachments?.map((att) => ({

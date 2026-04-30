@@ -125,11 +125,40 @@ model PatientDocument {
   mimeType     String
   description  String?
   scheduleId   String?             // optional link to a session (e.g. IE flagged from session)
+
+  // ── IE workflow: clinician emails the IE directly to the patient
+  sentToPatientAt   DateTime?
+  sentToPatientBy   String?        // therapistAccount.id who triggered the send
+  sentToPatientCc   String?        // branch-specific cc email recorded at send time
+
+  // ── PR workflow: clinician informs front desk that PR is available
+  informedFrontDeskAt DateTime?
+  informedById        String?      // therapistAccount.id
+
+  // ── PR workflow: front desk marks paid + emails PR to patient (Marketing Hub)
+  paidForAt        DateTime?
+  paidById         String?         // marketing User.id
+  emailedToPatientAt DateTime?
+  emailedById        String?       // marketing User.id
+
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
 
   @@index([patientId, department])
   @@index([documentType])
+  @@index([informedFrontDeskAt])
+  @@index([emailedToPatientAt])
+}
+
+// Per-branch CC email for IE notifications and tracking
+model BranchCCEmail {
+  id        String   @id @default(cuid())
+  branch    String   @unique // SBEA, SBGH, VERDANA_STORE, etc.
+  email     String
+  notes     String?  // optional admin note (e.g. "Front desk East")
+  updatedById String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Schedule {
