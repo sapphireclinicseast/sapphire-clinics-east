@@ -27,6 +27,51 @@ model FollowUpReminder {
   @@index([sentAt])
 }
 
+
+
+// ── Patient Documents (Progress Reports, Initial Evaluations, etc.) ──────────
+// Created by clinicians via teletherapy.sapphireclinicseast.org. The marketing
+// hub front desk handles the lifecycle: Informed → Paid → Emailed.
+enum PatientDocumentType {
+  INITIAL_EVALUATION
+  PROGRESS_REPORT
+  OTHER_DOCUMENT
+}
+
+model PatientDocument {
+  id                  String              @id @default(cuid())
+  patientId           String
+  patient             Patient             @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  uploadedById        String
+  department          String
+  documentType        PatientDocumentType
+  fileName            String
+  filePath            String
+  mimeType            String
+  description         String?
+  scheduleId          String?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @default(now()) @updatedAt
+  // Lifecycle timestamps
+  informedFrontDeskAt DateTime?
+  informedById        String?
+  paidForAt           DateTime?
+  paidById            String?
+  emailedToPatientAt  DateTime?
+  emailedById         String?
+  // Legacy fields (used by teletherapy direct-send flow)
+  sentToPatientAt     DateTime?
+  sentToPatientBy     String?
+  sentToPatientCc     String?
+
+  @@index([patientId])
+  @@index([patientId, department])
+  @@index([documentType])
+  @@index([createdAt])
+  @@index([informedFrontDeskAt])
+  @@index([emailedToPatientAt])
+}
+
 enum Role {
   ADMIN
   MARKETING_ADMIN
@@ -620,62 +665,4 @@ model PatientPayment {
   webhookPayload Json?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
-}
-
-// ── Shared with Teletherapy: clinical patient documents ──────────────
-// Same Postgres table as teletherapy/prisma/schema.prisma — clinical
-// uploads (Initial Evaluation, Progress Reports, Other Documents) per
-// patient per department. Marketing hub reads + updates these for the
-// front desk Progress Report workflow.
-enum PatientDocumentType {
-  INITIAL_EVALUATION
-  PROGRESS_REPORT
-  OTHER_DOCUMENT
-}
-
-model PatientDocument {
-  id           String              @id @default(cuid())
-  patientId    String
-  patient      Patient             @relation(fields: [patientId], references: [id])
-  uploadedById String              // therapistAccount.id of uploader (teletherapy)
-  department   String              // PT, OT, SLP, SPED, PSYCHOLOGY, ORTHOSIS
-  documentType PatientDocumentType
-  fileName     String
-  filePath     String
-  mimeType     String
-  description  String?
-  scheduleId   String?
-
-  // IE workflow (set by teletherapy when clinician emails IE to patient)
-  sentToPatientAt   DateTime?
-  sentToPatientBy   String?
-  sentToPatientCc   String?
-
-  // PR workflow — clinician → front desk → patient
-  informedFrontDeskAt DateTime?    // teletherapy clinician flagged
-  informedById        String?
-  paidForAt           DateTime?    // marketing-hub front desk marked paid
-  paidById            String?
-  emailedToPatientAt  DateTime?    // marketing-hub front desk emailed PR
-  emailedById         String?
-
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-
-  @@index([patientId, department])
-  @@index([documentType])
-  @@index([informedFrontDeskAt])
-  @@index([emailedToPatientAt])
-}
-
-// Per-branch CC email for IE notifications (managed in teletherapy admin,
-// readable here for the marketing hub front desk dashboard if ever needed)
-model BranchCCEmail {
-  id          String   @id @default(cuid())
-  branch      String   @unique
-  email       String
-  notes       String?
-  updatedById String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
 }

@@ -1,107 +1,85 @@
+// GET /api/progress-reports — list PRs by status, branch-scoped.
+// status=pending  : informedFrontDeskAt set, emailedToPatientAt null
+// status=past     : emailedToPatientAt set
+// status=all      : all PRs
+
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-// Branch role → branch enum mapping
-function branchFromRole(role: string): string | null {
-  if (role === 'SBEA_FRONT_DESK' || role === 'SBEA_ADMIN') return 'SBEA'
-  if (role === 'SBGH_FRONT_DESK' || role === 'SBGH_ADMIN') return 'SBGH'
-  return null
+const ROLE_BRANCH: Record<string, string> = {
+  SBEA_FRONT_DESK: 'SBEA',
+  SBGH_FRONT_DESK: 'SBGH',
 }
 
-// Lists Progress Reports relevant to the front desk dashboard.
-// ?status=pending  → informed by clinician but NOT yet emailed to patient (active widget)
-// ?status=sent     → already emailed to patient (history widget)
-// ?search=...      → match patient first/last name (case-insensitive)
-//
-// Front desk users see only PRs for patients in their branch.
-// Admin / super admin sees everything.
 export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const user = session.user as any
-  const role = user?.role ?? ''
-  const branchScope = branchFromRole(role)
+  const role = (session.user as { role?: string }).role ?? ''
+  const forcedBranch = ROLE_BRANCH[role] ?? null
 
   const { searchParams } = new URL(req.url)
   const status = searchParams.get('status') ?? 'pending'
-  const search = (searchParams.get('search') ?? '').trim()
+  const branch = forcedBranch ?? searchParams.get('branch')
+  const search = (searchParams.get('search') ?? '').trim().toLowerCase()
 
-  // Build where filter
-  const where: any = { documentType: 'PROGRESS_REPORT' }
+  // Branch-scope via patient.branches OR patient.branch
+  // We use raw SQL to avoid enum array type issues with Prisma + branches []
+  let patientIds: string[] | null = null
+  if (branch) {
+    const branchEnum = branch === 'SBEA' ? 'SANDBOX_EAST' : branch === 'SBGH' ? 'SANDBOX_GREENHILLS' : branch
+    const rows = await prisma.$queryRawUnsafe<{ id: string }[]>(
+      `SELECT id FROM "Patient" WHERE branch::text = $1 OR $1 = ANY("branches"::text[])`,
+      branchEnum,
+    )
+    patientIds = rows.map(r => r.id)
+  }
+
+  const where: Record<string, unknown> = {
+    documentType: 'PROGRESS_REPORT',
+    ...(patientIds !== null ? { patientId: { in: patientIds } } : {}),
+  }
+
   if (status === 'pending') {
-    where.informedFrontDeskAt = { not: null }
-    where.emailedToPatientAt = null
-  } else if (status === 'sent') {
-    where.emailedToPatientAt = { not: null }
+    Object.assign(where, {
+      informedFrontDeskAt: { not: null },
+      emailedToPatientAt: null,
+    })
+  } else if (status === 'past') {
+    Object.assign(where, { emailedToPatientAt: { not: null } })
   }
 
-  // Branch scoping: only show PRs for patients in this branch
-  if (branchScope) {
-    where.patient = {
-      OR: [
-        { branch: branchScope },
-        { branches: { has: branchScope } },
-      ],
-    }
-  }
-
-  // Search by patient name
-  if (search) {
-    where.patient = {
-      ...(where.patient ?? {}),
-      OR: [
-        ...(where.patient?.OR ?? []),
-        { firstName: { contains: search, mode: 'insensitive' } },
-        { lastName: { contains: search, mode: 'insensitive' } },
-      ],
-    }
-    // If branch scoping is also active, combine both with AND
-    if (branchScope && where.patient.OR) {
-      where.patient = {
-        AND: [
-          { OR: [{ branch: branchScope }, { branches: { has: branchScope } }] },
-          { OR: [
-            { firstName: { contains: search, mode: 'insensitive' } },
-            { lastName: { contains: search, mode: 'insensitive' } },
-          ] },
-        ],
-      }
-    }
-  }
-
-  // @ts-ignore — patientDocument added to schema in this PR
   const docs = await prisma.patientDocument.findMany({
     where,
-    select: {
-      id: true,
-      fileName: true,
-      filePath: true,
-      mimeType: true,
-      department: true,
-      description: true,
-      createdAt: true,
-      informedFrontDeskAt: true,
-      paidForAt: true,
-      emailedToPatientAt: true,
-      patient: {
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          email: true,
-          branch: true,
-          branches: true,
-          patientType: true,
-        },
-      },
+    include: {
+      patient: { select: { id: true, firstName: true, lastName: true, email: true } },
     },
-    orderBy: status === 'sent'
-      ? { emailedToPatientAt: 'desc' }
-      : { informedFrontDeskAt: 'desc' },
-    take: 100,
+    orderBy: { createdAt: 'desc' },
+    take: 200,
   })
 
-  return NextResponse.json({ documents: docs })
+  // Server-side name filter (since the search needs to match across joined table)
+  const filtered = search
+    ? docs.filter(d => {
+        const fn = (d.patient.firstName ?? '').toLowerCase()
+        const ln = (d.patient.lastName ?? '').toLowerCase()
+        return fn.includes(search) || ln.includes(search) || (ln + ' ' + fn).includes(search)
+      })
+    : docs
+
+  return NextResponse.json({
+    docs: filtered.map(d => ({
+      id: d.id,
+      fileName: d.fileName,
+      mimeType: d.mimeType,
+      department: d.department,
+      createdAt: d.createdAt,
+      informedFrontDeskAt: d.informedFrontDeskAt,
+      paidForAt: d.paidForAt,
+      paid: !!d.paidForAt,
+      emailedToPatientAt: d.emailedToPatientAt,
+      patient: d.patient,
+    })),
+  })
 }

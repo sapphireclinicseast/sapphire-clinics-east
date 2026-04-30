@@ -1,8 +1,9 @@
 'use client'
 
+import React from 'react'
+
 import { useEffect, useState } from 'react'
 import Image from 'next/image'
-import { ActiveProgressReports, SentProgressReports } from '@/components/dashboard/ProgressReportsWidget'
 
 type BirthdayPatient = { id: string; firstName: string; lastName: string; birthday: string; hasPhone: boolean }
 type SmsState = 'idle' | 'sending' | 'sent' | 'error'
@@ -750,18 +751,18 @@ export default function FrontDeskWelcome({
               ))}
             </div>
           )}
-          {slotAlerts.nearingNoShow.length > 0 && (
-            <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '0.875rem', padding: '1rem 1.25rem' }}>
-              <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#D97706', marginBottom: '0.5rem' }}>
-                Nearing Slot Removal — No-Shows ({slotAlerts.nearingNoShow.length})
-              </div>
-              {slotAlerts.nearingNoShow.map((p: any) => (
-                <div key={p.id} style={{ fontSize: '0.82rem', color: '#92400E', fontWeight: 600, padding: '0.2rem 0' }}>
-                  {p.lastName}, {p.firstName} <span style={{ fontWeight: 400, fontSize: '0.75rem', color: '#D97706' }}>— {p.noShowCount}/3</span>
-                </div>
-              ))}
+          <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '0.875rem', padding: '1rem 1.25rem' }}>
+            <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#D97706', marginBottom: '0.5rem' }}>
+              Nearing Slot Removal — No-Shows ({slotAlerts.nearingNoShow.length})
             </div>
-          )}
+            {slotAlerts.nearingNoShow.length === 0 ? (
+              <div style={{ fontSize: '0.82rem', color: '#92400E', fontStyle: 'italic', padding: '0.2rem 0' }}>None</div>
+            ) : slotAlerts.nearingNoShow.map((p: any) => (
+              <div key={p.id} style={{ fontSize: '0.82rem', color: '#92400E', fontWeight: 600, padding: '0.2rem 0' }}>
+                {p.lastName}, {p.firstName} <span style={{ fontWeight: 400, fontSize: '0.75rem', color: '#D97706' }}>— {p.noShowCount}/3</span>
+              </div>
+            ))}
+          </div>
           {slotAlerts.subjectCancel.length > 0 && (
             <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '0.875rem', padding: '1rem 1.25rem' }}>
               <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#DC2626', marginBottom: '0.5rem' }}>
@@ -774,24 +775,24 @@ export default function FrontDeskWelcome({
               ))}
             </div>
           )}
-          {slotAlerts.nearingCancel.length > 0 && (
-            <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '0.875rem', padding: '1rem 1.25rem' }}>
-              <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#D97706', marginBottom: '0.5rem' }}>
-                Nearing Slot Removal — Cancellations ({slotAlerts.nearingCancel.length})
-              </div>
-              {slotAlerts.nearingCancel.map((p: any) => (
-                <div key={p.id} style={{ fontSize: '0.82rem', color: '#92400E', fontWeight: 600, padding: '0.2rem 0' }}>
-                  {p.lastName}, {p.firstName} <span style={{ fontWeight: 400, fontSize: '0.75rem', color: '#D97706' }}>— {p.cancellationsUsed}/12</span>
-                </div>
-              ))}
+          <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '0.875rem', padding: '1rem 1.25rem' }}>
+            <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#D97706', marginBottom: '0.5rem' }}>
+              Nearing Slot Removal — Cancellations ({slotAlerts.nearingCancel.length})
             </div>
-          )}
+            {slotAlerts.nearingCancel.length === 0 ? (
+              <div style={{ fontSize: '0.82rem', color: '#92400E', fontStyle: 'italic', padding: '0.2rem 0' }}>None</div>
+            ) : slotAlerts.nearingCancel.map((p: any) => (
+              <div key={p.id} style={{ fontSize: '0.82rem', color: '#92400E', fontWeight: 600, padding: '0.2rem 0' }}>
+                {p.lastName}, {p.firstName} <span style={{ fontWeight: 400, fontSize: '0.75rem', color: '#D97706' }}>— {p.cancellationsUsed}/12</span>
+              </div>
+            ))}
+          </div>
 
-          {/* ── Progress Reports widget — clinician-flagged PRs awaiting payment + email */}
-          <ActiveProgressReports />
+          {/* Progress Reports — pending PRs awaiting Paid + Email */}
+          <PendingProgressReports />
 
-          {/* ── Past PRs (searchable history) */}
-          <SentProgressReports />
+          {/* Past Progress Reports — searchable history */}
+          <PastProgressReports />
         </div>
       )}
 
@@ -881,3 +882,228 @@ export default function FrontDeskWelcome({
     </div>
   )
 }
+
+
+// ── Pending Progress Reports (orange — awaiting payment + email) ─────────────
+interface PRDoc {
+  id: string
+  fileName: string
+  mimeType: string | null
+  department: string
+  createdAt: string
+  informedFrontDeskAt: string | null
+  paidForAt: string | null
+  paid: boolean
+  emailedToPatientAt: string | null
+  patient: { id: string; firstName: string; lastName: string; email: string | null }
+}
+
+function PendingProgressReports() {
+  const [docs, setDocs] = useState<PRDoc[]>([])
+  const [loading, setLoading] = useState(true)
+  const [busyId, setBusyId] = useState<string | null>(null)
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const r = await fetch('/api/progress-reports?status=pending')
+      const d = await r.json()
+      setDocs(d.docs || [])
+    } finally { setLoading(false) }
+  }
+  React.useEffect(() => { load() }, [])
+
+  async function togglePaid(d: PRDoc, paid: boolean) {
+    setBusyId(d.id)
+    try {
+      const r = await fetch(`/api/progress-reports/${d.id}/paid`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paid }),
+      })
+      if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Failed') }
+      await load()
+    } catch (e) { alert((e as Error).message) }
+    finally { setBusyId(null) }
+  }
+
+  async function sendEmail(d: PRDoc) {
+    if (!d.patient.email) { alert('Patient has no email on file'); return }
+    if (d.emailedToPatientAt) {
+      const when = new Date(d.emailedToPatientAt).toLocaleString()
+      if (!confirm(`Already sent on ${when}. Send again?`)) return
+    } else {
+      if (!confirm(`Send PR to ${d.patient.email}?`)) return
+    }
+    setBusyId(d.id)
+    try {
+      const r = await fetch(`/api/progress-reports/${d.id}/email`, { method: 'POST' })
+      if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Failed') }
+      alert('Email sent.')
+      await load()
+    } catch (e) { alert('Error: ' + (e as Error).message) }
+    finally { setBusyId(null) }
+  }
+
+  return (
+    <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: '0.875rem', padding: '1rem 1.25rem' }}>
+      <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#C2410C', marginBottom: '0.6rem' }}>
+        Progress Reports — Awaiting Payment + Email ({docs.length})
+      </div>
+      {loading ? (
+        <div style={{ fontSize: '0.78rem', color: '#9A3412', fontStyle: 'italic' }}>Loading…</div>
+      ) : docs.length === 0 ? (
+        <div style={{ fontSize: '0.82rem', color: '#9A3412', fontStyle: 'italic', padding: '0.2rem 0' }}>None</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {docs.map(d => {
+            const informed = d.informedFrontDeskAt ? new Date(d.informedFrontDeskAt).toLocaleDateString() : '—'
+            return (
+              <div key={d.id} style={{ background: '#fff', border: '1px solid #FED7AA', borderRadius: '0.6rem', padding: '0.6rem 0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#7C2D12' }}>
+                      {d.patient.lastName}, {d.patient.firstName}
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: '#9A3412', marginTop: 1 }}>
+                      <a href={`/api/progress-reports/${d.id}/file`} target="_blank" rel="noreferrer" style={{ color: '#C2410C', textDecoration: 'underline' }}>
+                        {d.fileName}
+                      </a>
+                      {' · '}{d.department}
+                      {' · '}<span style={{ background: '#FFEDD5', color: '#9A3412', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.62rem', textTransform: 'uppercase' }}>Informed {informed}</span>
+                    </div>
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', fontWeight: 600, color: '#7C2D12', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={d.paid}
+                      onChange={e => togglePaid(d, e.target.checked)}
+                      disabled={busyId === d.id}
+                      style={{ width: 16, height: 16, accentColor: '#0EA5E9' }}
+                    />
+                    Paid for PR?
+                  </label>
+                  <button
+                    onClick={() => sendEmail(d)}
+                    disabled={!d.paid || busyId === d.id || !d.patient.email}
+                    title={!d.patient.email ? 'No email on file' : !d.paid ? 'Tick "Paid for PR?" first' : 'Send PR via email'}
+                    style={{
+                      padding: '0.4rem 0.8rem', borderRadius: '0.4rem', border: 'none',
+                      background: d.paid && d.patient.email ? '#059669' : '#E2E8F0',
+                      color: d.paid && d.patient.email ? '#fff' : '#94A3B8',
+                      fontSize: '0.78rem', fontWeight: 700,
+                      cursor: d.paid && d.patient.email && busyId !== d.id ? 'pointer' : 'not-allowed',
+                    }}
+                  >
+                    📧 Email PR
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Past Progress Reports (green — already sent, searchable history) ─────────
+function PastProgressReports() {
+  const [docs, setDocs] = useState<PRDoc[]>([])
+  const [search, setSearch] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [busyId, setBusyId] = useState<string | null>(null)
+
+  const load = async (q = '') => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({ status: 'past' })
+      if (q) params.set('search', q)
+      const r = await fetch('/api/progress-reports?' + params.toString())
+      const d = await r.json()
+      setDocs(d.docs || [])
+    } finally { setLoading(false) }
+  }
+
+  React.useEffect(() => { load() }, [])
+
+  // Debounced search
+  React.useEffect(() => {
+    const t = setTimeout(() => load(search.trim()), 300)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search])
+
+  async function resend(d: PRDoc) {
+    const when = d.emailedToPatientAt ? new Date(d.emailedToPatientAt).toLocaleString() : '—'
+    if (!confirm(`Already sent on ${when}. Send again?`)) return
+    setBusyId(d.id)
+    try {
+      const r = await fetch(`/api/progress-reports/${d.id}/email`, { method: 'POST' })
+      if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Failed') }
+      alert('Email re-sent.')
+      await load(search.trim())
+    } catch (e) { alert('Error: ' + (e as Error).message) }
+    finally { setBusyId(null) }
+  }
+
+  return (
+    <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '0.875rem', padding: '1rem 1.25rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.6rem', flexWrap: 'wrap' }}>
+        <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#15803D' }}>
+          Past Progress Reports ({docs.length})
+        </div>
+        <input
+          type="text"
+          placeholder="Search by patient name…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          style={{
+            flex: 1, minWidth: 180, maxWidth: 260,
+            padding: '0.3rem 0.6rem', borderRadius: 6,
+            border: '1.5px solid #BBF7D0', background: '#fff',
+            fontSize: '0.78rem', outline: 'none',
+          }}
+        />
+      </div>
+      {loading ? (
+        <div style={{ fontSize: '0.78rem', color: '#15803D', fontStyle: 'italic' }}>Loading…</div>
+      ) : docs.length === 0 ? (
+        <div style={{ fontSize: '0.82rem', color: '#15803D', fontStyle: 'italic' }}>{search ? 'No matches.' : 'None yet.'}</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', maxHeight: 320, overflowY: 'auto' }}>
+          {docs.map(d => {
+            const sent = d.emailedToPatientAt ? new Date(d.emailedToPatientAt).toLocaleDateString() : '—'
+            return (
+              <div key={d.id} style={{ background: '#fff', border: '1px solid #BBF7D0', borderRadius: '0.5rem', padding: '0.5rem 0.7rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#14532D' }}>
+                    {d.patient.lastName}, {d.patient.firstName}
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: '#15803D', marginTop: 1 }}>
+                    <a href={`/api/progress-reports/${d.id}/file`} target="_blank" rel="noreferrer" style={{ color: '#15803D', textDecoration: 'underline' }}>
+                      {d.fileName}
+                    </a>
+                    {' · '}<span style={{ background: '#BBF7D0', color: '#14532D', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.62rem', textTransform: 'uppercase' }}>Sent {sent}</span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => resend(d)}
+                  disabled={busyId === d.id}
+                  style={{
+                    padding: '0.3rem 0.65rem', borderRadius: '0.4rem', border: '1px solid #BBF7D0',
+                    background: '#fff', color: '#14532D', fontSize: '0.7rem', fontWeight: 700,
+                    cursor: busyId === d.id ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  Resend
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
