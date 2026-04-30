@@ -116,6 +116,13 @@ const FRONT_DESK_NAV = [
 
 export default function Sidebar({ onClose, role = 'MARKETING_ADMIN' }: { onClose?: () => void; role?: string }) {
   const pathname = usePathname()
+  const { brand, setBrand, brands } = useBrand()
+  const [brandOpen, setBrandOpen] = useState(false)
+
+  const isFrontDesk = FRONT_DESK_ROLES.includes(role)
+  const isAdmin = role === 'ADMIN'
+  const isMarketingAdmin = role === 'MARKETING_ADMIN'
+  const nav = isFrontDesk ? FRONT_DESK_NAV : getFullNav(isAdmin, isMarketingAdmin)
 
   // Pick the longest nav href that prefixes the current pathname (with a /
   // boundary). Prevents /patients/profile from also lighting up /patients.
@@ -130,13 +137,6 @@ export default function Sidebar({ onClose, role = 'MARKETING_ADMIN' }: { onClose
     }
     return best
   })()
-  const { brand, setBrand, brands } = useBrand()
-  const [brandOpen, setBrandOpen] = useState(false)
-
-  const isFrontDesk = FRONT_DESK_ROLES.includes(role)
-  const isAdmin = role === 'ADMIN'
-  const isMarketingAdmin = role === 'MARKETING_ADMIN'
-  const nav = isFrontDesk ? FRONT_DESK_NAV : getFullNav(isAdmin, isMarketingAdmin)
 
   return (
     <aside
