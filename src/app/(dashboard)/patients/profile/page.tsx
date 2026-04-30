@@ -28,6 +28,7 @@ interface PatientInfo {
   firstDayOfConsult?: string | null
   branches?: string[]
   branch?: string | null
+  referralUrl?: string | null
 }
 
 interface SessionStats {
@@ -345,8 +346,8 @@ export default function PatientProfilePage() {
             </div>
           </div>
 
-          {/* Progress Reports */}
-          <ProgressReportsCard patientId={p?.id ?? null} />
+          {/* Documents & Files */}
+          <DocumentsCard patientId={p?.id ?? null} referralUrl={p?.referralUrl ?? null} />
 
           {/* Session Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -507,9 +508,13 @@ function StatCard({ value, label, color }: { value: number; label: string; color
   )
 }
 
-
-// ── Progress Reports card for Patient Profile ────────────────────────────────
-interface PRRow {
+// ── Documents & Files card for Patient Profile ──────────────────────────────
+// Combines four sources:
+//   • Doctor's Referral (Patient.referralUrl from Patient CRM)
+//   • Progress Reports (teletherapy)
+//   • Initial Evaluation / Re-evaluation (teletherapy)
+//   • Other Documents / Reports (teletherapy)
+interface DocRow {
   id: string
   fileName: string
   mimeType: string | null
@@ -518,77 +523,172 @@ interface PRRow {
   informedFrontDeskAt: string | null
   paidForAt: string | null
   emailedToPatientAt: string | null
+  description: string | null
 }
 
-function ProgressReportsCard({ patientId }: { patientId: string | null }) {
-  const [docs, setDocs] = useState<PRRow[]>([])
+interface DocsResponse {
+  progressReports: DocRow[]
+  initialEvaluations: DocRow[]
+  otherDocuments: DocRow[]
+}
+
+function DocumentsCard({ patientId, referralUrl }: { patientId: string | null; referralUrl: string | null }) {
+  const [data, setData] = useState<DocsResponse | null>(null)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (!patientId) { setDocs([]); return }
+    if (!patientId) { setData(null); return }
     setLoading(true)
-    fetch(`/api/patients/${patientId}/progress-reports`)
+    fetch(`/api/patients/${patientId}/documents`)
       .then(r => r.json())
-      .then(d => setDocs(d.docs || []))
+      .then(setData)
       .finally(() => setLoading(false))
   }, [patientId])
 
   if (!patientId) return null
 
+  const totalCount =
+    (referralUrl ? 1 : 0) +
+    (data?.progressReports.length ?? 0) +
+    (data?.initialEvaluations.length ?? 0) +
+    (data?.otherDocuments.length ?? 0)
+
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-5 mb-5">
       <h3 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
         <Activity size={16} className="text-orange-600" />
-        Progress Reports
-        <span className="text-xs text-gray-400 font-normal ml-1">({docs.length})</span>
+        Documents &amp; Files
+        <span className="text-xs text-gray-400 font-normal ml-1">({totalCount})</span>
       </h3>
       {loading ? (
         <p className="text-xs text-gray-400 italic">Loading…</p>
-      ) : docs.length === 0 ? (
-        <p className="text-xs text-gray-400 italic">No progress reports on file.</p>
+      ) : (
+        <div className="space-y-4">
+          <DocSection
+            title="Doctor&apos;s Referral"
+            tint="blue"
+            empty="No doctor&apos;s referral on file."
+            rows={referralUrl ? [{
+              id: 'referral',
+              fileName: referralUrl.split('/').pop() ?? 'Referral document',
+              mimeType: null,
+              department: '',
+              createdAt: '',
+              informedFrontDeskAt: null,
+              paidForAt: null,
+              emailedToPatientAt: null,
+              description: null,
+            }] : []}
+            buildHref={() => referralUrl ?? '#'}
+            external
+            hideTimeline
+          />
+
+          <DocSection
+            title="Progress Reports"
+            tint="orange"
+            empty="No progress reports on file."
+            rows={data?.progressReports ?? []}
+            buildHref={(r) => `/api/progress-reports/${r.id}/file`}
+          />
+
+          <DocSection
+            title="Initial Evaluation / Re-evaluation"
+            tint="purple"
+            empty="No initial evaluations on file."
+            rows={data?.initialEvaluations ?? []}
+            buildHref={(r) => `/api/progress-reports/${r.id}/file`}
+            hideTimeline
+          />
+
+          <DocSection
+            title="Other Documents / Reports"
+            tint="gray"
+            empty="No other documents on file."
+            rows={data?.otherDocuments ?? []}
+            buildHref={(r) => `/api/progress-reports/${r.id}/file`}
+            hideTimeline
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+const TINTS: Record<string, { bg: string; border: string; title: string; chipBg: string; chipText: string; viewBg: string; viewText: string }> = {
+  orange: { bg: '#FFF7ED', border: '#FED7AA', title: '#7C2D12', chipBg: '#FFEDD5', chipText: '#9A3412', viewBg: '#fff', viewText: '#7C2D12' },
+  blue:   { bg: '#EFF6FF', border: '#BFDBFE', title: '#1E3A8A', chipBg: '#DBEAFE', chipText: '#1E40AF', viewBg: '#fff', viewText: '#1E3A8A' },
+  purple: { bg: '#F5F3FF', border: '#DDD6FE', title: '#5B21B6', chipBg: '#EDE9FE', chipText: '#5B21B6', viewBg: '#fff', viewText: '#5B21B6' },
+  gray:   { bg: '#F8FAFC', border: '#E2E8F0', title: '#334155', chipBg: '#F1F5F9', chipText: '#475569', viewBg: '#fff', viewText: '#334155' },
+}
+
+function DocSection({
+  title, tint, empty, rows, buildHref, external, hideTimeline,
+}: {
+  title: string
+  tint: 'orange' | 'blue' | 'purple' | 'gray'
+  empty: string
+  rows: DocRow[]
+  buildHref: (r: DocRow) => string
+  external?: boolean
+  hideTimeline?: boolean
+}) {
+  const t = TINTS[tint]
+  return (
+    <div>
+      <h4 className="text-[11px] font-bold uppercase tracking-wider mb-1.5" style={{ color: t.title }}>
+        {title} <span className="font-normal" style={{ color: '#94a3b8' }}>({rows.length})</span>
+      </h4>
+      {rows.length === 0 ? (
+        <p className="text-xs text-gray-400 italic">{empty}</p>
       ) : (
         <div className="space-y-2">
-          {docs.map(d => (
-            <div key={d.id} className="flex items-center gap-3 p-2.5 rounded-lg" style={{ background: '#FFF7ED', border: '1px solid #FED7AA' }}>
+          {rows.map(d => (
+            <div key={d.id} className="flex items-center gap-3 p-2.5 rounded-lg" style={{ background: t.bg, border: `1px solid ${t.border}` }}>
               <div className="flex-1 min-w-0">
                 <a
-                  href={`/api/progress-reports/${d.id}/file`}
+                  href={buildHref(d)}
                   target="_blank"
                   rel="noreferrer"
                   className="text-sm font-semibold truncate block"
-                  style={{ color: '#7C2D12' }}
+                  style={{ color: t.title }}
                   title={d.fileName}
                 >
                   {d.fileName}
                 </a>
-                <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  <span className="text-[10px]" style={{ color: '#9A3412' }}>{d.department}</span>
-                  <span className="text-[10px]" style={{ color: '#9A3412' }}>{new Date(d.createdAt).toLocaleDateString()}</span>
-                </div>
-                <div className="flex items-center gap-1 mt-1.5 flex-wrap">
-                  {d.informedFrontDeskAt && (
-                    <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase" style={{ background: '#FFEDD5', color: '#9A3412' }}>
-                      🟠 Informed · {new Date(d.informedFrontDeskAt).toLocaleDateString()}
-                    </span>
-                  )}
-                  {d.paidForAt && (
-                    <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase" style={{ background: '#DBEAFE', color: '#1E40AF' }}>
-                      🔵 Paid · {new Date(d.paidForAt).toLocaleDateString()}
-                    </span>
-                  )}
-                  {d.emailedToPatientAt && (
-                    <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase" style={{ background: '#BBF7D0', color: '#14532D' }}>
-                      🟢 Sent · {new Date(d.emailedToPatientAt).toLocaleDateString()}
-                    </span>
-                  )}
-                </div>
+                {(d.department || d.createdAt || d.description) && (
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    {d.department && <span className="text-[10px]" style={{ color: t.chipText }}>{d.department}</span>}
+                    {d.createdAt && <span className="text-[10px]" style={{ color: t.chipText }}>{new Date(d.createdAt).toLocaleDateString()}</span>}
+                    {d.description && <span className="text-[10px] italic" style={{ color: '#94a3b8' }}>{d.description}</span>}
+                  </div>
+                )}
+                {!hideTimeline && (
+                  <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                    {d.informedFrontDeskAt && (
+                      <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase" style={{ background: '#FFEDD5', color: '#9A3412' }}>
+                        🟠 Informed · {new Date(d.informedFrontDeskAt).toLocaleDateString()}
+                      </span>
+                    )}
+                    {d.paidForAt && (
+                      <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase" style={{ background: '#DBEAFE', color: '#1E40AF' }}>
+                        🔵 Paid · {new Date(d.paidForAt).toLocaleDateString()}
+                      </span>
+                    )}
+                    {d.emailedToPatientAt && (
+                      <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase" style={{ background: '#BBF7D0', color: '#14532D' }}>
+                        🟢 Sent · {new Date(d.emailedToPatientAt).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
               <a
-                href={`/api/progress-reports/${d.id}/file`}
-                target="_blank"
+                href={buildHref(d)}
+                target={external ? '_blank' : '_blank'}
                 rel="noreferrer"
                 className="text-xs font-semibold px-3 py-1.5 rounded-md"
-                style={{ background: '#fff', color: '#7C2D12', border: '1px solid #FED7AA' }}
+                style={{ background: t.viewBg, color: t.viewText, border: `1px solid ${t.border}` }}
               >
                 View
               </a>
