@@ -1,9 +1,11 @@
 #!/bin/bash
 # ============================================================
-# SAPPHIRE Marketing Hub — Daily Database Backup
+# SAPPHIRE Marketing Hub — Daily Backup (Database + Uploads)
 # ============================================================
 # Runs inside the VPS via cron at 2:00 AM daily.
-# Keeps 7 local copies, then uploads to offsite storage.
+# Backs up BOTH the Postgres DB and the /opt/sapphire/uploads/
+# directory (referrals, queue ads, email images, brand guides).
+# Keeps 30 local copies, then uploads to offsite storage.
 #
 # Cron entry (add with: crontab -e):
 #   0 2 * * * /opt/sapphire/scripts/backup.sh >> /var/log/sapphire-backup.log 2>&1
@@ -16,7 +18,7 @@ BACKUP_DIR="/opt/sapphire/backups"
 FILENAME="sapphire_${TIMESTAMP}.sql.gz"
 FULL_PATH="${BACKUP_DIR}/${FILENAME}"
 ENV_FILE="/opt/sapphire/docker/.env.production"
-KEEP_DAYS=7
+KEEP_DAYS=30
 
 # ── Load environment ─────────────────────────────────────────
 if [ -f "$ENV_FILE" ]; then
@@ -43,11 +45,30 @@ docker exec sapphire_db \
 SIZE=$(du -sh "$FULL_PATH" | cut -f1)
 echo "[backup] ✅  Dump complete: $FILENAME ($SIZE)"
 
+# ── Tar /opt/sapphire/uploads (referrals, queue ads, email images, etc.)
+UPLOADS_DIR="/opt/sapphire/uploads"
+UPLOADS_FILENAME="sapphire_uploads_${TIMESTAMP}.tar.gz"
+UPLOADS_FULL_PATH="${BACKUP_DIR}/${UPLOADS_FILENAME}"
+if [ -d "$UPLOADS_DIR" ]; then
+  echo "[backup] Tarring uploads dir..."
+  tar czf "$UPLOADS_FULL_PATH" -C "$(dirname "$UPLOADS_DIR")" "$(basename "$UPLOADS_DIR")" 2>/dev/null
+  USIZE=$(du -sh "$UPLOADS_FULL_PATH" | cut -f1)
+  UCOUNT=$(find "$UPLOADS_DIR" -type f 2>/dev/null | wc -l)
+  echo "[backup] ✅  Uploads tar: $UPLOADS_FILENAME ($USIZE, $UCOUNT files)"
+else
+  echo "[backup] ⚠  $UPLOADS_DIR not found — skipping uploads tar."
+fi
+
 # ── Remove old backups (keep last N days) ────────────────────
-echo "[backup] Pruning backups older than ${KEEP_DAYS} days..."
+echo "[backup] Pruning DB backups older than ${KEEP_DAYS} days..."
 find "$BACKUP_DIR" -name "sapphire_*.sql.gz" -mtime +"$KEEP_DAYS" -delete
 REMAINING=$(ls "$BACKUP_DIR"/sapphire_*.sql.gz 2>/dev/null | wc -l)
-echo "[backup] ${REMAINING} backup(s) retained locally."
+echo "[backup] ${REMAINING} DB backup(s) retained locally."
+
+echo "[backup] Pruning uploads tarballs older than ${KEEP_DAYS} days..."
+find "$BACKUP_DIR" -name "sapphire_uploads_*.tar.gz" -mtime +"$KEEP_DAYS" -delete
+UREMAINING=$(ls "$BACKUP_DIR"/sapphire_uploads_*.tar.gz 2>/dev/null | wc -l)
+echo "[backup] ${UREMAINING} uploads tarball(s) retained locally."
 
 # ── Offsite upload (optional — configure one option below) ───
 #
