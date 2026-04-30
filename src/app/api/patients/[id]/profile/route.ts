@@ -128,6 +128,7 @@ export async function GET(
       firstDayOfConsult: patient.firstDayOfConsult,
       branches: patient.branches,
       branch: patient.branch,
+      referralUrl: patient.referralUrl,
     },
     stats: {
       total: totalSessions,
