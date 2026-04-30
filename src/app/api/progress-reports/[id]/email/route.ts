@@ -20,7 +20,7 @@ export async function POST(
   const { id } = await params
   const doc = await prisma.patientDocument.findUnique({
     where: { id },
-    include: { patient: { select: { firstName: true, lastName: true, email: true } } },
+    include: { patient: { select: { firstName: true, lastName: true, email: true, branch: true, branches: true } } },
   })
   if (!doc) return NextResponse.json({ error: 'Document not found' }, { status: 404 })
   if (!doc.paidForAt) return NextResponse.json({ error: 'Mark as paid first' }, { status: 400 })
@@ -52,6 +52,16 @@ export async function POST(
       </p>
     </div>`
 
+  // Look up CC list for the patient's branch (configurable in Connected Accounts)
+  const patientBranch = doc.patient.branch ?? doc.patient.branches?.[0] ?? null
+  let ccList: string[] = []
+  if (patientBranch) {
+    const ccRow = await prisma.branchCCEmail.findUnique({ where: { branch: patientBranch } })
+    if (ccRow?.email) {
+      ccList = ccRow.email.split(/[,;]/).map(s => s.trim()).filter(Boolean)
+    }
+  }
+
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
@@ -61,6 +71,7 @@ export async function POST(
     body: JSON.stringify({
       from: FROM,
       to: [doc.patient.email],
+      ...(ccList.length > 0 ? { cc: ccList } : {}),
       subject,
       html,
       attachments: [{

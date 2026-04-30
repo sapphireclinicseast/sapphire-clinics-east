@@ -710,6 +710,182 @@ export default function AccountsPage() {
           Once connected, use the <strong>&ldquo;Import from Canva&rdquo;</strong> button when composing posts or generating templates.
         </p>
       </div>
+
+      {/* ─── Branch CC Emails (super admin only) ─────────────────── */}
+      <BranchCCEmailsSection />
+    </div>
+  )
+}
+
+// ── Branch CC Emails section ────────────────────────────────────────────────
+// Lets the super admin (main@sapphireclinicseast.org) configure which email
+// addresses get CC'd when the front desk emails Progress Reports (and other
+// patient-facing documents) to a patient.
+
+interface BranchCCRow {
+  id: string
+  branch: string
+  email: string  // comma-separated allowed
+  notes: string | null
+  updatedAt: string
+}
+
+const BRANCH_LABELS: Record<string, string> = {
+  SANDBOX_EAST: 'Sandbox East',
+  SANDBOX_GREENHILLS: 'Sandbox Greenhills',
+  VERDANA_STORE: 'Verdana Store',
+}
+
+function BranchCCEmailsSection() {
+  const [allowed, setAllowed] = useState(true)
+  const [knownBranches, setKnownBranches] = useState<string[]>([])
+  const [rows, setRows] = useState<BranchCCRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState<string | null>(null)
+  const [editing, setEditing] = useState<Record<string, { email: string; notes: string }>>({})
+
+  async function load() {
+    setLoading(true)
+    try {
+      const r = await fetch('/api/admin/branch-cc-emails')
+      if (r.status === 403 || r.status === 401) { setAllowed(false); return }
+      const d = await r.json()
+      setKnownBranches(d.knownBranches || [])
+      setRows(d.ccEmails || [])
+    } finally { setLoading(false) }
+  }
+  useEffect(() => { load() }, [])
+
+  if (!allowed) return null
+
+  function existing(branch: string) { return rows.find(r => r.branch === branch) }
+  function valueFor(branch: string) {
+    const ed = editing[branch]
+    if (ed) return ed
+    const r = existing(branch)
+    return { email: r?.email ?? '', notes: r?.notes ?? '' }
+  }
+  function setField(branch: string, key: 'email' | 'notes', val: string) {
+    setEditing(prev => ({ ...prev, [branch]: { ...valueFor(branch), [key]: val } }))
+  }
+
+  async function save(branch: string) {
+    const v = valueFor(branch)
+    if (!v.email.trim()) { alert('Enter at least one email address'); return }
+    setSaving(branch)
+    try {
+      const r = await fetch('/api/admin/branch-cc-emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch, email: v.email, notes: v.notes }),
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || 'Save failed')
+      setEditing(prev => { const c = { ...prev }; delete c[branch]; return c })
+      await load()
+    } catch (e) { alert((e as Error).message) }
+    finally { setSaving(null) }
+  }
+
+  async function remove(branch: string) {
+    if (!confirm(`Remove CC emails for ${BRANCH_LABELS[branch] ?? branch}?`)) return
+    setSaving(branch)
+    try {
+      const r = await fetch('/api/admin/branch-cc-emails?branch=' + encodeURIComponent(branch), { method: 'DELETE' })
+      if (!r.ok) throw new Error('Delete failed')
+      setEditing(prev => { const c = { ...prev }; delete c[branch]; return c })
+      await load()
+    } catch (e) { alert((e as Error).message) }
+    finally { setSaving(null) }
+  }
+
+  return (
+    <div className="rounded-xl p-5" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+      <div className="flex items-center gap-3 mb-2">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: '#FFF3E8' }}>
+          <Mail size={18} style={{ color: '#ED6823' }} />
+        </div>
+        <div>
+          <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            Progress Report CC Emails
+          </h2>
+          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+            Email addresses CC&apos;d when front desk emails a Progress Report. One config per branch — you can list multiple addresses separated by commas.
+          </p>
+        </div>
+      </div>
+
+      {loading ? (
+        <p className="text-xs mt-3" style={{ color: 'var(--mid-gray)' }}>Loading…</p>
+      ) : (
+        <div className="mt-3 space-y-3">
+          {knownBranches.map(branch => {
+            const v = valueFor(branch)
+            const existed = !!existing(branch)
+            const dirty = !!editing[branch]
+            return (
+              <div key={branch} className="rounded-lg p-3" style={{ background: '#fafafa', border: '1px solid var(--light-gray)' }}>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#ED6823' }}>
+                    {BRANCH_LABELS[branch] ?? branch}
+                  </span>
+                  {existed && !dirty && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: '#D1FAE5', color: '#065F46' }}>
+                      SAVED
+                    </span>
+                  )}
+                  {dirty && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: '#FEF3C7', color: '#92400E' }}>
+                      UNSAVED
+                    </span>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  value={v.email}
+                  onChange={e => setField(branch, 'email', e.target.value)}
+                  placeholder="alice@example.com, bob@example.com"
+                  className="w-full px-3 py-2 rounded-md text-sm outline-none mb-2"
+                  style={{ border: '1.5px solid var(--light-gray)', color: 'var(--charcoal)', background: '#fff' }}
+                />
+                <input
+                  type="text"
+                  value={v.notes}
+                  onChange={e => setField(branch, 'notes', e.target.value)}
+                  placeholder="Notes (optional)"
+                  className="w-full px-3 py-2 rounded-md text-xs outline-none mb-2"
+                  style={{ border: '1.5px solid var(--light-gray)', color: 'var(--mid-gray)', background: '#fff' }}
+                />
+                <div className="flex gap-2 justify-end">
+                  {existed && (
+                    <button
+                      onClick={() => remove(branch)}
+                      disabled={saving === branch}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold"
+                      style={{ background: '#FEE2E2', color: '#DC2626' }}
+                    >
+                      <Trash2 size={12} />
+                      Remove
+                    </button>
+                  )}
+                  <button
+                    onClick={() => save(branch)}
+                    disabled={saving === branch || (!dirty && existed)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold"
+                    style={{
+                      background: dirty || !existed ? 'var(--teal)' : '#E5E7EB',
+                      color: dirty || !existed ? '#fff' : 'var(--mid-gray)',
+                      cursor: (dirty || !existed) && saving !== branch ? 'pointer' : 'not-allowed',
+                    }}
+                  >
+                    {saving === branch ? 'Saving…' : existed ? 'Update' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

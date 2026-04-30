@@ -72,6 +72,22 @@ model PatientDocument {
   @@index([emailedToPatientAt])
 }
 
+
+// ── Branch CC Emails ─────────────────────────────────────────────────────────
+// Per-branch list of email addresses to CC when sending patient-facing emails
+// (Progress Reports, Initial Evaluations, etc). Managed in Settings →
+// Connected Accounts by the super admin (main@sapphireclinicseast.org).
+// Schema mirrors the existing table created by the teletherapy app.
+model BranchCCEmail {
+  id          String   @id @default(cuid())
+  branch      String   @unique  // 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | 'VERDANA_STORE'
+  email       String   // primary CC address (or comma-separated list)
+  notes       String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+}
+
 enum Role {
   ADMIN
   MARKETING_ADMIN
