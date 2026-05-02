@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Square favicon: half-rainbow centered, flat baseline at y=46 -->
+  <!-- Outer ring: Narra -->
+  <path d="M 2 46 A 30 30 0 0 1 62 46 Z" fill="#1B3F38"/>
+  <!-- Gap -->
+  <path d="M 6.5 46 A 25.5 25.5 0 0 1 57.5 46 Z" fill="#FFFFFF"/>
+  <!-- Middle ring: Sage -->
+  <path d="M 10 46 A 22 22 0 0 1 54 46 Z" fill="#4A8073"/>
+  <!-- Gap -->
+  <path d="M 14.5 46 A 17.5 17.5 0 0 1 49.5 46 Z" fill="#FFFFFF"/>
+  <!-- Inner ring: Clay -->
+  <path d="M 18 46 A 14 14 0 0 1 46 46 Z" fill="#A85C3D"/>
+  <!-- Center cutout -->
+  <path d="M 25 46 A 7 7 0 0 1 39 46 Z" fill="#FFFFFF"/>
+</svg>
