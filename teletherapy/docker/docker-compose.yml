@@ -14,6 +14,7 @@ services:
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI}
       - UPLOAD_DIR=/app/uploads
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
     volumes:
       - /opt/sapphire/teletherapy-uploads:/app/uploads
     ports:

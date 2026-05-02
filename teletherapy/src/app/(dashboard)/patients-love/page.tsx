@@ -123,7 +123,7 @@ export default function PatientsLovePage() {
       <div
         className="relative rounded-3xl px-8 py-8 mb-6 overflow-hidden animate-fade-up"
         style={{
-          background: 'linear-gradient(135deg, #ED6823 0%, #FFA235 100%)',
+          background: 'linear-gradient(135deg, #A85C3D 0%, #C69849 100%)',
         }}
       >
         {/* Decorative floating hearts in bg */}
@@ -180,7 +180,7 @@ export default function PatientsLovePage() {
 
           {/* Count stat */}
           <div className="text-center mb-4">
-            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#ED6823]/10 text-[#ED6823] text-[13px] font-semibold">
+            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#A85C3D]/10 text-[#A85C3D] text-[13px] font-semibold">
               <Heart size={14} fill="currentColor" />
               {strengths.length} kind {strengths.length === 1 ? 'word' : 'words'} from your patients
             </span>

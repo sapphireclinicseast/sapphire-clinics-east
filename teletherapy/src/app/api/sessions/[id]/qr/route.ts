@@ -36,7 +36,7 @@ export async function POST(
     width: 300,
     margin: 2,
     color: {
-      dark: '#1A2E2B',
+      dark: '#1B3F38',
       light: '#FFFFFF',
     },
   })

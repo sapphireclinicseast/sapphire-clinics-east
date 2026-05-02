@@ -43,8 +43,8 @@ export async function POST(req: NextRequest) {
     to: email,
     subject: 'SCEI Teletherapy — Password Reset',
     html: `
-      <div style="font-family: 'Gill Sans', Arial, sans-serif; max-width: 500px; margin: 0 auto; color: #1A2E2B;">
-        <div style="background: linear-gradient(135deg, #1F4944, #2E5E5A); padding: 24px; border-radius: 12px 12px 0 0; text-align: center;">
+      <div style="font-family: 'Gill Sans', Arial, sans-serif; max-width: 500px; margin: 0 auto; color: #1B3F38;">
+        <div style="background: linear-gradient(135deg, #1B3F38, #26554B); padding: 24px; border-radius: 12px 12px 0 0; text-align: center;">
           <h1 style="color: white; margin: 0; font-size: 20px;">Password Reset</h1>
           <p style="color: rgba(255,255,255,0.7); margin: 4px 0 0; font-size: 13px;">SCEI Teletherapy</p>
         </div>
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
           <p>Hi <strong>${account.staff.firstName}</strong>,</p>
           <p>We received a request to reset your password. Click the button below to set a new password:</p>
           <div style="text-align: center; margin: 28px 0;">
-            <a href="${resetUrl}" style="background: linear-gradient(135deg, #2E5E5A, #1F4944); color: white; padding: 12px 32px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 15px; display: inline-block;">
+            <a href="${resetUrl}" style="background: linear-gradient(135deg, #26554B, #1B3F38); color: white; padding: 12px 32px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 15px; display: inline-block;">
               Reset Password
             </a>
           </div>

@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-// Branches we know about. Keep in sync with Patient.branch / Staff.branch values.
-const KNOWN_BRANCHES = ['SBEA', 'SBGH', 'SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE']
+// Branches we know about. Must match Patient.branch enum (Branch in schema.prisma)
+// since IE send-to-patient looks up CC emails by patient.branch. SBEA/SBGH are
+// legacy aliases stored on Staff records — we don't expose them as new options here.
+const KNOWN_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE']
 
 function requireAdmin(role?: string) {
   return role === 'ADMIN'

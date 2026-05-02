@@ -109,7 +109,7 @@ export default function PatientsPage() {
           placeholder="Search patients by name or email..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="input pl-11 !rounded-xl"
+          className="input !pl-11 !rounded-xl"
         />
       </div>
 
@@ -158,7 +158,7 @@ export default function PatientsPage() {
               className={`card-static w-full text-left !p-4 hover:shadow-md hover:border-[var(--teal)]/30 transition-all active:scale-[0.995] animate-fade-up stagger-${Math.min(i + 3, 8)}`}
             >
               <div className="flex items-center gap-4">
-                <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#ED6823] to-[#FFA235] flex items-center justify-center text-white font-bold text-[13px] shrink-0">
+                <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#A85C3D] to-[#C69849] flex items-center justify-center text-white font-bold text-[13px] shrink-0">
                   {patient.firstName[0]}{patient.lastName[0]}
                 </div>
                 <div className="flex-1 min-w-0">

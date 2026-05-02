@@ -152,7 +152,7 @@ function ResetPasswordForm() {
 export default function ResetPasswordPage() {
   return (
     <div className="fixed inset-0 flex items-center justify-center px-4" style={{
-      background: 'linear-gradient(135deg, #0F1F1D 0%, #1F4944 40%, #2E5E5A 70%, #1F4944 100%)',
+      background: 'linear-gradient(135deg, #0F2520 0%, #1B3F38 40%, #26554B 70%, #1B3F38 100%)',
     }}>
       <div className="absolute top-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full opacity-[0.04] bg-white pointer-events-none" />
 

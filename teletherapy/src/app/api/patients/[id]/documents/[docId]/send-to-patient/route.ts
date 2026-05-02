@@ -90,11 +90,11 @@ export async function POST(
   const deptLabel = DEPT_LABEL[doc.department] ?? doc.department
 
   const html = `
-    <div style="font-family: Arial, sans-serif; color: #1A2E2B; max-width: 600px; margin: 0 auto;">
-      <div style="background: linear-gradient(135deg, #2E5E5A, #1F4944); color: white; padding: 24px; border-radius: 12px 12px 0 0;">
+    <div style="font-family: Arial, sans-serif; color: #1B3F38; max-width: 600px; margin: 0 auto;">
+      <div style="background: linear-gradient(135deg, #26554B, #1B3F38); color: white; padding: 24px; border-radius: 12px 12px 0 0;">
         <h1 style="margin: 0; font-size: 22px;">Initial Evaluation Report</h1>
       </div>
-      <div style="background: #F7FAF9; padding: 24px; border-radius: 0 0 12px 12px;">
+      <div style="background: #F5F0E8; padding: 24px; border-radius: 0 0 12px 12px;">
         <p style="font-size: 15px;">Dear ${patientName},</p>
         <p style="font-size: 14px; line-height: 1.6;">
           Please find attached your Initial Evaluation report from your ${deptLabel} sessions at our clinic.

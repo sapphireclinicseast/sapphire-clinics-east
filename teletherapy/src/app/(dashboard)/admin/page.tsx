@@ -16,8 +16,18 @@ import {
   Clock,
   Mail,
   Trash2,
+  Search,
+  X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+
+const BRANCH_LABEL: Record<string, string> = {
+  SANDBOX_EAST: 'Sandbox East',
+  SANDBOX_GREENHILLS: 'Sandbox Greenhills',
+  VERDANA_STORE: 'Verdana Store',
+  SBEA: 'Sandbox East (legacy)',
+  SBGH: 'Sandbox Greenhills (legacy)',
+}
 
 interface StaffOption {
   id: string
@@ -66,6 +76,7 @@ export default function AdminPage() {
   const [editingEmailId, setEditingEmailId] = useState<string | null>(null)
   const [newEmail, setNewEmail] = useState('')
   const [savingEmail, setSavingEmail] = useState(false)
+  const [accountSearch, setAccountSearch] = useState('')
 
   // Branch CC emails (for IE email tracking)
   const [ccEmails, setCcEmails] = useState<{ branch: string; email: string; notes?: string | null }[]>([])
@@ -307,7 +318,7 @@ export default function AdminPage() {
       </div>
 
       {/* Accounts list */}
-      <div className="card-static animate-fade-up stagger-2">
+      <div className="card-static animate-fade-up stagger-2 mb-8">
         <h2 className="font-bold text-[var(--charcoal)] mb-5 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
           <Users size={18} className="text-[var(--teal)]" />
           Clinician Accounts
@@ -321,9 +332,43 @@ export default function AdminPage() {
             </div>
             <p className="text-[var(--mid-gray)] text-sm font-medium">No clinician accounts created yet.</p>
           </div>
-        ) : (
-          <div className="space-y-3">
-            {accounts.map((acct, i) => (
+        ) : (() => {
+          const q = accountSearch.trim().toLowerCase()
+          const filtered = q
+            ? accounts.filter((a) => {
+                const hay = `${a.staff.firstName} ${a.staff.lastName} ${a.email} ${a.staff.department} ${a.staff.branch} ${a.role}`.toLowerCase()
+                return hay.includes(q)
+              })
+            : accounts
+          return (
+          <>
+            <div className="relative mb-4">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mid-gray)]" />
+              <input
+                type="text"
+                value={accountSearch}
+                onChange={(e) => setAccountSearch(e.target.value)}
+                placeholder="Search by name, email, department, branch..."
+                className="input !pl-9 text-[13px]"
+              />
+              {accountSearch && (
+                <button
+                  type="button"
+                  onClick={() => setAccountSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--mid-gray)] hover:text-[var(--charcoal)]"
+                  title="Clear search"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            {filtered.length === 0 ? (
+              <p className="text-[12px] text-[var(--mid-gray)] italic text-center py-6">
+                No clinicians match "{accountSearch}".
+              </p>
+            ) : (
+              <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
+                {filtered.map((acct, i) => (
               <div key={acct.id}
                 className={cn(
                   'p-4 rounded-xl border transition-all animate-fade-up',
@@ -335,7 +380,7 @@ export default function AdminPage() {
                   <div className={cn(
                     'w-10 h-10 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0',
                     acct.isActive
-                      ? 'bg-gradient-to-br from-[#ED6823] to-[#FFA235] text-white'
+                      ? 'bg-gradient-to-br from-[#A85C3D] to-[#C69849] text-white'
                       : 'bg-gray-200 text-gray-500'
                   )}>
                     {acct.staff.firstName[0]}{acct.staff.lastName[0]}
@@ -438,9 +483,12 @@ export default function AdminPage() {
                 </div>
               )}
               </div>
-            ))}
-          </div>
-        )}
+                ))}
+              </div>
+            )}
+          </>
+          )
+        })()}
       </div>
 
       {/* ─── Branch CC Emails for IE tracking ─────────────────────────────────── */}
@@ -464,7 +512,7 @@ export default function AdminPage() {
           <div>
             <label className="block text-[11px] font-semibold text-[var(--charcoal)] uppercase tracking-wider mb-1">Branch</label>
             <select value={ccBranch} onChange={(e) => setCcBranch(e.target.value)} className="input text-[13px]">
-              {knownBranches.map((b) => <option key={b} value={b}>{b}</option>)}
+              {knownBranches.map((b) => <option key={b} value={b}>{BRANCH_LABEL[b] ?? b}</option>)}
             </select>
           </div>
           <div>
@@ -493,7 +541,7 @@ export default function AdminPage() {
             {ccEmails.map((cc) => (
               <div key={cc.branch} className="flex items-center gap-3 p-3 rounded-lg bg-[var(--off-white)] border border-[var(--light-gray)]">
                 <span className="px-2 py-0.5 rounded-md bg-[var(--pale-teal)] text-[var(--deep-teal)] text-[11px] font-bold uppercase tracking-wider shrink-0">
-                  {cc.branch}
+                  {BRANCH_LABEL[cc.branch] ?? cc.branch}
                 </span>
                 <div className="flex-1 min-w-0">
                   <p className="text-[13px] font-medium text-[var(--charcoal)] truncate">{cc.email}</p>

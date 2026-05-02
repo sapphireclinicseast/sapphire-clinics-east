@@ -22,6 +22,7 @@ import {
   ExternalLink,
   Info,
   ShieldAlert,
+  UserCheck,
 } from 'lucide-react'
 import { formatTime, formatDate } from '@/lib/utils'
 import PsychologyNoteDisplay from '@/components/PsychologyNoteDisplay'
@@ -98,6 +99,8 @@ export default function PatientDetailPage() {
   const [showDischarge, setShowDischarge] = useState(false)
   const [dischargeRemarks, setDischargeRemarks] = useState('')
   const [discharging, setDischarging] = useState(false)
+  const [assignmentStatus, setAssignmentStatus] = useState<string | null>(null)
+  const [readmitting, setReadmitting] = useState(false)
 
   const [toast, setToast] = useState<string | null>(null)
 
@@ -112,6 +115,7 @@ export default function PatientDetailPage() {
         setPatient(data.patient)
         setSessions(data.sessions)
         setOtherServices(data.otherServices ?? [])
+        setAssignmentStatus(data.assignment?.status ?? null)
       }
     } catch {}
     setLoading(false)
@@ -171,6 +175,22 @@ export default function PatientDetailPage() {
       }
     } catch { showToast('Discharge failed') }
     setDischarging(false)
+  }
+
+  async function handleReadmit() {
+    if (!confirm('Re-admit this patient as active?')) return
+    setReadmitting(true)
+    try {
+      const res = await fetch(`/api/patients/${patientId}/readmit`, { method: 'POST' })
+      if (res.ok) {
+        showToast('Patient re-admitted')
+        fetchPatient()
+      } else {
+        const data = await res.json()
+        showToast(data.error ?? 'Re-admit failed')
+      }
+    } catch { showToast('Re-admit failed') }
+    setReadmitting(false)
   }
 
   async function handleDeleteNote(scheduleId: string) {
@@ -292,13 +312,25 @@ export default function PatientDetailPage() {
           <ArrowRightLeft size={18} />
           Endorse to
         </button>
-        <button
-          onClick={() => setShowDischarge(true)}
-          className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[14px] font-semibold bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors"
-        >
-          <UserX size={18} />
-          Discharged
-        </button>
+        {assignmentStatus === 'DISCHARGED' ? (
+          <button
+            onClick={handleReadmit}
+            disabled={readmitting}
+            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[14px] font-semibold bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors disabled:opacity-50"
+            title="Re-admit this patient as active"
+          >
+            {readmitting ? <Loader2 size={18} className="animate-spin" /> : <UserCheck size={18} />}
+            Re-admit
+          </button>
+        ) : (
+          <button
+            onClick={() => setShowDischarge(true)}
+            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[14px] font-semibold bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors"
+          >
+            <UserX size={18} />
+            Discharged
+          </button>
+        )}
       </div>
 
       {/* Endorse modal */}
