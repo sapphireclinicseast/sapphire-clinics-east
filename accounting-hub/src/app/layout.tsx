@@ -18,10 +18,10 @@ const manrope = Manrope({
 })
 
 export const metadata: Metadata = {
-  title: 'SAPPHIRE Accounting Hub — Sapphire Clinics East',
+  title: 'Accounting Hub — Sapphire Clinics East Inc.',
   description: 'SCEI Internal Accounting Hub',
   openGraph: {
-    title: 'SAPPHIRE Accounting Hub',
+    title: 'Accounting Hub — Sapphire Clinics East Inc.',
     description: 'SCEI Internal Accounting Hub',
     url: 'https://accounting.sapphireclinicseast.org',
     siteName: 'SAPPHIRE Accounting Hub',

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <clipPath id="sq">
+      <rect width="512" height="512"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#sq)">
+    <!-- Outer band: Narra #1B3F38 -->
+    <path d="M -224,512 A 480,480 0 0,1 736,512 L 616,512 A 360,360 0 0,0 -104,512 Z" fill="#1B3F38"/>
+    <!-- White separator -->
+    <path d="M -104,512 A 360,360 0 0,1 616,512 L 591,512 A 335,335 0 0,0 -79,512 Z" fill="white"/>
+    <!-- Middle band: Sage #4A8073 -->
+    <path d="M -79,512 A 335,335 0 0,1 591,512 L 471,512 A 215,215 0 0,0 41,512 Z" fill="#4A8073"/>
+    <!-- White separator -->
+    <path d="M 41,512 A 215,215 0 0,1 471,512 L 446,512 A 190,190 0 0,0 66,512 Z" fill="white"/>
+    <!-- Inner band: Clay #A85C3D -->
+    <path d="M 66,512 A 190,190 0 0,1 446,512 L 346,512 A 90,90 0 0,0 166,512 Z" fill="#A85C3D"/>
+    <!-- Center opening -->
+    <path d="M 166,512 A 90,90 0 0,1 346,512 Z" fill="white"/>
+  </g>
+</svg>
