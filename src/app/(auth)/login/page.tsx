@@ -159,13 +159,14 @@ export default function LoginPage() {
           <div
             style={{
               fontFamily: 'var(--font-display)',
-              color: 'var(--teal)',
-              fontSize: '0.6rem',
-              letterSpacing: '0.4em',
+              color: '#ffffff',
+              fontSize: '1.4rem',
+              fontWeight: 700,
+              letterSpacing: '0.25em',
               textTransform: 'uppercase',
             }}
           >
-            Marketing Hub
+            Operations Hub
           </div>
         </div>
       </div>
@@ -184,15 +185,15 @@ export default function LoginPage() {
           <p
             style={{
               fontFamily: 'var(--font-display)',
-              fontSize: '0.65rem',
-              fontWeight: 600,
-              letterSpacing: '0.25em',
+              fontSize: '1.2rem',
+              fontWeight: 700,
+              letterSpacing: '0.2em',
               textTransform: 'uppercase',
-              color: 'var(--teal)',
-              marginTop: 4,
+              color: '#ffffff',
+              marginTop: 8,
             }}
           >
-            Marketing Hub
+            Operations Hub
           </p>
         </div>
 
