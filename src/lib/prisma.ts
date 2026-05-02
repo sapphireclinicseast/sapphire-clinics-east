@@ -8,7 +8,6 @@ const globalForPrisma = globalThis as unknown as {
 function createPrismaClient() {
   const connectionString = process.env.DATABASE_URL
   if (!connectionString) {
-    // During build time without DB, return a client that will fail gracefully
     console.warn('DATABASE_URL not set — Prisma client created without connection')
   }
   const adapter = new PrismaPg({ connectionString: connectionString ?? '' })

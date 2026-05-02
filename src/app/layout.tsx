@@ -2,47 +2,38 @@ import type { Metadata } from 'next'
 import { Montserrat, Manrope } from 'next/font/google'
 import './globals.css'
 
+// Brand fonts (post-2026 brand guide):
+//   Montserrat — Display / Headlines / Wordmark / UI Buttons
+//   Manrope    — Body / Long-form / Captions / Data
 const montserrat = Montserrat({
   subsets: ['latin'],
   variable: '--font-montserrat',
-  weight: ['300', '400', '600', '700', '800', '900'],
+  weight: ['300', '400', '500', '600', '700'],
+  display: 'swap',
 })
 
 const manrope = Manrope({
   subsets: ['latin'],
   variable: '--font-manrope',
   weight: ['300', '400', '500', '600', '700'],
+  display: 'swap',
 })
 
 export const metadata: Metadata = {
-  title: 'SAPPHIRE Marketing Hub — Sapphire Clinics East',
-  description: 'SCEI Internal Marketing Hub — Sapphire Clinics East, Inc.',
-  icons: {
-    icon: '/brand/logo-reversed-teal-bg.png',
-    apple: '/brand/logo-reversed-teal-bg.png',
-    shortcut: '/brand/logo-reversed-teal-bg.png',
-  },
-  openGraph: {
-    title: 'SAPPHIRE Marketing Hub',
-    description: 'SCEI Internal Marketing Hub — Sapphire Clinics East, Inc.',
-    url: 'https://marketing.sapphireclinicseast.org',
-    siteName: 'SAPPHIRE Marketing Hub',
-    images: [
-      {
-        url: 'https://marketing.sapphireclinicseast.org/brand/logo-reversed-teal-bg.png',
-        width: 440,
-        height: 550,
-        alt: 'Sapphire Clinics East',
-      },
-    ],
-    type: 'website',
-  },
+  title: 'SCEI Teletherapy',
+  description: 'Sapphire Clinics East - Teletherapy Platform',
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
   return (
     <html lang="en" className={`${montserrat.variable} ${manrope.variable}`}>
-      <body className="antialiased">{children}</body>
+      <body className="min-h-screen bg-[var(--paper)]">
+        {children}
+      </body>
     </html>
   )
 }

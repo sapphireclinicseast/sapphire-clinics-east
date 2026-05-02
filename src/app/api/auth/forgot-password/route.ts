@@ -1,82 +1,66 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import bcrypt from 'bcryptjs'
-import { Resend } from 'resend'
-import { getGmailClient, makeEmailBody } from '@/lib/email'
-
-const EMAIL_BODY = (name: string, code: string) =>
-  [
-    `Hi ${name},`,
-    '',
-    'You requested a password reset for your Sapphire Marketing Hub account.',
-    '',
-    `Your reset code is:  ${code}`,
-    '',
-    'This code expires in 15 minutes.',
-    '',
-    'If you did not request this, please ignore this email — your password has not changed.',
-    '',
-    '— Sapphire Clinics East',
-  ].join('\n')
+import { sendEmail } from '@/lib/email'
+import crypto from 'crypto'
+import { rateLimit } from '@/lib/rate-limit'
 
 export async function POST(req: NextRequest) {
   const { email } = await req.json()
-  if (!email) return NextResponse.json({ error: 'Email required' }, { status: 400 })
 
-  const user = await prisma.user.findUnique({ where: { email } })
+  if (!email) {
+    return NextResponse.json({ error: 'Email is required' }, { status: 400 })
+  }
 
-  // Always return success — prevents email enumeration
-  if (!user) return NextResponse.json({ ok: true })
+  // Rate limit: 3 attempts per 15 minutes per email
+  const ip = req.headers.get('x-forwarded-for') ?? 'unknown'
+  const { success } = rateLimit(`forgot:${ip}`, { maxAttempts: 3, windowMs: 15 * 60 * 1000 })
+  if (!success) {
+    return NextResponse.json({ error: 'Too many requests. Please try again later.' }, { status: 429 })
+  }
 
-  // Generate 6-digit code, hash it, set 15-minute expiry
-  const code = String(Math.floor(100000 + Math.random() * 900000))
-  const hashedCode = await bcrypt.hash(code, 10)
-  const expiry = new Date(Date.now() + 15 * 60 * 1000)
-
-  await prisma.user.update({
+  const account = await prisma.therapistAccount.findUnique({
     where: { email },
-    data: { resetToken: hashedCode, resetTokenExpiry: expiry },
+    include: { staff: { select: { firstName: true, lastName: true } } },
   })
 
-  const body = EMAIL_BODY(user.name, code)
-
-  // Try Resend first (dedicated transactional email, uses HTTPS)
-  if (process.env.RESEND_API_KEY) {
-    try {
-      const resend = new Resend(process.env.RESEND_API_KEY)
-      const { data, error } = await resend.emails.send({
-        from: 'Sapphire Clinics East <noreply@do-not-reply.sapphireclinicseast.org>',
-        to: [email],
-        subject: 'Password Reset Code — Sapphire Marketing Hub',
-        text: body,
-      })
-      if (error) throw new Error(error.message)
-      console.log('[forgot-password] Sent via Resend, id:', data?.id)
-      return NextResponse.json({ ok: true })
-    } catch (err) {
-      console.error('[forgot-password] Resend error, falling back to Gmail API:', err)
-    }
+  // Always return success to prevent email enumeration
+  if (!account) {
+    return NextResponse.json({ success: true })
   }
 
-  // Fallback: Gmail API (HTTPS — works even when SMTP ports are blocked)
-  try {
-    const gmailAcct = await prisma.gmailAccount.findFirst()
-    if (gmailAcct) {
-      const raw = makeEmailBody(
-        email,
-        'Password Reset Code — Sapphire Marketing Hub',
-        body,
-        gmailAcct.email
-      )
-      const gmail = await getGmailClient(gmailAcct.refreshToken)
-      const result = await gmail.users.messages.send({ userId: 'me', requestBody: { raw } })
-      console.log('[forgot-password] Sent via Gmail API, messageId:', result.data.id)
-    } else {
-      console.warn('[forgot-password] No Gmail account connected — reset code not emailed')
-    }
-  } catch (err) {
-    console.error('[forgot-password] Gmail API error:', err)
-  }
+  const token = crypto.randomBytes(32).toString('hex')
+  const expiry = new Date(Date.now() + 60 * 60 * 1000) // 1 hour
 
-  return NextResponse.json({ ok: true })
+  await prisma.therapistAccount.update({
+    where: { id: account.id },
+    data: { resetToken: token, resetTokenExpiry: expiry },
+  })
+
+  const baseUrl = process.env.NEXTAUTH_URL ?? 'https://teletherapy.sapphireclinicseast.org'
+  const resetUrl = `${baseUrl}/reset-password?token=${token}`
+
+  await sendEmail({
+    to: email,
+    subject: 'SCEI Teletherapy — Password Reset',
+    html: `
+      <div style="font-family: 'Gill Sans', Arial, sans-serif; max-width: 500px; margin: 0 auto; color: #1B3F38;">
+        <div style="background: linear-gradient(135deg, #1B3F38, #26554B); padding: 24px; border-radius: 12px 12px 0 0; text-align: center;">
+          <h1 style="color: white; margin: 0; font-size: 20px;">Password Reset</h1>
+          <p style="color: rgba(255,255,255,0.7); margin: 4px 0 0; font-size: 13px;">SCEI Teletherapy</p>
+        </div>
+        <div style="background: white; padding: 28px; border: 1px solid #E0E8E6; border-top: none; border-radius: 0 0 12px 12px;">
+          <p>Hi <strong>${account.staff.firstName}</strong>,</p>
+          <p>We received a request to reset your password. Click the button below to set a new password:</p>
+          <div style="text-align: center; margin: 28px 0;">
+            <a href="${resetUrl}" style="background: linear-gradient(135deg, #26554B, #1B3F38); color: white; padding: 12px 32px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 15px; display: inline-block;">
+              Reset Password
+            </a>
+          </div>
+          <p style="font-size: 13px; color: #7A908C;">This link expires in 1 hour. If you didn't request this, you can safely ignore this email.</p>
+        </div>
+      </div>
+    `,
+  })
+
+  return NextResponse.json({ success: true })
 }

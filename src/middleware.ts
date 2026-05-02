@@ -1,50 +1,28 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 
-export function middleware(req: NextRequest) {
-  const host = req.headers.get('host') ?? ''
-  const { pathname } = req.nextUrl
+export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
 
-  // Let Next.js internals and API routes pass through unchanged
-  if (
-    pathname.startsWith('/_next') ||
-    pathname.startsWith('/api') ||
-    pathname === '/favicon.ico'
-  ) {
-    return NextResponse.next()
-  }
+  const publicPaths = ['/login', '/forgot-password', '/reset-password', '/api/', '/capture']
+  const isPublic = publicPaths.some((p) => pathname.startsWith(p))
 
-  // ── schedules.* subdomain → /schedules/* ─────────────────────────────────
-  if (host.startsWith('schedules.')) {
-    const internalPath = pathname === '/' ? '/schedules' : `/schedules${pathname}`
+  if (isPublic) return NextResponse.next()
 
-    // Cookie gate: protect branch/dept pages
-    const isBranchDept = /^\/schedules\/[^/]+\/[^/]+/.test(internalPath)
-    if (isBranchDept) {
-      const cookie = req.cookies.get('sched_access')?.value
-      if (cookie !== 'scei') {
-        const gateUrl = req.nextUrl.clone()
-        gateUrl.pathname = '/schedules'
-        gateUrl.search   = `?next=${encodeURIComponent(pathname)}`
-        return NextResponse.rewrite(gateUrl)
-      }
-    }
+  // Check for session cookie (NextAuth sets this)
+  const sessionToken =
+    request.cookies.get('authjs.session-token')?.value ||
+    request.cookies.get('__Secure-authjs.session-token')?.value
 
-    const url = req.nextUrl.clone()
-    url.pathname = internalPath
-    return NextResponse.rewrite(url)
-  }
-
-  // ── queue.* subdomain → /queue/* ─────────────────────────────────────────
-  if (host.startsWith('queue.')) {
-    const internalPath = pathname === '/' ? '/queue' : `/queue${pathname}`
-    const url = req.nextUrl.clone()
-    url.pathname = internalPath
-    return NextResponse.rewrite(url)
+  if (!sessionToken) {
+    const loginUrl = new URL('/login', request.nextUrl.origin)
+    loginUrl.searchParams.set('callbackUrl', pathname)
+    return NextResponse.redirect(loginUrl)
   }
 
   return NextResponse.next()
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/auth).*)'],
 }

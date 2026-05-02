@@ -3,41 +3,39 @@ import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 
 export async function POST(req: NextRequest) {
-  const { email, code, newPassword } = await req.json()
+  const { token, password } = await req.json()
 
-  if (!email || !code || !newPassword) {
-    return NextResponse.json({ error: 'Missing required fields.' }, { status: 400 })
+  if (!token || !password) {
+    return NextResponse.json({ error: 'Token and password are required' }, { status: 400 })
   }
 
-  if (newPassword.length < 8) {
-    return NextResponse.json({ error: 'Password must be at least 8 characters.' }, { status: 400 })
+  if (password.length < 8) {
+    return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 })
   }
 
-  const user = await prisma.user.findUnique({ where: { email } })
+  // Find account with valid token
+  const account = await prisma.therapistAccount.findFirst({
+    where: {
+      resetToken: token,
+      resetTokenExpiry: { gt: new Date() },
+    },
+  })
 
-  if (!user || !user.resetToken || !user.resetTokenExpiry) {
-    return NextResponse.json({ error: 'Invalid or expired code.' }, { status: 400 })
+  if (!account) {
+    return NextResponse.json({ error: 'Invalid or expired reset link' }, { status: 400 })
   }
 
-  if (user.resetTokenExpiry < new Date()) {
-    return NextResponse.json({ error: 'Code has expired. Please request a new one.' }, { status: 400 })
-  }
+  const passwordHash = await bcrypt.hash(password, 12)
 
-  const valid = await bcrypt.compare(code, user.resetToken)
-  if (!valid) {
-    return NextResponse.json({ error: 'Incorrect code. Please check and try again.' }, { status: 400 })
-  }
-
-  const passwordHash = await bcrypt.hash(newPassword, 12)
-
-  await prisma.user.update({
-    where: { email },
+  await prisma.therapistAccount.update({
+    where: { id: account.id },
     data: {
       passwordHash,
+      lastPlainPassword: password,
       resetToken: null,
       resetTokenExpiry: null,
     },
   })
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ success: true })
 }

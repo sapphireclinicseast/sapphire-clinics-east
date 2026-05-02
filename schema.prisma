@@ -1,0 +1,292 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── Enums (shared with marketing DB) ──────────────────────────────────────────
+
+enum StaffDepartment {
+  OT
+  PT
+  SLP
+  SPED
+  MD
+  PSYCHOLOGY
+  ORTHOSIS
+  FRONT_DESK
+  ADMINISTRATION
+}
+
+enum ScheduleStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  RESCHEDULED
+}
+
+enum PatientType {
+  PEDIATRIC
+  ADULT
+}
+
+enum Branch {
+  SANDBOX_EAST
+  SANDBOX_GREENHILLS
+  VERDANA_STORE
+}
+
+// ── Shared models (read from marketing DB) ────────────────────────────────────
+
+model Staff {
+  id              String          @id @default(cuid())
+  firstName       String
+  lastName        String
+  email           String?
+  phone           String?
+  department      StaffDepartment
+  branch          String
+  dob             DateTime?
+  jobTitle        String?
+  employmentType  String?
+  hrPlatformId    String?
+  createdById     String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  schedules       Schedule[]
+  therapistAccount TherapistAccount?
+  surveyResponses  SurveyResponse[]
+}
+
+// Survey response (from marketing hub's Customer Survey module)
+// Read-only from teletherapy perspective
+model SurveyResponse {
+  id              String   @id @default(cuid())
+  assignmentId    String   @unique
+  staffId         String
+  staff           Staff    @relation(fields: [staffId], references: [id])
+  surveyType      String   // HR10|HR11|HR12|HR16
+  branch          String
+  respondentName  String?
+  respondentEmail String?
+  respondentPhone String?
+  responsesJson   Json
+  submittedAt     DateTime @default(now())
+
+  @@index([staffId])
+}
+
+model Patient {
+  id          String      @id @default(cuid())
+  firstName   String
+  lastName    String
+  email       String?
+  phone       String?
+  dob         DateTime?
+  patientType PatientType
+  branch      Branch?
+  branches    Branch[]    @default([])
+  sex         String?
+  civilStatus String?
+  religion    String?
+  nationality String?
+  address     String?
+  city        String?
+  diagnosis   String?
+  notes       String?
+  referralUrl String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  schedules           Schedule[]
+  patientAssignments  PatientAssignment[]
+  documents           PatientDocument[]
+}
+
+// Documents uploaded per patient per department
+// (Initial Evaluations, Progress Reports, Other Documents)
+enum PatientDocumentType {
+  INITIAL_EVALUATION
+  PROGRESS_REPORT
+  OTHER_DOCUMENT
+}
+
+model PatientDocument {
+  id           String              @id @default(cuid())
+  patientId    String
+  patient      Patient             @relation(fields: [patientId], references: [id])
+  uploadedById String              // therapistAccount.id of uploader
+  department   String              // PT, OT, SLP, SPED, PSYCHOLOGY, ORTHOSIS
+  documentType PatientDocumentType
+  fileName     String
+  filePath     String
+  mimeType     String
+  description  String?
+  scheduleId   String?             // optional link to a session (e.g. IE flagged from session)
+
+  // ── IE workflow: clinician emails the IE directly to the patient
+  sentToPatientAt   DateTime?
+  sentToPatientBy   String?        // therapistAccount.id who triggered the send
+  sentToPatientCc   String?        // branch-specific cc email recorded at send time
+
+  // ── PR workflow: clinician informs front desk that PR is available
+  informedFrontDeskAt DateTime?
+  informedById        String?      // therapistAccount.id
+
+  // ── PR workflow: front desk marks paid + emails PR to patient (Marketing Hub)
+  paidForAt        DateTime?
+  paidById         String?         // marketing User.id
+  emailedToPatientAt DateTime?
+  emailedById        String?       // marketing User.id
+
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@index([patientId, department])
+  @@index([documentType])
+  @@index([informedFrontDeskAt])
+  @@index([emailedToPatientAt])
+}
+
+// Per-branch CC email for IE notifications and tracking
+model BranchCCEmail {
+  id        String   @id @default(cuid())
+  branch    String   @unique // SBEA, SBGH, VERDANA_STORE, etc.
+  email     String
+  notes     String?  // optional admin note (e.g. "Front desk East")
+  updatedById String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Schedule {
+  id          String         @id @default(cuid())
+  staffId     String
+  staff       Staff          @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  patientId   String?
+  patient     Patient?       @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  date        DateTime
+  startTime   String
+  endTime     String
+  duration    String
+  sessionType String
+  status      ScheduleStatus @default(PENDING)
+  notes       String?
+  meetLink    String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  sessionNote SessionNote?
+
+  @@index([staffId])
+  @@index([patientId])
+  @@index([date])
+  @@index([status])
+  @@index([staffId, date])
+  @@index([patientId, status])
+}
+
+// ── Gmail account (read from marketing DB for email sending) ──────────────────
+
+model GmailAccount {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  displayName  String?
+  refreshToken String
+  connectedAt  DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ── Teletherapy-specific models ───────────────────────────────────────────────
+
+enum TherapistRole {
+  THERAPIST
+  ADMIN
+}
+
+enum SessionNoteStatus {
+  COMPLETED
+  DISCONTINUED
+}
+
+model TherapistAccount {
+  id           String        @id @default(cuid())
+  staffId      String        @unique
+  staff        Staff         @relation(fields: [staffId], references: [id])
+  email        String        @unique
+  passwordHash      String
+  lastPlainPassword String?
+  role         TherapistRole @default(THERAPIST)
+  isActive         Boolean       @default(true)
+  lastLoginAt      DateTime?
+  resetToken       String?
+  resetTokenExpiry DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  sessionNotes        SessionNote[]
+  patientAssignments  PatientAssignment[]
+  endorsedPatients    PatientAssignment[] @relation("EndorsedTo")
+  clinicianSettings   ClinicianSettings?
+}
+
+model SessionNote {
+  id                  String            @id @default(cuid())
+  scheduleId          String            @unique
+  schedule            Schedule          @relation(fields: [scheduleId], references: [id])
+  therapistAccountId  String
+  therapistAccount    TherapistAccount  @relation(fields: [therapistAccountId], references: [id])
+  status              SessionNoteStatus
+  notes               String?
+  attachments         Json?
+  discontinuedRemarks String?
+  isInitialEvaluation Boolean           @default(false)
+  emailSentAt         DateTime?
+  emailSentTo         String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+}
+
+enum PatientAssignmentStatus {
+  ACTIVE
+  ENDORSED
+  DISCHARGED
+}
+
+model PatientAssignment {
+  id                String                  @id @default(cuid())
+  patientId         String
+  patient           Patient                 @relation(fields: [patientId], references: [id])
+  therapistAccountId String
+  therapistAccount  TherapistAccount        @relation(fields: [therapistAccountId], references: [id])
+  status            PatientAssignmentStatus @default(ACTIVE)
+  endorsedToId      String?
+  endorsedTo        TherapistAccount?       @relation("EndorsedTo", fields: [endorsedToId], references: [id])
+  dischargeRemarks  String?
+  endorsedAt        DateTime?
+  dischargedAt      DateTime?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  @@unique([patientId, therapistAccountId, status])
+}
+
+model CaptureToken {
+  id         String   @id @default(cuid())
+  scheduleId String
+  token      String   @unique
+  expiresAt  DateTime
+  used       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}
+
+model ClinicianSettings {
+  id                  String           @id @default(cuid())
+  therapistAccountId  String           @unique
+  therapistAccount    TherapistAccount @relation(fields: [therapistAccountId], references: [id])
+  licenseNo           String?
+  ptrNo               String?
+  signatureDataUrl    String?          @db.Text // base64 signature image
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+}
