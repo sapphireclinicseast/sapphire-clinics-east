@@ -4,6 +4,34 @@
 set -e
 cd /opt/accounting/docker
 
+# ── AUTO-BACKUP before every deploy ───────────────────────────────────────────
+STAMP=$(date +%Y%m%d_%H%M%S)
+BACKUP_DIR="/opt/backups/accounting_source"
+DB_BACKUP_DIR="/opt/backups/accounting_db"
+mkdir -p "$BACKUP_DIR" "$DB_BACKUP_DIR"
+
+echo "Pre-deploy backup: source → ${BACKUP_DIR}/pre_deploy_${STAMP}.tar.gz"
+tar -czf "${BACKUP_DIR}/pre_deploy_${STAMP}.tar.gz" \
+  -C /opt/accounting \
+  --exclude='node_modules' --exclude='.next' --exclude='.git' \
+  . && echo "  Source backup OK."
+
+# DB backup only if postgres is running
+if docker exec accounting_db pg_isready -U sapphire -d sapphire_accounting >/dev/null 2>&1; then
+  echo "Pre-deploy backup: database → ${DB_BACKUP_DIR}/pre_deploy_${STAMP}.sql.gz"
+  docker exec accounting_db pg_dump -U sapphire sapphire_accounting \
+    | gzip > "${DB_BACKUP_DIR}/pre_deploy_${STAMP}.sql.gz" \
+    && echo "  DB backup OK."
+else
+  echo "  DB not running — skipping DB backup."
+fi
+
+# Keep only the 10 most recent source backups (pre_deploy_* only) to save disk
+ls -t "${BACKUP_DIR}"/pre_deploy_*.tar.gz 2>/dev/null | tail -n +11 | xargs -r rm --
+# Keep only the 10 most recent DB backups
+ls -t "${DB_BACKUP_DIR}"/pre_deploy_*.sql.gz 2>/dev/null | tail -n +11 | xargs -r rm --
+echo "─────────────────────────────────────────────────────────────────────────"
+
 echo "Building app image..."
 # Build directly with docker build (not docker compose build) so the image is
 # always written into the local Docker daemon image store. docker compose build
