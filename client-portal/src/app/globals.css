@@ -50,11 +50,24 @@ body {
   background: var(--paper);
 }
 
-h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-heading);
-  font-weight: 600;
-  letter-spacing: -0.015em;
-  color: var(--narra);
+/* Heading defaults wrapped in @layer base so Tailwind utilities like
+   text-white / text-paper can override them. Without the layer, this
+   unlayered rule would beat all utility classes due to CSS cascade
+   layer order, leaving hero/sidebar headings stuck in dark green. */
+@layer base {
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    color: var(--narra);
+  }
+}
+
+/* Hero / dark surfaces: any heading inside .hero-gradient gets Paper
+   for a calm, on-brand contrast against the Narra/Moss greens. */
+.hero-gradient :is(h1, h2, h3, h4, h5, h6),
+.sidebar-dark  :is(h1, h2, h3, h4, h5, h6) {
+  color: var(--paper);
 }
 
 /* ─── Scrollbar ──────────────────────────────────────────────── */
