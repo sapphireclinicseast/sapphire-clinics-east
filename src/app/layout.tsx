@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Montserrat, Open_Sans } from 'next/font/google'
+import { Montserrat, Manrope } from 'next/font/google'
 import './globals.css'
 
 const montserrat = Montserrat({
@@ -8,11 +8,10 @@ const montserrat = Montserrat({
   weight: ['300', '400', '600', '700', '800', '900'],
 })
 
-const openSans = Open_Sans({
+const manrope = Manrope({
   subsets: ['latin'],
-  variable: '--font-open-sans',
-  weight: ['300', '400', '600'],
-  style: ['normal', 'italic'],
+  variable: '--font-manrope',
+  weight: ['300', '400', '500', '600', '700'],
 })
 
 export const metadata: Metadata = {
@@ -42,7 +41,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${montserrat.variable} ${openSans.variable}`}>
+    <html lang="en" className={`${montserrat.variable} ${manrope.variable}`}>
       <body className="antialiased">{children}</body>
     </html>
   )

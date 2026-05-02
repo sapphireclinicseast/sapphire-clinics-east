@@ -1,27 +1,43 @@
 @import "tailwindcss";
 
 :root {
-  /* Primary — warm oranges */
-  --teal: #ED6823;
-  --deep-teal: #C8541A;
-  --bright-teal: #FFA235;
-  --pale-teal: #FFF3EA;
+  /* ─── Brand palette (Sapphire Clinics 2026 refresh) ───────────
+   * Distribution target:
+   *   60% Paper / Narra      — default surfaces
+   *   25% Moss / Sage        — secondary surfaces, quiet hierarchy
+   *   10% Ink                — type, fine rules, monochrome photography
+   *    5% Clay / Sun         — accents, links, CTAs, single-point emphasis
+   */
+  --narra: #1B3F38;   /* Primary — deep evergreen */
+  --moss:  #26554B;   /* Secondary */
+  --sage:  #4A8073;   /* Tertiary */
+  --clay:  #A85C3D;   /* Warm accent */
+  --sun:   #C69849;   /* Light accent */
+  --paper: #F5F0E8;   /* Neutral, dominant surface */
+  --ink:   #1A1A1A;   /* Neutral, type + fine rules */
 
-  /* Secondary — sage greens */
-  --gold: #2E5E5A;
-  --gold-light: #6B9E8F;
+  /* ─── Legacy aliases (so existing components keep working) ─── */
+  --teal:        var(--narra);
+  --deep-teal:   #14322C;
+  --bright-teal: var(--clay);
+  --pale-teal:   var(--paper);
+  --gold:        var(--moss);
+  --gold-light:  var(--sage);
 
-  /* Neutrals */
-  --charcoal: #2E3A3A;
-  --near-black: #1A2520;
-  --off-white: #FAFAF8;
-  --light-gray: #E8EDEB;
-  --mid-gray: #829995;
+  /* Neutrals (ink + paper-derived) */
+  --charcoal:    var(--ink);
+  --near-black:  var(--ink);
+  --off-white:   var(--paper);
+  --light-gray:  #E5DED1;   /* Paper, slightly darker for borders */
+  --mid-gray:    var(--sage);
 
-  /* Fonts */
-  --font-display: var(--font-comfortaa), 'Century Gothic', sans-serif;
-  --font-heading: var(--font-cormorant-garamond), 'Georgia', serif;
-  --font-body: var(--font-dm-sans), 'Helvetica Neue', sans-serif;
+  /* ─── Fonts ───────────────────────────────────────────────────
+   * Montserrat — display, headlines, wordmark, UI buttons
+   * Manrope    — body, long-form, captions, data
+   */
+  --font-display: var(--font-montserrat), 'Helvetica Neue', system-ui, -apple-system, sans-serif;
+  --font-heading: var(--font-montserrat), 'Helvetica Neue', system-ui, -apple-system, sans-serif;
+  --font-body:    var(--font-manrope), 'Helvetica Neue', system-ui, -apple-system, sans-serif;
 }
 
 * {
