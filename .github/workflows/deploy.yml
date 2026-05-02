@@ -162,11 +162,31 @@ jobs:
             fi
             echo "   ✅ Image built."
 
-            echo "→ Recreating sapphire_app container..."
-            docker compose --env-file "$ENV_FILE" up -d --force-recreate app
+            echo "→ Pre-flight: ensuring sapphire_db is healthy before recreating app..."
+            DB_OK="no"
+            for i in 1 2 3 4 5 6; do
+              if docker exec sapphire_db pg_isready -U sapphire -d sapphire_marketing >/dev/null 2>&1; then
+                DB_OK="yes"; break
+              fi
+              echo "   sapphire_db not ready (attempt $i/6) — waiting 5s..."
+              sleep 5
+            done
+            if [ "$DB_OK" != "yes" ]; then
+              echo "   sapphire_db still unhealthy — restarting it..."
+              docker compose --env-file "$ENV_FILE" up -d postgres 2>&1 || true
+              sleep 12
+            fi
+
+            echo "→ Recreating sapphire_app container (--no-deps, skip dep wait)..."
+            # --no-deps avoids tearing down or waiting on postgres/redis when only
+            # the app changed. If postgres is briefly unhealthy mid-deploy, this
+            # keeps the rebuild from leaving sapphire_app DOWN (502 on nginx).
+            docker compose --env-file "$ENV_FILE" up -d --force-recreate --no-deps app
             UP_RC=$?
             if [ "$UP_RC" != "0" ]; then
               echo "❌ Container recreate failed (exit $UP_RC)."
+              echo "→ Attempting fallback: start app with previous image..."
+              docker compose --env-file "$ENV_FILE" up -d --no-deps app 2>&1 || true
               exit 1
             fi
 
