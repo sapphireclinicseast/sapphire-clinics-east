@@ -17,7 +17,7 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: '*.fbcdn.net' },
     ],
   },
-  serverExternalPackages: ['bcryptjs', 'canvas', 'sharp', '@anthropic-ai/sdk'],
+  serverExternalPackages: ['bcryptjs', 'canvas', 'sharp', '@anthropic-ai/sdk', '@prisma/client', '@prisma/adapter-pg', '.prisma/client'],
 
   // ── Security headers ─────────────────────────────────────────────────────
   // This is an internal tool — prevent indexing, framing, and data leakage
