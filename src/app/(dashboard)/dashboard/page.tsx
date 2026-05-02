@@ -110,15 +110,21 @@ const PLATFORM_COLORS: Record<string, string> = {
 export default async function DashboardPage() {
   const session = await auth()
 
-  // ── Front desk users see a simplified welcome page, not the marketing hub ──
+  // ── Everyone sees the front-desk-style welcome dashboard ──
+  // Branch defaults from role: SBEA/SBGH-scoped admins see their branch;
+  // ADMIN, MARKETING_ADMIN, VERDANA_ADMIN default to SBEA. Front desk roles
+  // continue to see their assigned branch as before.
   const role = session?.user?.role
-  if (role === 'SBEA_FRONT_DESK' || role === 'SBGH_FRONT_DESK') {
-    const branch = role === 'SBEA_FRONT_DESK' ? 'SBEA' : 'SBGH'
-    const firstName = session?.user?.name?.split(' ')[0]
-    const birthdayPatients = await getBirthdayPatients(branch)
-    return <FrontDeskWelcome name={firstName} branch={branch} birthdayPatients={birthdayPatients} />
-  }
+  const branch =
+    role === 'SBGH_FRONT_DESK' || role === 'SBGH_ADMIN' ? 'SBGH' :
+    'SBEA'
+  const firstName = session?.user?.name?.split(' ')[0]
+  const birthdayPatients = await getBirthdayPatients(branch)
+  return <FrontDeskWelcome name={firstName} branch={branch} birthdayPatients={birthdayPatients} />
 
+  // (Marketing-hub stats view below is kept as dead code in case we ever want
+  // a separate route for it; remove if unused after a few weeks.)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const data = await getDashboardData()
 
   const statCards = [
