@@ -15,8 +15,20 @@ const DEPT_COLORS: Record<string, { bg: string; text: string }> = {
   FRONT_DESK: { bg: '#6366F1', text: '#fff' },
 }
 
-// Medal colours for leaderboard
-const MEDAL_COLORS = ['#F59E0B', '#94A3B8', '#CD7F32'] // gold, silver, bronze
+// Medal colours for leaderboard (brand-tuned: Sun, neutral, Clay)
+const MEDAL_COLORS = ['#C69849', '#94A3B8', '#A85C3D'] // 1st (sun), 2nd (neutral), 3rd (clay)
+
+// ─── Sapphire Clinics 2026 brand palette ────────────────────────────────────
+const BRAND = {
+  narra:      '#1B3F38', // primary — deep evergreen
+  narraDeep:  '#14322C', // deeper narra (footer / cards)
+  moss:       '#26554B', // secondary — supporting green
+  sage:       '#4A8073', // tertiary — quieter green
+  clay:       '#A85C3D', // warm accent
+  sun:        '#C69849', // light accent
+  paper:      '#F5F0E8', // dominant neutral surface (used as type colour on dark)
+  ink:        '#1A1A1A', // type / fine rules on light
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface QueueItem {
@@ -88,7 +100,8 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
   const [showComplaintQR, setShowComplaintQR] = useState(false)
 
   const COMPLAINT_FORM_URL = 'https://hr.sapphireclinicseast.org/patient-complaint-form.html'
-  const complaintQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(COMPLAINT_FORM_URL)}&color=1A7B8A&bgcolor=FFFFFF&margin=8`
+  // QR colour matches brand Narra so the code reads as "official"
+  const complaintQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(COMPLAINT_FORM_URL)}&color=1B3F38&bgcolor=FFFFFF&margin=8`
 
   // ── Live clock (updates every second) ──────────────────────────────────────
   useEffect(() => {
@@ -256,29 +269,43 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
   return (
     <div style={{
       width: '100vw', height: '100vh', overflow: 'hidden',
-      background: '#0F172A', display: 'flex', flexDirection: 'column',
-      fontFamily: 'system-ui, -apple-system, sans-serif',
+      background: BRAND.narra, display: 'flex', flexDirection: 'column',
+      // Manrope is the body/data face; Montserrat takes over for headings via inline fontFamily.
+      fontFamily: 'var(--font-manrope), "Helvetica Neue", system-ui, -apple-system, sans-serif',
+      color: BRAND.paper,
     }}>
-      {/* ── Header ────────────────────────────────────────────────────────── */}
+      {/* ── Header — Narra + Sun (hero pairing) ──────────────────────────── */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '0.75rem 2rem',
-        background: 'linear-gradient(90deg, #ED6823 0%, #FFA235 100%)',
+        background: `linear-gradient(90deg, ${BRAND.narraDeep} 0%, ${BRAND.narra} 60%, ${BRAND.moss} 100%)`,
+        borderBottom: `2px solid ${BRAND.sun}`,
         flexShrink: 0,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <Image src="/sandbox-clinic-logo.png" alt="Sandbox Clinic" width={48} height={48}
             style={{ objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
           <div>
-            <p style={{ fontSize: '1.5rem', fontWeight: 800, color: '#fff', lineHeight: 1.1, letterSpacing: '-0.02em' }}>
+            <p style={{
+              fontFamily: 'var(--font-montserrat), "Helvetica Neue", system-ui, sans-serif',
+              fontSize: '1.5rem', fontWeight: 800, color: BRAND.paper,
+              lineHeight: 1.1, letterSpacing: '-0.02em',
+            }}>
               {clinicName}
             </p>
-            <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.85)' }}>Patient Queue — Today</p>
+            <p style={{
+              fontSize: '0.85rem', color: 'rgba(245,240,232,0.78)',
+              letterSpacing: '0.02em',
+            }}>Patient Queue — Today</p>
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <p style={{ fontSize: '2rem', fontWeight: 700, color: '#fff', lineHeight: 1 }}>{clock}</p>
-          <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.85)', marginTop: '0.15rem' }}>{dateLabel}</p>
+          <p style={{
+            fontFamily: 'var(--font-manrope), "Helvetica Neue", system-ui, sans-serif',
+            fontSize: '2rem', fontWeight: 700, color: BRAND.paper,
+            lineHeight: 1, fontVariantNumeric: 'tabular-nums',
+          }}>{clock}</p>
+          <p style={{ fontSize: '0.8rem', color: 'rgba(245,240,232,0.78)', marginTop: '0.15rem' }}>{dateLabel}</p>
         </div>
       </div>
 
@@ -291,7 +318,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
           scrollBehavior: 'smooth',
         }}>
           {items.length === 0 ? (
-            <div style={{ textAlign: 'center', marginTop: '4rem', color: '#64748B' }}>
+            <div style={{ textAlign: 'center', marginTop: '4rem', color: 'rgba(245,240,232,0.55)' }}>
               <p style={{ fontSize: '1rem', fontWeight: 600 }}>No scheduled appointments today</p>
             </div>
           ) : (
@@ -310,21 +337,23 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                     marginBottom: '0.35rem',
                   }}>
                     <span style={{
+                      fontFamily: 'var(--font-montserrat), "Helvetica Neue", system-ui, sans-serif',
                       fontSize: '0.75rem', fontWeight: 700,
-                      color: isNow ? '#FFA235' : isPast ? '#475569' : '#94A3B8',
+                      color: isNow ? BRAND.sun : isPast ? 'rgba(245,240,232,0.32)' : 'rgba(245,240,232,0.6)',
                       textTransform: 'uppercase', letterSpacing: '0.1em',
                     }}>
                       {formatHour(h)}
                     </span>
                     {isNow && (
                       <span style={{
-                        fontSize: '0.6rem', fontWeight: 700, background: '#FFA235', color: '#0F172A',
+                        fontFamily: 'var(--font-montserrat), "Helvetica Neue", system-ui, sans-serif',
+                        fontSize: '0.6rem', fontWeight: 700, background: BRAND.sun, color: BRAND.narraDeep,
                         padding: '0.1rem 0.4rem', borderRadius: '99px', letterSpacing: '0.08em',
                       }}>
                         NOW
                       </span>
                     )}
-                    <div style={{ flex: 1, height: '1px', background: isNow ? '#FFA235' : isPast ? '#0F172A' : '#1E293B' }} />
+                    <div style={{ flex: 1, height: '1px', background: isNow ? BRAND.sun : isPast ? BRAND.narraDeep : 'rgba(74,128,115,0.35)' }} />
                   </div>
 
                   {/* Rows */}
@@ -334,16 +363,18 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                       <div key={item.id} style={{
                         display: 'flex', alignItems: 'center', gap: '0.5rem',
                         padding: '0.4rem 0.75rem', borderRadius: '0.4rem', marginBottom: '0.3rem',
-                        background: isNow ? 'rgba(237,104,35,0.08)' : isPast ? 'rgba(255,255,255,0.02)' : '#1E293B',
-                        border: isNow ? '1px solid rgba(237,104,35,0.3)' : '1px solid rgba(255,255,255,0.04)',
-                        opacity: isPast ? 0.35 : 1,
+                        background: isNow ? 'rgba(198,152,73,0.12)' : isPast ? 'rgba(245,240,232,0.03)' : BRAND.moss,
+                        border: isNow ? `1px solid ${BRAND.sun}55` : '1px solid rgba(245,240,232,0.06)',
+                        opacity: isPast ? 0.4 : 1,
                         transition: 'opacity 0.5s',
                       }}>
                         {/* Time */}
                         <span style={{
+                          fontFamily: 'var(--font-manrope), "Helvetica Neue", system-ui, sans-serif',
                           fontSize: '0.75rem', fontWeight: 600,
-                          color: isNow ? '#FFA235' : '#CBD5E1',
+                          color: isNow ? BRAND.sun : 'rgba(245,240,232,0.85)',
                           whiteSpace: 'nowrap', minWidth: '8.5rem',
+                          fontVariantNumeric: 'tabular-nums',
                         }}>
                           {formatTime(item.startTime)} – {formatTime(item.endTime)}
                         </span>
@@ -370,7 +401,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                         {/* Session type */}
                         <span style={{
                           fontSize: '0.72rem',
-                          color: isNow ? '#E2E8F0' : '#94A3B8',
+                          color: isNow ? BRAND.paper : 'rgba(245,240,232,0.7)',
                           flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         }}>
                           {item.sessionType}
@@ -379,16 +410,16 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                         {/* Status */}
                         {item.status === 'CONFIRMED' && (
                           <span style={{
-                            fontSize: '0.6rem', fontWeight: 700, color: '#10B981',
-                            background: 'rgba(16,185,129,0.12)', padding: '0.15rem 0.5rem', borderRadius: '99px', whiteSpace: 'nowrap',
+                            fontSize: '0.6rem', fontWeight: 700, color: BRAND.sun,
+                            background: 'rgba(198,152,73,0.16)', padding: '0.15rem 0.5rem', borderRadius: '99px', whiteSpace: 'nowrap',
                           }}>
                             Confirmed
                           </span>
                         )}
                         {item.status === 'CANCELLED' && (
                           <span style={{
-                            fontSize: '0.6rem', fontWeight: 700, color: '#EF4444',
-                            background: 'rgba(239,68,68,0.12)', padding: '0.15rem 0.5rem', borderRadius: '99px', whiteSpace: 'nowrap',
+                            fontSize: '0.6rem', fontWeight: 700, color: BRAND.clay,
+                            background: 'rgba(168,92,61,0.18)', padding: '0.15rem 0.5rem', borderRadius: '99px', whiteSpace: 'nowrap',
                           }}>
                             Cancelled
                           </span>
@@ -404,14 +435,15 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
 
         {/* ── Ads Panel (60%) ───────────────────────────────────────────── */}
         <div style={{
-          flex: '0 0 60%', borderLeft: '1px solid #1E293B',
-          background: '#000', position: 'relative', overflow: 'hidden',
+          flex: '0 0 60%', borderLeft: `1px solid ${BRAND.narraDeep}`,
+          background: BRAND.narraDeep, position: 'relative', overflow: 'hidden',
           display: 'flex', flexDirection: 'column',
         }}>
           {ads.length === 0 && (!lbEnabled || !leaderboard) && !cfEnabled ? (
             <div style={{
               flex: 1, display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center', gap: '1rem', color: '#334155',
+              alignItems: 'center', justifyContent: 'center', gap: '1rem',
+              color: 'rgba(245,240,232,0.4)',
             }}>
               <Image src="/sandbox-clinic-logo.png" alt="Sandbox Clinic" width={120} height={120}
                 style={{ objectFit: 'contain', opacity: 0.3 }} />
@@ -425,36 +457,38 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
               opacity: fadingOut ? 0 : 1,
             }}>
               {showComplaintQR ? (
-                /* ── Patient Complaint Form QR Slide ── */
+                /* ── Patient Complaint Form QR Slide — Narra → deep Narra (Narra+Sun pairing) ── */
                 <div style={{
                   width: '100%', height: '100%',
-                  background: 'linear-gradient(180deg, #0F172A 0%, #0A1A2E 100%)',
+                  background: `linear-gradient(180deg, ${BRAND.narra} 0%, ${BRAND.narraDeep} 100%)`,
                   display: 'flex', flexDirection: 'column',
                   alignItems: 'center', justifyContent: 'center',
                   padding: '2.5rem 3rem', gap: '1.5rem',
                 }}>
                   <p style={{
-                    fontSize: '0.7rem', fontWeight: 700, color: '#FFA235',
+                    fontFamily: 'var(--font-montserrat), "Helvetica Neue", system-ui, sans-serif',
+                    fontSize: '0.7rem', fontWeight: 700, color: BRAND.sun,
                     textTransform: 'uppercase', letterSpacing: '0.15em', margin: 0,
                   }}>
-                    📋 Patient Feedback
+                    Patient Feedback
                   </p>
                   <h2 style={{
-                    fontSize: '1.8rem', fontWeight: 800, color: '#fff',
-                    textAlign: 'center', lineHeight: 1.2, margin: 0,
+                    fontFamily: 'var(--font-montserrat), "Helvetica Neue", system-ui, sans-serif',
+                    fontSize: '1.8rem', fontWeight: 800, color: BRAND.paper,
+                    textAlign: 'center', lineHeight: 1.2, margin: 0, letterSpacing: '-0.01em',
                   }}>
                     Submit a Complaint or Concern
                   </h2>
                   <p style={{
-                    fontSize: '0.95rem', color: 'rgba(255,255,255,0.6)',
+                    fontSize: '0.95rem', color: 'rgba(245,240,232,0.7)',
                     textAlign: 'center', maxWidth: '380px', lineHeight: 1.6, margin: 0,
                   }}>
                     Your feedback helps us improve our services. Scan the QR code below to submit a complaint or incident report.
                   </p>
                   {/* QR Code */}
                   <div style={{
-                    background: '#fff', borderRadius: '16px',
-                    padding: '16px', boxShadow: '0 8px 32px rgba(237,104,35,0.2)',
+                    background: BRAND.paper, borderRadius: '16px',
+                    padding: '16px', boxShadow: `0 8px 32px ${BRAND.sun}33`,
                   }}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
@@ -465,29 +499,37 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                     />
                   </div>
                   <p style={{
-                    fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)',
+                    fontSize: '0.75rem', color: 'rgba(245,240,232,0.45)',
                     textAlign: 'center', margin: 0,
                   }}>
                     All submissions are confidential and reviewed by administration.
                   </p>
                 </div>
               ) : showLeaderboard ? (
-                /* ── Leaderboard Slide ── */
+                /* ── Leaderboard Slide — Narra → Moss ── */
                 <div style={{
                   width: '100%', height: '100%',
-                  background: 'linear-gradient(180deg, #0F172A 0%, #1E293B 100%)',
+                  background: `linear-gradient(180deg, ${BRAND.narra} 0%, ${BRAND.moss} 100%)`,
                   display: 'flex', flexDirection: 'column',
                   padding: '2.5rem 3rem',
                 }}>
                   {/* Title */}
                   <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-                    <p style={{ fontSize: '0.7rem', fontWeight: 700, color: '#FFA235', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '0.25rem' }}>
+                    <p style={{
+                      fontFamily: 'var(--font-montserrat), "Helvetica Neue", system-ui, sans-serif',
+                      fontSize: '0.7rem', fontWeight: 700, color: BRAND.sun,
+                      textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '0.25rem',
+                    }}>
                       ★ Patient Satisfaction Leaderboard ★
                     </p>
-                    <p style={{ fontSize: '1.6rem', fontWeight: 800, color: '#fff', lineHeight: 1.2 }}>
+                    <p style={{
+                      fontFamily: 'var(--font-montserrat), "Helvetica Neue", system-ui, sans-serif',
+                      fontSize: '1.6rem', fontWeight: 800, color: BRAND.paper, lineHeight: 1.2,
+                      letterSpacing: '-0.01em',
+                    }}>
                       {lbDept === 'Overall' ? 'Top 5 — Overall' : `Top 5 — ${lbDept}`}
                     </p>
-                    <p style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '0.25rem' }}>
+                    <p style={{ fontSize: '0.75rem', color: 'rgba(245,240,232,0.55)', marginTop: '0.25rem' }}>
                       {leaderboard?.year} — {branch === 'SBEA' ? 'Sandbox East' : branch === 'SBGH' ? 'Greenhills' : branch}
                     </p>
                   </div>
@@ -506,17 +548,21 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                         <div key={'r' + group.rank + '_' + i} style={{
                           display: 'flex', alignItems: 'center', gap: '0.75rem',
                           padding: '0.75rem 1rem', borderRadius: '0.6rem',
-                          background: group.rank === 1 ? 'rgba(245,158,11,0.08)' : 'rgba(255,255,255,0.03)',
-                          border: group.rank === 1 ? '1px solid rgba(245,158,11,0.25)' : '1px solid rgba(255,255,255,0.06)',
+                          background: group.rank === 1 ? 'rgba(198,152,73,0.12)' : 'rgba(245,240,232,0.05)',
+                          border: group.rank === 1 ? `1px solid ${BRAND.sun}55` : '1px solid rgba(245,240,232,0.08)',
                         }}>
                           {/* Rank */}
                           <div style={{
                             width: '2.2rem', height: '2.2rem', borderRadius: '50%', flexShrink: 0,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            background: medalColor ? medalColor + '25' : '#1E293B',
-                            border: medalColor ? `2px solid ${medalColor}` : '2px solid #334155',
+                            background: medalColor ? medalColor + '25' : BRAND.narraDeep,
+                            border: medalColor ? `2px solid ${medalColor}` : `2px solid ${BRAND.sage}`,
                           }}>
-                            <span style={{ fontSize: '0.9rem', fontWeight: 800, color: medalColor ?? '#64748B' }}>
+                            <span style={{
+                              fontFamily: 'var(--font-montserrat), "Helvetica Neue", system-ui, sans-serif',
+                              fontSize: '0.9rem', fontWeight: 800, color: medalColor ?? BRAND.paper,
+                              fontVariantNumeric: 'tabular-nums',
+                            }}>
                               {group.rank}
                             </span>
                           </div>
@@ -526,15 +572,19 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                             {isTied ? (
                               <>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.3rem' }}>
-                                  <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#F59E0B', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                  <span style={{
+                                    fontFamily: 'var(--font-montserrat), "Helvetica Neue", system-ui, sans-serif',
+                                    fontSize: '0.65rem', fontWeight: 700, color: BRAND.sun,
+                                    textTransform: 'uppercase', letterSpacing: '0.06em',
+                                  }}>
                                     TIED · {group.members.length} therapists
                                   </span>
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
                                   {group.members.map(m => (
                                     <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                      <span style={{ width: '0.3rem', height: '0.3rem', borderRadius: '50%', background: '#F59E0B', flexShrink: 0 }} />
-                                      <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff', lineHeight: 1.2 }}>{m.name}</span>
+                                      <span style={{ width: '0.3rem', height: '0.3rem', borderRadius: '50%', background: BRAND.sun, flexShrink: 0 }} />
+                                      <span style={{ fontSize: '0.95rem', fontWeight: 700, color: BRAND.paper, lineHeight: 1.2 }}>{m.name}</span>
                                       {lbDept === 'Overall' && (
                                         <span style={{
                                           fontSize: '0.55rem', fontWeight: 700, padding: '0.05rem 0.35rem',
@@ -552,7 +602,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                               </>
                             ) : (
                               <>
-                                <p style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', lineHeight: 1.25 }}>
+                                <p style={{ fontSize: '1rem', fontWeight: 700, color: BRAND.paper, lineHeight: 1.25 }}>
                                   {memberNames}
                                 </p>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.15rem' }}>
@@ -563,7 +613,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                                   }}>
                                     {firstMember?.dept}
                                   </span>
-                                  <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                                  <span style={{ fontSize: '0.7rem', color: 'rgba(245,240,232,0.6)' }}>
                                     ★ {avgRating.toFixed(1)}/6 · {totalSessions} sessions
                                   </span>
                                 </div>
@@ -574,20 +624,25 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                           {/* Score */}
                           <div style={{ textAlign: 'right' }}>
                             <p style={{
+                              fontFamily: 'var(--font-manrope), "Helvetica Neue", system-ui, sans-serif',
                               fontSize: '1.5rem', fontWeight: 800,
-                              color: group.rank === 1 ? '#F59E0B' : '#0D9488',
-                              lineHeight: 1,
+                              color: group.rank === 1 ? BRAND.sun : BRAND.sage,
+                              lineHeight: 1, fontVariantNumeric: 'tabular-nums',
                             }}>
                               {group.score}
                             </p>
-                            <p style={{ fontSize: '0.55rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                            <p style={{
+                              fontFamily: 'var(--font-montserrat), "Helvetica Neue", system-ui, sans-serif',
+                              fontSize: '0.55rem', fontWeight: 700, color: 'rgba(245,240,232,0.55)',
+                              textTransform: 'uppercase', letterSpacing: '0.08em',
+                            }}>
                               Score
                             </p>
                           </div>
                         </div>
                       )
                     }) : (
-                      <p style={{ textAlign: 'center', color: '#475569', fontSize: '0.85rem' }}>No data yet</p>
+                      <p style={{ textAlign: 'center', color: 'rgba(245,240,232,0.4)', fontSize: '0.85rem' }}>No data yet</p>
                     )}
                   </div>
                 </div>
@@ -621,9 +676,9 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
             }}>
               {ads.map((_, i) => (
                 <div key={`ad-${i}`} style={{
-                  width: (!showLeaderboard && i === adIdx) ? '1.5rem' : '0.4rem', height: '0.4rem',
+                  width: (!showLeaderboard && !showComplaintQR && i === adIdx) ? '1.5rem' : '0.4rem', height: '0.4rem',
                   borderRadius: '99px',
-                  background: (!showLeaderboard && i === adIdx) ? '#ED6823' : 'rgba(255,255,255,0.3)',
+                  background: (!showLeaderboard && !showComplaintQR && i === adIdx) ? BRAND.sun : 'rgba(245,240,232,0.3)',
                   transition: 'width 0.3s',
                 }} />
               ))}
@@ -631,7 +686,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                 <div style={{
                   width: showLeaderboard ? '1.5rem' : '0.4rem', height: '0.4rem',
                   borderRadius: '99px',
-                  background: showLeaderboard ? '#F59E0B' : 'rgba(255,255,255,0.3)',
+                  background: showLeaderboard ? BRAND.sun : 'rgba(245,240,232,0.3)',
                   transition: 'width 0.3s',
                 }} />
               )}
@@ -639,7 +694,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                 <div style={{
                   width: showComplaintQR ? '1.5rem' : '0.4rem', height: '0.4rem',
                   borderRadius: '99px',
-                  background: showComplaintQR ? '#FFA235' : 'rgba(255,255,255,0.3)',
+                  background: showComplaintQR ? BRAND.clay : 'rgba(245,240,232,0.3)',
                   transition: 'width 0.3s',
                 }} />
               )}
@@ -651,13 +706,17 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
       {/* ── Footer ────────────────────────────────────────────────────────── */}
       <div style={{
         padding: '0.4rem 2rem', flexShrink: 0,
-        background: '#0A1020', borderTop: '1px solid #1E293B',
+        background: BRAND.narraDeep, borderTop: `1px solid rgba(74,128,115,0.25)`,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <p style={{ fontSize: '0.7rem', color: '#334155' }}>
+        <p style={{ fontSize: '0.7rem', color: 'rgba(245,240,232,0.45)', letterSpacing: '0.02em' }}>
           Sandbox Clinic Patient Queue Display — For internal use only
         </p>
-        <p style={{ fontSize: '0.7rem', color: '#334155' }}>
+        <p style={{
+          fontFamily: 'var(--font-manrope), "Helvetica Neue", system-ui, sans-serif',
+          fontSize: '0.7rem', color: 'rgba(245,240,232,0.45)',
+          fontVariantNumeric: 'tabular-nums',
+        }}>
           Last updated: {lastRefresh || '—'} · Auto-refreshes every 30 seconds
         </p>
       </div>
