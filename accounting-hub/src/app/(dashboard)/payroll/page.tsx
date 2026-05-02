@@ -7,7 +7,7 @@ import {
   ChevronUp, ChevronDown, ArrowUpDown, Search, X, AlertCircle,
   RefreshCw, Loader2, ChevronRight, Download, Mail, Trash2,
   PlusCircle, CheckCircle2, ToggleLeft, ToggleRight, Receipt, ShieldOff, Upload,
-  Lock, LockOpen,
+  Lock, LockOpen, ClipboardList, Eye,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import EmployeePayroll from './EmployeePayroll'
@@ -32,7 +32,9 @@ interface Consultant {
   branch: string
   email?: string | null
   phone?: string | null
+  bioId?: number | null
   tinNumber?: string | null
+  birAddress?: string | null
   sssNumber?: string | null
   philhealthNumber?: string | null
   pagibigNumber?: string | null
@@ -108,6 +110,22 @@ interface IncentiveRule {
   departments: string[]
   branch?: string | null
   isActive: boolean
+}
+
+interface IEPRDoc {
+  id: string
+  documentType: string  // INITIAL_EVALUATION | PROGRESS_REPORT
+  patient: { id: string; name: string; branch: string | null }
+  therapist: { staffId: string; name: string; department: string; branch: string } | null
+  department: string
+  fileName: string
+  mimeType: string
+  description: string | null
+  uploadedAt: string
+  // Merged from local IEPRPayrollRecord
+  countedInPayroll: boolean
+  cutoffPeriod: string | null
+  notes: string | null
 }
 
 interface PayrollSettings {
@@ -248,6 +266,23 @@ function getCutoffLabel(period: string) {
 
 function uid() { return Math.random().toString(36).slice(2, 10) }
 
+/** Generates the last 12 months × 2 halves as cutoff period options */
+function buildCutoffOptions(): { value: string; label: string }[] {
+  const opts: { value: string; label: string }[] = []
+  const now = new Date()
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const y = d.getFullYear()
+    const m = d.getMonth() + 1
+    opts.push(
+      { value: `${y}-${String(m).padStart(2, '0')}-2`, label: `${MONTHS[d.getMonth()]} ${y} — 2nd Cutoff` },
+      { value: `${y}-${String(m).padStart(2, '0')}-1`, label: `${MONTHS[d.getMonth()]} ${y} — 1st Cutoff` },
+    )
+  }
+  return opts
+}
+const CUTOFF_OPTIONS = buildCutoffOptions()
+
 function computeCustomDates(s: PayrollSettings, year: number, month: number, half: number): { start: Date; end: Date } {
   const pad = (n: number) => String(n).padStart(2, '0')
   if (half === 1) {
@@ -287,7 +322,7 @@ function computeTotals(p: PayrollPreview, extras: ExtraUnitPayLine[], adjs: Adju
 
 /* ═══════════════════════════════════════════════════════════════
    PDF GENERATION (async — called only in browser)
-   Template brand: Primary #2E5E5A, Accent #ED6823, Net Pay green #E2EFD9
+   Template brand: Primary #1B3F38 (Narra), Accent #A85C3D (Clay), Net Pay green #E2EFD9
    Layout matches the Sandbox Clinic Word payslip template.
    ═══════════════════════════════════════════════════════════════ */
 async function buildPayslipPdf(
@@ -313,7 +348,7 @@ async function buildPayslipPdf(
     : getCutoffLabel(cutoffPeriod)
 
   // Brand colors
-  const ORANGE: [number, number, number] = [237, 104, 35]  // #ED6823
+  const ORANGE: [number, number, number] = [168, 92, 61]   // #A85C3D Clay
   const NET_GREEN: [number, number, number] = [226, 239, 217] // #E2EFD9
   const WHITE: [number, number, number] = [255, 255, 255]
   const DARK: [number, number, number] = [30, 30, 30]
@@ -669,7 +704,15 @@ export default function PayrollPage() {
   const cutoffPeriod = `${cutoffYear}-${String(cutoffMonth).padStart(2, '0')}-${cutoffHalf}`
 
   const [mainTab, setMainTab] = useState<'consultants' | 'employees' | 'tax-payable' | 'salaries-payable' | 'benefits-payable' | 'payroll-settings'>('consultants')
-  const [subTab, setSubTab] = useState<'list' | 'unit-pay' | 'pay-rules' | 'adjustments' | 'payslips'>('list')
+  const [subTab, setSubTab] = useState<'list' | 'unit-pay' | 'pay-rules' | 'adjustments' | 'initial-eval' | 'progress-report' | 'payslips'>('list')
+
+  /* ── IE / PR tracking ── */
+  const [ieprDocs, setIeprDocs] = useState<IEPRDoc[]>([])
+  const [ieprLoading, setIeprLoading] = useState(false)
+  const [ieprError, setIeprError] = useState('')
+  const [ieprSearch, setIeprSearch] = useState('')
+  const [ieprExpanded, setIeprExpanded] = useState<Set<string>>(new Set())
+  const [ieprSaving, setIeprSaving] = useState<Set<string>>(new Set())
 
   /* ── Core data ── */
   const [consultants, setConsultants] = useState<Consultant[]>([])
@@ -689,7 +732,13 @@ export default function PayrollPage() {
   const [editingRates, setEditingRates] = useState<Record<string, { amount: number; disabled: boolean; thresholdEnabled: boolean; thresholdAmount: number | null; reducedAmount: number | null }>>({})
   const [editingTax, setEditingTax] = useState('')
   const [editingRetainer, setEditingRetainer] = useState('')
+  const [editingBirAddress, setEditingBirAddress] = useState('')
   const [savingConsultant, setSavingConsultant] = useState(false)
+
+  // Inline BIR Address editing directly in the consultant table row
+  const [inlineBirEditId, setInlineBirEditId] = useState<string | null>(null)
+  const [inlineBirValue, setInlineBirValue] = useState('')
+  const [savingInlineBir, setSavingInlineBir] = useState(false)
 
   /* ── Past Payslips in Clinician List ── */
   interface ConsultantPayslip { id: string; cutoffPeriod: string; branch: string; grossPay: number; netPay: number; status: string; pdfUrl?: string | null }
@@ -904,6 +953,57 @@ export default function PayrollPage() {
     } catch { setIncentiveRules([]) }
   }, [])
 
+  const fetchIEPR = useCallback(async (documentType: 'INITIAL_EVALUATION' | 'PROGRESS_REPORT') => {
+    setIeprLoading(true)
+    setIeprError('')
+    try {
+      const res = await fetch(`/api/payroll/ie-pr?documentType=${documentType}`)
+      const text = await res.text()
+      if (!res.ok) {
+        // Handle HTML error pages (e.g. session expired → login redirect)
+        let msg = 'Failed to load'
+        try { msg = JSON.parse(text).error || msg } catch { /* html response */ }
+        if (res.status === 401) msg = 'Session expired — please refresh the page and log in again.'
+        throw new Error(msg)
+      }
+      const data = JSON.parse(text)
+      setIeprDocs(Array.isArray(data) ? data : [])
+    } catch (e) {
+      setIeprError(e instanceof Error ? e.message : 'Could not reach teletherapy hub')
+      setIeprDocs([])
+    } finally {
+      setIeprLoading(false)
+    }
+  }, [])
+
+  const updateIEPR = useCallback(async (
+    doc: IEPRDoc,
+    countedInPayroll: boolean,
+    cutoffPeriod: string | null
+  ) => {
+    setIeprSaving(prev => new Set(prev).add(doc.id))
+    try {
+      await fetch('/api/payroll/ie-pr', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          documentId: doc.id,
+          staffId: doc.therapist?.staffId ?? null,
+          countedInPayroll,
+          cutoffPeriod: countedInPayroll ? cutoffPeriod : null,
+        }),
+      })
+      // Update local state
+      setIeprDocs(prev => prev.map(d =>
+        d.id === doc.id ? { ...d, countedInPayroll, cutoffPeriod: countedInPayroll ? cutoffPeriod : null } : d
+      ))
+    } catch {
+      // silently ignore — user can retry
+    } finally {
+      setIeprSaving(prev => { const s = new Set(prev); s.delete(doc.id); return s })
+    }
+  }, [])
+
   const fetchTaxPayable = useCallback(async () => {
     setLoadingTax(true)
     try {
@@ -1005,6 +1105,13 @@ export default function PayrollPage() {
   useEffect(() => {
     if (mainTab === 'payroll-settings') fetchCoaMapping()
   }, [mainTab, fetchCoaMapping])
+
+  // IE / PR: re-fetch whenever the user switches to the relevant sub-tab
+  useEffect(() => {
+    if (mainTab !== 'consultants') return
+    if (subTab === 'initial-eval')    fetchIEPR('INITIAL_EVALUATION')
+    if (subTab === 'progress-report') fetchIEPR('PROGRESS_REPORT')
+  }, [mainTab, subTab, fetchIEPR])
 
   useEffect(() => {
     fetchAllAccounts()
@@ -1322,6 +1429,7 @@ export default function PayrollPage() {
     setEditingRates(rateMap)
     setEditingTax(c.taxDeduction)
     setEditingRetainer(String(toNum(c.monthlyRetainer)))
+    setEditingBirAddress(c.birAddress || '')
   }
 
   const fetchClinicianPastPayslips = async (consultantId: string) => {
@@ -1352,7 +1460,7 @@ export default function PayrollPage() {
       await fetch('/api/payroll/consultants', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: c.id, taxDeduction: editingTax, monthlyRetainer: parseFloat(editingRetainer) || 0, unitPayRates }),
+        body: JSON.stringify({ id: c.id, taxDeduction: editingTax, monthlyRetainer: parseFloat(editingRetainer) || 0, birAddress: editingBirAddress, unitPayRates }),
       })
       await fetchConsultants()
     } catch { setError('Failed to save') }
@@ -1599,21 +1707,46 @@ export default function PayrollPage() {
     finally { setGenerating(false) }
   }
 
-  const exportPayrollCsv = () => {
+  const saveInlineBirAddress = async (consultantId: string) => {
+    setSavingInlineBir(true)
     try {
+      const res = await fetch('/api/payroll/consultants', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: consultantId, birAddress: inlineBirValue }),
+      })
+      if (res.ok) {
+        // Update local state without full refetch
+        setConsultants(prev => prev.map(c =>
+          c.id === consultantId ? { ...c, birAddress: inlineBirValue || null } : c
+        ))
+      }
+    } catch { /* ignore */ }
+    finally {
+      setSavingInlineBir(false)
+      setInlineBirEditId(null)
+    }
+  }
+
+  const generatePayreg = async () => {
+    try {
+      const XLSX = await import('xlsx')
       const cutoffLabel = getCutoffLabel(cutoffPeriod)
-      // Include anyone who has numbers this cutoff (matches what the expanded
-      // consultant cards show) — LOCKED + FINAL + DRAFT with activity.
       const rows = payrollPreviews.filter(p => p.grossPay > 0 || p.orderCount > 0 || p.existingStatus !== null)
 
-      // Sum helpers
-      const quote = (v: string) => `"${String(v).replace(/"/g, '""')}"`
-      const num = (n: number) => (Math.round(n * 100) / 100).toFixed(2)
+      // ── Consultant sheet ──────────────────────────────────
+      const consultantHeaders = [
+        'PAYROLL DATE', 'LOCATION', 'ID NO', 'NAME',
+        'GROSS PAY', 'TAXABLE ADJUSTMENT', 'TAXABLE AMOUNT BEFORE TAX',
+        'EXPANDED WITHHOLDING TAX AMOUNT', 'TAXABLE AMOUNT AFTER TAX',
+        'NON TAXABLE ADJUSTMENT', 'TOTAL NET PAY', 'TIN NUMBER', 'ADDRESS',
+      ]
 
-      const headers = ['Cutoff', 'Name', 'Unit Pay', 'Retainer', 'Adjustment', 'Gross', 'Tax', 'Net Pay']
-      const lines: string[] = [headers.map(quote).join(',')]
+      // 3 blank rows on top to match the template layout, then header
+      const consultantData: (string | number)[][] = [[], [], [], consultantHeaders]
 
-      let totUnitPay = 0, totRetainer = 0, totAdj = 0, totGross = 0, totTax = 0, totNet = 0
+      let totGross = 0, totTaxAdj = 0, totTaxableBefore = 0, totEWT = 0
+      let totTaxableAfter = 0, totNonTaxAdj = 0, totNet = 0
 
       for (const p of rows) {
         const extras = extraUnitPays[p.consultantId] !== undefined
@@ -1623,49 +1756,149 @@ export default function PayrollPage() {
           ? adjustments[p.consultantId]
           : ((p.storedAdjustments as unknown as AdjustmentLine[]) || [])
         const t = computeTotals(p, extras, adjs)
-        const adjSigned = (t.taxedAdj ?? 0) + (t.nonTaxedAdj ?? 0)
+        const consultant = consultants.find(c => c.id === p.consultantId)
+        const taxableAfter = t.taxableBase - t.tax
 
-        totUnitPay += t.totalUnitPay
-        totRetainer += p.retainerAmount
-        totAdj += adjSigned
-        totGross += t.gross
-        totTax += t.tax
-        totNet += t.net
+        totGross += t.gross; totTaxAdj += t.taxedAdj
+        totTaxableBefore += t.taxableBase; totEWT += t.tax
+        totTaxableAfter += taxableAfter; totNonTaxAdj += t.nonTaxedAdj; totNet += t.net
 
-        lines.push([
-          quote(cutoffLabel),
-          quote(p.consultantName),
-          num(t.totalUnitPay),
-          num(p.retainerAmount),
-          num(adjSigned),
-          num(t.gross),
-          num(t.tax),
-          num(t.net),
-        ].join(','))
+        consultantData.push([
+          cutoffLabel, p.branch, consultant?.bioId ?? '', p.consultantName,
+          Math.round(t.gross * 100) / 100,
+          Math.round(t.taxedAdj * 100) / 100,
+          Math.round(t.taxableBase * 100) / 100,
+          Math.round(t.tax * 100) / 100,
+          Math.round(taxableAfter * 100) / 100,
+          Math.round(t.nonTaxedAdj * 100) / 100,
+          Math.round(t.net * 100) / 100,
+          consultant?.tinNumber || '',
+          consultant?.birAddress || '',
+        ])
       }
 
       // TOTAL row
-      lines.push([
-        quote('TOTAL'),
-        quote(''),
-        num(totUnitPay),
-        num(totRetainer),
-        num(totAdj),
-        num(totGross),
-        num(totTax),
-        num(totNet),
-      ].join(','))
+      consultantData.push([
+        'TOTAL', '', '', '',
+        Math.round(totGross * 100) / 100,
+        Math.round(totTaxAdj * 100) / 100,
+        Math.round(totTaxableBefore * 100) / 100,
+        Math.round(totEWT * 100) / 100,
+        Math.round(totTaxableAfter * 100) / 100,
+        Math.round(totNonTaxAdj * 100) / 100,
+        Math.round(totNet * 100) / 100,
+        '', '',
+      ])
 
-      const csv = '\uFEFF' + lines.join('\r\n') // BOM for Excel UTF-8
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
+      const wsConsultant = XLSX.utils.aoa_to_sheet(consultantData)
+      wsConsultant['!cols'] = [
+        { wch: 28 }, { wch: 10 }, { wch: 6 }, { wch: 30 },
+        { wch: 14 }, { wch: 20 }, { wch: 26 }, { wch: 34 },
+        { wch: 26 }, { wch: 22 }, { wch: 14 }, { wch: 18 }, { wch: 40 },
+      ]
+
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, wsConsultant, 'Consultant')
+
       const labelSafe = cutoffLabel.replace(/[^a-zA-Z0-9-]/g, '_')
-      a.download = `payroll_${labelSafe}${branch ? '_' + branch : ''}.csv`
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch { alert('Failed to export payroll CSV') }
+      XLSX.writeFile(wb, `payreg_${labelSafe}${branch ? '_' + branch : ''}.xlsx`)
+    } catch (e) { alert('Failed to generate payreg: ' + (e instanceof Error ? e.message : String(e))) }
+  }
+
+  const exportPayrollXlsx = async () => {
+    try {
+      const XLSX = await import('xlsx')
+      const cutoffLabel = getCutoffLabel(cutoffPeriod)
+      // Include anyone who has numbers this cutoff
+      const rows = payrollPreviews.filter(p => p.grossPay > 0 || p.orderCount > 0 || p.existingStatus !== null)
+
+      const headers = [
+        'PAYROLL DATE', 'LOCATION', 'ID NO', 'NAME',
+        'GROSS PAY', 'TAXABLE ADJUSTMENT', 'TAXABLE AMOUNT BEFORE TAX',
+        'EXPANDED WITHHOLDING TAX AMOUNT', 'TAXABLE AMOUNT AFTER TAX',
+        'NON TAXABLE ADJUSTMENT', 'TOTAL NET PAY', 'TIN NUMBER', 'ADDRESS',
+      ]
+
+      const sheetData: (string | number)[][] = [headers]
+
+      let totGross = 0, totTaxAdj = 0, totTaxableBefore = 0, totEWT = 0
+      let totTaxableAfter = 0, totNonTaxAdj = 0, totNet = 0
+      let idNo = 1
+
+      for (const p of rows) {
+        const extras = extraUnitPays[p.consultantId] !== undefined
+          ? extraUnitPays[p.consultantId]
+          : ((p.storedExtraItems as unknown as ExtraUnitPayLine[]) || [])
+        const adjs = adjustments[p.consultantId] !== undefined
+          ? adjustments[p.consultantId]
+          : ((p.storedAdjustments as unknown as AdjustmentLine[]) || [])
+        const t = computeTotals(p, extras, adjs)
+        const consultant = consultants.find(c => c.id === p.consultantId)
+        const taxableAfter = t.taxableBase - t.tax
+
+        totGross += t.gross
+        totTaxAdj += t.taxedAdj
+        totTaxableBefore += t.taxableBase
+        totEWT += t.tax
+        totTaxableAfter += taxableAfter
+        totNonTaxAdj += t.nonTaxedAdj
+        totNet += t.net
+
+        sheetData.push([
+          cutoffLabel,
+          p.branch,
+          idNo++,
+          p.consultantName,
+          Math.round(t.gross * 100) / 100,
+          Math.round(t.taxedAdj * 100) / 100,
+          Math.round(t.taxableBase * 100) / 100,
+          Math.round(t.tax * 100) / 100,
+          Math.round(taxableAfter * 100) / 100,
+          Math.round(t.nonTaxedAdj * 100) / 100,
+          Math.round(t.net * 100) / 100,
+          consultant?.tinNumber || '',
+          consultant?.birAddress || '',
+        ])
+      }
+
+      // TOTAL row
+      sheetData.push([
+        'TOTAL', '', '', '',
+        Math.round(totGross * 100) / 100,
+        Math.round(totTaxAdj * 100) / 100,
+        Math.round(totTaxableBefore * 100) / 100,
+        Math.round(totEWT * 100) / 100,
+        Math.round(totTaxableAfter * 100) / 100,
+        Math.round(totNonTaxAdj * 100) / 100,
+        Math.round(totNet * 100) / 100,
+        '', '',
+      ])
+
+      const ws = XLSX.utils.aoa_to_sheet(sheetData)
+
+      // Column widths
+      ws['!cols'] = [
+        { wch: 28 }, // PAYROLL DATE
+        { wch: 10 }, // LOCATION
+        { wch: 6 },  // ID NO
+        { wch: 30 }, // NAME
+        { wch: 14 }, // GROSS PAY
+        { wch: 20 }, // TAXABLE ADJUSTMENT
+        { wch: 26 }, // TAXABLE AMOUNT BEFORE TAX
+        { wch: 34 }, // EXPANDED WITHHOLDING TAX AMOUNT
+        { wch: 26 }, // TAXABLE AMOUNT AFTER TAX
+        { wch: 22 }, // NON TAXABLE ADJUSTMENT
+        { wch: 14 }, // TOTAL NET PAY
+        { wch: 18 }, // TIN NUMBER
+        { wch: 40 }, // ADDRESS
+      ]
+
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Consultant')
+
+      const labelSafe = cutoffLabel.replace(/[^a-zA-Z0-9-]/g, '_')
+      XLSX.writeFile(wb, `payroll_${labelSafe}${branch ? '_' + branch : ''}.xlsx`)
+    } catch { alert('Failed to export payroll') }
   }
 
   const buildEntry = (p: PayrollPreview, extras: ExtraUnitPayLine[], adjs: AdjustmentLine[], status: string) => {
@@ -2443,9 +2676,11 @@ export default function PayrollPage() {
               { key: 'list' as const, label: 'Clinician List', icon: Users },
               { key: 'unit-pay' as const, label: 'Unit Pay Settings', icon: Settings },
               { key: 'pay-rules' as const, label: 'Clinician Pay Rules', icon: BadgeDollarSign },
+              { key: 'initial-eval' as const, label: 'Initial Evaluation', icon: ClipboardList },
+              { key: 'progress-report' as const, label: 'Progress Report', icon: FileText },
               { key: 'payslips' as const, label: 'Payslip Generation', icon: FileText },
             ].map(t => (
-              <button key={t.key} onClick={() => setSubTab(t.key)}
+              <button key={t.key} onClick={() => { setSubTab(t.key); setIeprSearch(''); setIeprExpanded(new Set()) }}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors"
                 style={subTab === t.key ? { background: 'var(--pale-teal)', color: 'var(--deep-teal)' } : { color: 'var(--mid-gray)' }}>
                 <t.icon size={14} /> {t.label}
@@ -2513,7 +2748,7 @@ export default function PayrollPage() {
               )}
 
               <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-                <table className="w-full text-sm min-w-[1100px]">
+                <table className="w-full text-sm min-w-[1200px]">
                   <thead>
                     <tr style={{ background: 'var(--off-white)' }}>
                       <th className="w-8 px-4 py-3" />
@@ -2524,9 +2759,11 @@ export default function PayrollPage() {
                         <span className="flex items-center gap-1">Department <CSortIcon field="department" /></span>
                       </th>
                       <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Branch</th>
+                      <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Bio ID</th>
                       <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Email</th>
                       <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Phone</th>
                       <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>TIN</th>
+                      <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>BIR Address</th>
                       <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>SSS</th>
                       <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>PhilHealth</th>
                       <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Pag-IBIG</th>
@@ -2538,9 +2775,9 @@ export default function PayrollPage() {
                   </thead>
                   <tbody>
                     {loading ? (
-                      <tr><td colSpan={14} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</td></tr>
+                      <tr><td colSpan={16} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</td></tr>
                     ) : filteredConsultants.length === 0 ? (
-                      <tr><td colSpan={14} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
+                      <tr><td colSpan={16} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
                         No consultants found. Click &quot;Sync from Clinician Database&quot; to import.
                       </td></tr>
                     ) : filteredConsultants.map(c => (
@@ -2553,9 +2790,45 @@ export default function PayrollPage() {
                           <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{c.name}</td>
                           <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{DEPT_LABELS[c.department] || c.department}</td>
                           <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{c.branch}</td>
+                          <td className="px-4 py-3 text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>{c.bioId ?? '—'}</td>
                           <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{c.email || '—'}</td>
                           <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{c.phone || '—'}</td>
                           <td className="px-4 py-3 text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>{c.tinNumber || '—'}</td>
+                          <td className="px-4 py-3 text-xs" style={{ maxWidth: '200px' }}
+                            onClick={e => e.stopPropagation()}>
+                            {inlineBirEditId === c.id ? (
+                              <div className="flex items-center gap-1">
+                                <input
+                                  autoFocus
+                                  type="text"
+                                  value={inlineBirValue}
+                                  onChange={e => setInlineBirValue(e.target.value)}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') saveInlineBirAddress(c.id)
+                                    if (e.key === 'Escape') setInlineBirEditId(null)
+                                  }}
+                                  onBlur={() => saveInlineBirAddress(c.id)}
+                                  placeholder="BIR registered address…"
+                                  className="px-2 py-1 rounded-lg border text-xs outline-none flex-1"
+                                  style={{ borderColor: 'var(--teal)', minWidth: 140 }}
+                                  disabled={savingInlineBir}
+                                />
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1 group/bir">
+                                <span style={{ color: 'var(--mid-gray)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                  title={c.birAddress || undefined}>
+                                  {c.birAddress || '—'}
+                                </span>
+                                <button
+                                  className="opacity-0 group-hover/bir:opacity-100 p-0.5 rounded hover:bg-teal-50 flex-shrink-0"
+                                  title="Edit BIR Address"
+                                  onClick={() => { setInlineBirEditId(c.id); setInlineBirValue(c.birAddress || '') }}>
+                                  <Pencil size={10} style={{ color: 'var(--teal)' }} />
+                                </button>
+                              </div>
+                            )}
+                          </td>
                           <td className="px-4 py-3 text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>{c.sssNumber || '—'}</td>
                           <td className="px-4 py-3 text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>{c.philhealthNumber || '—'}</td>
                           <td className="px-4 py-3 text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>{c.pagibigNumber || '—'}</td>
@@ -2573,7 +2846,7 @@ export default function PayrollPage() {
                         </tr>
                         {expandedConsultant === c.id && (
                           <tr key={`${c.id}-exp`} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                            <td colSpan={14} className="px-6 py-4" style={{ background: '#fafafa' }}>
+                            <td colSpan={15} className="px-6 py-4" style={{ background: '#fafafa' }}>
                               <div className="space-y-4 max-w-lg">
                                 <div className="flex items-center gap-4">
                                   <label className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Tax Deduction:</label>
@@ -2588,6 +2861,15 @@ export default function PayrollPage() {
                                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Fixed Monthly Retainer</label>
                                   <input type="number" min={0} step="0.01" value={editingRetainer} onChange={e => setEditingRetainer(e.target.value)}
                                     className="px-3 py-2 rounded-xl border text-sm outline-none w-48" style={{ borderColor: 'var(--light-gray)' }} />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>
+                                    BIR Registered Address
+                                    <span className="ml-1.5 font-normal" style={{ color: 'var(--mid-gray)' }}>(for payroll XLSX export)</span>
+                                  </label>
+                                  <input type="text" value={editingBirAddress} onChange={e => setEditingBirAddress(e.target.value)}
+                                    placeholder="Enter BIR registered address..."
+                                    className="px-3 py-2 rounded-xl border text-sm outline-none w-full max-w-md" style={{ borderColor: 'var(--light-gray)' }} />
                                 </div>
                                 <div>
                                   <label className="block text-xs font-semibold mb-2" style={{ color: 'var(--charcoal)' }}>Unit Pay Rates</label>
@@ -3329,6 +3611,216 @@ export default function PayrollPage() {
             </div>
           )}
 
+          {/* ══ IE/PR TABS (Initial Evaluation & Progress Report) ══ */}
+          {(subTab === 'initial-eval' || subTab === 'progress-report') && (() => {
+            const docType = subTab === 'initial-eval' ? 'INITIAL_EVALUATION' : 'PROGRESS_REPORT'
+            const tabLabel = subTab === 'initial-eval' ? 'Initial Evaluation / Re-evaluation' : 'Progress Report'
+
+            // Group documents by therapist staffId (or "unknown" fallback)
+            const grouped = new Map<string, { therapist: IEPRDoc['therapist']; docs: IEPRDoc[] }>()
+            for (const doc of ieprDocs) {
+              const key = doc.therapist?.staffId ?? `__unknown__${doc.department}`
+              if (!grouped.has(key)) grouped.set(key, { therapist: doc.therapist, docs: [] })
+              grouped.get(key)!.docs.push(doc)
+            }
+
+            // Match therapist to accounting consultant by externalStaffId
+            const consultantByStaffId = new Map(
+              consultants.filter(c => c.externalStaffId).map(c => [c.externalStaffId!, c])
+            )
+
+            // Filter by search
+            const filtered = Array.from(grouped.entries()).filter(([, { therapist }]) => {
+              if (!ieprSearch.trim()) return true
+              const q = ieprSearch.toLowerCase()
+              const name = (therapist?.name ?? '').toLowerCase()
+              return name.includes(q)
+            })
+
+            return (
+              <div className="space-y-4">
+                {/* Toolbar */}
+                <div className="flex items-center gap-3">
+                  <div className="relative flex-1 max-w-xs">
+                    <Search size={14} className="absolute left-3 top-2.5" style={{ color: 'var(--mid-gray)' }} />
+                    <input
+                      value={ieprSearch}
+                      onChange={e => setIeprSearch(e.target.value)}
+                      placeholder="Search clinician name..."
+                      className="pl-9 pr-3 py-2 rounded-xl border text-sm outline-none w-full"
+                      style={{ borderColor: 'var(--light-gray)' }}
+                    />
+                  </div>
+                  <button
+                    onClick={() => fetchIEPR(docType as 'INITIAL_EVALUATION' | 'PROGRESS_REPORT')}
+                    disabled={ieprLoading}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border disabled:opacity-50"
+                    style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                    {ieprLoading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                    Refresh
+                  </button>
+                  <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                    Source: teletherapy hub
+                  </span>
+                </div>
+
+                {ieprError && (
+                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm" style={{ background: '#fef2f2', color: '#dc2626' }}>
+                    <AlertCircle size={14} /> {ieprError}
+                  </div>
+                )}
+
+                {ieprLoading && (
+                  <div className="flex items-center justify-center py-12 gap-2" style={{ color: 'var(--mid-gray)' }}>
+                    <Loader2 size={18} className="animate-spin" /> Loading {tabLabel} documents…
+                  </div>
+                )}
+
+                {!ieprLoading && !ieprError && filtered.length === 0 && (
+                  <div className="text-center py-12 text-sm" style={{ color: 'var(--mid-gray)' }}>
+                    No {tabLabel} documents found.
+                  </div>
+                )}
+
+                {!ieprLoading && filtered.map(([key, { therapist, docs }]) => {
+                  const consultant = therapist?.staffId ? consultantByStaffId.get(therapist.staffId) : undefined
+                  const displayName = consultant?.name ?? therapist?.name ?? '(Unknown therapist)'
+                  const dept = consultant?.department ?? therapist?.department ?? ''
+                  const branchLabel = consultant?.branch ?? therapist?.branch ?? ''
+                  const isOpen = ieprExpanded.has(key)
+                  const uncountedCount = docs.filter(d => !d.countedInPayroll).length
+
+                  return (
+                    <div key={key} className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+                      {/* Clinician header row */}
+                      <button
+                        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50 transition-colors"
+                        onClick={() => {
+                          setIeprExpanded(prev => {
+                            const s = new Set(prev)
+                            s.has(key) ? s.delete(key) : s.add(key)
+                            return s
+                          })
+                        }}>
+                        <div className="flex items-center gap-3">
+                          {isOpen ? <ChevronDown size={14} style={{ color: 'var(--mid-gray)' }} /> : <ChevronRight size={14} style={{ color: 'var(--mid-gray)' }} />}
+                          <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{displayName}</span>
+                          {dept && <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{dept}</span>}
+                          {branchLabel && <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{branchLabel}</span>}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {uncountedCount > 0 && (
+                            <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: '#fff3cd', color: '#b45309' }}>
+                              {uncountedCount} uncounted
+                            </span>
+                          )}
+                          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{docs.length} doc{docs.length !== 1 ? 's' : ''}</span>
+                        </div>
+                      </button>
+
+                      {/* Document rows */}
+                      {isOpen && (
+                        <div className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                                <th className="px-4 py-2 text-left font-medium">Patient</th>
+                                <th className="px-4 py-2 text-left font-medium">Date Uploaded</th>
+                                <th className="px-4 py-2 text-left font-medium">File</th>
+                                <th className="px-4 py-2 text-center font-medium">Counted in Payroll?</th>
+                                <th className="px-4 py-2 text-left font-medium">Cutoff Period</th>
+                                <th className="px-4 py-2 text-center font-medium">View</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {docs.map(doc => {
+                                const isSaving = ieprSaving.has(doc.id)
+                                const uploadDate = new Date(doc.uploadedAt).toLocaleDateString('en-PH', {
+                                  month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila',
+                                })
+                                return (
+                                  <tr key={doc.id} className="border-t hover:bg-gray-50" style={{ borderColor: 'var(--light-gray)' }}>
+                                    {/* Patient */}
+                                    <td className="px-4 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>
+                                      {doc.patient.name}
+                                    </td>
+
+                                    {/* Date */}
+                                    <td className="px-4 py-2.5" style={{ color: 'var(--mid-gray)' }}>
+                                      {uploadDate}
+                                    </td>
+
+                                    {/* File name */}
+                                    <td className="px-4 py-2.5 max-w-[180px]">
+                                      <span className="truncate block" style={{ color: 'var(--charcoal)' }} title={doc.fileName}>
+                                        {doc.fileName}
+                                      </span>
+                                    </td>
+
+                                    {/* Counted checkbox */}
+                                    <td className="px-4 py-2.5 text-center">
+                                      {isSaving ? (
+                                        <Loader2 size={13} className="animate-spin inline" style={{ color: 'var(--mid-gray)' }} />
+                                      ) : (
+                                        <input
+                                          type="checkbox"
+                                          checked={doc.countedInPayroll}
+                                          onChange={e => {
+                                            const checked = e.target.checked
+                                            // If checking and no cutoff set, default to current period
+                                            const defaultCutoff = doc.cutoffPeriod ?? cutoffPeriod
+                                            updateIEPR(doc, checked, checked ? defaultCutoff : null)
+                                          }}
+                                          className="w-4 h-4 rounded accent-teal-600 cursor-pointer"
+                                        />
+                                      )}
+                                    </td>
+
+                                    {/* Cutoff dropdown */}
+                                    <td className="px-4 py-2.5">
+                                      {doc.countedInPayroll ? (
+                                        <select
+                                          value={doc.cutoffPeriod ?? ''}
+                                          onChange={e => updateIEPR(doc, true, e.target.value || null)}
+                                          disabled={isSaving}
+                                          className="px-2 py-1 rounded-lg border text-xs outline-none disabled:opacity-50"
+                                          style={{ borderColor: 'var(--light-gray)', maxWidth: 200 }}>
+                                          <option value="">— Select cutoff —</option>
+                                          {CUTOFF_OPTIONS.map(o => (
+                                            <option key={o.value} value={o.value}>{o.label}</option>
+                                          ))}
+                                        </select>
+                                      ) : (
+                                        <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: '#fee2e2', color: '#b91c1c' }}>Not counted</span>
+                                      )}
+                                    </td>
+
+                                    {/* View button */}
+                                    <td className="px-4 py-2.5 text-center">
+                                      <a
+                                        href={`/api/payroll/ie-pr/file?documentId=${doc.id}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors hover:opacity-80"
+                                        style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}
+                                        title={`View ${doc.fileName}`}>
+                                        <Eye size={12} /> View
+                                      </a>
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })()}
+
           {/* ══ TAB 4: Payslip Generation ══ */}
           {subTab === 'payslips' && (
             <div className="space-y-4">
@@ -3400,10 +3892,16 @@ export default function PayrollPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {/* Export Payroll CSV — summary per consultant + totals row */}
-                  <button onClick={exportPayrollCsv}
+                  {/* Generate Payreg — formatted Excel matching template (Consultant sheet only) */}
+                  <button onClick={generatePayreg}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border"
                     style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                    <Download size={14} /> Generate Payreg
+                  </button>
+                  {/* Export raw payroll XLSX */}
+                  <button onClick={exportPayrollXlsx}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border"
+                    style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
                     <Download size={14} /> Download Payroll
                   </button>
 

@@ -599,6 +599,7 @@ model Order {
   salesInvoiceNumber     String?
   referenceNumber        String?
   arProofUrl             String?  // Per-transaction AR proof attachment (PDF or image)
+  arCustomDate           DateTime? // Manually overridden transaction date for AR Invoice / SOA
   status          OrderStatus @default(COMPLETED)
   transactionDate DateTime
   createdById     String
@@ -777,12 +778,14 @@ model ARPaymentItem {
 model Consultant {
   id              String    @id @default(cuid())
   externalStaffId String?   @unique // Marketing site Staff.id
+  bioId           Int?                // Bio/Employee ID from HR Hub (for payreg)
   name            String    // "LASTNAME, FIRSTNAME"
   department      String    // OT, PT, SLP, SPED, MD, PSYCHOLOGY, etc.
   branch          String    // SBEA, SBGH
   email           String?
   phone           String?
   tinNumber       String?
+  birAddress      String?   // BIR registered address (for payroll XLSX export)
   sssNumber       String?
   philhealthNumber String?
   pagibigNumber   String?
@@ -957,6 +960,9 @@ enum LeaveType {
   PATERNITY
   BEREAVEMENT
   UNPAID
+  SIL       // Service Incentive Leave
+  BDAY      // Birthday Leave
+  TRAINING  // Training Leave
 }
 
 enum RequestStatus {
@@ -1069,6 +1075,7 @@ model EmployeeSettings {
   hrOfficerNameVERDANA String?  // HR officer name for Verdana Store COE/COC
   // Employee request approval settings
   requestApprovalExcludedPositions Json? // JSON array of job titles that branch admins cannot approve (requires ADMIN/ACCOUNTANT)
+  leaveMaxDays        Json?    // { "VACATION": 5, "SICK": 5, "SIL": 5, "BDAY": 1, ... } — max per leave type per year
   updatedAt           DateTime @updatedAt
 }
 
@@ -1471,4 +1478,75 @@ model BeginningBalance {
   @@unique([accountId, periodYear])
   @@index([periodYear])
   @@index([accountId])
+}
+
+// ── IE / PR Payroll Tracking ──────────────────────────────────
+// Mirrors PatientDocument records fetched from the teletherapy hub.
+// We only store the payroll-tracking state locally; all document
+// ── SOA (Statement of Account) ────────────────────────────────
+
+// Singleton settings for SOA PDF generation (bank details, signatories, etc.)
+model SoaSettings {
+  id                   String   @id @default("singleton")
+  clinicName           String?
+  clinicAddress        String?
+  bankName             String?
+  bankBranch           String?
+  bankAccountName      String?
+  bankAccountNo        String?
+  hmoOfficerName       String?
+  hmoOfficerEsigUrl    String?
+  clinicManagerName    String?
+  clinicManagerEsigUrl String?
+  contactEmail         String?
+  contactPhone1        String?
+  contactPhone2        String?
+  updatedAt            DateTime @updatedAt
+}
+
+// Generated SOA records (stored with base64 PDF data)
+model SoaRecord {
+  id              String   @id @default(cuid())
+  walletId        String
+  walletName      String
+  period          String   // "YYYY-MM" format
+  pdfData         String?  // Base64-encoded PDF
+  branch          String?
+  isHighlighted   Boolean  @default(false) // true when multiple SOAs for same provider+period
+  generatedAt     DateTime @default(now())
+  generatedById   String?
+  generatedByName String?
+
+  @@index([walletId, period])
+  @@index([period])
+}
+
+// metadata (patient name, upload date, file) is fetched live from
+// the teletherapy hub's internal API.
+model IEPRPayrollRecord {
+  id               String   @id @default(cuid())
+  documentId       String   @unique // teletherapy PatientDocument.id
+  staffId          String?           // therapist Staff.id = Consultant.externalStaffId
+  countedInPayroll Boolean  @default(false)
+  cutoffPeriod     String?           // e.g. "2026-04-1"
+  notes            String?
+  markedById       String?           // accounting User.id who last updated
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([documentId])
+  @@index([staffId])
+  @@index([countedInPayroll])
+  @@index([cutoffPeriod])
+}
+
+// Per-branch invoice header settings (company name, address, phone shown on invoices)
+model InvoiceSettings {
+  branch      String   @id
+  companyName String?
+  tradeName   String?
+  address     String?
+  phone       String?
+  email       String?
+  updatedAt   DateTime @updatedAt
 }

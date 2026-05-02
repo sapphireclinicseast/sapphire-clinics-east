@@ -92,6 +92,12 @@ export async function GET(req: Request) {
           if (s.bankName) syncData.bankName = s.bankName
           if (s.bankAccountNo) syncData.bankAccountNo = s.bankAccountNo
 
+          // Sync Bio ID (employeeId from Marketing Hub = biometric device ID for payreg)
+          if (s.employeeId) {
+            const bioId = parseInt(s.employeeId)
+            if (!isNaN(bioId)) syncData.bioId = bioId
+          }
+
           // Pre-fill government IDs from HR platform if not already set
           if (s.tin && (!existing || !existing.tinNumber)) syncData.tinNumber = s.tin
           if (s.sss && (!existing || !existing.sssNumber)) syncData.sssNumber = s.sss
@@ -185,7 +191,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, taxDeduction, monthlyRetainer, unitPayRates, isActive, name, department, branch } = await req.json()
+    const { id, taxDeduction, monthlyRetainer, unitPayRates, isActive, name, department, branch, birAddress } = await req.json()
     if (!id) return NextResponse.json({ error: 'ID is required' }, { status: 400 })
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -196,6 +202,7 @@ export async function PUT(req: Request) {
     if (name !== undefined) data.name = name.trim()
     if (department !== undefined) data.department = department
     if (branch !== undefined) data.branch = branch
+    if (birAddress !== undefined) data.birAddress = birAddress || null
 
     const consultant = await prisma.consultant.update({ where: { id }, data })
 

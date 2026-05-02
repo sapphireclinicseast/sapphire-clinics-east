@@ -1,21 +1,30 @@
 @import "tailwindcss";
 
 :root {
-  --teal: #2E5E5A;
-  --deep-teal: #1E3F3C;
-  --bright-teal: #6B9E8F;
-  --pale-teal: #E8F0ED;
-  --gold: #ED6823;
-  --gold-light: #FFA235;
-  --charcoal: #1C2B30;
-  --near-black: #0A1012;
-  --off-white: #F7FAF9;
-  --light-gray: #E8EDEB;
-  --mid-gray: #829995;
+  /* ── Brand palette ──────────────────────────────────────────────
+     Primary   Narra   #1B3F38   Deep forest green (60 % ground)
+     Secondary Moss    #26554B   Mid forest green  (25 % support)
+     Tertiary  Sage    #4A8073   Lighter sage green (25 % support)
+     Accent    Clay    #A85C3D   Warm terracotta    (5 % accent)
+     Accent    Sun     #C69849   Warm gold          (5 % accent)
+     Neutral   Paper   #F5F0E8   Warm off-white     (60 % ground)
+     Neutral   Ink     #1A1A1A   Near-black         (10 % type)
+  ─────────────────────────────────────────────────────────────── */
+  --teal:       #26554B;   /* Moss   — secondary */
+  --deep-teal:  #1B3F38;   /* Narra  — primary   */
+  --bright-teal:#4A8073;   /* Sage   — tertiary  */
+  --pale-teal:  #E2EDEA;   /* light Sage tint — active states, badges */
+  --gold:       #A85C3D;   /* Clay  — accent warm */
+  --gold-light: #C69849;   /* Sun   — accent light */
+  --charcoal:   #1A1A1A;   /* Ink   — primary type */
+  --near-black: #0F110F;   /* deeper Ink */
+  --off-white:  #F5F0E8;   /* Paper — main surface */
+  --light-gray: #E3DDD1;   /* warm Paper border / divider */
+  --mid-gray:   #8A8278;   /* warm mid-tone for secondary text */
 
-  --font-display: var(--font-comfortaa), 'Century Gothic', sans-serif;
-  --font-body: var(--font-dm-sans), 'Helvetica Neue', sans-serif;
-  --font-accent: var(--font-cormorant), 'Georgia', serif;
+  --font-display: var(--font-montserrat), 'Trebuchet MS', sans-serif;
+  --font-body:    var(--font-manrope), 'Helvetica Neue', sans-serif;
+  --font-accent:  var(--font-montserrat), 'Trebuchet MS', sans-serif;
 }
 
 * {

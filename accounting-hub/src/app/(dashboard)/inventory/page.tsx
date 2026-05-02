@@ -157,7 +157,7 @@ function generateTransmittalPDF(data: TransmittalData) {
 <style>
   @page { size: A4 portrait; margin: 0.6in 0.75in; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; color: #1C2B30; font-size: 11pt; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; color: #1A1A1A; font-size: 11pt; }
 
   .header { display: flex; align-items: center; gap: 20px; margin-bottom: 6px; }
   .header img { width: 80px; height: auto; }

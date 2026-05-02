@@ -2064,8 +2064,8 @@ function OrderFormModal({
 
           {/* Unearned Revenue Notice */}
           {(hasUnearnedItems || isAdvancePayment) && (
-            <div className="rounded-xl border p-3" style={{ borderColor: '#FFBA6B', background: '#FFF8F0' }}>
-              <div className="flex items-center gap-2 text-sm font-medium" style={{ color: '#ED6823' }}>
+            <div className="rounded-xl border p-3" style={{ borderColor: '#FFBA6B', background: '#F9F2EB' }}>
+              <div className="flex items-center gap-2 text-sm font-medium" style={{ color: 'var(--gold)' }}>
                 <Wallet size={14} />
                 Unearned Revenue — Digital Wallet
               </div>
@@ -2138,8 +2138,8 @@ function OrderFormModal({
             )}
             {(hasUnearnedItems || isAdvancePayment) && (
               <div className="flex justify-between text-sm mt-1 pt-1 border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                <span className="font-medium" style={{ color: '#ED6823' }}>Revenue Type</span>
-                <span className="font-medium" style={{ color: '#ED6823' }}>Unearned Revenue</span>
+                <span className="font-medium" style={{ color: 'var(--gold)' }}>Revenue Type</span>
+                <span className="font-medium" style={{ color: 'var(--gold)' }}>Unearned Revenue</span>
               </div>
             )}
           </div>
@@ -5478,12 +5478,12 @@ function DiscountSettingsPanel() {
 
               {/* Per-Service / Per-Department Discount Rules */}
               {form.walletType && (
-                <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: '#FFBA6B', background: '#FFF8F0' }}>
+                <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: '#FFBA6B', background: '#F9F2EB' }}>
                   <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#ED6823' }}>
+                    <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--gold)' }}>
                       Service-Specific Discount Rules
                     </h4>
-                    <button onClick={addRule} className="text-xs font-medium px-3 py-1 rounded-lg" style={{ background: '#FFF0E6', color: '#ED6823' }}>
+                    <button onClick={addRule} className="text-xs font-medium px-3 py-1 rounded-lg" style={{ background: '#F5EAE5', color: 'var(--gold)' }}>
                       + Add Rule
                     </button>
                   </div>
@@ -6363,7 +6363,7 @@ function ProductsSection({
                   )}
                 </select>
                 {p.method === 'REWARD_POINTS' ? (
-                  <span className="w-28 px-2 py-2 rounded-xl border text-xs text-right flex items-center justify-end gap-1" style={{ borderColor: 'var(--light-gray)', color: '#ED6823', background: '#FFF8F0' }}>
+                  <span className="w-28 px-2 py-2 rounded-xl border text-xs text-right flex items-center justify-end gap-1" style={{ borderColor: 'var(--light-gray)', color: 'var(--gold)', background: '#F9F2EB' }}>
                     <Star size={10} /> {rpPointsToUse.toLocaleString()}/{rewardPointsTotal.toLocaleString()}
                   </span>
                 ) : (
@@ -6386,8 +6386,8 @@ function ProductsSection({
 
           {/* Reward Points Wallet Selection */}
           {hasRewardPointsPayment && (
-            <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: '#FFBA6B', background: '#FFF8F0' }}>
-              <h4 className="text-xs font-semibold flex items-center gap-1" style={{ color: '#ED6823' }}>
+            <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: '#FFBA6B', background: '#F9F2EB' }}>
+              <h4 className="text-xs font-semibold flex items-center gap-1" style={{ color: 'var(--gold)' }}>
                 <Star size={12} /> Select Wallet for Reward Points
               </h4>
               {rpSelectedWallet ? (
@@ -6404,7 +6404,7 @@ function ProductsSection({
                       {rpSelectedWallet.barcode} &middot; <Star size={10} className="inline" /> {rpSelectedWallet.rewardPoints?.toLocaleString() || 0} pts available
                     </p>
                   </div>
-                  <button onClick={() => setRpSelectedWallet(null)} className="text-xs px-2 py-1 rounded-lg" style={{ color: '#ED6823' }}>Change</button>
+                  <button onClick={() => setRpSelectedWallet(null)} className="text-xs px-2 py-1 rounded-lg" style={{ color: 'var(--gold)' }}>Change</button>
                 </div>
               ) : (
                 <>
@@ -6437,7 +6437,7 @@ function ProductsSection({
               )}
               {cart.length > 0 && (
                 <div className="text-xs font-medium space-y-0.5">
-                  <p style={{ color: '#ED6823' }}>
+                  <p style={{ color: 'var(--gold)' }}>
                     Points needed: {rewardPointsTotal.toLocaleString()} pts &middot; Available: {rpSelectedWallet ? rpWalletPoints.toLocaleString() : '—'} pts
                   </p>
                   {rpSelectedWallet && rpWalletPoints < rewardPointsTotal && (
@@ -6494,7 +6494,7 @@ function ProductsSection({
             <div className="flex justify-between text-sm font-bold"><span style={{ color: 'var(--charcoal)' }}>Net</span><span style={{ color: 'var(--deep-teal)' }}>{formatCurrency(netAmount)}</span></div>
             {hasRewardPointsPayment && rpSelectedWallet && (
               <>
-                <div className="flex justify-between text-xs"><span style={{ color: '#ED6823' }}><Star size={10} className="inline" /> Reward Points ({rpPointsToUse.toLocaleString()} pts)</span><span style={{ color: '#ED6823' }}>{formatCurrency(rpMonetaryValue)}</span></div>
+                <div className="flex justify-between text-xs"><span style={{ color: 'var(--gold)' }}><Star size={10} className="inline" /> Reward Points ({rpPointsToUse.toLocaleString()} pts)</span><span style={{ color: 'var(--gold)' }}>{formatCurrency(rpMonetaryValue)}</span></div>
                 {rpCoveragePercent < 1 && (
                   <>
                     <div className="flex justify-between text-xs"><span style={{ color: 'var(--mid-gray)' }}>Remaining Balance</span><span style={{ color: '#991b1b' }}>{formatCurrency(rpRemainingBalance)}</span></div>
@@ -6507,7 +6507,7 @@ function ProductsSection({
               </>
             )}
             {hasRewardPointsPayment && !rpSelectedWallet && rewardPointsTotal > 0 && (
-              <div className="flex justify-between text-xs"><span style={{ color: '#ED6823' }}><Star size={10} className="inline" /> Points needed</span><span style={{ color: '#ED6823' }}>{rewardPointsTotal.toLocaleString()} pts</span></div>
+              <div className="flex justify-between text-xs"><span style={{ color: 'var(--gold)' }}><Star size={10} className="inline" /> Points needed</span><span style={{ color: 'var(--gold)' }}>{rewardPointsTotal.toLocaleString()} pts</span></div>
             )}
             {!hasRewardPointsPayment && <div className="flex justify-between text-xs"><span style={{ color: 'var(--mid-gray)' }}>Paid</span><span>{formatCurrency(totalPayments)}</span></div>}
             {!hasRewardPointsPayment && totalPayments >= netAmountDisplay - 0.005 && netAmount > 0 && (
@@ -6858,7 +6858,7 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
                       const systemAmt = methods.get(method) || 0
                       const actualAmt = typeof getActual(day, method) === 'number' ? getActual(day, method) as number : 0
                       const diff = actualAmt - systemAmt
-                      const diffColor = diff === 0 ? '#166534' : diff > 0 ? '#ED6823' : '#dc2626'
+                      const diffColor = diff === 0 ? '#166534' : diff > 0 ? 'var(--gold)' : '#dc2626'
                       return (
                         <tr key={method} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                           <td className="px-4 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{method}</td>

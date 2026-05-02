@@ -83,6 +83,9 @@ const LEAVE_TYPES = [
   { value: 'PATERNITY', label: 'Paternity Leave' },
   { value: 'BEREAVEMENT', label: 'Bereavement Leave' },
   { value: 'UNPAID', label: 'Unpaid Leave' },
+  { value: 'SIL', label: 'Service Incentive Leave' },
+  { value: 'BDAY', label: 'Birthday Leave' },
+  { value: 'TRAINING', label: 'Training Leave' },
 ]
 
 const BENEFIT_TYPES = ['SSS', 'PHILHEALTH', 'PAGIBIG', 'TAX']
@@ -275,7 +278,7 @@ interface Payslip {
   details?: any
   pdfUrl?: string | null
   status: string
-  employee: { id: string; firstName: string; lastName: string; department: string; branch: string; rateType: string; dailyRate: number | string; monthlyRate: number | string; email?: string | null }
+  employee: { id: string; firstName: string; lastName: string; department: string; branch: string; rateType: string; dailyRate: number | string; monthlyRate: number | string; email?: string | null; employeeBioId?: number | null }
 }
 
 interface TkUploadRecord {
@@ -294,7 +297,7 @@ interface TkUploadRecord {
 export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoffMonth: parentCutoffMonth, cutoffYear: parentCutoffYear, cutoffHalf: parentCutoffHalf, cutoffPeriod: parentCutoffPeriod }: { canWrite: boolean; branch: string; cutoffMonth: number; cutoffYear: number; cutoffHalf: number; cutoffPeriod: string }) {
   const now = new Date()
 
-  const [subTab, setSubTab] = useState<'list' | 'settings' | 'requests' | 'tk-upload' | 'tk-data' | 'benefits' | 'adjustments' | 'holidays' | 'payslips'>('list')
+  const [subTab, setSubTab] = useState<'list' | 'settings' | 'requests' | 'tk-upload' | 'tk-data' | 'benefits' | 'leave-settings' | 'adjustments' | 'holidays' | 'payslips'>('list')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -391,6 +394,18 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
   const [benefitEmpShare, setBenefitEmpShare] = useState(0)
   const [benefitErShare, setBenefitErShare] = useState(0)
 
+  /* ── Leave Settings ── */
+  interface LeaveEmployee { id: string; firstName: string; lastName: string; branch: string; department: string; used: Record<string, number>; remaining: Record<string, number> }
+  const [leaveMaxDays, setLeaveMaxDays] = useState<Record<string, number>>({
+    VACATION: 5, SICK: 5, EMERGENCY: 3, MATERNITY: 105, PATERNITY: 7,
+    BEREAVEMENT: 3, UNPAID: 0, SIL: 5, BDAY: 1, TRAINING: 0,
+  })
+  const [leaveEmployees, setLeaveEmployees] = useState<LeaveEmployee[]>([])
+  const [leaveYear, setLeaveYear] = useState(new Date().getFullYear())
+  const [leaveLoading, setLeaveLoading] = useState(false)
+  const [leaveSaving, setLeaveSaving] = useState(false)
+  const [leaveSaved, setLeaveSaved] = useState(false)
+
   /* ── Cutoff Adjustments ── */
   interface AdjustmentRow { employeeId: string; employeeName?: string; allowance: number; allowanceType: string; allowanceLabel: string; deduction: number; deductionLabel: string; rowKey: string }
   const adjCutoffMonth = parentCutoffMonth
@@ -410,6 +425,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
   const cutoffYear = parentCutoffYear
   const cutoffHalf = parentCutoffHalf
   const [generating, setGenerating] = useState(false)
+  const [generatingPayreg, setGeneratingPayreg] = useState(false)
   const [expandedPayslip, setExpandedPayslip] = useState('')
   const [pdfGenerating, setPdfGenerating] = useState('')
   const [emailSending, setEmailSending] = useState('')
@@ -545,6 +561,21 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     } catch { /* ignore */ }
   }, [cutoffPeriod, branch])
 
+  const fetchLeaveSettings = useCallback(async () => {
+    setLeaveLoading(true)
+    try {
+      const params = new URLSearchParams({ year: String(leaveYear) })
+      if (branch) params.set('branch', branch)
+      const r = await fetch(`/api/payroll/leave-settings?${params}`)
+      const d = await r.json()
+      if (r.ok) {
+        setLeaveMaxDays(d.leaveMaxDays || {})
+        setLeaveEmployees(d.employees || [])
+      }
+    } catch { /* ignore */ }
+    setLeaveLoading(false)
+  }, [branch, leaveYear])
+
   const fetchEmpPastPayslips = async (employeeId: string) => {
     if (expandedEmpPayslips === employeeId) { setExpandedEmpPayslips(''); return }
     setExpandedEmpPayslips(employeeId)
@@ -576,9 +607,10 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     else if (subTab === 'tk-upload') fetchPastUploads()
     else if (subTab === 'holidays') fetchHolidays()
     else if (subTab === 'benefits') fetchEmployees()
+    else if (subTab === 'leave-settings') fetchLeaveSettings()
     else if (subTab === 'adjustments') fetchEmployees()
     else if (subTab === 'payslips') fetchPayslips()
-  }, [subTab, fetchEmployees, fetchSettings, fetchRequests, fetchTimekeeping, fetchApprovedRequests, fetchPastUploads, fetchHolidays, fetchPayslips])
+  }, [subTab, leaveYear, fetchEmployees, fetchSettings, fetchRequests, fetchTimekeeping, fetchApprovedRequests, fetchPastUploads, fetchHolidays, fetchPayslips, fetchLeaveSettings])
 
   /* ═══════════════════════════════════════════════════════════════
      ACTIONS
@@ -693,10 +725,200 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     setGenerating(false)
   }
 
+  const saveLeaveMaxDays = async () => {
+    setLeaveSaving(true)
+    try {
+      const r = await fetch('/api/payroll/leave-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leaveMaxDays }),
+      })
+      if (!r.ok) throw new Error('Save failed')
+      setLeaveSaved(true)
+      setTimeout(() => setLeaveSaved(false), 2500)
+      await fetchLeaveSettings()
+    } catch { setError('Failed to save leave settings') }
+    setLeaveSaving(false)
+  }
+
+  const generateEmployeePayreg = async () => {
+    if (payslips.length === 0) {
+      alert('No payslips found for this period. Generate payslips first.')
+      return
+    }
+    setGeneratingPayreg(true)
+    try {
+      const XLSX = await import('xlsx')
+      const cutoffLabel = `${MONTHS[cutoffMonth - 1]} ${cutoffYear} — ${cutoffHalf === 1 ? '1st Half' : '2nd Half'}`
+
+      // Fetch adjustments for this cutoff
+      const adjParams = new URLSearchParams({ cutoffPeriod, branch: branch || 'SBEA' })
+      const adjRes = await fetch(`/api/payroll/cutoff-adjustments?${adjParams}`)
+      const adjData: { employeeId: string; allowance: number | string; allowanceType: string; deduction: number | string }[] = adjRes.ok ? await adjRes.json() : []
+
+      // Group adjustments by employee
+      const adjByEmp = new Map<string, { allowance: number; allowanceType: string; deduction: number }[]>()
+      for (const adj of adjData) {
+        if (!adjByEmp.has(adj.employeeId)) adjByEmp.set(adj.employeeId, [])
+        adjByEmp.get(adj.employeeId)!.push({ allowance: Number(adj.allowance) || 0, allowanceType: adj.allowanceType, deduction: Number(adj.deduction) || 0 })
+      }
+
+      // Fetch approved leave requests for this branch
+      const reqParams = new URLSearchParams({ status: 'APPROVED' })
+      if (branch) reqParams.set('branch', branch)
+      const reqRes = await fetch(`/api/payroll/employee-requests?${reqParams}`)
+      const reqData: { employeeId?: string | null; requestType: string; leaveType?: string | null; startDate?: string | null; endDate?: string | null; isHalfDay?: boolean }[] = reqRes.ok ? await reqRes.json() : []
+
+      // Determine cutoff date range
+      let settings = empSettings
+      if (!settings) {
+        const sRes = await fetch('/api/payroll/employee-settings')
+        settings = sRes.ok ? await sRes.json() : null
+      }
+      const [yearStr, monthStr, halfStr] = cutoffPeriod.split('-')
+      const yr = parseInt(yearStr), mo = parseInt(monthStr), half = parseInt(halfStr)
+      let startDay: number, endDay: number
+      if (half === 1) {
+        startDay = settings?.cutoff1Start ?? 1
+        endDay = settings?.cutoff1End ?? 15
+      } else {
+        startDay = settings?.cutoff2Start ?? 16
+        endDay = settings?.cutoff2EndLastDay ? new Date(yr, mo, 0).getDate() : (settings?.cutoff2End ?? new Date(yr, mo, 0).getDate())
+      }
+      let cutoffStart: Date, cutoffEnd: Date
+      if (startDay > endDay) {
+        cutoffStart = new Date(Date.UTC(yr, mo - 2, startDay))
+        cutoffEnd = new Date(Date.UTC(yr, mo - 1, endDay))
+      } else {
+        cutoffStart = new Date(Date.UTC(yr, mo - 1, startDay))
+        cutoffEnd = new Date(Date.UTC(yr, mo - 1, endDay))
+      }
+
+      // Group leave pays by employee and leave type within cutoff range
+      const PAID_LEAVE_TYPES = ['VACATION', 'SICK', 'SIL', 'BDAY', 'TRAINING']
+      const leavesByEmp = new Map<string, Record<string, number>>()
+      for (const req of reqData) {
+        if (!req.employeeId || req.requestType !== 'LEAVE' || !req.leaveType) continue
+        if (!PAID_LEAVE_TYPES.includes(req.leaveType)) continue
+        if (!req.startDate) continue
+        const reqStart = new Date(req.startDate)
+        const reqEnd = req.endDate ? new Date(req.endDate) : reqStart
+        if (reqEnd < cutoffStart || reqStart > cutoffEnd) continue
+        // Count days overlapping with cutoff
+        let days = 0
+        const d = new Date(Math.max(reqStart.getTime(), cutoffStart.getTime()))
+        const end = new Date(Math.min(reqEnd.getTime(), cutoffEnd.getTime()))
+        while (d <= end) { days++; d.setUTCDate(d.getUTCDate() + 1) }
+        if (req.isHalfDay) days = 0.5
+        if (!leavesByEmp.has(req.employeeId)) leavesByEmp.set(req.employeeId, {})
+        const empLeaves = leavesByEmp.get(req.employeeId)!
+        empLeaves[req.leaveType] = (empLeaves[req.leaveType] || 0) + days
+      }
+
+      const headers = [
+        'PAYROLL DATE', 'LOCATION', 'ID NO', 'NAME', 'RATE',
+        'RD', 'WRD', 'VL', 'SL', 'SIL', 'BDAY', 'TRAINING', 'RH', 'SH',
+        'TARDINESS', 'OVERTIME', 'TAXABLE ADJUSTMENT',
+        'GROSS TAXABLE PAY', 'SSSEE', 'PHICEE', 'HDMFEE',
+        'NET TAXABLE AMOUNT BEFORE TAX', 'WTAX',
+        'NET TAXABLE AMOUNT AFTER TAX', 'NON TAXABLE ADJUSTMENT',
+        'NET PAY', '13TH MONTH PAY',
+      ]
+
+      const data: (string | number)[][] = [[], [], [], headers]
+      const r = (n: number) => Math.round(n * 100) / 100
+
+      let totWRD = 0, totVL = 0, totSL = 0, totSIL = 0, totBDAY = 0, totTRAINING = 0
+      let totRH = 0, totTardiness = 0, totOT = 0, totTaxAdj = 0, totGrossT = 0
+      let totSSS = 0, totPHIC = 0, totHDMF = 0, totNetBeforeTax = 0, totWTax = 0
+      let totNetAfterTax = 0, totNonTaxAdj = 0, totNetPay = 0, totThirteenth = 0
+
+      for (const p of payslips) {
+        const emp = p.employee
+        const dailyRate = toNum(emp.rateType === 'DAILY' ? emp.dailyRate : Number(emp.monthlyRate) / 22)
+
+        // Split adjustments into taxable / non-taxable
+        let taxableAdj = 0, nonTaxableAdj = 0
+        for (const adj of (adjByEmp.get(emp.id) || [])) {
+          if (adj.allowanceType === 'TAXABLE') taxableAdj += adj.allowance
+          else nonTaxableAdj += adj.allowance
+        }
+
+        // Leave pays
+        const leaves = leavesByEmp.get(emp.id) || {}
+        const vlPay  = r((leaves['VACATION'] || 0) * dailyRate)
+        const slPay  = r((leaves['SICK']     || 0) * dailyRate)
+        const silPay = r((leaves['SIL']      || 0) * dailyRate)
+        const bdayPay    = r((leaves['BDAY']     || 0) * dailyRate)
+        const trainingPay = r((leaves['TRAINING'] || 0) * dailyRate)
+
+        const wrd       = r(toNum(p.restDayPay))
+        const rh        = r(toNum(p.holidayPay))
+        const tardiness = r(toNum(p.lateDeduction) + toNum(p.undertimeDeduction))
+        const ot        = r(toNum(p.overtimePay))
+        const sss       = r(toNum(p.sssDeduction))
+        const phic      = r(toNum(p.philhealthDeduction))
+        const hdmf      = r(toNum(p.pagibigDeduction))
+        const wtax      = r(toNum(p.taxDeduction))
+        const netPay    = r(toNum(p.netPay))
+        const basicPay  = r(toNum(p.basicPay))
+
+        const grossTaxable   = r(basicPay + ot + rh + wrd + r(taxableAdj))
+        const netBeforeTax   = r(grossTaxable - sss - phic - hdmf)
+        const netAfterTax    = r(netBeforeTax - wtax)
+        const thirteenthMonth = r(basicPay / 12)
+
+        totWRD += wrd; totVL += vlPay; totSL += slPay; totSIL += silPay
+        totBDAY += bdayPay; totTRAINING += trainingPay
+        totRH += rh; totTardiness += tardiness; totOT += ot; totTaxAdj += taxableAdj
+        totGrossT += grossTaxable; totSSS += sss; totPHIC += phic; totHDMF += hdmf
+        totNetBeforeTax += netBeforeTax; totWTax += wtax; totNetAfterTax += netAfterTax
+        totNonTaxAdj += nonTaxableAdj; totNetPay += netPay; totThirteenth += thirteenthMonth
+
+        data.push([
+          cutoffLabel, p.branch,
+          emp.employeeBioId ?? '',
+          `${emp.firstName} ${emp.lastName}`,
+          r(dailyRate),
+          0,                // RD — unworked rest days, 0 in PH law
+          wrd, vlPay, slPay, silPay, bdayPay, trainingPay,
+          rh,
+          0,                // SH — no separate SH tracking, combined in RH
+          tardiness, ot,
+          r(taxableAdj),
+          grossTaxable, sss, phic, hdmf,
+          netBeforeTax, wtax, netAfterTax,
+          r(nonTaxableAdj),
+          netPay, thirteenthMonth,
+        ])
+      }
+
+      data.push([
+        'TOTAL', '', '', '', '',
+        0, r(totWRD), r(totVL), r(totSL), r(totSIL), r(totBDAY), r(totTRAINING),
+        r(totRH), 0, r(totTardiness), r(totOT), r(totTaxAdj), r(totGrossT),
+        r(totSSS), r(totPHIC), r(totHDMF), r(totNetBeforeTax), r(totWTax),
+        r(totNetAfterTax), r(totNonTaxAdj), r(totNetPay), r(totThirteenth),
+      ])
+
+      const ws = XLSX.utils.aoa_to_sheet(data)
+      ws['!cols'] = headers.map(() => ({ wch: 22 }))
+
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Employee')
+
+      const labelSafe = cutoffLabel.replace(/[^a-zA-Z0-9-]/g, '_')
+      XLSX.writeFile(wb, `payreg_employee_${labelSafe}${branch ? '_' + branch : ''}.xlsx`)
+    } catch (e) {
+      alert('Failed to generate payreg: ' + (e instanceof Error ? e.message : String(e)))
+    }
+    setGeneratingPayreg(false)
+  }
+
   const buildEmployeePayslipPdf = async (p: Payslip) => {
     const { jsPDF } = await import('jspdf')
     const { default: autoTable } = await import('jspdf-autotable')
-    const ORANGE: [number, number, number] = [237, 104, 35]
+    const ORANGE: [number, number, number] = [168, 92, 61]   // #A85C3D Clay
     const NET_GREEN: [number, number, number] = [226, 239, 217]
     const WHITE: [number, number, number] = [255, 255, 255]
     const DARK: [number, number, number] = [30, 30, 30]
@@ -1562,6 +1784,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     { key: 'tk-upload', label: 'Timekeeping Upload', icon: Upload },
     { key: 'tk-data', label: 'Timekeeping Data', icon: Clock },
     { key: 'benefits', label: 'Benefits Setting', icon: Shield },
+    { key: 'leave-settings', label: 'Leave Setting', icon: Star },
     { key: 'adjustments', label: 'Allowance/Deduction', icon: DollarSign },
     { key: 'holidays', label: 'Holiday Setting', icon: Calendar },
     { key: 'payslips', label: 'Payslip Generation', icon: FileText },
@@ -3254,6 +3477,152 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
       )}
 
       {/* ═══════════════════════════════════════════════════════════════
+         TAB: LEAVE SETTING
+         ═══════════════════════════════════════════════════════════════ */}
+      {subTab === 'leave-settings' && (
+        <div className="space-y-4">
+
+          {/* ── Leave Quotas ── */}
+          <div className="rounded-2xl border p-4 space-y-3" style={{ borderColor: 'var(--light-gray)' }}>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <p className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Leave Quotas (days per year)</p>
+                <p className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>Set the maximum days allowed per leave type. Enter 0 for unlimited.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                  <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>Year</label>
+                  <select value={leaveYear} onChange={e => setLeaveYear(parseInt(e.target.value))}
+                    className="px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+                    {[new Date().getFullYear() - 1, new Date().getFullYear(), new Date().getFullYear() + 1].map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                </div>
+                <button onClick={fetchLeaveSettings} disabled={leaveLoading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border"
+                  style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                  {leaveLoading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                  Refresh
+                </button>
+                {canWrite && (
+                  <button onClick={saveLeaveMaxDays} disabled={leaveSaving}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white"
+                    style={{ background: leaveSaved ? '#16a34a' : leaveSaving ? 'var(--mid-gray)' : 'var(--teal)' }}>
+                    {leaveSaving ? <Loader2 size={12} className="animate-spin" /> : leaveSaved ? <CheckCircle2 size={12} /> : <Save size={12} />}
+                    {leaveSaved ? 'Saved!' : 'Save Quotas'}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+              {LEAVE_TYPES.map(lt => (
+                <div key={lt.value} className="rounded-xl border p-3 space-y-1.5" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                  <p className="text-[11px] font-semibold" style={{ color: 'var(--charcoal)' }}>{lt.label}</p>
+                  {canWrite ? (
+                    <div className="flex items-center gap-1">
+                      <input type="number" min="0" step="1"
+                        value={leaveMaxDays[lt.value] ?? 0}
+                        onChange={e => setLeaveMaxDays(prev => ({ ...prev, [lt.value]: parseFloat(e.target.value) || 0 }))}
+                        className="w-full px-2 py-1 rounded-lg border text-xs text-center font-mono"
+                        style={{ borderColor: 'var(--light-gray)' }} />
+                      <span className="text-[10px] whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>days</span>
+                    </div>
+                  ) : (
+                    <p className="text-xs font-mono font-semibold" style={{ color: 'var(--teal)' }}>
+                      {leaveMaxDays[lt.value] === 0 ? '∞' : `${leaveMaxDays[lt.value]} days`}
+                    </p>
+                  )}
+                  {leaveMaxDays[lt.value] === 0 && (
+                    <p className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>Unlimited</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Employee Leave Balance Table ── */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>
+              Employee Leave Balances — {leaveYear}
+              {leaveEmployees.length > 0 && <span className="font-normal ml-1" style={{ color: 'var(--mid-gray)' }}>({leaveEmployees.length} employee{leaveEmployees.length !== 1 ? 's' : ''})</span>}
+            </p>
+
+            {leaveLoading ? (
+              <div className="flex items-center justify-center py-10 gap-2 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                <Loader2 size={14} className="animate-spin" /> Loading...
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
+                <table className="w-full text-xs" style={{ minWidth: '900px' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--off-white)' }}>
+                      <th className="text-left px-3 py-2.5 font-semibold sticky left-0 z-10" style={{ color: 'var(--charcoal)', background: 'var(--off-white)', minWidth: '160px' }}>Employee</th>
+                      {LEAVE_TYPES.map(lt => (
+                        <th key={lt.value} className="text-center px-2 py-2.5 font-semibold" style={{ color: 'var(--charcoal)', minWidth: '80px' }}>
+                          <span className="block">{lt.value}</span>
+                          <span className="block text-[10px] font-normal" style={{ color: 'var(--mid-gray)' }}>
+                            {leaveMaxDays[lt.value] === 0 ? '∞' : `/${leaveMaxDays[lt.value]}d`}
+                          </span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {leaveEmployees.length === 0 ? (
+                      <tr><td colSpan={LEAVE_TYPES.length + 1} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No employees found for this branch.</td></tr>
+                    ) : leaveEmployees.map(emp => (
+                      <tr key={emp.id} className="border-t hover:bg-gray-50/50" style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className="px-3 py-2.5 font-medium sticky left-0 bg-white" style={{ color: 'var(--charcoal)' }}>
+                          {emp.firstName} {emp.lastName}
+                          <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>{emp.branch}</span>
+                        </td>
+                        {LEAVE_TYPES.map(lt => {
+                          const used = emp.used[lt.value] || 0
+                          const max = leaveMaxDays[lt.value] ?? 0
+                          const remaining = emp.remaining[lt.value] ?? 0
+                          const isUnlimited = max === 0
+                          const pct = isUnlimited ? 0 : max > 0 ? used / max : 0
+                          const bgColor = isUnlimited ? 'var(--off-white)'
+                            : used === 0 ? '#f0fdf4'
+                            : pct >= 1 ? '#fef2f2'
+                            : pct >= 0.7 ? '#fffbeb'
+                            : '#f0fdf4'
+                          const textColor = isUnlimited ? 'var(--mid-gray)'
+                            : used === 0 ? '#15803d'
+                            : pct >= 1 ? '#dc2626'
+                            : pct >= 0.7 ? '#d97706'
+                            : '#15803d'
+                          return (
+                            <td key={lt.value} className="px-2 py-2.5 text-center">
+                              {isUnlimited ? (
+                                <span className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>—</span>
+                              ) : (
+                                <span className="inline-flex flex-col items-center gap-0.5">
+                                  <span className="px-2 py-0.5 rounded-lg text-[11px] font-semibold font-mono"
+                                    style={{ background: bgColor, color: textColor }}>
+                                    {remaining}d left
+                                  </span>
+                                  {used > 0 && (
+                                    <span className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>{used} used</span>
+                                  )}
+                                </span>
+                              )}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════
          TAB: ALLOWANCE/DEDUCTION
          ═══════════════════════════════════════════════════════════════ */}
       {subTab === 'adjustments' && (
@@ -3846,6 +4215,14 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                 style={{ background: '#7c3aed' }}>
                 {emailingAll ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />}
                 {emailingAll ? 'Sending...' : 'Email All'}
+              </button>
+            )}
+            {payslips.length > 0 && (
+              <button onClick={generateEmployeePayreg} disabled={generatingPayreg}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border disabled:opacity-50"
+                style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                {generatingPayreg ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                {generatingPayreg ? 'Generating...' : 'Generate Payreg'}
               </button>
             )}
           </div>

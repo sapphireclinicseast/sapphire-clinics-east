@@ -40,6 +40,9 @@ const LEAVE_TYPES = [
   { value: 'PATERNITY', label: 'Paternity Leave' },
   { value: 'BEREAVEMENT', label: 'Bereavement Leave' },
   { value: 'UNPAID', label: 'Unpaid Leave' },
+  { value: 'SIL', label: 'Service Incentive Leave' },
+  { value: 'BDAY', label: 'Birthday Leave' },
+  { value: 'TRAINING', label: 'Training Leave' },
 ]
 
 const COE_PURPOSES = [

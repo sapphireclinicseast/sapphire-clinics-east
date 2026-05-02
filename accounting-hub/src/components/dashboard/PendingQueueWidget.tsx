@@ -48,11 +48,11 @@ export default function PendingQueueWidget({ branch }: PendingQueueWidgetProps) 
   }
 
   return (
-    <div className="rounded-2xl border p-5" style={{ borderColor: pending.length > 0 ? '#FFA235' : 'var(--light-gray)', background: pending.length > 0 ? '#FFF8F0' : 'white' }}>
+    <div className="rounded-2xl border p-5" style={{ borderColor: pending.length > 0 ? 'var(--gold-light)' : 'var(--light-gray)', background: pending.length > 0 ? '#F9F2EB' : 'white' }}>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           {pending.length > 0 ? (
-            <AlertCircle size={18} style={{ color: '#ED6823' }} />
+            <AlertCircle size={18} style={{ color: 'var(--gold)' }} />
           ) : (
             <Clock size={18} style={{ color: 'var(--teal)' }} />
           )}
@@ -60,12 +60,12 @@ export default function PendingQueueWidget({ branch }: PendingQueueWidgetProps) 
             Pending Queue
           </h3>
           {pending.length > 0 && (
-            <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: '#ED6823', color: 'white' }}>
+            <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: 'var(--gold)', color: 'white' }}>
               {pending.length}
             </span>
           )}
         </div>
-        <Link href="/pos" className="flex items-center gap-1 text-xs font-medium hover:underline" style={{ color: '#ED6823' }}>
+        <Link href="/pos" className="flex items-center gap-1 text-xs font-medium hover:underline" style={{ color: 'var(--gold)' }}>
           Go to POS <ArrowRight size={14} />
         </Link>
       </div>
