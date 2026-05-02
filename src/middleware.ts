@@ -2,14 +2,53 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 export function middleware(request: NextRequest) {
+  const host = request.headers.get('host') ?? ''
   const { pathname } = request.nextUrl
 
+  // Always pass through Next.js internals + favicon
+  if (pathname.startsWith('/_next') || pathname === '/favicon.ico') {
+    return NextResponse.next()
+  }
+
+  // ── schedules.* subdomain → /schedules/* ──────────────────────────────
+  // The Scheduling Hub is gated by the `sched_access` cookie set on the
+  // /schedules gate page — bypass NextAuth entirely.
+  if (host.startsWith('schedules.')) {
+    if (pathname.startsWith('/api/')) return NextResponse.next()
+
+    const internalPath = pathname === '/' ? '/schedules' : `/schedules${pathname}`
+
+    // Cookie gate for branch/dept pages (e.g. /sbea/ot → /schedules/sbea/ot)
+    const isBranchDept = /^\/schedules\/[^/]+\/[^/]+/.test(internalPath)
+    if (isBranchDept) {
+      const cookie = request.cookies.get('sched_access')?.value
+      if (cookie !== 'scei') {
+        const gateUrl = request.nextUrl.clone()
+        gateUrl.pathname = '/schedules'
+        gateUrl.search = `?next=${encodeURIComponent(pathname)}`
+        return NextResponse.rewrite(gateUrl)
+      }
+    }
+
+    const url = request.nextUrl.clone()
+    url.pathname = internalPath
+    return NextResponse.rewrite(url)
+  }
+
+  // ── queue.* subdomain → /queue/* ──────────────────────────────────────
+  if (host.startsWith('queue.')) {
+    if (pathname.startsWith('/api/')) return NextResponse.next()
+    const internalPath = pathname === '/' ? '/queue' : `/queue${pathname}`
+    const url = request.nextUrl.clone()
+    url.pathname = internalPath
+    return NextResponse.rewrite(url)
+  }
+
+  // ── Default: NextAuth-gated app on the main host ──────────────────────
   const publicPaths = ['/login', '/forgot-password', '/reset-password', '/api/', '/capture']
   const isPublic = publicPaths.some((p) => pathname.startsWith(p))
-
   if (isPublic) return NextResponse.next()
 
-  // Check for session cookie (NextAuth sets this)
   const sessionToken =
     request.cookies.get('authjs.session-token')?.value ||
     request.cookies.get('__Secure-authjs.session-token')?.value

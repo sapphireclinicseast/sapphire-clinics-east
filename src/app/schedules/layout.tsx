@@ -1,4 +1,13 @@
+import type { Metadata } from 'next'
 import Image from 'next/image'
+
+export const metadata: Metadata = {
+  title: 'SAPPHIRE Schedule Hub — Sapphire Clinics East',
+  openGraph: {
+    title: 'SAPPHIRE Schedule Hub',
+    siteName: 'SAPPHIRE Schedule Hub',
+  },
+}
 
 export default function SchedulesLayout({ children }: { children: React.ReactNode }) {
   return (
