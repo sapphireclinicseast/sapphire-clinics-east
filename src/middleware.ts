@@ -10,19 +10,19 @@ export function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // ── schedules.* subdomain → /schedules/* ──────────────────────────────
-  // The Scheduling Hub is gated by the `sched_access` cookie set on the
-  // /schedules gate page — bypass NextAuth entirely.
+  // ── schedules.* subdomain ─────────────────────────────────────────────
+  // Path → /schedules mapping is handled by `rewrites()` in next.config.ts
+  // (so the Next.js client router knows the matched-path and doesn't fight
+  // the URL bar). Middleware only handles:
+  //   • bypassing the global NextAuth gate for this host
+  //   • cookie-gating branch/dept pages, redirecting to / when missing
   if (host.startsWith('schedules.')) {
     if (pathname.startsWith('/api/')) return NextResponse.next()
 
-    const internalPath = pathname === '/' ? '/schedules' : `/schedules${pathname}`
-
-    // Cookie gate for branch/dept pages (e.g. /sbea/ot → gate at /).
-    // Use a *redirect* (not rewrite) so the browser URL ends up at "/" and the
-    // Next.js client router stops trying to resolve /sbea/ot against the
-    // file-system routes (which would trigger the root notFound boundary).
-    const isBranchDept = /^\/schedules\/[^/]+\/[^/]+/.test(internalPath)
+    // Branch/dept page (e.g. /sbea/ot) requires the sched_access cookie.
+    // We detect them as exactly /<branch>/<dept> at the URL-bar level —
+    // anything deeper or shallower is left alone (gate or static).
+    const isBranchDept = /^\/[^/]+\/[^/]+\/?$/.test(pathname)
     if (isBranchDept) {
       const cookie = request.cookies.get('sched_access')?.value
       if (cookie !== 'scei') {
@@ -33,24 +33,12 @@ export function middleware(request: NextRequest) {
       }
     }
 
-    // Authenticated branch/dept render: rewrite the request internally to
-    // /schedules/<branch>/<dept> while keeping the browser URL on
-    // schedules.sapphireclinicseast.org/<branch>/<dept>. Set a header so
-    // the client router treats the matched-path as authoritative.
-    const url = request.nextUrl.clone()
-    url.pathname = internalPath
-    const res = NextResponse.rewrite(url)
-    res.headers.set('x-middleware-rewrite', url.toString())
-    return res
+    return NextResponse.next()
   }
 
-  // ── queue.* subdomain → /queue/* ──────────────────────────────────────
+  // ── queue.* subdomain — public, no cookie gate ─────────────────────────
   if (host.startsWith('queue.')) {
-    if (pathname.startsWith('/api/')) return NextResponse.next()
-    const internalPath = pathname === '/' ? '/queue' : `/queue${pathname}`
-    const url = request.nextUrl.clone()
-    url.pathname = internalPath
-    return NextResponse.rewrite(url)
+    return NextResponse.next()
   }
 
   // ── Default: NextAuth-gated app on the main host ──────────────────────
