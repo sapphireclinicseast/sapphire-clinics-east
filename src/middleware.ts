@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server'
 
 export function middleware(request: NextRequest) {
   const host = request.headers.get('host') ?? ''
-  const { pathname } = request.nextUrl
+  const { pathname, search } = request.nextUrl
 
   // Always pass through Next.js internals + favicon
   if (pathname.startsWith('/_next') || pathname === '/favicon.ico') {
@@ -11,34 +11,45 @@ export function middleware(request: NextRequest) {
   }
 
   // ── schedules.* subdomain ─────────────────────────────────────────────
-  // Path → /schedules mapping is handled by `rewrites()` in next.config.ts
-  // (so the Next.js client router knows the matched-path and doesn't fight
-  // the URL bar). Middleware only handles:
-  //   • bypassing the global NextAuth gate for this host
-  //   • cookie-gating branch/dept pages, redirecting to / when missing
+  // The Scheduling Hub lives under `/schedules/...` in the file system.
+  // Redirect any non-/schedules URL on this host into that prefix so the
+  // browser URL and the rendered route always agree (otherwise the
+  // Next.js client router renders the global notFound boundary on top
+  // of the gate page after hydration).
   if (host.startsWith('schedules.')) {
     if (pathname.startsWith('/api/')) return NextResponse.next()
 
-    // Branch/dept page (e.g. /sbea/ot) requires the sched_access cookie.
-    // We detect them as exactly /<branch>/<dept> at the URL-bar level —
-    // anything deeper or shallower is left alone (gate or static).
-    const isBranchDept = /^\/[^/]+\/[^/]+\/?$/.test(pathname)
-    if (isBranchDept) {
-      const cookie = request.cookies.get('sched_access')?.value
-      if (cookie !== 'scei') {
-        const gateUrl = request.nextUrl.clone()
-        gateUrl.pathname = '/'
-        gateUrl.search = `?next=${encodeURIComponent(pathname)}`
-        return NextResponse.redirect(gateUrl)
+    // Already under /schedules — handle cookie gate, then continue.
+    if (pathname === '/schedules' || pathname.startsWith('/schedules/')) {
+      const isBranchDept = /^\/schedules\/[^/]+\/[^/]+\/?$/.test(pathname)
+      if (isBranchDept) {
+        const cookie = request.cookies.get('sched_access')?.value
+        if (cookie !== 'scei') {
+          const gateUrl = request.nextUrl.clone()
+          gateUrl.pathname = '/schedules'
+          gateUrl.search = `?next=${encodeURIComponent(pathname)}`
+          return NextResponse.redirect(gateUrl)
+        }
       }
+      return NextResponse.next()
     }
 
-    return NextResponse.next()
+    // Anything else on this host (including '/' and '/sbea/ot' style URLs)
+    // gets redirected into the /schedules/* tree.
+    const target = request.nextUrl.clone()
+    target.pathname = pathname === '/' ? '/schedules' : `/schedules${pathname}`
+    target.search = search
+    return NextResponse.redirect(target)
   }
 
   // ── queue.* subdomain — public, no cookie gate ─────────────────────────
   if (host.startsWith('queue.')) {
-    return NextResponse.next()
+    if (pathname === '/queue' || pathname.startsWith('/queue/')) return NextResponse.next()
+    if (pathname.startsWith('/api/')) return NextResponse.next()
+    const target = request.nextUrl.clone()
+    target.pathname = pathname === '/' ? '/queue' : `/queue${pathname}`
+    target.search = search
+    return NextResponse.redirect(target)
   }
 
   // ── Default: NextAuth-gated app on the main host ──────────────────────

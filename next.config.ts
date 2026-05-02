@@ -55,44 +55,6 @@ const nextConfig: NextConfig = {
       },
     ]
   },
-
-  // ── Host-based rewrites ──────────────────────────────────────────────────
-  // The Scheduling Hub lives at schedules.sapphireclinicseast.org and uses
-  // path-only URLs like /sbea/ot. Internally those map to /schedules/sbea/ot.
-  // Using next.config rewrites (rather than middleware NextResponse.rewrite)
-  // ensures the Next.js client router knows the matched-path and doesn't
-  // re-resolve the URL bar against the file-system routes (which would
-  // trigger the global notFound boundary).
-  async rewrites() {
-    return {
-      beforeFiles: [
-        // schedules.sapphireclinicseast.org/(/.../):* → /schedules/...
-        {
-          source: '/',
-          has: [{ type: 'host', value: 'schedules.sapphireclinicseast.org' }],
-          destination: '/schedules',
-        },
-        {
-          source: '/:branch/:dept',
-          has: [{ type: 'host', value: 'schedules.sapphireclinicseast.org' }],
-          destination: '/schedules/:branch/:dept',
-        },
-        // queue.sapphireclinicseast.org/* → /queue/*
-        {
-          source: '/',
-          has: [{ type: 'host', value: 'queue.sapphireclinicseast.org' }],
-          destination: '/queue',
-        },
-        {
-          source: '/:path*',
-          has: [{ type: 'host', value: 'queue.sapphireclinicseast.org' }],
-          destination: '/queue/:path*',
-        },
-      ],
-      afterFiles: [],
-      fallback: [],
-    }
-  },
 }
 
 export default nextConfig
