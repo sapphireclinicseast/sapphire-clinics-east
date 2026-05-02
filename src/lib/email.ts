@@ -1,6 +1,19 @@
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+// Lazy construction so `next build`'s page-data collection doesn't crash when
+// RESEND_API_KEY is unset. The constructor throws if the key is missing, and
+// it's not needed until an actual email send happens at request time.
+let _resend: Resend | null = null
+function getResend(): Resend {
+  if (_resend) return _resend
+  const key = process.env.RESEND_API_KEY
+  if (!key) {
+    throw new Error('RESEND_API_KEY is not set — cannot send email.')
+  }
+  _resend = new Resend(key)
+  return _resend
+}
+
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? 'SCEI Teletherapy <noreply@do-not-reply.sapphireclinicseast.org>'
 
 interface Attachment {
@@ -22,7 +35,7 @@ export async function sendEmail({
   attachments?: Attachment[]
 }) {
   const ccList = !cc ? undefined : Array.isArray(cc) ? cc : [cc]
-  const { data, error } = await resend.emails.send({
+  const { data, error } = await getResend().emails.send({
     from: FROM_EMAIL,
     to,
     cc: ccList,
