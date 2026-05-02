@@ -130,8 +130,7 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           command_timeout: 30m
           script: |
-            # NOTE: deliberately NOT using `set -e` so we can capture build
-            # exit codes and print diagnostic context before bailing.
+            set -eo pipefail
             DOCKER_DIR="/var/www/sapphireclinicseast.org/docker"
             ENV_FILE="/opt/sapphire/docker/.env.production"
 
@@ -146,27 +145,15 @@ jobs:
 
             cd "$DOCKER_DIR"
 
-            echo "→ Currently running marketing-hub container (if any):"
-            docker ps --filter "name=sapphire_app" --format "  {{.Names}}  image={{.Image}}  status={{.Status}}" || true
-            echo "→ docker compose config check..."
-            docker compose --env-file "$ENV_FILE" config --services 2>&1 | head -10 || true
-
             echo "→ Tagging current image as rollback (best-effort)..."
             docker tag sapphire_app:latest sapphire_app:rollback 2>/dev/null || true
 
             echo "→ Building sapphire_app from /var/www/sapphireclinicseast.org..."
-            # Full output (no tail) so we can see any build error in the Actions log
-            docker compose --env-file "$ENV_FILE" build app 2>&1
-            BUILD_RC=$?
-            echo "   Build exit code: $BUILD_RC"
-            if [ "$BUILD_RC" != "0" ]; then
-              echo "❌ Build failed — leaving previous container untouched."
-              exit 1
-            fi
+            docker compose --env-file "$ENV_FILE" build app 2>&1 | tail -20
             echo "   Image built."
 
             echo "→ Recreating sapphire_app container..."
-            docker compose --env-file "$ENV_FILE" up -d --force-recreate app 2>&1
+            docker compose --env-file "$ENV_FILE" up -d --force-recreate app 2>&1 | tail -5
             echo "   Container started."
 
             echo "→ Waiting 25s for app to stabilize..."
