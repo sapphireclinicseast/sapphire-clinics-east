@@ -18,21 +18,30 @@ export function middleware(request: NextRequest) {
 
     const internalPath = pathname === '/' ? '/schedules' : `/schedules${pathname}`
 
-    // Cookie gate for branch/dept pages (e.g. /sbea/ot → /schedules/sbea/ot)
+    // Cookie gate for branch/dept pages (e.g. /sbea/ot → gate at /).
+    // Use a *redirect* (not rewrite) so the browser URL ends up at "/" and the
+    // Next.js client router stops trying to resolve /sbea/ot against the
+    // file-system routes (which would trigger the root notFound boundary).
     const isBranchDept = /^\/schedules\/[^/]+\/[^/]+/.test(internalPath)
     if (isBranchDept) {
       const cookie = request.cookies.get('sched_access')?.value
       if (cookie !== 'scei') {
         const gateUrl = request.nextUrl.clone()
-        gateUrl.pathname = '/schedules'
+        gateUrl.pathname = '/'
         gateUrl.search = `?next=${encodeURIComponent(pathname)}`
-        return NextResponse.rewrite(gateUrl)
+        return NextResponse.redirect(gateUrl)
       }
     }
 
+    // Authenticated branch/dept render: rewrite the request internally to
+    // /schedules/<branch>/<dept> while keeping the browser URL on
+    // schedules.sapphireclinicseast.org/<branch>/<dept>. Set a header so
+    // the client router treats the matched-path as authoritative.
     const url = request.nextUrl.clone()
     url.pathname = internalPath
-    return NextResponse.rewrite(url)
+    const res = NextResponse.rewrite(url)
+    res.headers.set('x-middleware-rewrite', url.toString())
+    return res
   }
 
   // ── queue.* subdomain → /queue/* ──────────────────────────────────────
