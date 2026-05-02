@@ -136,7 +136,8 @@ if rclone listremotes 2>/dev/null | grep -q "^offsite:$"; then
   rclone copy --no-traverse --transfers=2 \
     "$DEST/marketing_${TS}.sql.gz" offsite:sapphire/db/ 2>&1 \
     | tail -3
-  rclone copy --no-traverse --transfers=2 \
+  # MOVE: delete local copy on successful Drive upload (heavy ~265MB)
+  rclone move --no-traverse --transfers=2 \
     "$DEST/sapphire_uploads_${TS}.tar.gz" offsite:sapphire/uploads/ 2>&1 \
     | tail -3
   if [ -f "$DEST/sapphire_hub_src_${TS}.tar.gz" ]; then
@@ -149,12 +150,14 @@ if rclone listremotes 2>/dev/null | grep -q "^offsite:$"; then
     rclone copy --no-traverse "$DEST/hr_data_${TS}.tar.gz" offsite:sapphire/hr/data/ 2>&1 | tail -3
   fi
   if [ -f "$DEST/hr_uploads_${TS}.tar.gz" ]; then
-    rclone copy --no-traverse --transfers=2 \
+    # MOVE: delete local copy on successful Drive upload (heavy ~1.3GB)
+    rclone move --no-traverse --transfers=2 \
       "$DEST/hr_uploads_${TS}.tar.gz" offsite:sapphire/hr/uploads/ 2>&1 | tail -3
   fi
   # Teletherapy uploads
   if [ -f "$DEST/teletherapy_uploads_${TS}.tar.gz" ]; then
-    rclone copy --no-traverse --transfers=2 \
+    # MOVE: delete local copy on successful Drive upload
+    rclone move --no-traverse --transfers=2 \
       "$DEST/teletherapy_uploads_${TS}.tar.gz" offsite:sapphire/teletherapy/ 2>&1 | tail -3
   fi
   # System config + crontab
