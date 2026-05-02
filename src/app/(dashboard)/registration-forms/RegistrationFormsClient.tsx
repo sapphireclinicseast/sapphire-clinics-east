@@ -11,7 +11,7 @@ const FORM_TYPES = [
   { key: 'registration',   title: 'Registration Form',           sbea: 'GULaVBpI', sbgh: 'VaCB1bkE' },
   { key: 'group-therapy',  title: 'Group Therapy Registration',  sbea: 'ChrSrsBF', sbgh: null },
   { key: 'sip',            title: 'SIP Registration Form',       sbea: 'SGWVxqcW', sbgh: null },
-  { key: 'psych',          title: 'Psych Registration Form',     sbea: 'X2YDKTaH', sbgh: null },
+  { key: 'psych',          title: 'Psych Registration Form',     sbea: 'X2YDKTaH', sbgh: 'KVp8gH3N' },
 ]
 
 const HR_FORM_BASE = 'https://hr.sapphireclinicseast.org/forms/fill/'
@@ -188,7 +188,7 @@ export default function RegistrationFormsClient({ role }: Props) {
     <div className="p-6 max-w-6xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(26,123,138,0.1)' }}>
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(46,94,90,0.1)' }}>
           <FileText size={20} style={{ color: 'var(--teal)' }} />
         </div>
         <div>
@@ -371,7 +371,7 @@ export default function RegistrationFormsClient({ role }: Props) {
                                 <span
                                   className="text-xs font-semibold px-2 py-0.5 rounded-full"
                                   style={item._branch === 'SBEA'
-                                    ? { background: 'rgba(26,123,138,0.1)', color: 'var(--teal)' }
+                                    ? { background: 'rgba(46,94,90,0.1)', color: 'var(--teal)' }
                                     : { background: 'rgba(234,179,8,0.1)', color: '#92400e' }
                                   }
                                 >
