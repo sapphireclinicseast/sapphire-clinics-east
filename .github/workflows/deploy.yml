@@ -315,8 +315,16 @@ jobs:
             # to the marketing hub (src/, prisma/, etc.) living at the repo root.
             # A blanket `git reset --hard origin/main` would discard them.
             git checkout origin/main -- accounting-hub/
+            # Also sync client-portal/ and teletherapy/ source so the daily
+            # snapshot of this directory captures the rebrand + any UI updates.
+            # These two apps are deployed from elsewhere (Docker / PM2), but
+            # the backup script reads from /opt/sapphire-marketing-hub.
+            git checkout origin/main -- client-portal/ 2>/dev/null || true
+            git checkout origin/main -- teletherapy/   2>/dev/null || true
             git checkout origin/main -- .github/ scripts/ 2>/dev/null || true
             echo "   accounting-hub/ synced to: $(git log -1 --oneline origin/main -- accounting-hub/)"
+            echo "   client-portal/  synced to: $(git log -1 --oneline origin/main -- client-portal/)"
+            echo "   teletherapy/    synced to: $(git log -1 --oneline origin/main -- teletherapy/)"
 
             echo "→ Running DB migrations on accounting_db..."
             MIGRATION_DIR="$ACCT_DIR/accounting-hub/prisma/migrations"

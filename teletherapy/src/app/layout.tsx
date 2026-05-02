@@ -1,24 +1,20 @@
 import type { Metadata } from 'next'
-import { Comfortaa, Cormorant_Garamond, DM_Sans } from 'next/font/google'
+import { Montserrat, Manrope } from 'next/font/google'
 import './globals.css'
 
-const comfortaa = Comfortaa({
+// Brand fonts (post-2026 brand guide):
+//   Montserrat — Display / Headlines / Wordmark / UI Buttons
+//   Manrope    — Body / Long-form / Captions / Data
+const montserrat = Montserrat({
   subsets: ['latin'],
-  variable: '--font-comfortaa',
+  variable: '--font-montserrat',
   weight: ['300', '400', '500', '600', '700'],
   display: 'swap',
 })
 
-const cormorantGaramond = Cormorant_Garamond({
+const manrope = Manrope({
   subsets: ['latin'],
-  variable: '--font-cormorant',
-  weight: ['300', '400', '500', '600', '700'],
-  display: 'swap',
-})
-
-const dmSans = DM_Sans({
-  subsets: ['latin'],
-  variable: '--font-dm-sans',
+  variable: '--font-manrope',
   weight: ['300', '400', '500', '600', '700'],
   display: 'swap',
 })
@@ -34,8 +30,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={`${comfortaa.variable} ${cormorantGaramond.variable} ${dmSans.variable}`}>
-      <body className="min-h-screen bg-[var(--off-white)]">
+    <html lang="en" className={`${montserrat.variable} ${manrope.variable}`}>
+      <body className="min-h-screen bg-[var(--paper)]">
         {children}
       </body>
     </html>

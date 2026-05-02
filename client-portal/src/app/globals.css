@@ -1,119 +1,124 @@
 @import "tailwindcss";
 
+/* ─── Brand palette ─────────────────────────────────────────────
+   60% Paper + Narra · 25% Moss + Sage · 10% Ink · 5% Clay + Sun
+   Narra + Paper — default highest-contrast surface
+   Sage + Paper  — section openers, secondary surfaces
+   Narra + Sun   — hero moments
+   Moss + Clay   — editorial accents, sparingly
+*/
 :root {
-  --teal: #2E5E5A;
-  --deep-teal: #1F4944;
-  --bright-teal: #6B9E8F;
-  --pale-teal: #EEF4F2;
-  --gold: #ED6823;
-  --gold-light: #FFA235;
-  --accent: #829995;
-  --charcoal: #1A2E2B;
-  --near-black: #0F1F1D;
-  --off-white: #F7FAF9;
-  --light-gray: #E0E8E6;
-  --mid-gray: #7A908C;
+  --narra:  #1B3F38;       /* primary deep green — type, narra surfaces */
+  --moss:   #26554B;       /* secondary — supporting cards / sections */
+  --sage:   #4A8073;       /* tertiary — softer green */
+  --clay:   #A85C3D;       /* accent warm — CTAs, links */
+  --sun:    #C69849;       /* accent light — key data, single-point emphasis */
+  --paper:  #F5F0E8;       /* neutral ground — primary surface */
+  --ink:    #1A1A1A;       /* near-black — type, fine rules */
 
-  --font-display: var(--font-comfortaa), 'Century Gothic', sans-serif;
-  --font-heading: var(--font-cormorant), 'Georgia', serif;
-  --font-body: var(--font-dm-sans), 'Helvetica Neue', sans-serif;
+  /* Tonal helpers for borders, hover wash, and divider lines on paper. */
+  --paper-2:  #ECE6D9;     /* slightly deeper paper for cards over paper */
+  --paper-3:  #DCD3C0;     /* softest divider on paper */
+  --sage-tint: rgba(74, 128, 115, 0.10);    /* sage 10% wash */
+  --moss-tint: rgba(38, 85, 75, 0.08);
+  --clay-tint: rgba(168, 92, 61, 0.10);
+  --sun-tint:  rgba(198, 152, 73, 0.14);
+  --mid-gray: #6B6357;     /* warm grey on paper, replaces cool slate */
+
+  --font-display: var(--font-montserrat), 'Helvetica Neue', Arial, sans-serif;
+  --font-heading: var(--font-montserrat), 'Helvetica Neue', Arial, sans-serif;
+  --font-body:    var(--font-manrope),    'Helvetica Neue', Arial, sans-serif;
+
+  /* Legacy aliases — kept so older inline styles using var(--teal) / etc. */
+  /* don't break visually while we migrate. Mapped to the closest brand value. */
+  --teal:        var(--moss);
+  --deep-teal:   var(--narra);
+  --bright-teal: var(--sage);
+  --pale-teal:   var(--paper-2);
+  --gold:        var(--clay);
+  --gold-light:  var(--sun);
+  --charcoal:    var(--ink);
+  --off-white:   var(--paper);
+  --light-gray:  var(--paper-3);
 }
 
 * { box-sizing: border-box; }
 
 body {
   font-family: var(--font-body);
-  color: var(--charcoal);
-  background: var(--off-white);
+  color: var(--ink);
+  background: var(--paper);
 }
 
-h1, h2, h3 {
+h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-heading);
   font-weight: 600;
-  letter-spacing: -0.01em;
-}
-h4, h5, h6 {
-  font-family: var(--font-display);
-  font-weight: 500;
+  letter-spacing: -0.015em;
+  color: var(--narra);
 }
 
 /* ─── Scrollbar ──────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: var(--light-gray); }
-::-webkit-scrollbar-thumb { background: var(--mid-gray); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--teal); }
+::-webkit-scrollbar-track { background: var(--paper-2); }
+::-webkit-scrollbar-thumb { background: var(--sage); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--moss); }
 
 /* ─── Animations ─────────────────────────────────────────────── */
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-@keyframes slideDown {
-  from { opacity: 0; transform: translateY(-16px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-@keyframes gateSlideUp {
-  from { opacity: 0; transform: translateY(30px) scale(0.97); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
+@keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideDown { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes gateSlideUp { from { opacity: 0; transform: translateY(30px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @keyframes pulseRing {
-  0% { box-shadow: 0 0 0 0 rgba(237, 104, 35, 0.4); }
-  70% { box-shadow: 0 0 0 12px rgba(237, 104, 35, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(237, 104, 35, 0); }
+  0%   { box-shadow: 0 0 0 0 rgba(168, 92, 61, 0.4); }
+  70%  { box-shadow: 0 0 0 12px rgba(168, 92, 61, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(168, 92, 61, 0); }
 }
 
-.animate-fade-up { animation: fadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards; opacity: 0; }
-.animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
-.animate-slide-down { animation: slideDown 0.4s ease-out forwards; opacity: 0; }
-.animate-gate { animation: gateSlideUp 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
-.animate-pulse-ring { animation: pulseRing 1.8s ease-out infinite; }
+.animate-fade-up   { animation: fadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards; opacity: 0; }
+.animate-fade-in   { animation: fadeIn 0.3s ease-out forwards; }
+.animate-slide-down{ animation: slideDown 0.4s ease-out forwards; opacity: 0; }
+.animate-gate      { animation: gateSlideUp 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+.animate-pulse-ring{ animation: pulseRing 1.8s ease-out infinite; }
 
 .stagger-1 { animation-delay: 0.05s; }
-.stagger-2 { animation-delay: 0.1s; }
+.stagger-2 { animation-delay: 0.10s; }
 .stagger-3 { animation-delay: 0.15s; }
-.stagger-4 { animation-delay: 0.2s; }
+.stagger-4 { animation-delay: 0.20s; }
 .stagger-5 { animation-delay: 0.25s; }
-.stagger-6 { animation-delay: 0.3s; }
+.stagger-6 { animation-delay: 0.30s; }
 .stagger-7 { animation-delay: 0.35s; }
 
-/* ─── Card ───────────────────────────────────────────────────── */
+/* ─── Card (Paper-on-paper) ──────────────────────────────────── */
 .card {
-  background: white;
+  background: #fff;
   border-radius: 18px;
-  border: 1px solid var(--light-gray);
+  border: 1px solid var(--paper-3);
   padding: 28px;
-  box-shadow: 0 2px 12px rgba(46, 94, 90, 0.06);
+  box-shadow: 0 2px 12px rgba(27, 63, 56, 0.06);
   transition: transform 0.25s ease-out, box-shadow 0.25s ease-out, border-color 0.25s ease-out;
 }
 .card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 12px 32px rgba(46, 94, 90, 0.12);
-  border-color: rgba(46, 94, 90, 0.25);
+  box-shadow: 0 12px 32px rgba(27, 63, 56, 0.12);
+  border-color: rgba(74, 128, 115, 0.35);
 }
 .card-static {
-  background: white;
+  background: #fff;
   border-radius: 18px;
-  border: 1px solid var(--light-gray);
+  border: 1px solid var(--paper-3);
   padding: 28px;
-  box-shadow: 0 2px 12px rgba(46, 94, 90, 0.06);
+  box-shadow: 0 2px 12px rgba(27, 63, 56, 0.06);
 }
 
 /* ─── Buttons ────────────────────────────────────────────────── */
+/* Primary uses Narra — the dominant brand colour, calmest read on Paper. */
 .btn-primary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: linear-gradient(135deg, var(--teal), var(--deep-teal));
-  color: white;
+  background: var(--narra);
+  color: #fff;
   font-family: var(--font-display);
   font-weight: 600;
   font-size: 14px;
@@ -123,22 +128,24 @@ h4, h5, h6 {
   border: none;
   cursor: pointer;
   transition: all 0.2s ease-out;
-  box-shadow: 0 2px 10px rgba(46, 94, 90, 0.3);
+  box-shadow: 0 2px 10px rgba(27, 63, 56, 0.25);
 }
 .btn-primary:hover:not(:disabled) {
-  box-shadow: 0 6px 20px rgba(46, 94, 90, 0.4);
+  background: var(--moss);
+  box-shadow: 0 6px 20px rgba(27, 63, 56, 0.35);
   transform: translateY(-1px);
 }
 .btn-primary:active:not(:disabled) { transform: scale(0.97); }
 .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
 
+/* CTA uses Clay — the 5% accent. Reserved for the *single* key action. */
 .btn-cta {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: linear-gradient(135deg, var(--gold), var(--gold-light));
-  color: white;
+  background: var(--clay);
+  color: #fff;
   font-family: var(--font-display);
   font-weight: 600;
   font-size: 14px;
@@ -148,10 +155,11 @@ h4, h5, h6 {
   border: none;
   cursor: pointer;
   transition: all 0.2s ease-out;
-  box-shadow: 0 2px 10px rgba(237, 104, 35, 0.35);
+  box-shadow: 0 2px 10px rgba(168, 92, 61, 0.30);
 }
 .btn-cta:hover:not(:disabled) {
-  box-shadow: 0 6px 20px rgba(237, 104, 35, 0.45);
+  background: #944D32;
+  box-shadow: 0 6px 20px rgba(168, 92, 61, 0.40);
   transform: translateY(-1px);
 }
 .btn-cta:active:not(:disabled) { transform: scale(0.97); }
@@ -162,21 +170,20 @@ h4, h5, h6 {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: white;
-  color: var(--charcoal);
+  background: #fff;
+  color: var(--narra);
   font-family: var(--font-display);
   font-weight: 500;
   font-size: 14px;
   padding: 11px 22px;
   border-radius: 12px;
-  border: 1.5px solid var(--light-gray);
+  border: 1.5px solid var(--paper-3);
   cursor: pointer;
   transition: all 0.2s ease-out;
 }
 .btn-secondary:hover:not(:disabled) {
-  border-color: var(--teal);
-  color: var(--teal);
-  background: var(--pale-teal);
+  border-color: var(--sage);
+  background: var(--paper-2);
 }
 .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -187,27 +194,27 @@ h4, h5, h6 {
   gap: 6px;
   padding: 9px 18px;
   border-radius: 999px;
-  border: 1.5px solid var(--light-gray);
-  background: white;
-  color: var(--charcoal);
+  border: 1.5px solid var(--paper-3);
+  background: #fff;
+  color: var(--narra);
   font-family: var(--font-display);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease-out;
 }
-.pill:hover { border-color: var(--bright-teal); }
+.pill:hover { border-color: var(--sage); }
 .pill-active {
-  background: linear-gradient(135deg, var(--teal), var(--deep-teal));
-  color: white;
+  background: var(--narra);
+  color: #fff;
   border-color: transparent;
-  box-shadow: 0 2px 10px rgba(46, 94, 90, 0.3);
+  box-shadow: 0 2px 10px rgba(27, 63, 56, 0.30);
 }
 .pill-gold-active {
-  background: linear-gradient(135deg, var(--gold), var(--gold-light));
-  color: white;
+  background: var(--clay);
+  color: #fff;
   border-color: transparent;
-  box-shadow: 0 2px 10px rgba(237, 104, 35, 0.3);
+  box-shadow: 0 2px 10px rgba(168, 92, 61, 0.30);
 }
 
 /* ─── Badges ─────────────────────────────────────────────────── */
@@ -223,29 +230,29 @@ h4, h5, h6 {
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
-.badge-pending     { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
-.badge-approved    { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
-.badge-paid        { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
-.badge-rejected    { background: #fce7e7; color: #991b1b; border: 1px solid #fecaca; }
-.badge-cancelled   { background: #f3f4f6; color: #4b5563; border: 1px solid #e5e7eb; }
-.badge-teletherapy { background: var(--pale-teal); color: var(--deep-teal); border: 1px solid var(--light-gray); }
+.badge-pending     { background: var(--sun-tint);  color: #8a6a1f; border: 1px solid rgba(198, 152, 73, 0.4); }
+.badge-approved    { background: var(--sage-tint); color: var(--moss); border: 1px solid rgba(74, 128, 115, 0.3); }
+.badge-paid        { background: rgba(34, 197, 94, 0.10); color: #166534; border: 1px solid rgba(34, 197, 94, 0.28); }
+.badge-rejected    { background: var(--clay-tint); color: var(--clay); border: 1px solid rgba(168, 92, 61, 0.28); }
+.badge-cancelled   { background: var(--paper-2); color: var(--mid-gray); border: 1px solid var(--paper-3); }
+.badge-teletherapy { background: var(--sage-tint); color: var(--narra); border: 1px solid rgba(74, 128, 115, 0.3); }
 
 /* ─── Inputs ─────────────────────────────────────────────────── */
 .input, .select {
   width: 100%;
   padding: 11px 16px;
   border-radius: 12px;
-  border: 1.5px solid var(--light-gray);
+  border: 1.5px solid var(--paper-3);
   font-size: 14px;
   font-family: var(--font-body);
-  color: var(--charcoal);
-  background: white;
+  color: var(--ink);
+  background: #fff;
   transition: border-color 0.2s, box-shadow 0.2s;
   outline: none;
 }
 .input:focus, .select:focus {
-  border-color: var(--teal);
-  box-shadow: 0 0 0 3px rgba(46, 94, 90, 0.12);
+  border-color: var(--sage);
+  box-shadow: 0 0 0 3px rgba(74, 128, 115, 0.18);
 }
 .input::placeholder { color: var(--mid-gray); }
 
@@ -260,51 +267,38 @@ h4, h5, h6 {
   margin-bottom: 7px;
 }
 
-/* ─── Hero gradient ──────────────────────────────────────────── */
+/* ─── Hero gradient — Narra + Sun (warmth where it matters most) ─ */
 .hero-gradient {
-  background: linear-gradient(135deg, var(--deep-teal) 0%, var(--teal) 55%, var(--bright-teal) 100%);
+  background:
+    radial-gradient(1200px 400px at 110% -10%, rgba(198, 152, 73, 0.30), transparent 60%),
+    radial-gradient(900px 400px at -10% 120%, rgba(168, 92, 61, 0.20), transparent 60%),
+    linear-gradient(135deg, var(--narra) 0%, var(--moss) 70%, var(--sage) 130%);
   position: relative;
   overflow: hidden;
-  color: white;
+  color: #fff;
 }
 .hero-gradient::before {
   content: '';
   position: absolute;
-  top: -50%;
-  right: -25%;
-  width: 520px;
-  height: 520px;
+  top: -50%; right: -25%;
+  width: 520px; height: 520px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.06);
-  pointer-events: none;
-}
-.hero-gradient::after {
-  content: '';
-  position: absolute;
-  bottom: -50%;
-  left: -25%;
-  width: 420px;
-  height: 420px;
-  border-radius: 50%;
-  background: rgba(237, 104, 35, 0.12);
+  background: rgba(255, 255, 255, 0.05);
   pointer-events: none;
 }
 
 /* ─── Step dots ──────────────────────────────────────────────── */
 .step-dot {
-  width: 8px;
-  height: 8px;
+  width: 8px; height: 8px;
   border-radius: 50%;
-  background: var(--light-gray);
+  background: var(--paper-3);
   transition: all 0.3s ease-out;
 }
 .step-dot-active {
-  background: var(--gold);
-  box-shadow: 0 0 0 4px rgba(237, 104, 35, 0.15);
+  background: var(--clay);
+  box-shadow: 0 0 0 4px rgba(168, 92, 61, 0.18);
 }
-.step-dot-done {
-  background: var(--teal);
-}
+.step-dot-done { background: var(--moss); }
 
 /* ─── Slot tile ──────────────────────────────────────────────── */
 .slot-tile {
@@ -314,37 +308,37 @@ h4, h5, h6 {
   gap: 6px;
   padding: 8px 10px;
   border-radius: 10px;
-  border: 1.5px solid var(--light-gray);
-  background: white;
+  border: 1.5px solid var(--paper-3);
+  background: #fff;
   cursor: pointer;
   transition: all 0.18s ease-out;
   font-size: 12.5px;
   font-family: var(--font-display);
   font-weight: 500;
-  color: var(--charcoal);
+  color: var(--narra);
 }
 .slot-tile:hover {
-  border-color: var(--teal);
-  background: var(--pale-teal);
+  border-color: var(--sage);
+  background: var(--sage-tint);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(46, 94, 90, 0.12);
+  box-shadow: 0 4px 12px rgba(27, 63, 56, 0.10);
 }
 .slot-tile-time {
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   font-weight: 600;
-  color: var(--deep-teal);
+  color: var(--narra);
 }
 
 /* ─── Day column ─────────────────────────────────────────────── */
 .day-col {
-  background: white;
+  background: #fff;
   border-radius: 14px;
-  border: 1px solid var(--light-gray);
+  border: 1px solid var(--paper-3);
   padding: 12px;
   min-height: 160px;
   transition: border-color 0.2s;
 }
-.day-col:hover { border-color: rgba(46, 94, 90, 0.25); }
+.day-col:hover { border-color: rgba(74, 128, 115, 0.35); }
 .day-col-header {
   font-family: var(--font-display);
   font-size: 11.5px;
@@ -354,5 +348,5 @@ h4, h5, h6 {
   letter-spacing: 0.08em;
   padding-bottom: 8px;
   margin-bottom: 8px;
-  border-bottom: 1px dashed var(--light-gray);
+  border-bottom: 1px dashed var(--paper-3);
 }
