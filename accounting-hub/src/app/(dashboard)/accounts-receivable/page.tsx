@@ -6,14 +6,16 @@ import { useSearchParams } from 'next/navigation'
 import {
   FileCheck, Search, ChevronUp, ChevronDown, ArrowUpDown,
   X, AlertCircle, DollarSign, Calendar, Upload, Trash2, Pencil,
-  Download, Filter,
+  Download, Filter, FileText, Settings,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import SoaReport from './SoaReport'
 
 interface ARWallet {
   id: string
   patientName: string
   balance: number | string
+  branch?: string | null
   // Only returned for GL wallets — the approved amount on the Guarantee Letter.
   totalGlAmount?: number | string | null
   // Consumption-based outstanding (sum of unpaid orders)
@@ -27,15 +29,27 @@ interface ARWallet {
 interface AROrder {
   id: string
   orderNumber: number
+  patientId?: string | null
   transactionDate: string
+  arCustomDate?: string | null   // Manually overridden date — used in Invoice & SOA when set
   patientName: string
   clinicianName: string
+  createdBy?: { name: string } | null
   branch: string
   netAmount: number | string
   arProofUrl?: string | null
   items: { name: string; service?: { department?: string | null } | null }[]
   payments: { amount: number | string; walletId?: string }[]
   arPaymentItems: { paymentId: string }[]
+}
+
+interface InvoiceSetting {
+  branch: string
+  companyName?: string | null
+  tradeName?: string | null
+  address?: string | null
+  phone?: string | null
+  email?: string | null
 }
 
 interface ARPaymentRecord {
@@ -73,6 +87,176 @@ function serializeProofUrls(urls: string[]): string | null {
   if (clean.length === 0) return null
   if (clean.length === 1) return clean[0]
   return JSON.stringify(clean)
+}
+
+interface PatientInfo {
+  firstName?: string; lastName?: string
+  email?: string | null; phone?: string | null
+  dob?: string | null; sex?: string | null
+  address?: string | null; city?: string | null
+}
+
+async function buildInvoicePdf(
+  order: AROrder,
+  setting: InvoiceSetting | null | undefined,
+  walletName: string,
+  patientInfo: PatientInfo | null
+) {
+  const { jsPDF } = await import('jspdf')
+  const autoTable = (await import('jspdf-autotable')).default
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+  const W = 210, ml = 15, mr = 15, contentW = W - ml - mr
+  const C_TEAL: [number, number, number] = [13, 148, 136]
+  const C_CHARCOAL: [number, number, number] = [31, 41, 55]
+  const C_GRAY: [number, number, number] = [107, 114, 128]
+  const C_LGRAY: [number, number, number] = [220, 220, 220]
+
+  const companyName = setting?.companyName || 'Clinic'
+  const tradeName   = setting?.tradeName || ''
+  const address = setting?.address || ''
+  const phone = setting?.phone || ''
+  const amt = order.payments.reduce((s, p) => s + toNum(p.amount), 0)
+  const amtStr = 'Php ' + amt.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  const receiptNo = `#${String(order.orderNumber).padStart(6, '0')}`
+  // Use manually overridden date if set, otherwise fall back to the original transaction date
+  const effectiveDate = order.arCustomDate || order.transactionDate
+  const dateStr = formatDate(effectiveDate)
+
+  // ── TOP RIGHT: company contact block ──
+  let y = 15
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...C_TEAL)
+  doc.text(companyName, W - mr, y, { align: 'right' }); y += 5
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...C_GRAY)
+  if (address) { doc.text(address, W - mr, y, { align: 'right' }); y += 4 }
+  if (phone) { doc.text(phone, W - mr, y, { align: 'right' }) }
+
+  // ── TEAL BAND ──
+  y = 34
+  doc.setFillColor(...C_TEAL)
+  doc.rect(ml, y, contentW, 1.2, 'F')
+  y += 7
+
+  // ── LEFT: large clinic name + trade name ──
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.setTextColor(...C_CHARCOAL)
+  doc.text(companyName, ml, y + 4)
+  if (tradeName) {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...C_GRAY)
+    doc.text(tradeName, ml, y + 10)
+  }
+
+  // ── RIGHT: receipt detail box ──
+  const boxX = W - mr - 72, boxY = y - 2, boxW = 72, boxH = 31
+  doc.setDrawColor(...C_LGRAY); doc.setLineWidth(0.3)
+  doc.rect(boxX, boxY, boxW, boxH)
+  const cashier = order.createdBy?.name || '—'
+  const details: [string, string][] = [
+    ['Receipt No.', receiptNo],
+    ['Date', dateStr],
+    ['Cashier', cashier],
+    ['Patient ID', order.patientId || '—'],
+  ]
+  let bY = boxY + 6.5
+  for (const [label, val] of details) {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...C_GRAY)
+    doc.text(label + ':', boxX + 3, bY)
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(...C_CHARCOAL)
+    doc.text(val, boxX + 29, bY)
+    bY += 6
+  }
+  y += 36
+
+  // ── THIN DIVIDER ──
+  doc.setDrawColor(...C_LGRAY); doc.setLineWidth(0.2)
+  doc.line(ml, y, W - mr, y); y += 6
+
+  // ── INVOICE FROM / TO ──
+  const halfW = contentW / 2 - 4
+  const fromX = ml, toX = ml + contentW / 2 + 4
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...C_TEAL)
+  doc.text('Invoice From', fromX, y)
+  doc.text('Invoice To', toX, y)
+  y += 5
+
+  // Left column (From)
+  let fromY = y
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...C_CHARCOAL)
+  doc.text(companyName, fromX, fromY); fromY += 4
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...C_GRAY)
+  if (address) {
+    const lines = doc.splitTextToSize(address, halfW) as string[]
+    lines.forEach(l => { doc.text(l, fromX, fromY); fromY += 4 })
+  }
+  if (phone) { doc.text(`Tel: ${phone}`, fromX, fromY); fromY += 4 }
+
+  // Right column (To) — use live patient data when available
+  let toY = y
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...C_CHARCOAL)
+  const toName = patientInfo
+    ? `${patientInfo.firstName || ''} ${patientInfo.lastName || ''}`.trim() || order.patientName || '—'
+    : order.patientName || '—'
+  doc.text(toName, toX, toY); toY += 4
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...C_GRAY)
+  const patientAddress = patientInfo
+    ? [patientInfo.address, patientInfo.city].filter(Boolean).join(', ') || '—'
+    : '—'
+  const patientPhone  = patientInfo?.phone || '—'
+  const patientEmail  = patientInfo?.email || '—'
+  const patientDob    = patientInfo?.dob
+    ? new Date(patientInfo.dob).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })
+    : '—'
+  const patientSex    = patientInfo?.sex || '—'
+  for (const [label, val] of [
+    ['Address', patientAddress],
+    ['Phone',   patientPhone],
+    ['Email',   patientEmail],
+    ['Birthday',patientDob],
+    ['Sex',     patientSex],
+  ] as [string, string][]) {
+    doc.text(`${label}: ${val}`, toX, toY); toY += 4
+  }
+
+  y = Math.max(fromY, toY) + 6
+
+  // ── ITEMS TABLE ──
+  autoTable(doc, {
+    startY: y,
+    head: [['Item #', 'Description', 'Amount']],
+    body: order.items.map((item, i) => [
+      String(i + 1),
+      item.name,
+      i === order.items.length - 1 ? amtStr : '',
+    ]),
+    theme: 'plain',
+    headStyles: { fillColor: C_TEAL, textColor: [255, 255, 255] as [number,number,number], fontStyle: 'bold', fontSize: 8.5 },
+    bodyStyles: { fontSize: 8, textColor: C_CHARCOAL },
+    columnStyles: { 0: { cellWidth: 18 }, 2: { cellWidth: 45, halign: 'right' } },
+    margin: { left: ml, right: mr },
+  })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  y = (doc as any).lastAutoTable.finalY + 6
+
+  // ── THIN DIVIDER ──
+  doc.setDrawColor(...C_LGRAY); doc.setLineWidth(0.2)
+  doc.line(ml, y, W - mr, y); y += 5
+
+  // ── TOTALS ──
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...C_CHARCOAL)
+  doc.text('Total:', ml, y)
+  doc.text(amtStr, W - mr, y, { align: 'right' }); y += 5
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...C_GRAY)
+  doc.text(`Total Paid: HMO - ${walletName}`, ml, y)
+  doc.text(amtStr, W - mr, y, { align: 'right' }); y += 8
+
+  // ── FOOTER DIVIDER ──
+  doc.setDrawColor(...C_LGRAY); doc.setLineWidth(0.2)
+  doc.line(ml, y, W - mr, y); y += 5
+
+  // ── FOOTER ──
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...C_GRAY)
+  doc.text('THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX', W / 2, y, { align: 'center' }); y += 4
+  doc.text('— Nothing follows —', W / 2, y, { align: 'center' })
+
+  doc.output('dataurlnewwindow')
 }
 
 // Per-transaction proof upload cell — supports multiple files per order.
@@ -209,7 +393,7 @@ export default function AccountsReceivablePage() {
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null)
 
   // HMO sub-tab state
-  const [hmoSubTab, setHmoSubTab] = useState<'overview' | 'per-hmo'>('overview')
+  const [hmoSubTab, setHmoSubTab] = useState<'overview' | 'per-hmo' | 'soa-report'>('overview')
   // Per HMO sub-tab state
   const [perHmoWallet, setPerHmoWallet] = useState('')
   const [perHmoFrom, setPerHmoFrom] = useState('')
@@ -218,6 +402,19 @@ export default function AccountsReceivablePage() {
   const [perHmoSortDir, setPerHmoSortDir] = useState<'asc' | 'desc'>('desc')
   const [perHmoColSearch, setPerHmoColSearch] = useState<Record<string, string>>({})
   const [showDownloadMenu, setShowDownloadMenu] = useState(false)
+
+  // Invoice Settings state
+  const [invoiceSettings, setInvoiceSettings] = useState<Record<string, InvoiceSetting>>({})
+  const [showInvoiceSettings, setShowInvoiceSettings] = useState(false)
+  const [invSettingBranch, setInvSettingBranch] = useState('')
+  const [invForm, setInvForm] = useState<Partial<InvoiceSetting>>({})
+  const [invSettingSaving, setInvSettingSaving] = useState(false)
+  const [invoiceBusy, setInvoiceBusy] = useState<string | null>(null)
+
+  // Change Date — inline editing state per order
+  const [changeDateEditId, setChangeDateEditId] = useState<string | null>(null)
+  const [changeDateValue, setChangeDateValue] = useState('')
+  const [changeDateBusy, setChangeDateBusy] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -282,6 +479,18 @@ export default function AccountsReceivablePage() {
             id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle,
           }))
       ))
+      .catch(() => {})
+  }, [])
+
+  // Fetch invoice settings (per-branch)
+  useEffect(() => {
+    fetch('/api/accounts-receivable/invoice-settings')
+      .then(r => r.json())
+      .then((data: InvoiceSetting[]) => {
+        const map: Record<string, InvoiceSetting> = {}
+        for (const s of data) map[s.branch] = s
+        setInvoiceSettings(map)
+      })
       .catch(() => {})
   }, [])
 
@@ -395,6 +604,43 @@ export default function AccountsReceivablePage() {
     }
   }
 
+  const saveInvoiceSettings = async () => {
+    if (!invSettingBranch) return
+    setInvSettingSaving(true)
+    try {
+      const res = await fetch('/api/accounts-receivable/invoice-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch: invSettingBranch, ...invForm }),
+      })
+      if (res.ok) {
+        const updated: InvoiceSetting = await res.json()
+        setInvoiceSettings(prev => ({ ...prev, [updated.branch]: updated }))
+      }
+    } catch { /* ignore */ }
+    finally { setInvSettingSaving(false) }
+  }
+
+  const saveCustomDate = async (orderId: string, newDate: string | null) => {
+    setChangeDateBusy(orderId)
+    try {
+      const res = await fetch('/api/accounts-receivable/custom-date', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, arCustomDate: newDate }),
+      })
+      if (res.ok) {
+        setOrders(prev => prev.map(o =>
+          o.id === orderId ? { ...o, arCustomDate: newDate } : o
+        ))
+      }
+    } catch { /* ignore */ }
+    finally {
+      setChangeDateBusy(null)
+      setChangeDateEditId(null)
+    }
+  }
+
   const toggleOrderSelect = (orderId: string) => {
     setPaySelectedOrders(prev =>
       prev.includes(orderId) ? prev.filter(id => id !== orderId) : [...prev, orderId]
@@ -437,16 +683,41 @@ export default function AccountsReceivablePage() {
         ))}
       </div>
 
+      {/* Branch filter */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Branch:</span>
+        {([
+          { value: '', label: 'All' },
+          { value: 'SANDBOX_EAST', label: 'Sandbox East' },
+          { value: 'SANDBOX_GREENHILLS', label: 'Sandbox Greenhills' },
+          { value: 'VERDANA_STORE', label: 'Verdana' },
+        ] as const).map(b => (
+          <button
+            key={b.value}
+            onClick={() => setBranch(b.value)}
+            className="px-3 py-1 rounded-full text-xs font-medium transition-colors"
+            style={branch === b.value
+              ? { background: 'var(--teal)', color: 'white' }
+              : { background: 'var(--off-white)', color: 'var(--charcoal)', border: '1px solid var(--light-gray)' }}>
+            {b.label}
+          </button>
+        ))}
+      </div>
+
       {/* HMO Sub-tabs */}
       {tab === 'HMO' && (
         <div className="flex gap-2 border-b pb-0" style={{ borderColor: 'var(--light-gray)' }}>
-          {(['overview', 'per-hmo'] as const).map(st => (
-            <button key={st} onClick={() => setHmoSubTab(st)}
+          {([
+            { key: 'overview', label: 'Overview' },
+            { key: 'per-hmo', label: 'Per HMO' },
+            { key: 'soa-report', label: 'SOA Report' },
+          ] as const).map(st => (
+            <button key={st.key} onClick={() => setHmoSubTab(st.key)}
               className="px-4 py-2 text-sm font-medium transition-colors"
-              style={hmoSubTab === st
+              style={hmoSubTab === st.key
                 ? { color: 'var(--teal)', borderBottom: '2px solid var(--teal)' }
                 : { color: 'var(--mid-gray)', borderBottom: '2px solid transparent' }}>
-              {st === 'overview' ? 'Overview' : 'Per HMO'}
+              {st.label}
             </button>
           ))}
         </div>
@@ -565,57 +836,101 @@ export default function AccountsReceivablePage() {
       {/* ── HMO Summary ── */}
       {tab === 'HMO' && hmoSubTab === 'overview' && (() => {
         const totalProviders = wallets.length
-        // Total HMO order amount
         const totalHmoOrders = orders.reduce((s, o) => s + o.payments.reduce((ps, p) => ps + toNum(p.amount), 0), 0)
         const totalPaid = arPayments.reduce((s, p) => s + toNum(p.amount), 0)
         const pctPaid = totalHmoOrders > 0 ? Math.min(100, (totalPaid / totalHmoOrders) * 100) : 0
 
-        // Department breakdown from HMO orders (use service.department from items)
-        const deptMap = new Map<string, number>()
-        for (const o of orders) {
-          for (const it of o.items) {
-            const dept = it.service?.department || 'Other'
-            const pay = o.payments[0]
-            const amt = pay ? toNum(pay.amount) : 0
-            deptMap.set(dept, (deptMap.get(dept) || 0) + amt)
-          }
-        }
-        const deptTotal = Array.from(deptMap.values()).reduce((s, v) => s + v, 0)
-        const deptEntries = Array.from(deptMap.entries()).sort((a, b) => b[1] - a[1])
         const PIE_COLORS = ['#0d9488','#0891b2','#7c3aed','#db2777','#d97706','#16a34a','#dc2626','#9333ea','#0ea5e9','#f59e0b']
 
-        // SVG pie chart (same pattern as GL summary)
-        let cumAngle = -90
-        const pieSlices = deptEntries.map(([dept, val], i) => {
-          const pct = deptTotal > 0 ? val / deptTotal : 0
-          const sweep = pct * 360
-          const startRad = (cumAngle * Math.PI) / 180
-          const endRad = ((cumAngle + sweep) * Math.PI) / 180
-          const r = 60
-          const x1 = 70 + r * Math.cos(startRad)
-          const y1 = 70 + r * Math.sin(startRad)
-          const x2 = 70 + r * Math.cos(endRad)
-          const y2 = 70 + r * Math.sin(endRad)
-          const large = sweep > 180 ? 1 : 0
-          const d = pct === 1
-            ? `M70,70 m-${r},0 a${r},${r} 0 1,1 ${r*2},0 a${r},${r} 0 1,1 -${r*2},0`
-            : `M70,70 L${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} Z`
-          const result = { dept, val, pct, color: PIE_COLORS[i % PIE_COLORS.length], d }
-          cumAngle += sweep
-          return result
-        })
+        // Helper: build SVG pie slices from a Map<string, number>
+        const buildPie = (entries: [string, number][], total: number) => {
+          let cum = -90
+          return entries.map(([label, val], i) => {
+            const pct = total > 0 ? val / total : 0
+            const sweep = pct * 360
+            const s1 = (cum * Math.PI) / 180
+            const e1 = ((cum + sweep) * Math.PI) / 180
+            const r = 60
+            const x1 = 70 + r * Math.cos(s1), y1 = 70 + r * Math.sin(s1)
+            const x2 = 70 + r * Math.cos(e1), y2 = 70 + r * Math.sin(e1)
+            const large = sweep > 180 ? 1 : 0
+            const d = pct === 1
+              ? `M70,70 m-${r},0 a${r},${r} 0 1,1 ${r*2},0 a${r},${r} 0 1,1 -${r*2},0`
+              : `M70,70 L${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} Z`
+            const result = { label, val, pct, color: PIE_COLORS[i % PIE_COLORS.length], d }
+            cum += sweep
+            return result
+          })
+        }
+
+        // Department breakdown — split each order's payment proportionally across departments
+        const deptMap = new Map<string, number>()
+        for (const o of orders) {
+          const pay = o.payments[0]
+          const amt = pay ? toNum(pay.amount) : 0
+          if (amt === 0) continue
+          // Count items per department within this order
+          const itemsByDept = new Map<string, number>()
+          for (const it of o.items) {
+            const dept = it.service?.department || 'Other'
+            itemsByDept.set(dept, (itemsByDept.get(dept) || 0) + 1)
+          }
+          const totalItems = o.items.length || 1
+          for (const [dept, count] of itemsByDept) {
+            deptMap.set(dept, (deptMap.get(dept) || 0) + (count / totalItems) * amt)
+          }
+        }
+        const deptEntries = Array.from(deptMap.entries()).sort((a, b) => b[1] - a[1])
+        const deptTotal = deptEntries.reduce((s, [, v]) => s + v, 0)
+        const deptSlices = buildPie(deptEntries, deptTotal)
+
+        // Provider breakdown (HMO orders by wallet/provider)
+        const provMap = new Map<string, number>()
+        for (const o of orders) {
+          for (const p of o.payments) {
+            const wallet = wallets.find(w => w.id === p.walletId)
+            const name = wallet?.patientName || 'Unknown'
+            provMap.set(name, (provMap.get(name) || 0) + toNum(p.amount))
+          }
+        }
+        const provEntries = Array.from(provMap.entries()).sort((a, b) => b[1] - a[1])
+        const provTotal = provEntries.reduce((s, [, v]) => s + v, 0)
+        const provSlices = buildPie(provEntries, provTotal)
+
+        // Shared pie chart renderer
+        const PieChart = ({ slices, title }: { slices: { label: string; val: number; pct: number; color: string; d: string }[]; title: string }) => (
+          slices.length === 0 ? null : (
+            <div>
+              <p className="text-xs font-semibold mb-3" style={{ color: 'var(--mid-gray)' }}>{title}</p>
+              <div className="flex flex-wrap items-start gap-4">
+                <svg viewBox="0 0 140 140" width={120} height={120} className="flex-shrink-0">
+                  {slices.map((s, i) => <path key={i} d={s.d} fill={s.color} stroke="white" strokeWidth={1.5} />)}
+                </svg>
+                <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                  {slices.map((s, i) => (
+                    <div key={i} className="flex items-center gap-2 min-w-0">
+                      <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: s.color }} />
+                      <span className="text-xs font-medium truncate" style={{ color: 'var(--charcoal)' }}>{s.label}</span>
+                      <span className="text-xs ml-auto flex-shrink-0 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
+                        {formatCurrency(s.val)} <span className="font-semibold">({(s.pct * 100).toFixed(1)}%)</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )
+        )
 
         return (
           <div className="rounded-2xl border p-4 space-y-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
             <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>HMO Summary</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Total HMO Providers */}
               <div className="rounded-xl p-4 border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                 <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Total HMO Providers</p>
                 <p className="text-3xl font-bold" style={{ color: 'var(--charcoal)' }}>{totalProviders}</p>
                 <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Active HMO wallets</p>
               </div>
-              {/* % Paid */}
               <div className="rounded-xl p-4 border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                 <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>% Paid vs HMO Orders</p>
                 <p className="text-xl font-bold" style={{ color: '#166534' }}>{pctPaid.toFixed(1)}%</p>
@@ -624,33 +939,17 @@ export default function AccountsReceivablePage() {
                 </div>
                 <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(totalPaid)} received of {formatCurrency(totalHmoOrders)}</p>
               </div>
-              {/* Total HMO Billed */}
               <div className="rounded-xl p-4 border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                 <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Total HMO Billed</p>
                 <p className="text-xl font-bold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(totalHmoOrders)}</p>
                 <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Total outstanding: {formatCurrency(totalHmoOrders - totalPaid)}</p>
               </div>
             </div>
-            {/* Dept pie chart */}
-            {deptEntries.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold mb-3" style={{ color: 'var(--mid-gray)' }}>HMO Orders by Department</p>
-                <div className="flex flex-wrap items-center gap-6">
-                  <svg viewBox="0 0 140 140" width={140} height={140} className="flex-shrink-0">
-                    {pieSlices.map((s, i) => <path key={i} d={s.d} fill={s.color} stroke="white" strokeWidth={1.5} />)}
-                  </svg>
-                  <div className="flex flex-col gap-1.5 flex-1 min-w-0">
-                    {pieSlices.map((s, i) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: s.color }} />
-                        <span className="text-xs font-medium truncate" style={{ color: 'var(--charcoal)' }}>{s.dept}</span>
-                        <span className="text-xs ml-auto flex-shrink-0" style={{ color: 'var(--mid-gray)' }}>
-                          {formatCurrency(s.val)} <span className="font-semibold">({(s.pct * 100).toFixed(1)}%)</span>
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+            {/* Two pie charts side by side */}
+            {(deptSlices.length > 0 || provSlices.length > 0) && (
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 pt-2 border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                <PieChart slices={deptSlices} title="HMO Orders by Department" />
+                <PieChart slices={provSlices} title="HMO Orders by Provider" />
               </div>
             )}
           </div>
@@ -1027,8 +1326,8 @@ export default function AccountsReceivablePage() {
             }
             y += 2
             // Header
-            const cols = ['Date', 'Service', 'Patient', 'HMO', 'Amount', 'Status']
-            const colWidths = [28, 65, 45, 45, 25, 22]
+            const cols = ['Date', 'Service', 'Patient', 'HMO', 'Amount']
+            const colWidths = [28, 75, 50, 50, 35]
             let x = margin
             doc.setFontSize(8); doc.setFont('helvetica', 'bold')
             cols.forEach((c, i) => { doc.text(c, x, y); x += colWidths[i] }); y += 5
@@ -1038,14 +1337,13 @@ export default function AccountsReceivablePage() {
               x = margin
               const wallet = wallets.find(w => w.id === o.payments[0]?.walletId)
               const amt = o.payments.reduce((s, p) => s + toNum(p.amount), 0)
-              const isPaid = o.arPaymentItems.length > 0
+              const amtStr = amt.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
               const row = [
                 formatDate(o.transactionDate),
                 o.items.map(i => i.name).join(', '),
                 o.patientName || '—',
                 wallet?.patientName || '—',
-                `₱${amt.toFixed(2)}`,
-                isPaid ? 'Paid' : 'Unpaid',
+                amtStr,
               ]
               row.forEach((cell, i) => {
                 const maxW = colWidths[i] - 2
@@ -1070,7 +1368,6 @@ export default function AccountsReceivablePage() {
                 Patient: o.patientName || '—',
                 HMO: wallet?.patientName || '—',
                 Amount: amt,
-                Status: o.arPaymentItems.length > 0 ? 'Paid' : 'Unpaid',
                 Proof: o.arProofUrl || '',
               }
             })
@@ -1104,7 +1401,18 @@ export default function AccountsReceivablePage() {
                 <input type="date" value={perHmoTo} onChange={e => setPerHmoTo(e.target.value)}
                   className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
               </div>
-              <div className="relative ml-auto">
+              <div className="relative ml-auto flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setInvSettingBranch('')
+                    setInvForm({})
+                    setShowInvoiceSettings(true)
+                  }}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium border"
+                  style={{ borderColor: 'var(--mid-gray)', color: 'var(--mid-gray)' }}>
+                  <Settings size={14} /> Invoice Settings
+                </button>
+                <div className="relative">
                 <button
                   onClick={() => setShowDownloadMenu(v => !v)}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium border"
@@ -1121,8 +1429,9 @@ export default function AccountsReceivablePage() {
                     </button>
                   </div>
                 )}
-              </div>
-            </div>
+                </div>{/* /download relative */}
+              </div>{/* /ml-auto flex */}
+            </div>{/* /filters row */}
 
             {/* Sortable/filterable table */}
             <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
@@ -1131,11 +1440,13 @@ export default function AccountsReceivablePage() {
                   <tr style={{ background: 'var(--off-white)' }}>
                     {[
                       { label: 'Date', field: 'transactionDate', searchKey: 'date' },
+                      { label: 'Change Date', field: '', searchKey: '' },
                       { label: 'Service', field: 'service', searchKey: 'service' },
                       { label: 'Patient', field: 'patientName', searchKey: 'patient' },
                       { label: 'HMO', field: 'hmo', searchKey: 'hmo' },
                       { label: 'Amount', field: 'amount', searchKey: 'amount' },
                       { label: 'Status', field: 'status', searchKey: 'status' },
+                      { label: 'Invoice', field: '', searchKey: '' },
                       { label: 'Proof', field: '', searchKey: '' },
                     ].map(col => (
                       <th key={col.label} className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>
@@ -1163,16 +1474,84 @@ export default function AccountsReceivablePage() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan={7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</td></tr>
+                    <tr><td colSpan={9} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</td></tr>
                   ) : perHmoOrders.length === 0 ? (
-                    <tr><td colSpan={7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>No transactions found</td></tr>
+                    <tr><td colSpan={9} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>No transactions found</td></tr>
                   ) : perHmoOrders.map(o => {
                     const wallet = wallets.find(w => w.id === o.payments[0]?.walletId)
                     const amt = o.payments.reduce((s, p) => s + toNum(p.amount), 0)
                     const isPaid = o.arPaymentItems.length > 0
+                    const isEditingDate = changeDateEditId === o.id
+                    const isBusyDate = changeDateBusy === o.id
                     return (
                       <tr key={o.id} className="border-t hover:bg-gray-50/50" style={{ borderColor: 'var(--light-gray)' }}>
+                        {/* Original transaction date */}
                         <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{formatDate(o.transactionDate)}</td>
+                        {/* Change Date cell */}
+                        <td className="px-3 py-2 text-center" style={{ minWidth: 130 }}>
+                          {isEditingDate ? (
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="date"
+                                autoFocus
+                                defaultValue={
+                                  o.arCustomDate
+                                    ? new Date(o.arCustomDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+                                    : new Date(o.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+                                }
+                                onChange={e => setChangeDateValue(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Escape') { setChangeDateEditId(null); setChangeDateValue('') }
+                                }}
+                                className="px-1.5 py-0.5 rounded border text-xs outline-none"
+                                style={{ borderColor: 'var(--teal)', width: 110 }}
+                              />
+                              <button
+                                disabled={isBusyDate}
+                                onClick={() => {
+                                  if (changeDateValue) saveCustomDate(o.id, changeDateValue)
+                                  else { setChangeDateEditId(null); setChangeDateValue('') }
+                                }}
+                                className="text-[10px] px-1.5 py-0.5 rounded font-semibold text-white disabled:opacity-50"
+                                style={{ background: 'var(--teal)' }}>
+                                {isBusyDate ? '…' : '✓'}
+                              </button>
+                              <button
+                                onClick={() => { setChangeDateEditId(null); setChangeDateValue('') }}
+                                className="text-[10px] px-1 py-0.5 rounded"
+                                style={{ color: 'var(--mid-gray)' }}>
+                                ✕
+                              </button>
+                            </div>
+                          ) : o.arCustomDate ? (
+                            <div className="flex items-center justify-center gap-1">
+                              <span className="text-xs font-semibold" style={{ color: 'var(--teal)' }}>
+                                {formatDate(o.arCustomDate)}
+                              </span>
+                              <button
+                                title="Edit changed date"
+                                onClick={() => { setChangeDateEditId(o.id); setChangeDateValue('') }}
+                                className="p-0.5 rounded hover:bg-teal-50"
+                                style={{ color: 'var(--teal)' }}>
+                                <Pencil size={10} />
+                              </button>
+                              <button
+                                title="Clear — revert to original date"
+                                disabled={isBusyDate}
+                                onClick={() => saveCustomDate(o.id, null)}
+                                className="p-0.5 rounded hover:bg-red-50 disabled:opacity-40">
+                                <X size={10} className="text-red-400" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => { setChangeDateEditId(o.id); setChangeDateValue('') }}
+                              className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-lg border text-[10px] font-medium"
+                              style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                              <Calendar size={9} /> Set
+                            </button>
+                          )}
+                        </td>
                         <td className="px-3 py-2 text-xs" style={{ color: 'var(--charcoal)' }}>{o.items.map(i => i.name).join(', ')}</td>
                         <td className="px-3 py-2 text-xs" style={{ color: 'var(--charcoal)' }}>{o.patientName || '—'}</td>
                         <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{wallet?.patientName || '—'}</td>
@@ -1192,6 +1571,37 @@ export default function AccountsReceivablePage() {
                           </span>
                         </td>
                         <td className="px-3 py-2 text-center">
+                          <button
+                            disabled={invoiceBusy === o.id}
+                            onClick={async () => {
+                              setInvoiceBusy(o.id)
+                              try {
+                                // Fetch patient info from Marketing Hub CRM
+                                let patientInfo: PatientInfo | null = null
+                                if (o.patientId) {
+                                  try {
+                                    const pr = await fetch(`/api/accounts-receivable/patient-info?patientId=${encodeURIComponent(o.patientId)}`)
+                                    if (pr.ok) {
+                                      const pd = await pr.json()
+                                      patientInfo = pd.patient ?? null
+                                    }
+                                  } catch { /* use null if unavailable */ }
+                                }
+                                const setting = invoiceSettings[o.branch] ?? null
+                                await buildInvoicePdf(o, setting, wallet?.patientName || '—', patientInfo)
+                              } catch (e) {
+                                alert((e as Error).message || 'Failed to generate invoice')
+                              } finally {
+                                setInvoiceBusy(null)
+                              }
+                            }}
+                            className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-lg border text-[10px] font-medium disabled:opacity-50"
+                            style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                            <FileText size={10} />
+                            {invoiceBusy === o.id ? '…' : 'Invoice'}
+                          </button>
+                        </td>
+                        <td className="px-3 py-2 text-center">
                           <ProofCell orderId={o.id} currentUrl={o.arProofUrl || null}
                             onChange={(url) => setOrders(prev => prev.map(x => x.id === o.id ? { ...x, arProofUrl: url } : x))} />
                         </td>
@@ -1204,6 +1614,122 @@ export default function AccountsReceivablePage() {
           </div>
         )
       })()}
+
+      {/* ── SOA Report sub-tab ── */}
+      {tab === 'HMO' && hmoSubTab === 'soa-report' && (
+        <SoaReport
+          wallets={wallets.map(w => ({ id: w.id, patientName: w.patientName, branch: w.branch }))}
+          isAdmin={['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN'].includes((session?.user as { role?: string })?.role || '')}
+        />
+      )}
+
+      {/* Invoice Settings Modal */}
+      {showInvoiceSettings && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-8 overflow-y-auto">
+          <div className="bg-white rounded-2xl p-6 shadow-xl w-full max-w-lg mb-8 relative">
+            <button onClick={() => setShowInvoiceSettings(false)} className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-gray-100">
+              <X size={18} style={{ color: 'var(--mid-gray)' }} />
+            </button>
+            <h3 className="text-lg font-bold mb-1" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+              <Settings size={18} className="inline mr-1" style={{ color: 'var(--teal)' }} /> Invoice Settings
+            </h3>
+            <p className="text-xs mb-5" style={{ color: 'var(--mid-gray)' }}>Set the company details shown at the top of each invoice, per branch.</p>
+
+            {/* Branch selector */}
+            <div className="mb-4">
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Branch</label>
+              <input
+                list="invoice-branch-list"
+                value={invSettingBranch}
+                onChange={e => {
+                  const b = e.target.value
+                  setInvSettingBranch(b)
+                  const existing = invoiceSettings[b]
+                  setInvForm(existing ? {
+                    companyName: existing.companyName || '',
+                    tradeName: existing.tradeName || '',
+                    address: existing.address || '',
+                    phone: existing.phone || '',
+                    email: existing.email || '',
+                  } : { companyName: '', tradeName: '', address: '', phone: '', email: '' })
+                }}
+                placeholder="Select or type branch…"
+                className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                style={{ borderColor: 'var(--light-gray)' }}
+              />
+              <datalist id="invoice-branch-list">
+                {Array.from(new Set([
+                  ...Object.keys(invoiceSettings),
+                  ...orders.map(o => o.branch).filter(Boolean),
+                ])).sort().map(b => <option key={b} value={b} />)}
+              </datalist>
+            </div>
+
+            {/* Form fields */}
+            <div className="space-y-3">
+              {[
+                { key: 'companyName', label: 'Company Name', placeholder: 'e.g. SAPPHIRE CLINICS EAST INCORPORATED' },
+                { key: 'tradeName', label: 'Trade Name', placeholder: 'e.g. Sandbox East' },
+                { key: 'address', label: 'Address', placeholder: 'Street, City' },
+                { key: 'phone', label: 'Contact Number', placeholder: 'e.g. +63 912 345 6789' },
+                { key: 'email', label: 'Email (optional)', placeholder: 'e.g. info@clinic.com' },
+              ].map(({ key, label, placeholder }) => (
+                <div key={key}>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>{label}</label>
+                  <input
+                    type="text"
+                    value={(invForm as Record<string, string>)[key] || ''}
+                    onChange={e => setInvForm(prev => ({ ...prev, [key]: e.target.value }))}
+                    placeholder={placeholder}
+                    className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                    style={{ borderColor: 'var(--light-gray)' }}
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-3 pt-5">
+              <button onClick={() => setShowInvoiceSettings(false)}
+                className="flex-1 py-2.5 rounded-xl border text-sm font-medium"
+                style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>Cancel</button>
+              <button
+                onClick={async () => { await saveInvoiceSettings(); setShowInvoiceSettings(false) }}
+                disabled={invSettingSaving || !invSettingBranch}
+                className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50"
+                style={{ background: 'var(--teal)' }}>
+                {invSettingSaving ? 'Saving…' : 'Save Settings'}
+              </button>
+            </div>
+
+            {/* Existing configs */}
+            {Object.keys(invoiceSettings).length > 0 && (
+              <div className="mt-5 pt-4 border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                <p className="text-xs font-semibold mb-2" style={{ color: 'var(--mid-gray)' }}>Configured branches</p>
+                <div className="space-y-1">
+                  {Object.values(invoiceSettings).map(s => (
+                    <button key={s.branch}
+                      onClick={() => {
+                        setInvSettingBranch(s.branch)
+                        setInvForm({
+                          companyName: s.companyName || '',
+                          tradeName: s.tradeName || '',
+                          address: s.address || '',
+                          phone: s.phone || '',
+                          email: s.email || '',
+                        })
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-xl hover:bg-gray-50 border text-xs"
+                      style={{ borderColor: 'var(--light-gray)' }}>
+                      <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{s.branch}</span>
+                      {s.companyName && <span className="ml-2" style={{ color: 'var(--mid-gray)' }}>{s.companyName}</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Record Payment Modal */}
       {showPaymentModal && (

@@ -25,9 +25,11 @@ import {
 const FULL_ACCESS = ['ADMIN', 'ACCOUNTANT', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 // Roles that see Services + POS (front desk + full access)
 const SERVICES_POS_ACCESS = [...FULL_ACCESS, 'SBEA_FRONTDESK', 'SBGH_FRONTDESK']
+// Roles that see the Dashboard overview (all except HMO Officer)
+const DASHBOARD_ACCESS = SERVICES_POS_ACCESS
 // Roles that can view Accounts Receivable
 const AR_ACCESS = [...FULL_ACCESS, 'HMO_OFFICER']
-// Roles that can view Chart of Accounts
+// Roles that can view Chart of Accounts (full access only — HMO Officer gets it via COA_WITH_HMO)
 const COA_ACCESS = [...FULL_ACCESS, 'HMO_OFFICER']
 
 interface NavItem {
@@ -46,14 +48,14 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Overview',
     items: [
-      { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+      { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: DASHBOARD_ACCESS },
     ],
   },
   {
     label: 'General Ledger',
     items: [
       { href: '/chart-of-accounts', icon: BookOpen, label: 'Chart of Accounts', roles: COA_ACCESS },
-      { href: '/beginning-balances', icon: BookOpen, label: 'Beginning Balances', roles: COA_ACCESS },
+      { href: '/beginning-balances', icon: BookOpen, label: 'Beginning Balances', roles: FULL_ACCESS },
       { href: '/bank-reconciliation', icon: ArrowLeftRight, label: 'Bank Reconciliation', roles: FULL_ACCESS },
     ],
   },

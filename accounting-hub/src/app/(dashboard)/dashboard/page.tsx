@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import {
   BookOpen,
   Wallet,
@@ -97,6 +98,10 @@ export default async function DashboardPage() {
   const role = session?.user?.role || ''
   const isAdmin = role === 'ADMIN'
   const isFrontDesk = FRONT_DESK_ROLES.includes(role)
+  const isHmoOfficer = role === 'HMO_OFFICER'
+
+  // HMO Officer has no use for the module grid — send them directly to AR
+  if (isHmoOfficer) redirect('/accounts-receivable')
 
   // Front desk users only see Services + POS (active, clickable)
   const visibleModules = isFrontDesk

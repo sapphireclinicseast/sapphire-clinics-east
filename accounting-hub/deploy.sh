@@ -26,6 +26,11 @@ rsync -avz \
   "$LOCAL/public/" \
   "$VPS:$REMOTE/public/"
 
+rsync -avz \
+  "$LOCAL/docker/docker-compose.yml" \
+  "$LOCAL/docker/redeploy.sh" \
+  "$VPS:$REMOTE/docker/"
+
 echo "==> Rebuilding on VPS..."
 ssh "$VPS" "bash $REMOTE/docker/redeploy.sh"
 

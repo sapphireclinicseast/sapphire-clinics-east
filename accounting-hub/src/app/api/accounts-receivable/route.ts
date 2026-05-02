@@ -39,9 +39,18 @@ export async function GET(req: Request) {
     }
     if (branch) orderWhere.branch = branch
     if (dateFrom || dateTo) {
-      orderWhere.transactionDate = {}
-      if (dateFrom) orderWhere.transactionDate.gte = new Date(dateFrom)
-      if (dateTo) orderWhere.transactionDate.lte = new Date(dateTo + 'T23:59:59.999Z')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rangeFilter: any = {}
+      if (dateFrom) rangeFilter.gte = new Date(dateFrom)
+      if (dateTo) rangeFilter.lte = new Date(dateTo + 'T23:59:59.999Z')
+      // When arCustomDate is set it overrides transactionDate for period membership.
+      // An order belongs to a period if:
+      //   - it HAS a custom date AND that custom date falls in range, OR
+      //   - it has NO custom date AND its transactionDate falls in range.
+      orderWhere.OR = [
+        { arCustomDate: { not: null, ...rangeFilter } },
+        { arCustomDate: null, transactionDate: rangeFilter },
+      ]
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -58,12 +67,15 @@ export async function GET(req: Request) {
       select: {
         id: true,
         orderNumber: true,
+        patientId: true,
         transactionDate: true,
+        arCustomDate: true,
         patientName: true,
         clinicianName: true,
         branch: true,
         netAmount: true,
         arProofUrl: true,
+        createdBy: { select: { name: true } },
         items: { select: { name: true, service: { select: { department: true } } } },
         payments: {
           where: { method: type as 'HMO' | 'GL' },
