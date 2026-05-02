@@ -46,6 +46,42 @@ if [ -d /opt/sapphire-marketing-hub ]; then
   echo "[offsite] Source: $(du -h "$DEST/sapphire_hub_src_${TS}.tar.gz" | cut -f1)"
 fi
 
+# ── HR Platform DATA (JSON files — small, critical) ───────────────
+if [ -d /var/www/hr.sapphireclinicseast.org/api/data ]; then
+  echo "[offsite] Snapshotting HR Platform data..."
+  tar czf "$DEST/hr_data_${TS}.tar.gz" \
+    -C /var/www/hr.sapphireclinicseast.org/api data 2>/dev/null
+  echo "[offsite] HR data: $(du -h "$DEST/hr_data_${TS}.tar.gz" | cut -f1)"
+fi
+
+# ── HR Platform UPLOADS (PDFs, attachments — large, push to Drive) ──
+if [ -d /var/www/hr.sapphireclinicseast.org/uploads ]; then
+  echo "[offsite] Snapshotting HR Platform uploads..."
+  tar czf "$DEST/hr_uploads_${TS}.tar.gz" \
+    --exclude='*.tmp' \
+    -C /var/www/hr.sapphireclinicseast.org uploads 2>/dev/null
+  echo "[offsite] HR uploads: $(du -h "$DEST/hr_uploads_${TS}.tar.gz" | cut -f1)"
+fi
+
+# ── Teletherapy UPLOADS (patient docs, session notes — critical) ──
+if [ -d /var/www/sapphireclinicseast.org/teletherapy/uploads ]; then
+  echo "[offsite] Snapshotting teletherapy uploads..."
+  tar czf "$DEST/teletherapy_uploads_${TS}.tar.gz" \
+    -C /var/www/sapphireclinicseast.org/teletherapy uploads 2>/dev/null
+  echo "[offsite] Teletherapy uploads: $(du -h "$DEST/teletherapy_uploads_${TS}.tar.gz" | cut -f1)"
+fi
+
+# ── System config (nginx, letsencrypt, root crontab) ─────────────
+echo "[offsite] Snapshotting system config..."
+tar czf "$DEST/system_config_${TS}.tar.gz" \
+  --warning=no-file-changed \
+  /etc/nginx/sites-available \
+  /etc/nginx/sites-enabled \
+  /etc/nginx/snippets \
+  /etc/letsencrypt 2>/dev/null
+crontab -l > "$DEST/crontab_${TS}.txt" 2>/dev/null || true
+echo "[offsite] System config: $(du -h "$DEST/system_config_${TS}.tar.gz" | cut -f1)"
+
 # ── Accounting DB ────────────────────────────────────────────
 if docker ps --format "{{.Names}}" | grep -q "^accounting_db$"; then
   echo "[offsite] Dumping accounting database..."
@@ -77,7 +113,12 @@ else
 fi
 
 # ── Retention: keep last N days ─────────────────────────────
-find "$DEST" -name "*.gz" -mtime +"$KEEP_DAYS" -delete 2>/dev/null || true
+# Local prune — heavy uploads kept 7 days, lightweight kept 30
+find "$DEST" -name "hr_uploads_*.tar.gz"          -mtime +7 -delete 2>/dev/null || true
+find "$DEST" -name "teletherapy_uploads_*.tar.gz" -mtime +7 -delete 2>/dev/null || true
+find "$DEST" -name "sapphire_uploads_*.tar.gz"    -mtime +7 -delete 2>/dev/null || true
+find "$DEST" -name "*.gz"  -mtime +"$KEEP_DAYS" -delete 2>/dev/null || true
+find "$DEST" -name "*.txt" -mtime +"$KEEP_DAYS" -delete 2>/dev/null || true
 find "$DEST" -name "*.enc" -mtime +"$KEEP_DAYS" -delete 2>/dev/null || true
 COUNT=$(ls "$DEST" 2>/dev/null | wc -l)
 echo "[offsite] $COUNT file(s) retained (${KEEP_DAYS}-day retention)"
@@ -103,6 +144,26 @@ if rclone listremotes 2>/dev/null | grep -q "^offsite:$"; then
       "$DEST/sapphire_hub_src_${TS}.tar.gz" offsite:sapphire/source/ 2>&1 \
       | tail -3
   fi
+  # HR Platform data + uploads
+  if [ -f "$DEST/hr_data_${TS}.tar.gz" ]; then
+    rclone copy --no-traverse "$DEST/hr_data_${TS}.tar.gz" offsite:sapphire/hr/data/ 2>&1 | tail -3
+  fi
+  if [ -f "$DEST/hr_uploads_${TS}.tar.gz" ]; then
+    rclone copy --no-traverse --transfers=2 \
+      "$DEST/hr_uploads_${TS}.tar.gz" offsite:sapphire/hr/uploads/ 2>&1 | tail -3
+  fi
+  # Teletherapy uploads
+  if [ -f "$DEST/teletherapy_uploads_${TS}.tar.gz" ]; then
+    rclone copy --no-traverse --transfers=2 \
+      "$DEST/teletherapy_uploads_${TS}.tar.gz" offsite:sapphire/teletherapy/ 2>&1 | tail -3
+  fi
+  # System config + crontab
+  if [ -f "$DEST/system_config_${TS}.tar.gz" ]; then
+    rclone copy --no-traverse "$DEST/system_config_${TS}.tar.gz" offsite:sapphire/system/ 2>&1 | tail -3
+  fi
+  if [ -f "$DEST/crontab_${TS}.txt" ]; then
+    rclone copy --no-traverse "$DEST/crontab_${TS}.txt" offsite:sapphire/system/ 2>&1 | tail -3
+  fi
   if [ -f "$DEST/accounting_${TS}.sql.gz" ]; then
     rclone copy --no-traverse --transfers=2 \
       "$DEST/accounting_${TS}.sql.gz" offsite:sapphire/db/ 2>&1 \
@@ -115,6 +176,10 @@ if rclone listremotes 2>/dev/null | grep -q "^offsite:$"; then
   rclone delete --min-age ${KEEP_DAYS}d offsite:sapphire/db/ 2>/dev/null || true
   rclone delete --min-age ${KEEP_DAYS}d offsite:sapphire/uploads/ 2>/dev/null || true
   rclone delete --min-age ${KEEP_DAYS}d offsite:sapphire/source/ 2>/dev/null || true
+  rclone delete --min-age ${KEEP_DAYS}d offsite:sapphire/hr/data/ 2>/dev/null || true
+  rclone delete --min-age ${KEEP_DAYS}d offsite:sapphire/hr/uploads/ 2>/dev/null || true
+  rclone delete --min-age ${KEEP_DAYS}d offsite:sapphire/teletherapy/ 2>/dev/null || true
+  rclone delete --min-age ${KEEP_DAYS}d offsite:sapphire/system/ 2>/dev/null || true
   rclone delete --min-age ${KEEP_DAYS}d offsite:sapphire/env/ 2>/dev/null || true
   echo "[offsite] â Pushed to offsite"
 else
