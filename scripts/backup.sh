@@ -59,6 +59,29 @@ else
   echo "[backup] ⚠  $UPLOADS_DIR not found — skipping uploads tar."
 fi
 
+# ── Snapshot the marketing hub SOURCE TREE so any local hand-deployed changes
+# are preserved alongside the DB + uploads. Without this, a stale-checkout
+# accident or accidental hard-reset could wipe in-flight work that hadn't been
+# committed to GitHub yet. Skips heavy dirs (node_modules, .next, .git).
+HUB_SRC_DIR="/opt/sapphire-marketing-hub"
+HUB_SRC_FILENAME="sapphire_hub_src_${TIMESTAMP}.tar.gz"
+HUB_SRC_FULL_PATH="${BACKUP_DIR}/${HUB_SRC_FILENAME}"
+if [ -d "$HUB_SRC_DIR" ]; then
+  echo "[backup] Snapshotting marketing-hub source tree..."
+  tar czf "$HUB_SRC_FULL_PATH" \
+    --exclude='node_modules' \
+    --exclude='.next' \
+    --exclude='.git' \
+    --exclude='accounting-hub/node_modules' \
+    --exclude='accounting-hub/.next' \
+    --exclude='client-portal/node_modules' \
+    --exclude='client-portal/.next' \
+    --exclude='*.log' \
+    -C "$(dirname "$HUB_SRC_DIR")" "$(basename "$HUB_SRC_DIR")" 2>/dev/null
+  SSIZE=$(du -sh "$HUB_SRC_FULL_PATH" | cut -f1)
+  echo "[backup] ✅  Source snapshot: $HUB_SRC_FILENAME ($SSIZE)"
+fi
+
 # ── Remove old backups (keep last N days) ────────────────────
 echo "[backup] Pruning DB backups older than ${KEEP_DAYS} days..."
 find "$BACKUP_DIR" -name "sapphire_*.sql.gz" -mtime +"$KEEP_DAYS" -delete
@@ -69,6 +92,11 @@ echo "[backup] Pruning uploads tarballs older than ${KEEP_DAYS} days..."
 find "$BACKUP_DIR" -name "sapphire_uploads_*.tar.gz" -mtime +"$KEEP_DAYS" -delete
 UREMAINING=$(ls "$BACKUP_DIR"/sapphire_uploads_*.tar.gz 2>/dev/null | wc -l)
 echo "[backup] ${UREMAINING} uploads tarball(s) retained locally."
+
+echo "[backup] Pruning source snapshots older than ${KEEP_DAYS} days..."
+find "$BACKUP_DIR" -name "sapphire_hub_src_*.tar.gz" -mtime +"$KEEP_DAYS" -delete
+SREMAINING=$(ls "$BACKUP_DIR"/sapphire_hub_src_*.tar.gz 2>/dev/null | wc -l)
+echo "[backup] ${SREMAINING} source snapshot(s) retained locally."
 
 # ── Offsite upload (optional — configure one option below) ───
 #
