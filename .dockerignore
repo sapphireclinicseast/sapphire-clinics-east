@@ -9,3 +9,17 @@ node_modules
 uploads
 *.log
 .git
+
+# CRITICAL: sibling Next.js apps live alongside the marketing hub in
+# this monorepo (each has its own src/app/). If they end up inside
+# the Docker build context, Turbopack compiles their pages alongside
+# the marketing hub and they collide on shared route names — most
+# visibly /login → renders the teletherapy login (with "SCEI
+# Teletherapy" branding) instead of "Operations Hub".
+#
+# Keep these excluded so Turbopack only sees the marketing hub source
+# tree at ./src and ./public.
+teletherapy
+client-portal
+accounting-hub
+verdana-store
