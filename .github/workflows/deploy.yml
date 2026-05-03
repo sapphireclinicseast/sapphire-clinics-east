@@ -149,11 +149,30 @@ jobs:
             echo "→ Currently running marketing-hub container:"
             docker ps --filter "name=sapphire_app" --format "  {{.Names}}  image={{.Image}}  status={{.Status}}" || true
 
+            # ─── Build-context fingerprint ──────────────────────────────
+            # Sanity-check that the freshly rsync'd source on the VPS
+            # actually contains the latest commit. If somebody (a backup
+            # cron, a hand-edit, etc.) clobbered files between the rsync
+            # and this point, the build below would happily bake the
+            # stale content. Print the schedules layout sha so a
+            # mismatch is visible in the run log.
+            cd /var/www/sapphireclinicseast.org
+            echo "→ Source-tree fingerprint (post-rsync):"
+            echo "   src/app/schedules/layout.tsx:                   $(sha256sum 'src/app/schedules/layout.tsx' 2>/dev/null | awk '{print $1}' | cut -c1-16) ($(wc -c < 'src/app/schedules/layout.tsx' 2>/dev/null) bytes)"
+            echo "   src/app/schedules/page.tsx:                     $(sha256sum 'src/app/schedules/page.tsx' 2>/dev/null | awk '{print $1}' | cut -c1-16)"
+            echo "   src/app/schedules/[branch]/[dept]/page.tsx:     $(sha256sum 'src/app/schedules/[branch]/[dept]/page.tsx' 2>/dev/null | awk '{print $1}' | cut -c1-16)"
+            echo "   src/middleware.ts:                              $(sha256sum 'src/middleware.ts' 2>/dev/null | awk '{print $1}' | cut -c1-16)"
+            cd "$DOCKER_DIR"
+
             echo "→ Tagging current image as :rollback (best-effort)..."
             docker tag sapphire_app:latest sapphire_app:rollback 2>/dev/null || true
 
             echo "→ Building sapphire_app from /var/www/sapphireclinicseast.org..."
-            docker compose --env-file "$ENV_FILE" build app
+            # --no-cache: BuildKit was hitting cache and skipping rebuilds even
+            # when source files changed (e.g. the schedules layout rebrand
+            # rsync'd in but the running container kept serving the old
+            # image). Cost is ~60-90s per deploy; reliability is worth it.
+            docker compose --env-file "$ENV_FILE" build --no-cache --pull app
             BUILD_RC=$?
             echo "   Build exit code: $BUILD_RC"
             if [ "$BUILD_RC" != "0" ]; then
@@ -204,6 +223,32 @@ jobs:
               echo "❌ Marketing Hub did not come up on port 3000"
               exit 1
             fi
+
+            # ─── Post-deploy verification ───────────────────────────────
+            # Fetch the schedules gate from the running container and check
+            # that the rebrand markers are present (no orange palette, no
+            # broken sandbox-clinic logo). If a stale image somehow ended
+            # up running, fail the workflow loudly here rather than letting
+            # a silent regression reach end users.
+            echo "→ Verifying rebrand markers on rendered /schedules..."
+            BODY=$(curl -s -L --max-time 10 -H 'Host: schedules.sapphireclinicseast.org' \
+              http://localhost:3000/schedules 2>/dev/null || echo '')
+            HAS_NARRA=$(echo "$BODY" | grep -c '#1B3F38' || true)
+            HAS_PAPER=$(echo "$BODY" | grep -c '#F5F0E8' || true)
+            HAS_ORANGE=$(echo "$BODY" | grep -c '#ED6823' || true)
+            HAS_LOGO=$(echo "$BODY" | grep -c 'sandbox-clinic-logo' || true)
+            echo "   #1B3F38 (Narra):           $HAS_NARRA hits"
+            echo "   #F5F0E8 (Paper):           $HAS_PAPER hits"
+            echo "   #ED6823 (legacy orange):   $HAS_ORANGE hits   (must be 0)"
+            echo "   sandbox-clinic-logo:       $HAS_LOGO hits     (must be 0)"
+            if [ "$HAS_ORANGE" != "0" ] || [ "$HAS_LOGO" != "0" ]; then
+              echo "❌ Stale image detected — running container still serves the orange/logo layout."
+              echo "   This usually means the docker build cache short-circuited the rebuild."
+              echo "   Image-layer history of running container:"
+              docker inspect --format '{{.Image}}' sapphire_app | xargs -I{} docker history --no-trunc {} 2>&1 | head -20 || true
+              exit 1
+            fi
+            echo "   ✅ Rebrand markers present — running image is fresh."
 
             echo ""
             echo "✅ Marketing Hub rebuilt & restarted (HTTP $HTTP_CODE)."
