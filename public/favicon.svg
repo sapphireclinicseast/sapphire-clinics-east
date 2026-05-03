@@ -1,14 +1,25 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <!-- Outer band — Dark forest #1B3F38 -->
-  <circle cx="50" cy="100" r="100" fill="#1B3F38"/>
-  <!-- White gap -->
-  <circle cx="50" cy="100" r="79"  fill="#ffffff"/>
-  <!-- Middle band — Sage/teal #4A8073 -->
-  <circle cx="50" cy="100" r="76"  fill="#4A8073"/>
-  <!-- White gap -->
-  <circle cx="50" cy="100" r="51"  fill="#ffffff"/>
-  <!-- Inner band — Clay accent #A85C3D -->
-  <circle cx="50" cy="100" r="48"  fill="#A85C3D"/>
-  <!-- Centre hole — white -->
-  <circle cx="50" cy="100" r="24"  fill="#ffffff"/>
+  <!--
+    Sapphire Clinics East — rainbow-arch favicon
+    Three concentric half-arc rings centred at (50, 100).
+    All arcs use path commands so each band renders as a clear arch ring.
+    Upper half of the viewBox is transparent; rings occupy the lower half.
+
+    Ring geometry (all centred at cx=50 cy=100):
+      Outer band  #1B3F38  r 48 → 36  (band 12 u, gap 4 u)
+      Middle band #4A8073  r 32 → 20  (band 12 u, gap 4 u)
+      Inner band  #A85C3D  r 16 → 6   (band 10 u)
+  -->
+
+  <!-- Outer band — Narra dark-teal #1B3F38 -->
+  <path d="M 2 100 A 48 48 0 0 0 98 100 L 86 100 A 36 36 0 0 1 14 100 Z"
+        fill="#1B3F38"/>
+
+  <!-- Middle band — Sage #4A8073 -->
+  <path d="M 18 100 A 32 32 0 0 0 82 100 L 70 100 A 20 20 0 0 1 30 100 Z"
+        fill="#4A8073"/>
+
+  <!-- Inner band — Clay #A85C3D -->
+  <path d="M 34 100 A 16 16 0 0 0 66 100 L 56 100 A 6 6 0 0 1 44 100 Z"
+        fill="#A85C3D"/>
 </svg>
