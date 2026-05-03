@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Outer band — Dark forest #1B3F38 -->
+  <circle cx="50" cy="100" r="100" fill="#1B3F38"/>
+  <!-- White gap -->
+  <circle cx="50" cy="100" r="79"  fill="#ffffff"/>
+  <!-- Middle band — Sage/teal #4A8073 -->
+  <circle cx="50" cy="100" r="76"  fill="#4A8073"/>
+  <!-- White gap -->
+  <circle cx="50" cy="100" r="51"  fill="#ffffff"/>
+  <!-- Inner band — Clay accent #A85C3D -->
+  <circle cx="50" cy="100" r="48"  fill="#A85C3D"/>
+  <!-- Centre hole — white -->
+  <circle cx="50" cy="100" r="24"  fill="#ffffff"/>
+</svg>
