@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Image from 'next/image'
 
 export const metadata: Metadata = {
   title: 'SAPPHIRE Schedule Hub — Sapphire Clinics East',
@@ -10,23 +11,30 @@ export const metadata: Metadata = {
 
 export default function SchedulesLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: '#F5F0E8',
-      fontFamily: 'var(--font-manrope), system-ui, -apple-system, sans-serif',
-      color: '#1A1A1A',
-      overflowX: 'hidden',
-    }}>
+    <div style={{ minHeight: '100vh', background: '#fff', fontFamily: 'system-ui, -apple-system, sans-serif', overflowX: 'hidden' }}>
+      {/* Responsive padding for mobile */}
       <style>{`
-        .sched-main { padding: 28px 24px; }
+        .sched-header-inner { padding: 12px 24px; }
+        .sched-main { padding: 24px 24px; }
         @media (max-width: 640px) {
-          .sched-main { padding: 18px 10px !important; }
-        }
-        .sched-display {
-          font-family: var(--font-montserrat), system-ui, -apple-system, sans-serif;
-          letter-spacing: -0.01em;
+          .sched-header-inner { padding: 10px 14px; }
+          .sched-main { padding: 16px 10px !important; }
         }
       `}</style>
+
+      {/* Header */}
+      <header style={{ background: '#fff', borderBottom: '3px solid #ED6823', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
+        <div className="sched-header-inner" style={{ maxWidth: '1100px', margin: '0 auto' }}>
+          <Image
+            src="/sandbox-clinic-logo.png"
+            alt="Sandbox Clinic"
+            width={180}
+            height={48}
+            style={{ height: '44px', width: 'auto', objectFit: 'contain' }}
+            priority
+          />
+        </div>
+      </header>
 
       {/* Page content */}
       <main className="sched-main" style={{ maxWidth: '1100px', margin: '0 auto' }}>
@@ -34,13 +42,8 @@ export default function SchedulesLayout({ children }: { children: React.ReactNod
       </main>
 
       {/* Footer */}
-      <footer style={{
-        borderTop: '1px solid #C8D6CF',
-        marginTop: '56px',
-        padding: '20px 24px',
-        textAlign: 'center',
-      }}>
-        <p style={{ fontSize: '12px', color: '#1A1A1A', opacity: 0.55, margin: 0, letterSpacing: '0.01em' }}>
+      <footer style={{ borderTop: '1px solid #f0f0f0', marginTop: '48px', padding: '18px 24px', textAlign: 'center' }}>
+        <p style={{ fontSize: '12px', color: '#999', margin: 0 }}>
           © Sapphire Clinics East, Inc. — Internal use only.
         </p>
       </footer>

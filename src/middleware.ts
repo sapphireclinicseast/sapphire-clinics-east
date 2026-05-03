@@ -1,75 +1,50 @@
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
-export function middleware(request: NextRequest) {
-  const host = request.headers.get('host') ?? ''
-  const { pathname, search } = request.nextUrl
+export function middleware(req: NextRequest) {
+  const host = req.headers.get('host') ?? ''
+  const { pathname } = req.nextUrl
 
-  // Always pass through Next.js internals + favicon
-  if (pathname.startsWith('/_next') || pathname === '/favicon.ico') {
+  // Let Next.js internals and API routes pass through unchanged
+  if (
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/api') ||
+    pathname === '/favicon.ico'
+  ) {
     return NextResponse.next()
   }
 
-  // ── schedules.* subdomain ─────────────────────────────────────────────
-  // The Scheduling Hub lives under `/schedules/...` in the file system.
-  // Redirect any non-/schedules URL on this host into that prefix so the
-  // browser URL and the rendered route always agree (otherwise the
-  // Next.js client router renders the global notFound boundary on top
-  // of the gate page after hydration).
+  // ── schedules.* subdomain → /schedules/* ─────────────────────────────────
   if (host.startsWith('schedules.')) {
-    if (pathname.startsWith('/api/')) return NextResponse.next()
+    const internalPath = pathname === '/' ? '/schedules' : `/schedules${pathname}`
 
-    // Already under /schedules — handle cookie gate, then continue.
-    if (pathname === '/schedules' || pathname.startsWith('/schedules/')) {
-      const isBranchDept = /^\/schedules\/[^/]+\/[^/]+\/?$/.test(pathname)
-      if (isBranchDept) {
-        const cookie = request.cookies.get('sched_access')?.value
-        if (cookie !== 'scei') {
-          const gateUrl = request.nextUrl.clone()
-          gateUrl.pathname = '/schedules'
-          gateUrl.search = `?next=${encodeURIComponent(pathname)}`
-          return NextResponse.redirect(gateUrl)
-        }
+    // Cookie gate: protect branch/dept pages
+    const isBranchDept = /^\/schedules\/[^/]+\/[^/]+/.test(internalPath)
+    if (isBranchDept) {
+      const cookie = req.cookies.get('sched_access')?.value
+      if (cookie !== 'scei') {
+        const gateUrl = req.nextUrl.clone()
+        gateUrl.pathname = '/schedules'
+        gateUrl.search   = `?next=${encodeURIComponent(pathname)}`
+        return NextResponse.rewrite(gateUrl)
       }
-      return NextResponse.next()
     }
 
-    // Anything else on this host (including '/' and '/sbea/ot' style URLs)
-    // gets redirected into the /schedules/* tree.
-    const target = request.nextUrl.clone()
-    target.pathname = pathname === '/' ? '/schedules' : `/schedules${pathname}`
-    target.search = search
-    return NextResponse.redirect(target)
+    const url = req.nextUrl.clone()
+    url.pathname = internalPath
+    return NextResponse.rewrite(url)
   }
 
-  // ── queue.* subdomain — public, no cookie gate ─────────────────────────
+  // ── queue.* subdomain → /queue/* ─────────────────────────────────────────
   if (host.startsWith('queue.')) {
-    if (pathname === '/queue' || pathname.startsWith('/queue/')) return NextResponse.next()
-    if (pathname.startsWith('/api/')) return NextResponse.next()
-    const target = request.nextUrl.clone()
-    target.pathname = pathname === '/' ? '/queue' : `/queue${pathname}`
-    target.search = search
-    return NextResponse.redirect(target)
-  }
-
-  // ── Default: NextAuth-gated app on the main host ──────────────────────
-  const publicPaths = ['/login', '/forgot-password', '/reset-password', '/api/', '/capture']
-  const isPublic = publicPaths.some((p) => pathname.startsWith(p))
-  if (isPublic) return NextResponse.next()
-
-  const sessionToken =
-    request.cookies.get('authjs.session-token')?.value ||
-    request.cookies.get('__Secure-authjs.session-token')?.value
-
-  if (!sessionToken) {
-    const loginUrl = new URL('/login', request.nextUrl.origin)
-    loginUrl.searchParams.set('callbackUrl', pathname)
-    return NextResponse.redirect(loginUrl)
+    const internalPath = pathname === '/' ? '/queue' : `/queue${pathname}`
+    const url = req.nextUrl.clone()
+    url.pathname = internalPath
+    return NextResponse.rewrite(url)
   }
 
   return NextResponse.next()
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/auth).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 }

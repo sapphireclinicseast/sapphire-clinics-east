@@ -1,304 +1,75 @@
 @import "tailwindcss";
 
-/* ─── Brand palette ─────────────────────────────────────────────
-   60% Paper + Narra · 25% Moss + Sage · 10% Ink · 5% Clay + Sun
-   Narra + Paper — default highest-contrast surface
-   Sage + Paper  — section openers, secondary surfaces
-   Narra + Sun   — hero moments
-   Moss + Clay   — editorial accents, sparingly
-*/
 :root {
-  --narra:  #1B3F38;       /* primary deep green */
-  --moss:   #26554B;       /* secondary */
-  --sage:   #4A8073;       /* tertiary */
-  --clay:   #A85C3D;       /* accent warm — CTAs, links */
-  --sun:    #C69849;       /* accent light — key data, emphasis */
-  --paper:  #F5F0E8;       /* neutral ground */
-  --ink:    #1A1A1A;       /* near-black — type */
+  /* ─── Brand palette (Sapphire Clinics 2026 refresh) ───────────
+   * Distribution target:
+   *   60% Paper / Narra      — default surfaces
+   *   25% Moss / Sage        — secondary surfaces, quiet hierarchy
+   *   10% Ink                — type, fine rules, monochrome photography
+   *    5% Clay / Sun         — accents, links, CTAs, single-point emphasis
+   */
+  --narra: #1B3F38;   /* Primary — deep evergreen */
+  --moss:  #26554B;   /* Secondary */
+  --sage:  #4A8073;   /* Tertiary */
+  --clay:  #A85C3D;   /* Warm accent */
+  --sun:   #C69849;   /* Light accent */
+  --paper: #F5F0E8;   /* Neutral, dominant surface */
+  --ink:   #1A1A1A;   /* Neutral, type + fine rules */
 
-  --paper-2:  #ECE6D9;
-  --paper-3:  #DCD3C0;
-  --sage-tint: rgba(74, 128, 115, 0.10);
-  --moss-tint: rgba(38, 85, 75, 0.08);
-  --clay-tint: rgba(168, 92, 61, 0.10);
-  --sun-tint:  rgba(198, 152, 73, 0.14);
-  --mid-gray: #6B6357;
+  /* ─── Legacy aliases (so existing components keep working) ─── */
+  --teal:        var(--narra);
+  --deep-teal:   #14322C;
+  --bright-teal: var(--clay);
+  --pale-teal:   var(--paper);
+  --gold:        var(--moss);
+  --gold-light:  var(--sage);
 
-  --font-display: var(--font-montserrat), 'Helvetica Neue', Arial, sans-serif;
-  --font-heading: var(--font-montserrat), 'Helvetica Neue', Arial, sans-serif;
-  --font-body:    var(--font-manrope),    'Helvetica Neue', Arial, sans-serif;
-
-  /* Legacy aliases — keep older inline styles working through the migration. */
-  --teal:        var(--moss);
-  --deep-teal:   var(--narra);
-  --bright-teal: var(--sage);
-  --pale-teal:   var(--paper-2);
-  --gold:        var(--clay);
-  --gold-light:  var(--sun);
-  --accent:      var(--sage);
+  /* Neutrals (ink + paper-derived) */
   --charcoal:    var(--ink);
   --near-black:  var(--ink);
   --off-white:   var(--paper);
-  --light-gray:  var(--paper-3);
+  --light-gray:  #E5DED1;   /* Paper, slightly darker for borders */
+  --mid-gray:    var(--sage);
+
+  /* ─── Fonts ───────────────────────────────────────────────────
+   * Montserrat — display, headlines, wordmark, UI buttons
+   * Manrope    — body, long-form, captions, data
+   */
+  --font-display: var(--font-montserrat), 'Helvetica Neue', system-ui, -apple-system, sans-serif;
+  --font-heading: var(--font-montserrat), 'Helvetica Neue', system-ui, -apple-system, sans-serif;
+  --font-body:    var(--font-manrope), 'Helvetica Neue', system-ui, -apple-system, sans-serif;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 body {
   font-family: var(--font-body);
-  color: var(--ink);
-  background: var(--paper);
+  color: var(--charcoal);
+  background: var(--off-white);
 }
 
-/* Heading defaults wrapped in @layer base so Tailwind utilities like
-   text-white / text-paper can override them. (Without the layer, this
-   unlayered rule would beat all utility classes due to CSS cascade
-   layer order, causing dark headings on dark hero/sidebar surfaces.) */
-@layer base {
-  h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-heading);
-    font-weight: 600;
-    letter-spacing: -0.015em;
-    color: var(--narra);
-  }
+h1, h2, h3 {
+  font-family: var(--font-heading);
 }
 
-/* Hero / sidebar / dark surfaces: any heading inside these gets Paper
-   for a calm, on-brand contrast against Narra/Moss greens. Specificity
-   bumps (.hero-gradient h1) and !important on the color guarantee it
-   wins even if a Tailwind utility were dropped. */
-.hero-gradient :is(h1, h2, h3, h4, h5, h6),
-.sidebar-dark  :is(h1, h2, h3, h4, h5, h6) {
-  color: var(--paper);
+h4, h5, h6 {
+  font-family: var(--font-display);
 }
 
-/* ─── Scrollbar ──────────────────────────────────────────────── */
+/* Scrollbar styling */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: var(--paper-2); }
-::-webkit-scrollbar-thumb { background: var(--sage); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--moss); }
+::-webkit-scrollbar-track { background: var(--light-gray); }
+::-webkit-scrollbar-thumb { background: var(--mid-gray); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--teal); }
 
-/* ─── Animations ─────────────────────────────────────────────── */
-@keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-@keyframes slideDown { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes gateSlideUp { from { opacity: 0; transform: translateY(30px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
-@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  20%, 60% { transform: translateX(-6px); }
-  40%, 80% { transform: translateX(6px); }
+/* Toast animations */
+@keyframes slide-in {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
 }
-@keyframes pulse-ring {
-  0%   { transform: scale(0.8); opacity: 1; }
-  100% { transform: scale(2);   opacity: 0; }
-}
-
-.animate-fade-up    { animation: fadeUp 0.5s ease-out forwards; opacity: 0; }
-.animate-fade-in    { animation: fadeIn 0.3s ease-out forwards; }
-.animate-slide-down { animation: slideDown 0.4s ease-out forwards; opacity: 0; }
-.animate-gate       { animation: gateSlideUp 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
-.animate-shake      { animation: shake 0.4s ease-out; }
-
-.stagger-1 { animation-delay: 0.05s; }
-.stagger-2 { animation-delay: 0.10s; }
-.stagger-3 { animation-delay: 0.15s; }
-.stagger-4 { animation-delay: 0.20s; }
-.stagger-5 { animation-delay: 0.25s; }
-.stagger-6 { animation-delay: 0.30s; }
-.stagger-7 { animation-delay: 0.35s; }
-.stagger-8 { animation-delay: 0.40s; }
-.stagger-9 { animation-delay: 0.45s; }
-.stagger-10{ animation-delay: 0.50s; }
-
-/* ─── Card system ────────────────────────────────────────────── */
-.card {
-  background: #fff;
-  border-radius: 14px;
-  border: 1px solid var(--paper-3);
-  padding: 24px;
-  box-shadow: 0 2px 12px rgba(27, 63, 56, 0.06);
-  transition: transform 0.25s ease-out, box-shadow 0.25s ease-out, border-color 0.25s ease-out;
-}
-.card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 28px rgba(27, 63, 56, 0.12);
-  border-color: rgba(74, 128, 115, 0.4);
-}
-.card-static {
-  background: #fff;
-  border-radius: 14px;
-  border: 1px solid var(--paper-3);
-  padding: 24px;
-  box-shadow: 0 2px 12px rgba(27, 63, 56, 0.06);
-}
-
-/* ─── Button system ──────────────────────────────────────────── */
-/* Primary uses Narra — calmest read on Paper. */
-.btn-primary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  background: var(--narra);
-  color: #fff;
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 14px;
-  padding: 10px 20px;
-  border-radius: 10px;
-  border: none;
-  cursor: pointer;
-  transition: all 0.2s ease-out;
-  box-shadow: 0 2px 8px rgba(27, 63, 56, 0.25);
-}
-.btn-primary:hover { background: var(--moss); box-shadow: 0 4px 16px rgba(27, 63, 56, 0.35); transform: translateY(-1px); }
-.btn-primary:active { transform: scale(0.97); }
-.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-
-.btn-secondary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  background: #fff;
-  color: var(--narra);
-  font-family: var(--font-display);
-  font-weight: 500;
-  font-size: 14px;
-  padding: 10px 20px;
-  border-radius: 10px;
-  border: 1.5px solid var(--paper-3);
-  cursor: pointer;
-  transition: all 0.2s ease-out;
-}
-.btn-secondary:hover { border-color: var(--sage); color: var(--moss); background: var(--paper-2); }
-
-/* Use Clay for warm, single-point CTAs. */
-.btn-cta {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  background: var(--clay);
-  color: #fff;
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 14px;
-  padding: 10px 20px;
-  border-radius: 10px;
-  border: none;
-  cursor: pointer;
-  transition: all 0.2s ease-out;
-  box-shadow: 0 2px 8px rgba(168, 92, 61, 0.30);
-}
-.btn-cta:hover { background: #944D32; box-shadow: 0 4px 16px rgba(168, 92, 61, 0.40); transform: translateY(-1px); }
-.btn-cta:active { transform: scale(0.97); }
-.btn-cta:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-
-.btn-danger {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  background: linear-gradient(135deg, #dc2626, #b91c1c);
-  color: white;
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 14px;
-  padding: 10px 20px;
-  border-radius: 10px;
-  border: none;
-  cursor: pointer;
-  transition: all 0.2s ease-out;
-  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.25);
-}
-.btn-danger:hover { box-shadow: 0 4px 16px rgba(220, 38, 38, 0.35); transform: translateY(-1px); }
-.btn-danger:active { transform: scale(0.97); }
-.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-
-/* ─── Badge / Pill system ────────────────────────────────────── */
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-family: var(--font-display);
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-}
-.badge-teal {
-  background: var(--clay);
-  color: #fff;
-}
-.badge-pending     { background: var(--sun-tint);  color: #8a6a1f; border: 1px solid rgba(198, 152, 73, 0.4); }
-.badge-confirmed   { background: var(--sage-tint); color: var(--moss); border: 1px solid rgba(74, 128, 115, 0.3); }
-.badge-cancelled   { background: var(--clay-tint); color: var(--clay); border: 1px solid rgba(168, 92, 61, 0.28); }
-.badge-rescheduled { background: var(--paper-2);   color: var(--mid-gray); border: 1px solid var(--paper-3); }
-
-/* ─── Input system ───────────────────────────────────────────── */
-.input {
-  width: 100%;
-  padding: 10px 16px;
-  border-radius: 10px;
-  border: 1.5px solid var(--paper-3);
-  font-size: 14px;
-  font-family: var(--font-body);
-  color: var(--ink);
-  background: #fff;
-  transition: border-color 0.2s ease-out, box-shadow 0.2s ease-out;
-  outline: none;
-}
-.input:focus {
-  border-color: var(--sage);
-  box-shadow: 0 0 0 3px rgba(74, 128, 115, 0.18);
-}
-.input::placeholder { color: var(--mid-gray); }
-
-/* ─── Toast ──────────────────────────────────────────────────── */
-.toast {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  z-index: 100;
-  background: var(--ink);
-  color: #fff;
-  padding: 14px 24px;
-  border-radius: 12px;
-  font-family: var(--font-body);
-  font-size: 14px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-  animation: gateSlideUp 0.3s ease-out;
-}
-
-/* ─── Hero gradient — Narra + Sun ────────────────────────────── */
-.hero-gradient {
-  background:
-    radial-gradient(1200px 400px at 110% -10%, rgba(198, 152, 73, 0.30), transparent 60%),
-    radial-gradient(900px 400px at -10% 120%, rgba(168, 92, 61, 0.20), transparent 60%),
-    linear-gradient(135deg, var(--narra) 0%, var(--moss) 60%, var(--sage) 110%);
-  position: relative;
-  overflow: hidden;
-  color: #fff;
-}
-.hero-gradient::before {
-  content: '';
-  position: absolute;
-  top: -50%; right: -30%;
-  width: 500px; height: 500px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.05);
-  pointer-events: none;
-}
-.hero-gradient::after {
-  content: '';
-  position: absolute;
-  bottom: -40%; left: -20%;
-  width: 400px; height: 400px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.03);
-  pointer-events: none;
+@keyframes slide-out {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(100%); opacity: 0; }
 }

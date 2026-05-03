@@ -35,35 +35,27 @@ export default async function SchedulesGatePage({
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '55vh' }}>
       <div style={{
         width: '100%', maxWidth: '380px',
-        background: '#fff',
-        border: '1px solid #C8D6CF',
+        border: '1px solid #f0e8e2',
         borderRadius: '16px',
         overflow: 'hidden',
-        boxShadow: '0 8px 32px rgba(27,63,56,0.10)',
+        boxShadow: '0 4px 24px rgba(237,104,35,0.10)',
       }}>
-        {/* Narra → Sun accent bar (Narra + Sun: hero moment, warmth) */}
-        <div style={{ height: '6px', background: 'linear-gradient(90deg,#1B3F38 0%,#4A8073 60%,#C69849 100%)' }} />
+        {/* Orange accent bar */}
+        <div style={{ height: '6px', background: 'linear-gradient(90deg,#ED6823,#FFA235)' }} />
 
         <div style={{ padding: '32px 28px 28px' }}>
-          <h1 className="sched-display" style={{
-            fontSize: '22px', fontWeight: 700, color: '#1B3F38',
-            margin: '0 0 6px', letterSpacing: '-0.01em',
-          }}>
+          <h1 style={{ fontSize: '20px', fontWeight: 700, color: '#000', margin: '0 0 4px' }}>
             Schedule Access
           </h1>
-          <p style={{ fontSize: '13px', color: '#1A1A1A', opacity: 0.65, margin: '0 0 24px', lineHeight: 1.5 }}>
+          <p style={{ fontSize: '13px', color: '#777', margin: '0 0 24px' }}>
             Enter the access code to view clinic schedules.
           </p>
 
           <form action={verifyCode}>
             <input type="hidden" name="next" value={next} />
 
-            <div style={{ marginBottom: '18px' }}>
-              <label className="sched-display" style={{
-                display: 'block', fontSize: '11px', fontWeight: 700,
-                color: '#1B3F38', marginBottom: '6px',
-                textTransform: 'uppercase', letterSpacing: '0.08em',
-              }}>
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#555', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Access Code
               </label>
               <input
@@ -74,16 +66,14 @@ export default async function SchedulesGatePage({
                 placeholder="Enter code"
                 style={{
                   width: '100%', boxSizing: 'border-box',
-                  padding: '11px 14px', fontSize: '15px',
-                  fontFamily: 'var(--font-manrope), system-ui, sans-serif',
-                  border: hasError ? '1.5px solid #A85C3D' : '1.5px solid #C8D6CF',
+                  padding: '10px 14px', fontSize: '15px',
+                  border: hasError ? '1.5px solid #dc2626' : '1.5px solid #e5e7eb',
                   borderRadius: '8px', outline: 'none',
-                  color: '#1A1A1A', background: '#fff',
-                  transition: 'border-color 0.15s',
+                  color: '#111', background: '#fff',
                 }}
               />
               {hasError && (
-                <p style={{ fontSize: '12px', color: '#A85C3D', margin: '6px 0 0', fontWeight: 500 }}>
+                <p style={{ fontSize: '12px', color: '#dc2626', margin: '6px 0 0' }}>
                   Incorrect code. Please try again.
                 </p>
               )}
@@ -91,14 +81,12 @@ export default async function SchedulesGatePage({
 
             <button
               type="submit"
-              className="sched-display"
               style={{
-                width: '100%', padding: '12px',
-                background: '#1B3F38', color: '#fff',
-                fontWeight: 700, fontSize: '13px',
+                width: '100%', padding: '11px',
+                background: '#ED6823', color: '#fff',
+                fontWeight: 700, fontSize: '14px',
                 border: 'none', borderRadius: '8px',
-                cursor: 'pointer', letterSpacing: '0.06em',
-                textTransform: 'uppercase',
+                cursor: 'pointer', letterSpacing: '0.02em',
               }}
             >
               Continue

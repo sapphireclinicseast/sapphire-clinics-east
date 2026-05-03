@@ -61,36 +61,22 @@ function getSortVal(s: PublicSchedule, col: SortCol): string {
   }
 }
 
-// ── Brand palette ─────────────────────────────────────────────────────────────
-// 60% Paper/Narra · 25% Moss/Sage · 10% Ink · 5% Clay/Sun
-const NARRA       = '#1B3F38' // primary
-const MOSS        = '#26554B' // secondary
-const SAGE        = '#4A8073' // tertiary
-const CLAY        = '#A85C3D' // accent warm
-const SUN         = '#C69849' // accent light — single-point emphasis
-const PAPER       = '#F5F0E8' // neutral light
-const INK         = '#1A1A1A' // neutral dark
-const SAGE_TINT   = '#EAF1ED' // section-opener bg (Sage + Paper)
-const SAGE_BORDER = '#C8D6CF' // soft sage border
-// Back-compat aliases — kept so legacy references below stay readable.
-const O  = NARRA
-const OL = SAGE
-
-const DISPLAY_FONT = 'var(--font-montserrat), system-ui, -apple-system, sans-serif'
+// ── Orange theme helpers ──────────────────────────────────────────────────────
+const O  = '#ED6823'
+const OL = '#FFA235'
 
 const pillBtn = (active: boolean): CSSProperties => ({
-  padding: '8px 18px', borderRadius: '999px', fontSize: '12px', fontWeight: 700,
-  fontFamily: DISPLAY_FONT, letterSpacing: '0.04em', textTransform: 'uppercase',
-  border: `1.5px solid ${active ? NARRA : SAGE_BORDER}`,
-  background: active ? NARRA : '#fff',
-  color: active ? '#fff' : NARRA,
+  padding: '7px 18px', borderRadius: '999px', fontSize: '13px', fontWeight: 600,
+  border: `2px solid ${active ? O : '#e5e7eb'}`,
+  background: active ? O : '#fff',
+  color: active ? '#fff' : '#888',
   cursor: 'pointer', transition: 'all 0.15s',
 })
 
 const filterInput: CSSProperties = {
   width: '100%', boxSizing: 'border-box',
-  fontSize: '11px', padding: '4px 7px', borderRadius: '6px',
-  border: `1px solid ${SAGE_BORDER}`, background: '#fff', color: INK, outline: 'none',
+  fontSize: '11px', padding: '3px 6px', borderRadius: '6px',
+  border: '1px solid #e5e7eb', background: '#fff', color: '#111', outline: 'none',
 }
 
 // ── iOS-safe horizontal scroll helpers ───────────────────────────────────────
@@ -321,30 +307,18 @@ export default function PublicScheduleView({
       `}</style>
 
       {/* Page heading */}
-      <div style={{ marginBottom: '28px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <span style={{
-            background: NARRA, color: '#fff',
-            fontFamily: DISPLAY_FONT, fontSize: '11px', fontWeight: 700,
-            padding: '4px 11px', borderRadius: '999px',
-            textTransform: 'uppercase', letterSpacing: '0.06em',
-          }}>
+      <div style={{ marginBottom: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <span style={{ background: '#FFF0E8', color: O, fontSize: '12px', fontWeight: 700,
+            padding: '3px 10px', borderRadius: '999px', border: `1px solid ${OL}` }}>
             {branchLabel}
           </span>
-          <span style={{
-            background: SAGE_TINT, color: NARRA,
-            fontFamily: DISPLAY_FONT, fontSize: '11px', fontWeight: 700,
-            padding: '4px 11px', borderRadius: '999px',
-            border: `1px solid ${SAGE_BORDER}`,
-            textTransform: 'uppercase', letterSpacing: '0.06em',
-          }}>
+          <span style={{ background: '#f5f5f5', color: '#444', fontSize: '12px', fontWeight: 600,
+            padding: '3px 10px', borderRadius: '999px' }}>
             {deptLabel}
           </span>
         </div>
-        <h1 className="sched-display" style={{
-          fontFamily: DISPLAY_FONT, fontSize: '26px', fontWeight: 700,
-          color: NARRA, margin: '10px 0 0', letterSpacing: '-0.01em', lineHeight: 1.15,
-        }}>
+        <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#111', margin: '8px 0 0' }}>
           {deptLabel} Schedule
         </h1>
       </div>
@@ -395,8 +369,8 @@ export default function PublicScheduleView({
               background: '#fff', border: '1px solid #f0f0f0', borderRadius: '12px',
               boxShadow: '0 1px 4px rgba(0,0,0,0.04)', overflow: 'auto', maxHeight: '560px',
             }}>
-              <div style={{ background: '#EAF1ED', padding: '10px 14px',
-                borderBottom: '1px solid #C8D6CF', fontSize: '11px', fontWeight: 700,
+              <div style={{ background: '#FFF0E8', padding: '10px 14px',
+                borderBottom: '1px solid #F5D5C0', fontSize: '11px', fontWeight: 700,
                 color: O, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Therapists
               </div>
@@ -412,7 +386,7 @@ export default function PublicScheduleView({
                       style={{
                         display: 'block', width: '100%', textAlign: 'left',
                         padding: '9px 14px', fontSize: '13px',
-                        background: active ? '#EAF1ED' : '#fff',
+                        background: active ? '#FFF0E8' : '#fff',
                         color: active ? O : '#222',
                         fontWeight: active ? 700 : 500,
                         borderLeft: `3px solid ${active ? O : 'transparent'}`,
@@ -437,13 +411,13 @@ export default function PublicScheduleView({
                   }}>
                     {/* Day headers */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)',
-                      background: '#EAF1ED', borderBottom: '1px solid #C8D6CF' }}>
+                      background: '#FFF0E8', borderBottom: '1px solid #F5D5C0' }}>
                       {weekDays.map((d, i) => {
                         const isToday = d.toDateString() === new Date().toDateString()
                         return (
                           <div key={i} style={{
                             padding: '10px 6px', textAlign: 'center',
-                            borderRight: i < 6 ? '1px solid #C8D6CF' : 'none',
+                            borderRight: i < 6 ? '1px solid #F5D5C0' : 'none',
                           }}>
                             <div style={{ fontSize: '10px', fontWeight: 700, color: O,
                               textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -583,8 +557,8 @@ export default function PublicScheduleView({
             <div style={{ borderRadius: '12px', border: '1px solid #f0f0f0',
               boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
               {/* Summary bar */}
-              <div style={{ background: '#EAF1ED', padding: '10px 16px',
-                borderBottom: '1px solid #C8D6CF', display: 'flex', justifyContent: 'space-between',
+              <div style={{ background: '#FFF0E8', padding: '10px 16px',
+                borderBottom: '1px solid #F5D5C0', display: 'flex', justifyContent: 'space-between',
                 alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                 <span style={{ fontSize: '12px', fontWeight: 600, color: O }}>
                   {new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-PH', {
@@ -602,7 +576,7 @@ export default function PublicScheduleView({
                 <div style={{ minWidth: '560px' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', background: '#fff' }}>
                   <thead>
-                    <tr style={{ background: PAPER, borderBottom: `1px solid ${SAGE_BORDER}` }}>
+                    <tr style={{ background: '#fafafa', borderBottom: '1px solid #f0f0f0' }}>
                       {COLUMNS.map(({ key, label }) => (
                         <th key={key}
                           onClick={() => toggleSort(key)}
@@ -709,7 +683,7 @@ export default function PublicScheduleView({
             boxShadow: '0 1px 4px rgba(0,0,0,0.04)', background: '#fff', marginBottom: '16px' }}>
             {/* Day headers — single letters to fit mobile */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)',
-              background: '#EAF1ED', borderBottom: '1px solid #C8D6CF' }}>
+              background: '#FFF0E8', borderBottom: '1px solid #F5D5C0' }}>
               {CAL_DAYS.map((d, i) => (
                 <div key={i} style={{ padding: '8px 4px', textAlign: 'center',
                   fontSize: '11px', fontWeight: 700, color: O, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
@@ -731,7 +705,7 @@ export default function PublicScheduleView({
                       minHeight: '72px', padding: '5px 4px',
                       borderRight:  (idx + 1) % 7 !== 0 ? '1px solid #f5f5f5' : 'none',
                       borderBottom: idx < calCells.length - 7 ? '1px solid #f5f5f5' : 'none',
-                      background: isSel ? '#EAF1ED' : '#fff',
+                      background: isSel ? '#FFF0E8' : '#fff',
                       cursor: day ? 'pointer' : 'default',
                     }}>
                     {day && (
@@ -772,10 +746,10 @@ export default function PublicScheduleView({
 
           {/* Selected day detail */}
           {selDay && (
-            <div style={{ border: '1px solid #C8D6CF', borderRadius: '12px',
+            <div style={{ border: '1px solid #F5D5C0', borderRadius: '12px',
               boxShadow: '0 1px 4px rgba(237,104,35,0.08)', marginBottom: '16px' }}>
-              <div style={{ background: '#EAF1ED', padding: '10px 16px',
-                borderBottom: '1px solid #C8D6CF', display: 'flex', justifyContent: 'space-between',
+              <div style={{ background: '#FFF0E8', padding: '10px 16px',
+                borderBottom: '1px solid #F5D5C0', display: 'flex', justifyContent: 'space-between',
                 alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                 <span style={{ fontSize: '13px', fontWeight: 700, color: O }}>
                   {new Date(selDayStr + 'T12:00:00').toLocaleDateString('en-PH', {
@@ -797,7 +771,7 @@ export default function PublicScheduleView({
                   <div style={{ minWidth: '480px' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', background: '#fff' }}>
                     <thead>
-                      <tr style={{ background: PAPER, borderBottom: `1px solid ${SAGE_BORDER}` }}>
+                      <tr style={{ background: '#fafafa', borderBottom: '1px solid #f0f0f0' }}>
                         {['Therapist', 'Patient', 'Time', 'Type of Session', 'Status'].map(h => (
                           <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontSize: '11px',
                             fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em',
@@ -846,17 +820,14 @@ export default function PublicScheduleView({
       )}
 
       {/* ── LEADERBOARD ── */}
-      {showLb && !leaderboardHidden && <div style={{ marginTop: '40px', paddingTop: '32px', borderTop: `1px solid ${SAGE_BORDER}` }}>
+      {showLb && !leaderboardHidden && <div style={{ marginTop: '40px', paddingTop: '32px', borderTop: '2px solid #F5E8D8' }}>
         {/* Section header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: O, margin: '0 0 2px' }}>
               Customer Satisfaction
             </p>
-            <h2 className="sched-display" style={{
-              fontFamily: DISPLAY_FONT, fontSize: '20px', fontWeight: 700,
-              color: NARRA, margin: 0, letterSpacing: '-0.01em',
-            }}>
+            <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#111', margin: 0 }}>
               Satisfaction Leaderboard
             </h2>
           </div>
@@ -895,10 +866,10 @@ export default function PublicScheduleView({
         {/* Disclaimer */}
         <div style={{
           marginTop: '14px', padding: '12px 16px',
-          background: PAPER, border: `1px solid ${SAGE_BORDER}`,
-          borderRadius: '10px', fontSize: '11px', color: INK, opacity: 0.85, lineHeight: 1.6,
+          background: '#FFFBF5', border: '1px solid #F5E8D8',
+          borderRadius: '10px', fontSize: '11px', color: '#888', lineHeight: 1.6,
         }}>
-          <strong style={{ color: NARRA, opacity: 1 }}>Note:</strong> Rankings are based on Customer Satisfaction Survey results
+          <strong style={{ color: '#666' }}>Note:</strong> Rankings are based on Customer Satisfaction Survey results
           from patients/clients chosen randomly by the system. If a therapist&apos;s name does not appear, it may also be possible that their
           patients/clients have not yet been asked to assess them. Rankings become more representative after at least 3 months of data collection.
         </div>
@@ -908,8 +879,7 @@ export default function PublicScheduleView({
 }
 
 // ── Leaderboard Card sub-component ───────────────────────────────────────────
-// Sun → Clay → Sage for the podium (warm-to-cool, brand-pure)
-const RANK_COLORS = ['#C69849', '#A85C3D', '#4A8073', '#aaa', '#aaa']
+const RANK_COLORS = ['#ED6823', '#FFA235', '#FFDE59', '#aaa', '#aaa']
 const RANK_LABELS = ['1st', '2nd', '3rd', '4th', '5th']
 
 function LeaderboardCard({
@@ -927,24 +897,16 @@ function LeaderboardCard({
       borderRadius: '12px', overflow: 'hidden',
       boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
     }}>
-      {/* Card header — Narra → Sun gradient (hero moment, warmth) */}
+      {/* Card header */}
       <div style={{
-        background: 'linear-gradient(135deg, #1B3F38 0%, #26554B 55%, #C69849 130%)',
-        padding: '14px 16px',
+        background: 'linear-gradient(135deg, #ED6823, #FFA235)',
+        padding: '12px 16px',
       }}>
-        <p className="sched-display" style={{
-          fontFamily: 'var(--font-montserrat), system-ui, sans-serif',
-          fontSize: '10px', fontWeight: 700, textTransform: 'uppercase',
-          letterSpacing: '0.12em', color: 'rgba(245,240,232,0.75)', margin: '0 0 2px',
-        }}>
+        <p style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase',
+          letterSpacing: '0.1em', color: 'rgba(255,255,255,0.75)', margin: '0 0 2px' }}>
           {title}
         </p>
-        <p className="sched-display" style={{
-          fontFamily: 'var(--font-montserrat), system-ui, sans-serif',
-          fontSize: '15px', fontWeight: 700, color: '#fff', margin: 0, letterSpacing: '-0.01em',
-        }}>
-          {subtitle}
-        </p>
+        <p style={{ fontSize: '14px', fontWeight: 700, color: '#fff', margin: 0 }}>{subtitle}</p>
       </div>
 
       {/* Rows */}
@@ -961,8 +923,8 @@ function LeaderboardCard({
               <div key={'r' + group.rank} style={{
                 display: 'flex', alignItems: 'flex-start', gap: '12px',
                 padding: '10px 16px',
-                borderBottom: i < entries.length - 1 ? '1px solid #f0eee9' : 'none',
-                background: group.rank === 1 ? '#F5F0E8' : '#fff',
+                borderBottom: i < entries.length - 1 ? '1px solid #f5f5f5' : 'none',
+                background: group.rank === 1 ? '#FFFBF5' : '#fff',
               }}>
                 {/* Rank badge */}
                 <div style={{
@@ -979,22 +941,18 @@ function LeaderboardCard({
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {isTied ? (
                     <>
-                      <p style={{
-                        fontFamily: 'var(--font-montserrat), system-ui, sans-serif',
-                        fontSize: '10px', color: '#A85C3D', margin: '0 0 4px',
-                        fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em',
-                      }}>
+                      <p style={{ fontSize: '10px', color: '#ED6823', margin: '0 0 4px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                         Tied · {group.members.length} therapists
                       </p>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                         {group.members.map(m => (
                           <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#4A8073', flexShrink: 0 }} />
-                            <span style={{ fontSize: '13px', fontWeight: 600, color: '#1A1A1A', lineHeight: 1.3 }}>
+                            <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#ED6823', flexShrink: 0 }} />
+                            <span style={{ fontSize: '13px', fontWeight: 600, color: '#111', lineHeight: 1.3 }}>
                               {m.name}
                             </span>
                             {highlightDept !== undefined && (
-                              <span style={{ fontSize: '10px', color: '#4A8073', opacity: 0.85 }}>{m.dept}</span>
+                              <span style={{ fontSize: '10px', color: '#aaa' }}>{m.dept}</span>
                             )}
                           </div>
                         ))}
@@ -1003,24 +961,20 @@ function LeaderboardCard({
                   ) : (
                     <>
                       <p style={{
-                        fontSize: '13px', fontWeight: 600, color: '#1A1A1A', margin: 0, lineHeight: 1.3,
+                        fontSize: '13px', fontWeight: 600, color: '#111', margin: 0, lineHeight: 1.3,
                       }}>
                         {group.members[0].name}
                       </p>
                       {highlightDept !== undefined && (
-                        <p style={{ fontSize: '10px', color: '#4A8073', margin: 0, opacity: 0.85 }}>{group.members[0].dept}</p>
+                        <p style={{ fontSize: '10px', color: '#aaa', margin: 0 }}>{group.members[0].dept}</p>
                       )}
                     </>
                   )}
                 </div>
 
-                {/* Score — Sun for "key data, single-point emphasis" */}
+                {/* Score */}
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <p className="sched-display" style={{
-                    fontFamily: 'var(--font-montserrat), system-ui, sans-serif',
-                    fontSize: '17px', fontWeight: 700, color: '#A85C3D',
-                    margin: 0, lineHeight: 1, letterSpacing: '-0.01em',
-                  }}>
+                  <p style={{ fontSize: '15px', fontWeight: 700, color: '#ED6823', margin: 0, lineHeight: 1 }}>
                     {group.score.toFixed(1)}
                   </p>
                 </div>

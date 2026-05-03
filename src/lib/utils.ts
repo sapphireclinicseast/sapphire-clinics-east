@@ -1,28 +1,37 @@
-import { clsx, type ClassValue } from 'clsx'
+import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function formatTime(time: string): string {
-  const [hours, minutes] = time.split(':').map(Number)
-  const ampm = hours >= 12 ? 'PM' : 'AM'
-  const displayHours = hours % 12 || 12
-  return `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`
-}
-
 export function formatDate(date: Date | string): string {
-  const d = new Date(date)
-  return d.toLocaleDateString('en-US', {
-    weekday: 'long',
+  return new Date(date).toLocaleDateString('en-PH', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
   })
 }
 
-export function toDateString(date: Date | string): string {
-  const d = new Date(date)
-  return d.toISOString().split('T')[0]
+export function formatDateTime(date: Date | string): string {
+  return new Date(date).toLocaleString('en-PH', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+export function getAge(dob: Date | string): number {
+  const birth = new Date(dob)
+  const now = new Date()
+  let age = now.getFullYear() - birth.getFullYear()
+  const m = now.getMonth() - birth.getMonth()
+  if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) age--
+  return age
+}
+
+export function isPediatric(dob: Date | string): boolean {
+  return getAge(dob) < 18
 }
