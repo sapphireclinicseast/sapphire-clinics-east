@@ -66,6 +66,16 @@ jobs:
             --exclude='teletherapy/uploads' \
             ./ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/sapphireclinicseast.org/
 
+          # Stamp the deploy with the commit SHA. The Dockerfile's `COPY . .`
+          # picks this up, so every distinct commit forces a real rebuild of
+          # the source layer (and everything that depends on it) without
+          # having to disable the rest of the BuildKit cache. Stops the
+          # silent "1.7-second build" stale-image regressions cold.
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            "echo '${{ github.sha }}' > /var/www/sapphireclinicseast.org/.deploy-sha && \
+             echo 'deploy-sha now: '$(cat /var/www/sapphireclinicseast.org/.deploy-sha)"
+
       # ── 5. Provision SSL for teletherapy subdomain (if needed) ──
       - name: Setup teletherapy SSL
         run: |
@@ -168,11 +178,14 @@ jobs:
             docker tag sapphire_app:latest sapphire_app:rollback 2>/dev/null || true
 
             echo "→ Building sapphire_app from /var/www/sapphireclinicseast.org..."
-            # --no-cache: BuildKit was hitting cache and skipping rebuilds even
-            # when source files changed (e.g. the schedules layout rebrand
-            # rsync'd in but the running container kept serving the old
-            # image). Cost is ~60-90s per deploy; reliability is worth it.
-            docker compose --env-file "$ENV_FILE" build --no-cache --pull app
+            # The .deploy-sha file written during rsync (one line, the
+            # current commit SHA) is part of the build context. Each new
+            # commit changes its content, which invalidates BuildKit's
+            # cache for the COPY layer and everything downstream — so we
+            # get a real rebuild without paying the full --no-cache tax
+            # on layers that genuinely haven't changed (base image,
+            # node_modules install, etc.).
+            docker compose --env-file "$ENV_FILE" build --pull app
             BUILD_RC=$?
             echo "   Build exit code: $BUILD_RC"
             if [ "$BUILD_RC" != "0" ]; then
