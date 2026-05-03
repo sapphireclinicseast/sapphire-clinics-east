@@ -3,47 +3,50 @@ import { auth } from '@/lib/auth'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
 
-const UPLOAD_DIR = process.env.UPLOAD_DIR ?? './uploads'
+const MAX_BYTES = 10 * 1024 * 1024 // 10 MB
 
 export async function POST(req: NextRequest) {
   const session = await auth()
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const formData = await req.formData()
-  const file = formData.get('file') as File | null
-  const scheduleId = formData.get('scheduleId') as string
+  const form = await req.formData()
+  const file = form.get('file') as File | null
+  const folder = (form.get('folder') as string) || 'general'
 
-  if (!file) {
-    return NextResponse.json({ error: 'No file provided' }, { status: 400 })
-  }
-
-  // Validate file type
-  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
-  if (!allowedTypes.includes(file.type)) {
-    return NextResponse.json({ error: 'Invalid file type. Allowed: JPEG, PNG, WebP, PDF' }, { status: 400 })
-  }
-
-  // Validate file size (10MB)
-  if (file.size > 10 * 1024 * 1024) {
-    return NextResponse.json({ error: 'File too large. Max 10MB.' }, { status: 400 })
-  }
-
-  const dir = path.join(UPLOAD_DIR, 'session-notes', scheduleId)
-  await mkdir(dir, { recursive: true })
-
-  const ext = file.name.split('.').pop() ?? 'bin'
-  const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
-  const filePath = path.join('session-notes', scheduleId, fileName)
-  const fullPath = path.join(UPLOAD_DIR, filePath)
+  if (!file) return NextResponse.json({ error: 'File required' }, { status: 400 })
+  if (file.size > MAX_BYTES) return NextResponse.json({ error: 'File too large (max 10MB)' }, { status: 413 })
 
   const bytes = await file.arrayBuffer()
-  await writeFile(fullPath, Buffer.from(bytes))
+  const buffer = Buffer.from(bytes)
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '-')
+  const filename = `${Date.now()}-${safeName}`
+  const baseUploads = path.join(process.cwd(), 'uploads')
+  const uploadDir = path.join(baseUploads, folder)
 
-  return NextResponse.json({
-    fileName: file.name,
-    filePath,
-    mimeType: file.type,
-  })
+  // Try to ensure the per-folder subdir exists. If we can't (e.g. the
+  // /app/uploads parent is read-only for our UID), fall back to writing
+  // directly into the base uploads dir so the upload still succeeds.
+  let resolvedDir = uploadDir
+  let resolvedUrl = `/uploads/${folder}/${filename}`
+  try {
+    await mkdir(uploadDir, { recursive: true })
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code
+    if (code === 'EACCES' || code === 'EPERM') {
+      // Fall back to a known-writable folder at the top level
+      resolvedDir = baseUploads
+      resolvedUrl = `/uploads/${folder}-${filename}`
+    } else {
+      throw err
+    }
+  }
+
+  try {
+    await writeFile(path.join(resolvedDir, path.basename(resolvedUrl)), buffer)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return NextResponse.json({ error: 'Write failed: ' + msg }, { status: 500 })
+  }
+
+  return NextResponse.json({ ok: true, url: resolvedUrl, filename: path.basename(resolvedUrl) })
 }

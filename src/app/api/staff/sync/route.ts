@@ -1,0 +1,157 @@
+/**
+ * Staff Sync — Pull staff data from HR Platform
+ */
+import { NextResponse } from 'next/server'
+import { auth } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { StaffDepartment } from '@prisma/client'
+
+const HR_URL = process.env.HR_PLATFORM_URL || 'http://127.0.0.1:3457'
+const HR_KEY = process.env.HR_PLATFORM_API_KEY || process.env.EXTERNAL_API_KEY || ''
+
+const VALID_DEPTS: Set<string> = new Set([
+  'OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS', 'FRONT_DESK', 'ADMINISTRATION',
+])
+
+interface HRStaff {
+  hrId: string
+  firstName: string
+  lastName: string
+  branch: string
+  department: string
+  jobTitle: string | null
+  employmentType: string | null
+  email: string | null
+  phone: string | null
+  birthday: string | null
+  sex: string | null
+}
+
+export async function POST() {
+  console.log('[staff-sync] === SYNC CALLED ===')
+
+  const session = await auth()
+  if (!session) {
+    console.log('[staff-sync] No session - unauthorized')
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const role = (session.user as { role?: string }).role ?? ''
+  console.log('[staff-sync] User role:', role)
+  if (!['ADMIN', 'MARKETING_ADMIN', 'SBEA_ADMIN', 'SBGH_ADMIN', 'SBEA_FRONT_DESK', 'SBGH_FRONT_DESK'].includes(role)) {
+    return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
+  }
+
+  if (!HR_KEY) {
+    console.log('[staff-sync] No HR_KEY configured')
+    return NextResponse.json({ error: 'HR Platform API key not configured' }, { status: 500 })
+  }
+
+  let hrStaff: HRStaff[]
+  try {
+    console.log('[staff-sync] Fetching from', HR_URL + '/staff/external')
+    const res = await fetch(HR_URL + '/staff/external', {
+      headers: { Authorization: 'Bearer ' + HR_KEY },
+      cache: 'no-store',
+    })
+    if (!res.ok) {
+      console.error('[staff-sync] HR returned', res.status)
+      return NextResponse.json({ error: 'HR Platform returned ' + res.status }, { status: 502 })
+    }
+    const data = await res.json()
+    hrStaff = data.staff || []
+    console.log('[staff-sync] Got', hrStaff.length, 'staff from HR')
+  } catch (err) {
+    console.error('[staff-sync] Fetch failed:', err)
+    return NextResponse.json({ error: 'Cannot reach HR Platform' }, { status: 502 })
+  }
+
+  const existing = await prisma.staff.findMany()
+  console.log('[staff-sync] Existing local staff:', existing.length)
+  
+  const byHrId = new Map<string, typeof existing[0]>()
+  const byName = new Map<string, typeof existing[0]>()
+  for (const s of existing) {
+    if (s.hrPlatformId) byHrId.set(s.hrPlatformId, s)
+    byName.set(s.firstName + '|' + s.lastName + '|' + s.branch, s)
+  }
+  console.log('[staff-sync] byHrId map size:', byHrId.size, 'byName map size:', byName.size)
+
+  let created = 0
+  let updated = 0
+  const errors: string[] = []
+  const matchedIds = new Set<string>()
+  const nameChanges: string[] = []
+
+  for (const hr of hrStaff) {
+    if (!hr.department || !VALID_DEPTS.has(hr.department)) continue
+    if (!['SBEA', 'SBGH'].includes(hr.branch)) continue
+
+    let dob: Date | null = null
+    if (hr.birthday) {
+      const d = new Date(hr.birthday)
+      if (!isNaN(d.getTime())) dob = d
+    }
+
+    const match = byHrId.get(hr.hrId) ?? byName.get(hr.firstName + '|' + hr.lastName + '|' + hr.branch)
+
+    if (match && (match.firstName !== hr.firstName || match.lastName !== hr.lastName)) {
+      nameChanges.push(match.firstName + ' ' + match.lastName + ' -> ' + hr.firstName + ' ' + hr.lastName)
+    }
+
+    // Normalize sex values from HR: accept "M"/"F"/"Male"/"Female" (case-insensitive)
+    // If HR doesn't provide a value, preserve the locally-set one (managed in
+    // the Staff Module UI) — don't overwrite to null.
+    let sexFromHr: string | null = null
+    if (hr.sex) {
+      const s = hr.sex.trim().toUpperCase()
+      if (s === 'M' || s === 'MALE')   sexFromHr = 'M'
+      else if (s === 'F' || s === 'FEMALE') sexFromHr = 'F'
+    }
+    const sex = sexFromHr ?? match?.sex ?? null
+
+    const payload = {
+      firstName:      hr.firstName,
+      lastName:       hr.lastName,
+      email:          hr.email,
+      phone:          hr.phone,
+      dob,
+      sex,
+      department:     hr.department as StaffDepartment,
+      branch:         hr.branch,
+      jobTitle:       hr.jobTitle,
+      employmentType: hr.employmentType,
+      hrPlatformId:   hr.hrId,
+    }
+
+    try {
+      if (match) {
+        await prisma.staff.update({ where: { id: match.id }, data: payload })
+        matchedIds.add(match.id)
+        updated++
+      } else {
+        const newStaff = await prisma.staff.create({ data: payload })
+        matchedIds.add(newStaff.id)
+        created++
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      errors.push(hr.firstName + ' ' + hr.lastName + ': ' + msg)
+    }
+  }
+
+  const toDelete = existing.filter(s => !matchedIds.has(s.id))
+  let deleted = 0
+  for (const s of toDelete) {
+    try {
+      await prisma.staff.delete({ where: { id: s.id } })
+      deleted++
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      errors.push('Delete ' + s.firstName + ' ' + s.lastName + ': ' + msg)
+    }
+  }
+
+  console.log('[staff-sync] Done:', { created, updated, deleted, nameChanges, errors: errors.length })
+  return NextResponse.json({ synced: created + updated, created, updated, deleted, nameChanges, errors, total: hrStaff.length })
+}

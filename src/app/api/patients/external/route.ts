@@ -4,8 +4,8 @@
  * Used by HR Platform (full list) and Accounting Hub (search + id lookup).
  * Env: EXTERNAL_API_KEY — shared secret token
  *
- * ?search=xxx  → text search (name/email)
- * ?id=xxx      → direct lookup by patient ID
+ * ?search=xxx  -> text search (name/email)
+ * ?id=xxx      -> direct lookup by patient ID
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -29,7 +29,6 @@ const PATIENT_SELECT = {
 } as const
 
 export async function GET(req: NextRequest) {
-  // Validate bearer token
   const authHeader = req.headers.get('authorization')
   if (!API_KEY || !authHeader || authHeader !== `Bearer ${API_KEY}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -40,7 +39,6 @@ export async function GET(req: NextRequest) {
   const search = searchParams.get('search')?.trim()
 
   try {
-    // Direct lookup by ID — returns single patient or null
     if (id) {
       const patient = await prisma.patient.findUnique({
         where: { id },
@@ -49,7 +47,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ patient: patient ?? null })
     }
 
-    // Text search
     const patients = await prisma.patient.findMany({
       where: search
         ? {
