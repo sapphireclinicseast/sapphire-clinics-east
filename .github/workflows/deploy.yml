@@ -13,8 +13,18 @@
 name: Deploy to Netcup VPS
 
 on:
-  push:
-    branches: [main]
+  # ⚠ PAUSED 2026-05-03 — push trigger disabled.
+  #
+  # The workflow rsyncs origin/main to /var/www/sapphireclinicseast.org/
+  # and rebuilds sapphire_app from there. Many marketing-hub edits live
+  # only on /opt/sapphire-marketing-hub/ on the VPS and were never
+  # committed to git, so every auto-deploy reverts the production UI
+  # (most visibly: login splash → "SCEI Teletherapy" instead of
+  # "Operations Hub").
+  #
+  # Re-enable by adding `push: { branches: [main] }` back below, AFTER
+  # confirming origin/main matches /opt/sapphire-marketing-hub/ for at
+  # least src/, public/, prisma/, and the brand-facing config files.
   workflow_dispatch:
 
 jobs:
