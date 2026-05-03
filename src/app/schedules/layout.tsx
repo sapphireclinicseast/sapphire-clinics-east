@@ -1,5 +1,4 @@
 import type { Metadata } from 'next'
-import Image from 'next/image'
 
 export const metadata: Metadata = {
   title: 'SAPPHIRE Schedule Hub — Sapphire Clinics East',
@@ -18,12 +17,9 @@ export default function SchedulesLayout({ children }: { children: React.ReactNod
       color: '#1A1A1A',
       overflowX: 'hidden',
     }}>
-      {/* Responsive padding for mobile */}
       <style>{`
-        .sched-header-inner { padding: 14px 24px; }
         .sched-main { padding: 28px 24px; }
         @media (max-width: 640px) {
-          .sched-header-inner { padding: 12px 14px; }
           .sched-main { padding: 18px 10px !important; }
         }
         .sched-display {
@@ -31,24 +27,6 @@ export default function SchedulesLayout({ children }: { children: React.ReactNod
           letter-spacing: -0.01em;
         }
       `}</style>
-
-      {/* Header */}
-      <header style={{
-        background: '#fff',
-        borderBottom: '1px solid #C8D6CF',
-        boxShadow: '0 1px 0 rgba(27,63,56,0.04)',
-      }}>
-        <div className="sched-header-inner" style={{ maxWidth: '1100px', margin: '0 auto' }}>
-          <Image
-            src="/sandbox-clinic-logo.png"
-            alt="Sandbox Clinic"
-            width={180}
-            height={48}
-            style={{ height: '44px', width: 'auto', objectFit: 'contain' }}
-            priority
-          />
-        </div>
-      </header>
 
       {/* Page content */}
       <main className="sched-main" style={{ maxWidth: '1100px', margin: '0 auto' }}>
