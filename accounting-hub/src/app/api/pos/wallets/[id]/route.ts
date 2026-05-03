@@ -295,7 +295,7 @@ export async function PUT(
     const { id } = await params
     const body = await req.json()
     const { patientName, patientEmail, patientId, isActive, deleteReason, accountId,
-            dateObtained, paymentModeId, agency, vipTier, attachmentUrl, balance, rewardPoints, totalGlAmount, branch } = body
+            dateObtained, paymentModeId, agency, vipTier, attachmentUrl, attachmentUrls, balance, rewardPoints, totalGlAmount, branch } = body
 
     // Look up wallet type so we can protect HMO balance from manual edits.
     // GL now allows a manually-maintained 'Remaining Balance (Usable Amount)' that
@@ -316,6 +316,7 @@ export async function PUT(
     if (agency !== undefined) data.agency = agency?.trim() || null
     if (vipTier !== undefined) data.vipTier = vipTier || null
     if (attachmentUrl !== undefined) data.attachmentUrl = attachmentUrl || null
+    if (attachmentUrls !== undefined) data.attachmentUrls = Array.isArray(attachmentUrls) && attachmentUrls.length > 0 ? attachmentUrls : null
     // HMO balance is computed from unpaid POS orders — never allow manual edits.
     // VIP / PREPAID_CARD / DOWNPAYMENT / ADVANCE / PACKAGE / GL balances are user-maintained.
     if (balance !== undefined && !isBalanceReadOnly) data.balance = parseFloat(balance)

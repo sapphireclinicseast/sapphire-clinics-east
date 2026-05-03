@@ -33,17 +33,17 @@ export async function POST(req: Request) {
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
 
-    // Save to public/uploads directory
-    const uploadsDir = join(process.cwd(), 'public', 'uploads')
+    // Save to uploads directory (volume-mounted at /app/uploads in Docker)
+    const uploadsDir = process.env.UPLOADS_DIR || join(process.cwd(), 'uploads')
     await mkdir(uploadsDir, { recursive: true })
 
     const ext = file.name.split('.').pop() || 'bin'
-    const filename = `ar-proof-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+    const filename = `upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
     const filepath = join(uploadsDir, filename)
 
     await writeFile(filepath, buffer)
 
-    return NextResponse.json({ url: `/uploads/${filename}`, filename })
+    return NextResponse.json({ url: `/api/files/${filename}`, filename })
   } catch {
     return NextResponse.json({ error: 'Upload failed' }, { status: 500 })
   }

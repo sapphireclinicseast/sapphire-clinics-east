@@ -129,6 +129,7 @@ interface DigitalWallet {
   dateObtained?: string | null
   agency?: string | null
   attachmentUrl?: string | null
+  attachmentUrls?: string[] | null
   _count?: { packages: number }
   packages?: WalletPackage[]
   logs?: WalletLog[]
@@ -419,6 +420,15 @@ function userBranch(session: any): string {
 function isAdmin(session: any): boolean {
   const r = session?.user?.role || ''
   return ['ADMIN', 'ACCOUNTANT'].includes(r) || r.endsWith('_ADMIN')
+}
+
+/* ─────────────────────────── HELPERS ─────────────────────────── */
+
+/** Converts legacy /uploads/filename URLs to the new /api/files/filename route */
+function normalizeFileUrl(url: string): string {
+  if (!url) return url
+  if (url.startsWith('/uploads/')) return `/api/files/${url.slice(9)}`
+  return url
 }
 
 /* ─────────────────────────── MAIN COMPONENT ─────────────────────────── */
@@ -3344,7 +3354,8 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   const [wSortField, setWSortField] = useState('patientName')
   const [wSortDir, setWSortDir] = useState<'asc' | 'desc'>('asc')
   const [showCreate, setShowCreate] = useState(false)
-  const [createForm, setCreateForm] = useState({ patientName: '', patientId: '', patientEmail: '', accountId: '', dateObtained: '', paymentModeId: '', glAmount: '', totalGlAmount: '', attachmentUrl: '', agency: '', initialRewardPoints: '', branch: 'ALL' })
+  const [createForm, setCreateForm] = useState({ patientName: '', patientId: '', patientEmail: '', accountId: '', dateObtained: '', paymentModeId: '', glAmount: '', totalGlAmount: '', agency: '', initialRewardPoints: '', branch: 'ALL' })
+  const [createAttachments, setCreateAttachments] = useState<string[]>([])
   const [createAccountSearch, setCreateAccountSearch] = useState('')
   const [arAccounts, setArAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
   const [crmSearch, setCrmSearch] = useState('')
@@ -3384,6 +3395,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   const [walletDetail, setWalletDetail] = useState<DigitalWallet | null>(null)
   const [walletEditing, setWalletEditing] = useState(false)
   const [walletEditForm, setWalletEditForm] = useState<Record<string, string>>({})
+  const [walletEditAttachments, setWalletEditAttachments] = useState<string[]>([])
   const [walletEditSaving, setWalletEditSaving] = useState(false)
   const [showAddPackage, setShowAddPackage] = useState(false)
   const [showSOA, setShowSOA] = useState<DigitalWallet | null>(null)
@@ -3485,6 +3497,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         initialBalance: walletTypeFilter !== 'PACKAGE' && createForm.glAmount ? parseFloat(createForm.glAmount) : undefined,
         totalGlAmount: walletTypeFilter === 'GL' && createForm.totalGlAmount ? parseFloat(createForm.totalGlAmount) : undefined,
         initialRewardPoints: createForm.initialRewardPoints ? parseInt(createForm.initialRewardPoints) : undefined,
+        attachmentUrls: walletTypeFilter === 'GL' ? createAttachments : undefined,
       }
       const r = await fetch('/api/pos/wallets', {
         method: 'POST',
@@ -3520,7 +3533,8 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         } catch {}
       }
       setShowCreate(false)
-      setCreateForm({ patientName: '', patientId: '', patientEmail: '', accountId: '', dateObtained: '', paymentModeId: '', glAmount: '', totalGlAmount: '', attachmentUrl: '', agency: '', initialRewardPoints: '', branch: 'ALL' })
+      setCreateForm({ patientName: '', patientId: '', patientEmail: '', accountId: '', dateObtained: '', paymentModeId: '', glAmount: '', totalGlAmount: '', agency: '', initialRewardPoints: '', branch: 'ALL' })
+      setCreateAttachments([])
       setCreateAccountSearch('')
       setCrmSearch('')
       setCrmPatients([])
@@ -3558,6 +3572,15 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       totalGlAmount: String(toNum(walletDetail.totalGlAmount as string | number | null)),
       branch: (walletDetail.branch as string) || 'ALL',
     })
+    // Populate multi-file attachments — prefer new attachmentUrls array, fall back to legacy single URL
+    const existingUrls = walletDetail.attachmentUrls as string[] | null
+    setWalletEditAttachments(
+      existingUrls && existingUrls.length > 0
+        ? existingUrls
+        : walletDetail.attachmentUrl
+          ? [normalizeFileUrl(walletDetail.attachmentUrl as string)]
+          : []
+    )
     setWalletEditing(true)
   }
 
@@ -3578,6 +3601,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
           // = 'Remaining Balance (Usable Amount)' is manually maintained.
           ...(walletDetail.walletType !== 'HMO' ? { balance: walletEditForm.balance } : {}),
           attachmentUrl: walletEditForm.attachmentUrl || null,
+          attachmentUrls: walletDetail.walletType === 'GL' ? walletEditAttachments : undefined,
           accountId: walletEditForm.accountId || null,
           ...(['VIP', 'PREPAID_CARD'].includes(walletDetail.walletType) ? { rewardPoints: walletEditForm.rewardPoints } : {}),
           ...(walletDetail.walletType === 'GL' ? { totalGlAmount: walletEditForm.totalGlAmount } : {}),
@@ -4181,12 +4205,26 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                     ) : walletTypeFilter === 'GL' ? (
                       <>
                         <td className="px-5 py-3">
-                          {(w as unknown as { attachmentUrl?: string }).attachmentUrl ? (
-                            <a href={(w as unknown as { attachmentUrl: string }).attachmentUrl} target="_blank" rel="noopener noreferrer"
-                              onClick={e => e.stopPropagation()} className="text-xs underline" style={{ color: 'var(--teal)' }}>
-                              View File
-                            </a>
-                          ) : <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>—</span>}
+                          {(() => {
+                            const gl = w as unknown as { attachmentUrl?: string; attachmentUrls?: string[] }
+                            const urls: string[] =
+                              gl.attachmentUrls && gl.attachmentUrls.length > 0
+                                ? gl.attachmentUrls
+                                : gl.attachmentUrl
+                                  ? [normalizeFileUrl(gl.attachmentUrl)]
+                                  : []
+                            if (urls.length === 0) return <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>—</span>
+                            return (
+                              <div className="flex flex-col gap-0.5">
+                                {urls.map((url, i) => (
+                                  <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                                    onClick={e => e.stopPropagation()} className="text-xs underline" style={{ color: 'var(--teal)' }}>
+                                    {urls.length > 1 ? `File ${i + 1}` : 'View File'}
+                                  </a>
+                                ))}
+                              </div>
+                            )
+                          })()}
                         </td>
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-1.5">
@@ -4511,31 +4549,34 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                   </div>
                   <div>
                     <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Attach Proof of GL</label>
-                    <div className="flex items-center gap-2">
-                      {createForm.attachmentUrl ? (
-                        <>
-                          <a href={createForm.attachmentUrl} target="_blank" rel="noopener noreferrer" className="text-xs underline" style={{ color: 'var(--teal)' }}>
-                            File uploaded
-                          </a>
-                          <button type="button" onClick={() => setCreateForm({ ...createForm, attachmentUrl: '' })}
-                            className="p-1 rounded hover:bg-red-50"><X size={12} className="text-red-400" /></button>
-                        </>
-                      ) : (
-                        <label className="px-3 py-2 rounded-xl text-xs font-medium border cursor-pointer" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
-                          Upload File
-                          <input type="file" accept="image/*,.pdf" className="hidden" onChange={async (e) => {
-                            const file = e.target.files?.[0]
-                            if (!file) return
-                            const formData = new FormData()
-                            formData.append('file', file)
-                            try {
-                              const res = await fetch('/api/upload', { method: 'POST', body: formData })
-                              const data = await res.json()
-                              if (data.url) setCreateForm({ ...createForm, attachmentUrl: data.url })
-                            } catch { setCreateError('File upload failed') }
-                          }} />
-                        </label>
+                    <div className="flex flex-col gap-2">
+                      {createAttachments.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {createAttachments.map((url, i) => (
+                            <div key={i} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
+                              <a href={url} target="_blank" rel="noopener noreferrer" className="underline">File {i + 1}</a>
+                              <button type="button" onClick={() => setCreateAttachments(prev => prev.filter((_, j) => j !== i))}
+                                className="p-0.5 rounded hover:bg-red-50"><X size={10} className="text-red-400" /></button>
+                            </div>
+                          ))}
+                        </div>
                       )}
+                      <label className="self-start px-3 py-2 rounded-xl text-xs font-medium border cursor-pointer" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
+                        + Add File
+                        <input type="file" accept="image/*,.pdf" multiple className="hidden" onChange={async (e) => {
+                          const files = Array.from(e.target.files || [])
+                          if (!files.length) return
+                          for (const file of files) {
+                            const fd = new FormData(); fd.append('file', file)
+                            try {
+                              const res = await fetch('/api/upload', { method: 'POST', body: fd })
+                              const data = await res.json()
+                              if (data.url) setCreateAttachments(prev => [...prev, data.url])
+                            } catch { setCreateError('File upload failed') }
+                          }
+                          e.target.value = ''
+                        }} />
+                      </label>
                     </div>
                   </div>
                 </>
@@ -4642,26 +4683,32 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                         <input value={walletEditForm.agency || ''} onChange={e => setWalletEditForm(p => ({ ...p, agency: e.target.value }))}
                           className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                       </div>
-                      <div>
-                        <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Attachment</label>
-                        <div className="flex items-center gap-2">
-                          {walletEditForm.attachmentUrl ? (
-                            <>
-                              <a href={walletEditForm.attachmentUrl} target="_blank" rel="noopener noreferrer" className="text-xs underline" style={{ color: 'var(--teal)' }}>View</a>
-                              <button type="button" onClick={() => setWalletEditForm(p => ({ ...p, attachmentUrl: '' }))}
-                                className="p-1 rounded hover:bg-red-50"><X size={12} className="text-red-400" /></button>
-                            </>
-                          ) : (
-                            <label className="px-3 py-1.5 rounded-xl text-xs font-medium border cursor-pointer" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
-                              Upload
-                              <input type="file" accept="image/*,.pdf" className="hidden" onChange={async (ev) => {
-                                const file = ev.target.files?.[0]
-                                if (!file) return
-                                const fd = new FormData(); fd.append('file', file)
-                                try { const res = await fetch('/api/upload', { method: 'POST', body: fd }); const d = await res.json(); if (d.url) setWalletEditForm(p => ({ ...p, attachmentUrl: d.url })) } catch {}
-                              }} />
-                            </label>
+                      <div className="col-span-2">
+                        <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Attachments</label>
+                        <div className="flex flex-col gap-2">
+                          {walletEditAttachments.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5">
+                              {walletEditAttachments.map((url, i) => (
+                                <div key={i} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
+                                  <a href={url} target="_blank" rel="noopener noreferrer" className="underline">File {i + 1}</a>
+                                  <button type="button" onClick={() => setWalletEditAttachments(prev => prev.filter((_, j) => j !== i))}
+                                    className="p-0.5 rounded hover:bg-red-50"><X size={10} className="text-red-400" /></button>
+                                </div>
+                              ))}
+                            </div>
                           )}
+                          <label className="self-start px-3 py-1.5 rounded-xl text-xs font-medium border cursor-pointer" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
+                            + Add File
+                            <input type="file" accept="image/*,.pdf" multiple className="hidden" onChange={async (ev) => {
+                              const files = Array.from(ev.target.files || [])
+                              if (!files.length) return
+                              for (const file of files) {
+                                const fd = new FormData(); fd.append('file', file)
+                                try { const res = await fetch('/api/upload', { method: 'POST', body: fd }); const d = await res.json(); if (d.url) setWalletEditAttachments(prev => [...prev, d.url]) } catch {}
+                              }
+                              ev.target.value = ''
+                            }} />
+                          </label>
                         </div>
                       </div>
                     </>

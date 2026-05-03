@@ -511,8 +511,9 @@ model DigitalWallet {
   accountId     String?     // COA account (e.g., Accounts Receivable for HMO/GL)
   account       Account?    @relation("WalletAccount", fields: [accountId], references: [id], onDelete: SetNull)
   totalGlAmount Decimal?    // GL wallets: full approved amount (for AR — different from balance which tracks remaining usable amount)
-  attachmentUrl String?     // Uploaded proof (e.g., GL document)
-  agency        String?     // GL wallets: issuing agency (e.g., DSWD, PhilHealth, OWWA)
+  attachmentUrl  String?     // Uploaded proof — legacy single-file field (kept for backward compat)
+  attachmentUrls Json?       // GL wallets: multi-file proof URLs stored as JSON array
+  agency         String?     // GL wallets: issuing agency (e.g., DSWD, PhilHealth, OWWA)
   branch        String      @default("ALL")  // SANDBOX_EAST, SANDBOX_GREENHILLS, or ALL
   dateObtained  DateTime?   // Date patient originally obtained the wallet/card
   paymentModeId String?     // How the initial load was paid

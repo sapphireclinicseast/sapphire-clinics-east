@@ -113,7 +113,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { patientId, patientName, patientEmail, walletType, accountId, dateObtained, paymentModeId, initialBalance, attachmentUrl, agency, initialRewardPoints, totalGlAmount, branch: walletBranch } = await req.json()
+    const { patientId, patientName, patientEmail, walletType, accountId, dateObtained, paymentModeId, initialBalance, attachmentUrl, attachmentUrls, agency, initialRewardPoints, totalGlAmount, branch: walletBranch } = await req.json()
 
     if (!patientName?.trim()) {
       return NextResponse.json({ error: 'Patient name is required' }, { status: 400 })
@@ -195,6 +195,7 @@ export async function POST(req: Request) {
         balance: walletType === 'HMO' ? 0 : (initialBalance ? Number(initialBalance) : 0),
         rewardPoints: walletType === 'VIP' && initialRewardPoints ? Number(initialRewardPoints) : 0,
         attachmentUrl: attachmentUrl || null,
+        attachmentUrls: Array.isArray(attachmentUrls) && attachmentUrls.length > 0 ? attachmentUrls : undefined,
         agency: walletType === 'GL' ? (agency?.trim() || null) : null,
         totalGlAmount: walletType === 'GL' && totalGlAmount ? Number(totalGlAmount) : null,
         branch: walletBranch || 'ALL',

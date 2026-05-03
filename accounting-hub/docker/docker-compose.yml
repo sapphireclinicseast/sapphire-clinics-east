@@ -44,7 +44,7 @@ services:
     ports:
       - "127.0.0.1:3001:3001"
     volumes:
-      - /opt/accounting/uploads:/app/public/uploads
+      - /opt/accounting/uploads:/app/uploads
 
 volumes:
   accounting_postgres_data:

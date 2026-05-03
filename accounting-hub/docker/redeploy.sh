@@ -76,6 +76,7 @@ ALTER TYPE "LeaveType" ADD VALUE IF NOT EXISTS 'SIL';
 ALTER TYPE "LeaveType" ADD VALUE IF NOT EXISTS 'BDAY';
 ALTER TYPE "LeaveType" ADD VALUE IF NOT EXISTS 'TRAINING';
 ALTER TABLE "EmployeeSettings" ADD COLUMN IF NOT EXISTS "leaveMaxDays" JSONB;
+ALTER TABLE "DigitalWallet" ADD COLUMN IF NOT EXISTS "attachmentUrls" JSONB;
 
 -- SOA Settings (singleton row for bank details, signatories)
 CREATE TABLE IF NOT EXISTS "SoaSettings" (
