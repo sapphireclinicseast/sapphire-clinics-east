@@ -113,7 +113,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { patientId, patientName, patientEmail, walletType, accountId, dateObtained, paymentModeId, initialBalance, attachmentUrl, attachmentUrls, agency, approvedServices, initialRewardPoints, totalGlAmount, branch: walletBranch, allowDuplicate } = await req.json()
+    const { patientId, patientName, patientEmail, walletType, accountId, dateObtained, paymentModeId, initialBalance, attachmentUrl, attachmentUrls, agency, approvedServices, diagnosis, initialRewardPoints, totalGlAmount, branch: walletBranch, allowDuplicate } = await req.json()
 
     if (!patientName?.trim()) {
       return NextResponse.json({ error: 'Patient name is required' }, { status: 400 })
@@ -198,6 +198,7 @@ export async function POST(req: Request) {
         attachmentUrl: attachmentUrl || null,
         attachmentUrls: Array.isArray(attachmentUrls) && attachmentUrls.length > 0 ? attachmentUrls : undefined,
         agency: walletType === 'GL' ? (agency?.trim() || null) : null,
+        diagnosis: walletType === 'GL' ? (diagnosis?.trim() || null) : null,
         approvedServices: walletType === 'GL' && Array.isArray(approvedServices) && approvedServices.length > 0 ? approvedServices : undefined,
         totalGlAmount: walletType === 'GL' && totalGlAmount ? Number(totalGlAmount) : null,
         branch: walletBranch || 'ALL',

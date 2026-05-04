@@ -39,6 +39,7 @@ export async function GET(req: Request) {
       name: `${p.firstName} ${p.lastName}`,
       email: p.email || null,
       phone: p.phone || null,
+      diagnosis: p.diagnosis || null,
     }))
 
     return NextResponse.json(patients)

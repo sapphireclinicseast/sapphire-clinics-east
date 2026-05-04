@@ -295,7 +295,7 @@ export async function PUT(
     const { id } = await params
     const body = await req.json()
     const { patientName, patientEmail, patientId, isActive, deleteReason, accountId,
-            dateObtained, paymentModeId, agency, approvedServices, vipTier, attachmentUrl, attachmentUrls, balance, rewardPoints, totalGlAmount, branch, soaStatus } = body
+            dateObtained, paymentModeId, agency, approvedServices, diagnosis, vipTier, attachmentUrl, attachmentUrls, balance, rewardPoints, totalGlAmount, branch, soaStatus } = body
 
     // Look up wallet type so we can protect HMO balance from manual edits.
     // GL now allows a manually-maintained 'Remaining Balance (Usable Amount)' that
@@ -314,6 +314,7 @@ export async function PUT(
     if (dateObtained !== undefined) data.dateObtained = dateObtained ? new Date(dateObtained) : null
     if (paymentModeId !== undefined) data.paymentModeId = paymentModeId || null
     if (agency !== undefined) data.agency = agency?.trim() || null
+    if (diagnosis !== undefined) data.diagnosis = diagnosis?.trim() || null
     if (approvedServices !== undefined) data.approvedServices = Array.isArray(approvedServices) && approvedServices.length > 0 ? approvedServices : null
     if (vipTier !== undefined) data.vipTier = vipTier || null
     if (attachmentUrl !== undefined) data.attachmentUrl = attachmentUrl || null

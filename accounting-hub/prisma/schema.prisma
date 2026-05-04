@@ -514,6 +514,7 @@ model DigitalWallet {
   attachmentUrl  String?     // Uploaded proof — legacy single-file field (kept for backward compat)
   attachmentUrls Json?       // GL wallets: multi-file proof URLs stored as JSON array
   agency            String?     // GL wallets: issuing agency (e.g., DSWD, PhilHealth, OWWA)
+  diagnosis         String?     // GL wallets: patient diagnosis from CRM (snapshot at creation)
   approvedServices  Json?       // GL wallets: approved service types (e.g. ["PT","OT","SLP"])
   soaStatus         String?     @default("With GL/No SOA")  // GL wallets: "With GL/No SOA" blocks checkout; "With GL and SOA" allows it
   branch        String      @default("ALL")  // SANDBOX_EAST, SANDBOX_GREENHILLS, or ALL

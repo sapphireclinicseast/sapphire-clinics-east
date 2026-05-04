@@ -195,6 +195,7 @@ interface Patient {
   name: string
   email?: string
   phone?: string
+  diagnosis?: string | null
   [key: string]: unknown
 }
 
@@ -3379,7 +3380,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   const [wSortField, setWSortField] = useState('patientName')
   const [wSortDir, setWSortDir] = useState<'asc' | 'desc'>('asc')
   const [showCreate, setShowCreate] = useState(false)
-  const [createForm, setCreateForm] = useState({ patientName: '', patientId: '', patientEmail: '', accountId: '', dateObtained: '', paymentModeId: '', glAmount: '', totalGlAmount: '', agency: '', initialRewardPoints: '', branch: 'ALL' })
+  const [createForm, setCreateForm] = useState({ patientName: '', patientId: '', patientEmail: '', accountId: '', dateObtained: '', paymentModeId: '', glAmount: '', totalGlAmount: '', agency: '', diagnosis: '', initialRewardPoints: '', branch: 'ALL' })
   const [createAttachments, setCreateAttachments] = useState<string[]>([])
   const [createApprovedServices, setCreateApprovedServices] = useState<string[]>([])
   const [createAccountSearch, setCreateAccountSearch] = useState('')
@@ -3543,6 +3544,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         initialRewardPoints: createForm.initialRewardPoints ? parseInt(createForm.initialRewardPoints) : undefined,
         attachmentUrls: walletTypeFilter === 'GL' ? createAttachments : undefined,
         approvedServices: walletTypeFilter === 'GL' && createApprovedServices.length > 0 ? createApprovedServices : undefined,
+        diagnosis: walletTypeFilter === 'GL' && createForm.diagnosis ? createForm.diagnosis : undefined,
       }
       const r = await fetch('/api/pos/wallets', {
         method: 'POST',
@@ -3585,7 +3587,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       setShowCreate(false)
       setCreateDuplicateWarning(null)
       setCreateApplicationNo('2nd Application')
-      setCreateForm({ patientName: '', patientId: '', patientEmail: '', accountId: '', dateObtained: '', paymentModeId: '', glAmount: '', totalGlAmount: '', agency: '', initialRewardPoints: '', branch: 'ALL' })
+      setCreateForm({ patientName: '', patientId: '', patientEmail: '', accountId: '', dateObtained: '', paymentModeId: '', glAmount: '', totalGlAmount: '', agency: '', diagnosis: '', initialRewardPoints: '', branch: 'ALL' })
       setCreateAttachments([])
       setCreateApprovedServices([])
       setCreateAccountSearch('')
@@ -3621,6 +3623,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       patientEmail: walletDetail.patientEmail || '',
       dateObtained: walletDetail.dateObtained ? String(walletDetail.dateObtained).split('T')[0] : '',
       agency: (walletDetail.agency as string) || '',
+      diagnosis: (walletDetail.diagnosis as string) || '',
       vipTier: walletDetail.vipTier || '',
       balance: String(toNum(walletDetail.balance)),
       attachmentUrl: (walletDetail.attachmentUrl as string) || '',
@@ -3659,6 +3662,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
           patientEmail: walletEditForm.patientEmail,
           dateObtained: walletEditForm.dateObtained || null,
           agency: walletEditForm.agency || null,
+          ...(walletDetail.walletType === 'GL' ? { diagnosis: walletEditForm.diagnosis || null } : {}),
           ...(walletDetail.walletType === 'GL' ? { approvedServices: editApprovedServices.length > 0 ? editApprovedServices : null } : {}),
           vipTier: walletEditForm.vipTier || null,
           // HMO balance stays read-only (computed from unpaid POS orders). GL balance
@@ -4111,7 +4115,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 {(walletTypeFilter === 'HMO'
                   ? [{ label: 'HMO Provider', field: 'patientName' }, { label: 'Type', field: '' }, { label: 'Receivable Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'Transactions', field: '' }, { label: '', field: '' }]
                   : walletTypeFilter === 'GL'
-                  ? [{ label: 'Patient Name', field: 'patientName' }, { label: 'Agency', field: 'agency' }, { label: 'Services', field: '' }, { label: 'Approved SOA', field: 'totalGlAmount' }, { label: 'Remaining Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'SOA Status', field: 'soaStatus' }, { label: 'Attachment', field: '' }, { label: '', field: '' }]
+                  ? [{ label: 'Patient Name', field: 'patientName' }, { label: 'Agency', field: 'agency' }, { label: 'Diagnosis', field: '' }, { label: 'Services', field: '' }, { label: 'Approved SOA', field: 'totalGlAmount' }, { label: 'Remaining Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'SOA Status', field: 'soaStatus' }, { label: 'Attachment', field: '' }, { label: '', field: '' }]
                   : ['VIP', 'PREPAID_CARD'].includes(walletTypeFilter)
                   ? [{ label: 'Patient Name', field: 'patientName' }, { label: 'Type', field: '' }, { label: 'Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'Barcode', field: 'barcode' }, { label: 'Packages', field: '' }, { label: 'Reward Points', field: 'rewardPoints' }, { label: '', field: '' }]
                   : walletTypeFilter === 'PACKAGE'
@@ -4249,6 +4253,14 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                         </span>
                       )}
                     </td>
+                    {walletTypeFilter === 'GL' && (
+                      <td className="px-5 py-3 text-xs" style={{ color: 'var(--charcoal)', maxWidth: 180 }}>
+                        {(w as unknown as { diagnosis?: string | null }).diagnosis
+                          ? <span title={(w as unknown as { diagnosis?: string | null }).diagnosis || ''}
+                              className="block truncate">{(w as unknown as { diagnosis?: string | null }).diagnosis}</span>
+                          : <span style={{ color: 'var(--light-gray)' }}>—</span>}
+                      </td>
+                    )}
                     {walletTypeFilter === 'GL' && (() => {
                       const svcs = (w as unknown as { approvedServices?: string[] | null }).approvedServices
                       return (
@@ -4441,7 +4453,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                     <div className="absolute z-20 left-0 right-0 mt-1 bg-white border rounded-xl shadow-lg max-h-40 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
                       {crmPatients.slice(0, 8).map((pt: Patient) => (
                         <button key={pt.id} type="button"
-                          onClick={() => { setCreateForm({ ...createForm, patientName: pt.name, patientId: pt.id }); setCrmSearch(pt.name); setShowCrmDrop(false) }}
+                          onClick={() => { setCreateForm({ ...createForm, patientName: pt.name, patientId: pt.id, diagnosis: pt.diagnosis || '' }); setCrmSearch(pt.name); setShowCrmDrop(false) }}
                           className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50" style={{ color: 'var(--charcoal)' }}>
                           <span className="font-medium">{pt.name}</span>
                           {pt.email && <span className="text-gray-400 ml-1">— {pt.email}</span>}
@@ -4643,6 +4655,16 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                       placeholder="e.g. DSWD, PhilHealth, OWWA, GSIS"
                       className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                     <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>The issuing agency of this Guarantee Letter</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Diagnosis</label>
+                    <input value={createForm.diagnosis} onChange={e => setCreateForm({ ...createForm, diagnosis: e.target.value })}
+                      placeholder="e.g. Cerebral Palsy, ASD, Language Delay"
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)', background: createForm.patientId ? '#f0fdfa' : 'white' }}
+                      readOnly={!!createForm.patientId} />
+                    {createForm.patientId
+                      ? <p className="text-xs mt-1" style={{ color: 'var(--teal)' }}>Auto-filled from Patient CRM</p>
+                      : <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Patient&apos;s primary diagnosis (snapshot from CRM if linked)</p>}
                   </div>
                   <div>
                     <label className="block text-xs font-semibold mb-2" style={{ color: 'var(--mid-gray)' }}>Approved Services</label>
@@ -4865,6 +4887,13 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                         <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Agency</label>
                         <input value={walletEditForm.agency || ''} onChange={e => setWalletEditForm(p => ({ ...p, agency: e.target.value }))}
                           className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      </div>
+                      <div>
+                        <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Diagnosis</label>
+                        <input value={walletEditForm.diagnosis || ''} onChange={e => setWalletEditForm(p => ({ ...p, diagnosis: e.target.value }))}
+                          placeholder="e.g. Cerebral Palsy, ASD"
+                          className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                        <p className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>CRM snapshot — update here if changed</p>
                       </div>
                       <div className="col-span-2">
                         <label className="font-medium mb-1.5 block" style={{ color: 'var(--mid-gray)' }}>Approved Services</label>
