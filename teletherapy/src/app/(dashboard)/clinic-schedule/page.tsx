@@ -20,6 +20,7 @@ import {
   User as UserIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import BranchSwitcher, { useBranchSwitcher } from '@/components/BranchSwitcher'
 
 type ViewMode = 'day' | 'week' | 'month'
 
@@ -116,6 +117,7 @@ export default function ClinicSchedulePage() {
   const [loading, setLoading] = useState(true)
   const [profilePatient, setProfilePatient] = useState<PatientInfo | null>(null)
   const [moreDay, setMoreDay] = useState<string | null>(null)
+  const { branches, isMultiBranch, activeStaffId, switchBranch } = useBranchSwitcher()
 
   const range = useMemo(() => {
     if (view === 'day') return { start: anchor, end: anchor }
@@ -128,7 +130,11 @@ export default function ClinicSchedulePage() {
     async function load() {
       setLoading(true)
       try {
-        const url = `/api/clinic-schedule?startDate=${isoDay(range.start)}&endDate=${isoDay(range.end)}`
+        // Pass the active staffId for interbranch clinicians so the API
+        // scopes to that branch only. Otherwise the API unions all of
+        // their branches.
+        const staffParam = isMultiBranch && activeStaffId ? `&staffId=${activeStaffId}` : ''
+        const url = `/api/clinic-schedule?startDate=${isoDay(range.start)}&endDate=${isoDay(range.end)}${staffParam}`
         const res = await fetch(url, { cache: 'no-store' })
         if (!res.ok) {
           if (!cancelled) { setSchedules([]); setSummary({ confirmedSessions: 0, uniquePatients: 0, avgPatientsPerDay: 0, activeDays: 0 }) }
@@ -146,7 +152,7 @@ export default function ClinicSchedulePage() {
     }
     load()
     return () => { cancelled = true }
-  }, [range.start.getTime(), range.end.getTime()])
+  }, [range.start.getTime(), range.end.getTime(), activeStaffId, isMultiBranch])
 
   function navigate(direction: -1 | 1) {
     if (view === 'day') setAnchor(addDays(anchor, direction))
@@ -179,6 +185,13 @@ export default function ClinicSchedulePage() {
 
   return (
     <div className="max-w-6xl mx-auto">
+      {/* Branch switcher for interbranch clinicians */}
+      {isMultiBranch && (
+        <div className="mb-4 animate-fade-up">
+          <BranchSwitcher branches={branches} activeStaffId={activeStaffId} onSwitch={switchBranch} />
+        </div>
+      )}
+
       {/* Hero */}
       <div className="hero-gradient rounded-2xl px-8 py-8 mb-6 animate-fade-up">
         <div className="relative z-10 flex items-center gap-4">

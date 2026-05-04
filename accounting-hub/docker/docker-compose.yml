@@ -41,6 +41,11 @@ services:
       # Inventory Adjustment, Asset, Depreciation, Closing Entry). Defaults
       # to false so a fresh install stays inert until the operator opts in.
       ENABLE_GL_POSTING: ${ENABLE_GL_POSTING:-false}
+      # Payslip PDFs live under /app/uploads (which IS bind-mounted to
+      # /opt/accounting/uploads on the host) — NOT the in-container
+      # default /app/data/payslips, which is ephemeral and gets wiped
+      # every container rebuild.
+      PDF_STORAGE_DIR: /app/uploads/payslips
     ports:
       - "127.0.0.1:3001:3001"
     volumes:

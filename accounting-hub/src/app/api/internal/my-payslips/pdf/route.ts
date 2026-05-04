@@ -18,7 +18,7 @@ import { existsSync } from 'fs'
 import { readFile } from 'fs/promises'
 import path from 'path'
 
-const PDF_DIR = process.env.PDF_STORAGE_DIR || '/app/data/payslips'
+const PDF_DIR = process.env.PDF_STORAGE_DIR || '/app/uploads/payslips'
 
 function verifyKey(req: NextRequest): boolean {
   const key = process.env.TELETHERAPY_INTERNAL_API_KEY

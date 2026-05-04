@@ -13,6 +13,7 @@ import {
   X as XIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import BranchSwitcher, { useBranchSwitcher } from '@/components/BranchSwitcher'
 
 interface Payslip {
   kind: 'employee' | 'consultant'
@@ -98,11 +99,22 @@ const BRANCH_LABEL: Record<string, string> = {
   VERDANA_STORE: 'Verdana Store',
 }
 
+// Normalize branch codes between accounting (SBEA/SBGH) and the Patient
+// enum (SANDBOX_EAST/SANDBOX_GREENHILLS) so the BranchSwitcher can match.
+function canonicalBranch(b: string): string {
+  const m: Record<string, string> = {
+    SBEA: 'SANDBOX_EAST',
+    SBGH: 'SANDBOX_GREENHILLS',
+  }
+  return m[b] ?? b
+}
+
 export default function PayrollPage() {
   const [data, setData] = useState<PayrollResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [previewing, setPreviewing] = useState<Payslip | null>(null)
+  const { branches, isMultiBranch, activeStaffId, activeBranch, switchBranch } = useBranchSwitcher()
 
   useEffect(() => { fetchPayslips() }, [])
 
@@ -122,13 +134,31 @@ export default function PayrollPage() {
     setLoading(false)
   }
 
-  const total = useMemo(() => {
-    if (!data) return 0
-    return data.payslips.reduce((sum, p) => sum + p.netPay, 0)
-  }, [data])
+  // For interbranch clinicians, scope the visible payslips to the
+  // currently selected branch. Accounting stores branch as 'SBEA'/'SBGH'
+  // while session.user.branches uses the Patient enum 'SANDBOX_EAST' etc.
+  // — normalize both sides via canonicalBranch().
+  const visiblePayslips = useMemo(() => {
+    if (!data) return []
+    if (!isMultiBranch || !activeBranch) return data.payslips
+    const wanted = canonicalBranch(activeBranch.branch)
+    return data.payslips.filter((p) => canonicalBranch(p.branch) === wanted)
+  }, [data, isMultiBranch, activeBranch])
+
+  const total = useMemo(
+    () => visiblePayslips.reduce((sum, p) => sum + p.netPay, 0),
+    [visiblePayslips],
+  )
 
   return (
     <div className="max-w-5xl mx-auto">
+      {/* Branch switcher for interbranch clinicians */}
+      {isMultiBranch && (
+        <div className="mb-4 animate-fade-up">
+          <BranchSwitcher branches={branches} activeStaffId={activeStaffId} onSwitch={switchBranch} />
+        </div>
+      )}
+
       {/* Hero */}
       <div className="hero-gradient rounded-2xl px-8 py-8 mb-6 animate-fade-up">
         <div className="relative z-10 flex items-center gap-4">
@@ -148,7 +178,7 @@ export default function PayrollPage() {
       </div>
 
       {/* Summary card */}
-      {data && data.payslips.length > 0 && (
+      {data && visiblePayslips.length > 0 && (
         <div className="card-static !p-4 mb-6 animate-fade-up stagger-1 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-[var(--sage-tint)] text-[var(--moss)] flex items-center justify-center">
@@ -157,7 +187,7 @@ export default function PayrollPage() {
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--mid-gray)]">Locked Payslips</p>
               <p className="text-[20px] font-bold text-[var(--narra)] leading-tight" style={{ fontFamily: 'var(--font-display)' }}>
-                {data.payslips.length}
+                {visiblePayslips.length}
               </p>
             </div>
           </div>
@@ -186,7 +216,7 @@ export default function PayrollPage() {
             Try again
           </button>
         </div>
-      ) : !data || data.payslips.length === 0 ? (
+      ) : !data || visiblePayslips.length === 0 ? (
         <div className="card-static text-center py-14 animate-fade-up">
           <div className="w-14 h-14 rounded-2xl bg-[var(--paper-2)] flex items-center justify-center mx-auto mb-3">
             <Lock size={22} className="text-[var(--mid-gray)]" />
@@ -200,7 +230,7 @@ export default function PayrollPage() {
         </div>
       ) : (
         <div className="space-y-2 animate-fade-up">
-          {data.payslips.map((p, i) => (
+          {visiblePayslips.map((p, i) => (
             <PayslipRow key={`${p.kind}-${p.id}`} payslip={p} index={i} onPreview={() => setPreviewing(p)} />
           ))}
         </div>

@@ -22,16 +22,27 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  // Effective staff IDs: union across all branches for interbranch clinicians,
-  // else the single staffId from the session.
+  // Effective staff IDs:
+  //  • If ?staffId=… is provided AND it belongs to the logged-in
+  //    clinician's branch list, scope to just that one (used by the
+  //    BranchSwitcher to view a single branch at a time).
+  //  • Otherwise, union across all branches.
   const branchStaffIds =
     session.user.branches?.map((b) => b.staffId).filter(Boolean) ?? []
-  const effectiveStaffIds =
-    branchStaffIds.length > 0
-      ? branchStaffIds
-      : session.user.staffId
-        ? [session.user.staffId]
-        : []
+  const requestedStaffId = (searchParams.get('staffId') ?? '').trim()
+  let effectiveStaffIds: string[]
+  if (requestedStaffId && branchStaffIds.includes(requestedStaffId)) {
+    effectiveStaffIds = [requestedStaffId]
+  } else if (requestedStaffId && requestedStaffId === session.user.staffId) {
+    effectiveStaffIds = [requestedStaffId]
+  } else {
+    effectiveStaffIds =
+      branchStaffIds.length > 0
+        ? branchStaffIds
+        : session.user.staffId
+          ? [session.user.staffId]
+          : []
+  }
   if (effectiveStaffIds.length === 0) {
     return NextResponse.json({ schedules: [], summary: emptySummary() })
   }

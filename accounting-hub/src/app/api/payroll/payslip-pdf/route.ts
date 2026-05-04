@@ -7,7 +7,10 @@ import path from 'path'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 const READ_ROLES = [...WRITE_ROLES, 'VIEWER']
-const PDF_DIR = process.env.PDF_STORAGE_DIR || '/app/data/payslips'
+// Defaults to /app/uploads/payslips so the file ends up on the host
+// bind mount (/opt/accounting/uploads/payslips), not ephemeral
+// in-container storage that gets wiped on every redeploy.
+const PDF_DIR = process.env.PDF_STORAGE_DIR || '/app/uploads/payslips'
 
 // POST: Store a PDF and update the payslip record
 export async function POST(req: Request) {
