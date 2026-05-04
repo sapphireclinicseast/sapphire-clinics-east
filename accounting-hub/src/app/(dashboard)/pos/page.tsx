@@ -227,6 +227,38 @@ interface InventoryProduct {
   [key: string]: unknown
 }
 
+/* ─────────────────────────── CRM HELPERS ─────────────────────────── */
+
+/**
+ * Look up a patient in the marketing-hub CRM by wallet patient name.
+ * Strategy:
+ *  1. Search with the full name — works when firstName or lastName contains it.
+ *  2. If no results, retry with the last 2 words (surname) so that long names
+ *     like "SELENNE DRIANNA DE GUZMAN" can match lastName = "De Guzman".
+ *  3. Among the results, prefer an exact full-name match; fall back to the sole
+ *     result when there is only one.
+ */
+async function findCrmPatient(name: string): Promise<Patient | null> {
+  const exactOf = (pts: Patient[]) => {
+    const exact = pts.find(p => p.name.toLowerCase() === name.toLowerCase())
+    return exact ?? (pts.length === 1 ? pts[0] : null)
+  }
+  try {
+    const r = await fetch(`/api/pos/patients?search=${encodeURIComponent(name)}`)
+    const d: Patient[] = await r.json()
+    if (Array.isArray(d) && d.length > 0) return exactOf(d)
+
+    // Fallback: search by last two words (surname) for multi-word names
+    if (name.includes(' ')) {
+      const surname = name.split(/\s+/).slice(-2).join(' ')
+      const r2 = await fetch(`/api/pos/patients?search=${encodeURIComponent(surname)}`)
+      const d2: Patient[] = await r2.json()
+      if (Array.isArray(d2) && d2.length > 0) return exactOf(d2)
+    }
+  } catch { /* network / parse errors — caller handles null */ }
+  return null
+}
+
 /* ─────────────────────────── CONSTANTS ─────────────────────────── */
 
 const PAYMENT_METHODS_SERVICE = [
@@ -3709,20 +3741,12 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
 
     // For GL wallets: if diagnosis not yet stored, auto-fetch from CRM by patient name
     if (walletDetail.walletType === 'GL' && !walletDetail.diagnosis && walletDetail.patientName) {
-      // Strip any "(Nth Application)" suffix before searching
       const searchName = walletDetail.patientName.replace(/\s*\(\d+(?:st|nd|rd|th) Application\)$/, '').trim()
-      fetch(`/api/pos/patients?search=${encodeURIComponent(searchName)}`)
-        .then(r => r.json())
-        .then((pts: Patient[]) => {
-          if (!Array.isArray(pts) || pts.length === 0) return
-          // Prefer exact case-insensitive name match; fall back to first result if unique
-          const exact = pts.find(p => p.name.toLowerCase() === searchName.toLowerCase())
-          const match = exact || (pts.length === 1 ? pts[0] : null)
-          if (match?.diagnosis) {
-            setWalletEditForm(prev => ({ ...prev, diagnosis: (match.diagnosis as string) || '' }))
-          }
-        })
-        .catch(() => {})
+      findCrmPatient(searchName).then(match => {
+        if (match?.diagnosis) {
+          setWalletEditForm(prev => ({ ...prev, diagnosis: (match.diagnosis as string) || '' }))
+        }
+      }).catch(() => {})
     }
   }
 
@@ -3782,11 +3806,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       let updated = 0
       for (const [name, group] of Array.from(nameToWallets.entries())) {
         try {
-          const r = await fetch(`/api/pos/patients?search=${encodeURIComponent(name)}`)
-          const pts: Patient[] = await r.json()
-          if (!Array.isArray(pts) || pts.length === 0) continue
-          const exact = pts.find(p => p.name.toLowerCase() === name.toLowerCase())
-          const match = exact || (pts.length === 1 ? pts[0] : null)
+          const match = await findCrmPatient(name)
           if (!match?.diagnosis) continue
           for (const w of group) {
             // Skip if diagnosis is already up to date
@@ -5098,19 +5118,14 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                             onClick={() => {
                               if (!walletDetail?.patientName) return
                               const searchName = walletDetail.patientName.replace(/\s*\(\d+(?:st|nd|rd|th) Application\)$/, '').trim()
-                              fetch(`/api/pos/patients?search=${encodeURIComponent(searchName)}`)
-                                .then(r => r.json())
-                                .then((pts: Patient[]) => {
-                                  if (!Array.isArray(pts) || pts.length === 0) { alert('No matching patient found in CRM.'); return }
-                                  const exact = pts.find(p => p.name.toLowerCase() === searchName.toLowerCase())
-                                  const match = exact || (pts.length === 1 ? pts[0] : null)
-                                  if (match?.diagnosis) {
-                                    setWalletEditForm(prev => ({ ...prev, diagnosis: (match.diagnosis as string) || '' }))
-                                  } else {
-                                    alert('Patient found in CRM but has no diagnosis on record.')
-                                  }
-                                })
-                                .catch(() => alert('CRM lookup failed.'))
+                              findCrmPatient(searchName).then(match => {
+                                if (!match) { alert('No matching patient found in CRM.'); return }
+                                if (match.diagnosis) {
+                                  setWalletEditForm(prev => ({ ...prev, diagnosis: (match.diagnosis as string) || '' }))
+                                } else {
+                                  alert('Patient found in CRM but has no diagnosis on record.')
+                                }
+                              }).catch(() => alert('CRM lookup failed.'))
                             }}
                             className="text-[10px] px-2 py-0.5 rounded-lg font-semibold"
                             style={{ background: '#dbeafe', color: '#1e40af' }}>
