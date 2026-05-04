@@ -370,6 +370,7 @@ export default function AccountsReceivablePage() {
   // When user clicks a cell, filter the orders table to that bucket's ids
   const [bucketFilterIds, setBucketFilterIds] = useState<string[] | null>(null)
   const [bucketFilterLabel, setBucketFilterLabel] = useState('')
+  const [arDaysSort, setArDaysSort] = useState<'asc' | 'desc'>('desc')
 
   // Record Payment modal
   const [showPaymentModal, setShowPaymentModal] = useState(false)
@@ -1007,18 +1008,38 @@ export default function AccountsReceivablePage() {
           </div>
         </div>
 
-        {/* AR Days per wallet — compact strip */}
+        {/* AR Days per wallet — sortable table */}
         {agingData && agingData.perWallet.filter(w => w.ar > 0 || w.revenue > 0).length > 0 && (
           <div>
             <p className="text-xs font-semibold mb-2" style={{ color: 'var(--mid-gray)' }}>AR Days per {tab === 'HMO' ? 'HMO' : 'Agency'}</p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {agingData.perWallet.filter(w => w.ar > 0 || w.revenue > 0).map(w => (
-                <div key={w.walletId} className="rounded-lg px-3 py-2" style={{ background: 'white', border: '1px solid var(--light-gray)' }}>
-                  <p className="text-xs font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{w.walletName}</p>
-                  <p className="text-sm font-bold" style={{ color: 'var(--deep-teal)' }}>{w.arDays.toFixed(1)} days</p>
-                  <p className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>AR {formatCurrency(w.ar)}</p>
-                </div>
-              ))}
+            <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{ background: 'var(--pale-teal)' }}>
+                    <th className="px-3 py-2 text-left text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>{tab === 'HMO' ? 'HMO' : 'Agency'}</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>Total AR</th>
+                    <th
+                      className="px-3 py-2 text-right text-xs font-semibold cursor-pointer select-none"
+                      style={{ color: 'var(--deep-teal)' }}
+                      onClick={() => setArDaysSort(s => s === 'asc' ? 'desc' : 'asc')}
+                    >
+                      AR Days {arDaysSort === 'asc' ? '↑' : '↓'}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...agingData.perWallet.filter(w => w.ar > 0 || w.revenue > 0)]
+                    .sort((a, b) => arDaysSort === 'asc' ? a.arDays - b.arDays : b.arDays - a.arDays)
+                    .map((w, i) => (
+                      <tr key={w.walletId} style={{ borderTop: i > 0 ? '1px solid var(--light-gray)' : undefined }}>
+                        <td className="px-3 py-2 text-xs font-medium" style={{ color: 'var(--charcoal)' }}>{w.walletName}</td>
+                        <td className="px-3 py-2 text-right text-xs tabular-nums" style={{ color: '#dc2626' }}>{formatCurrency(w.ar)}</td>
+                        <td className="px-3 py-2 text-right text-xs font-bold tabular-nums" style={{ color: 'var(--deep-teal)' }}>{w.arDays.toFixed(1)}</td>
+                      </tr>
+                    ))
+                  }
+                </tbody>
+              </table>
             </div>
           </div>
         )}
@@ -1854,8 +1875,8 @@ export default function AccountsReceivablePage() {
                 )}
               </div>
 
-              {/* Tag transactions */}
-              {(payWalletId || payWalletIds.length > 0) && (() => {
+              {/* Tag transactions — HMO only; not needed for GL (payment tracked at wallet level) */}
+              {tab !== 'GL' && (payWalletId || payWalletIds.length > 0) && (() => {
                 // When editing, show all orders for this wallet (paid or unpaid); when creating, show only unpaid
                 const selectedIds = tab === 'GL' && !editingPaymentId ? payWalletIds : (payWalletId ? [payWalletId] : [])
                 const eligibleOrders = editingPaymentId
