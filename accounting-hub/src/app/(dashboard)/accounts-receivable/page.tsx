@@ -727,7 +727,9 @@ export default function AccountsReceivablePage() {
       {/* ── GL Summary: % consumed, % paid, department pie chart ── */}
       {tab === 'GL' && (() => {
         const totalApproved = wallets.reduce((s, w) => s + toNum(w.totalGlAmount), 0)
-        const totalConsumed = wallets.reduce((s, w) => s + (w.totalConsumedAmount ?? 0), 0)
+        // Use consumedOutstanding (= totalGlAmount − remaining balance) so that
+        // zero-balance wallets and partially-consumed wallets are included correctly.
+        const totalConsumed = wallets.reduce((s, w) => s + (w.consumedOutstanding ?? 0), 0)
         const totalPaid = arPayments.reduce((s, p) => s + toNum(p.amount), 0)
         const pctConsumed = totalApproved > 0 ? Math.min(100, (totalConsumed / totalApproved) * 100) : 0
         const pctPaid = totalApproved > 0 ? Math.min(100, (totalPaid / totalApproved) * 100) : 0
