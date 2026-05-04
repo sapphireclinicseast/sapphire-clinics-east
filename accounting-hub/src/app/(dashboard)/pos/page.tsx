@@ -244,16 +244,30 @@ async function findCrmPatient(name: string): Promise<Patient | null> {
     return exact ?? (pts.length === 1 ? pts[0] : null)
   }
   try {
+    // 1. Full name search — works when the whole name fits in a single CRM field
     const r = await fetch(`/api/pos/patients?search=${encodeURIComponent(name)}`)
     const d: Patient[] = await r.json()
     if (Array.isArray(d) && d.length > 0) return exactOf(d)
 
-    // Fallback: search by last two words (surname) for multi-word names
     if (name.includes(' ')) {
-      const surname = name.split(/\s+/).slice(-2).join(' ')
-      const r2 = await fetch(`/api/pos/patients?search=${encodeURIComponent(surname)}`)
-      const d2: Patient[] = await r2.json()
-      if (Array.isArray(d2) && d2.length > 0) return exactOf(d2)
+      const words = name.split(/\s+/)
+
+      // 2. Last 2 words — handles compound surnames like "De Guzman"
+      if (words.length >= 3) {
+        const surname2 = words.slice(-2).join(' ')
+        const r2 = await fetch(`/api/pos/patients?search=${encodeURIComponent(surname2)}`)
+        const d2: Patient[] = await r2.json()
+        if (Array.isArray(d2) && d2.length > 0) {
+          const m = exactOf(d2)
+          if (m) return m
+        }
+      }
+
+      // 3. Last 1 word — handles simple surnames like "Carel"
+      const surname1 = words[words.length - 1]
+      const r3 = await fetch(`/api/pos/patients?search=${encodeURIComponent(surname1)}`)
+      const d3: Patient[] = await r3.json()
+      if (Array.isArray(d3) && d3.length > 0) return exactOf(d3)
     }
   } catch { /* network / parse errors — caller handles null */ }
   return null
