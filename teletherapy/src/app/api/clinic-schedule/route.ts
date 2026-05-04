@@ -39,32 +39,46 @@ export async function GET(req: NextRequest) {
   const dayStart = new Date(`${startDate}T00:00:00.000Z`)
   const dayEnd = new Date(`${endDate}T23:59:59.999Z`)
 
-  const schedules = await prisma.schedule.findMany({
-    where: {
-      staffId: { in: effectiveStaffIds },
-      date: { gte: dayStart, lte: dayEnd },
-    },
-    include: {
-      patient: { select: { id: true, firstName: true, lastName: true } },
-      staff: { select: { id: true, firstName: true, lastName: true, department: true, branch: true } },
-    },
-    orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
-  })
+  // Pull schedules for the visible date range (drives the day/week/month grid)
+  // AND, in parallel, the full lifetime CONFIRMED set used for the summary
+  // cards. The user wants the cards to reflect totals "since the very start"
+  // rather than just the visible range.
+  const [schedules, lifetimeConfirmed] = await Promise.all([
+    prisma.schedule.findMany({
+      where: {
+        staffId: { in: effectiveStaffIds },
+        date: { gte: dayStart, lte: dayEnd },
+      },
+      include: {
+        patient: {
+          select: {
+            id: true, firstName: true, lastName: true,
+            dob: true, sex: true, patientType: true, diagnosis: true, city: true,
+          },
+        },
+        staff: { select: { id: true, firstName: true, lastName: true, department: true, branch: true } },
+      },
+      orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
+    }),
+    prisma.schedule.findMany({
+      where: {
+        staffId: { in: effectiveStaffIds },
+        status: 'CONFIRMED',
+      },
+      select: { date: true, patientId: true },
+    }),
+  ])
 
-  // ── Summary stats ──────────────────────────────────────────────
-  // Counts only CONFIRMED sessions (matches the spec).
-  const confirmed = schedules.filter((s) => s.status === 'CONFIRMED')
+  // ── Summary stats — LIFETIME, not range-scoped ─────────────────
   const uniquePatientIds = new Set(
-    confirmed.map((s) => s.patientId).filter((id): id is string => !!id)
+    lifetimeConfirmed.map((s) => s.patientId).filter((id): id is string => !!id)
   )
-
-  // Count of unique session-DAYS that have at least one confirmed session.
   const uniqueSessionDays = new Set(
-    confirmed.map((s) => s.date.toISOString().slice(0, 10))
+    lifetimeConfirmed.map((s) => s.date.toISOString().slice(0, 10))
   )
   const avgPatientsPerDay =
     uniqueSessionDays.size > 0
-      ? +(confirmed.length / uniqueSessionDays.size).toFixed(2)
+      ? +(lifetimeConfirmed.length / uniqueSessionDays.size).toFixed(2)
       : 0
 
   return NextResponse.json({
@@ -78,11 +92,22 @@ export async function GET(req: NextRequest) {
       status: s.status,
       meetLink: s.meetLink,
       notes: s.notes,
-      patient: s.patient,
+      patient: s.patient
+        ? {
+            id: s.patient.id,
+            firstName: s.patient.firstName,
+            lastName: s.patient.lastName,
+            dob: s.patient.dob ? s.patient.dob.toISOString().slice(0, 10) : null,
+            sex: s.patient.sex,
+            patientType: s.patient.patientType,
+            diagnosis: s.patient.diagnosis,
+            city: s.patient.city ?? null,
+          }
+        : null,
       staff: s.staff,
     })),
     summary: {
-      confirmedSessions: confirmed.length,
+      confirmedSessions: lifetimeConfirmed.length,
       uniquePatients: uniquePatientIds.size,
       avgPatientsPerDay,
       activeDays: uniqueSessionDays.size,

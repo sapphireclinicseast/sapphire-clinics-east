@@ -13,10 +13,26 @@ import {
   ExternalLink,
   Calendar as CalendarIcon,
   Clock,
+  X as XIcon,
+  Cake,
+  MapPin,
+  Stethoscope,
+  User as UserIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 type ViewMode = 'day' | 'week' | 'month'
+
+interface PatientInfo {
+  id: string
+  firstName: string
+  lastName: string
+  dob: string | null
+  sex: string | null
+  patientType: string | null
+  diagnosis: string | null
+  city: string | null
+}
 
 interface ScheduleItem {
   id: string
@@ -28,7 +44,7 @@ interface ScheduleItem {
   status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'RESCHEDULED' | 'COMPLETED' | string
   meetLink: string | null
   notes: string | null
-  patient: { id: string; firstName: string; lastName: string } | null
+  patient: PatientInfo | null
   staff: { id: string; firstName: string; lastName: string; department: string; branch: string }
 }
 
@@ -90,6 +106,7 @@ export default function ClinicSchedulePage() {
   const [schedules, setSchedules] = useState<ScheduleItem[]>([])
   const [summary, setSummary] = useState<Summary>({ confirmedSessions: 0, uniquePatients: 0, avgPatientsPerDay: 0, activeDays: 0 })
   const [loading, setLoading] = useState(true)
+  const [profilePatient, setProfilePatient] = useState<PatientInfo | null>(null)
 
   const range = useMemo(() => {
     if (view === 'day') return { start: anchor, end: anchor }
@@ -170,7 +187,7 @@ export default function ClinicSchedulePage() {
         </div>
       </div>
 
-      {/* Summary cards */}
+      {/* Summary cards — lifetime totals (since the very start) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
         <SummaryCard
           icon={<CheckCircle2 size={18} />}
@@ -178,6 +195,7 @@ export default function ClinicSchedulePage() {
           value={summary.confirmedSessions}
           stagger="stagger-1"
           accent="moss"
+          subtext="lifetime total"
         />
         <SummaryCard
           icon={<UsersIcon size={18} />}
@@ -185,6 +203,7 @@ export default function ClinicSchedulePage() {
           value={summary.uniquePatients}
           stagger="stagger-2"
           accent="clay"
+          subtext="lifetime total"
         />
         <SummaryCard
           icon={<Activity size={18} />}
@@ -192,7 +211,7 @@ export default function ClinicSchedulePage() {
           value={summary.avgPatientsPerDay}
           stagger="stagger-3"
           accent="sun"
-          subtext={`across ${summary.activeDays} active day${summary.activeDays === 1 ? '' : 's'}`}
+          subtext={`lifetime · ${summary.activeDays} active day${summary.activeDays === 1 ? '' : 's'}`}
         />
       </div>
 
@@ -231,17 +250,36 @@ export default function ClinicSchedulePage() {
         </div>
       </div>
 
+      {/* Status legend — explains the colored chips in week/day views */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-4 px-1 text-[11px] text-[var(--mid-gray)]">
+        <span className="font-semibold uppercase tracking-wider text-[var(--narra)]">Legend:</span>
+        <LegendDot status="CONFIRMED" label="Confirmed" />
+        <LegendDot status="PENDING" label="Pending" />
+        <LegendDot status="COMPLETED" label="Completed" />
+        <LegendDot status="CANCELLED" label="Cancelled" />
+        <LegendDot status="RESCHEDULED" label="Rescheduled" />
+      </div>
+
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3">
           <Loader2 className="w-7 h-7 text-[var(--moss)] animate-spin" />
           <p className="text-sm text-[var(--mid-gray)]">Loading schedule...</p>
         </div>
       ) : view === 'day' ? (
-        <DayView day={isoDay(anchor)} items={byDay.get(isoDay(anchor)) ?? []} />
+        <DayView day={isoDay(anchor)} items={byDay.get(isoDay(anchor)) ?? []} onPatientClick={setProfilePatient} />
       ) : view === 'week' ? (
-        <WeekView start={range.start} byDay={byDay} />
+        <WeekView start={range.start} byDay={byDay} onPatientClick={setProfilePatient} />
       ) : (
-        <MonthView anchor={anchor} byDay={byDay} onDayClick={(iso) => { setAnchor(new Date(iso + 'T00:00:00Z')); setView('day') }} />
+        <MonthView
+          anchor={anchor}
+          byDay={byDay}
+          onDayClick={(iso) => { setAnchor(new Date(iso + 'T00:00:00Z')); setView('day') }}
+          onPatientClick={setProfilePatient}
+        />
+      )}
+
+      {profilePatient && (
+        <PatientProfileModal patient={profilePatient} onClose={() => setProfilePatient(null)} />
       )}
     </div>
   )
@@ -275,7 +313,9 @@ function SummaryCard({
   )
 }
 
-function DayView({ day, items }: { day: string; items: ScheduleItem[] }) {
+function DayView({ day, items, onPatientClick }: {
+  day: string; items: ScheduleItem[]; onPatientClick: (p: PatientInfo) => void
+}) {
   if (items.length === 0) {
     return (
       <div className="card-static text-center py-14 animate-fade-up">
@@ -287,13 +327,15 @@ function DayView({ day, items }: { day: string; items: ScheduleItem[] }) {
   return (
     <div className="space-y-2 animate-fade-up">
       {items.map((s, i) => (
-        <ScheduleRow key={s.id} item={s} delay={i} />
+        <ScheduleRow key={s.id} item={s} delay={i} onPatientClick={onPatientClick} />
       ))}
     </div>
   )
 }
 
-function WeekView({ start, byDay }: { start: Date; byDay: Map<string, ScheduleItem[]> }) {
+function WeekView({ start, byDay, onPatientClick }: {
+  start: Date; byDay: Map<string, ScheduleItem[]>; onPatientClick: (p: PatientInfo) => void
+}) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i))
   const todayISO = isoDay(new Date())
   return (
@@ -323,7 +365,7 @@ function WeekView({ start, byDay }: { start: Date; byDay: Map<string, ScheduleIt
             ) : (
               <div className="space-y-1.5 flex-1">
                 {items.map((s) => (
-                  <CompactScheduleChip key={s.id} item={s} />
+                  <CompactScheduleChip key={s.id} item={s} onPatientClick={onPatientClick} />
                 ))}
               </div>
             )}
@@ -334,10 +376,11 @@ function WeekView({ start, byDay }: { start: Date; byDay: Map<string, ScheduleIt
   )
 }
 
-function MonthView({ anchor, byDay, onDayClick }: {
+function MonthView({ anchor, byDay, onDayClick, onPatientClick }: {
   anchor: Date
   byDay: Map<string, ScheduleItem[]>
   onDayClick: (iso: string) => void
+  onPatientClick: (p: PatientInfo) => void
 }) {
   const start = startOfMonthGrid(anchor)
   const cells = Array.from({ length: 42 }, (_, i) => addDays(start, i))
@@ -358,27 +401,44 @@ function MonthView({ anchor, byDay, onDayClick }: {
           const isCurrentMonth = d.getUTCMonth() === anchor.getUTCMonth()
           const isToday = iso === todayISO
           return (
-            <button
+            <div
               key={iso}
-              onClick={() => onDayClick(iso)}
               className={cn(
-                'aspect-square min-h-[64px] p-1.5 rounded-lg border text-left transition-all hover:bg-[var(--paper-2)]',
+                'min-h-[110px] p-1.5 rounded-lg border flex flex-col',
                 isCurrentMonth ? 'bg-white border-[var(--paper-3)]' : 'bg-[var(--paper-2)]/40 border-transparent',
                 isToday && 'ring-2 ring-[var(--moss)]/50'
               )}
             >
-              <div className={cn(
-                'text-[12px] font-semibold mb-1',
-                isToday ? 'text-[var(--clay)]' : isCurrentMonth ? 'text-[var(--narra)]' : 'text-[var(--paper-3)]'
-              )}>
-                {d.getUTCDate()}
-              </div>
+              <button
+                type="button"
+                onClick={() => onDayClick(iso)}
+                className="text-left mb-1 hover:opacity-80 transition-opacity"
+                title="Open day view"
+              >
+                <span className={cn(
+                  'text-[12px] font-semibold',
+                  isToday ? 'text-[var(--clay)]' : isCurrentMonth ? 'text-[var(--narra)]' : 'text-[var(--paper-3)]'
+                )}>
+                  {d.getUTCDate()}
+                </span>
+              </button>
               {items.length > 0 && (
-                <div className="text-[10px] text-[var(--moss)] font-semibold leading-tight">
-                  {items.length} session{items.length === 1 ? '' : 's'}
+                <div className="space-y-0.5 flex-1 overflow-hidden">
+                  {items.slice(0, 3).map((s) => (
+                    <MonthChip key={s.id} item={s} onPatientClick={onPatientClick} />
+                  ))}
+                  {items.length > 3 && (
+                    <button
+                      type="button"
+                      onClick={() => onDayClick(iso)}
+                      className="text-[9.5px] text-[var(--moss)] font-semibold hover:underline w-full text-left"
+                    >
+                      +{items.length - 3} more…
+                    </button>
+                  )}
                 </div>
               )}
-            </button>
+            </div>
           )
         })}
       </div>
@@ -386,8 +446,11 @@ function MonthView({ anchor, byDay, onDayClick }: {
   )
 }
 
-function ScheduleRow({ item, delay }: { item: ScheduleItem; delay: number }) {
-  const patient = item.patient ? `${item.patient.lastName}, ${item.patient.firstName}` : '— No patient assigned —'
+function ScheduleRow({ item, delay, onPatientClick }: {
+  item: ScheduleItem; delay: number; onPatientClick: (p: PatientInfo) => void
+}) {
+  const hasPatient = !!item.patient
+  const patientLabel = hasPatient ? `${item.patient!.lastName}, ${item.patient!.firstName}` : '— No patient assigned —'
   return (
     <div
       className={cn('card-static !p-3 animate-fade-up flex items-start gap-3', `stagger-${Math.min(delay + 1, 10)}`)}
@@ -400,7 +463,18 @@ function ScheduleRow({ item, delay }: { item: ScheduleItem; delay: number }) {
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-          <p className="font-semibold text-[14px] text-[var(--narra)]">{patient}</p>
+          {hasPatient ? (
+            <button
+              type="button"
+              onClick={() => onPatientClick(item.patient!)}
+              className="font-semibold text-[14px] text-[var(--narra)] hover:text-[var(--clay)] hover:underline transition-colors"
+              title="View patient profile"
+            >
+              {patientLabel}
+            </button>
+          ) : (
+            <span className="font-semibold text-[14px] text-[var(--mid-gray)] italic">{patientLabel}</span>
+          )}
           <span className={cn('text-[10px] font-semibold px-2 py-0.5 rounded-full border', statusClass(item.status))}>
             {item.status}
           </span>
@@ -428,12 +502,132 @@ function ScheduleRow({ item, delay }: { item: ScheduleItem; delay: number }) {
   )
 }
 
-function CompactScheduleChip({ item }: { item: ScheduleItem }) {
+function CompactScheduleChip({ item, onPatientClick }: {
+  item: ScheduleItem; onPatientClick: (p: PatientInfo) => void
+}) {
   const patient = item.patient ? `${item.patient.firstName} ${item.patient.lastName[0]}.` : 'No patient'
+  const Wrapper: 'button' | 'div' = item.patient ? 'button' : 'div'
   return (
-    <div className={cn('text-[10.5px] leading-tight px-1.5 py-1 rounded border', statusClass(item.status))}>
+    <Wrapper
+      type={item.patient ? 'button' : undefined}
+      onClick={item.patient ? () => onPatientClick(item.patient!) : undefined}
+      className={cn(
+        'w-full text-left text-[10.5px] leading-tight px-1.5 py-1 rounded border block',
+        statusClass(item.status),
+        item.patient && 'hover:opacity-90 cursor-pointer'
+      )}
+      title={item.patient ? 'View patient profile' : undefined}
+    >
       <p className="font-semibold truncate">{fmtTime12h(item.startTime)}</p>
       <p className="truncate opacity-90">{patient}</p>
+    </Wrapper>
+  )
+}
+
+function MonthChip({ item, onPatientClick }: {
+  item: ScheduleItem; onPatientClick: (p: PatientInfo) => void
+}) {
+  const patient = item.patient ? `${item.patient.firstName} ${item.patient.lastName[0]}.` : 'No patient'
+  const time = fmtTime12h(item.startTime).replace(' ', '').toLowerCase() // e.g. 4:00pm
+  const Wrapper: 'button' | 'div' = item.patient ? 'button' : 'div'
+  return (
+    <Wrapper
+      type={item.patient ? 'button' : undefined}
+      onClick={item.patient ? (e) => { e.stopPropagation(); onPatientClick(item.patient!) } : undefined}
+      className={cn(
+        'w-full text-left text-[9.5px] leading-snug px-1 py-0.5 rounded border block truncate',
+        statusClass(item.status),
+        item.patient && 'hover:opacity-90 cursor-pointer'
+      )}
+      title={item.patient ? 'View patient profile' : undefined}
+    >
+      <span className="font-semibold">{time}</span>
+      <span className="opacity-90"> · {patient}</span>
+    </Wrapper>
+  )
+}
+
+// ── Patient profile modal ─────────────────────────────────────────
+function calcAge(dobIso: string | null): string {
+  if (!dobIso) return '—'
+  const dob = new Date(dobIso + 'T00:00:00Z')
+  if (Number.isNaN(dob.getTime())) return '—'
+  const now = new Date()
+  let age = now.getUTCFullYear() - dob.getUTCFullYear()
+  const m = now.getUTCMonth() - dob.getUTCMonth()
+  if (m < 0 || (m === 0 && now.getUTCDate() < dob.getUTCDate())) age--
+  return `${age}`
+}
+function fmtDob(dobIso: string | null): string {
+  if (!dobIso) return '—'
+  const d = new Date(dobIso + 'T00:00:00Z')
+  if (Number.isNaN(d.getTime())) return dobIso
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })
+}
+
+function PatientProfileModal({ patient, onClose }: { patient: PatientInfo; onClose: () => void }) {
+  const fullName = `${patient.firstName} ${patient.lastName}`
+  const initials = `${patient.firstName[0] ?? ''}${patient.lastName[0] ?? ''}`.toUpperCase()
+  const fields: { icon: React.ReactNode; label: string; value: string }[] = [
+    { icon: <UserIcon size={14} />, label: 'Full Name', value: fullName },
+    { icon: <Cake size={14} />, label: 'Date of Birth', value: fmtDob(patient.dob) },
+    { icon: <Cake size={14} />, label: 'Age', value: calcAge(patient.dob) },
+    { icon: <UserIcon size={14} />, label: 'Sex', value: patient.sex || '—' },
+    { icon: <Stethoscope size={14} />, label: 'Patient Type', value: patient.patientType || '—' },
+    { icon: <Stethoscope size={14} />, label: 'Diagnosis', value: patient.diagnosis || '—' },
+    { icon: <MapPin size={14} />, label: 'City', value: patient.city || '—' },
+  ]
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
+      onClick={onClose}
+    >
+      <div
+        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-gate"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="hero-gradient px-5 py-5 flex items-center gap-3">
+          <div className="w-12 h-12 rounded-full bg-white/15 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white font-bold text-[14px]">
+            {initials}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-[17px] font-bold text-white tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
+              {fullName}
+            </h2>
+            <p className="text-white/70 text-[11px]">Patient Profile</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-white/70 hover:text-white p-1 rounded-md hover:bg-white/10 transition-colors"
+            title="Close"
+          >
+            <XIcon size={18} />
+          </button>
+        </div>
+        <div className="p-5 space-y-3">
+          {fields.map((f) => (
+            <div key={f.label} className="flex items-start gap-3 pb-2.5 border-b border-[var(--paper-3)] last:border-0 last:pb-0">
+              <div className="w-7 h-7 rounded-md bg-[var(--paper-2)] text-[var(--moss)] flex items-center justify-center shrink-0">
+                {f.icon}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--mid-gray)]">{f.label}</p>
+                <p className="text-[14px] font-medium text-[var(--narra)] break-words">{f.value}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
+  )
+}
+
+function LegendDot({ status, label }: { status: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={cn('inline-block w-3 h-3 rounded-sm border', statusClass(status))} />
+      <span>{label}</span>
+    </span>
   )
 }
