@@ -8,6 +8,10 @@ interface HRSeminar {
   id: string
   title: string
   date: string
+  // HR sets dateUndefined=true and scheduledMonth='YYYY-MM' for tentative
+  // seminars whose calendar date hasn't been finalised yet.
+  dateUndefined?: boolean
+  scheduledMonth?: string
   timeStart: string
   timeEnd: string
   format: 'virtual' | 'face-to-face' | 'hybrid' | string

@@ -21,6 +21,10 @@ interface Seminar {
   id: string
   title: string
   date: string
+  // Tentative-date support — when HR doesn't have a final calendar
+  // date yet, dateUndefined is true and scheduledMonth holds 'YYYY-MM'.
+  dateUndefined?: boolean
+  scheduledMonth?: string
   timeStart: string
   timeEnd: string
   format: 'virtual' | 'face-to-face' | 'hybrid' | string
@@ -295,7 +299,7 @@ export default function SeminarsPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[12px] text-[var(--mid-gray)] mb-3">
                   <div className="flex items-center gap-2">
                     <Calendar size={13} className="text-[var(--teal)] shrink-0" />
-                    <span>{formatDate(s.date)}</span>
+                    <span>{formatDate(s.date || s.scheduledMonth)}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Clock size={13} className="text-[var(--teal)] shrink-0" />
