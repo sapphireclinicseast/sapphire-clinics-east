@@ -3397,6 +3397,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   const [walletEditForm, setWalletEditForm] = useState<Record<string, string>>({})
   const [walletEditAttachments, setWalletEditAttachments] = useState<string[]>([])
   const [walletEditSaving, setWalletEditSaving] = useState(false)
+  const [walletEditError, setWalletEditError] = useState('')
   const [showAddPackage, setShowAddPackage] = useState(false)
   const [showSOA, setShowSOA] = useState<DigitalWallet | null>(null)
   const [soaDateFrom, setSoaDateFrom] = useState(today())
@@ -3549,7 +3550,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   const loadWalletDetail = async (w: DigitalWallet) => {
     setSelectedWallet(w)
     try {
-      const r = await fetch(`/api/pos/wallets/${w.id}`)
+      const r = await fetch(`/api/pos/wallets/${w.id}`, { cache: 'no-store' })
       const d = await r.json()
       setWalletDetail(d)
     } catch {
@@ -3587,6 +3588,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   const saveWalletEdit = async () => {
     if (!walletDetail) return
     setWalletEditSaving(true)
+    setWalletEditError('')
     try {
       const r = await fetch(`/api/pos/wallets/${walletDetail.id}`, {
         method: 'PUT',
@@ -3610,10 +3612,15 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       })
       if (r.ok) {
         setWalletEditing(false)
-        loadWalletDetail(walletDetail)
+        await loadWalletDetail(walletDetail)
         fetchWallets()
+      } else {
+        const errData = await r.json().catch(() => ({}))
+        setWalletEditError(errData.error || `Save failed (${r.status})`)
       }
-    } catch {}
+    } catch (e) {
+      setWalletEditError(`Network error: ${e}`)
+    }
     setWalletEditSaving(false)
   }
 
@@ -4735,12 +4742,17 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                     </select>
                   </div>
                 </div>
+                {walletEditError && (
+                  <p className="text-xs text-red-600 flex items-center gap-1 pt-1">
+                    <AlertCircle size={12} />{walletEditError}
+                  </p>
+                )}
                 <div className="flex gap-2 pt-1">
                   <button onClick={saveWalletEdit} disabled={walletEditSaving}
                     className="px-4 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
                     {walletEditSaving ? 'Saving...' : 'Save'}
                   </button>
-                  <button onClick={() => setWalletEditing(false)}
+                  <button onClick={() => { setWalletEditing(false); setWalletEditError('') }}
                     className="px-4 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
                 </div>
               </div>

@@ -319,9 +319,17 @@ export async function PUT(
     if (attachmentUrls !== undefined) data.attachmentUrls = Array.isArray(attachmentUrls) && attachmentUrls.length > 0 ? attachmentUrls : null
     // HMO balance is computed from unpaid POS orders — never allow manual edits.
     // VIP / PREPAID_CARD / DOWNPAYMENT / ADVANCE / PACKAGE / GL balances are user-maintained.
-    if (balance !== undefined && !isBalanceReadOnly) data.balance = parseFloat(balance)
+    if (balance !== undefined && !isBalanceReadOnly) {
+      const balNum = balance !== '' && balance !== null ? Number(balance) : 0
+      data.balance = isNaN(balNum) ? 0 : balNum
+    }
     if (rewardPoints !== undefined) data.rewardPoints = parseInt(rewardPoints) || 0
-    if (totalGlAmount !== undefined) data.totalGlAmount = parseFloat(totalGlAmount) || null
+    if (totalGlAmount !== undefined) {
+      // Use Number() instead of parseFloat()||null so that valid 0 values are preserved
+      // and non-empty strings are properly coerced.
+      const glNum = totalGlAmount !== '' && totalGlAmount !== null ? Number(totalGlAmount) : null
+      data.totalGlAmount = glNum !== null && !isNaN(glNum) ? glNum : null
+    }
     if (branch !== undefined) data.branch = branch || 'ALL'
 
     const wallet = await prisma.digitalWallet.update({ where: { id }, data })

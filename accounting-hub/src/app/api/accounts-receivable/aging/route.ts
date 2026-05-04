@@ -37,7 +37,7 @@ export async function GET(req: Request) {
   try {
     const wallets = await prisma.digitalWallet.findMany({
       where: { walletType: type, isActive: true },
-      select: { id: true, patientName: true },
+      select: { id: true, patientName: true, totalGlAmount: true, agency: true },
       orderBy: { patientName: 'asc' },
     })
     const walletIds = wallets.map(w => w.id)
@@ -142,17 +142,29 @@ export async function GET(req: Request) {
       row.arTotal += amount
     }
 
-    const totalAR = [...agingByWallet.values()].reduce((s, r) => s + r.arTotal, 0)
+    // For GL wallets: AR = totalGlAmount (the full approved amount on the Guarantee Letter —
+    // what the agency owes us). Aging bucket amounts still track order consumption so
+    // clicking a bucket still shows the relevant transactions.
+    // For HMO wallets: AR = sum of outstanding (unpaid) order amounts as before.
+    const isGL = type === 'GL'
+
+    const totalAR = isGL
+      ? wallets.reduce((s, w) => s + (w.totalGlAmount != null ? Number(w.totalGlAmount) : 0), 0)
+      : [...agingByWallet.values()].reduce((s, r) => s + r.arTotal, 0)
     const arDaysOverall = totalRevenue > 0 ? (totalAR / totalRevenue) * periodDays : 0
 
     const perWallet = wallets.map(w => {
       const aging = agingByWallet.get(w.id)!
-      const ar = aging.arTotal
+      // For GL: ar = totalGlAmount (approved-amount basis); for HMO: ar = consumed outstanding
+      const ar = isGL
+        ? (w.totalGlAmount != null ? Number(w.totalGlAmount) : 0)
+        : aging.arTotal
       const rev = revenueByWallet.get(w.id) || 0
       const arDays = rev > 0 ? (ar / rev) * periodDays : 0
       return {
         walletId: w.id,
         walletName: w.patientName,
+        agency: (w as unknown as { agency?: string }).agency || null,
         ar,
         revenue: rev,
         arDays,
