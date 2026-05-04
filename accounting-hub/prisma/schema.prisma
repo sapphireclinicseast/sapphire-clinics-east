@@ -872,6 +872,8 @@ model PayrollEntry {
   items           Json       // [{unitPayName, unitAmount, quantity, lineTotal}]
   extraItems      Json       @default("[]") // manually added unit pays [{id, unitPayId, unitPayName, unitAmount, qty}]
   adjustments     Json       @default("[]") // [{id, name, amount, isAddition, isTaxed, remarks}]
+  incentives      Json       @default("[]") // [{name, bonusPerUnit, sessionCount, bonus, department}]
+  incentiveTotal  Decimal    @default(0)    // sum of all incentive bonuses
   grossPay        Decimal
   retainerAmount  Decimal    @default(0)
   taxAmount       Decimal    @default(0)

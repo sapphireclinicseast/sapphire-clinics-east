@@ -78,6 +78,8 @@ ALTER TYPE "LeaveType" ADD VALUE IF NOT EXISTS 'TRAINING';
 ALTER TABLE "EmployeeSettings" ADD COLUMN IF NOT EXISTS "leaveMaxDays" JSONB;
 ALTER TABLE "DigitalWallet" ADD COLUMN IF NOT EXISTS "attachmentUrls" JSONB;
 ALTER TABLE "DigitalWallet" ADD COLUMN IF NOT EXISTS "soaStatus" TEXT DEFAULT 'With GL/No SOA';
+ALTER TABLE "PayrollEntry" ADD COLUMN IF NOT EXISTS "incentives" JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE "PayrollEntry" ADD COLUMN IF NOT EXISTS "incentiveTotal" DECIMAL(65,30) NOT NULL DEFAULT 0;
 
 -- SOA Settings (singleton row for bank details, signatories)
 CREATE TABLE IF NOT EXISTS "SoaSettings" (

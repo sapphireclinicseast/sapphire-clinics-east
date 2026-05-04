@@ -1927,6 +1927,8 @@ export default function PayrollPage() {
       items: [...p.items],
       extraItems: extras,
       adjustments: adjs,
+      incentives: p.incentives || [],
+      incentiveTotal: p.incentiveTotal ?? 0,
       grossPay: t.gross, retainerAmount: p.retainerAmount, taxAmount: t.tax, netPay: t.net, status,
     }
   }
