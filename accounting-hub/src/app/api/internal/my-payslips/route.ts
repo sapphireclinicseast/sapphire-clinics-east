@@ -49,9 +49,10 @@ export async function GET(req: NextRequest) {
     }),
     prisma.consultant.findMany({
       where: { email: { equals: email, mode: 'insensitive' } },
-      select: { id: true, name: true, branch: true },
+      select: { id: true, name: true, branch: true, taxDeduction: true },
     }),
   ])
+  const consultantTaxById = new Map(consultants.map(c => [c.id, c.taxDeduction]))
 
   const empIds = employees.map((e) => e.id)
   const consIds = consultants.map((c) => c.id)
@@ -89,18 +90,34 @@ export async function GET(req: NextRequest) {
       pdfStored: pdfExists('employee', s.id) || !!s.pdfUrl,
       issuedAt: s.updatedAt.toISOString(),
     })),
-    ...consEntries.map((e) => ({
-      kind: 'consultant' as const,
-      id: e.id,
-      cutoffPeriod: e.cutoffPeriod,
-      branch: e.branch,
-      grossPay: Number(e.grossPay),
-      totalDeductions: Number(e.taxAmount), // consultants only have tax withholding
-      netPay: Number(e.netPay),
-      hasPdf: true,
-      pdfStored: pdfExists('consultant', e.id) || !!e.pdfUrl,
-      issuedAt: e.updatedAt.toISOString(),
-    })),
+    ...consEntries.map((e) => {
+      // Recompute Gross / Tax / Net using the SAME formula the
+      // accounting hub UI shows in its computeTotals() — taxableBase
+      // includes the daily-threshold incentive bonus. Older locked
+      // rows may have a DB grossPay/netPay that pre-dates incentives
+      // being folded in; this keeps the teletherapy listing card in
+      // sync with what the accountant sees in the hub today.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const incentiveTotal = Number((e as any).incentiveTotal ?? 0)
+      const storedGross = Number(e.grossPay)
+      const taxDeduction = consultantTaxById.get(e.consultantId) ?? 'NONE'
+      const taxableBase = storedGross + incentiveTotal
+      const tax = taxDeduction === 'FIVE_PERCENT' ? Math.max(0, taxableBase) * 0.05 : 0
+      const gross = taxableBase
+      const net = gross - tax
+      return {
+        kind: 'consultant' as const,
+        id: e.id,
+        cutoffPeriod: e.cutoffPeriod,
+        branch: e.branch,
+        grossPay: gross,
+        totalDeductions: tax,
+        netPay: net,
+        hasPdf: true,
+        pdfStored: pdfExists('consultant', e.id) || !!e.pdfUrl,
+        issuedAt: e.updatedAt.toISOString(),
+      }
+    }),
   ]
 
   // Sort newest cutoff first.
