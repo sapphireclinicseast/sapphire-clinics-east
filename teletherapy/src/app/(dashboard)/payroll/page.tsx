@@ -113,7 +113,6 @@ export default function PayrollPage() {
   const [data, setData] = useState<PayrollResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [previewing, setPreviewing] = useState<Payslip | null>(null)
   const { branches, isMultiBranch, activeStaffId, activeBranch, switchBranch } = useBranchSwitcher()
 
   useEffect(() => { fetchPayslips() }, [])
@@ -231,23 +230,16 @@ export default function PayrollPage() {
       ) : (
         <div className="space-y-2 animate-fade-up">
           {visiblePayslips.map((p, i) => (
-            <PayslipRow key={`${p.kind}-${p.id}`} payslip={p} index={i} onPreview={() => setPreviewing(p)} />
+            <PayslipRow key={`${p.kind}-${p.id}`} payslip={p} index={i} />
           ))}
         </div>
-      )}
-
-      {previewing && (
-        <PdfPreviewModal
-          payslip={previewing}
-          onClose={() => setPreviewing(null)}
-        />
       )}
     </div>
   )
 }
 
-function PayslipRow({ payslip, index, onPreview }: {
-  payslip: Payslip; index: number; onPreview: () => void
+function PayslipRow({ payslip, index }: {
+  payslip: Payslip; index: number
 }) {
   const branchLabel = BRANCH_LABEL[payslip.branch] ?? payslip.branch
   const pdfHref = `/api/payroll/pdf?kind=${payslip.kind}&id=${encodeURIComponent(payslip.id)}`
@@ -291,15 +283,19 @@ function PayslipRow({ payslip, index, onPreview }: {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={onPreview}
-            disabled={!payslip.hasPdf}
-            className="inline-flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-lg border border-[var(--paper-3)] text-[var(--narra)] hover:bg-[var(--paper-2)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            title={payslip.hasPdf ? 'View PDF' : 'No PDF on file'}
+          <a
+            href={pdfHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cn(
+              'inline-flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-lg border border-[var(--paper-3)] text-[var(--narra)] hover:bg-[var(--paper-2)] transition-colors',
+              !payslip.hasPdf && 'opacity-40 pointer-events-none'
+            )}
+            title={payslip.hasPdf ? 'Open PDF in new tab' : 'No PDF on file'}
           >
             <Eye size={14} />
             View
-          </button>
+          </a>
           <a
             href={pdfHref}
             download={`payslip-${payslip.cutoffPeriod}.pdf`}
@@ -318,51 +314,8 @@ function PayslipRow({ payslip, index, onPreview }: {
   )
 }
 
-function PdfPreviewModal({ payslip, onClose }: { payslip: Payslip; onClose: () => void }) {
-  const pdfHref = `/api/payroll/pdf?kind=${payslip.kind}&id=${encodeURIComponent(payslip.id)}`
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in"
-      onClick={onClose}
-    >
-      <div
-        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[85vh] overflow-hidden flex flex-col animate-gate"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="hero-gradient px-5 py-3.5 flex items-center gap-3 shrink-0">
-          <FileText size={18} className="text-white shrink-0" />
-          <div className="flex-1 min-w-0">
-            <h2 className="text-[15px] font-bold text-white tracking-tight truncate" style={{ fontFamily: 'var(--font-display)' }}>
-              Payslip — {fmtCutoff(payslip.cutoffPeriod)}
-            </h2>
-            <p className="text-white/70 text-[11px] truncate">
-              Net pay {PHP.format(payslip.netPay)} · {BRANCH_LABEL[payslip.branch] ?? payslip.branch}
-            </p>
-          </div>
-          <a
-            href={pdfHref}
-            download={`payslip-${payslip.cutoffPeriod}.pdf`}
-            className="inline-flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-lg bg-white/15 text-white hover:bg-white/25 transition-colors backdrop-blur-sm border border-white/20"
-            title="Download"
-          >
-            <Download size={13} /> Download
-          </a>
-          <button
-            onClick={onClose}
-            className="text-white/70 hover:text-white p-1 rounded-md hover:bg-white/10 transition-colors"
-            title="Close"
-          >
-            <XIcon size={18} />
-          </button>
-        </div>
-        <div className="flex-1 bg-[var(--paper-2)] overflow-hidden">
-          <iframe
-            src={pdfHref}
-            title="Payslip PDF"
-            className="w-full h-full border-0"
-          />
-        </div>
-      </div>
-    </div>
-  )
-}
+// PdfPreviewModal removed: nginx adds X-Frame-Options: DENY +
+// frame-ancestors 'none' to all responses for security, which blocks
+// embedding our own PDFs in an <iframe> ("refused to connect"). The
+// View button now opens the PDF in a new browser tab instead — same
+// UX without fighting the security policy.

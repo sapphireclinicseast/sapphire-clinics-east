@@ -186,8 +186,10 @@ async function buildConsultantPdf(entry: {
   const extras = (Array.isArray(entry.extraItems) ? entry.extraItems : []) as RawExtra[]
   const adjs = (Array.isArray(entry.adjustments) ? entry.adjustments : []) as RawAdj[]
 
+  // unitPayTotal is the sum of BASE items ONLY (no extras). The shared
+  // computeTotals() adds extras itself; pre-summing them here would
+  // double-count and inflate Gross / NET PAY by the extras amount.
   const unitPayTotal = items.reduce((s, it) => s + Number(it.lineTotal ?? 0), 0)
-    + extras.reduce((s, e) => s + Number(e.unitAmount ?? 0) * Number(e.qty ?? 0), 0)
 
   const preview: ConsultantPayslipPreview = {
     consultantId: entry.id,
