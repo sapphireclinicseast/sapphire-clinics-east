@@ -193,7 +193,8 @@ export async function GET(req: Request) {
           glOrderIds[glBucket] = allUnpaidIdsByWallet.get(w.id) || []
         }
 
-        const arDays = rev > 0 ? (arNet / rev) * periodDays : 0
+        // AR Days for GL = actual age of the receivable (days since dateObtained)
+        const arDays = ageDays
         return {
           walletId: w.id,
           walletName: w.patientName,
@@ -222,11 +223,18 @@ export async function GET(req: Request) {
       }
     })
 
-    const totalAR = isGL
-      ? perWallet.reduce((s, w) => s + w.ar, 0)
-      : perWallet.reduce((s, w) => s + w.ar, 0)
+    const totalAR = perWallet.reduce((s, w) => s + w.ar, 0)
 
-    const arDaysOverall = totalRevenue > 0 ? (totalAR / totalRevenue) * periodDays : 0
+    // GL overall = AR-weighted average of per-wallet age (dateObtained-based)
+    // HMO overall = DSO: (totalAR / totalRevenue) * periodDays
+    const arDaysOverall = isGL
+      ? (() => {
+          const withAR = perWallet.filter(w => w.ar > 0)
+          if (withAR.length === 0) return 0
+          const weightedSum = withAR.reduce((s, w) => s + w.arDays * w.ar, 0)
+          return weightedSum / totalAR
+        })()
+      : totalRevenue > 0 ? (totalAR / totalRevenue) * periodDays : 0
 
     return NextResponse.json({
       periodDays,
