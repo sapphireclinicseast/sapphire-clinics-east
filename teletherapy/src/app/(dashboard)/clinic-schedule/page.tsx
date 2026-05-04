@@ -115,6 +115,7 @@ export default function ClinicSchedulePage() {
   const [summary, setSummary] = useState<Summary>({ confirmedSessions: 0, uniquePatients: 0, avgPatientsPerDay: 0, activeDays: 0 })
   const [loading, setLoading] = useState(true)
   const [profilePatient, setProfilePatient] = useState<PatientInfo | null>(null)
+  const [moreDay, setMoreDay] = useState<string | null>(null)
 
   const range = useMemo(() => {
     if (view === 'day') return { start: anchor, end: anchor }
@@ -283,6 +284,16 @@ export default function ClinicSchedulePage() {
           byDay={byDay}
           onDayClick={(iso) => { setAnchor(new Date(iso + 'T00:00:00Z')); setView('day') }}
           onPatientClick={setProfilePatient}
+          onShowMore={(iso) => setMoreDay(iso)}
+        />
+      )}
+
+      {moreDay && (
+        <DayMorePopup
+          day={moreDay}
+          items={byDay.get(moreDay) ?? []}
+          onClose={() => setMoreDay(null)}
+          onPatientClick={(p) => setProfilePatient(p)}
         />
       )}
 
@@ -384,11 +395,12 @@ function WeekView({ start, byDay, onPatientClick }: {
   )
 }
 
-function MonthView({ anchor, byDay, onDayClick, onPatientClick }: {
+function MonthView({ anchor, byDay, onDayClick, onPatientClick, onShowMore }: {
   anchor: Date
   byDay: Map<string, ScheduleItem[]>
   onDayClick: (iso: string) => void
   onPatientClick: (p: PatientInfo) => void
+  onShowMore: (iso: string) => void
 }) {
   const start = startOfMonthGrid(anchor)
   const cells = Array.from({ length: 42 }, (_, i) => addDays(start, i))
@@ -438,8 +450,9 @@ function MonthView({ anchor, byDay, onDayClick, onPatientClick }: {
                   {items.length > 3 && (
                     <button
                       type="button"
-                      onClick={() => onDayClick(iso)}
+                      onClick={() => onShowMore(iso)}
                       className="text-[9.5px] text-[var(--moss)] font-semibold hover:underline w-full text-left"
+                      title="Show all sessions for this day"
                     >
                       +{items.length - 3} more…
                     </button>
@@ -634,8 +647,89 @@ function PatientProfileModal({ patient, onClose }: { patient: PatientInfo; onClo
 function LegendDot({ status, label }: { status: string; label: string }) {
   return (
     <span className="inline-flex items-center gap-1.5">
-      <span className={cn('inline-block w-3 h-3 rounded-sm border', statusClass(status))} />
+      <span className={cn('inline-block w-3 h-3 rounded-sm', statusClass(status))} />
       <span>{label}</span>
     </span>
+  )
+}
+
+// Popup listing all sessions for a single day in the Month view.
+// Stays inside the Month view so the user doesn't lose their place.
+function DayMorePopup({ day, items, onClose, onPatientClick }: {
+  day: string
+  items: ScheduleItem[]
+  onClose: () => void
+  onPatientClick: (p: PatientInfo) => void
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
+      onClick={onClose}
+    >
+      <div
+        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-gate"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="hero-gradient px-5 py-4 flex items-center gap-3">
+          <CalendarIcon size={18} className="text-white shrink-0" />
+          <div className="flex-1 min-w-0">
+            <h2 className="text-[15px] font-bold text-white tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
+              {fmtDate(day)}
+            </h2>
+            <p className="text-white/70 text-[11px]">{items.length} session{items.length === 1 ? '' : 's'}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-white/70 hover:text-white p-1 rounded-md hover:bg-white/10 transition-colors"
+            title="Close"
+          >
+            <XIcon size={18} />
+          </button>
+        </div>
+        <div className="p-3 max-h-[60vh] overflow-y-auto space-y-1.5">
+          {items.length === 0 ? (
+            <p className="text-[12px] text-[var(--mid-gray)] italic text-center py-6">No sessions.</p>
+          ) : (
+            items.map((s) => (
+              <DayMoreRow key={s.id} item={s} onPatientClick={onPatientClick} />
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DayMoreRow({ item, onPatientClick }: { item: ScheduleItem; onPatientClick: (p: PatientInfo) => void }) {
+  const hasPatient = !!item.patient
+  const patientLabel = hasPatient ? `${item.patient!.lastName}, ${item.patient!.firstName}` : 'No patient assigned'
+  return (
+    <div className="flex items-center gap-2 p-2 rounded-lg border border-[var(--paper-3)] bg-white">
+      <div className="w-14 shrink-0 text-center">
+        <p className="text-[11px] font-bold text-[var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>
+          {fmtTime12h(item.startTime)}
+        </p>
+      </div>
+      <div className="flex-1 min-w-0">
+        {hasPatient ? (
+          <button
+            type="button"
+            onClick={() => onPatientClick(item.patient!)}
+            className="font-semibold text-[13px] text-[var(--narra)] hover:text-[var(--clay)] hover:underline transition-colors text-left"
+            title="View patient profile"
+          >
+            {patientLabel}
+          </button>
+        ) : (
+          <span className="text-[13px] text-[var(--mid-gray)] italic">{patientLabel}</span>
+        )}
+        <p className="text-[10.5px] text-[var(--mid-gray)] truncate">
+          {item.sessionType} · {item.staff.department} · {item.staff.branch}
+        </p>
+      </div>
+      <span className={cn('text-[9.5px] font-semibold px-2 py-0.5 rounded-full shrink-0', statusClass(item.status))}>
+        {item.status}
+      </span>
+    </div>
   )
 }
