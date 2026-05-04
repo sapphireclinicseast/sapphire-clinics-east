@@ -3512,7 +3512,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   const panelBranch = userBranch(session)
   // Admin-only branch filter for the wallet list (non-admins are always locked to their branch)
   const [walletBranchFilter, setWalletBranchFilter] = useState('')
-  const [glFilters, setGlFilters] = useState<{ services: string[]; soaStatus: string[]; branch: string[]; agency: string; diagnosis: string }>({ services: [], soaStatus: [], branch: [], agency: '', diagnosis: '' })
+  const [glFilters, setGlFilters] = useState<{ services: string[]; soaStatus: string[]; branch: string[]; glStatus: string[]; agency: string; diagnosis: string }>({ services: [], soaStatus: [], branch: [], glStatus: [], agency: '', diagnosis: '' })
   const [openFilterCol, setOpenFilterCol] = useState<string | null>(null)
   const filterDropRef = useRef<HTMLDivElement>(null)
 
@@ -3565,6 +3565,15 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       }
       if (glFilters.diagnosis.trim()) {
         if (!(wgl.diagnosis || '').toLowerCase().includes(glFilters.diagnosis.trim().toLowerCase())) return false
+      }
+      if (glFilters.glStatus.length > 0) {
+        const approved = toNum((w as unknown as { totalGlAmount?: number | string }).totalGlAmount)
+        const remaining = toNum(w.balance)
+        let computedStatus: string
+        if (approved > 0 && remaining > 0 && remaining < approved) computedStatus = 'Ongoing'
+        else if (approved > 0 && remaining > 0 && Math.abs(remaining - approved) < 0.01) computedStatus = 'Not Started'
+        else computedStatus = 'Other'
+        if (!glFilters.glStatus.includes(computedStatus)) return false
       }
       return true
     })
@@ -4175,7 +4184,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         ) : wallets.length === 0 ? (
           <div className="text-center py-12 text-sm" style={{ color: 'var(--mid-gray)' }}>No wallets found.</div>
         ) : walletTypeFilter === 'GL' && glDisplayWallets.length === 0 ? (
-          <div className="text-center py-12 text-sm" style={{ color: 'var(--mid-gray)' }}>No GL wallets match the active filters. <button onClick={() => setGlFilters({ services: [], soaStatus: [], branch: [], agency: '', diagnosis: '' })} className="underline" style={{ color: 'var(--teal)' }}>Clear filters</button></div>
+          <div className="text-center py-12 text-sm" style={{ color: 'var(--mid-gray)' }}>No GL wallets match the active filters. <button onClick={() => setGlFilters({ services: [], soaStatus: [], branch: [], glStatus: [], agency: '', diagnosis: '' })} className="underline" style={{ color: 'var(--teal)' }}>Clear filters</button></div>
         ) : (
           <table className="w-full text-sm">
             <thead>
@@ -4183,7 +4192,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 {(walletTypeFilter === 'HMO'
                   ? [{ label: 'HMO Provider', field: 'patientName' }, { label: 'Type', field: '' }, { label: 'Receivable Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'Transactions', field: '' }, { label: '', field: '' }]
                   : walletTypeFilter === 'GL'
-                  ? [{ label: 'Patient Name', field: 'patientName' }, { label: 'Agency', field: 'agency', filterKey: 'agency', filterType: 'text' as const }, { label: 'Diagnosis', field: '', filterKey: 'diagnosis', filterType: 'text' as const }, { label: 'Services', field: '', filterKey: 'services', filterOptions: GL_SERVICE_TYPES }, { label: 'Approved SOA', field: 'totalGlAmount' }, { label: 'Remaining Balance', field: 'balance' }, { label: 'Status', field: '' }, { label: 'Branch', field: 'branch', filterKey: 'branch', filterOptions: Object.keys(BRANCH_LABELS) }, { label: 'SOA Status', field: 'soaStatus', filterKey: 'soaStatus', filterOptions: ['With GL/No SOA', 'With GL and SOA'] }, { label: 'Attachment', field: '' }, { label: '', field: '' }]
+                  ? [{ label: 'Patient Name', field: 'patientName' }, { label: 'Agency', field: 'agency', filterKey: 'agency', filterType: 'text' as const }, { label: 'Diagnosis', field: '', filterKey: 'diagnosis', filterType: 'text' as const }, { label: 'Services', field: '', filterKey: 'services', filterOptions: GL_SERVICE_TYPES }, { label: 'Approved SOA', field: 'totalGlAmount' }, { label: 'Remaining Balance', field: 'balance' }, { label: 'Status', field: '', filterKey: 'glStatus', filterOptions: ['Ongoing', 'Not Started'] }, { label: 'Branch', field: 'branch', filterKey: 'branch', filterOptions: Object.keys(BRANCH_LABELS) }, { label: 'SOA Status', field: 'soaStatus', filterKey: 'soaStatus', filterOptions: ['With GL/No SOA', 'With GL and SOA'] }, { label: 'Attachment', field: '' }, { label: '', field: '' }]
                   : ['VIP', 'PREPAID_CARD'].includes(walletTypeFilter)
                   ? [{ label: 'Patient Name', field: 'patientName' }, { label: 'Type', field: '' }, { label: 'Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'Barcode', field: 'barcode' }, { label: 'Packages', field: '' }, { label: 'Reward Points', field: 'rewardPoints' }, { label: '', field: '' }]
                   : walletTypeFilter === 'PACKAGE'
