@@ -382,7 +382,7 @@ export default function AccountsReceivablePage() {
   const [payDiscountAccountId, setPayDiscountAccountId] = useState('')
   const [payDiscountSearch, setPayDiscountSearch] = useState('')
   const [payNotes, setPayNotes] = useState('')
-  const [payProofUrl, setPayProofUrl] = useState('')
+  const [payProofUrls, setPayProofUrls] = useState<string[]>([])
   const [payProofUploading, setPayProofUploading] = useState(false)
   const [paySelectedOrders, setPaySelectedOrders] = useState<string[]>([])
   const [payError, setPayError] = useState('')
@@ -520,7 +520,7 @@ export default function AccountsReceivablePage() {
     setPayCashAccountId('')
     setPayCashAccountSearch('')
     setPayNotes('')
-    setPayProofUrl('')
+    setPayProofUrls([])
     setPaySelectedOrders([])
     setPayError('')
     setShowPaymentModal(true)
@@ -538,7 +538,7 @@ export default function AccountsReceivablePage() {
     setPayCashAccountId(p.cashAccountId || '')
     setPayCashAccountSearch(p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : '')
     setPayNotes(p.notes || '')
-    setPayProofUrl(p.proofUrl || '')
+    setPayProofUrls(parseProofUrls(p.proofUrl))
     setPaySelectedOrders(p.items.map(i => i.orderId))
     setPayError('')
     setShowPaymentModal(true)
@@ -567,7 +567,7 @@ export default function AccountsReceivablePage() {
           discountAccountId: payDiscountAccountId || null,
           cashAccountId: payCashAccountId || null,
           orderIds: paySelectedOrders,
-          proofUrl: payProofUrl || null,
+          proofUrl: payProofUrls.length > 0 ? JSON.stringify(payProofUrls) : null,
           notes: payNotes || null,
           branch: branch || null,
         }),
@@ -1266,7 +1266,7 @@ export default function AccountsReceivablePage() {
             <table className="w-full text-xs">
               <thead>
                 <tr className="sticky top-0 z-10" style={{ background: 'var(--off-white)' }}>
-                  {['Date', 'Provider/Agency', 'Amount', 'Discount', 'Debit Account', 'Orders', 'Notes', 'Recorded By', ''].map(h => (
+                  {['Date', 'Provider/Agency', 'Amount', 'Discount', 'Debit Account', 'Orders', 'Notes', 'Proof', 'Recorded By', ''].map(h => (
                     <th key={h} className="text-left px-3 py-2 font-semibold" style={{ color: 'var(--mid-gray)' }}>{h}</th>
                   ))}
                 </tr>
@@ -1274,6 +1274,7 @@ export default function AccountsReceivablePage() {
               <tbody>
                 {arPayments.map(p => {
                   const wallet = wallets.find(w => w.id === p.walletId)
+                  const proofFiles = parseProofUrls(p.proofUrl)
                   return (
                     <tr key={p.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                       <td className="px-3 py-2">{formatDate(p.paymentDate)}</td>
@@ -1283,6 +1284,27 @@ export default function AccountsReceivablePage() {
                       <td className="px-3 py-2" style={{ color: 'var(--teal)' }}>{p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : '—'}</td>
                       <td className="px-3 py-2">{p.items.length} orders</td>
                       <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{p.notes || '—'}</td>
+                      <td className="px-3 py-2">
+                        {proofFiles.length === 0 ? (
+                          <span style={{ color: 'var(--light-gray)' }}>—</span>
+                        ) : (
+                          <div className="flex flex-col gap-1">
+                            {proofFiles.map((url, i) => (
+                              <div key={i} className="flex items-center gap-1.5">
+                                <a href={url} target="_blank" rel="noopener noreferrer"
+                                  className="text-xs underline font-medium" style={{ color: 'var(--teal)' }}
+                                  title={url.split('/').pop()}>
+                                  View {proofFiles.length > 1 ? `#${i + 1}` : ''}
+                                </a>
+                                <a href={url} download
+                                  className="p-0.5 rounded hover:bg-teal-50" title="Download">
+                                  <Download size={11} style={{ color: 'var(--teal)' }} />
+                                </a>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </td>
                       <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{p.createdBy.name}</td>
                       <td className="px-3 py-2 flex items-center gap-1">
                         <button onClick={() => openEditPaymentModal(p)} className="p-1.5 rounded-lg hover:bg-blue-50" title="Edit payment">
@@ -1931,24 +1953,34 @@ export default function AccountsReceivablePage() {
                 ) : null
               })()}
 
-              {/* Proof of payment — file upload */}
+              {/* Proof of payment — multi-file upload */}
               <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Proof of Payment</label>
-                {payProofUrl ? (
-                  <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm" style={{ borderColor: 'var(--teal)', background: '#f0fdfa' }}>
-                    <Upload size={14} style={{ color: 'var(--teal)' }} />
-                    <a href={payProofUrl} target="_blank" rel="noopener noreferrer" className="flex-1 truncate underline text-xs" style={{ color: 'var(--teal)' }}>
-                      {payProofUrl.split('/').pop()}
-                    </a>
-                    <button type="button" onClick={() => setPayProofUrl('')} className="p-0.5 rounded hover:bg-gray-100">
-                      <X size={14} style={{ color: 'var(--mid-gray)' }} />
-                    </button>
-                  </div>
-                ) : (
-                  <label className="flex items-center justify-center gap-2 px-3 py-3 rounded-xl border-2 border-dashed text-sm cursor-pointer hover:bg-gray-50 transition-colors"
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
+                  Proof of Payment
+                  <span className="ml-1 font-normal" style={{ color: 'var(--mid-gray)' }}>({payProofUrls.length} file{payProofUrls.length !== 1 ? 's' : ''})</span>
+                </label>
+                <div className="space-y-1.5">
+                  {payProofUrls.map((url, idx) => (
+                    <div key={idx} className="flex items-center gap-2 px-3 py-2 rounded-xl border text-xs" style={{ borderColor: 'var(--teal)', background: '#f0fdfa' }}>
+                      <Upload size={12} style={{ color: 'var(--teal)', flexShrink: 0 }} />
+                      <a href={url} target="_blank" rel="noopener noreferrer"
+                        className="flex-1 truncate underline" style={{ color: 'var(--teal)' }}>
+                        {url.split('/').pop()}
+                      </a>
+                      <a href={url} download className="p-0.5 rounded hover:bg-teal-100" title="Download">
+                        <Download size={12} style={{ color: 'var(--teal)' }} />
+                      </a>
+                      <button type="button"
+                        onClick={() => setPayProofUrls(prev => prev.filter((_, i) => i !== idx))}
+                        className="p-0.5 rounded hover:bg-red-50" title="Remove">
+                        <X size={12} style={{ color: '#dc2626' }} />
+                      </button>
+                    </div>
+                  ))}
+                  <label className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border-2 border-dashed text-xs cursor-pointer hover:bg-gray-50 transition-colors"
                     style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
-                    <Upload size={16} />
-                    {payProofUploading ? 'Uploading...' : 'Upload file (JPG, PNG, PDF — max 10MB)'}
+                    <Upload size={14} />
+                    {payProofUploading ? 'Uploading...' : payProofUrls.length === 0 ? 'Upload file (JPG, PNG, PDF — max 10MB)' : 'Add another file'}
                     <input type="file" accept="image/*,.pdf" className="hidden" onChange={async (e) => {
                       const file = e.target.files?.[0]
                       if (!file) return
@@ -1958,13 +1990,13 @@ export default function AccountsReceivablePage() {
                         formData.append('file', file)
                         const res = await fetch('/api/upload', { method: 'POST', body: formData })
                         const data = await res.json()
-                        if (res.ok && data.url) setPayProofUrl(data.url)
+                        if (res.ok && data.url) setPayProofUrls(prev => [...prev, data.url])
                         else setPayError(data.error || 'Upload failed')
                       } catch { setPayError('Upload failed') }
-                      finally { setPayProofUploading(false) }
+                      finally { setPayProofUploading(false); e.target.value = '' }
                     }} />
                   </label>
-                )}
+                </div>
               </div>
 
               {/* Notes */}
