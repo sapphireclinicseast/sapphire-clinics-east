@@ -34,15 +34,54 @@ interface PayrollResponse {
 
 const PHP = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' })
 
-function fmtCutoff(s: string): string {
-  // "2026-03-1" => "Mar 1–15, 2026", "2026-03-2" => "Mar 16–end, 2026"
-  const m = s.match(/^(\d{4})-(\d{2})-([12])$/)
-  if (!m) return s
-  const months = ['January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December']
-  const month = months[Number(m[2]) - 1]
-  const half = m[3] === '1' ? '1\u201315' : '16\u2013end'
-  return `${month} ${half}, ${m[1]}`
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+]
+
+// Sandbox Clinic payroll defaults (from accounting hub's PayrollSettings):
+//   1st cut-off: day 26 of PREVIOUS month → day 10 of current month
+//   2nd cut-off: day 11 → day 25 of current month
+// (Custom settings live in the accountant's browser localStorage and
+// aren't queryable from teletherapy; if the accountant ever overrides
+// these, mirror the change here.)
+const CUTOFF = {
+  c1StartDay: 26, c1StartPrevMonth: true, c1EndDay: 10,
+  c2StartDay: 11, c2EndLastDay: false, c2EndDay: 25,
+}
+
+function fmtCutoff(period: string): string {
+  // "2026-04-2" → "April 2026 (Second Cut-off): April 11-25, 2026"
+  // "2026-04-1" → "April 2026 (First Cut-off): March 26-April 10, 2026"
+  const m = period.match(/^(\d{4})-(\d{2})-([12])$/)
+  if (!m) return period
+  const year = Number(m[1])
+  const month = Number(m[2])
+  const half = Number(m[3]) as 1 | 2
+  const monthLabel = MONTHS[month - 1]
+  const halfLabel = half === 1 ? 'First Cut-off' : 'Second Cut-off'
+
+  let startMonth: number, startYear: number, startDay: number, endDay: number
+  if (half === 1) {
+    startDay = CUTOFF.c1StartDay
+    startMonth = CUTOFF.c1StartPrevMonth ? (month === 1 ? 12 : month - 1) : month
+    startYear = CUTOFF.c1StartPrevMonth && month === 1 ? year - 1 : year
+    endDay = CUTOFF.c1EndDay
+  } else {
+    startDay = CUTOFF.c2StartDay
+    startMonth = month
+    startYear = year
+    endDay = CUTOFF.c2EndLastDay ? new Date(year, month, 0).getDate() : CUTOFF.c2EndDay
+  }
+  const startMonthLabel = MONTHS[startMonth - 1]
+
+  const range = startMonth === month && startYear === year
+    ? `${startMonthLabel} ${startDay}-${endDay}, ${year}`
+    : startYear === year
+      ? `${startMonthLabel} ${startDay}-${monthLabel} ${endDay}, ${year}`
+      : `${startMonthLabel} ${startDay}, ${startYear}-${monthLabel} ${endDay}, ${year}`
+
+  return `${monthLabel} ${year} (${halfLabel}): ${range}`
 }
 
 function fmtIssued(iso: string): string {

@@ -12,11 +12,23 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { existsSync } from 'fs'
+import path from 'path'
+
+const PDF_DIR = process.env.PDF_STORAGE_DIR || '/app/data/payslips'
 
 function verifyKey(req: NextRequest): boolean {
   const key = process.env.TELETHERAPY_INTERNAL_API_KEY
   if (!key) return false
   return req.headers.get('authorization') === `Bearer ${key}`
+}
+
+// hasPdf is anchored to the actual on-disk file (which is what the
+// PDF endpoint serves), not just the DB pdfUrl column. The column
+// can lag behind regeneration runs, but the file is the truth.
+function pdfExists(kind: 'employee' | 'consultant', id: string): boolean {
+  const safeId = id.replace(/[^a-zA-Z0-9_-]/g, '')
+  return existsSync(path.join(PDF_DIR, kind, `${safeId}.pdf`))
 }
 
 export async function GET(req: NextRequest) {
@@ -69,7 +81,7 @@ export async function GET(req: NextRequest) {
       grossPay: Number(s.grossPay),
       totalDeductions: Number(s.totalDeductions),
       netPay: Number(s.netPay),
-      hasPdf: !!s.pdfUrl,
+      hasPdf: pdfExists('employee', s.id) || !!s.pdfUrl,
       issuedAt: s.updatedAt.toISOString(),
     })),
     ...consEntries.map((e) => ({
@@ -80,7 +92,7 @@ export async function GET(req: NextRequest) {
       grossPay: Number(e.grossPay),
       totalDeductions: Number(e.taxAmount), // consultants only have tax withholding
       netPay: Number(e.netPay),
-      hasPdf: !!e.pdfUrl,
+      hasPdf: pdfExists('consultant', e.id) || !!e.pdfUrl,
       issuedAt: e.updatedAt.toISOString(),
     })),
   ]
