@@ -960,6 +960,25 @@ export default function AccountsReceivablePage() {
       {/* ── Overview content (AR Dashboard + Filters + Cards + Table + Payment History) ── */}
       {(tab !== 'HMO' || hmoSubTab === 'overview') && <>
 
+      {/* Quick-nav scroll strip */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Jump to:</span>
+        {([
+          { id: 'ar-utilization', label: 'Utilization' },
+          { id: 'ar-days-per-agency', label: 'AR Days' },
+          { id: 'ar-aging-details', label: 'Aging Details' },
+          { id: 'ar-transactions', label: 'Transactions' },
+          { id: 'ar-payment-history', label: 'Payment History' },
+        ] as { id: string; label: string }[]).map(({ id, label }) => (
+          <button key={id}
+            onClick={() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            className="px-3 py-1 rounded-full text-xs font-semibold transition-opacity hover:opacity-70"
+            style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* ── Dashboard: AR Days + Aging Receivable Details ── */}
       <div className="rounded-2xl border p-4 space-y-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -1010,7 +1029,7 @@ export default function AccountsReceivablePage() {
 
         {/* AR Days per wallet — sortable table */}
         {agingData && agingData.perWallet.filter(w => w.ar > 0 || w.revenue > 0).length > 0 && (
-          <div>
+          <div id="ar-days-per-agency">
             <p className="text-xs font-semibold mb-2" style={{ color: 'var(--mid-gray)' }}>AR Days per {tab === 'HMO' ? 'HMO' : 'Agency'}</p>
             <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
               <table className="w-full text-sm">
@@ -1045,7 +1064,7 @@ export default function AccountsReceivablePage() {
         )}
 
         {/* Aging Receivable Details */}
-        <div>
+        <div id="ar-aging-details">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>
               Aging Receivable Details — click an amount to see the transactions included
@@ -1149,31 +1168,58 @@ export default function AccountsReceivablePage() {
         </div>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4">
-        {wallets.map(w => (
-          <div key={w.id} className="rounded-xl border p-4 cursor-pointer hover:shadow-md transition-shadow"
-            style={{ borderColor: walletFilter === w.id ? 'var(--teal)' : 'var(--light-gray)', background: walletFilter === w.id ? '#f0fdfa' : 'white' }}
-            onClick={() => setWalletFilter(walletFilter === w.id ? '' : w.id)}>
-            <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{w.patientName}</p>
-            {w.account && <p className="text-xs" style={{ color: 'var(--teal)' }}>{w.account.accountNumber} {w.account.accountTitle}</p>}
-            <p className="text-[10px] uppercase tracking-wide mt-1" style={{ color: 'var(--mid-gray)' }}>
-              {tab === 'GL' ? 'Approved GL Amount' : 'Outstanding'}
-            </p>
-            <p className="text-lg font-bold" style={{ color: toNum(w.balance) > 0 ? '#dc2626' : '#166534' }}>
-              {formatCurrency(toNum(w.balance))}
-            </p>
-            {tab === 'GL' && typeof w.consumedOutstanding === 'number' && (
-              <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
-                Consumed (unpaid orders): {formatCurrency(w.consumedOutstanding)}
-              </p>
-            )}
-          </div>
-        ))}
+      {/* Utilization summary table (replaces cards) */}
+      <div id="ar-utilization" className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ background: 'var(--pale-teal)' }}>
+              <th className="px-3 py-2 text-left text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>
+                {tab === 'GL' ? 'Agency / Name' : 'HMO Provider'}
+              </th>
+              <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>
+                {tab === 'GL' ? 'Approved SOA' : 'Outstanding'}
+              </th>
+              {tab === 'GL' && <>
+                <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>Consumed</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>% Consumed</th>
+              </>}
+            </tr>
+          </thead>
+          <tbody>
+            {wallets.map((w, i) => {
+              const approved = toNum(w.balance)
+              const consumed = typeof w.consumedOutstanding === 'number' ? w.consumedOutstanding : 0
+              const pct = approved > 0 ? (consumed / approved) * 100 : 0
+              const isSelected = walletFilter === w.id
+              return (
+                <tr key={w.id}
+                  className="cursor-pointer hover:bg-gray-50 transition-colors"
+                  style={{ borderTop: i > 0 ? '1px solid var(--light-gray)' : undefined, background: isSelected ? '#f0fdfa' : undefined }}
+                  onClick={() => setWalletFilter(isSelected ? '' : w.id)}>
+                  <td className="px-3 py-2">
+                    <p className="text-xs font-semibold" style={{ color: isSelected ? 'var(--teal)' : 'var(--charcoal)' }}>{w.patientName}</p>
+                    {w.account && <p className="text-[10px]" style={{ color: 'var(--teal)' }}>{w.account.accountNumber} {w.account.accountTitle}</p>}
+                  </td>
+                  <td className="px-3 py-2 text-right text-xs font-bold tabular-nums" style={{ color: approved > 0 ? '#dc2626' : '#166534' }}>
+                    {formatCurrency(approved)}
+                  </td>
+                  {tab === 'GL' && <>
+                    <td className="px-3 py-2 text-right text-xs tabular-nums" style={{ color: 'var(--charcoal)' }}>
+                      {consumed > 0 ? formatCurrency(consumed) : <span style={{ color: 'var(--light-gray)' }}>—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right text-xs font-semibold tabular-nums" style={{ color: pct > 80 ? '#dc2626' : pct > 50 ? '#c44b00' : '#166534' }}>
+                      {consumed > 0 ? `${pct.toFixed(1)}%` : <span style={{ color: 'var(--light-gray)' }}>—</span>}
+                    </td>
+                  </>}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       </div>
 
       {/* Transactions table — hidden on HMO Overview (use Per HMO sub-tab instead) */}
-      {!(tab === 'HMO' && hmoSubTab === 'overview') && <div data-ar-transactions-table className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+      {!(tab === 'HMO' && hmoSubTab === 'overview') && <div id="ar-transactions" data-ar-transactions-table className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: 'var(--off-white)' }}>
@@ -1233,7 +1279,7 @@ export default function AccountsReceivablePage() {
 
       {/* Payment History */}
       {arPayments.length > 0 && (
-        <div>
+        <div id="ar-payment-history">
           <h3 className="text-sm font-semibold mb-2" style={{ color: 'var(--charcoal)' }}>Payment History</h3>
           <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
             <table className="w-full text-xs">
