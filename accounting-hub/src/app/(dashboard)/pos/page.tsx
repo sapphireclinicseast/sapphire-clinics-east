@@ -3647,6 +3647,24 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
           : []
     )
     setWalletEditing(true)
+
+    // For GL wallets: if diagnosis not yet stored, auto-fetch from CRM by patient name
+    if (walletDetail.walletType === 'GL' && !walletDetail.diagnosis && walletDetail.patientName) {
+      // Strip any "(Nth Application)" suffix before searching
+      const searchName = walletDetail.patientName.replace(/\s*\(\d+(?:st|nd|rd|th) Application\)$/, '').trim()
+      fetch(`/api/pos/patients?search=${encodeURIComponent(searchName)}`)
+        .then(r => r.json())
+        .then((pts: Patient[]) => {
+          if (!Array.isArray(pts) || pts.length === 0) return
+          // Prefer exact case-insensitive name match; fall back to first result if unique
+          const exact = pts.find(p => p.name.toLowerCase() === searchName.toLowerCase())
+          const match = exact || (pts.length === 1 ? pts[0] : null)
+          if (match?.diagnosis) {
+            setWalletEditForm(prev => ({ ...prev, diagnosis: (match.diagnosis as string) || '' }))
+          }
+        })
+        .catch(() => {})
+    }
   }
 
   const saveWalletEdit = async () => {
@@ -4889,11 +4907,35 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                           className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                       </div>
                       <div>
-                        <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Diagnosis</label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="font-medium" style={{ color: 'var(--mid-gray)' }}>Diagnosis</label>
+                          <button type="button"
+                            onClick={() => {
+                              if (!walletDetail?.patientName) return
+                              const searchName = walletDetail.patientName.replace(/\s*\(\d+(?:st|nd|rd|th) Application\)$/, '').trim()
+                              fetch(`/api/pos/patients?search=${encodeURIComponent(searchName)}`)
+                                .then(r => r.json())
+                                .then((pts: Patient[]) => {
+                                  if (!Array.isArray(pts) || pts.length === 0) { alert('No matching patient found in CRM.'); return }
+                                  const exact = pts.find(p => p.name.toLowerCase() === searchName.toLowerCase())
+                                  const match = exact || (pts.length === 1 ? pts[0] : null)
+                                  if (match?.diagnosis) {
+                                    setWalletEditForm(prev => ({ ...prev, diagnosis: (match.diagnosis as string) || '' }))
+                                  } else {
+                                    alert('Patient found in CRM but has no diagnosis on record.')
+                                  }
+                                })
+                                .catch(() => alert('CRM lookup failed.'))
+                            }}
+                            className="text-[10px] px-2 py-0.5 rounded-lg font-semibold"
+                            style={{ background: '#dbeafe', color: '#1e40af' }}>
+                            ↻ Sync from CRM
+                          </button>
+                        </div>
                         <input value={walletEditForm.diagnosis || ''} onChange={e => setWalletEditForm(p => ({ ...p, diagnosis: e.target.value }))}
                           placeholder="e.g. Cerebral Palsy, ASD"
                           className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-                        <p className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>CRM snapshot — update here if changed</p>
+                        <p className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>From Patient CRM — edit manually if needed</p>
                       </div>
                       <div className="col-span-2">
                         <label className="font-medium mb-1.5 block" style={{ color: 'var(--mid-gray)' }}>Approved Services</label>
