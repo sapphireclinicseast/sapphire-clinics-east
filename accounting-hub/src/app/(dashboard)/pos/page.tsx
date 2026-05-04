@@ -3515,6 +3515,8 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   const [glFilters, setGlFilters] = useState<{ services: string[]; soaStatus: string[]; branch: string[]; glStatus: string[]; agency: string; diagnosis: string }>({ services: [], soaStatus: [], branch: [], glStatus: [], agency: '', diagnosis: '' })
   const [openFilterCol, setOpenFilterCol] = useState<string | null>(null)
   const filterDropRef = useRef<HTMLDivElement>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState<string | null>(null)
 
   const fetchWallets = useCallback(async () => {
     setLoading(true)
@@ -3763,6 +3765,47 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       setWalletEditError(`Network error: ${e}`)
     }
     setWalletEditSaving(false)
+  }
+
+  const syncAllDiagnosis = async () => {
+    setSyncing(true)
+    setSyncResult(null)
+    try {
+      // Group wallets by clean patient name (strip "(Nth Application)" suffix)
+      const nameToWallets = new Map<string, DigitalWallet[]>()
+      for (const w of wallets) {
+        if (!w.patientName) continue
+        const cleanName = w.patientName.replace(/\s*\(\d+(?:st|nd|rd|th) Application\)$/, '').trim()
+        if (!nameToWallets.has(cleanName)) nameToWallets.set(cleanName, [])
+        nameToWallets.get(cleanName)!.push(w)
+      }
+      let updated = 0
+      for (const [name, group] of Array.from(nameToWallets.entries())) {
+        try {
+          const r = await fetch(`/api/pos/patients?search=${encodeURIComponent(name)}`)
+          const pts: Patient[] = await r.json()
+          if (!Array.isArray(pts) || pts.length === 0) continue
+          const exact = pts.find(p => p.name.toLowerCase() === name.toLowerCase())
+          const match = exact || (pts.length === 1 ? pts[0] : null)
+          if (!match?.diagnosis) continue
+          for (const w of group) {
+            // Skip if diagnosis is already up to date
+            if ((w as unknown as { diagnosis?: string | null }).diagnosis === match.diagnosis) continue
+            await fetch(`/api/pos/wallets/${w.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ diagnosis: match.diagnosis }),
+            })
+            updated++
+          }
+        } catch { /* skip individual failures */ }
+      }
+      setSyncResult(`${updated} wallet${updated !== 1 ? 's' : ''} updated`)
+      fetchWallets()
+    } catch {
+      setSyncResult('Sync failed — please try again')
+    }
+    setSyncing(false)
   }
 
   const deleteWallet = async (wallet: DigitalWallet) => {
@@ -4156,6 +4199,23 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
           <Plus size={16} /> {walletTypeFilter === 'HMO' ? 'Add HMO' : walletTypeFilter === 'GL' ? 'Create GL Wallet' : 'Create Wallet'}
         </button>
       </div>
+
+      {/* GL-only: bulk CRM diagnosis sync */}
+      {walletTypeFilter === 'GL' && (
+        <div className="flex items-center gap-3">
+          <button onClick={syncAllDiagnosis} disabled={syncing}
+            className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl font-semibold border"
+            style={{ borderColor: '#bfdbfe', background: '#eff6ff', color: '#2563eb', opacity: syncing ? 0.7 : 1, cursor: syncing ? 'not-allowed' : 'pointer' }}>
+            {syncing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+            {syncing ? 'Syncing from CRM…' : '↻ Sync Diagnosis from CRM'}
+          </button>
+          {syncResult && (
+            <span className="text-xs font-medium" style={{ color: syncResult.includes('failed') ? '#dc2626' : '#15803d' }}>
+              {syncResult.includes('failed') ? '✗' : '✓'} {syncResult}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Show deleted toggle + admin branch filter */}
       <div className="flex items-center gap-4">
