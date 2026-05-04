@@ -231,20 +231,42 @@ interface InventoryProduct {
 
 /**
  * Look up a patient in the marketing-hub CRM by wallet patient name.
- * Strategy:
- *  1. Search with the full name — works when firstName or lastName contains it.
- *  2. If no results, retry with the last 2 words (surname) so that long names
- *     like "SELENNE DRIANNA DE GUZMAN" can match lastName = "De Guzman".
- *  3. Among the results, prefer an exact full-name match; fall back to the sole
- *     result when there is only one.
+ * Match strategy (exactOf):
+ *  1. Exact case-insensitive name match.
+ *  2. Hyphen-normalised match (TAG-AT ↔ Tagat).
+ *  3. Word-subset match: every word of the CRM record's name appears in the
+ *     target name — handles CRM storing "Andreas Carel" while wallet has
+ *     "ANDREAS JUANCHO CAREL" (middle name missing in CRM).
+ *  4. Sole-result fallback.
+ *
+ * Search fallback order when full-name search returns nothing:
+ *  a. Last 2 words — compound surnames like "De Guzman".
+ *  b. Last 1 word — simple surnames like "Carel".
+ *  c. Last 1 word without hyphens — "TAG-AT" → "TAGAT".
+ *  d. First word — given name, more unique for large CRM sets.
  */
 async function findCrmPatient(name: string): Promise<Patient | null> {
+  // Strip hyphens for loose comparison (handles TAG-AT ↔ Tagat)
+  const norm = (s: string) => s.toLowerCase().replace(/-/g, '')
+  const targetNormWords = norm(name).split(/\s+/)
   const exactOf = (pts: Patient[]) => {
+    // 1st: exact case-insensitive match
     const exact = pts.find(p => p.name.toLowerCase() === name.toLowerCase())
-    return exact ?? (pts.length === 1 ? pts[0] : null)
+    if (exact) return exact
+    // 2nd: hyphen-normalised match (e.g. "Tag-at" ↔ "Tagat")
+    const normMatch = pts.find(p => norm(p.name) === norm(name))
+    if (normMatch) return normMatch
+    // 3rd: every word of the CRM name is present in the target name
+    //      (handles CRM storing first+last only, wallet has middle name too)
+    const subsetMatch = pts.find(p =>
+      norm(p.name).split(/\s+/).every(w => targetNormWords.includes(w))
+    )
+    if (subsetMatch) return subsetMatch
+    // Last resort: sole result
+    return pts.length === 1 ? pts[0] : null
   }
   try {
-    // 1. Full name search — works when the whole name fits in a single CRM field
+    // 1. Full name search
     const r = await fetch(`/api/pos/patients?search=${encodeURIComponent(name)}`)
     const d: Patient[] = await r.json()
     if (Array.isArray(d) && d.length > 0) return exactOf(d)
@@ -252,22 +274,34 @@ async function findCrmPatient(name: string): Promise<Patient | null> {
     if (name.includes(' ')) {
       const words = name.split(/\s+/)
 
-      // 2. Last 2 words — handles compound surnames like "De Guzman"
+      // 2. Last 2 words — compound surnames like "De Guzman"
       if (words.length >= 3) {
-        const surname2 = words.slice(-2).join(' ')
-        const r2 = await fetch(`/api/pos/patients?search=${encodeURIComponent(surname2)}`)
+        const s2 = words.slice(-2).join(' ')
+        const r2 = await fetch(`/api/pos/patients?search=${encodeURIComponent(s2)}`)
         const d2: Patient[] = await r2.json()
-        if (Array.isArray(d2) && d2.length > 0) {
-          const m = exactOf(d2)
-          if (m) return m
-        }
+        if (Array.isArray(d2) && d2.length > 0) { const m = exactOf(d2); if (m) return m }
       }
 
-      // 3. Last 1 word — handles simple surnames like "Carel"
-      const surname1 = words[words.length - 1]
-      const r3 = await fetch(`/api/pos/patients?search=${encodeURIComponent(surname1)}`)
+      // 3. Last 1 word — simple surnames like "Carel" or hyphenated "Tag-at"
+      const s1 = words[words.length - 1]
+      const r3 = await fetch(`/api/pos/patients?search=${encodeURIComponent(s1)}`)
       const d3: Patient[] = await r3.json()
-      if (Array.isArray(d3) && d3.length > 0) return exactOf(d3)
+      if (Array.isArray(d3) && d3.length > 0) { const m = exactOf(d3); if (m) return m }
+
+      // 4. Last 1 word with hyphens removed — "TAG-AT" → "TAGAT"
+      const s1nh = s1.replace(/-/g, '')
+      if (s1nh !== s1) {
+        const r4 = await fetch(`/api/pos/patients?search=${encodeURIComponent(s1nh)}`)
+        const d4: Patient[] = await r4.json()
+        if (Array.isArray(d4) && d4.length > 0) { const m = exactOf(d4); if (m) return m }
+      }
+
+      // 5. First word (given name) — catches cases where surname search returns
+      //    too many results and none match via subset (e.g. common surnames)
+      const s0 = words[0]
+      const r5 = await fetch(`/api/pos/patients?search=${encodeURIComponent(s0)}`)
+      const d5: Patient[] = await r5.json()
+      if (Array.isArray(d5) && d5.length > 0) { const m = exactOf(d5); if (m) return m }
     }
   } catch { /* network / parse errors — caller handles null */ }
   return null
