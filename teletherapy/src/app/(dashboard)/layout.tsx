@@ -16,6 +16,7 @@ import {
   Settings,
   Heart,
   GraduationCap,
+  CalendarDays,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -29,6 +30,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
 
   const navItems = [
     { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/clinic-schedule', label: 'Clinic Schedule', icon: CalendarDays },
     { href: '/patients', label: 'Patients', icon: Users },
     { href: '/patients-love', label: 'What Patients Love About You', icon: Heart },
     { href: '/seminars', label: 'Seminars & Trainings', icon: GraduationCap },
