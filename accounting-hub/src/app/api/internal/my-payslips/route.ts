@@ -73,6 +73,10 @@ export async function GET(req: NextRequest) {
 
   // Normalize both shapes into a single payslip list.
   const payslips = [
+    // hasPdf is always true for LOCKED payslips: the PDF endpoint
+    // streams the on-disk file if it exists (accountant-vetted) and
+    // otherwise generates one server-side from the DB row, so View
+    // and Download always work.
     ...empSlips.map((s) => ({
       kind: 'employee' as const,
       id: s.id,
@@ -81,7 +85,8 @@ export async function GET(req: NextRequest) {
       grossPay: Number(s.grossPay),
       totalDeductions: Number(s.totalDeductions),
       netPay: Number(s.netPay),
-      hasPdf: pdfExists('employee', s.id) || !!s.pdfUrl,
+      hasPdf: true,
+      pdfStored: pdfExists('employee', s.id) || !!s.pdfUrl,
       issuedAt: s.updatedAt.toISOString(),
     })),
     ...consEntries.map((e) => ({
@@ -92,7 +97,8 @@ export async function GET(req: NextRequest) {
       grossPay: Number(e.grossPay),
       totalDeductions: Number(e.taxAmount), // consultants only have tax withholding
       netPay: Number(e.netPay),
-      hasPdf: pdfExists('consultant', e.id) || !!e.pdfUrl,
+      hasPdf: true,
+      pdfStored: pdfExists('consultant', e.id) || !!e.pdfUrl,
       issuedAt: e.updatedAt.toISOString(),
     })),
   ]
