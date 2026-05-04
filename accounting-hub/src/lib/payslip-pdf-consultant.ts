@@ -128,13 +128,20 @@ export function computeTotals(p: ConsultantPayslipPreview, extras: ExtraUnitPayL
   const extraTotal = extras.reduce((s, e) => s + e.unitAmount * e.qty, 0)
   const totalUnitPay = p.unitPayTotal + extraTotal
   const retainer = p.retainerAmount
+  // Daily-threshold incentive bonuses contribute to gross AND are taxed
+  // (matches /api/payroll/generate's preview math:
+  //   grossPay = unitPayTotal + retainerAmount + incentiveTotal
+  //   taxAmount = grossPay * 0.05
+  // ). Threshold-reduced item rates are already baked into each item's
+  // unitAmount/lineTotal upstream, so they need no separate handling here.
+  const incentiveTotal = p.incentiveTotal ?? 0
   const taxedAdj = adjs.filter(a => a.isTaxed).reduce((s, a) => s + (a.isAddition ? a.amount : -a.amount), 0)
   const nonTaxedAdj = adjs.filter(a => !a.isTaxed).reduce((s, a) => s + (a.isAddition ? a.amount : -a.amount), 0)
-  const taxableBase = totalUnitPay + retainer + taxedAdj
+  const taxableBase = totalUnitPay + retainer + incentiveTotal + taxedAdj
   const tax = p.taxDeduction === 'FIVE_PERCENT' ? Math.max(0, taxableBase) * 0.05 : 0
   const gross = taxableBase + nonTaxedAdj
   const net = gross - tax
-  return { totalUnitPay, extraTotal, taxedAdj, nonTaxedAdj, taxableBase, tax, gross, net }
+  return { totalUnitPay, extraTotal, incentiveTotal, taxedAdj, nonTaxedAdj, taxableBase, tax, gross, net }
 }
 
 /**

@@ -73,17 +73,15 @@ export async function POST(req: Request) {
       })
       payments.push(payment)
 
-      // Decrement wallet balance
-      await prisma.digitalWallet.update({
-        where: { id: wId },
-        data: { balance: { decrement: thisSettled } },
-      })
-
-      // Also decrement totalGlAmount if present (for GL wallets, settle against the full receivable)
-      if (wallet.walletType === 'GL' && wallet.totalGlAmount) {
+      // For GL wallets: do NOT touch balance or totalGlAmount.
+      // Approved SOA and Remaining Balance are managed manually in POS; AR payments
+      // are tracked only via ARPayment records (used by the aging route). Decrementing
+      // either field on payment caused negative balances and incorrect SOA displays.
+      // For non-GL wallets (HMO etc.): decrement balance as before.
+      if (wallet.walletType !== 'GL') {
         await prisma.digitalWallet.update({
           where: { id: wId },
-          data: { totalGlAmount: { decrement: thisSettled } },
+          data: { balance: { decrement: thisSettled } },
         })
       }
 
@@ -191,33 +189,33 @@ export async function PUT(req: Request) {
       },
     })
 
-    // Adjust wallet balance for the difference
-    if (balanceDiff !== 0) {
-      await prisma.digitalWallet.update({
-        where: { id: walletId },
-        data: { balance: { decrement: balanceDiff } },
-      })
-    }
-
-    // If wallet changed, undo the same-wallet adjustment above, then restore old + deduct new
-    if (walletId !== existing.walletId) {
-      // Undo the same-wallet decrement we already did above
+    // GL wallets: never touch balance — managed manually in POS.
+    // Non-GL: adjust balance for the difference.
+    const updatedWallet = await prisma.digitalWallet.findUnique({ where: { id: walletId }, select: { walletType: true } })
+    if (updatedWallet?.walletType !== 'GL') {
       if (balanceDiff !== 0) {
         await prisma.digitalWallet.update({
           where: { id: walletId },
-          data: { balance: { increment: balanceDiff } },
+          data: { balance: { decrement: balanceDiff } },
         })
       }
-      // Restore old wallet balance fully
-      await prisma.digitalWallet.update({
-        where: { id: existing.walletId },
-        data: { balance: { increment: oldTotal } },
-      })
-      // Deduct new wallet balance fully
-      await prisma.digitalWallet.update({
-        where: { id: walletId },
-        data: { balance: { decrement: newTotal } },
-      })
+      // If wallet changed, undo the same-wallet adjustment above, then restore old + deduct new
+      if (walletId !== existing.walletId) {
+        if (balanceDiff !== 0) {
+          await prisma.digitalWallet.update({
+            where: { id: walletId },
+            data: { balance: { increment: balanceDiff } },
+          })
+        }
+        await prisma.digitalWallet.update({
+          where: { id: existing.walletId },
+          data: { balance: { increment: oldTotal } },
+        })
+        await prisma.digitalWallet.update({
+          where: { id: walletId },
+          data: { balance: { decrement: newTotal } },
+        })
+      }
     }
 
     // Tier 3 Step 4: Reverse the old JE then post the new one (never mutate

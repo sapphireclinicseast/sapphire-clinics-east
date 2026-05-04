@@ -113,7 +113,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { patientId, patientName, patientEmail, walletType, accountId, dateObtained, paymentModeId, initialBalance, attachmentUrl, attachmentUrls, agency, initialRewardPoints, totalGlAmount, branch: walletBranch } = await req.json()
+    const { patientId, patientName, patientEmail, walletType, accountId, dateObtained, paymentModeId, initialBalance, attachmentUrl, attachmentUrls, agency, initialRewardPoints, totalGlAmount, branch: walletBranch, allowDuplicate } = await req.json()
 
     if (!patientName?.trim()) {
       return NextResponse.json({ error: 'Patient name is required' }, { status: 400 })
@@ -138,8 +138,9 @@ export async function POST(req: Request) {
 
     // Check for existing wallet with same patientId/name + walletType
     // SKIP for PACKAGE wallets — same patient can have multiple packages (OT, ST, etc.)
+    // SKIP when allowDuplicate=true — used when creating a re-application GL wallet
     const lookupId = patientId?.trim() || `${walletType}-${patientName.trim().replace(/\s+/g, '-').toUpperCase()}`
-    if (walletType !== 'PACKAGE') {
+    if (walletType !== 'PACKAGE' && !allowDuplicate) {
       const existingWallet = await prisma.digitalWallet.findFirst({
         where: {
           patientId: lookupId,

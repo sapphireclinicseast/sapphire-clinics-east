@@ -175,9 +175,12 @@ interface RawItem { unitPayId?: string; unitPayName?: string; unitAmount?: numbe
 interface RawExtra { id?: string; unitPayId?: string; unitPayName?: string; unitAmount?: number; qty?: number }
 interface RawAdj { id?: string; name?: string; amount?: number; isAddition?: boolean; isTaxed?: boolean; remarks?: string }
 
+interface RawIncentive { ruleId?: string; ruleName?: string; date?: string; patientCount?: number; bonusPerUnit?: number; bonus?: number }
+
 async function buildConsultantPdf(entry: {
   id: string; cutoffPeriod: string; branch: string
   items: unknown; extraItems: unknown; adjustments: unknown
+  incentives?: unknown; incentiveTotal?: unknown
   grossPay: unknown; retainerAmount: unknown; taxAmount: unknown; netPay: unknown
   consultant: { name: string; department: string; taxDeduction: string }
 }): Promise<Buffer> {
@@ -185,10 +188,14 @@ async function buildConsultantPdf(entry: {
   const items = (Array.isArray(entry.items) ? entry.items : []) as RawItem[]
   const extras = (Array.isArray(entry.extraItems) ? entry.extraItems : []) as RawExtra[]
   const adjs = (Array.isArray(entry.adjustments) ? entry.adjustments : []) as RawAdj[]
+  const incentives = (Array.isArray(entry.incentives) ? entry.incentives : []) as RawIncentive[]
 
   // unitPayTotal is the sum of BASE items ONLY (no extras). The shared
   // computeTotals() adds extras itself; pre-summing them here would
   // double-count and inflate Gross / NET PAY by the extras amount.
+  // Threshold-reduced item rates are baked into each item's lineTotal
+  // upstream (the generate route applies isReduced + reduced unitAmount
+  // before saving), so no per-row reduction logic needed here.
   const unitPayTotal = items.reduce((s, it) => s + Number(it.lineTotal ?? 0), 0)
 
   const preview: ConsultantPayslipPreview = {
@@ -209,6 +216,15 @@ async function buildConsultantPdf(entry: {
     })),
     unitPayTotal,
     retainerAmount: num(entry.retainerAmount),
+    incentives: incentives.map(i => ({
+      ruleId: i.ruleId,
+      ruleName: i.ruleName ?? '—',
+      date: i.date ?? '',
+      patientCount: Number(i.patientCount ?? 0),
+      bonusPerUnit: Number(i.bonusPerUnit ?? 0),
+      bonus: Number(i.bonus ?? 0),
+    })),
+    incentiveTotal: num(entry.incentiveTotal),
     grossPay: num(entry.grossPay),
     taxAmount: num(entry.taxAmount),
     netPay: num(entry.netPay),
@@ -287,7 +303,17 @@ export async function GET(req: NextRequest) {
     if (existsSync(filePath)) {
       buffer = await readFile(filePath)
     } else {
-      buffer = await buildConsultantPdf(entry)
+      // Pass through incentives + incentiveTotal so the SUMMARY shows the
+      // INCENTIVE BONUS row and gross/tax/net match what the accountant
+      // sees in the live preview. Fields default to []/0 for older
+      // locked rows that pre-date the 20260504 migration.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const e = entry as any
+      buffer = await buildConsultantPdf({
+        ...entry,
+        incentives: e.incentives ?? [],
+        incentiveTotal: e.incentiveTotal ?? 0,
+      })
     }
   }
 

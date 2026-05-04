@@ -1993,9 +1993,9 @@ function OrderFormModal({
                 <input value={glSearch} onChange={e => searchGlWallets(e.target.value)} placeholder="Search agency (e.g. DSWD, PhilHealth)..."
                   onFocus={() => { if (!glSearch) searchGlWallets('') }}
                   className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#86efac' }} />
-                {glWallets.filter(w => w.soaStatus === 'With GL and SOA').length > 0 && (
+                {glWallets.filter(w => w.soaStatus === 'With GL and SOA' && toNum(w.balance) > 0).length > 0 && (
                   <div className="max-h-32 overflow-y-auto space-y-1">
-                    {glWallets.filter(w => w.soaStatus === 'With GL and SOA').map(w => {
+                    {glWallets.filter(w => w.soaStatus === 'With GL and SOA' && toNum(w.balance) > 0).map(w => {
                       const agency = (w as unknown as { agency?: string }).agency || ''
                       const displayName = agency ? `${w.patientName} (${agency})` : w.patientName
                       return (
@@ -2015,8 +2015,8 @@ function OrderFormModal({
                     })}
                   </div>
                 )}
-                {glWallets.length > 0 && glWallets.filter(w => w.soaStatus === 'With GL and SOA').length === 0 && (
-                  <p className="text-xs" style={{ color: '#c2410c' }}>No eligible GL wallets found. The wallet must be set to &quot;With GL and SOA&quot; before it can be used for checkout.</p>
+                {glWallets.length > 0 && glWallets.filter(w => w.soaStatus === 'With GL and SOA' && toNum(w.balance) > 0).length === 0 && (
+                  <p className="text-xs" style={{ color: '#c2410c' }}>No eligible GL wallets found. The wallet must be set to &quot;With GL and SOA&quot; and have a remaining balance to be used for checkout.</p>
                 )}
                 {glWallets.length === 0 && glSearch.length > 0 && (
                   <p className="text-xs" style={{ color: '#15803d' }}>No agencies found. Add one in Digital Wallet &gt; GL tab first.</p>
@@ -3499,13 +3499,21 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   useEffect(() => { fetchWallets() }, [fetchWallets])
 
   const [createError, setCreateError] = useState('')
-  const createWallet = async () => {
+  const [createDuplicateWarning, setCreateDuplicateWarning] = useState<string | null>(null)
+  const [createApplicationNo, setCreateApplicationNo] = useState('2nd Application')
+  const createWallet = async (allowDuplicate = false) => {
     if (!createForm.patientName.trim()) { setCreateError('Name is required'); return }
     setCreateError('')
     try {
+      // When allowing a duplicate GL wallet, append the application label to the name
+      const effectiveName = allowDuplicate && walletTypeFilter === 'GL'
+        ? `${createForm.patientName.trim()} (${createApplicationNo})`
+        : createForm.patientName.trim()
       const payload = {
         ...createForm,
+        patientName: effectiveName,
         walletType: walletTypeFilter,
+        allowDuplicate,
         // For PACKAGE wallets, balance is computed from package data (not from initialBalance field)
         initialBalance: walletTypeFilter !== 'PACKAGE' && createForm.glAmount ? parseFloat(createForm.glAmount) : undefined,
         totalGlAmount: walletTypeFilter === 'GL' && createForm.totalGlAmount ? parseFloat(createForm.totalGlAmount) : undefined,
@@ -3523,6 +3531,11 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         return
       }
       if (data.existingWallet) {
+        if (walletTypeFilter === 'GL') {
+          // GL wallets: allow re-application — show confirmation instead of hard error
+          setCreateDuplicateWarning(createForm.patientName.trim())
+          return
+        }
         setCreateError(`Already exists — ${walletTypeFilter === 'HMO' ? 'HMO' : 'Wallet'} "${createForm.patientName}" already registered.`)
         fetchWallets()
         return
@@ -3546,6 +3559,8 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         } catch {}
       }
       setShowCreate(false)
+      setCreateDuplicateWarning(null)
+      setCreateApplicationNo('2nd Application')
       setCreateForm({ patientName: '', patientId: '', patientEmail: '', accountId: '', dateObtained: '', paymentModeId: '', glAmount: '', totalGlAmount: '', agency: '', initialRewardPoints: '', branch: 'ALL' })
       setCreateAttachments([])
       setCreateAccountSearch('')
@@ -4171,14 +4186,16 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 return 0
               }).map(w => {
                 const typeBadge = WALLET_TYPE_COLORS[w.walletType] || { bg: '#f3f4f6', color: '#374151' }
+                const isGlZeroBalance = walletTypeFilter === 'GL' && w.isActive !== false && toNum(w.balance) <= 0
                 return (
                   <tr key={w.id}
-                    className={`border-b cursor-pointer ${w.isActive === false ? 'bg-red-50 opacity-60' : 'hover:bg-gray-50'}`}
+                    className={`border-b cursor-pointer ${w.isActive === false ? 'bg-red-50 opacity-60' : isGlZeroBalance ? 'bg-gray-100 opacity-70' : 'hover:bg-gray-50'}`}
                     style={{ borderColor: 'var(--light-gray)' }}
                     onClick={() => w.isActive !== false && loadWalletDetail(w)}>
-                    <td className="px-5 py-3 font-medium" style={{ color: w.isActive === false ? '#991b1b' : 'var(--charcoal)' }}>
+                    <td className="px-5 py-3 font-medium" style={{ color: w.isActive === false ? '#991b1b' : isGlZeroBalance ? '#6b7280' : 'var(--charcoal)' }}>
                       {w.patientName}
                       {w.isActive === false && <span className="ml-2 text-xs font-normal text-red-600">(Deleted)</span>}
+                      {isGlZeroBalance && <span className="ml-2 text-xs font-normal" style={{ color: '#9ca3af' }}>(No Balance)</span>}
                     </td>
                     <td className="px-5 py-3">
                       {walletTypeFilter === 'GL' ? (
@@ -4645,9 +4662,41 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 </select>
               </div>
               {createError && <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle size={12} />{createError}</p>}
-              <button onClick={createWallet} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>
-                {walletTypeFilter === 'HMO' ? 'Add HMO' : walletTypeFilter === 'GL' ? 'Create GL Wallet' : 'Create Wallet'}
-              </button>
+
+              {/* GL duplicate confirmation */}
+              {createDuplicateWarning && walletTypeFilter === 'GL' && (
+                <div className="rounded-xl border p-3 space-y-2.5" style={{ borderColor: '#f59e0b', background: '#fffbeb' }}>
+                  <p className="text-xs font-semibold" style={{ color: '#92400e' }}>
+                    Already exists — Wallet &ldquo;{createDuplicateWarning}&rdquo; already registered.
+                    Do you want to make another one?
+                  </p>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1" style={{ color: '#92400e' }}>Application #</label>
+                    <select value={createApplicationNo} onChange={e => setCreateApplicationNo(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border text-xs outline-none bg-white" style={{ borderColor: '#f59e0b' }}>
+                      {['1st Application','2nd Application','3rd Application','4th Application','5th Application'].map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => createWallet(true)}
+                      className="flex-1 py-2 rounded-lg text-xs font-semibold text-white" style={{ background: 'var(--teal)' }}>
+                      Yes — Create as {createApplicationNo}
+                    </button>
+                    <button type="button" onClick={() => setCreateDuplicateWarning(null)}
+                      className="flex-1 py-2 rounded-lg text-xs font-semibold" style={{ background: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                      No
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {!createDuplicateWarning && (
+                <button onClick={() => createWallet()} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>
+                  {walletTypeFilter === 'HMO' ? 'Add HMO' : walletTypeFilter === 'GL' ? 'Create GL Wallet' : 'Create Wallet'}
+                </button>
+              )}
             </div>
           </div>
         </div>
