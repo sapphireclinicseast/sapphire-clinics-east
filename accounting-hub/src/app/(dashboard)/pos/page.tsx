@@ -3468,6 +3468,8 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   ]
 
   const panelBranch = userBranch(session)
+  // Admin-only branch filter for the wallet list (non-admins are always locked to their branch)
+  const [walletBranchFilter, setWalletBranchFilter] = useState('')
 
   const fetchWallets = useCallback(async () => {
     setLoading(true)
@@ -3475,9 +3477,15 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       const qp = new URLSearchParams()
       if (search) qp.set('search', search)
       qp.set('walletType', walletTypeFilter)
+      qp.set('pageSize', '500')   // load all wallets so admins always see everything
       if (showDeletedWallets) qp.set('includeDeleted', 'true')
-      // Non-admin users only see wallets for their branch + ALL
-      if (!isAdmin(session)) qp.set('branch', panelBranch)
+      if (!isAdmin(session)) {
+        // Non-admin users are locked to their branch
+        qp.set('branch', panelBranch)
+      } else if (walletBranchFilter) {
+        // Admins can optionally narrow to a specific branch
+        qp.set('branch', walletBranchFilter)
+      }
       const r = await fetch(`/api/pos/wallets?${qp}`)
       const d = await r.json()
       setWallets(normalize(d) as DigitalWallet[])
@@ -3486,7 +3494,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     } finally {
       setLoading(false)
     }
-  }, [search, walletTypeFilter, showDeletedWallets, panelBranch, session])
+  }, [search, walletTypeFilter, showDeletedWallets, panelBranch, walletBranchFilter, session])
 
   useEffect(() => { fetchWallets() }, [fetchWallets])
 
@@ -4021,12 +4029,24 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         </button>
       </div>
 
-      {/* Show deleted toggle */}
-      <div className="flex items-center gap-2">
+      {/* Show deleted toggle + admin branch filter */}
+      <div className="flex items-center gap-4">
         <label className="flex items-center gap-2 text-xs cursor-pointer" style={{ color: 'var(--mid-gray)' }}>
           <input type="checkbox" checked={showDeletedWallets} onChange={e => setShowDeletedWallets(e.target.checked)} className="rounded" />
           Show deleted wallets
         </label>
+        {isAdmin(session) && (
+          <select
+            value={walletBranchFilter}
+            onChange={e => setWalletBranchFilter(e.target.value)}
+            className="text-xs px-2.5 py-1.5 rounded-lg border outline-none bg-white"
+            style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+            <option value="">All Branches</option>
+            <option value="SANDBOX_EAST">Sandbox East</option>
+            <option value="SANDBOX_GREENHILLS">Sandbox Greenhills</option>
+            <option value="VERDANA_STORE">Verdana Store</option>
+          </select>
+        )}
       </div>
 
       {/* Wallets Table */}
