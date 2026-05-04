@@ -142,6 +142,7 @@ interface DigitalWallet {
 interface WalletPackage {
   id: string
   serviceName: string
+  serviceId?: string | null
   department?: string | null
   totalSessions: number
   usedSessions: number
@@ -1097,9 +1098,18 @@ function OrderFormModal({
           }
           return [...prev, { method: 'PACKAGE', amount: perSession, walletId: wallet.id, reference: `PKG:${activePkg.id}` }]
         })
-        // Override ALL item prices to per-session rate (based on package purchase price, not current price)
+        // Override item prices to per-session rate ONLY for services eligible for this package.
+        // Non-eligible items (e.g. BASIC SESSION at ₱0) keep their original price and do NOT
+        // consume a session slot. If no serviceId or no eligibility rules, fall back to all items.
         if (items.length > 0) {
-          setItems(prev => prev.map(it => ({ ...it, unitPrice: perSession, lineTotal: perSession * it.quantity })))
+          const pkgService = services.find((s: ServiceItem) => s.id === activePkg.serviceId)
+          const eligibleIds: string[] = pkgService?.eligibleFor
+            ? (pkgService.eligibleFor as { eligibleServiceId: string }[]).map(e => e.eligibleServiceId)
+            : []
+          setItems(prev => prev.map(it => {
+            const isEligible = eligibleIds.length === 0 || !it.serviceId || eligibleIds.includes(it.serviceId)
+            return isEligible ? { ...it, unitPrice: perSession, lineTotal: perSession * it.quantity } : it
+          }))
         }
       } else {
         setError('No active packages with remaining sessions found')
@@ -1930,7 +1940,14 @@ function OrderFormModal({
                                 if (existing >= 0) return prev.map((pm, i) => i === existing ? payment : pm)
                                 return [...prev, payment]
                               })
-                              setItems(prev => prev.map(it => ({ ...it, unitPrice: perSession, lineTotal: perSession * it.quantity })))
+                              const pkgSvc = services.find((s: ServiceItem) => s.id === p.serviceId)
+                              const eligIds: string[] = pkgSvc?.eligibleFor
+                                ? (pkgSvc.eligibleFor as { eligibleServiceId: string }[]).map((e: { eligibleServiceId: string }) => e.eligibleServiceId)
+                                : []
+                              setItems(prev => prev.map(it => {
+                                const isElig = eligIds.length === 0 || !it.serviceId || eligIds.includes(it.serviceId)
+                                return isElig ? { ...it, unitPrice: perSession, lineTotal: perSession * it.quantity } : it
+                              }))
                               setPackageSearch(w.patientName)
                               setPackageWallets([])
                             }}
