@@ -1365,11 +1365,13 @@ function OrderFormModal({
         }
       }
 
-      // 3. Package session deduction — deduct total item quantity as sessions
+      // 3. Package session deduction — deduct total item quantity as sessions.
+      // Only count items with a non-zero unit price; ₱0 add-ons (e.g. BASIC SESSION)
+      // are free companions and must NOT consume a package slot.
       const packagePayment = payments.find(p => p.method === 'PACKAGE' && p.walletId && p.reference?.startsWith('PKG:'))
       if (packagePayment) {
         const pkgId = packagePayment.reference?.replace('PKG:', '') || ''
-        const totalSessions = items.reduce((s, it) => s + it.quantity, 0)
+        const totalSessions = items.filter(it => toNum(it.unitPrice) > 0).reduce((s, it) => s + it.quantity, 0)
         if (pkgId && totalSessions > 0) {
           try {
             await fetch(`/api/pos/wallets/${packagePayment.walletId}/deduct`, {
