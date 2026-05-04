@@ -133,13 +133,20 @@ export async function GET(req: Request) {
     //   approved amount on the Guarantee Letter regardless of how much was consumed; the
     //   consumption-based number is still exposed as `consumedOutstanding` for reference.
     const walletsOut = wallets.map(w => {
-      const consumedOutstanding = outstandingByWallet.get(w.id) ?? 0
+      const ordersOutstanding = outstandingByWallet.get(w.id) ?? 0
       const totalConsumedAmount = totalConsumedByWallet.get(w.id) ?? 0
       const isGL = type === 'GL'
       const approved = w.totalGlAmount != null ? Number(w.totalGlAmount) : 0
+      // For GL: consumed = totalGlAmount − remaining usable balance.
+      // This captures zero-balance wallets (fully consumed) and partial consumption
+      // (difference between approved SOA and remaining balance), independent of
+      // whether individual orders have been tagged with an AR payment.
+      const consumedOutstanding = isGL
+        ? Math.max(0, approved - Number(w.balance))
+        : ordersOutstanding
       return {
         ...w,
-        balance: isGL ? approved : consumedOutstanding,
+        balance: isGL ? approved : ordersOutstanding,
         consumedOutstanding,
         totalGlAmount: approved,
         totalConsumedAmount,
