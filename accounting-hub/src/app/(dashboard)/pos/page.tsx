@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import {
   ShoppingCart, Search, Plus, X, Trash2, ChevronDown, ChevronUp,
@@ -269,6 +269,13 @@ const BRANCHES = [
 ]
 
 const GL_SERVICE_TYPES = ['PT', 'OT', 'SLP', 'SPED', 'Psychology', 'MD', 'Orthosis']
+
+const BRANCH_LABELS: Record<string, string> = {
+  SANDBOX_EAST: 'East',
+  SANDBOX_GREENHILLS: 'Greenhills',
+  VERDANA_STORE: 'Verdana',
+  ALL: 'All Branches',
+}
 
 const WALLET_TYPES = [
   { value: 'PACKAGE', label: 'Package' },
@@ -3404,6 +3411,17 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       .then(d => setWalletPaymentModes(Array.isArray(d) ? d.filter((m: PaymentModeType) => m.isActive) : []))
       .catch(() => {})
   }, [])
+  // Close GL column-filter dropdown when clicking outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (filterDropRef.current && !filterDropRef.current.contains(e.target as Node)) {
+        setOpenFilterCol(null)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
   // CRM patient search
   useEffect(() => {
     if (crmSearch.length < 2) { setCrmPatients([]); setShowCrmDrop(false); return }
@@ -3494,6 +3512,9 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   const panelBranch = userBranch(session)
   // Admin-only branch filter for the wallet list (non-admins are always locked to their branch)
   const [walletBranchFilter, setWalletBranchFilter] = useState('')
+  const [glFilters, setGlFilters] = useState<{ services: string[]; soaStatus: string[]; branch: string[]; agency: string; diagnosis: string }>({ services: [], soaStatus: [], branch: [], agency: '', diagnosis: '' })
+  const [openFilterCol, setOpenFilterCol] = useState<string | null>(null)
+  const filterDropRef = useRef<HTMLDivElement>(null)
 
   const fetchWallets = useCallback(async () => {
     setLoading(true)
@@ -3521,6 +3542,33 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   }, [search, walletTypeFilter, showDeletedWallets, panelBranch, walletBranchFilter, session])
 
   useEffect(() => { fetchWallets() }, [fetchWallets])
+
+  // Client-side filtered wallet list for GL column filters
+  const glDisplayWallets = useMemo(() => {
+    if (walletTypeFilter !== 'GL') return wallets
+    return wallets.filter(w => {
+      const wgl = w as unknown as { approvedServices?: string[] | null; soaStatus?: string | null; agency?: string | null; diagnosis?: string | null }
+      if (glFilters.services.length > 0) {
+        const svcs = Array.isArray(wgl.approvedServices) ? wgl.approvedServices : []
+        if (!glFilters.services.some(s => svcs.includes(s))) return false
+      }
+      if (glFilters.soaStatus.length > 0) {
+        const st = wgl.soaStatus || 'With GL/No SOA'
+        if (!glFilters.soaStatus.includes(st)) return false
+      }
+      if (glFilters.branch.length > 0) {
+        const b = (w.branch as string) || 'ALL'
+        if (!glFilters.branch.includes(b)) return false
+      }
+      if (glFilters.agency.trim()) {
+        if (!(wgl.agency || '').toLowerCase().includes(glFilters.agency.trim().toLowerCase())) return false
+      }
+      if (glFilters.diagnosis.trim()) {
+        if (!(wgl.diagnosis || '').toLowerCase().includes(glFilters.diagnosis.trim().toLowerCase())) return false
+      }
+      return true
+    })
+  }, [wallets, walletTypeFilter, glFilters])
 
   const [createError, setCreateError] = useState('')
   const [createDuplicateWarning, setCreateDuplicateWarning] = useState<string | null>(null)
@@ -4126,6 +4174,8 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
           <div className="flex items-center justify-center py-12"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} /></div>
         ) : wallets.length === 0 ? (
           <div className="text-center py-12 text-sm" style={{ color: 'var(--mid-gray)' }}>No wallets found.</div>
+        ) : walletTypeFilter === 'GL' && glDisplayWallets.length === 0 ? (
+          <div className="text-center py-12 text-sm" style={{ color: 'var(--mid-gray)' }}>No GL wallets match the active filters. <button onClick={() => setGlFilters({ services: [], soaStatus: [], branch: [], agency: '', diagnosis: '' })} className="underline" style={{ color: 'var(--teal)' }}>Clear filters</button></div>
         ) : (
           <table className="w-full text-sm">
             <thead>
@@ -4133,24 +4183,80 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 {(walletTypeFilter === 'HMO'
                   ? [{ label: 'HMO Provider', field: 'patientName' }, { label: 'Type', field: '' }, { label: 'Receivable Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'Transactions', field: '' }, { label: '', field: '' }]
                   : walletTypeFilter === 'GL'
-                  ? [{ label: 'Patient Name', field: 'patientName' }, { label: 'Agency', field: 'agency' }, { label: 'Diagnosis', field: '' }, { label: 'Services', field: '' }, { label: 'Approved SOA', field: 'totalGlAmount' }, { label: 'Remaining Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'SOA Status', field: 'soaStatus' }, { label: 'Attachment', field: '' }, { label: '', field: '' }]
+                  ? [{ label: 'Patient Name', field: 'patientName' }, { label: 'Agency', field: 'agency', filterKey: 'agency', filterType: 'text' as const }, { label: 'Diagnosis', field: '', filterKey: 'diagnosis', filterType: 'text' as const }, { label: 'Services', field: '', filterKey: 'services', filterOptions: GL_SERVICE_TYPES }, { label: 'Approved SOA', field: 'totalGlAmount' }, { label: 'Remaining Balance', field: 'balance' }, { label: 'Status', field: '' }, { label: 'Branch', field: 'branch', filterKey: 'branch', filterOptions: Object.keys(BRANCH_LABELS) }, { label: 'SOA Status', field: 'soaStatus', filterKey: 'soaStatus', filterOptions: ['With GL/No SOA', 'With GL and SOA'] }, { label: 'Attachment', field: '' }, { label: '', field: '' }]
                   : ['VIP', 'PREPAID_CARD'].includes(walletTypeFilter)
                   ? [{ label: 'Patient Name', field: 'patientName' }, { label: 'Type', field: '' }, { label: 'Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'Barcode', field: 'barcode' }, { label: 'Packages', field: '' }, { label: 'Reward Points', field: 'rewardPoints' }, { label: '', field: '' }]
                   : walletTypeFilter === 'PACKAGE'
                   ? [{ label: 'Patient Name', field: 'patientName' }, { label: 'Package', field: '' }, { label: 'Sessions Used', field: '' }, { label: 'Remaining', field: '' }, { label: 'Amount Paid', field: '' }, { label: 'Rate/Session', field: '' }, { label: 'Branch', field: 'branch' }, { label: 'Status', field: '' }, { label: '', field: '' }]
                   : [{ label: 'Patient Name', field: 'patientName' }, { label: 'Type', field: '' }, { label: 'Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'Packages', field: '' }, { label: '', field: '' }]
-                ).map(h => (
-                  <th key={h.label || 'actions'} className={`px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider ${h.field ? 'cursor-pointer select-none hover:bg-gray-50' : ''}`}
-                    style={{ color: wSortField === h.field ? 'var(--teal)' : 'var(--mid-gray)' }}
-                    onClick={() => { if (!h.field) return; if (wSortField === h.field) { setWSortDir(d => d === 'asc' ? 'desc' : 'asc') } else { setWSortField(h.field); setWSortDir('asc') } }}>
-                    <span className="flex items-center gap-1">
-                      {h.label}
-                      {h.field && wSortField === h.field && (
-                        <span className="text-[10px]">{wSortDir === 'asc' ? '▲' : '▼'}</span>
+                ).map((h: { label: string; field: string; filterKey?: string; filterType?: 'multi' | 'text'; filterOptions?: string[] }) => {
+                  const fk = h.filterKey
+                  const isFilterActive = fk && walletTypeFilter === 'GL' && (
+                    h.filterType === 'text'
+                      ? !!(glFilters as unknown as Record<string, string>)[fk]
+                      : ((glFilters as unknown as Record<string, string[]>)[fk]?.length ?? 0) > 0
+                  )
+                  return (
+                    <th key={h.label || 'actions'} className={`px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider ${h.field ? 'cursor-pointer select-none hover:bg-gray-50' : ''}`}
+                      style={{ color: wSortField === h.field && h.field ? 'var(--teal)' : 'var(--mid-gray)', position: 'relative' }}
+                      onClick={() => { if (!h.field) return; if (wSortField === h.field) { setWSortDir(d => d === 'asc' ? 'desc' : 'asc') } else { setWSortField(h.field); setWSortDir('asc') } }}>
+                      <span className="flex items-center gap-1">
+                        {h.label}
+                        {h.field && wSortField === h.field && (
+                          <span className="text-[10px]">{wSortDir === 'asc' ? '▲' : '▼'}</span>
+                        )}
+                        {fk && walletTypeFilter === 'GL' && (
+                          <button type="button"
+                            onClick={e => { e.stopPropagation(); setOpenFilterCol(openFilterCol === fk ? null : fk) }}
+                            className="ml-0.5 p-0.5 rounded hover:bg-gray-200"
+                            style={{ color: isFilterActive ? '#2563eb' : '#9ca3af' }}>
+                            <Filter size={9} />
+                          </button>
+                        )}
+                      </span>
+                      {openFilterCol === fk && fk && (
+                        <div ref={filterDropRef}
+                          className="absolute z-30 top-full left-0 mt-0.5 bg-white border rounded-xl shadow-xl p-3"
+                          style={{ borderColor: 'var(--light-gray)', minWidth: 200 }}
+                          onClick={e => e.stopPropagation()}>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Filter: {h.label}</span>
+                            {isFilterActive && (
+                              <button type="button" onClick={() => setGlFilters(prev => ({ ...prev, [fk]: h.filterType === 'text' ? '' : [] }))}
+                                className="text-[10px] underline" style={{ color: 'var(--teal)' }}>Clear</button>
+                            )}
+                          </div>
+                          {h.filterType === 'text' ? (
+                            <input autoFocus
+                              value={(glFilters as unknown as Record<string, string>)[fk] || ''}
+                              onChange={e => setGlFilters(prev => ({ ...prev, [fk]: e.target.value }))}
+                              placeholder={`Search ${h.label.toLowerCase()}…`}
+                              className="w-full px-2 py-1.5 text-xs rounded-lg border outline-none"
+                              style={{ borderColor: 'var(--light-gray)' }} />
+                          ) : (
+                            <div className="flex flex-col gap-0.5 max-h-52 overflow-y-auto">
+                              {(h.filterOptions || []).map(opt => {
+                                const cur = (glFilters as unknown as Record<string, string[]>)[fk] || []
+                                const isChecked = cur.includes(opt)
+                                return (
+                                  <label key={opt} className="flex items-center gap-2 text-xs py-1 px-1 cursor-pointer rounded hover:bg-gray-50">
+                                    <input type="checkbox" checked={isChecked}
+                                      onChange={() => setGlFilters(prev => {
+                                        const c = (prev as unknown as Record<string, string[]>)[fk] || []
+                                        return { ...prev, [fk]: isChecked ? c.filter(v => v !== opt) : [...c, opt] }
+                                      })}
+                                      style={{ accentColor: 'var(--teal)' }} />
+                                    {BRANCH_LABELS[opt] || opt}
+                                  </label>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
                       )}
-                    </span>
-                  </th>
-                ))}
+                    </th>
+                  )
+                })}
               </tr>
             </thead>
             <tbody>
@@ -4232,7 +4338,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 )
               ) : (
               // All other wallet types: show one row per wallet
-              [...wallets].sort((a, b) => {
+              [...(walletTypeFilter === 'GL' ? glDisplayWallets : wallets)].sort((a, b) => {
                 const f = wSortField as keyof DigitalWallet
                 const av = a[f], bv = b[f]
                 const an = typeof av === 'number' ? av : typeof av === 'string' ? (isNaN(Number(av)) ? av.toLowerCase() : Number(av)) : 0
@@ -4272,10 +4378,9 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                       )}
                     </td>
                     {walletTypeFilter === 'GL' && (
-                      <td className="px-5 py-3 text-xs" style={{ color: 'var(--charcoal)', maxWidth: 180 }}>
+                      <td className="px-5 py-3 text-xs" style={{ color: 'var(--charcoal)' }}>
                         {(w as unknown as { diagnosis?: string | null }).diagnosis
-                          ? <span title={(w as unknown as { diagnosis?: string | null }).diagnosis || ''}
-                              className="block truncate">{(w as unknown as { diagnosis?: string | null }).diagnosis}</span>
+                          ? <span>{(w as unknown as { diagnosis?: string | null }).diagnosis}</span>
                           : <span style={{ color: 'var(--light-gray)' }}>—</span>}
                       </td>
                     )}
@@ -4302,6 +4407,17 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                       )
                     })()}
                     <td className="px-5 py-3 font-semibold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(toNum(w.balance))}</td>
+                    {walletTypeFilter === 'GL' && (() => {
+                      const approved = toNum((w as unknown as { totalGlAmount?: number | string }).totalGlAmount)
+                      const remaining = toNum(w.balance)
+                      if (approved > 0 && remaining > 0 && remaining < approved) {
+                        return <td className="px-5 py-3"><span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#dcfce7', color: '#15803d' }}>Ongoing</span></td>
+                      } else if (approved > 0 && remaining > 0 && Math.abs(remaining - approved) < 0.01) {
+                        return <td className="px-5 py-3"><span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#f3f4f6', color: '#6b7280' }}>Not Started</span></td>
+                      } else {
+                        return <td className="px-5 py-3"><span style={{ color: 'var(--light-gray)' }}>—</span></td>
+                      }
+                    })()}
                     <td className="px-5 py-3">
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
                         style={{ background: (w.branch === 'SANDBOX_EAST' ? '#dbeafe' : w.branch === 'SANDBOX_GREENHILLS' ? '#dcfce7' : '#f3e8ff'),
