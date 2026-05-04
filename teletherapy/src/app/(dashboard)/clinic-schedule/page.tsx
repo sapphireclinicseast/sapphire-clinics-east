@@ -86,14 +86,22 @@ function fmtTime12h(t: string) {
   return `${h12}:${String(m).padStart(2, '0')} ${suffix}`
 }
 
+// Status colours — saturated brand-palette fills, picked to be visually
+// distinct at 12 px swatch size (the previous tints all read "warm beige"
+// in the legend).
+//   Confirmed  — Sage   (medium teal-green, white text) → "active"
+//   Pending    — Sun    (saturated amber, ink text)     → "waiting"
+//   Completed  — Narra  (deep green, paper text)        → "done/closed"
+//   Cancelled  — Clay   (warm red-brown, white text)    → "stopped"
+//   Rescheduled— Paper2 with DASHED ink border          → "in transit"
 function statusClass(status: string): string {
   switch (status) {
-    case 'CONFIRMED': return 'bg-[var(--sage-tint)] text-[var(--moss)] border-[var(--sage)]/30'
-    case 'PENDING': return 'bg-[var(--sun-tint)] text-[#7a5e1c] border-[var(--sun)]/40'
-    case 'COMPLETED': return 'bg-[var(--paper-2)] text-[var(--narra)] border-[var(--paper-3)]'
-    case 'CANCELLED': return 'bg-[var(--clay-tint)] text-[var(--clay)] border-[var(--clay)]/30'
-    case 'RESCHEDULED': return 'bg-[var(--paper-2)] text-[var(--mid-gray)] border-[var(--paper-3)]'
-    default: return 'bg-[var(--paper-2)] text-[var(--mid-gray)] border-[var(--paper-3)]'
+    case 'CONFIRMED':   return 'bg-[var(--sage)] text-white border border-[var(--moss)]'
+    case 'PENDING':     return 'bg-[var(--sun)] text-[var(--ink)] border border-[#8C6A2D]'
+    case 'COMPLETED':   return 'bg-[var(--narra)] text-[var(--paper)] border border-[var(--narra)]'
+    case 'CANCELLED':   return 'bg-[var(--clay)] text-white border border-[#7A3F29]'
+    case 'RESCHEDULED': return 'bg-[var(--paper-2)] text-[var(--ink)] border-2 border-dashed border-[var(--ink)]/55'
+    default:            return 'bg-[var(--paper-2)] text-[var(--mid-gray)] border border-[var(--paper-3)]'
   }
 }
 
@@ -195,7 +203,7 @@ export default function ClinicSchedulePage() {
           value={summary.confirmedSessions}
           stagger="stagger-1"
           accent="moss"
-          subtext="lifetime total"
+          subtext="Lifetime Total"
         />
         <SummaryCard
           icon={<UsersIcon size={18} />}
@@ -203,7 +211,7 @@ export default function ClinicSchedulePage() {
           value={summary.uniquePatients}
           stagger="stagger-2"
           accent="clay"
-          subtext="lifetime total"
+          subtext="Lifetime Total"
         />
         <SummaryCard
           icon={<Activity size={18} />}
@@ -211,7 +219,7 @@ export default function ClinicSchedulePage() {
           value={summary.avgPatientsPerDay}
           stagger="stagger-3"
           accent="sun"
-          subtext={`lifetime · ${summary.activeDays} active day${summary.activeDays === 1 ? '' : 's'}`}
+          subtext={`Lifetime · ${summary.activeDays} Active Day${summary.activeDays === 1 ? '' : 's'}`}
         />
       </div>
 
