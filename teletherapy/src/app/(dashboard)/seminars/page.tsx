@@ -45,16 +45,77 @@ const FORMAT_LABEL: Record<string, string> = {
   hybrid: 'Hybrid',
 }
 
-function formatDate(iso: string) {
-  const d = new Date(iso + 'T00:00:00')
-  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+]
+
+// Format the seminar date safely.
+//   • Full date (YYYY-MM-DD)   →  "Sun, May 3, 2026"
+//   • Month + year only (YYYY-MM, YYYY/MM, "May 2026", etc.) → "May 2026 (TBA)"
+//   • Year only (YYYY)         →  "2026 (TBA)"
+//   • Empty / unparsable       →  "Date TBA"
+function formatDate(iso: string | null | undefined) {
+  const raw = (iso ?? '').trim()
+  if (!raw) return 'Date TBA'
+
+  // Full ISO date YYYY-MM-DD
+  const fullMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (fullMatch) {
+    const d = new Date(raw + 'T00:00:00Z')
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleDateString('en-US', {
+        weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC',
+      })
+    }
+  }
+
+  // Year-month only: YYYY-MM or YYYY/MM
+  const ymMatch = raw.match(/^(\d{4})[-/](\d{1,2})$/)
+  if (ymMatch) {
+    const year = Number(ymMatch[1])
+    const month = Number(ymMatch[2])
+    if (month >= 1 && month <= 12) return `${MONTH_NAMES[month - 1]} ${year} (TBA)`
+  }
+
+  // Year only
+  if (/^\d{4}$/.test(raw)) return `${raw} (TBA)`
+
+  // Free-form text containing "month year"
+  const monthYear = raw.match(
+    /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})\b/i,
+  )
+  if (monthYear) {
+    const monthName = monthYear[1][0].toUpperCase() + monthYear[1].slice(1).toLowerCase()
+    return `${monthName} ${monthYear[2]} (TBA)`
+  }
+
+  // Last resort: try Date parser; if it works, render the full date.
+  const fallback = new Date(raw)
+  if (!Number.isNaN(fallback.getTime())) {
+    return fallback.toLocaleDateString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric',
+    })
+  }
+  return 'Date TBA'
 }
-function formatTime12h(t: string) {
+
+function formatTime12h(t: string | null | undefined) {
   if (!t) return ''
   const [h, m] = t.split(':').map(Number)
+  if (Number.isNaN(h) || Number.isNaN(m)) return ''
   const suffix = h >= 12 ? 'PM' : 'AM'
   const h12 = h % 12 || 12
   return `${h12}:${String(m).padStart(2, '0')} ${suffix}`
+}
+
+// Render the time range, hiding the dash when both ends are missing.
+function formatTimeRange(start: string | null | undefined, end: string | null | undefined) {
+  const a = formatTime12h(start)
+  const b = formatTime12h(end)
+  if (!a && !b) return 'Time TBA'
+  if (a && b) return `${a} \u2013 ${b}`
+  return a || b
 }
 
 export default function SeminarsPage() {
@@ -174,6 +235,8 @@ export default function SeminarsPage() {
         <div className="space-y-4">
           {filtered.map((s, i) => {
             const isVirtual = s.format === 'virtual' || s.format === 'hybrid'
+            const isHybrid = s.format === 'hybrid'
+            const isFaceToFace = s.format === 'face-to-face'
             const isFull = s.hasParticipantLimit && s.registeredCount >= s.maxParticipants
             const registered = s.myRegistration.registered
             return (
@@ -217,7 +280,7 @@ export default function SeminarsPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Clock size={13} className="text-[var(--teal)] shrink-0" />
-                    <span>{formatTime12h(s.timeStart)} &ndash; {formatTime12h(s.timeEnd)}</span>
+                    <span>{formatTimeRange(s.timeStart, s.timeEnd)}</span>
                   </div>
                   {s.speakerName && (
                     <div className="flex items-center gap-2">
@@ -227,10 +290,28 @@ export default function SeminarsPage() {
                       </span>
                     </div>
                   )}
-                  {(s.location || isVirtual) && (
+                  {/* Location / format row.
+                      • face-to-face: show physical location (or "Location TBA")
+                      • virtual:     show "Online" with the Video icon
+                      • hybrid:      show physical location here; the meeting
+                                     link gets its own dedicated section below
+                  */}
+                  {isFaceToFace && (
                     <div className="flex items-center gap-2">
-                      {isVirtual ? <Video size={13} className="text-[var(--teal)] shrink-0" /> : <MapPin size={13} className="text-[var(--teal)] shrink-0" />}
-                      <span>{isVirtual && !s.location ? 'Online' : s.location}</span>
+                      <MapPin size={13} className="text-[var(--teal)] shrink-0" />
+                      <span>{s.location || 'Location TBA'}</span>
+                    </div>
+                  )}
+                  {s.format === 'virtual' && (
+                    <div className="flex items-center gap-2">
+                      <Video size={13} className="text-[var(--teal)] shrink-0" />
+                      <span>Online</span>
+                    </div>
+                  )}
+                  {isHybrid && (
+                    <div className="flex items-center gap-2">
+                      <MapPin size={13} className="text-[var(--teal)] shrink-0" />
+                      <span>{s.location || 'Location TBA'} <span className="opacity-60">(in-person)</span></span>
                     </div>
                   )}
                   {s.hasParticipantLimit && (
@@ -247,18 +328,30 @@ export default function SeminarsPage() {
                   </p>
                 )}
 
-                {/* Registered + virtual: show meeting link prominently */}
+                {/* Dedicated meeting-link section — for both pure-virtual
+                    AND hybrid seminars. Only revealed once the clinician
+                    is registered. For hybrid, this sits below the in-person
+                    location so attendees see both options clearly. */}
                 {registered && isVirtual && s.meetingLink && (
-                  <a
-                    href={s.meetingLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-2 mb-3 py-2.5 rounded-xl text-[13px] font-semibold bg-[var(--teal)] text-white hover:bg-[var(--deep-teal)] transition-colors"
-                  >
-                    <Video size={15} />
-                    Join Meeting
-                    <ExternalLink size={13} />
-                  </a>
+                  <div className="mb-3 p-3 rounded-xl border border-[var(--teal)]/20 bg-[var(--pale-teal)]/30">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--teal)] mb-1.5 flex items-center gap-1.5">
+                      <Video size={11} />
+                      {isHybrid ? 'Online Option' : 'Meeting Link'}
+                    </p>
+                    <a
+                      href={s.meetingLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 py-2.5 rounded-lg text-[13px] font-semibold bg-[var(--teal)] text-white hover:bg-[var(--deep-teal)] transition-colors"
+                    >
+                      <Video size={15} />
+                      Join Meeting
+                      <ExternalLink size={13} />
+                    </a>
+                    <p className="text-[10.5px] text-[var(--mid-gray)] mt-1.5 break-all">
+                      {s.meetingLink}
+                    </p>
+                  </div>
                 )}
 
                 <div className="flex items-center justify-between gap-3 pt-3 border-t border-[var(--light-gray)]">
