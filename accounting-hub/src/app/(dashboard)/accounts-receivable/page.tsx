@@ -960,26 +960,6 @@ export default function AccountsReceivablePage() {
       {/* ── Overview content (AR Dashboard + Filters + Cards + Table + Payment History) ── */}
       {(tab !== 'HMO' || hmoSubTab === 'overview') && <>
 
-      {/* Quick-nav scroll strip — sticky so it stays visible while scrolling */}
-      <div className="sticky top-0 z-20 -mx-4 lg:-mx-6 px-4 lg:px-6 py-2.5 flex items-center gap-2 flex-wrap border-b"
-        style={{ background: 'white', borderColor: 'var(--light-gray)' }}>
-        <span className="text-xs font-semibold mr-1" style={{ color: 'var(--mid-gray)' }}>Jump to:</span>
-        {([
-          { id: 'ar-utilization', label: 'Utilization' },
-          { id: 'ar-days-per-agency', label: 'AR Days' },
-          { id: 'ar-aging-details', label: 'Aging Details' },
-          { id: 'ar-transactions', label: 'Transactions' },
-          { id: 'ar-payment-history', label: 'Payment History' },
-        ] as { id: string; label: string }[]).map(({ id, label }) => (
-          <button key={id}
-            onClick={() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-            className="px-3 py-1 rounded-full text-xs font-semibold transition-opacity hover:opacity-70"
-            style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
-            {label}
-          </button>
-        ))}
-      </div>
-
       {/* ── Dashboard: AR Days + Aging Receivable Details ── */}
       <div className="rounded-2xl border p-4 space-y-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -1032,10 +1012,10 @@ export default function AccountsReceivablePage() {
         {agingData && agingData.perWallet.filter(w => w.ar > 0 || w.revenue > 0).length > 0 && (
           <div id="ar-days-per-agency">
             <p className="text-xs font-semibold mb-2" style={{ color: 'var(--mid-gray)' }}>AR Days per {tab === 'HMO' ? 'HMO' : 'Agency'}</p>
-            <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+            <div className="rounded-xl border overflow-y-auto" style={{ borderColor: 'var(--light-gray)', background: 'white', maxHeight: '260px' }}>
               <table className="w-full text-sm">
                 <thead>
-                  <tr style={{ background: 'var(--pale-teal)' }}>
+                  <tr className="sticky top-0 z-10" style={{ background: 'var(--pale-teal)' }}>
                     <th className="px-3 py-2 text-left text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>{tab === 'HMO' ? 'HMO' : 'Agency'}</th>
                     <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>Total AR</th>
                     <th
@@ -1077,10 +1057,10 @@ export default function AccountsReceivablePage() {
               </button>
             )}
           </div>
-          <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+          <div className="rounded-xl border overflow-y-auto" style={{ borderColor: 'var(--light-gray)', background: 'white', maxHeight: '280px' }}>
             <table className="w-full text-sm">
               <thead>
-                <tr style={{ background: 'var(--pale-teal)' }}>
+                <tr className="sticky top-0 z-10" style={{ background: 'var(--pale-teal)' }}>
                   <th className="px-3 py-2 text-left text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>{tab === 'HMO' ? 'HMO' : 'Agency'}</th>
                   <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>0–30 days</th>
                   <th className="px-3 py-2 text-right text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>31–60 days</th>
@@ -1170,10 +1150,10 @@ export default function AccountsReceivablePage() {
       </div>
 
       {/* Utilization summary table (replaces cards) */}
-      <div id="ar-utilization" className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+      <div id="ar-utilization" className="rounded-xl border overflow-y-auto" style={{ borderColor: 'var(--light-gray)', background: 'white', maxHeight: '260px' }}>
         <table className="w-full text-sm">
           <thead>
-            <tr style={{ background: 'var(--pale-teal)' }}>
+            <tr className="sticky top-0 z-10" style={{ background: 'var(--pale-teal)' }}>
               <th className="px-3 py-2 text-left text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>
                 {tab === 'GL' ? 'Agency / Name' : 'HMO Provider'}
               </th>
@@ -1220,10 +1200,10 @@ export default function AccountsReceivablePage() {
       </div>
 
       {/* Transactions table — hidden on HMO Overview (use Per HMO sub-tab instead) */}
-      {!(tab === 'HMO' && hmoSubTab === 'overview') && <div id="ar-transactions" data-ar-transactions-table className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+      {!(tab === 'HMO' && hmoSubTab === 'overview') && <div id="ar-transactions" data-ar-transactions-table className="rounded-2xl border overflow-y-auto" style={{ borderColor: 'var(--light-gray)', background: 'white', maxHeight: '400px' }}>
         <table className="w-full text-sm">
           <thead>
-            <tr style={{ background: 'var(--off-white)' }}>
+            <tr className="sticky top-0 z-10" style={{ background: 'var(--off-white)' }}>
               <th className="text-left px-4 py-3 font-semibold cursor-pointer select-none" style={{ color: 'var(--charcoal)' }}
                 onClick={() => toggleSort('transactionDate')}>
                 <span className="flex items-center gap-1">Date <SortIcon field="transactionDate" /></span>
@@ -1282,10 +1262,10 @@ export default function AccountsReceivablePage() {
       {arPayments.length > 0 && (
         <div id="ar-payment-history">
           <h3 className="text-sm font-semibold mb-2" style={{ color: 'var(--charcoal)' }}>Payment History</h3>
-          <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+          <div className="rounded-2xl border overflow-y-auto" style={{ borderColor: 'var(--light-gray)', background: 'white', maxHeight: '320px' }}>
             <table className="w-full text-xs">
               <thead>
-                <tr style={{ background: 'var(--off-white)' }}>
+                <tr className="sticky top-0 z-10" style={{ background: 'var(--off-white)' }}>
                   {['Date', 'Provider/Agency', 'Amount', 'Discount', 'Debit Account', 'Orders', 'Notes', 'Recorded By', ''].map(h => (
                     <th key={h} className="text-left px-3 py-2 font-semibold" style={{ color: 'var(--mid-gray)' }}>{h}</th>
                   ))}
