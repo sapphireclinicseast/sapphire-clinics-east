@@ -4731,6 +4731,24 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                     <input value={walletEditForm.patientName || ''} onChange={e => setWalletEditForm(p => ({ ...p, patientName: e.target.value }))}
                       className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
+                  {walletDetail.walletType === 'GL' && (
+                    <div className="col-span-2">
+                      <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Application #</label>
+                      <select
+                        value={walletEditForm.applicationNo || 'None'}
+                        onChange={e => {
+                          const appNo = e.target.value
+                          const baseName = (walletEditForm.patientName || '').replace(/\s*\(\d+(?:st|nd|rd|th) Application\)$/, '').trim()
+                          const newName = appNo === 'None' ? baseName : `${baseName} (${appNo})`
+                          setWalletEditForm(p => ({ ...p, applicationNo: appNo, patientName: newName }))
+                        }}
+                        className="w-full px-3 py-2 rounded-xl border text-xs outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+                        {['None', '1st Application', '2nd Application', '3rd Application', '4th Application', '5th Application'].map(opt => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Email</label>
                     <input value={walletEditForm.patientEmail || ''} onChange={e => setWalletEditForm(p => ({ ...p, patientEmail: e.target.value }))}
