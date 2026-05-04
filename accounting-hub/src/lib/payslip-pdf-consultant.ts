@@ -140,7 +140,10 @@ export function computeTotals(p: ConsultantPayslipPreview, extras: ExtraUnitPayL
   const incentiveTotal = p.incentiveTotal ?? 0
   const taxedAdj = adjs.filter(a => a.isTaxed).reduce((s, a) => s + (a.isAddition ? a.amount : -a.amount), 0)
   const nonTaxedAdj = adjs.filter(a => !a.isTaxed).reduce((s, a) => s + (a.isAddition ? a.amount : -a.amount), 0)
-  const taxableBase = totalUnitPay + retainer + taxedAdj
+  // Incentive bonus is included in taxableBase (and thus in Gross / NET PAY) —
+  // same formula used by the generate route when storing grossPay on lock.
+  // It is also shown as its own SUMMARY row for clarity.
+  const taxableBase = totalUnitPay + retainer + incentiveTotal + taxedAdj
   const tax = p.taxDeduction === 'FIVE_PERCENT' ? Math.max(0, taxableBase) * 0.05 : 0
   const gross = taxableBase + nonTaxedAdj
   const net = gross - tax

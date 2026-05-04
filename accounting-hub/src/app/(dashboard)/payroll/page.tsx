@@ -309,7 +309,9 @@ function getCustomCutoffLabel(s: PayrollSettings, year: number, month: number, h
 
 function computeTotals(p: PayrollPreview, extras: ExtraUnitPayLine[], adjs: AdjustmentLine[]) {
   const extraTotal = extras.reduce((s, e) => s + e.unitAmount * e.qty, 0)
-  const totalUnitPay = p.unitPayTotal + extraTotal
+  const incentiveTotal = p.incentiveTotal ?? 0
+  // Total Unit Pay includes orders + additional unit pay + incentive bonuses
+  const totalUnitPay = p.unitPayTotal + extraTotal + incentiveTotal
   const retainer = p.retainerAmount
   const taxedAdj = adjs.filter(a => a.isTaxed).reduce((s, a) => s + (a.isAddition ? a.amount : -a.amount), 0)
   const nonTaxedAdj = adjs.filter(a => !a.isTaxed).reduce((s, a) => s + (a.isAddition ? a.amount : -a.amount), 0)
@@ -317,7 +319,7 @@ function computeTotals(p: PayrollPreview, extras: ExtraUnitPayLine[], adjs: Adju
   const tax = p.taxDeduction === 'FIVE_PERCENT' ? Math.max(0, taxableBase) * 0.05 : 0
   const gross = taxableBase + nonTaxedAdj
   const net = gross - tax
-  return { totalUnitPay, extraTotal, taxedAdj, nonTaxedAdj, taxableBase, tax, gross, net }
+  return { totalUnitPay, extraTotal, incentiveTotal, taxedAdj, nonTaxedAdj, taxableBase, tax, gross, net }
 }
 
 /* ═══════════════════════════════════════════════════════════════
