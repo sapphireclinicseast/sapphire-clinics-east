@@ -122,6 +122,7 @@ export default function SeminarsPage() {
   const [seminars, setSeminars] = useState<Seminar[]>([])
   const [loading, setLoading] = useState(true)
   const [registeringId, setRegisteringId] = useState<string | null>(null)
+  const [unregisteringId, setUnregisteringId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [toast, setToast] = useState<string | null>(null)
 
@@ -159,6 +160,24 @@ export default function SeminarsPage() {
       showToast('Registration failed')
     }
     setRegisteringId(null)
+  }
+
+  async function handleUnregister(id: string, title: string) {
+    if (!confirm(`Unregister from "${title}"? You can re-register later as long as the seminar isn\u2019t full.`)) return
+    setUnregisteringId(id)
+    try {
+      const res = await fetch(`/api/seminars/${id}/register`, { method: 'DELETE' })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        showToast('You\u2019ve been unregistered from the seminar.')
+        fetchSeminars()
+      } else {
+        showToast(data.error ?? 'Unregister failed')
+      }
+    } catch {
+      showToast('Unregister failed')
+    }
+    setUnregisteringId(null)
   }
 
   function showToast(msg: string) {
@@ -359,10 +378,24 @@ export default function SeminarsPage() {
                     Free for clinicians {s.feeAmount > 0 ? `(public fee: ₱${s.feeAmount.toLocaleString()})` : ''}
                   </p>
                   {registered ? (
-                    <span className="text-[12px] font-semibold text-green-700 flex items-center gap-1.5">
-                      <CheckCircle2 size={14} />
-                      You&rsquo;re in
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[12px] font-semibold text-green-700 flex items-center gap-1.5">
+                        <CheckCircle2 size={14} />
+                        You&rsquo;re in
+                      </span>
+                      <button
+                        onClick={() => handleUnregister(s.id, s.title)}
+                        disabled={unregisteringId === s.id}
+                        className="text-[12px] font-semibold px-3 py-1.5 rounded-lg border border-[var(--clay)]/40 text-[var(--clay)] hover:bg-[var(--clay)] hover:text-white hover:border-[var(--clay)] transition-colors disabled:opacity-50 inline-flex items-center gap-1.5"
+                        title="Unregister from this seminar"
+                      >
+                        {unregisteringId === s.id ? (
+                          <><Loader2 size={13} className="animate-spin" /> Unregistering…</>
+                        ) : (
+                          <>Unregister</>
+                        )}
+                      </button>
+                    </div>
                   ) : (
                     <button
                       onClick={() => handleRegister(s.id)}

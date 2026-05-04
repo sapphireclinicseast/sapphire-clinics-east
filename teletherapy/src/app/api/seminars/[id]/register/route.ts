@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
 const HR_API_BASE = process.env.HR_API_BASE ?? 'https://hr.sapphireclinicseast.org/api'
+const HR_API_KEY = process.env.HR_API_KEY ?? ''
 
 // POST /api/seminars/[id]/register
 // Registers the logged-in clinician for a seminar via the HR public
@@ -58,6 +59,53 @@ export async function POST(
   if (!res.ok) {
     return NextResponse.json(
       { error: data?.error ?? `Registration failed (${res.status})` },
+      { status: res.status }
+    )
+  }
+  return NextResponse.json({ success: true })
+}
+
+// DELETE /api/seminars/[id]/register
+// Removes the logged-in clinician from the seminar's registered list.
+// Calls the internal HR endpoint with Bearer auth.
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await auth()
+  if (!session?.user?.email) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  if (!HR_API_KEY) {
+    return NextResponse.json(
+      { error: 'HR_API_KEY is not configured on the server' },
+      { status: 500 }
+    )
+  }
+
+  const { id: seminarId } = await params
+
+  let res: Response
+  try {
+    res = await fetch(`${HR_API_BASE}/internal/seminars/${encodeURIComponent(seminarId)}/unregister`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${HR_API_KEY}`,
+      },
+      body: JSON.stringify({ email: session.user.email }),
+    })
+  } catch (err) {
+    return NextResponse.json(
+      { error: 'Failed to reach HR hub', detail: (err as Error).message },
+      { status: 502 }
+    )
+  }
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    return NextResponse.json(
+      { error: data?.error ?? `Unregister failed (${res.status})` },
       { status: res.status }
     )
   }
