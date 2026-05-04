@@ -161,84 +161,74 @@ async function buildEmployeePdf(slip: {
   return Buffer.from(out)
 }
 
-interface ConsultantItem { unitPayName?: string; quantity?: number; lineTotal?: number; unitAmount?: number }
+// Build the SAME PDF the accounting hub UI produces, by reconstructing
+// the PayrollPreview-like input from the locked PayrollEntry row and
+// delegating to the shared library.
+import {
+  buildConsultantPayslipPdf,
+  type ConsultantPayslipPreview,
+  type ExtraUnitPayLine,
+  type AdjustmentLine,
+} from '@/lib/payslip-pdf-consultant'
+
+interface RawItem { unitPayId?: string; unitPayName?: string; unitAmount?: number; quantity?: number; lineTotal?: number; isReduced?: boolean; sessions?: unknown[] }
+interface RawExtra { id?: string; unitPayId?: string; unitPayName?: string; unitAmount?: number; qty?: number }
+interface RawAdj { id?: string; name?: string; amount?: number; isAddition?: boolean; isTaxed?: boolean; remarks?: string }
+
 async function buildConsultantPdf(entry: {
-  cutoffPeriod: string; branch: string; items: unknown
+  id: string; cutoffPeriod: string; branch: string
+  items: unknown; extraItems: unknown; adjustments: unknown
   grossPay: unknown; retainerAmount: unknown; taxAmount: unknown; netPay: unknown
-  consultant: { name: string }
+  consultant: { name: string; department: string; taxDeduction: string }
 }): Promise<Buffer> {
-  const { jsPDF } = await import('jspdf')
-  const autoTable = (await import('jspdf-autotable')).default
-  const NARRA: [number, number, number] = [27, 63, 56]
-  const CLAY: [number, number, number] = [168, 92, 61]
-  const NET_GREEN: [number, number, number] = [226, 239, 217]
-  const MID: [number, number, number] = [80, 80, 80]
-
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-  const pageW = doc.internal.pageSize.getWidth()
-  const margin = 20
-  let y = margin
-
-  doc.setFont('helvetica', 'bold').setFontSize(16).setTextColor(...CLAY)
-  doc.text('SAPPHIRE CLINICS EAST INC.', pageW / 2, y + 8, { align: 'center' })
-  y += 12
-  doc.setFontSize(11).setTextColor(...NARRA).text('Payslip — Consultant', pageW / 2, y, { align: 'center' })
-  y += 8
-  doc.setDrawColor(...CLAY).setLineWidth(0.6).line(margin, y, pageW - margin, y)
-  y += 6
-
-  doc.setFont('helvetica', 'normal').setFontSize(10).setTextColor(...MID)
-  doc.text(`Consultant: ${entry.consultant.name}`, margin, y); y += 5
-  doc.text(`Branch:     ${BRANCH_LABEL[entry.branch] ?? entry.branch}`, margin, y); y += 5
-  doc.text(`Cut-off:    ${fmtCutoffLabel(entry.cutoffPeriod)}`, margin, y); y += 8
-
   const num = (v: unknown) => Number(v ?? 0)
-  const items = (Array.isArray(entry.items) ? entry.items : []) as ConsultantItem[]
-  const itemRows: (string | number)[][] = items.length === 0
-    ? [['No itemised line items recorded.', '', '', '']]
-    : items.map((it) => [
-        it.unitPayName ?? '—',
-        Number(it.quantity ?? 0).toString(),
-        fmtPHP(Number(it.unitAmount ?? 0)),
-        fmtPHP(Number(it.lineTotal ?? 0)),
-      ])
+  const items = (Array.isArray(entry.items) ? entry.items : []) as RawItem[]
+  const extras = (Array.isArray(entry.extraItems) ? entry.extraItems : []) as RawExtra[]
+  const adjs = (Array.isArray(entry.adjustments) ? entry.adjustments : []) as RawAdj[]
 
-  autoTable(doc, {
-    startY: y,
-    head: [['Service', 'Qty', 'Rate', 'Total']],
-    body: itemRows,
-    theme: 'grid',
-    headStyles: { fillColor: NARRA, textColor: 255, fontStyle: 'bold' },
-    columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
-    styles: { fontSize: 9, cellPadding: 2 },
-  })
+  const unitPayTotal = items.reduce((s, it) => s + Number(it.lineTotal ?? 0), 0)
+    + extras.reduce((s, e) => s + Number(e.unitAmount ?? 0) * Number(e.qty ?? 0), 0)
+
+  const preview: ConsultantPayslipPreview = {
+    consultantId: entry.id,
+    consultantName: entry.consultant.name,
+    department: entry.consultant.department,
+    branch: entry.branch,
+    taxDeduction: entry.consultant.taxDeduction,
+    items: items.map(it => ({
+      unitPayId: it.unitPayId,
+      unitPayName: it.unitPayName ?? '—',
+      unitAmount: Number(it.unitAmount ?? 0),
+      quantity: Number(it.quantity ?? 0),
+      lineTotal: Number(it.lineTotal ?? 0),
+      isReduced: it.isReduced,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      sessions: (it.sessions ?? []) as any,
+    })),
+    unitPayTotal,
+    retainerAmount: num(entry.retainerAmount),
+    grossPay: num(entry.grossPay),
+    taxAmount: num(entry.taxAmount),
+    netPay: num(entry.netPay),
+  }
+  const extraLines: ExtraUnitPayLine[] = extras.map(e => ({
+    id: e.id ?? '',
+    unitPayId: e.unitPayId ?? '',
+    unitPayName: e.unitPayName ?? '—',
+    unitAmount: Number(e.unitAmount ?? 0),
+    qty: Number(e.qty ?? 0),
+  }))
+  const adjLines: AdjustmentLine[] = adjs.map(a => ({
+    id: a.id ?? '',
+    name: a.name ?? '—',
+    amount: Number(a.amount ?? 0),
+    isAddition: !!a.isAddition,
+    isTaxed: !!a.isTaxed,
+    remarks: a.remarks ?? '',
+  }))
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  y = (doc as any).lastAutoTable.finalY + 6
-
-  const summary: [string, string][] = [
-    ['Retainer', fmtPHP(num(entry.retainerAmount))],
-    ['Gross Pay', fmtPHP(num(entry.grossPay))],
-    ['Withholding Tax', fmtPHP(num(entry.taxAmount))],
-  ]
-  autoTable(doc, {
-    startY: y,
-    body: summary,
-    theme: 'plain',
-    columnStyles: { 1: { halign: 'right' } },
-    styles: { fontSize: 9, cellPadding: 1.5 },
-  })
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  y = (doc as any).lastAutoTable.finalY + 4
-
-  doc.setFillColor(...NET_GREEN).rect(margin, y, pageW - margin * 2, 14, 'F')
-  doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(...NARRA)
-  doc.text('NET PAY', margin + 4, y + 9)
-  doc.text(fmtPHP(num(entry.netPay)), pageW - margin - 4, y + 9, { align: 'right' })
-  y += 18
-
-  doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(...MID)
-  doc.text('This payslip was generated by Sapphire Clinics East accounting.', margin, y)
-
+  const doc: any = await buildConsultantPayslipPdf(preview, extraLines, adjLines, entry.cutoffPeriod)
   const out = doc.output('arraybuffer') as ArrayBuffer
   return Buffer.from(out)
 }
@@ -281,7 +271,7 @@ export async function GET(req: NextRequest) {
   } else {
     const entry = await prisma.payrollEntry.findUnique({
       where: { id },
-      include: { consultant: { select: { email: true, name: true } } },
+      include: { consultant: { select: { email: true, name: true, department: true, taxDeduction: true } } },
     })
     if (!entry || entry.status !== 'LOCKED') {
       return NextResponse.json({ error: 'Not found or not locked' }, { status: 404 })

@@ -321,11 +321,27 @@ function computeTotals(p: PayrollPreview, extras: ExtraUnitPayLine[], adjs: Adju
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   PDF GENERATION (async — called only in browser)
-   Template brand: Primary #1B3F38 (Narra), Accent #A85C3D (Clay), Net Pay green #E2EFD9
-   Layout matches the Sandbox Clinic Word payslip template.
+   PDF GENERATION
+   The body of buildPayslipPdf used to live here; it has been moved
+   to src/lib/payslip-pdf-consultant.ts so the same code can run
+   server-side (e.g. /api/internal/my-payslips/pdf streaming to the
+   teletherapy hub). This wrapper just delegates and keeps the call
+   sites stable.
    ═══════════════════════════════════════════════════════════════ */
 async function buildPayslipPdf(
+  p: PayrollPreview,
+  extras: ExtraUnitPayLine[],
+  adjs: AdjustmentLine[],
+  cutoffPeriod: string,
+  dateRange?: { start: string; end: string }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Promise<any> {
+  const { buildConsultantPayslipPdf } = await import('@/lib/payslip-pdf-consultant')
+  return buildConsultantPayslipPdf(p, extras, adjs, cutoffPeriod, dateRange)
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function _legacyBuildPayslipPdf_REMOVED_OLD(
   p: PayrollPreview,
   extras: ExtraUnitPayLine[],
   adjs: AdjustmentLine[],
