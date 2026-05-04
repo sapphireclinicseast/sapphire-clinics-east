@@ -198,7 +198,7 @@ export async function POST(req: Request) {
         attachmentUrl: attachmentUrl || null,
         attachmentUrls: Array.isArray(attachmentUrls) && attachmentUrls.length > 0 ? attachmentUrls : undefined,
         agency: walletType === 'GL' ? (agency?.trim() || null) : null,
-        approvedServices: walletType === 'GL' && Array.isArray(approvedServices) && approvedServices.length > 0 ? approvedServices : null,
+        approvedServices: walletType === 'GL' && Array.isArray(approvedServices) && approvedServices.length > 0 ? approvedServices : undefined,
         totalGlAmount: walletType === 'GL' && totalGlAmount ? Number(totalGlAmount) : null,
         branch: walletBranch || 'ALL',
       },
