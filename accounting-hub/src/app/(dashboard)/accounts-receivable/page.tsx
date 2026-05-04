@@ -960,9 +960,10 @@ export default function AccountsReceivablePage() {
       {/* ── Overview content (AR Dashboard + Filters + Cards + Table + Payment History) ── */}
       {(tab !== 'HMO' || hmoSubTab === 'overview') && <>
 
-      {/* Quick-nav scroll strip */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Jump to:</span>
+      {/* Quick-nav scroll strip — sticky so it stays visible while scrolling */}
+      <div className="sticky top-0 z-20 -mx-4 lg:-mx-6 px-4 lg:px-6 py-2.5 flex items-center gap-2 flex-wrap border-b"
+        style={{ background: 'white', borderColor: 'var(--light-gray)' }}>
+        <span className="text-xs font-semibold mr-1" style={{ color: 'var(--mid-gray)' }}>Jump to:</span>
         {([
           { id: 'ar-utilization', label: 'Utilization' },
           { id: 'ar-days-per-agency', label: 'AR Days' },
