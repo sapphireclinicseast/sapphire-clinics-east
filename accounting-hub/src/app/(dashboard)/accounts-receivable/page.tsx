@@ -1878,7 +1878,7 @@ export default function AccountsReceivablePage() {
               {/* Tag transactions — HMO only; not needed for GL (payment tracked at wallet level) */}
               {tab !== 'GL' && (payWalletId || payWalletIds.length > 0) && (() => {
                 // When editing, show all orders for this wallet (paid or unpaid); when creating, show only unpaid
-                const selectedIds = tab === 'GL' && !editingPaymentId ? payWalletIds : (payWalletId ? [payWalletId] : [])
+                const selectedIds: string[] = payWalletId ? [payWalletId] : []
                 const eligibleOrders = editingPaymentId
                   ? orders.filter(o => o.payments.some(p => selectedIds.includes(p.walletId || '')))
                   : unpaidOrders.filter(o => o.payments.some(p => selectedIds.includes(p.walletId || '')))
