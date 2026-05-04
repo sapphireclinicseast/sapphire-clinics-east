@@ -4111,7 +4111,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 {(walletTypeFilter === 'HMO'
                   ? [{ label: 'HMO Provider', field: 'patientName' }, { label: 'Type', field: '' }, { label: 'Receivable Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'Transactions', field: '' }, { label: '', field: '' }]
                   : walletTypeFilter === 'GL'
-                  ? [{ label: 'Patient Name', field: 'patientName' }, { label: 'Agency', field: 'agency' }, { label: 'Approved SOA', field: 'totalGlAmount' }, { label: 'Remaining Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'SOA Status', field: 'soaStatus' }, { label: 'Attachment', field: '' }, { label: '', field: '' }]
+                  ? [{ label: 'Patient Name', field: 'patientName' }, { label: 'Agency', field: 'agency' }, { label: 'Services', field: '' }, { label: 'Approved SOA', field: 'totalGlAmount' }, { label: 'Remaining Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'SOA Status', field: 'soaStatus' }, { label: 'Attachment', field: '' }, { label: '', field: '' }]
                   : ['VIP', 'PREPAID_CARD'].includes(walletTypeFilter)
                   ? [{ label: 'Patient Name', field: 'patientName' }, { label: 'Type', field: '' }, { label: 'Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'Barcode', field: 'barcode' }, { label: 'Packages', field: '' }, { label: 'Reward Points', field: 'rewardPoints' }, { label: '', field: '' }]
                   : walletTypeFilter === 'PACKAGE'
@@ -4249,13 +4249,28 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                         </span>
                       )}
                     </td>
-                    {walletTypeFilter === 'GL' && (
-                      <td className="px-5 py-3 font-semibold" style={{ color: '#15803d' }}>
-                        {(w as unknown as { totalGlAmount?: number | string }).totalGlAmount
-                          ? formatCurrency(toNum((w as unknown as { totalGlAmount?: number | string }).totalGlAmount))
-                          : <span className="text-xs font-normal" style={{ color: 'var(--mid-gray)' }}>—</span>}
-                      </td>
-                    )}
+                    {walletTypeFilter === 'GL' && (() => {
+                      const svcs = (w as unknown as { approvedServices?: string[] | null }).approvedServices
+                      return (
+                        <>
+                          <td className="px-5 py-3">
+                            {Array.isArray(svcs) && svcs.length > 0
+                              ? <div className="flex flex-wrap gap-1">
+                                  {svcs.map(s => (
+                                    <span key={s} className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
+                                      style={{ background: '#dbeafe', color: '#1e40af' }}>{s}</span>
+                                  ))}
+                                </div>
+                              : <span style={{ color: 'var(--light-gray)' }}>—</span>}
+                          </td>
+                          <td className="px-5 py-3 font-semibold" style={{ color: '#15803d' }}>
+                            {(w as unknown as { totalGlAmount?: number | string }).totalGlAmount
+                              ? formatCurrency(toNum((w as unknown as { totalGlAmount?: number | string }).totalGlAmount))
+                              : <span className="text-xs font-normal" style={{ color: 'var(--mid-gray)' }}>—</span>}
+                          </td>
+                        </>
+                      )
+                    })()}
                     <td className="px-5 py-3 font-semibold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(toNum(w.balance))}</td>
                     <td className="px-5 py-3">
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
