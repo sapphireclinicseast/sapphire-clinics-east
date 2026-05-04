@@ -3574,7 +3574,8 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       attachmentUrl: (walletDetail.attachmentUrl as string) || '',
       accountId: (walletDetail.accountId as string) || '',
       rewardPoints: String(walletDetail.rewardPoints || 0),
-      totalGlAmount: String(toNum(walletDetail.totalGlAmount as string | number | null)),
+      // Use '' when null so saving without touching this field keeps it null (not 0)
+      totalGlAmount: walletDetail.totalGlAmount != null ? String(toNum(walletDetail.totalGlAmount as string | number | null)) : '',
       branch: (walletDetail.branch as string) || 'ALL',
     })
     // Populate multi-file attachments — prefer new attachmentUrls array, fall back to legacy single URL
@@ -4041,7 +4042,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 {(walletTypeFilter === 'HMO'
                   ? [{ label: 'HMO Provider', field: 'patientName' }, { label: 'Type', field: '' }, { label: 'Receivable Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'Transactions', field: '' }, { label: '', field: '' }]
                   : walletTypeFilter === 'GL'
-                  ? [{ label: 'Patient Name', field: 'patientName' }, { label: 'Agency', field: 'agency' }, { label: 'Total GL Amount', field: 'totalGlAmount' }, { label: 'Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'SOA Status', field: 'soaStatus' }, { label: 'Attachment', field: '' }, { label: '', field: '' }]
+                  ? [{ label: 'Patient Name', field: 'patientName' }, { label: 'Agency', field: 'agency' }, { label: 'Approved SOA', field: 'totalGlAmount' }, { label: 'Remaining Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'SOA Status', field: 'soaStatus' }, { label: 'Attachment', field: '' }, { label: '', field: '' }]
                   : ['VIP', 'PREPAID_CARD'].includes(walletTypeFilter)
                   ? [{ label: 'Patient Name', field: 'patientName' }, { label: 'Type', field: '' }, { label: 'Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'Barcode', field: 'barcode' }, { label: 'Packages', field: '' }, { label: 'Reward Points', field: 'rewardPoints' }, { label: '', field: '' }]
                   : walletTypeFilter === 'PACKAGE'
@@ -4558,7 +4559,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                     <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>The issuing agency of this Guarantee Letter</p>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Total GL Amount (Accounts Receivable) *</label>
+                    <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Approved SOA *</label>
                     <div className="flex items-center gap-1">
                       <span className="text-sm" style={{ color: 'var(--mid-gray)' }}>&#8369;</span>
                       <input type="number" min={0} step="0.01" value={createForm.totalGlAmount || ''}
@@ -4566,7 +4567,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                         placeholder="e.g. 10000"
                         className="flex-1 px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                     </div>
-                    <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Full approved amount — this goes into Accounts Receivable</p>
+                    <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Full approved amount on the Guarantee Letter (AR — what the agency owes us)</p>
                   </div>
                   <div>
                     <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Remaining Balance (Usable Amount)</label>
@@ -4679,7 +4680,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                         className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                       {walletDetail.walletType === 'GL' && (
                         <p className="text-[10px] mt-1" style={{ color: 'var(--mid-gray)' }}>
-                          Amount still usable against future orders. For AR (what the agency owes), use the Total GL Amount field.
+                          Amount still usable for future orders. For the full approved GL amount, use the Approved SOA field.
                         </p>
                       )}
                     </div>
@@ -4706,7 +4707,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                   {walletDetail.walletType === 'GL' && (
                     <>
                       <div>
-                        <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Total GL Amount (AR)</label>
+                        <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Approved SOA</label>
                         <input type="number" step="0.01" value={walletEditForm.totalGlAmount || ''} onChange={e => setWalletEditForm(p => ({ ...p, totalGlAmount: e.target.value }))}
                           className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                       </div>
@@ -4813,14 +4814,14 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
             {walletDetail.walletType === 'GL' && (
               <div className="grid grid-cols-2 gap-3 mt-2 mb-3">
                 <div className="rounded-xl p-3" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
-                  <p className="text-[10px] font-semibold uppercase tracking-wide mb-0.5" style={{ color: '#15803d' }}>① Total Approved (SOA)</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide mb-0.5" style={{ color: '#15803d' }}>① Approved SOA</p>
                   <p className="text-lg font-bold" style={{ color: '#15803d' }}>
                     {formatCurrency(toNum((walletDetail as unknown as { totalGlAmount?: number }).totalGlAmount))}
                   </p>
                   <p className="text-[10px] mt-0.5" style={{ color: '#6b7280' }}>AR amount — what the agency owes us</p>
                 </div>
                 <div className="rounded-xl p-3" style={{ background: '#eff6ff', border: '1px solid #bfdbfe' }}>
-                  <p className="text-[10px] font-semibold uppercase tracking-wide mb-0.5" style={{ color: 'var(--deep-teal)' }}>② Consumable Balance</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide mb-0.5" style={{ color: 'var(--deep-teal)' }}>② Remaining Balance</p>
                   <p className="text-lg font-bold" style={{ color: 'var(--deep-teal)' }}>
                     {formatCurrency(toNum(walletDetail.balance))}
                   </p>
