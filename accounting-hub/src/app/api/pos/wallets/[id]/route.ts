@@ -295,7 +295,7 @@ export async function PUT(
     const { id } = await params
     const body = await req.json()
     const { patientName, patientEmail, patientId, isActive, deleteReason, accountId,
-            dateObtained, paymentModeId, agency, vipTier, attachmentUrl, attachmentUrls, balance, rewardPoints, totalGlAmount, branch } = body
+            dateObtained, paymentModeId, agency, vipTier, attachmentUrl, attachmentUrls, balance, rewardPoints, totalGlAmount, branch, soaStatus } = body
 
     // Look up wallet type so we can protect HMO balance from manual edits.
     // GL now allows a manually-maintained 'Remaining Balance (Usable Amount)' that
@@ -331,6 +331,7 @@ export async function PUT(
       data.totalGlAmount = glNum !== null && !isNaN(glNum) ? glNum : null
     }
     if (branch !== undefined) data.branch = branch || 'ALL'
+    if (soaStatus !== undefined) data.soaStatus = soaStatus || 'With GL/No SOA'
 
     const wallet = await prisma.digitalWallet.update({ where: { id }, data })
 

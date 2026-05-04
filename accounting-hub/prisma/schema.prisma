@@ -514,6 +514,7 @@ model DigitalWallet {
   attachmentUrl  String?     // Uploaded proof — legacy single-file field (kept for backward compat)
   attachmentUrls Json?       // GL wallets: multi-file proof URLs stored as JSON array
   agency         String?     // GL wallets: issuing agency (e.g., DSWD, PhilHealth, OWWA)
+  soaStatus      String?     @default("With GL/No SOA")  // GL wallets: "With GL/No SOA" blocks checkout; "With GL and SOA" allows it
   branch        String      @default("ALL")  // SANDBOX_EAST, SANDBOX_GREENHILLS, or ALL
   dateObtained  DateTime?   // Date patient originally obtained the wallet/card
   paymentModeId String?     // How the initial load was paid

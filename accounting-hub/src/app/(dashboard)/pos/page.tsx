@@ -128,6 +128,7 @@ interface DigitalWallet {
   isActive?: boolean
   dateObtained?: string | null
   agency?: string | null
+  soaStatus?: string | null
   attachmentUrl?: string | null
   attachmentUrls?: string[] | null
   _count?: { packages: number }
@@ -1992,9 +1993,9 @@ function OrderFormModal({
                 <input value={glSearch} onChange={e => searchGlWallets(e.target.value)} placeholder="Search agency (e.g. DSWD, PhilHealth)..."
                   onFocus={() => { if (!glSearch) searchGlWallets('') }}
                   className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#86efac' }} />
-                {glWallets.length > 0 && (
+                {glWallets.filter(w => w.soaStatus === 'With GL and SOA').length > 0 && (
                   <div className="max-h-32 overflow-y-auto space-y-1">
-                    {glWallets.map(w => {
+                    {glWallets.filter(w => w.soaStatus === 'With GL and SOA').map(w => {
                       const agency = (w as unknown as { agency?: string }).agency || ''
                       const displayName = agency ? `${w.patientName} (${agency})` : w.patientName
                       return (
@@ -2013,6 +2014,9 @@ function OrderFormModal({
                       )
                     })}
                   </div>
+                )}
+                {glWallets.length > 0 && glWallets.filter(w => w.soaStatus === 'With GL and SOA').length === 0 && (
+                  <p className="text-xs" style={{ color: '#c2410c' }}>No eligible GL wallets found. The wallet must be set to &quot;With GL and SOA&quot; before it can be used for checkout.</p>
                 )}
                 {glWallets.length === 0 && glSearch.length > 0 && (
                   <p className="text-xs" style={{ color: '#15803d' }}>No agencies found. Add one in Digital Wallet &gt; GL tab first.</p>
@@ -4037,7 +4041,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 {(walletTypeFilter === 'HMO'
                   ? [{ label: 'HMO Provider', field: 'patientName' }, { label: 'Type', field: '' }, { label: 'Receivable Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'Transactions', field: '' }, { label: '', field: '' }]
                   : walletTypeFilter === 'GL'
-                  ? [{ label: 'Patient Name', field: 'patientName' }, { label: 'Agency', field: 'agency' }, { label: 'Total GL Amount', field: 'totalGlAmount' }, { label: 'Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'Attachment', field: '' }, { label: '', field: '' }]
+                  ? [{ label: 'Patient Name', field: 'patientName' }, { label: 'Agency', field: 'agency' }, { label: 'Total GL Amount', field: 'totalGlAmount' }, { label: 'Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'SOA Status', field: 'soaStatus' }, { label: 'Attachment', field: '' }, { label: '', field: '' }]
                   : ['VIP', 'PREPAID_CARD'].includes(walletTypeFilter)
                   ? [{ label: 'Patient Name', field: 'patientName' }, { label: 'Type', field: '' }, { label: 'Balance', field: 'balance' }, { label: 'Branch', field: 'branch' }, { label: 'Barcode', field: 'barcode' }, { label: 'Packages', field: '' }, { label: 'Reward Points', field: 'rewardPoints' }, { label: '', field: '' }]
                   : walletTypeFilter === 'PACKAGE'
@@ -4211,6 +4215,30 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                       </>
                     ) : walletTypeFilter === 'GL' ? (
                       <>
+                        {/* SOA Status dropdown — gates checkout usage */}
+                        <td className="px-5 py-3" onClick={e => e.stopPropagation()}>
+                          <select
+                            value={w.soaStatus || 'With GL/No SOA'}
+                            onChange={async (e) => {
+                              const soaStatus = e.target.value
+                              await fetch(`/api/pos/wallets/${w.id}`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ soaStatus }),
+                              })
+                              fetchWallets()
+                            }}
+                            className="text-xs px-2 py-1.5 rounded-lg border font-semibold outline-none cursor-pointer"
+                            style={{
+                              borderColor: w.soaStatus === 'With GL and SOA' ? '#86efac' : '#fed7aa',
+                              background: w.soaStatus === 'With GL and SOA' ? '#f0fdf4' : '#fff7ed',
+                              color: w.soaStatus === 'With GL and SOA' ? '#15803d' : '#c2410c',
+                            }}>
+                            <option value="With GL/No SOA">With GL/No SOA</option>
+                            <option value="With GL and SOA">With GL and SOA</option>
+                          </select>
+                        </td>
+                        {/* Attachment files */}
                         <td className="px-5 py-3">
                           {(() => {
                             const gl = w as unknown as { attachmentUrl?: string; attachmentUrls?: string[] }
@@ -4233,12 +4261,9 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                             )
                           })()}
                         </td>
+                        {/* Actions — Delete only (Print SOA is HMO-only) */}
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-1.5">
-                            <button onClick={(e) => { e.stopPropagation(); setShowSOA(w) }}
-                              className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={{ color: '#15803d' }}>
-                              Print SOA
-                            </button>
                             {w.isActive !== false && (
                               <button onClick={(e) => { e.stopPropagation(); deleteWallet(w) }}
                                 className="p-1.5 rounded-lg hover:bg-red-50" title="Delete GL Wallet">
