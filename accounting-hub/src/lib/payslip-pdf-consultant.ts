@@ -128,20 +128,38 @@ export function computeTotals(p: ConsultantPayslipPreview, extras: ExtraUnitPayL
   const extraTotal = extras.reduce((s, e) => s + e.unitAmount * e.qty, 0)
   const totalUnitPay = p.unitPayTotal + extraTotal
   const retainer = p.retainerAmount
-  // Daily-threshold incentive bonuses contribute to gross AND are taxed
-  // (matches /api/payroll/generate's preview math:
-  //   grossPay = unitPayTotal + retainerAmount + incentiveTotal
-  //   taxAmount = grossPay * 0.05
-  // ). Threshold-reduced item rates are already baked into each item's
-  // unitAmount/lineTotal upstream, so they need no separate handling here.
+  // Incentive bonus is INFORMATIONAL — shown as its own SUMMARY row and
+  // in the INCENTIVES table, but NOT added to Gross / NET PAY. This
+  // matches the accounting hub's stored grossPay (items + extras +
+  // retainer + adjustments only) so the teletherapy PDF agrees with
+  // what the accountant sees. (The generate route's PayrollPreview
+  // includes incentives in its own grossPay field — that's a display
+  // value, not what gets persisted on lock.)
+  // Threshold-reduced item rates are already baked into each item's
+  // unitAmount/lineTotal upstream, so they need no separate handling.
   const incentiveTotal = p.incentiveTotal ?? 0
   const taxedAdj = adjs.filter(a => a.isTaxed).reduce((s, a) => s + (a.isAddition ? a.amount : -a.amount), 0)
   const nonTaxedAdj = adjs.filter(a => !a.isTaxed).reduce((s, a) => s + (a.isAddition ? a.amount : -a.amount), 0)
-  const taxableBase = totalUnitPay + retainer + incentiveTotal + taxedAdj
+  const taxableBase = totalUnitPay + retainer + taxedAdj
   const tax = p.taxDeduction === 'FIVE_PERCENT' ? Math.max(0, taxableBase) * 0.05 : 0
   const gross = taxableBase + nonTaxedAdj
   const net = gross - tax
   return { totalUnitPay, extraTotal, incentiveTotal, taxedAdj, nonTaxedAdj, taxableBase, tax, gross, net }
+}
+
+/**
+ * Optional override for the SUMMARY totals.
+ * When provided (typically by the server-side internal endpoint serving
+ * LOCKED payslips to teletherapy), the PDF's SUMMARY uses these values
+ * verbatim instead of recomputing via computeTotals(). Guarantees that
+ * the rendered PDF matches the gross/tax/net actually declared on the
+ * locked PayrollEntry row in accounting, even if computeTotals() ever
+ * diverges from the stored amounts.
+ */
+export interface OverrideTotals {
+  gross: number
+  tax: number
+  net: number
 }
 
 /**
@@ -155,13 +173,21 @@ export async function buildConsultantPayslipPdf(
   extras: ExtraUnitPayLine[],
   adjs: AdjustmentLine[],
   cutoffPeriod: string,
-  dateRange?: { start: string; end: string }
+  dateRange?: { start: string; end: string },
+  overrideTotals?: OverrideTotals
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any> {
   const { jsPDF } = await import('jspdf')
   const { default: autoTable } = await import('jspdf-autotable')
 
-  const totals = computeTotals(p, extras, adjs)
+  // Recompute SUMMARY totals — but if the caller supplied overrideTotals
+  // (e.g. the server endpoint passing the DB-stored gross/tax/net of a
+  // locked row), use those values for the displayed Gross / Tax / NET PAY
+  // so the PDF can never drift from what accounting has on record.
+  const computed = computeTotals(p, extras, adjs)
+  const totals = overrideTotals
+    ? { ...computed, gross: overrideTotals.gross, tax: overrideTotals.tax, net: overrideTotals.net }
+    : computed
   const branchInfo = BRANCH_INFO[p.branch] || BRANCH_INFO['']
   const position = POSITION_LABELS[p.department] || p.department
   const deptLabel = DEPT_LABELS[p.department] || p.department

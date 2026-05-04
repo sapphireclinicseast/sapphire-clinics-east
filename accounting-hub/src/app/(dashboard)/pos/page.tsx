@@ -3587,6 +3587,10 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
 
   const startWalletEdit = () => {
     if (!walletDetail) return
+    // For GL wallets: detect any existing "(Nth Application)" suffix in the name
+    const existingName = walletDetail.patientName || ''
+    const appNoMatch = existingName.match(/\s*\((\d+(?:st|nd|rd|th) Application)\)$/)
+    const detectedAppNo = appNoMatch ? appNoMatch[1] : 'None'
     setWalletEditForm({
       patientName: walletDetail.patientName || '',
       patientEmail: walletDetail.patientEmail || '',
@@ -3600,6 +3604,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       // Use '' when null so saving without touching this field keeps it null (not 0)
       totalGlAmount: walletDetail.totalGlAmount != null ? String(toNum(walletDetail.totalGlAmount as string | number | null)) : '',
       branch: (walletDetail.branch as string) || 'ALL',
+      applicationNo: walletDetail.walletType === 'GL' ? detectedAppNo : '',
     })
     // Populate multi-file attachments — prefer new attachmentUrls array, fall back to legacy single URL
     const existingUrls = walletDetail.attachmentUrls as string[] | null

@@ -245,8 +245,19 @@ async function buildConsultantPdf(entry: {
     remarks: a.remarks ?? '',
   }))
 
+  // Force the SUMMARY's Gross / Tax / NET PAY to use the DB-declared
+  // amounts on the locked entry, so the rendered PDF can never disagree
+  // with what the accountant has on record — even if the line-item
+  // breakdown ever fails to reconcile due to legacy data.
+  const overrideTotals = {
+    gross: num(entry.grossPay),
+    tax: num(entry.taxAmount),
+    net: num(entry.netPay),
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const doc: any = await buildConsultantPayslipPdf(preview, extraLines, adjLines, entry.cutoffPeriod)
+  const doc: any = await buildConsultantPayslipPdf(
+    preview, extraLines, adjLines, entry.cutoffPeriod, undefined, overrideTotals,
+  )
   const out = doc.output('arraybuffer') as ArrayBuffer
   return Buffer.from(out)
 }
