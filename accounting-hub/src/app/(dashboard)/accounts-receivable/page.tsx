@@ -734,6 +734,41 @@ export default function AccountsReceivablePage() {
         const pctConsumed = totalApproved > 0 ? Math.min(100, (totalConsumed / totalApproved) * 100) : 0
         const pctPaid = totalApproved > 0 ? Math.min(100, (totalPaid / totalApproved) * 100) : 0
 
+        // Service type breakdown from approvedServices field on GL wallets
+        // Each wallet may approve multiple service types; count applications per type.
+        const svcTypeMap = new Map<string, number>()
+        for (const w of wallets) {
+          const svcs = (w as unknown as { approvedServices?: string[] | null }).approvedServices
+          if (Array.isArray(svcs)) {
+            for (const s of svcs) svcTypeMap.set(s, (svcTypeMap.get(s) || 0) + 1)
+          }
+        }
+        const svcTotal = Array.from(svcTypeMap.values()).reduce((s, v) => s + v, 0)
+        const svcEntries = Array.from(svcTypeMap.entries()).sort((a, b) => b[1] - a[1])
+        const SVC_COLORS = ['#0d9488','#0891b2','#7c3aed','#db2777','#d97706','#16a34a','#dc2626','#9333ea']
+
+        // Build SVG pie for service types
+        const buildSvcPie = (entries: [string, number][], total: number) => {
+          let cum = -90
+          return entries.map(([label, val], i) => {
+            const pct = total > 0 ? val / total : 0
+            const sweep = pct * 360
+            const s1 = (cum * Math.PI) / 180
+            const e1 = ((cum + sweep) * Math.PI) / 180
+            const r = 60
+            const x1 = 70 + r * Math.cos(s1), y1 = 70 + r * Math.sin(s1)
+            const x2 = 70 + r * Math.cos(e1), y2 = 70 + r * Math.sin(e1)
+            const large = sweep > 180 ? 1 : 0
+            const d = pct === 1
+              ? `M70,70 m-${r},0 a${r},${r} 0 1,1 ${r*2},0 a${r},${r} 0 1,1 -${r*2},0`
+              : `M70,70 L${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} Z`
+            const result = { label, val, pct, color: SVC_COLORS[i % SVC_COLORS.length], d }
+            cum += sweep
+            return result
+          })
+        }
+        const svcSlices = buildSvcPie(svcEntries, svcTotal)
+
         // Department breakdown from GL orders
         const deptMap = new Map<string, number>()
         for (const o of orders) {
@@ -808,30 +843,61 @@ export default function AccountsReceivablePage() {
               </div>
             </div>
 
-            {/* Department pie chart */}
-            {deptEntries.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold mb-3" style={{ color: 'var(--mid-gray)' }}>GL Orders by Department</p>
-                <div className="flex flex-wrap items-center gap-6">
-                  <svg viewBox="0 0 140 140" width={140} height={140} className="flex-shrink-0">
-                    {pieSlices.map((s, i) => (
-                      <path key={i} d={s.d} fill={s.color} stroke="white" strokeWidth={1.5} />
-                    ))}
-                  </svg>
-                  <div className="flex flex-col gap-1.5 flex-1 min-w-0">
-                    {pieSlices.map((s, i) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: s.color }} />
-                        <span className="text-xs font-medium truncate" style={{ color: 'var(--charcoal)' }}>{s.dept}</span>
-                        <span className="text-xs ml-auto flex-shrink-0" style={{ color: 'var(--mid-gray)' }}>
-                          {formatCurrency(s.val)} <span className="font-semibold">({(s.pct * 100).toFixed(1)}%)</span>
-                        </span>
-                      </div>
-                    ))}
+            {/* Two-column chart row */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Department pie chart */}
+              {deptEntries.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold mb-3" style={{ color: 'var(--mid-gray)' }}>GL Orders by Department</p>
+                  <div className="flex flex-wrap items-center gap-6">
+                    <svg viewBox="0 0 140 140" width={140} height={140} className="flex-shrink-0">
+                      {pieSlices.map((s, i) => (
+                        <path key={i} d={s.d} fill={s.color} stroke="white" strokeWidth={1.5} />
+                      ))}
+                    </svg>
+                    <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                      {pieSlices.map((s, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: s.color }} />
+                          <span className="text-xs font-medium truncate" style={{ color: 'var(--charcoal)' }}>{s.dept}</span>
+                          <span className="text-xs ml-auto flex-shrink-0" style={{ color: 'var(--mid-gray)' }}>
+                            {formatCurrency(s.val)} <span className="font-semibold">({(s.pct * 100).toFixed(1)}%)</span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+
+              {/* Service type pie chart — from approvedServices on GL wallets */}
+              {svcSlices.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold mb-3" style={{ color: 'var(--mid-gray)' }}>GL Applications by Service Type</p>
+                  <div className="flex flex-wrap items-center gap-6">
+                    <svg viewBox="0 0 140 140" width={140} height={140} className="flex-shrink-0">
+                      {svcSlices.map((s, i) => (
+                        <path key={i} d={s.d} fill={s.color} stroke="white" strokeWidth={1.5} />
+                      ))}
+                    </svg>
+                    <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                      {svcSlices.map((s, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: s.color }} />
+                          <span className="text-xs font-medium truncate" style={{ color: 'var(--charcoal)' }}>{s.label}</span>
+                          <span className="text-xs ml-auto flex-shrink-0" style={{ color: 'var(--mid-gray)' }}>
+                            {s.val} wallet{s.val !== 1 ? 's' : ''} <span className="font-semibold">({(s.pct * 100).toFixed(1)}%)</span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <p className="text-[10px] mt-2" style={{ color: 'var(--mid-gray)' }}>
+                    Count of GL wallets with each approved service type. One wallet may appear in multiple types.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         )
       })()}

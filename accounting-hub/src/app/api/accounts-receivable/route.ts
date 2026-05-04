@@ -23,7 +23,7 @@ export async function GET(req: Request) {
     // Get all active HMO or GL wallets
     const wallets = await prisma.digitalWallet.findMany({
       where: { walletType: type as 'HMO' | 'GL', isActive: true },
-      select: { id: true, patientName: true, balance: true, totalGlAmount: true, accountId: true,
+      select: { id: true, patientName: true, balance: true, totalGlAmount: true, accountId: true, approvedServices: true,
         account: { select: { accountNumber: true, accountTitle: true } } },
       orderBy: { patientName: 'asc' },
     })

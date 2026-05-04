@@ -267,6 +267,8 @@ const BRANCHES = [
   { value: 'VERDANA_STORE', label: 'Verdana' },
 ]
 
+const GL_SERVICE_TYPES = ['PT', 'OT', 'SLP', 'SPED', 'Psychology', 'MD', 'Orthosis']
+
 const WALLET_TYPES = [
   { value: 'PACKAGE', label: 'Package' },
   { value: 'VIP', label: 'VIP' },
@@ -3379,6 +3381,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   const [showCreate, setShowCreate] = useState(false)
   const [createForm, setCreateForm] = useState({ patientName: '', patientId: '', patientEmail: '', accountId: '', dateObtained: '', paymentModeId: '', glAmount: '', totalGlAmount: '', agency: '', initialRewardPoints: '', branch: 'ALL' })
   const [createAttachments, setCreateAttachments] = useState<string[]>([])
+  const [createApprovedServices, setCreateApprovedServices] = useState<string[]>([])
   const [createAccountSearch, setCreateAccountSearch] = useState('')
   const [arAccounts, setArAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
   const [crmSearch, setCrmSearch] = useState('')
@@ -3419,6 +3422,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   const [walletEditing, setWalletEditing] = useState(false)
   const [walletEditForm, setWalletEditForm] = useState<Record<string, string>>({})
   const [walletEditAttachments, setWalletEditAttachments] = useState<string[]>([])
+  const [editApprovedServices, setEditApprovedServices] = useState<string[]>([])
   const [walletEditSaving, setWalletEditSaving] = useState(false)
   const [walletEditError, setWalletEditError] = useState('')
   const [showAddPackage, setShowAddPackage] = useState(false)
@@ -3538,6 +3542,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         totalGlAmount: walletTypeFilter === 'GL' && createForm.totalGlAmount ? parseFloat(createForm.totalGlAmount) : undefined,
         initialRewardPoints: createForm.initialRewardPoints ? parseInt(createForm.initialRewardPoints) : undefined,
         attachmentUrls: walletTypeFilter === 'GL' ? createAttachments : undefined,
+        approvedServices: walletTypeFilter === 'GL' && createApprovedServices.length > 0 ? createApprovedServices : undefined,
       }
       const r = await fetch('/api/pos/wallets', {
         method: 'POST',
@@ -3582,6 +3587,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       setCreateApplicationNo('2nd Application')
       setCreateForm({ patientName: '', patientId: '', patientEmail: '', accountId: '', dateObtained: '', paymentModeId: '', glAmount: '', totalGlAmount: '', agency: '', initialRewardPoints: '', branch: 'ALL' })
       setCreateAttachments([])
+      setCreateApprovedServices([])
       setCreateAccountSearch('')
       setCrmSearch('')
       setCrmPatients([])
@@ -3625,6 +3631,9 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       branch: (walletDetail.branch as string) || 'ALL',
       applicationNo: walletDetail.walletType === 'GL' ? detectedAppNo : '',
     })
+    // Populate approved services for GL wallets
+    const existingSvcs = walletDetail.approvedServices as string[] | null
+    setEditApprovedServices(Array.isArray(existingSvcs) ? existingSvcs : [])
     // Populate multi-file attachments — prefer new attachmentUrls array, fall back to legacy single URL
     const existingUrls = walletDetail.attachmentUrls as string[] | null
     setWalletEditAttachments(
@@ -3650,6 +3659,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
           patientEmail: walletEditForm.patientEmail,
           dateObtained: walletEditForm.dateObtained || null,
           agency: walletEditForm.agency || null,
+          ...(walletDetail.walletType === 'GL' ? { approvedServices: editApprovedServices.length > 0 ? editApprovedServices : null } : {}),
           vipTier: walletEditForm.vipTier || null,
           // HMO balance stays read-only (computed from unpaid POS orders). GL balance
           // = 'Remaining Balance (Usable Amount)' is manually maintained.
@@ -4620,6 +4630,20 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                     <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>The issuing agency of this Guarantee Letter</p>
                   </div>
                   <div>
+                    <label className="block text-xs font-semibold mb-2" style={{ color: 'var(--mid-gray)' }}>Approved Services</label>
+                    <div className="flex flex-wrap gap-x-4 gap-y-2">
+                      {GL_SERVICE_TYPES.map(svc => (
+                        <label key={svc} className="flex items-center gap-1.5 text-sm cursor-pointer select-none">
+                          <input type="checkbox" checked={createApprovedServices.includes(svc)}
+                            onChange={e => setCreateApprovedServices(prev => e.target.checked ? [...prev, svc] : prev.filter(s => s !== svc))}
+                            className="rounded" style={{ accentColor: 'var(--teal)' }} />
+                          {svc}
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-xs mt-1.5" style={{ color: 'var(--mid-gray)' }}>Service types covered by this Guarantee Letter</p>
+                  </div>
+                  <div>
                     <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Approved SOA *</label>
                     <div className="flex items-center gap-1">
                       <span className="text-sm" style={{ color: 'var(--mid-gray)' }}>&#8369;</span>
@@ -4826,6 +4850,20 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                         <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Agency</label>
                         <input value={walletEditForm.agency || ''} onChange={e => setWalletEditForm(p => ({ ...p, agency: e.target.value }))}
                           className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="font-medium mb-1.5 block" style={{ color: 'var(--mid-gray)' }}>Approved Services</label>
+                        <div className="flex flex-wrap gap-x-4 gap-y-2">
+                          {GL_SERVICE_TYPES.map(svc => (
+                            <label key={svc} className="flex items-center gap-1.5 text-sm cursor-pointer select-none">
+                              <input type="checkbox" checked={editApprovedServices.includes(svc)}
+                                onChange={e => setEditApprovedServices(prev => e.target.checked ? [...prev, svc] : prev.filter(s => s !== svc))}
+                                className="rounded" style={{ accentColor: 'var(--teal)' }} />
+                              {svc}
+                            </label>
+                          ))}
+                        </div>
+                        <p className="text-[10px] mt-1" style={{ color: 'var(--mid-gray)' }}>Service types covered by this Guarantee Letter</p>
                       </div>
                       <div className="col-span-2">
                         <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Attachments</label>
