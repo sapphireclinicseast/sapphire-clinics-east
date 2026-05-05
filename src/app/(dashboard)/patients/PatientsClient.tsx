@@ -30,6 +30,7 @@ interface Patient {
   firstDayOfConsult?: string | null
   pwdSeniorId?: string | null
   unsubscribed?: boolean
+  smsUnsubscribed?: boolean
 }
 
 const BRANCHES = [
@@ -47,7 +48,7 @@ const EMPTY_FORM = {
   firstName: '', lastName: '', email: '', phone: '', dob: '',
   patientType: 'ADULT', branches: [] as string[], sex: '',
   civilStatus: '', religion: '', nationality: '', address: '', city: '', diagnosis: '', notes: '',
-  firstDayOfConsult: '', pwdSeniorId: '', unsubscribed: false,
+  firstDayOfConsult: '', pwdSeniorId: '', unsubscribed: false, smsUnsubscribed: false,
 }
 
 type SortCol = 'name' | 'type' | 'branch' | 'sex' | 'city' | 'barangay' | 'diagnosis' | 'email' | 'dob' | ''
@@ -452,6 +453,7 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
       firstDayOfConsult: p.firstDayOfConsult ? p.firstDayOfConsult.slice(0, 10) : '',
       pwdSeniorId: p.pwdSeniorId ?? '',
       unsubscribed: !!p.unsubscribed,
+      smsUnsubscribed: !!p.smsUnsubscribed,
     })
     setEditError('')
   }
@@ -1105,6 +1107,7 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
                         <Field label="Nationality"           value={editForm.nationality} onChange={(v) => setEditForm((f) => ({ ...f, nationality: v }))} />
                         <Field label="PWD/Senior ID Number"  value={editForm.pwdSeniorId} onChange={(v) => setEditForm((f) => ({ ...f, pwdSeniorId: v }))} placeholder="Optional — for discount eligibility" />
                         <UnsubscribeToggle value={!!editForm.unsubscribed} onChange={(v) => setEditForm((f) => ({ ...f, unsubscribed: v }))} />
+                        <SmsUnsubscribeToggle value={!!editForm.smsUnsubscribed} onChange={(v) => setEditForm((f) => ({ ...f, smsUnsubscribed: v }))} />
                       </div>
                       <div className="mt-3">
                         <label className="block text-xs font-semibold uppercase tracking-widest mb-1.5"
@@ -1497,3 +1500,35 @@ function UnsubscribeToggle({ value, onChange }: { value: boolean; onChange: (v: 
     </div>
   )
 }
+// ── Unsubscribe SMS Marketing Toggle ───────────────────────────────────────
+// Mirrors UnsubscribeToggle but for the SMS campaign opt-out flag. Only
+// affects bulk SMS marketing campaigns — patients toggled OFF here still
+// receive schedule reminders, birthday greetings, and follow-up SMS.
+function SmsUnsubscribeToggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, background: value ? '#FEF2F2' : '#F0FDF4', border: '1px solid ' + (value ? '#FECACA' : '#BBF7D0') }}>
+      <button type="button" onClick={() => onChange(!value)}
+        aria-label={value ? 'Resubscribe to SMS marketing' : 'Unsubscribe from SMS marketing'}
+        style={{
+          width: 36, height: 20, borderRadius: 10,
+          background: value ? '#DC2626' : '#16A34A',
+          position: 'relative', cursor: 'pointer', border: 'none', flexShrink: 0,
+        }}>
+        <span style={{
+          position: 'absolute', top: 2, left: value ? 18 : 2,
+          width: 16, height: 16, borderRadius: '50%', background: '#fff',
+          transition: 'left 0.15s',
+        }} />
+      </button>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: value ? '#991B1B' : '#166534' }}>
+          {value ? 'Unsubscribed from SMS marketing' : 'Subscribed to SMS marketing'}
+        </span>
+        <span style={{ fontSize: 11, color: 'var(--mid-gray)' }}>
+          Schedule reminders, birthday greetings, and follow-up SMS are NOT affected.
+        </span>
+      </div>
+    </div>
+  )
+}
+

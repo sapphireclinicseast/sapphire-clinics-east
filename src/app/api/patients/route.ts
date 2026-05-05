@@ -337,6 +337,7 @@ export async function POST(req: NextRequest) {
       pwdSeniorId: uc(body.pwdSeniorId) || null,
       firstDayOfConsult: body.firstDayOfConsult ? new Date(body.firstDayOfConsult) : null,
       unsubscribed: !!body.unsubscribed,
+      smsUnsubscribed: !!body.smsUnsubscribed,
     },
   })
 
@@ -383,6 +384,8 @@ export async function PUT(req: NextRequest) {
   if (diagnosis    !== undefined) updateData.diagnosis    = uc(diagnosis)    || null
   if (notes        !== undefined) updateData.notes        = uc(notes)        || null
   if (firstDayOfConsult !== undefined) updateData.firstDayOfConsult = firstDayOfConsult ? new Date(firstDayOfConsult) : null
+  if (unsubscribed !== undefined) updateData.unsubscribed = !!unsubscribed
+  if (smsUnsubscribed !== undefined) updateData.smsUnsubscribed = !!smsUnsubscribed
   if (pwdSeniorId       !== undefined) updateData.pwdSeniorId       = uc(pwdSeniorId) || null
 
   const patient = await prisma.patient.update({

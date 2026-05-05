@@ -100,7 +100,12 @@ async function resolveRecipients(
     const patients = await prisma.patient.findMany({
       where: {
         ...(patientIds !== null ? { id: { in: patientIds } } : {}),
-        unsubscribed: false,
+        // SMS-marketing opt-out is a SEPARATE flag from the newsletter
+        // unsubscribe — patients who opted out of SMS campaigns must not
+        // appear here, but they can still receive schedule reminders,
+        // birthday greetings, and follow-up reminders (which use their
+        // own dedicated routes and don't read this flag).
+        smsUnsubscribed: false,
         ...(patientType ? { patientType: patientType as 'PEDIATRIC' | 'ADULT' } : {}),
         phone: { not: null },
       },
@@ -158,7 +163,7 @@ async function resolveRecipients(
     const patients = await prisma.patient.findMany({
       where: {
         id: { in: Array.from(allIds) },
-        unsubscribed: false,
+        smsUnsubscribed: false, // honor SMS-marketing opt-out (see note above)
         phone: { not: null },
       },
       select: { id: true, firstName: true, lastName: true, phone: true },

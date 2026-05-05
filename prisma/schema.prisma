@@ -221,6 +221,7 @@ model Patient {
   firstDayOfConsult  DateTime?  // manual override: first day of consult/session (basis for cancellation reset & follow-up rules)
   pwdSeniorId        String?    // PWD or Senior Citizen ID Number (optional, for discount eligibility)
   unsubscribed       Boolean    @default(false)  // opt-out from email campaigns
+  smsUnsubscribed    Boolean    @default(false)  // opt-out from SMS marketing campaigns (does NOT block schedule reminders, birthdays, or clinical follow-ups)
   createdAt          DateTime   @default(now())
   updatedAt           DateTime             @updatedAt
   schedules           Schedule[]

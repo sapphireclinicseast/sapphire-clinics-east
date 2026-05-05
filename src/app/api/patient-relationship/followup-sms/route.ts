@@ -28,7 +28,7 @@ export function buildFollowUpMessage(firstName: string, branch: string, departme
   const branchLabel = BRANCH_CONFIG[branch]?.label ?? branch
   const deptLabel = DEPT_LABEL[department] ?? department
   // Kept under 160 chars for a single SMS.
-  return `Hi ${firstName}, SAPPHIRE Clinics ${branchLabel} here. Please book your follow-up ${deptLabel} session with us. Reply or call to schedule. Thank you!`
+  return `Hi ${firstName}, SAPPHIRE Clinics ${branchLabel} here. Let us know if you need to book your next ${deptLabel} session with us. We hope to see you soon!`
 }
 
 export const maxDuration = 15
