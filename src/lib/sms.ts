@@ -8,8 +8,14 @@
 
 import { prisma } from './prisma'
 
-// httpSMS-on-Globe-SIM safely handles ~1000/day; we leave headroom for
-// schedule reminders, birthdays and other ad-hoc sends from the same SIM.
+// httpSMS-on-Globe-SIM safely handles ~1000/day per SIM; we leave headroom
+// for schedule reminders, birthdays and other ad-hoc sends from the same SIM.
+//
+// IMPORTANT: this is a PER-BRANCH cap. Each clinic's Android phone has its
+// own SIM and its own httpSMS account, so SBEA and SBGH have independent
+// daily quotas. A BOTH-branch campaign of 800 recipients can therefore
+// finish in one tranche (400 SBEA + 400 SBGH delivered in parallel within
+// the same day), instead of needing two days like the email pipeline.
 const DAILY_CAP_PER_TRANCHE = 400
 // Time of day (PHT, UTC+8) to fire the next tranche. 09:00 local = 01:00 UTC.
 const NEXT_TRANCHE_HOUR_PHT = 9
@@ -211,9 +217,11 @@ export async function executeSendSmsCampaign(campaignId: string): Promise<void> 
   // prisma generate step in this invocation.
   const rows = await prisma.$queryRaw<Array<{
     id: string; subject: string; message: string; recipientGroup: string;
-    branch: string; status: string; recipientCount: number; sentCount: number;
+    branch: string; status: string; recipientCount: number;
+    sentCount: number; sentCountSbea: number; sentCountSbgh: number;
   }>>`SELECT id, subject, message, "recipientGroup", branch, status,
-              "recipientCount", "sentCount"
+              "recipientCount", "sentCount",
+              "sentCountSbea", "sentCountSbgh"
          FROM "SmsCampaign" WHERE id = ${campaignId}`
   const campaign = rows[0]
   if (!campaign) throw new Error(`SMS campaign ${campaignId} not found`)
@@ -225,38 +233,49 @@ export async function executeSendSmsCampaign(campaignId: string): Promise<void> 
     throw new Error('No recipients with phone numbers in this group')
   }
 
-  // Resume support
+  // Resume support — driven by PER-BRANCH counters so each branch's queue
+  // resumes from the exact recipient it left off, even though SBEA and SBGH
+  // are sent in parallel against independent httpSMS accounts.
   const resuming =
     (campaign.status === 'failed' || campaign.status === 'partial') &&
     campaign.sentCount > 0 &&
     campaign.sentCount < recipients.length
-  const startFrom = resuming ? campaign.sentCount : 0
 
   await prisma.$executeRaw`
     UPDATE "SmsCampaign"
        SET status='sending',
            "recipientCount"=${recipients.length},
            "sentCount"=${resuming ? campaign.sentCount : 0},
+           "sentCountSbea"=${resuming ? campaign.sentCountSbea : 0},
+           "sentCountSbgh"=${resuming ? campaign.sentCountSbgh : 0},
            "nextTrancheAt"=NULL,
            "updatedAt"=now()
      WHERE id = ${campaignId}`
 
-  // For BOTH branch, we need an SMS-account-key for each branch. Otherwise
-  // pick the configured branch's key.
+  // Resolve the httpSMS credentials for each branch this campaign needs.
+  // Each branch has its OWN httpSMS account (different Globe SIM, different
+  // API key, different sender phone). Fail loudly here if a key is missing
+  // so the operator gets a clear message instead of opaque 401s during send.
   const useBranches = campaign.branch === 'BOTH' ? ['SBEA', 'SBGH'] : [campaign.branch]
   const fromCfg: Record<string, { key: string; from: string }> = {}
   for (const b of useBranches) {
     const cfg = BRANCH_CONFIG[b]
     if (!cfg) throw new Error(`Unknown branch ${b}`)
+    if (!cfg.httpSmsKey) {
+      throw new Error(
+        `httpSMS not configured for branch ${b}. ` +
+        `Install httpSMS on the ${cfg.clinicName} Android phone and set ` +
+        `HTTPSMS_API_KEY_${b} in the server environment.`
+      )
+    }
     fromCfg[b] = { key: cfg.httpSmsKey, from: cfg.phone }
   }
 
-  let sentCount = startFrom
-  let trancheSentCount = 0
-  let rateLimitHit = false
-
-  // Decide which branch each recipient belongs to (for BOTH). Patient.branches
-  // is an array; use the first match in our active branches.
+  // Decide which branch each recipient belongs to. Patient.branches is an
+  // array (multi-branch primary); fall back to the legacy single-branch
+  // field. Recipients whose branch isn't in `useBranches` (shouldn't happen
+  // because resolveRecipients already filters, but defensively) are pinned
+  // to the first branch as a safety net.
   const patientsWithBranch = await prisma.patient.findMany({
     where: { id: { in: recipients.map(r => r.id) } },
     select: { id: true, branches: true, branch: true },
@@ -265,55 +284,97 @@ export async function executeSendSmsCampaign(campaignId: string): Promise<void> 
   for (const p of patientsWithBranch) {
     const b = p.branches.find(x => useBranches.some(ub => BRANCH_ENUM[ub] === x))
             ?? (p.branch && useBranches.some(ub => BRANCH_ENUM[ub] === p.branch) ? p.branch : null)
-    if (b) {
-      // Map enum back to short code
-      const short = Object.entries(BRANCH_ENUM).find(([, e]) => e === b)?.[0]
-      if (short) branchByPatient.set(p.id, short)
-    }
+    const short = b ? Object.entries(BRANCH_ENUM).find(([, e]) => e === b)?.[0] : null
+    branchByPatient.set(p.id, short ?? useBranches[0])
   }
 
-  try {
-    for (let i = startFrom; i < recipients.length; i++) {
-      const patient = recipients[i]
-      const branchShort = branchByPatient.get(patient.id) ?? useBranches[0]
-      const cfg = fromCfg[branchShort] ?? fromCfg[useBranches[0]]
+  // Partition recipients by branch and sort each subset by id (deterministic
+  // order so per-branch sentCounts unambiguously identify the next-to-send
+  // recipient when resuming).
+  const recipientsByBranch: Record<string, typeof recipients> = {}
+  for (const b of useBranches) recipientsByBranch[b] = []
+  for (const r of recipients) {
+    const b = branchByPatient.get(r.id) ?? useBranches[0]
+    recipientsByBranch[b].push(r)
+  }
+  for (const b of useBranches) {
+    recipientsByBranch[b].sort((a, c) => a.id.localeCompare(c.id))
+  }
 
-      try {
-        await sendOneSms(patient.phone, cfg.from, campaign.message, cfg.key)
-      } catch (sendErr) {
-        const errObj = sendErr as { message?: string }
-        const msg = (errObj?.message ?? '').toLowerCase()
-        // httpSMS surfaces 429 / 'rate limit' / 'quota' phrasing in the body
-        if (msg.includes('rate limit') || msg.includes('quota') || msg.includes('429') || msg.includes('403')) {
-          rateLimitHit = true
-          await new Promise(r => setTimeout(r, 5000))
-          try {
-            await sendOneSms(patient.phone, cfg.from, campaign.message, cfg.key)
-            rateLimitHit = false
-          } catch {
-            break
+  // Per-branch progress (resumed from DB columns sentCountSbea / sentCountSbgh).
+  const branchProgress: Record<string, number> = {
+    SBEA: resuming ? campaign.sentCountSbea : 0,
+    SBGH: resuming ? campaign.sentCountSbgh : 0,
+  }
+
+  let sentCount = (branchProgress.SBEA ?? 0) + (branchProgress.SBGH ?? 0)
+  let rateLimitHit = false
+
+  // Send each branch in turn. Each branch independently caps at
+  // DAILY_CAP_PER_TRANCHE. SBEA hitting its cap doesn't block SBGH from
+  // sending in the same tranche — they run on separate Globe SIMs against
+  // separate httpSMS accounts.
+  try {
+    for (const b of useBranches) {
+      const cfg = fromCfg[b]
+      const branchList = recipientsByBranch[b]
+      const branchStart = branchProgress[b] ?? 0
+      let trancheSentForBranch = 0
+
+      for (let i = branchStart; i < branchList.length; i++) {
+        if (trancheSentForBranch >= DAILY_CAP_PER_TRANCHE) break
+
+        const patient = branchList[i]
+        try {
+          await sendOneSms(patient.phone, cfg.from, campaign.message, cfg.key)
+        } catch (sendErr) {
+          const errObj = sendErr as { message?: string }
+          const msg = (errObj?.message ?? '').toLowerCase()
+          // httpSMS surfaces 429 / 'rate limit' / 'quota' phrasing in body.
+          if (msg.includes('rate limit') || msg.includes('quota') || msg.includes('429') || msg.includes('403')) {
+            rateLimitHit = true
+            await new Promise(r => setTimeout(r, 5000))
+            try {
+              await sendOneSms(patient.phone, cfg.from, campaign.message, cfg.key)
+              rateLimitHit = false
+            } catch {
+              // This branch is rate-limited; stop sending for THIS branch
+              // but let the next branch in the loop still try.
+              break
+            }
+          } else {
+            // Non-rate-limit error — log + skip this recipient, advance the
+            // branch's pointer so we don't retry them tomorrow.
+            console.warn(`[sms] send to ${patient.phone} (${b}) failed:`, errObj?.message)
+            branchProgress[b] = i + 1
+            continue
           }
-        } else {
-          // Non-rate-limit error — log per-recipient but keep going so one
-          // bad number doesn't abort the whole campaign.
-          console.warn(`[sms] send to ${patient.phone} failed:`, errObj?.message)
-          continue
+        }
+        sentCount++
+        trancheSentForBranch++
+        branchProgress[b] = i + 1
+        await new Promise(r => setTimeout(r, SMS_THROTTLE_MS))
+        if (sentCount % 10 === 0) {
+          await prisma.$executeRaw`
+            UPDATE "SmsCampaign"
+               SET "sentCount"=${sentCount},
+                   "sentCountSbea"=${branchProgress.SBEA ?? 0},
+                   "sentCountSbgh"=${branchProgress.SBGH ?? 0},
+                   "updatedAt"=now()
+             WHERE id = ${campaignId}
+          `.catch(() => undefined)
         }
       }
-      sentCount++
-      trancheSentCount++
-      await new Promise(r => setTimeout(r, SMS_THROTTLE_MS))
-      if (sentCount % 10 === 0) {
-        await prisma.$executeRaw`UPDATE "SmsCampaign" SET "sentCount"=${sentCount}, "updatedAt"=now() WHERE id = ${campaignId}`.catch(() => undefined)
-      }
-      if (trancheSentCount >= DAILY_CAP_PER_TRANCHE) break
     }
 
     const fullyDone = sentCount >= recipients.length
     if (fullyDone) {
       await prisma.$executeRaw`
         UPDATE "SmsCampaign"
-           SET status='sent', "sentAt"=now(), "sentCount"=${sentCount},
+           SET status='sent', "sentAt"=now(),
+               "sentCount"=${sentCount},
+               "sentCountSbea"=${branchProgress.SBEA ?? 0},
+               "sentCountSbgh"=${branchProgress.SBGH ?? 0},
                "nextTrancheAt"=NULL, "updatedAt"=now()
          WHERE id = ${campaignId}`
       return
@@ -322,18 +383,32 @@ export async function executeSendSmsCampaign(campaignId: string): Promise<void> 
     const next = nextTrancheTime()
     await prisma.$executeRaw`
       UPDATE "SmsCampaign"
-         SET status='partial', "sentCount"=${sentCount},
+         SET status='partial',
+             "sentCount"=${sentCount},
+             "sentCountSbea"=${branchProgress.SBEA ?? 0},
+             "sentCountSbgh"=${branchProgress.SBGH ?? 0},
              "nextTrancheAt"=${next}, "updatedAt"=now()
        WHERE id = ${campaignId}`
     await scheduleNextTranche(campaignId, next)
 
     if (rateLimitHit) {
-      console.warn(`[sms] Rate limit hit at ${sentCount}/${recipients.length}. Next tranche ${next.toISOString()}.`)
+      console.warn(
+        `[sms] Rate limit hit at ${sentCount}/${recipients.length} ` +
+        `(SBEA ${branchProgress.SBEA ?? 0}, SBGH ${branchProgress.SBGH ?? 0}). ` +
+        `Next tranche ${next.toISOString()}.`
+      )
     }
   } catch (err) {
     const cur = await prisma.$queryRaw<Array<{ status: string }>>`SELECT status FROM "SmsCampaign" WHERE id = ${campaignId}`
     if (cur[0]?.status !== 'partial' && cur[0]?.status !== 'sent') {
-      await prisma.$executeRaw`UPDATE "SmsCampaign" SET status='failed', "sentCount"=${sentCount}, "updatedAt"=now() WHERE id = ${campaignId}`.catch(() => undefined)
+      await prisma.$executeRaw`
+        UPDATE "SmsCampaign"
+           SET status='failed',
+               "sentCount"=${sentCount},
+               "sentCountSbea"=${branchProgress.SBEA ?? 0},
+               "sentCountSbgh"=${branchProgress.SBGH ?? 0},
+               "updatedAt"=now()
+         WHERE id = ${campaignId}`.catch(() => undefined)
     }
     throw err
   }
