@@ -354,7 +354,7 @@ export async function PUT(req: NextRequest) {
   const {
     id, firstName, lastName, email, phone, dob, branches,
     sex, civilStatus, religion, nationality, address, city, diagnosis, notes,
-    firstDayOfConsult, pwdSeniorId, unsubscribed,
+    firstDayOfConsult, pwdSeniorId, unsubscribed, smsUnsubscribed,
   } = body
 
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
