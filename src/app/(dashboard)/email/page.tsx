@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Mail, Sparkles, Send, Users, ChevronDown, Clock, Calendar, CheckCircle2, CheckSquare, Square, FileText, Trash2, Eye, X, RotateCw } from 'lucide-react'
+import { Mail, Sparkles, Send, Users, ChevronDown, Clock, Calendar, CheckCircle2, CheckSquare, Square, FileText, Trash2, Eye, X, RotateCw , Zap } from 'lucide-react'
 
 const BRANCH_FILTERS = [
   { value: 'SANDBOX_EAST',       label: 'East Branch' },
@@ -544,6 +544,17 @@ function CampaignHistory() {
     } catch (e) { alert((e as Error).message) }
   }
 
+  async function scheduleNow(id: string) {
+    if (!confirm('Fire the next tranche immediately? (otherwise it will run automatically tomorrow morning)')) return
+    try {
+      const r = await fetch('/api/email/campaigns/' + id + '/schedule-now', { method: 'POST' })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || 'Schedule failed')
+      alert('Tranche fired — resuming from ' + d.startFrom + '/' + d.total + '.')
+      await load()
+    } catch (e) { alert((e as Error).message) }
+  }
+
   async function deleteCampaign(id: string) {
     if (!confirm('Delete this campaign record? The email that was already sent cannot be recalled.')) return
     try {
@@ -664,6 +675,16 @@ function CampaignHistory() {
                     <button onClick={() => openPreview(r.id)} title="Preview" className="p-1.5 rounded hover:bg-gray-100 inline-block">
                       <Eye size={13} style={{ color: 'var(--mid-gray)' }} />
                     </button>
+                    {(r.status === 'partial') && (
+                      <>
+                        <button onClick={() => scheduleNow(r.id)} title="Fire next tranche now" className="p-1.5 rounded hover:bg-amber-50 inline-block">
+                          <Zap size={13} style={{ color: '#92400E' }} />
+                        </button>
+                        <button onClick={() => resumeCampaign(r.id)} title="Resume sending" className="p-1.5 rounded hover:bg-emerald-50 inline-block">
+                          <RotateCw size={13} style={{ color: '#059669' }} />
+                        </button>
+                      </>
+                    )}
                     {(r.status === 'failed' && r.sentCount < r.recipientCount) && (
                       <button onClick={() => resumeCampaign(r.id)} title="Resume sending" className="p-1.5 rounded hover:bg-emerald-50 inline-block">
                         <RotateCw size={13} style={{ color: '#059669' }} />

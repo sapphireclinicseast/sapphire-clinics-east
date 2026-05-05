@@ -9,6 +9,7 @@ import {
   Users, Mail, BookOpen, Clock, ChevronRight, Link2, ChevronDown, X, BarChart2,
   UserCog, ListOrdered, CalendarDays, ClipboardCheck, Layers, HeartHandshake,
   UsersRound, FileText, Activity,
+  MessageSquare,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useBrand } from '@/contexts/BrandContext'
@@ -68,6 +69,7 @@ function getFullNav(isAdmin: boolean, isMarketingAdmin: boolean) {
         { href: '/patients/profile', icon: Users, label: 'Patient Profile' },
         { href: '/patients/dashboard', icon: BarChart2, label: 'Patient Dashboard' },
         { href: '/email', icon: Mail, label: 'Email Campaigns' },
+        { href: '/sms', icon: MessageSquare, label: 'SMS Campaigns' },
       ],
     },
     {

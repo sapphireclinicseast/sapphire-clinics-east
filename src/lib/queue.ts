@@ -2,6 +2,7 @@ import { Queue, Worker, Job } from 'bullmq'
 import { prisma } from './prisma'
 import { postToFacebook, postToInstagram, postVideoToFacebook, postVideoToInstagram, postCarouselToFacebook, postCarouselToInstagram } from './meta'
 import { executeSendCampaign } from './email'
+import { executeSendSmsCampaign } from './sms'
 
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379'
 
@@ -22,12 +23,17 @@ const connection = getRedisConnection()
 
 export const postQueue = new Queue('scheduled-posts', { connection })
 export const emailQueue = new Queue('scheduled-emails', { connection })
+export const smsQueue   = new Queue('scheduled-sms-campaigns', { connection })
 
 export interface PostJobData {
   postId: string
 }
 
 export interface EmailJobData {
+  campaignId: string
+}
+
+export interface SmsJobData {
   campaignId: string
 }
 
@@ -227,5 +233,27 @@ export function startWorker() {
   })
 
   console.log('✓ BullMQ email worker started')
+
+  // ─── SMS worker ──────────────────────────────────────────────────────────
+  const smsWorker = new Worker<SmsJobData>(
+    'scheduled-sms-campaigns',
+    async (job: Job<SmsJobData>) => {
+      console.log(`Sending scheduled SMS campaign ${job.data.campaignId}`)
+      await executeSendSmsCampaign(job.data.campaignId)
+    },
+    { connection }
+  )
+
+  smsWorker.on('failed', async (job, err) => {
+    if (!job) return
+    console.error(`SMS campaign ${job.data.campaignId} failed:`, err.message)
+    // Mirror the email behaviour — never downgrade 'partial' or 'sent'.
+    const rows = await prisma.$queryRaw<Array<{ status: string }>>`SELECT status FROM "SmsCampaign" WHERE id = ${job.data.campaignId}`.catch(() => [])
+    const cur = rows[0]
+    if (cur?.status === 'partial' || cur?.status === 'sent') return
+    await prisma.$executeRaw`UPDATE "SmsCampaign" SET status='failed', "updatedAt"=now() WHERE id = ${job.data.campaignId}`.catch(() => undefined)
+  })
+
+  console.log('✓ BullMQ SMS worker started')
   return worker
 }

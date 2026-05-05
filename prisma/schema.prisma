@@ -683,3 +683,24 @@ model PatientPayment {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 }
+
+model SmsCampaign {
+  id             String    @id
+  subject        String
+  message        String
+  recipientGroup String
+  branch         String
+  department     String?
+  status         String    @default("draft")
+  recipientCount Int       @default(0)
+  sentCount      Int       @default(0)
+  nextTrancheAt  DateTime? @db.Timestamp(3)
+  scheduledAt    DateTime?
+  sentAt         DateTime?
+  userId         String
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+}
