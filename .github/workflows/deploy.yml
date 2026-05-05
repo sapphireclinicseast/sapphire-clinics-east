@@ -69,7 +69,7 @@ jobs:
             --exclude='COMPANY LOGO/package*.json' \
             --exclude='COMPANY LOGO/capture-intro.mjs' \
             --exclude='api/node_modules' \
-            --exclude='data/' \
+            --exclude='/data/' \
             --exclude='teletherapy/node_modules' \
             --exclude='teletherapy/.next' \
             --exclude='teletherapy/.env' \
