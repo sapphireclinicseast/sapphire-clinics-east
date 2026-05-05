@@ -56,13 +56,15 @@ certbot).
 
 ## What's backed up where
 
-Every backup is **encrypted at rest**. The same passphrase decrypts both
-off-site copies. See [The single secret](#the-single-secret-you-must-have).
+Every off-site backup is **encrypted at rest**. The same passphrase
+decrypts both off-site copies. See [The single secret](#the-single-secret-you-must-have).
 
 | Destination | Cadence | Retention | Lives where |
 |---|---|---|---|
 | Hourly local source tarballs (teletherapy) | hourly :05 | 7 days × 24 = 168 | `/var/backups/teletherapy/` on VPS |
 | Golden snapshot (teletherapy auto-heal) | hourly + per-minute checks | always-current | `/var/lib/teletherapy-golden/` on VPS |
+| **Golden snapshot (accounting auto-heal)** | hourly :10 + per-minute checks | always-current | `/var/lib/accounting-golden/` on VPS |
+| **Golden snapshot (HR auto-heal)** | hourly :10 + per-minute checks | always-current | `/var/lib/hr-golden/` on VPS |
 | Nightly local DB + uploads + source (sapphire) | 02:00 UTC daily | 30 days | `/opt/sapphire/backups/` on VPS |
 | Nightly accounting DB | 02:00 UTC + pre-deploy | ~14 days | `/opt/backups/accounting_db/` on VPS |
 | Nightly HR backup | 02:00 UTC daily | 30 days | `/opt/backups/scei-hr/` on VPS |
@@ -72,6 +74,36 @@ off-site copies. See [The single secret](#the-single-secret-you-must-have).
 Each off-site contains the same five buckets:
 `sapphire-db/`, `sapphire-uploads/`, `accounting-db/`, `hr/`,
 `teletherapy-src/`.
+
+### Auto-heal coverage
+
+Three apps run a per-minute "source-guard" cron that detects regressions
+(missing files, missing env keys, content fingerprints absent from
+key files) and self-heals from the local golden snapshot before users
+notice:
+
+- **teletherapy** → `/usr/local/bin/teletherapy-source-guard.sh`
+- **accounting** → `/usr/local/bin/scei-accounting-source-guard.sh` (rebuilds via `docker compose up -d --force-recreate`)
+- **hr** → `/usr/local/bin/scei-hr-source-guard.sh` (restarts via `pm2 restart hr-platform`)
+
+Each fires an email alert when it triggers a recovery so you know
+something hit them.
+
+### Verification
+
+A weekly automated **restore drill** runs every Sunday 07:00 UTC
+(`/usr/local/bin/scei-restore-drill.sh`):
+
+1. Spins up a throwaway Postgres container.
+2. Pulls the newest GitHub off-site backup, decrypts it, imports both
+   sapphire and accounting dumps.
+3. Counts rows in known tables (`Patient`, `Staff`, `Schedule`,
+   `Consultant`, `PayrollEntry`, `Order`, etc.).
+4. Pulls the newest Google Drive backup, verifies it decrypts and
+   passes a gzip integrity test.
+5. Tears down the container.
+6. Emails a pass/fail summary — **always**, including on success, so a
+   missing weekly email is itself a signal.
 
 ---
 
