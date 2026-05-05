@@ -20,9 +20,13 @@ export async function POST(req: Request) {
     }
 
     // Validate file type
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
+    const allowedTypes = [
+      'image/jpeg', 'image/png', 'image/webp', 'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ]
     if (!allowedTypes.includes(file.type)) {
-      return NextResponse.json({ error: 'File must be an image (JPG, PNG, WebP) or PDF' }, { status: 400 })
+      return NextResponse.json({ error: 'File must be an image (JPG, PNG, WebP), PDF, or Word document' }, { status: 400 })
     }
 
     // Max 10MB

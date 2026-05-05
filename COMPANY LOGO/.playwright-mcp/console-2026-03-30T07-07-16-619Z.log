@@ -1,0 +1,4 @@
+[     724ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://hr.sapphireclinicseast.org/api/dashboard:0
+[     725ms] [ERROR] Dashboard load error: TypeError: Cannot read properties of null (reading 'json')
+    at loadDashboard (https://hr.sapphireclinicseast.org/:1608:30) @ https://hr.sapphireclinicseast.org/:1622
+[   10194ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://hr.sapphireclinicseast.org/api/auth/login:0

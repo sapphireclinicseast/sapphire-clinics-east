@@ -1,0 +1,19 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - img [ref=e6]
+      - heading "SAPPHIRE" [level=1] [ref=e8]
+      - paragraph [ref=e9]: Accounting Hub
+    - generic [ref=e10]:
+      - generic [ref=e11]:
+        - img [ref=e12]
+        - textbox "Email address" [ref=e15]
+      - generic [ref=e16]:
+        - img [ref=e17]
+        - textbox "Password" [ref=e20]
+        - button [ref=e21]:
+          - img [ref=e22]
+      - button "Sign In" [ref=e25]
+      - button "Forgot password?" [ref=e26]
+    - paragraph [ref=e27]: Internal access only — SCEI Accounting Staff
+  - alert [ref=e28]

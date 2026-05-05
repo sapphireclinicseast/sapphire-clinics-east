@@ -1,0 +1,14 @@
+- generic [ref=e2]:
+  - generic:
+    - generic:
+      - img
+  - generic:
+    - generic [ref=e198]:
+      - button "Zoom in" [ref=e199] [cursor=pointer]: +
+      - button "Zoom out" [ref=e200] [cursor=pointer]: −
+    - generic [ref=e201]:
+      - link "Leaflet" [ref=e202] [cursor=pointer]:
+        - /url: https://leafletjs.com
+        - img [ref=e203]
+        - text: Leaflet
+      - text: "| © OSM © CARTO/Esri"

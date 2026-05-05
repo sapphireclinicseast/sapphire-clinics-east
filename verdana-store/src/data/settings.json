@@ -1,0 +1,16 @@
+{
+  "warehouse": {
+    "address": "",
+    "city": "",
+    "zipCode": "",
+    "latitude": 0,
+    "longitude": 0
+  },
+  "shipping": {
+    "tiers": [
+      { "maxKm": 5, "fee": 50 },
+      { "maxKm": 10, "fee": 70 },
+      { "maxKm": 999999, "fee": 100 }
+    ]
+  }
+}

@@ -188,6 +188,66 @@ BEGIN
       ON DELETE CASCADE ON UPDATE CASCADE;
   END IF;
 END$$;
+
+-- Inventory item dimensions for CBM-based freight allocation
+ALTER TABLE "InventoryItem" ADD COLUMN IF NOT EXISTS "dimensionLength" DECIMAL(65,30);
+ALTER TABLE "InventoryItem" ADD COLUMN IF NOT EXISTS "dimensionWidth"  DECIMAL(65,30);
+ALTER TABLE "InventoryItem" ADD COLUMN IF NOT EXISTS "dimensionHeight" DECIMAL(65,30);
+
+-- Inventory adjustment: display reference + batch FK
+ALTER TABLE "InventoryAdjustment" ADD COLUMN IF NOT EXISTS "referenceNumber" TEXT;
+ALTER TABLE "InventoryAdjustment" ADD COLUMN IF NOT EXISTS "batchRefId"      TEXT;
+CREATE INDEX IF NOT EXISTS "InventoryAdjustment_batchRefId_idx" ON "InventoryAdjustment"("batchRefId");
+
+-- Freight allocation batch table
+CREATE TABLE IF NOT EXISTS "InventoryAdjustmentBatch" (
+    "id"                 TEXT NOT NULL,
+    "referenceNumber"    TEXT NOT NULL,
+    "adjustmentDate"     TIMESTAMP(3) NOT NULL,
+    "hasForeignPurchase" BOOLEAN NOT NULL DEFAULT true,
+    "foreignCurrency"    TEXT,
+    "exchangeRate"       DECIMAL(65,30),
+    "freight1Amount"     DECIMAL(65,30),
+    "freight1IsForeign"  BOOLEAN NOT NULL DEFAULT false,
+    "freight2Amount"     DECIMAL(65,30),
+    "freight2IsForeign"  BOOLEAN NOT NULL DEFAULT false,
+    "freight3Amount"     DECIMAL(65,30),
+    "freight3IsForeign"  BOOLEAN NOT NULL DEFAULT false,
+    "totalFreightPHP"    DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "proofUrls"          JSONB,
+    "remarks"            TEXT,
+    "createdById"        TEXT NOT NULL,
+    "createdAt"          TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "InventoryAdjustmentBatch_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "InventoryAdjustmentBatch_referenceNumber_key"
+    ON "InventoryAdjustmentBatch"("referenceNumber");
+CREATE INDEX IF NOT EXISTS "InventoryAdjustmentBatch_createdById_idx"
+    ON "InventoryAdjustmentBatch"("createdById");
+CREATE INDEX IF NOT EXISTS "InventoryAdjustmentBatch_adjustmentDate_idx"
+    ON "InventoryAdjustmentBatch"("adjustmentDate");
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'InventoryAdjustmentBatch_createdById_fkey'
+  ) THEN
+    ALTER TABLE "InventoryAdjustmentBatch"
+      ADD CONSTRAINT "InventoryAdjustmentBatch_createdById_fkey"
+      FOREIGN KEY ("createdById") REFERENCES "User"("id")
+      ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END$$;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'InventoryAdjustment_batchRefId_fkey'
+  ) THEN
+    ALTER TABLE "InventoryAdjustment"
+      ADD CONSTRAINT "InventoryAdjustment_batchRefId_fkey"
+      FOREIGN KEY ("batchRefId") REFERENCES "InventoryAdjustmentBatch"("id")
+      ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END$$;
 SQL
 
 echo "Redeploy complete."

@@ -1,0 +1,12 @@
+[    2974ms] [WARNING] setting warmup data is not supported in the browser @ https://www.pasp.org.ph/_partials/wix-thunderbolt/dist/clientWorker.5f1d7dc5.bundle.min.js:1
+[    3031ms] [INFO] Running the code for the Clinics and Centers page. To debug this code in your browser's dev tools, open i8xe2.js. @ https://www.pasp.org.ph/_partials/wix-thunderbolt/dist/clientWorker.5f1d7dc5.bundle.min.js:1
+[    3667ms] [ERROR] ServerValidationError: Initial data fetching failed for one of the datasets
+    at kl (https://static.parastorage.com/services/dbsm-viewer-app/1.9033.0/app.js:1:147197)
+    at eval (https://static.parastorage.com/services/dbsm-viewer-app/1.9033.0/app.js:1:146477)
+    at Array.reduce (<anonymous>)
+    at Ul._fetchInitialData (https://static.parastorage.com/services/dbsm-viewer-app/1.9033.0/app.js:1:146366)
+    at async Ul._waitForDataFetched (https://static.parastorage.com/services/dbsm-viewer-app/1.9033.0/app.js:1:147054) @ https://www.pasp.org.ph/_partials/wix-thunderbolt/dist/clientWorker.5f1d7dc5.bundle.min.js:1
+[    3667ms] [ERROR] Caused by: eb: WDE0027: The current user does not have permissions to query on the WixForms/1bf89e7e-936f-441d-9bf9-8bd5de608637 collection.
+    at eA (https://static.parastorage.com/services/wix-thunderbolt/dist/4872.199a1724.chunk.min.js:5:3276)
+    at https://static.parastorage.com/services/wix-thunderbolt/dist/4872.199a1724.chunk.min.js:12:36257
+    at https://static.parastorage.com/services/wix-thunderbolt/dist/4872.199a1724.chunk.min.js:12:36320 @ https://www.pasp.org.ph/_partials/wix-thunderbolt/dist/clientWorker.5f1d7dc5.bundle.min.js:1

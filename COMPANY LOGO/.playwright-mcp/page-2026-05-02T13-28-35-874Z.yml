@@ -1,0 +1,23 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - heading "Employee Request" [level=1] [ref=e5]
+      - paragraph [ref=e6]: Submit a leave, overtime, or other request
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - generic [ref=e9]: Request Type
+        - combobox [ref=e10]:
+          - option "Select request type..." [selected]
+          - option "Leave"
+          - option "Overtime"
+          - option "Undertime"
+          - option "Change Schedule"
+          - option "Change Time In"
+          - option "Change Time Out"
+          - option "Certificate of Employment"
+          - option "Certificate of Consultation"
+      - generic [ref=e11]:
+        - generic [ref=e12]: Your Name
+        - textbox "Search your name..." [ref=e13]
+      - button "Submit Request" [disabled] [ref=e14]
+  - alert [ref=e15]

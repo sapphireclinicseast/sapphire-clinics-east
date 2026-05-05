@@ -1,0 +1,1894 @@
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - region "top of page"
+    - button "Skip to Main Content"
+    - generic [ref=e10]:
+      - generic:
+        - banner:
+          - generic [ref=e15]:
+            - generic:
+              - paragraph [ref=e18]:
+                - link "Philippine Association of Speech-Language Pathologists" [ref=e20] [cursor=pointer]:
+                  - /url: https://www.pasp.org.ph
+              - generic [ref=e21]:
+                - navigation "Site" [ref=e24]:
+                  - list [ref=e25]:
+                    - listitem [ref=e26]:
+                      - generic [ref=e27]:
+                        - button "Membership" [ref=e28] [cursor=pointer]:
+                          - generic [ref=e30]: Membership
+                        - generic:
+                          - button "Toggle Membership":
+                            - img
+                    - listitem [ref=e32]:
+                      - generic [ref=e33]:
+                        - button "About" [ref=e34] [cursor=pointer]:
+                          - generic [ref=e36]: About
+                        - generic:
+                          - button "Toggle About":
+                            - img
+                    - listitem [ref=e38]:
+                      - link "Events" [ref=e40] [cursor=pointer]:
+                        - /url: https://www.pasp.org.ph/event-list
+                        - generic [ref=e42]: Events
+                    - listitem [ref=e43]:
+                      - generic [ref=e44]:
+                        - link "Support" [ref=e45] [cursor=pointer]:
+                          - /url: https://www.pasp.org.ph/support-pasp
+                          - generic [ref=e47]: Support
+                        - generic:
+                          - button "Toggle Support":
+                            - img
+                - button "Log In" [ref=e51] [cursor=pointer]:
+                  - img [ref=e55]
+                  - generic [ref=e58]: Log In
+                - link "Join Us" [ref=e60] [cursor=pointer]:
+                  - /url: https://www.pasp.org.ph/join-us
+                  - generic [ref=e62]: Join Us
+        - main:
+          - generic [ref=e67]:
+            - generic:
+              - heading "Directory of Clinics and Centers with Speech and Language Therapy Services" [level=2] [ref=e70]
+              - link "Explore" [ref=e72] [cursor=pointer]:
+                - /url: https://www.pasp.org.ph/clinics-centers
+                - generic [ref=e74]: Explore
+          - list [ref=e80]:
+            - listitem [ref=e81]:
+              - button "Filters" [ref=e83] [cursor=pointer]:
+                - generic [ref=e84]: Filters
+                - img [ref=e86]
+              - region "Filters"
+          - generic [ref=e92]:
+            - paragraph [ref=e95]: Legend
+            - generic [ref=e96]:
+              - generic [ref=e98]:
+                - img [ref=e102]
+                - paragraph [ref=e106]: Home-Based
+              - generic [ref=e107]:
+                - img [ref=e111]
+                - paragraph [ref=e116]: Online / Teletherapy
+              - generic [ref=e117]:
+                - img [ref=e121]
+                - paragraph [ref=e125]: In-Clinic
+              - generic [ref=e126]:
+                - img [ref=e130]
+                - paragraph [ref=e136]: In-Patient (For Hospital-Based)
+          - generic [ref=e143]:
+            - list:
+              - listitem [ref=e144]:
+                - generic:
+                  - generic [ref=e146]:
+                    - generic [ref=e150]:
+                      - heading "GROWTH WITH PLAY CO." [level=3] [ref=e153]
+                      - heading "Unit 6 HPL CENTRE, SANTA CRUZ" [level=3] [ref=e155]
+                      - heading "GUIGUINTO" [level=3] [ref=e157]
+                    - generic [ref=e158]:
+                      - heading "09209016610" [level=3] [ref=e161]
+                      - generic:
+                        - heading [level=3]
+                    - heading "info@growthwithplay.com.ph" [level=3] [ref=e163]:
+                      - link "info@growthwithplay.com.ph" [ref=e165] [cursor=pointer]:
+                        - /url: mailto:info@growthwithplay.com.ph
+                    - paragraph [ref=e167]: Regular SLP Services, Augmentative and Alternative Communication (AAC), Bobath Approach, DDTC, Oral Placement Therapy, SOS-Feeding
+                  - generic [ref=e170]:
+                    - img [ref=e174]
+                    - img [ref=e181]
+                    - img [ref=e187]
+                    - img [ref=e194]
+              - listitem [ref=e197]:
+                - generic:
+                  - generic [ref=e199]:
+                    - generic [ref=e203]:
+                      - heading "Therapy Matters Intervention Partners Co." [level=3] [ref=e206]
+                      - heading "Unit 11-12, JMR Apartments, Lalakhan Rd., Brgy. Lalakhan" [level=3] [ref=e208]
+                      - heading "Santa Maria" [level=3] [ref=e210]
+                    - generic [ref=e211]:
+                      - heading "09088788682" [level=3] [ref=e214]
+                      - generic:
+                        - heading [level=3]
+                    - heading "admin@therapymatters.com.ph" [level=3] [ref=e216]:
+                      - link "admin@therapymatters.com.ph" [ref=e218] [cursor=pointer]:
+                        - /url: mailto:admin@therapymatters.com.ph
+                    - paragraph [ref=e220]: Regular SLP Services, Augmentative and Alternative Communication (AAC), Bobath Approach, LSVT-LOUD, DDTC, Oral Placement Therapy, SOS-Feeding, Auditory Verbal Therapy
+                  - generic [ref=e223]:
+                    - img [ref=e227]
+                    - img [ref=e234]
+                    - img [ref=e240]
+                    - img [ref=e247]
+              - listitem [ref=e250]:
+                - generic:
+                  - generic [ref=e252]:
+                    - generic [ref=e256]:
+                      - heading "Skill Haven Therapy Solutions" [level=3] [ref=e259]
+                      - heading "Unit 9 2nd Flr Centro Uno Bldg, Roman Hiway, Tenejero," [level=3] [ref=e261]
+                      - heading "Balanga City" [level=3] [ref=e263]
+                    - generic [ref=e264]:
+                      - heading "+63939-932-1988" [level=3] [ref=e267]
+                      - heading / [level=3] [ref=e269]
+                      - heading "+63946-496-7769" [level=3] [ref=e271]
+                    - heading "skills.haven2023@gmail.com" [level=3] [ref=e273]:
+                      - link "skills.haven2023@gmail.com" [ref=e275] [cursor=pointer]:
+                        - /url: mailto:skills.haven2023@gmail.com
+                    - paragraph [ref=e277]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PECS (AAC), Bobath Approach
+                  - generic [ref=e280]:
+                    - img [ref=e284]
+                    - img [ref=e291]
+              - listitem [ref=e294]:
+                - generic:
+                  - generic [ref=e296]:
+                    - generic [ref=e300]:
+                      - heading "Up and Up Therapy Center" [level=3] [ref=e303]
+                      - heading "829 Vicente Cruz Street, Sampaloc, Manila, 1008" [level=3] [ref=e305]
+                      - heading "Manila" [level=3] [ref=e307]
+                    - generic [ref=e308]:
+                      - heading "+639989509464" [level=3] [ref=e311]
+                      - heading / [level=3] [ref=e313]
+                      - heading "+63287069691" [level=3] [ref=e315]
+                    - heading "inquiries.upanduptherapy@gmail.com" [level=3] [ref=e317]:
+                      - link "inquiries.upanduptherapy@gmail.com" [ref=e319] [cursor=pointer]:
+                        - /url: mailto:inquiries.upanduptherapy@gmail.com
+                    - paragraph [ref=e321]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PROMPT
+                  - generic [ref=e324]:
+                    - img [ref=e328]
+                    - img [ref=e335]
+              - listitem [ref=e338]:
+                - generic:
+                  - generic [ref=e340]:
+                    - generic [ref=e344]:
+                      - heading "LifeLink Therapy Center" [level=3] [ref=e347]
+                      - heading "4 Champaca St., Brgy. Marikina Heights, Marikina City" [level=3] [ref=e349]
+                      - heading "Marikina" [level=3] [ref=e351]
+                    - generic [ref=e352]:
+                      - heading "09171695465" [level=3] [ref=e355]
+                      - heading / [level=3] [ref=e357]
+                      - heading "+63275091040" [level=3] [ref=e359]
+                    - heading "lifelink.marikina@gmail.com" [level=3] [ref=e361]:
+                      - link "lifelink.marikina@gmail.com" [ref=e363] [cursor=pointer]:
+                        - /url: mailto:lifelink.marikina@gmail.com
+                    - paragraph [ref=e365]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PECS (AAC), PROMPT
+                  - generic [ref=e368]:
+                    - img [ref=e372]
+                    - img [ref=e379]
+                    - img [ref=e385]
+                    - img [ref=e392]
+              - listitem [ref=e395]:
+                - generic:
+                  - generic [ref=e397]:
+                    - generic [ref=e401]:
+                      - heading "Creative Learner’s Home, Inc." [level=3] [ref=e404]
+                      - heading "The Redwoods Condominium Sales Pavilion, Quirino Highway, Pasong Putik, Quezon City" [level=3] [ref=e406]
+                      - heading "Quezon City" [level=3] [ref=e408]
+                    - generic [ref=e409]:
+                      - heading "09175312384" [level=3] [ref=e412]
+                      - heading / [level=3] [ref=e414]
+                      - heading "(0939) 924 3680" [level=3] [ref=e416]
+                    - heading "creative learnershome.trw@gmail.com" [level=3] [ref=e418]:
+                      - generic [ref=e419]:
+                        - text: creative
+                        - link "learnershome.trw@gmail.com" [ref=e420] [cursor=pointer]:
+                          - /url: mailto:learnershome.trw@gmail.com
+                    - paragraph [ref=e422]: Regular SLP Services
+                  - generic [ref=e425]:
+                    - img [ref=e429]
+                    - img [ref=e436]
+              - listitem [ref=e439]:
+                - generic:
+                  - generic [ref=e441]:
+                    - generic [ref=e445]:
+                      - heading "Creative Learner’s Home, Inc." [level=3] [ref=e448]
+                      - heading "The Redwoods Sales Pavilion, Quirino Highway, Pasong Putik, Quezon City" [level=3] [ref=e450]
+                      - heading "Quezon City" [level=3] [ref=e452]
+                    - generic [ref=e453]:
+                      - heading "09175312384" [level=3] [ref=e456]
+                      - heading / [level=3] [ref=e458]
+                      - heading "(0939) 924 3680" [level=3] [ref=e460]
+                    - heading "creativelearnershome.trw@gmail.com" [level=3] [ref=e462]:
+                      - link "creativelearnershome.trw@gmail.com" [ref=e464] [cursor=pointer]:
+                        - /url: mailto:creativelearnershome.trw@gmail.com
+                    - paragraph [ref=e466]: Regular SLP Services
+                  - generic [ref=e469]:
+                    - img [ref=e473]
+                    - img [ref=e480]
+              - listitem [ref=e483]:
+                - generic:
+                  - generic [ref=e485]:
+                    - generic [ref=e489]:
+                      - heading "Pangasinan Center for Therapy Services Incorporated (TheraCare)" [level=3] [ref=e492]
+                      - heading "175 Norman’s Apartment AB Fernandez St. West Dagupan City Pangasinan" [level=3] [ref=e494]
+                      - heading "Dagupan" [level=3] [ref=e496]
+                    - generic [ref=e497]:
+                      - heading "09493779394" [level=3] [ref=e500]
+                      - generic:
+                        - heading [level=3]
+                    - heading "pangasinan_cts@yahoo.com.ph" [level=3] [ref=e502]:
+                      - link "pangasinan_cts@yahoo.com.ph" [ref=e504] [cursor=pointer]:
+                        - /url: mailto:pangasinan_cts@yahoo.com.ph
+                    - paragraph [ref=e506]: Regular SLP Services
+                  - generic [ref=e509]:
+                    - img [ref=e513]
+                    - img [ref=e520]
+                    - img [ref=e526]
+                    - img [ref=e533]
+              - listitem [ref=e536]:
+                - generic:
+                  - generic [ref=e538]:
+                    - generic [ref=e542]:
+                      - heading "Talk Positive Therapy Center" [level=3] [ref=e545]
+                      - heading "59 14th St., East Tapinac" [level=3] [ref=e547]
+                      - heading "Olongapo City" [level=3] [ref=e549]
+                    - generic [ref=e550]:
+                      - heading "+639189028253" [level=3] [ref=e553]
+                      - generic:
+                        - heading [level=3]
+                    - heading "tmbalazuela@gmail.com" [level=3] [ref=e555]:
+                      - link "tmbalazuela@gmail.com" [ref=e557] [cursor=pointer]:
+                        - /url: mailto:tmbalazuela@gmail.com
+                    - paragraph [ref=e559]: Regular SLP Services
+                  - generic [ref=e562]:
+                    - img [ref=e566]
+                    - img [ref=e573]
+              - listitem [ref=e576]:
+                - generic:
+                  - generic [ref=e578]:
+                    - generic [ref=e582]:
+                      - heading "SH Therapy Solutions Inc., (Skills Haven Therapy Solutions)" [level=3] [ref=e585]
+                      - heading "Unit 9 Centro Uno Bldg., Roman Super Hiway, Tenejero" [level=3] [ref=e587]
+                      - heading "Balanga City" [level=3] [ref=e589]
+                    - generic [ref=e590]:
+                      - heading "0939-932-1988" [level=3] [ref=e593]
+                      - generic:
+                        - heading [level=3]
+                    - heading "skills.haven2023@gmail.com" [level=3] [ref=e595]:
+                      - link "skills.haven2023@gmail.com" [ref=e597] [cursor=pointer]:
+                        - /url: mailto:skills.haven2023@gmail.com
+                    - paragraph [ref=e599]: Regular SLP Services, Bobath Approach
+                  - generic [ref=e602]:
+                    - img [ref=e606]
+                    - img [ref=e613]
+              - listitem [ref=e616]:
+                - generic:
+                  - generic [ref=e618]:
+                    - generic [ref=e622]:
+                      - heading "Play PALS Child Development Center" [level=3] [ref=e625]
+                      - heading "3F Em Commercial Plaza, Gov. F. Halili Rd. Cor Tubigan Rd." [level=3] [ref=e627]
+                      - heading "San Jose del Monte" [level=3] [ref=e629]
+                    - generic [ref=e630]:
+                      - heading "09279520094" [level=3] [ref=e633]
+                      - heading / [level=3] [ref=e635]
+                      - heading "09959485635" [level=3] [ref=e637]
+                    - heading "playpalscdc@gmail.com" [level=3] [ref=e639]:
+                      - link "playpalscdc@gmail.com" [ref=e641] [cursor=pointer]:
+                        - /url: mailto:playpalscdc@gmail.com
+                    - paragraph [ref=e643]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PROMPT, Oral Placement Therapy
+                  - generic [ref=e646]:
+                    - img [ref=e650]
+                    - img [ref=e657]
+                    - img [ref=e663]
+                    - img [ref=e670]
+              - listitem [ref=e673]:
+                - generic:
+                  - generic [ref=e675]:
+                    - generic [ref=e679]:
+                      - heading "PALMS CHILDREN'S CENTER" [level=3] [ref=e682]
+                      - heading "RIZAL ST., MATAAS NA KAHOY, BATANGAS" [level=3] [ref=e684]
+                      - heading "Mataas na Kahoy" [level=3] [ref=e686]
+                    - generic [ref=e687]:
+                      - heading "+639176290748" [level=3] [ref=e690]
+                      - generic:
+                        - heading [level=3]
+                    - heading "palmscc.mk@gmail.com" [level=3] [ref=e692]:
+                      - link "palmscc.mk@gmail.com" [ref=e694] [cursor=pointer]:
+                        - /url: mailto:palmscc.mk@gmail.com
+                    - paragraph [ref=e696]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PROMPT
+                  - generic [ref=e699]:
+                    - img [ref=e703]
+                    - img [ref=e710]
+              - listitem [ref=e713]:
+                - generic:
+                  - generic [ref=e715]:
+                    - generic [ref=e719]:
+                      - heading "Blausome Therapy Center" [level=3] [ref=e722]
+                      - heading "23 Burgos Street, Victory Sur, Purok 6" [level=3] [ref=e724]
+                      - heading "Santiago City" [level=3] [ref=e726]
+                    - generic [ref=e727]:
+                      - heading "+63915-274-7225" [level=3] [ref=e730]
+                      - generic:
+                        - heading [level=3]
+                    - heading "blausometherapycenter@gmail.com" [level=3] [ref=e732]:
+                      - link "blausometherapycenter@gmail.com" [ref=e734] [cursor=pointer]:
+                        - /url: mailto:blausometherapycenter@gmail.com
+                    - paragraph [ref=e736]: Regular SLP Services, PROMPT
+                  - generic [ref=e739]:
+                    - img [ref=e743]
+                    - img [ref=e750]
+              - listitem [ref=e753]:
+                - generic:
+                  - generic [ref=e755]:
+                    - generic [ref=e759]:
+                      - heading "DreamLab Therapy Center" [level=3] [ref=e762]
+                      - heading "2nd floor, Farmer's Building, General Miguel Malvar Street, Brgy. V-B" [level=3] [ref=e764]
+                      - heading "San Pablo City" [level=3] [ref=e766]
+                    - generic [ref=e767]:
+                      - heading "+639615330633" [level=3] [ref=e770]
+                      - generic:
+                        - heading [level=3]
+                    - heading "spc.dreamlab@gmail.com" [level=3] [ref=e772]:
+                      - link "spc.dreamlab@gmail.com" [ref=e774] [cursor=pointer]:
+                        - /url: mailto:spc.dreamlab@gmail.com
+                    - paragraph [ref=e776]: Regular SLP Services
+                  - generic [ref=e779]:
+                    - img [ref=e783]
+                    - img [ref=e790]
+              - listitem [ref=e793]:
+                - generic:
+                  - generic [ref=e795]:
+                    - generic [ref=e799]:
+                      - heading "Voices Envisioned Therapy Center" [level=3] [ref=e802]
+                      - heading "537 McArthur Highway San Isidro City of San Fernando Pampanga (2000)" [level=3] [ref=e804]
+                      - heading "City of San Fernando" [level=3] [ref=e806]
+                    - generic [ref=e807]:
+                      - heading "+639953997328" [level=3] [ref=e810]
+                      - heading / [level=3] [ref=e812]
+                      - heading "+639166514345" [level=3] [ref=e814]
+                    - heading "voicesenvisioned.tc@gmail.com" [level=3] [ref=e816]:
+                      - link "voicesenvisioned.tc@gmail.com" [ref=e818] [cursor=pointer]:
+                        - /url: mailto:voicesenvisioned.tc@gmail.com
+                    - paragraph [ref=e820]: Regular SLP Services, PROMPT
+                  - generic [ref=e823]:
+                    - img [ref=e827]
+                    - img [ref=e834]
+              - listitem [ref=e837]:
+                - generic:
+                  - generic [ref=e839]:
+                    - generic [ref=e843]:
+                      - heading "FUNdamentals Pediatric Therapy Center" [level=3] [ref=e846]
+                      - heading "Unit A106 Tango Plaza Building, Queen's Road, Kamputhaw" [level=3] [ref=e848]
+                      - heading "Cebu City" [level=3] [ref=e850]
+                    - generic [ref=e851]:
+                      - heading "+639162876114" [level=3] [ref=e854]
+                      - heading / [level=3] [ref=e856]
+                      - heading "0322556495" [level=3] [ref=e858]
+                    - heading "fundamentals.pediatrictherapy@gmail.com" [level=3] [ref=e860]:
+                      - link "fundamentals.pediatrictherapy@gmail.com" [ref=e862] [cursor=pointer]:
+                        - /url: mailto:fundamentals.pediatrictherapy@gmail.com
+                    - paragraph [ref=e864]: Regular SLP Services, Augmentative and Alternative Communication (AAC)
+                  - generic [ref=e867]:
+                    - img [ref=e871]
+                    - img [ref=e878]
+                    - img [ref=e884]
+                    - img [ref=e891]
+              - listitem [ref=e894]:
+                - generic:
+                  - generic [ref=e896]:
+                    - generic [ref=e900]:
+                      - heading "Little Big Steps Pediatric Therapy Clinic, Inc" [level=3] [ref=e903]
+                      - heading "32A France St., Better Living Subd" [level=3] [ref=e905]
+                      - heading "Parañaque City" [level=3] [ref=e907]
+                    - generic [ref=e908]:
+                      - heading "85417791" [level=3] [ref=e911]
+                      - heading / [level=3] [ref=e913]
+                      - heading "09558677650" [level=3] [ref=e915]
+                    - heading "Littlebigstepspediatric@gmail.com" [level=3] [ref=e917]:
+                      - link "Littlebigstepspediatric@gmail.com" [ref=e919] [cursor=pointer]:
+                        - /url: mailto:Littlebigstepspediatric@gmail.com
+                    - paragraph [ref=e921]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PROMPT
+                  - generic [ref=e924]:
+                    - img [ref=e930]
+                    - img [ref=e935]
+                    - img [ref=e942]
+                    - img [ref=e948]
+                    - img [ref=e955]
+              - listitem [ref=e958]:
+                - generic:
+                  - generic [ref=e960]:
+                    - generic [ref=e964]:
+                      - heading "The Therapy Room Evaluation and Intervention Services, Inc." [level=3] [ref=e967]
+                      - heading "Block 16, Lot 15 Tennessee Street Town & Country Southville" [level=3] [ref=e969]
+                      - heading "Binan City" [level=3] [ref=e971]
+                    - generic [ref=e972]:
+                      - heading "+639176741885" [level=3] [ref=e975]
+                      - heading / [level=3] [ref=e977]
+                      - heading "0492502745" [level=3] [ref=e979]
+                    - heading "therapyroomph@gmail.com" [level=3] [ref=e981]:
+                      - link "therapyroomph@gmail.com" [ref=e983] [cursor=pointer]:
+                        - /url: mailto:therapyroomph@gmail.com
+                    - paragraph [ref=e985]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PECS (AAC), PROMPT, Auditory Verbal Therapy
+                  - generic [ref=e988]:
+                    - img [ref=e992]
+                    - img [ref=e999]
+                    - img [ref=e1005]
+                    - img [ref=e1012]
+              - listitem [ref=e1015]:
+                - generic:
+                  - generic [ref=e1017]:
+                    - generic [ref=e1021]:
+                      - heading "Hope Speaks Therapy Center" [level=3] [ref=e1024]
+                      - heading "5B Maryland St., Pinagkaisahan" [level=3] [ref=e1026]
+                      - heading "Quezon City" [level=3] [ref=e1028]
+                    - generic [ref=e1029]:
+                      - heading "+639287997704" [level=3] [ref=e1032]
+                      - heading / [level=3] [ref=e1034]
+                      - heading "+639092057046" [level=3] [ref=e1036]
+                    - heading "hopespeakstherapycenter@gmail.com" [level=3] [ref=e1038]:
+                      - link "hopespeakstherapycenter@gmail.com" [ref=e1040] [cursor=pointer]:
+                        - /url: mailto:hopespeakstherapycenter@gmail.com
+                    - paragraph [ref=e1042]: Regular SLP Services, PROMPT, Oral Placement Therapy, McClosky Technique
+                  - generic [ref=e1045]:
+                    - img [ref=e1049]
+                    - img [ref=e1056]
+                    - img [ref=e1062]
+                    - img [ref=e1069]
+              - listitem [ref=e1072]:
+                - generic:
+                  - generic [ref=e1074]:
+                    - generic [ref=e1078]:
+                      - heading "Primocare Therapy Center" [level=3] [ref=e1081]
+                      - heading "3/F Scout Center Building, 38 Scout Limbaga Street cor. Scout Tobias" [level=3] [ref=e1083]
+                      - heading "Quezon City" [level=3] [ref=e1085]
+                    - generic [ref=e1086]:
+                      - heading "+63969-087-5587" [level=3] [ref=e1089]
+                      - heading / [level=3] [ref=e1091]
+                      - heading "+6328-732-8204 / +63917-306-6736" [level=3] [ref=e1093]
+                    - heading "primocaretherapycenter@gmail.com" [level=3] [ref=e1095]:
+                      - link "primocaretherapycenter@gmail.com" [ref=e1097] [cursor=pointer]:
+                        - /url: mailto:primocaretherapycenter@gmail.com
+                    - paragraph [ref=e1099]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PROMPT, Oral Placement Therapy, Fiberoptic Endoscopic Evaluation of Swallow, Nasoendoscopy
+                  - generic [ref=e1102]:
+                    - img [ref=e1106]
+                    - img [ref=e1113]
+                    - img [ref=e1119]
+                    - img [ref=e1126]
+              - listitem [ref=e1129]:
+                - generic:
+                  - generic [ref=e1131]:
+                    - generic [ref=e1135]:
+                      - heading "WORDABILITIES Development Center" [level=3] [ref=e1138]
+                      - heading "2/F ECK Building, N. Carpio St. cor. Rizal Avenue, West Grace Park, Caloocan City 1406" [level=3] [ref=e1140]:
+                        - generic [ref=e1141]:
+                          - text: 2/F ECK Building, N. Carpio St. cor. Rizal Avenue,
+                          - text: West Grace Park, Caloocan City 1406
+                      - heading "Caloocan City" [level=3] [ref=e1143]
+                    - generic [ref=e1144]:
+                      - heading "+63917-803-4451" [level=3] [ref=e1147]
+                      - heading / [level=3] [ref=e1149]
+                      - heading "+6328-631-8916" [level=3] [ref=e1151]
+                    - heading "wordabilitiestherapyclinic@gmail.com" [level=3] [ref=e1153]:
+                      - link "wordabilitiestherapyclinic@gmail.com" [ref=e1155] [cursor=pointer]:
+                        - /url: mailto:wordabilitiestherapyclinic@gmail.com
+                    - paragraph [ref=e1157]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PECS (AAC), Bobath Approach, PROMPT, Oral Placement Therapy, HANEN Parent Training and Coaching
+                  - generic [ref=e1160]:
+                    - img [ref=e1164]
+                    - img [ref=e1171]
+                    - img [ref=e1177]
+                    - img [ref=e1184]
+              - listitem [ref=e1187]:
+                - generic:
+                  - generic [ref=e1189]:
+                    - generic [ref=e1193]:
+                      - heading "Potentials Therapy Center" [level=3] [ref=e1196]
+                      - heading "Unit 2A, MIC Building, Bukidnon Street, Brgy. Ramon Magsaysay, Bago Bantay" [level=3] [ref=e1198]
+                      - heading "Quezon City" [level=3] [ref=e1200]
+                    - generic [ref=e1201]:
+                      - heading "+63975-241-9349" [level=3] [ref=e1204]
+                      - generic:
+                        - heading [level=3]
+                    - heading "potentialstherapycenter@gmail.com" [level=3] [ref=e1206]:
+                      - link "potentialstherapycenter@gmail.com" [ref=e1208] [cursor=pointer]:
+                        - /url: mailto:potentialstherapycenter@gmail.com
+                    - paragraph [ref=e1210]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PROMPT, Oral Placement Therapy
+                  - generic [ref=e1213]:
+                    - img [ref=e1217]
+                    - img [ref=e1224]
+                    - img [ref=e1230]
+                    - img [ref=e1237]
+              - listitem [ref=e1240]:
+                - generic:
+                  - generic [ref=e1242]:
+                    - generic [ref=e1246]:
+                      - heading "STUDY PALS" [level=3] [ref=e1249]
+                      - heading "Unit 209 Xanland Place Condo Katipunan Ave" [level=3] [ref=e1251]
+                      - heading "Quezon City" [level=3] [ref=e1253]
+                    - generic [ref=e1254]:
+                      - heading "09209551208" [level=3] [ref=e1257]
+                      - heading / [level=3] [ref=e1259]
+                      - heading "09165734873" [level=3] [ref=e1261]
+                    - heading "meicantonio@yahoo.com" [level=3] [ref=e1263]:
+                      - link "meicantonio@yahoo.com" [ref=e1265] [cursor=pointer]:
+                        - /url: mailto:meicantonio@yahoo.com
+                    - paragraph [ref=e1267]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PECS (AAC), PROMPT, Oral Placement Therapy, SOS-Feeding
+                  - generic [ref=e1270]:
+                    - img [ref=e1274]
+                    - img [ref=e1281]
+                    - img [ref=e1287]
+                    - img [ref=e1294]
+              - listitem [ref=e1297]:
+                - generic:
+                  - generic [ref=e1299]:
+                    - generic [ref=e1303]:
+                      - heading "TherUplift Rehabilitation Clinic" [level=3] [ref=e1306]
+                      - heading "2nd Floor, ECG Building, 148 J.P. Rizal St. Brgy. Pag-asa" [level=3] [ref=e1308]
+                      - heading "Obando" [level=3] [ref=e1310]
+                    - generic [ref=e1311]:
+                      - heading "+63945-447-5881" [level=3] [ref=e1314]
+                      - heading / [level=3] [ref=e1316]
+                      - heading "+63917-955-7862" [level=3] [ref=e1318]
+                    - heading "theruplift@gmail.com" [level=3] [ref=e1320]:
+                      - link "theruplift@gmail.com" [ref=e1322] [cursor=pointer]:
+                        - /url: mailto:theruplift@gmail.com
+                    - paragraph [ref=e1324]: Regular SLP Services, PROMPT, Oral Placement Therapy
+                  - generic [ref=e1327]:
+                    - img [ref=e1331]
+                    - img [ref=e1338]
+              - listitem [ref=e1341]:
+                - generic:
+                  - generic [ref=e1343]:
+                    - generic [ref=e1347]:
+                      - heading "Mindful Peers Learning Hub" [level=3] [ref=e1350]
+                      - heading "3079 Lot 24 Block 52 Mahogany Street corner Narra Street, Rocka Village II, Tabang," [level=3] [ref=e1352]
+                      - heading "Plaridel" [level=3] [ref=e1354]
+                    - generic [ref=e1355]:
+                      - heading "+639175497308" [level=3] [ref=e1358]
+                      - generic:
+                        - heading [level=3]
+                    - heading "mindfulpeersLH@gmail.com" [level=3] [ref=e1360]:
+                      - link "mindfulpeersLH@gmail.com" [ref=e1362] [cursor=pointer]:
+                        - /url: mailto:mindfulpeersLH@gmail.com
+                    - paragraph [ref=e1364]: Regular SLP Services, PROMPT
+                  - generic [ref=e1367]:
+                    - img [ref=e1371]
+                    - img [ref=e1378]
+                    - img [ref=e1384]
+                    - img [ref=e1391]
+              - listitem [ref=e1394]:
+                - generic:
+                  - generic [ref=e1396]:
+                    - generic [ref=e1400]:
+                      - heading "HELP Therapy Center" [level=3] [ref=e1403]
+                      - heading "Unit 2515, Centuria Medical Makati, Salamanca Street, Century City, Brgy Poblacion" [level=3] [ref=e1405]
+                      - heading "Makati City" [level=3] [ref=e1407]
+                    - generic [ref=e1408]:
+                      - heading "+63917-896-5195" [level=3] [ref=e1411]
+                      - generic:
+                        - heading [level=3]
+                    - heading "helptherapy@gmail.com" [level=3] [ref=e1413]:
+                      - link "helptherapy@gmail.com" [ref=e1415] [cursor=pointer]:
+                        - /url: mailto:helptherapy@gmail.com
+                    - paragraph [ref=e1417]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PROMPT
+                  - generic [ref=e1420]:
+                    - img [ref=e1426]
+                    - img [ref=e1431]
+                    - img [ref=e1438]
+                    - img [ref=e1444]
+                    - img [ref=e1451]
+              - listitem [ref=e1454]:
+                - generic:
+                  - generic [ref=e1456]:
+                    - generic [ref=e1460]:
+                      - heading "Tiny Todds Play and Learning Development Hub" [level=3] [ref=e1463]
+                      - heading "101 Here Now Building, 116 Don A. Roces Ave., Quezon City" [level=3] [ref=e1465]
+                      - heading "Quezon City" [level=3] [ref=e1467]
+                    - generic [ref=e1468]:
+                      - heading "09988695572" [level=3] [ref=e1471]
+                      - heading / [level=3] [ref=e1473]
+                      - heading "09951504375" [level=3] [ref=e1475]
+                    - heading "tinytoddshub@gmail.com" [level=3] [ref=e1477]:
+                      - link "tinytoddshub@gmail.com" [ref=e1479] [cursor=pointer]:
+                        - /url: mailto:tinytoddshub@gmail.com
+                    - paragraph [ref=e1481]: Regular SLP Services, Oral Placement Therapy, SOS-Feeding
+                  - generic [ref=e1484]:
+                    - img [ref=e1488]
+                    - img [ref=e1495]
+              - listitem [ref=e1498]:
+                - generic:
+                  - generic [ref=e1500]:
+                    - generic [ref=e1504]:
+                      - heading "Trails Center for Children" [level=3] [ref=e1507]
+                      - heading "135 Park Lane Street La Marea Subdivision, Brgy. San Antonio" [level=3] [ref=e1509]
+                      - heading "San Pedro" [level=3] [ref=e1511]
+                    - generic [ref=e1512]:
+                      - heading "+63 927 954 2023" [level=3] [ref=e1515]
+                      - heading / [level=3] [ref=e1517]
+                      - heading "+63 2 8808 7691" [level=3] [ref=e1519]
+                    - heading "inquiries@trailscenter.com" [level=3] [ref=e1521]:
+                      - link "inquiries@trailscenter.com" [ref=e1523] [cursor=pointer]:
+                        - /url: mailto:inquiries@trailscenter.com
+                    - paragraph [ref=e1525]: Regular SLP Services, PROMPT
+                  - generic [ref=e1528]:
+                    - img [ref=e1532]
+                    - img [ref=e1539]
+                    - img [ref=e1545]
+                    - img [ref=e1552]
+              - listitem [ref=e1555]:
+                - generic:
+                  - generic [ref=e1557]:
+                    - generic [ref=e1561]:
+                      - heading "Center for Interventions Toward Development and Empowerment Through Allied Services (I.D.E.A.S.), Inc." [level=3] [ref=e1564]
+                      - heading "Rm300, 3rd Flr., Treston Building, 32nd St. cor C-5 Road, University Parkway, BGC, Taguig" [level=3] [ref=e1566]:
+                        - generic [ref=e1567]:
+                          - text: Rm300, 3rd Flr., Treston Building, 32nd St. cor C-5 Road, University Parkway, BGC,
+                          - text: Taguig
+                      - heading "Taguig" [level=3] [ref=e1569]
+                    - generic [ref=e1570]:
+                      - heading "+639175143327" [level=3] [ref=e1573]
+                      - generic:
+                        - heading [level=3]
+                    - heading "centerforideas.treston@gmail.com" [level=3] [ref=e1575]:
+                      - link "centerforideas.treston@gmail.com" [ref=e1577] [cursor=pointer]:
+                        - /url: mailto:centerforideas.treston@gmail.com
+                    - paragraph [ref=e1579]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PROMPT
+                  - generic [ref=e1582]:
+                    - img [ref=e1586]
+                    - img [ref=e1593]
+                    - img [ref=e1599]
+                    - img [ref=e1606]
+              - listitem [ref=e1609]:
+                - generic:
+                  - generic [ref=e1611]:
+                    - generic [ref=e1615]:
+                      - heading "THINKids (Therapeutic Intervention for Kids)" [level=3] [ref=e1618]
+                      - heading "5 Tomas Morato Ave, Brgy Sacred Heart" [level=3] [ref=e1620]
+                      - heading "Quezon City" [level=3] [ref=e1622]
+                    - generic [ref=e1623]:
+                      - heading "‭+63917-508-0655‬" [level=3] [ref=e1626]
+                      - heading / [level=3] [ref=e1628]
+                      - heading "(02) 8927 8434" [level=3] [ref=e1630]
+                    - heading "hello@thinkids.ph, thinkthoughts@yahoo.com.ph" [level=3] [ref=e1632]:
+                      - generic [ref=e1633]:
+                        - link "hello@thinkids.ph" [ref=e1634] [cursor=pointer]:
+                          - /url: mailto:hello@thinkids.ph
+                        - text: ","
+                        - link "thinkthoughts@yahoo.com.ph" [ref=e1635] [cursor=pointer]:
+                          - /url: mailto:thinkthoughts@yahoo.com.ph
+                    - paragraph [ref=e1637]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PROMPT, SOS-Feeding
+                  - generic [ref=e1640]:
+                    - img [ref=e1646]
+                    - img [ref=e1651]
+                    - img [ref=e1658]
+                    - img [ref=e1664]
+                    - img [ref=e1671]
+                    - img [ref=e1676]
+                    - img [ref=e1683]
+              - listitem [ref=e1688]:
+                - generic:
+                  - generic [ref=e1690]:
+                    - generic [ref=e1694]:
+                      - heading "Hakbang Center for Child Development" [level=3] [ref=e1697]
+                      - heading "338 SGRL Building, MacArthur Highway, Malinta" [level=3] [ref=e1699]
+                      - heading "Valenzuela City" [level=3] [ref=e1701]
+                    - generic [ref=e1702]:
+                      - heading "09623382351" [level=3] [ref=e1705]
+                      - heading / [level=3] [ref=e1707]
+                      - heading "0270009863" [level=3] [ref=e1709]
+                    - heading "anghakbang@gmail.com" [level=3] [ref=e1711]:
+                      - link "anghakbang@gmail.com" [ref=e1713] [cursor=pointer]:
+                        - /url: mailto:anghakbang@gmail.com
+                    - paragraph [ref=e1715]: Regular SLP Services
+                  - generic [ref=e1718]:
+                    - img [ref=e1722]
+                    - img [ref=e1729]
+              - listitem [ref=e1732]:
+                - generic:
+                  - generic [ref=e1734]:
+                    - generic [ref=e1738]:
+                      - heading "Kite Therapy Center" [level=3] [ref=e1741]
+                      - heading "Unit 2-H The Maryville Square, Saluysoy" [level=3] [ref=e1743]
+                      - heading "Meycauayan City" [level=3] [ref=e1745]
+                    - generic [ref=e1746]:
+                      - heading "09628097458" [level=3] [ref=e1749]
+                      - heading / [level=3] [ref=e1751]
+                      - heading "443055839" [level=3] [ref=e1753]
+                    - heading "kitetherapycenter@gmail.com" [level=3] [ref=e1755]:
+                      - link "kitetherapycenter@gmail.com" [ref=e1757] [cursor=pointer]:
+                        - /url: mailto:kitetherapycenter@gmail.com
+                    - paragraph [ref=e1759]: Regular SLP Services
+                  - generic [ref=e1762]:
+                    - img [ref=e1766]
+                    - img [ref=e1773]
+              - listitem [ref=e1776]:
+                - generic:
+                  - generic [ref=e1778]:
+                    - generic [ref=e1782]:
+                      - heading "Mighty Little Ones Therapy and Learning Center" [level=3] [ref=e1785]
+                      - heading "2/F AQT Building, 272 Aguirre Ave. BF Homes, Paranaque" [level=3] [ref=e1787]
+                      - heading "Parañaque City" [level=3] [ref=e1789]
+                    - generic [ref=e1790]:
+                      - heading "09671164250" [level=3] [ref=e1793]
+                      - heading / [level=3] [ref=e1795]
+                      - heading "09196354263" [level=3] [ref=e1797]
+                    - heading "mightylittleonesph@gmail.com" [level=3] [ref=e1799]:
+                      - link "mightylittleonesph@gmail.com" [ref=e1801] [cursor=pointer]:
+                        - /url: mailto:mightylittleonesph@gmail.com
+                    - paragraph [ref=e1803]: Regular SLP Services, Augmentative and Alternative Communication (AAC)
+                  - generic [ref=e1806]:
+                    - img [ref=e1810]
+                    - img [ref=e1817]
+              - listitem [ref=e1820]:
+                - generic:
+                  - generic [ref=e1822]:
+                    - generic [ref=e1826]:
+                      - heading "THE THERAPY HOUSE, INC." [level=3] [ref=e1829]
+                      - heading "2ND FLOOR SAPPHIRE BUILDING KM30 AGUINALDO HIGHWAY" [level=3] [ref=e1831]
+                      - heading "Dasmariñas City" [level=3] [ref=e1833]
+                    - generic [ref=e1834]:
+                      - heading "+63947-895-8015" [level=3] [ref=e1837]
+                      - generic:
+                        - heading [level=3]
+                    - heading "thetherapyhouseinc@gmail.com" [level=3] [ref=e1839]:
+                      - link "thetherapyhouseinc@gmail.com" [ref=e1841] [cursor=pointer]:
+                        - /url: mailto:thetherapyhouseinc@gmail.com
+                    - paragraph [ref=e1843]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PECS (AAC)
+                  - generic [ref=e1846]:
+                    - img [ref=e1850]
+                    - img [ref=e1857]
+              - listitem [ref=e1860]:
+                - generic:
+                  - generic [ref=e1862]:
+                    - generic [ref=e1866]:
+                      - heading "Therapy Works, Inc." [level=3] [ref=e1869]
+                      - heading "726-D Quirino Avenue, Tambo" [level=3] [ref=e1871]
+                      - heading "Parañaque City" [level=3] [ref=e1873]
+                    - generic [ref=e1874]:
+                      - heading "+6328-853-0121" [level=3] [ref=e1877]
+                      - heading / [level=3] [ref=e1879]
+                      - heading "+63906-308-7987" [level=3] [ref=e1881]
+                    - heading "therapyworks2001@yahoo.com.ph" [level=3] [ref=e1883]:
+                      - link "therapyworks2001@yahoo.com.ph" [ref=e1885] [cursor=pointer]:
+                        - /url: mailto:therapyworks2001@yahoo.com.ph
+                    - paragraph [ref=e1887]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PROMPT, SOS-Feeding, HANEN Parent Training and Coaching, AEIOU-trauma informed and responsive feeding
+                  - generic [ref=e1890]:
+                    - img [ref=e1894]
+                    - img [ref=e1901]
+                    - img [ref=e1907]
+                    - img [ref=e1914]
+              - listitem [ref=e1917]:
+                - generic:
+                  - generic [ref=e1919]:
+                    - generic [ref=e1923]:
+                      - heading "Children’s Therapy Hub" [level=3] [ref=e1926]
+                      - heading "2nd Floor Urduja St. Blk 34 Lot 2 Panorama St. Concepcion Dos" [level=3] [ref=e1928]
+                      - heading "Marikina City" [level=3] [ref=e1930]
+                    - generic [ref=e1931]:
+                      - heading "+639228287438" [level=3] [ref=e1934]
+                      - heading / [level=3] [ref=e1936]
+                      - heading "+639209612367" [level=3] [ref=e1938]
+                    - heading "cth.learning.hub09@gmail.com" [level=3] [ref=e1940]:
+                      - link "cth.learning.hub09@gmail.com" [ref=e1942] [cursor=pointer]:
+                        - /url: mailto:cth.learning.hub09@gmail.com
+                    - paragraph [ref=e1944]: Regular SLP Services
+                  - generic [ref=e1947]:
+                    - img [ref=e1951]
+                    - img [ref=e1958]
+                    - img [ref=e1964]
+                    - img [ref=e1971]
+              - listitem [ref=e1974]:
+                - generic:
+                  - generic [ref=e1976]:
+                    - generic [ref=e1980]:
+                      - heading "STUDY PALS" [level=3] [ref=e1983]
+                      - heading "unit 209 Xanland Place Condo Katipunan Ave" [level=3] [ref=e1985]
+                      - heading "Quezon City" [level=3] [ref=e1987]
+                    - generic [ref=e1988]:
+                      - heading "092098551208" [level=3] [ref=e1991]
+                      - heading / [level=3] [ref=e1993]
+                      - heading "(0916) 573 4873" [level=3] [ref=e1995]
+                    - heading "spkatipunan@gmail.com" [level=3] [ref=e1997]:
+                      - link "spkatipunan@gmail.com" [ref=e1999] [cursor=pointer]:
+                        - /url: mailto:spkatipunan@gmail.com
+                    - paragraph [ref=e2001]: Augmentative and Alternative Communication (AAC), PECS (AAC), PROMPT, Oral Placement Therapy, SOS-Feeding
+                  - generic [ref=e2004]:
+                    - img [ref=e2008]
+                    - img [ref=e2015]
+                    - img [ref=e2021]
+                    - img [ref=e2028]
+              - listitem [ref=e2031]:
+                - generic:
+                  - generic [ref=e2033]:
+                    - generic [ref=e2037]:
+                      - heading "Early Start Therapy Center- Tanauan" [level=3] [ref=e2040]
+                      - heading "431 Dau St., Mt.View Subdivision, Brgy. Poblacion 3" [level=3] [ref=e2042]
+                      - heading "Tanauan City" [level=3] [ref=e2044]
+                    - generic [ref=e2045]:
+                      - heading "639175046575" [level=3] [ref=e2048]
+                      - heading / [level=3] [ref=e2050]
+                      - heading "(043)-402-7747" [level=3] [ref=e2052]
+                    - heading "estctanauan@gmail.com" [level=3] [ref=e2054]:
+                      - link "estctanauan@gmail.com" [ref=e2056] [cursor=pointer]:
+                        - /url: mailto:estctanauan@gmail.com
+                    - paragraph [ref=e2058]: Regular SLP Services
+                  - generic [ref=e2061]:
+                    - img [ref=e2065]
+                    - img [ref=e2072]
+              - listitem [ref=e2075]:
+                - generic:
+                  - generic [ref=e2077]:
+                    - generic [ref=e2081]:
+                      - heading "EARLY START THERAPY CENTER- LIPA CITY" [level=3] [ref=e2084]
+                      - heading "029 P. TORRES ST. BRGY. ANTIPOLO DEL NORTE" [level=3] [ref=e2086]
+                      - heading "Lipa City" [level=3] [ref=e2088]
+                    - generic [ref=e2089]:
+                      - heading "09175040442" [level=3] [ref=e2092]
+                      - generic:
+                        - heading [level=3]
+                    - heading "estc.lipa@gmail.com" [level=3] [ref=e2094]:
+                      - link "estc.lipa@gmail.com" [ref=e2096] [cursor=pointer]:
+                        - /url: mailto:estc.lipa@gmail.com
+                    - paragraph [ref=e2098]: Regular SLP Services
+                  - generic [ref=e2101]:
+                    - img [ref=e2105]
+                    - img [ref=e2112]
+              - listitem [ref=e2115]:
+                - generic:
+                  - generic [ref=e2117]:
+                    - generic [ref=e2121]:
+                      - heading "EARLY START THERAPY CENTER- BATANGAS" [level=3] [ref=e2124]
+                      - heading "2F STAR CIRCLE BLDG, M.H. DEL PILAR ST. POBLACION 019" [level=3] [ref=e2126]
+                      - heading "Batangas City" [level=3] [ref=e2128]
+                    - generic [ref=e2129]:
+                      - heading "09668559505" [level=3] [ref=e2132]
+                      - generic:
+                        - heading [level=3]
+                    - heading "estc.batangascity@gmail.com" [level=3] [ref=e2134]:
+                      - link "estc.batangascity@gmail.com" [ref=e2136] [cursor=pointer]:
+                        - /url: mailto:estc.batangascity@gmail.com
+                    - paragraph [ref=e2138]: Regular SLP Services
+                  - generic [ref=e2141]:
+                    - img [ref=e2145]
+                    - img [ref=e2152]
+              - listitem [ref=e2155]:
+                - generic:
+                  - generic [ref=e2157]:
+                    - generic [ref=e2161]:
+                      - heading "Children’s Therapy Hub" [level=3] [ref=e2164]
+                      - heading "2nd Floor Urduja Bldg, Block 34 Lot 2 Panorama Street" [level=3] [ref=e2166]
+                      - heading "Marikina City" [level=3] [ref=e2168]
+                    - generic [ref=e2169]:
+                      - heading "+639228287438" [level=3] [ref=e2172]
+                      - heading / [level=3] [ref=e2174]
+                      - heading "+639209612367" [level=3] [ref=e2176]
+                    - heading "cth.learning.hub09@gmail.com" [level=3] [ref=e2178]:
+                      - link "cth.learning.hub09@gmail.com" [ref=e2180] [cursor=pointer]:
+                        - /url: mailto:cth.learning.hub09@gmail.com
+                    - paragraph [ref=e2182]: Regular SLP Services
+                  - generic [ref=e2185]:
+                    - img [ref=e2189]
+                    - img [ref=e2196]
+                    - img [ref=e2202]
+                    - img [ref=e2209]
+              - listitem [ref=e2212]:
+                - generic:
+                  - generic [ref=e2214]:
+                    - generic [ref=e2218]:
+                      - heading "Core Potentials Therapy Center Co. Ltd." [level=3] [ref=e2221]
+                      - heading "243 Malhacan Road, corner Calle Fabrica" [level=3] [ref=e2223]
+                      - heading "Meycauayan City" [level=3] [ref=e2225]
+                    - generic [ref=e2226]:
+                      - heading "+639323915126" [level=3] [ref=e2229]
+                      - generic:
+                        - heading [level=3]
+                    - heading "corepotentials@gmail.com" [level=3] [ref=e2231]:
+                      - link "corepotentials@gmail.com" [ref=e2233] [cursor=pointer]:
+                        - /url: mailto:corepotentials@gmail.com
+                    - paragraph [ref=e2235]: Regular SLP Services, Augmentative and Alternative Communication (AAC), DDTC
+                  - generic [ref=e2238]:
+                    - img [ref=e2242]
+                    - img [ref=e2249]
+                    - img [ref=e2255]
+                    - img [ref=e2262]
+              - listitem [ref=e2265]:
+                - generic:
+                  - generic [ref=e2267]:
+                    - generic [ref=e2271]:
+                      - heading "Core Potentials Therapy Center Co. Ltd." [level=3] [ref=e2274]
+                      - heading "243 Malhacan Road, corner Calle Fabrica" [level=3] [ref=e2276]
+                      - heading "Meycauayan City" [level=3] [ref=e2278]
+                    - generic [ref=e2279]:
+                      - heading "+639323915126" [level=3] [ref=e2282]
+                      - generic:
+                        - heading [level=3]
+                    - heading "corepotentials@gmail.com" [level=3] [ref=e2284]:
+                      - link "corepotentials@gmail.com" [ref=e2286] [cursor=pointer]:
+                        - /url: mailto:corepotentials@gmail.com
+                    - paragraph [ref=e2288]: Regular SLP Services, Augmentative and Alternative Communication (AAC), DDTC
+                  - generic [ref=e2291]:
+                    - img [ref=e2295]
+                    - img [ref=e2302]
+                    - img [ref=e2308]
+                    - img [ref=e2315]
+              - listitem [ref=e2318]:
+                - generic:
+                  - generic [ref=e2320]:
+                    - generic [ref=e2324]:
+                      - heading "Polikids Center for Development" [level=3] [ref=e2327]
+                      - heading "Fatima St., Bagbaguin" [level=3] [ref=e2329]
+                      - heading "Santa Maria" [level=3] [ref=e2331]
+                    - generic [ref=e2332]:
+                      - heading "09171650432" [level=3] [ref=e2335]
+                      - heading / [level=3] [ref=e2337]
+                      - heading "09171568242" [level=3] [ref=e2339]
+                    - heading "polikidscenterfd17@gmail.com" [level=3] [ref=e2341]:
+                      - link "polikidscenterfd17@gmail.com" [ref=e2343] [cursor=pointer]:
+                        - /url: mailto:polikidscenterfd17@gmail.com
+                    - paragraph [ref=e2345]: Regular SLP Services
+                  - generic [ref=e2348]:
+                    - img [ref=e2352]
+                    - img [ref=e2359]
+              - listitem [ref=e2362]:
+                - generic:
+                  - generic [ref=e2364]:
+                    - generic [ref=e2368]:
+                      - heading "Kidspeak Therapy Center" [level=3] [ref=e2371]
+                      - 'heading "1st branch: 7-3 Yakal st., 2nd Reyville Subd., Pamplona 3, Las Pinas City 2nd branch: 3rd Floor, EBL Building, Manuela Avenue corner Hunter St., Dona Manuela Subd., Pamplona 3, Las Pinas City" [level=3] [ref=e2373]':
+                        - generic [ref=e2374]:
+                          - text: "1st branch: 7-3 Yakal st., 2nd Reyville Subd., Pamplona 3, Las Pinas City"
+                          - text: "2nd branch: 3rd Floor, EBL Building, Manuela Avenue corner Hunter St., Dona Manuela Subd., Pamplona 3, Las Pinas City"
+                      - heading "Las Piñas City" [level=3] [ref=e2376]
+                    - generic [ref=e2377]:
+                      - heading "09089649106" [level=3] [ref=e2380]
+                      - heading / [level=3] [ref=e2382]
+                      - heading "88728746" [level=3] [ref=e2384]
+                    - heading "kidspeak.avt@gmail.com" [level=3] [ref=e2386]:
+                      - link "kidspeak.avt@gmail.com" [ref=e2388] [cursor=pointer]:
+                        - /url: mailto:kidspeak.avt@gmail.com
+                    - paragraph [ref=e2390]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PROMPT, Auditory Verbal Therapy, Aural Habilitation, Natural Language Acquisition, Cued Speech
+                  - generic [ref=e2393]:
+                    - img [ref=e2397]
+                    - img [ref=e2404]
+                    - img [ref=e2410]
+                    - img [ref=e2417]
+              - listitem [ref=e2420]:
+                - generic:
+                  - generic [ref=e2422]:
+                    - generic [ref=e2426]:
+                      - heading "Trails Center for Children" [level=3] [ref=e2429]
+                      - heading "G/F A. Corporate Center 29 Jose Abad Santos Avenue Salawag" [level=3] [ref=e2431]:
+                        - generic [ref=e2432]:
+                          - text: G/F A. Corporate Center
+                          - text: 29 Jose Abad Santos Avenue
+                          - text: Salawag
+                      - heading "Dasmariñas City" [level=3] [ref=e2434]
+                    - generic [ref=e2435]:
+                      - heading "+63 927 978 0927" [level=3] [ref=e2438]
+                      - heading / [level=3] [ref=e2440]
+                      - heading "+63 46 489 5655" [level=3] [ref=e2442]
+                    - heading "inquiries@trailscenter.com" [level=3] [ref=e2444]:
+                      - link "inquiries@trailscenter.com" [ref=e2446] [cursor=pointer]:
+                        - /url: mailto:inquiries@trailscenter.com
+                    - paragraph [ref=e2448]: Regular SLP Services
+                  - generic [ref=e2451]:
+                    - img [ref=e2455]
+                    - img [ref=e2462]
+                    - img [ref=e2468]
+                    - img [ref=e2475]
+              - listitem [ref=e2478]:
+                - generic:
+                  - generic [ref=e2480]:
+                    - generic [ref=e2484]:
+                      - heading "Trails Center for Children" [level=3] [ref=e2487]
+                      - heading "Unit 202 2nd Floor Grand Residences España 2 958 A.H. Lacson Street" [level=3] [ref=e2489]:
+                        - generic [ref=e2490]:
+                          - text: Unit 202 2nd Floor
+                          - text: Grand Residences España 2
+                          - text: 958 A.H. Lacson Street
+                      - heading "Sampaloc" [level=3] [ref=e2492]
+                    - generic [ref=e2493]:
+                      - heading "+63 2 8356 2044" [level=3] [ref=e2496]
+                      - heading / [level=3] [ref=e2498]
+                      - heading "+63 927 852 6050" [level=3] [ref=e2500]
+                    - heading "inquiries@trailscenter.com" [level=3] [ref=e2502]:
+                      - link "inquiries@trailscenter.com" [ref=e2504] [cursor=pointer]:
+                        - /url: mailto:inquiries@trailscenter.com
+                    - paragraph [ref=e2506]: Regular SLP Services
+                  - generic [ref=e2509]:
+                    - img [ref=e2513]
+                    - img [ref=e2520]
+                    - img [ref=e2526]
+                    - img [ref=e2533]
+              - listitem [ref=e2536]:
+                - generic:
+                  - generic [ref=e2538]:
+                    - generic [ref=e2542]:
+                      - heading "Trails Center for Children" [level=3] [ref=e2545]
+                      - heading "Unit 2U 2nd Floor Lee Gardens Commercial Center Lee Street corner Shaw Boulevard" [level=3] [ref=e2547]:
+                        - generic [ref=e2548]:
+                          - text: Unit 2U 2nd Floor
+                          - text: Lee Gardens Commercial Center
+                          - text: Lee Street corner Shaw Boulevard
+                      - heading "Mandaluyong" [level=3] [ref=e2550]
+                    - generic [ref=e2551]:
+                      - heading "+63 915 646 4416" [level=3] [ref=e2554]
+                      - heading / [level=3] [ref=e2556]
+                      - heading "+63 2 8294 5410" [level=3] [ref=e2558]
+                    - heading "inquiries@trailscenter.com" [level=3] [ref=e2560]:
+                      - link "inquiries@trailscenter.com" [ref=e2562] [cursor=pointer]:
+                        - /url: mailto:inquiries@trailscenter.com
+                    - paragraph [ref=e2564]: Regular SLP Services
+                  - generic [ref=e2567]:
+                    - img [ref=e2571]
+                    - img [ref=e2578]
+                    - img [ref=e2584]
+                    - img [ref=e2591]
+              - listitem [ref=e2594]:
+                - generic:
+                  - generic [ref=e2596]:
+                    - generic [ref=e2600]:
+                      - heading "Trails Center for Children" [level=3] [ref=e2603]
+                      - heading "135 Park Lane St. La Marea Subd. Brgy. San Antonio" [level=3] [ref=e2605]:
+                        - generic [ref=e2606]:
+                          - text: 135 Park Lane St. La Marea Subd.
+                          - text: Brgy. San Antonio
+                      - heading "San Pedro" [level=3] [ref=e2608]
+                    - generic [ref=e2609]:
+                      - heading "+63 2 8808 7691" [level=3] [ref=e2612]
+                      - heading / [level=3] [ref=e2614]
+                      - heading "+63 927 954 2023" [level=3] [ref=e2616]
+                    - heading "inquiries@trailscenter.com" [level=3] [ref=e2618]:
+                      - link "inquiries@trailscenter.com" [ref=e2620] [cursor=pointer]:
+                        - /url: mailto:inquiries@trailscenter.com
+                    - paragraph [ref=e2622]: Regular SLP Services
+                  - generic [ref=e2625]:
+                    - img [ref=e2629]
+                    - img [ref=e2636]
+                    - img [ref=e2642]
+                    - img [ref=e2649]
+              - listitem [ref=e2652]:
+                - generic:
+                  - generic [ref=e2654]:
+                    - generic [ref=e2658]:
+                      - heading "Trails Center for Children" [level=3] [ref=e2661]
+                      - heading "G/F A. Corporate Center 29 Jose Abad Santos Avenue Salawag" [level=3] [ref=e2663]:
+                        - generic [ref=e2664]:
+                          - text: G/F A. Corporate Center
+                          - text: 29 Jose Abad Santos Avenue
+                          - text: Salawag
+                      - heading "Dasmariñas City" [level=3] [ref=e2666]
+                    - generic [ref=e2667]:
+                      - heading "+63 46 489 5655" [level=3] [ref=e2670]
+                      - heading / [level=3] [ref=e2672]
+                      - heading "+63 927 978 0927" [level=3] [ref=e2674]
+                    - heading "inquiries@trailscenter.com" [level=3] [ref=e2676]:
+                      - link "inquiries@trailscenter.com" [ref=e2678] [cursor=pointer]:
+                        - /url: mailto:inquiries@trailscenter.com
+                    - paragraph [ref=e2680]: Regular SLP Services
+                  - generic [ref=e2683]:
+                    - img [ref=e2687]
+                    - img [ref=e2694]
+                    - img [ref=e2700]
+                    - img [ref=e2707]
+              - listitem [ref=e2710]:
+                - generic:
+                  - generic [ref=e2712]:
+                    - generic [ref=e2716]:
+                      - heading "Linked Child Development Center - Pasig" [level=3] [ref=e2719]
+                      - heading "37 President Osmeña st. Lifehomes Subd." [level=3] [ref=e2721]
+                      - heading "Pasig City" [level=3] [ref=e2723]
+                    - generic [ref=e2724]:
+                      - heading "09171325465" [level=3] [ref=e2727]
+                      - heading / [level=3] [ref=e2729]
+                      - heading "09171605465" [level=3] [ref=e2731]
+                    - heading "linked.otslp@gmail.com" [level=3] [ref=e2733]:
+                      - link "linked.otslp@gmail.com" [ref=e2735] [cursor=pointer]:
+                        - /url: mailto:linked.otslp@gmail.com
+                    - paragraph [ref=e2737]: Regular SLP Services, Augmentative and Alternative Communication (AAC)
+                  - generic [ref=e2740]:
+                    - img [ref=e2744]
+                    - img [ref=e2751]
+              - listitem [ref=e2754]:
+                - generic:
+                  - generic [ref=e2756]:
+                    - generic [ref=e2760]:
+                      - heading "Linked Child Development Center - Taytay" [level=3] [ref=e2763]
+                      - heading "L6 b4 Kasoy st. Greenwoods Executive Village" [level=3] [ref=e2765]
+                      - heading "Taytay" [level=3] [ref=e2767]
+                    - generic [ref=e2768]:
+                      - heading "09171605465" [level=3] [ref=e2771]
+                      - heading / [level=3] [ref=e2773]
+                      - heading "09171325465" [level=3] [ref=e2775]
+                    - heading "linked.otslp@gmail.com" [level=3] [ref=e2777]:
+                      - link "linked.otslp@gmail.com" [ref=e2779] [cursor=pointer]:
+                        - /url: mailto:linked.otslp@gmail.com
+                    - paragraph [ref=e2781]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PECS (AAC), PROMPT
+                  - generic [ref=e2784]:
+                    - img [ref=e2788]
+                    - img [ref=e2795]
+              - listitem [ref=e2798]:
+                - generic:
+                  - generic [ref=e2800]:
+                    - generic [ref=e2804]:
+                      - heading "SKILL DISCOVERY THERAPY CENTER CO." [level=3] [ref=e2807]
+                      - heading "Ozzie Place Bldg. Brgy. Biclatan Gen. Trias Cavite" [level=3] [ref=e2809]
+                      - heading "Gen. Trias" [level=3] [ref=e2811]
+                    - generic [ref=e2812]:
+                      - heading "09454651060" [level=3] [ref=e2815]
+                      - heading / [level=3] [ref=e2817]
+                      - heading "09178999348" [level=3] [ref=e2819]
+                    - heading "skilldiscoverytlc@gmail.com" [level=3] [ref=e2821]:
+                      - link "skilldiscoverytlc@gmail.com" [ref=e2823] [cursor=pointer]:
+                        - /url: mailto:skilldiscoverytlc@gmail.com
+                    - paragraph [ref=e2825]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PROMPT
+                  - generic [ref=e2828]:
+                    - img [ref=e2832]
+                    - img [ref=e2839]
+                    - img [ref=e2845]
+                    - img [ref=e2852]
+              - listitem [ref=e2855]:
+                - generic:
+                  - generic [ref=e2857]:
+                    - generic [ref=e2861]:
+                      - heading "Achievers Therapy and Tutorials, Inc." [level=3] [ref=e2864]
+                      - heading "280 Retirees Village 2, Daang Amaya 1, Tanza, Cavite" [level=3] [ref=e2866]
+                      - heading "Tanza" [level=3] [ref=e2868]
+                    - generic [ref=e2869]:
+                      - heading "09672868493" [level=3] [ref=e2872]
+                      - generic:
+                        - heading [level=3]
+                    - heading "achievers.therapyandtutorials@gmail.com" [level=3] [ref=e2874]:
+                      - link "achievers.therapyandtutorials@gmail.com" [ref=e2876] [cursor=pointer]:
+                        - /url: mailto:achievers.therapyandtutorials@gmail.com
+                    - paragraph [ref=e2878]: Regular SLP Services, PROMPT
+                  - generic [ref=e2881]:
+                    - img [ref=e2885]
+                    - img [ref=e2892]
+                    - img [ref=e2898]
+                    - img [ref=e2905]
+              - listitem [ref=e2908]:
+                - generic:
+                  - generic [ref=e2910]:
+                    - generic [ref=e2914]:
+                      - heading "SpeechPlay Therapy Center" [level=3] [ref=e2917]
+                      - heading "Coliseum Drive, Capitol Area, Barangay Daro" [level=3] [ref=e2919]
+                      - heading "Dumaguete City" [level=3] [ref=e2921]
+                    - generic [ref=e2922]:
+                      - heading "+639688816834" [level=3] [ref=e2925]
+                      - heading / [level=3] [ref=e2927]
+                      - heading "(035) 527 3354" [level=3] [ref=e2929]
+                    - heading "Speechplaytc@gmail.com" [level=3] [ref=e2931]:
+                      - link "Speechplaytc@gmail.com" [ref=e2933] [cursor=pointer]:
+                        - /url: mailto:Speechplaytc@gmail.com
+                    - paragraph [ref=e2935]: Regular SLP Services
+                  - generic [ref=e2938]:
+                    - img [ref=e2942]
+                    - img [ref=e2949]
+              - listitem [ref=e2952]:
+                - generic:
+                  - generic [ref=e2954]:
+                    - generic [ref=e2958]:
+                      - heading "Play Is Cool Therapy OPC" [level=3] [ref=e2961]
+                      - heading "2nd Floor, JFAS Building., 006, Aguinaldo Hi-way, Panapaan ll" [level=3] [ref=e2963]
+                      - heading "Bacoor City" [level=3] [ref=e2965]
+                    - generic [ref=e2966]:
+                      - heading "+639 213179142" [level=3] [ref=e2969]
+                      - heading / [level=3] [ref=e2971]
+                      - heading "+639213179142" [level=3] [ref=e2973]
+                    - heading "playiscool2006@gmail.com" [level=3] [ref=e2975]:
+                      - link "playiscool2006@gmail.com" [ref=e2977] [cursor=pointer]:
+                        - /url: mailto:playiscool2006@gmail.com
+                    - paragraph [ref=e2979]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PECS (AAC)
+                  - generic [ref=e2982]:
+                    - img [ref=e2986]
+                    - img [ref=e2993]
+              - listitem [ref=e2996]:
+                - generic:
+                  - generic [ref=e2998]:
+                    - generic [ref=e3002]:
+                      - heading "Tinig Speech Clinic" [level=3] [ref=e3005]
+                      - heading "2nd Floor, AVMSCI Medical Plaza, Allah Valley Medical Specialists’ Center, Inc., General Santos Drive, City of Koronadal, South Cotabato" [level=3] [ref=e3007]
+                      - heading "Koronadal" [level=3] [ref=e3009]
+                    - generic [ref=e3010]:
+                      - heading "+63917-129-8542" [level=3] [ref=e3013]
+                      - heading / [level=3] [ref=e3015]
+                      - heading "+63961-600-1540" [level=3] [ref=e3017]
+                    - heading "speechie.via@gmail.com" [level=3] [ref=e3019]:
+                      - link "speechie.via@gmail.com" [ref=e3021] [cursor=pointer]:
+                        - /url: mailto:speechie.via@gmail.com
+                    - paragraph [ref=e3023]: Regular SLP Services, Augmentative and Alternative Communication (AAC)
+                  - generic [ref=e3026]:
+                    - img [ref=e3030]
+                    - img [ref=e3037]
+                    - img [ref=e3043]
+                    - img [ref=e3050]
+                    - img [ref=e3055]
+                    - img [ref=e3062]
+              - listitem [ref=e3067]:
+                - generic:
+                  - generic [ref=e3069]:
+                    - generic [ref=e3073]:
+                      - heading "Kidspace Therapy Center" [level=3] [ref=e3076]
+                      - heading "02 E. Aguinaldo St. Phase 5 Pacita Complex I San Pedro Laguna" [level=3] [ref=e3078]
+                      - heading "San Pedro" [level=3] [ref=e3080]
+                    - generic [ref=e3081]:
+                      - heading "+63927-372-5636" [level=3] [ref=e3084]
+                      - generic:
+                        - heading [level=3]
+                    - heading "kidspacetc@gmail.com" [level=3] [ref=e3086]:
+                      - link "kidspacetc@gmail.com" [ref=e3088] [cursor=pointer]:
+                        - /url: mailto:kidspacetc@gmail.com
+                    - paragraph [ref=e3090]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PROMPT
+                  - generic [ref=e3093]:
+                    - img [ref=e3097]
+                    - img [ref=e3104]
+              - listitem [ref=e3107]:
+                - generic:
+                  - generic [ref=e3109]:
+                    - generic [ref=e3113]:
+                      - heading "Little Aces Therapy Center" [level=3] [ref=e3116]
+                      - heading "Resjam Twin Buildings, National Highway, Brgy. Quinavite, Bauang, La Union" [level=3] [ref=e3118]
+                      - heading "Bauang" [level=3] [ref=e3120]
+                    - generic [ref=e3121]:
+                      - heading "09913691416" [level=3] [ref=e3124]
+                      - heading / [level=3] [ref=e3126]
+                      - heading "09175170924" [level=3] [ref=e3128]
+                    - heading "littleaces.tc@gmail.com" [level=3] [ref=e3130]:
+                      - link "littleaces.tc@gmail.com" [ref=e3132] [cursor=pointer]:
+                        - /url: mailto:littleaces.tc@gmail.com
+                    - paragraph [ref=e3134]: Regular SLP Services
+                  - generic [ref=e3137]:
+                    - img [ref=e3141]
+                    - img [ref=e3148]
+              - listitem [ref=e3151]:
+                - generic:
+                  - generic [ref=e3153]:
+                    - generic [ref=e3157]:
+                      - heading "FUNdamentals Playschool and Therapy Center" [level=3] [ref=e3160]
+                      - heading "St. Ignatius Street, Kauswagan" [level=3] [ref=e3162]
+                      - heading "Cagayan de Oro City" [level=3] [ref=e3164]
+                    - generic [ref=e3165]:
+                      - heading "+639554008870" [level=3] [ref=e3168]
+                      - generic:
+                        - heading [level=3]
+                    - heading "funptc.cgy@gmail.com" [level=3] [ref=e3170]:
+                      - link "funptc.cgy@gmail.com" [ref=e3172] [cursor=pointer]:
+                        - /url: mailto:funptc.cgy@gmail.com
+                    - paragraph [ref=e3174]: Regular SLP Services, Bobath Approach, PROMPT
+                  - generic [ref=e3177]:
+                    - img [ref=e3181]
+                    - img [ref=e3188]
+              - listitem [ref=e3191]:
+                - generic:
+                  - generic [ref=e3193]:
+                    - generic [ref=e3197]:
+                      - heading "Superkidz Therapy Center" [level=3] [ref=e3200]
+                      - heading "Block 107 Lot 18 J. Enriquez Street Katarungan Village Barangay Poblacion" [level=3] [ref=e3202]
+                      - heading "Muntinlupa City" [level=3] [ref=e3204]
+                    - generic [ref=e3205]:
+                      - heading "+639175337052" [level=3] [ref=e3208]
+                      - heading / [level=3] [ref=e3210]
+                      - heading "+639175063996" [level=3] [ref=e3212]
+                    - heading "superkidztherapycenter@gmail.com" [level=3] [ref=e3214]:
+                      - link "superkidztherapycenter@gmail.com" [ref=e3216] [cursor=pointer]:
+                        - /url: mailto:superkidztherapycenter@gmail.com
+                    - paragraph [ref=e3218]: Regular SLP Services
+                  - generic [ref=e3221]:
+                    - img [ref=e3225]
+                    - img [ref=e3232]
+              - listitem [ref=e3235]:
+                - generic:
+                  - generic [ref=e3237]:
+                    - generic [ref=e3241]:
+                      - heading "Kidzcope Therapy Center" [level=3] [ref=e3244]
+                      - heading "14 San Jose Street, Molo" [level=3] [ref=e3246]
+                      - heading "Iloilo City" [level=3] [ref=e3248]
+                    - generic [ref=e3249]:
+                      - heading "+63917-903-5020" [level=3] [ref=e3252]
+                      - heading / [level=3] [ref=e3254]
+                      - heading "(033) 3380325" [level=3] [ref=e3256]
+                    - heading "kidzcopetherapycenter@gmail.com" [level=3] [ref=e3258]:
+                      - link "kidzcopetherapycenter@gmail.com" [ref=e3260] [cursor=pointer]:
+                        - /url: mailto:kidzcopetherapycenter@gmail.com
+                    - paragraph [ref=e3262]: Regular SLP Services
+                  - generic [ref=e3265]:
+                    - img [ref=e3269]
+                    - img [ref=e3276]
+              - listitem [ref=e3279]:
+                - generic:
+                  - generic [ref=e3281]:
+                    - generic [ref=e3285]:
+                      - heading "KIDOO THERAPY CENTER" [level=3] [ref=e3288]
+                      - heading "2nd floor Sidcor Bldg. Bacoor Boulevard, Brgy Bayanan" [level=3] [ref=e3290]
+                      - heading "Bacoor City" [level=3] [ref=e3292]
+                    - generic [ref=e3293]:
+                      - heading "+639532943106" [level=3] [ref=e3296]
+                      - generic:
+                        - heading [level=3]
+                    - heading "kidoo.therapy.center@gmail.com" [level=3] [ref=e3298]:
+                      - link "kidoo.therapy.center@gmail.com" [ref=e3300] [cursor=pointer]:
+                        - /url: mailto:kidoo.therapy.center@gmail.com
+                    - paragraph [ref=e3302]: Regular SLP Services, Augmentative and Alternative Communication (AAC)
+                  - generic [ref=e3305]:
+                    - img [ref=e3309]
+                    - img [ref=e3316]
+              - listitem [ref=e3319]:
+                - generic:
+                  - generic [ref=e3321]:
+                    - generic [ref=e3325]:
+                      - heading "Patter & Paces Therapy Center" [level=3] [ref=e3328]
+                      - heading "L 1120-H-1-C-2 JRT Bldg. Sanja Mayor, Tanza, Cavite" [level=3] [ref=e3330]
+                      - heading "Tanza" [level=3] [ref=e3332]
+                    - generic [ref=e3333]:
+                      - heading "+639618719869" [level=3] [ref=e3336]
+                      - heading / [level=3] [ref=e3338]
+                      - heading "+639292218582" [level=3] [ref=e3340]
+                    - heading "patterandpaces.tc@gmail.com" [level=3] [ref=e3342]:
+                      - link "patterandpaces.tc@gmail.com" [ref=e3344] [cursor=pointer]:
+                        - /url: mailto:patterandpaces.tc@gmail.com
+                    - paragraph [ref=e3346]: Regular SLP Services, Augmentative and Alternative Communication (AAC)
+                  - generic [ref=e3349]:
+                    - img [ref=e3353]
+                    - img [ref=e3360]
+                    - img [ref=e3366]
+                    - img [ref=e3373]
+              - listitem [ref=e3376]:
+                - generic:
+                  - generic [ref=e3378]:
+                    - generic [ref=e3382]:
+                      - heading "TheraBridge Therapy Center Inc." [level=3] [ref=e3385]
+                      - heading "Moscow St. corner Bangkok St. University Village, Brgy. Ibabang Dupay" [level=3] [ref=e3387]
+                      - heading "Lucena City" [level=3] [ref=e3389]
+                    - generic [ref=e3390]:
+                      - heading "0942-3834-147" [level=3] [ref=e3393]
+                      - generic:
+                        - heading [level=3]
+                    - heading "therabridge@gmail.com" [level=3] [ref=e3395]:
+                      - link "therabridge@gmail.com" [ref=e3397] [cursor=pointer]:
+                        - /url: mailto:therabridge@gmail.com
+                    - paragraph [ref=e3399]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PROMPT
+                  - generic [ref=e3402]:
+                    - img [ref=e3406]
+                    - img [ref=e3413]
+                    - img [ref=e3419]
+                    - img [ref=e3426]
+              - listitem [ref=e3429]:
+                - generic:
+                  - generic [ref=e3431]:
+                    - generic [ref=e3435]:
+                      - heading "Happy Nest Therapy Center, Inc." [level=3] [ref=e3438]
+                      - heading "Second Floor, Jullie’s Arcade, Dolores, City of San Fernando, Pampanga, 2000" [level=3] [ref=e3440]
+                      - heading "City of San Fernando" [level=3] [ref=e3442]
+                    - generic [ref=e3443]:
+                      - heading "+63905-431-1131" [level=3] [ref=e3446]
+                      - generic:
+                        - heading [level=3]
+                    - heading "happynesttherapycenter@gmail.com" [level=3] [ref=e3448]:
+                      - link "happynesttherapycenter@gmail.com" [ref=e3450] [cursor=pointer]:
+                        - /url: mailto:happynesttherapycenter@gmail.com
+                    - paragraph [ref=e3452]: Regular SLP Services
+                  - generic [ref=e3455]:
+                    - img [ref=e3459]
+                    - img [ref=e3466]
+              - listitem [ref=e3469]:
+                - generic:
+                  - generic [ref=e3471]:
+                    - generic [ref=e3475]:
+                      - heading "KIDSWECARE PEDIATRIC THERAPY CENTER" [level=3] [ref=e3478]
+                      - heading "UNIT 104 NO. 20 SHORTHORN ST. BGRY. BAHAY TORO, PROJECT 8" [level=3] [ref=e3480]
+                      - heading "Quezon City" [level=3] [ref=e3482]
+                    - generic [ref=e3483]:
+                      - heading "+63917-5876038" [level=3] [ref=e3486]
+                      - heading / [level=3] [ref=e3488]
+                      - heading "+639491421846" [level=3] [ref=e3490]
+                    - heading "kwc_kidswecare@yahoo.com" [level=3] [ref=e3492]:
+                      - link "kwc_kidswecare@yahoo.com" [ref=e3494] [cursor=pointer]:
+                        - /url: mailto:kwc_kidswecare@yahoo.com
+                    - paragraph [ref=e3496]: Regular SLP Services
+                  - generic [ref=e3499]:
+                    - img [ref=e3503]
+                    - img [ref=e3510]
+                    - img [ref=e3516]
+                    - img [ref=e3523]
+              - listitem [ref=e3526]:
+                - generic:
+                  - generic [ref=e3528]:
+                    - generic [ref=e3532]:
+                      - heading "WeePlay Therapy Center" [level=3] [ref=e3535]
+                      - heading "Ground Floor, CP Destiny Building, MacArthur Hi-Way, Mabiga, Mabalacat, Pampanga" [level=3] [ref=e3537]
+                      - heading "Mabalacat" [level=3] [ref=e3539]
+                    - generic [ref=e3540]:
+                      - heading "+639685409821" [level=3] [ref=e3543]
+                      - generic:
+                        - heading [level=3]
+                    - heading "weeplaytherapycenter@gmail.com" [level=3] [ref=e3545]:
+                      - link "weeplaytherapycenter@gmail.com" [ref=e3547] [cursor=pointer]:
+                        - /url: mailto:weeplaytherapycenter@gmail.com
+                    - paragraph [ref=e3549]: Regular SLP Services
+                  - generic [ref=e3552]:
+                    - img [ref=e3556]
+                    - img [ref=e3563]
+              - listitem [ref=e3566]:
+                - generic:
+                  - generic [ref=e3568]:
+                    - generic [ref=e3572]:
+                      - heading "Let’s Talk and Learn Therapy Center" [level=3] [ref=e3575]
+                      - heading "#1 West Tramo, Cabambangan, Bacolor" [level=3] [ref=e3577]
+                      - heading "Bacolor" [level=3] [ref=e3579]
+                    - generic [ref=e3580]:
+                      - heading "+63 998 966 6605" [level=3] [ref=e3583]
+                      - heading / [level=3] [ref=e3585]
+                      - heading "+639162304619" [level=3] [ref=e3587]
+                    - heading "letstalkandlearn@gmail.com" [level=3] [ref=e3589]:
+                      - link "letstalkandlearn@gmail.com" [ref=e3591] [cursor=pointer]:
+                        - /url: mailto:letstalkandlearn@gmail.com
+                    - paragraph [ref=e3593]: Regular SLP Services
+                  - generic [ref=e3596]:
+                    - img [ref=e3600]
+                    - img [ref=e3607]
+                    - img [ref=e3613]
+                    - img [ref=e3620]
+              - listitem [ref=e3623]:
+                - generic:
+                  - generic [ref=e3625]:
+                    - generic [ref=e3629]:
+                      - heading "BOOST Therapy Center" [level=3] [ref=e3632]
+                      - heading "7th Flr., YL Holdings Bldg., 115 Rufino St., Cor. Salcedo St., Legazpi Village, San Lorenzo, Makati City" [level=3] [ref=e3634]
+                      - heading "Makati City" [level=3] [ref=e3636]
+                    - generic [ref=e3637]:
+                      - heading "+63 945 344 7523" [level=3] [ref=e3640]
+                      - heading / [level=3] [ref=e3642]
+                      - heading "+639 178642883" [level=3] [ref=e3644]
+                    - heading "boosttherapycenter@gmail.com" [level=3] [ref=e3646]:
+                      - link "boosttherapycenter@gmail.com" [ref=e3648] [cursor=pointer]:
+                        - /url: mailto:boosttherapycenter@gmail.com
+                    - paragraph [ref=e3650]: Regular SLP Services, PROMPT, Oral Placement Therapy, SOS-Feeding
+                  - generic [ref=e3653]:
+                    - img [ref=e3657]
+                    - img [ref=e3664]
+                    - img [ref=e3670]
+                    - img [ref=e3677]
+              - listitem [ref=e3680]:
+                - generic:
+                  - generic [ref=e3682]:
+                    - generic [ref=e3686]:
+                      - heading "Babywise Medical Clinic" [level=3] [ref=e3689]
+                      - heading "Unit 205 Southbend Building Daang Hari Road Las Pinas City" [level=3] [ref=e3691]
+                      - heading "Las Piñas City" [level=3] [ref=e3693]
+                    - generic [ref=e3694]:
+                      - heading "+63 917 118 9713" [level=3] [ref=e3697]
+                      - heading / [level=3] [ref=e3699]
+                      - heading "+63 2 8403 2026" [level=3] [ref=e3701]
+                    - heading "hello@babywise.com.ph" [level=3] [ref=e3703]:
+                      - link "hello@babywise.com.ph" [ref=e3705] [cursor=pointer]:
+                        - /url: mailto:hello@babywise.com.ph
+                    - paragraph [ref=e3707]: Regular SLP Services, Oral Placement Therapy, Natural Language Acquisition
+                  - generic [ref=e3710]:
+                    - img [ref=e3714]
+                    - img [ref=e3721]
+              - listitem [ref=e3724]:
+                - generic:
+                  - generic [ref=e3726]:
+                    - generic [ref=e3730]:
+                      - heading "MGZ Brightchild Therapy Center" [level=3] [ref=e3733]
+                      - heading "2/F Light Tower Center, 1732 Dian Street, Palanan, Makati City" [level=3] [ref=e3735]
+                      - heading "Makati City" [level=3] [ref=e3737]
+                    - generic [ref=e3738]:
+                      - heading "+639758582394" [level=3] [ref=e3741]
+                      - heading / [level=3] [ref=e3743]
+                      - heading "+639686175615" [level=3] [ref=e3745]
+                    - heading "brightchildlearningcenter20232@gmail.com" [level=3] [ref=e3747]:
+                      - link "brightchildlearningcenter20232@gmail.com" [ref=e3749] [cursor=pointer]:
+                        - /url: mailto:brightchildlearningcenter20232@gmail.com
+                    - paragraph [ref=e3751]: Regular SLP Services
+                  - generic [ref=e3754]:
+                    - img [ref=e3758]
+                    - img [ref=e3765]
+              - listitem [ref=e3768]:
+                - generic:
+                  - generic [ref=e3770]:
+                    - generic [ref=e3774]:
+                      - heading "EARLY START THERAPY CENTER- SAN PABLO" [level=3] [ref=e3777]
+                      - heading "2F Alyssa's Arcade San Benito" [level=3] [ref=e3779]
+                      - heading "Alaminos" [level=3] [ref=e3781]
+                    - generic [ref=e3782]:
+                      - heading "09171777499" [level=3] [ref=e3785]
+                      - generic:
+                        - heading [level=3]
+                    - heading "estc.sanpablo@gmail.com" [level=3] [ref=e3787]:
+                      - link "estc.sanpablo@gmail.com" [ref=e3789] [cursor=pointer]:
+                        - /url: mailto:estc.sanpablo@gmail.com
+                    - paragraph [ref=e3791]: Regular SLP Services, LSVT-LOUD
+                  - generic [ref=e3794]:
+                    - img [ref=e3798]
+                    - img [ref=e3805]
+              - listitem [ref=e3808]:
+                - generic:
+                  - generic [ref=e3810]:
+                    - generic [ref=e3814]:
+                      - heading "HOPE Development Center for Children, Inc." [level=3] [ref=e3817]
+                      - heading "41 M. Ponce St.," [level=3] [ref=e3819]
+                      - heading "Las Piñas City" [level=3] [ref=e3821]
+                    - generic [ref=e3822]:
+                      - heading "09195524084" [level=3] [ref=e3825]
+                      - heading / [level=3] [ref=e3827]
+                      - heading "09476239084" [level=3] [ref=e3829]
+                    - heading "hopedevcenter@gmail.com" [level=3] [ref=e3831]:
+                      - link "hopedevcenter@gmail.com" [ref=e3833] [cursor=pointer]:
+                        - /url: mailto:hopedevcenter@gmail.com
+                    - paragraph [ref=e3835]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PROMPT
+                  - generic [ref=e3838]:
+                    - img [ref=e3842]
+                    - img [ref=e3849]
+                    - img [ref=e3855]
+                    - img [ref=e3862]
+              - listitem [ref=e3865]:
+                - generic:
+                  - generic [ref=e3867]:
+                    - generic [ref=e3871]:
+                      - heading "Ignite Therapy Center" [level=3] [ref=e3874]
+                      - heading "Block 15 Lot 11 Avenida Rizal St., Phase 8, Bahayang Pagasa Subd., Brgy. Magdalo, Imus, Cavite 4103" [level=3] [ref=e3876]
+                      - heading "Imus" [level=3] [ref=e3878]
+                    - generic [ref=e3879]:
+                      - heading "+639253800950" [level=3] [ref=e3882]
+                      - heading / [level=3] [ref=e3884]
+                      - heading "+639173290308" [level=3] [ref=e3886]
+                    - heading "inquiries@ignitecenterph.com" [level=3] [ref=e3888]:
+                      - link "inquiries@ignitecenterph.com" [ref=e3890] [cursor=pointer]:
+                        - /url: mailto:inquiries@ignitecenterph.com
+                    - paragraph [ref=e3892]: Regular SLP Services, PROMPT
+                  - generic [ref=e3895]:
+                    - img [ref=e3899]
+                    - img [ref=e3906]
+              - listitem [ref=e3909]:
+                - generic:
+                  - generic [ref=e3911]:
+                    - generic [ref=e3915]:
+                      - heading "Kindle Minds Therapy Center" [level=3] [ref=e3918]
+                      - heading "Ground Floor, Rimando Building, 1706, E. Rodriguez Sr. Avenue, Brgy.Immaculate Concepcion, Cubao, Quezon City" [level=3] [ref=e3920]
+                      - heading "Quezon City" [level=3] [ref=e3922]
+                    - generic [ref=e3923]:
+                      - heading "+639970992426" [level=3] [ref=e3926]
+                      - heading / [level=3] [ref=e3928]
+                      - heading "+639063838327" [level=3] [ref=e3930]
+                    - heading "kindlemindstherapycenter@gmail.com" [level=3] [ref=e3932]:
+                      - link "kindlemindstherapycenter@gmail.com" [ref=e3934] [cursor=pointer]:
+                        - /url: mailto:kindlemindstherapycenter@gmail.com
+                    - paragraph [ref=e3936]: Regular SLP Services
+                  - generic [ref=e3939]:
+                    - img [ref=e3943]
+                    - img [ref=e3950]
+              - listitem [ref=e3953]:
+                - generic:
+                  - generic [ref=e3955]:
+                    - generic [ref=e3959]:
+                      - heading "SpeakLife Pediatric and Adult Therapy Center" [level=3] [ref=e3962]
+                      - heading "2nd Floor Antigua's Place Gun-Ob" [level=3] [ref=e3964]
+                      - heading "Lapu-Lapu City" [level=3] [ref=e3966]
+                    - generic [ref=e3967]:
+                      - heading "+639158111023" [level=3] [ref=e3970]
+                      - heading / [level=3] [ref=e3972]
+                      - heading "+639178021417" [level=3] [ref=e3974]
+                    - heading "speaklifetherapycenter@gmail.com" [level=3] [ref=e3976]:
+                      - link "speaklifetherapycenter@gmail.com" [ref=e3978] [cursor=pointer]:
+                        - /url: mailto:speaklifetherapycenter@gmail.com
+                    - paragraph [ref=e3980]: Regular SLP Services, PROMPT
+                  - generic [ref=e3983]:
+                    - img [ref=e3987]
+                    - img [ref=e3994]
+                    - img [ref=e4000]
+                    - img [ref=e4007]
+              - listitem [ref=e4010]:
+                - generic:
+                  - generic [ref=e4012]:
+                    - generic [ref=e4016]:
+                      - heading "Cornerstone Therapy Hub, Inc." [level=3] [ref=e4019]
+                      - heading "Unit 15-B Mt. Catarman St., Capistrano Complex Subdivision, Gusa" [level=3] [ref=e4021]
+                      - heading "Cagayan de Oro City" [level=3] [ref=e4023]
+                    - generic [ref=e4024]:
+                      - heading "+63935-598-5917" [level=3] [ref=e4027]
+                      - heading / [level=3] [ref=e4029]
+                      - heading "+63995-202-5830" [level=3] [ref=e4031]
+                    - heading "cornerstonetherapyhub@gmail.com" [level=3] [ref=e4033]:
+                      - link "cornerstonetherapyhub@gmail.com" [ref=e4035] [cursor=pointer]:
+                        - /url: mailto:cornerstonetherapyhub@gmail.com
+                    - paragraph [ref=e4037]: Regular SLP Services, PROMPT
+                  - generic [ref=e4040]:
+                    - img [ref=e4044]
+                    - img [ref=e4051]
+              - listitem [ref=e4054]:
+                - generic:
+                  - generic [ref=e4056]:
+                    - generic [ref=e4060]:
+                      - heading "SAN AGUSTIN CENTER FOR DEVELOPMENT OF BALIUAG INC." [level=3] [ref=e4063]
+                      - heading "898 Balagtas St. Sto. Cristo, City of Baliuag, Bulacan" [level=3] [ref=e4065]
+                      - heading "Baliuag City" [level=3] [ref=e4067]
+                    - generic [ref=e4068]:
+                      - heading "+63925-567-2789" [level=3] [ref=e4071]
+                      - generic:
+                        - heading [level=3]
+                    - heading "michaelarvincruz@yahoo.com & sadbinc2016@gmail.com" [level=3] [ref=e4073]:
+                      - generic [ref=e4074]:
+                        - link "michaelarvincruz@yahoo.com" [ref=e4075] [cursor=pointer]:
+                          - /url: mailto:michaelarvincruz@yahoo.com
+                        - text: "&"
+                        - link "sadbinc2016@gmail.com" [ref=e4076] [cursor=pointer]:
+                          - /url: mailto:sadbinc2016@gmail.com
+                    - paragraph [ref=e4078]: Regular SLP Services
+                  - generic [ref=e4081]:
+                    - img [ref=e4085]
+                    - img [ref=e4092]
+              - listitem [ref=e4095]:
+                - generic:
+                  - generic [ref=e4097]:
+                    - generic [ref=e4101]:
+                      - heading "Collaborative Learning Lab (COLLAB)" [level=3] [ref=e4104]
+                      - heading "Unit 406 Henrys Building 80 Ortigas Avenue, Greenhills" [level=3] [ref=e4106]
+                      - heading "San Juan City" [level=3] [ref=e4108]
+                    - generic [ref=e4109]:
+                      - heading "+63916 580 3702" [level=3] [ref=e4112]
+                      - heading / [level=3] [ref=e4114]
+                      - heading "+632 8682-1096" [level=3] [ref=e4116]
+                    - heading "collabgreenhills@gmail.com" [level=3] [ref=e4118]:
+                      - link "collabgreenhills@gmail.com" [ref=e4120] [cursor=pointer]:
+                        - /url: mailto:collabgreenhills@gmail.com
+                    - paragraph [ref=e4122]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PROMPT, Oral Placement Therapy, SOS-Feeding, Audiological Assessment
+                  - generic [ref=e4125]:
+                    - img [ref=e4129]
+                    - img [ref=e4136]
+                    - img [ref=e4142]
+                    - img [ref=e4149]
+              - listitem [ref=e4152]:
+                - generic:
+                  - generic [ref=e4154]:
+                    - generic [ref=e4158]:
+                      - heading "Kidspeak Therapy Center" [level=3] [ref=e4161]
+                      - 'heading "Branch 1: 7-3 Yakal st., 2nd Reyville Subd., Pamplona 3, Las Pinas City Branch 2: 3rd Floor, EBL Building, Manuela Avenue corner Hunter st., Dona Manuela Subd., Pamplona 3, Las Pinas City" [level=3] [ref=e4163]':
+                        - generic [ref=e4164]:
+                          - text: "Branch 1: 7-3 Yakal st., 2nd Reyville Subd., Pamplona 3, Las Pinas City"
+                          - text: "Branch 2: 3rd Floor, EBL Building, Manuela Avenue corner Hunter st., Dona Manuela Subd., Pamplona 3, Las Pinas City"
+                      - heading "Las Piñas City" [level=3] [ref=e4166]
+                    - generic [ref=e4167]:
+                      - heading "09089649106" [level=3] [ref=e4170]
+                      - heading / [level=3] [ref=e4172]
+                      - heading "88728746" [level=3] [ref=e4174]
+                    - heading "kidspeak.avt@gmail.com" [level=3] [ref=e4176]:
+                      - link "kidspeak.avt@gmail.com" [ref=e4178] [cursor=pointer]:
+                        - /url: mailto:kidspeak.avt@gmail.com
+                    - paragraph [ref=e4180]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PECS (AAC), PROMPT, Oral Placement Therapy, Auditory Verbal Therapy
+                  - generic [ref=e4183]:
+                    - img [ref=e4187]
+                    - img [ref=e4194]
+                    - img [ref=e4200]
+                    - img [ref=e4207]
+              - listitem [ref=e4210]:
+                - generic:
+                  - generic [ref=e4212]:
+                    - generic [ref=e4216]:
+                      - heading "ELAD School of Potentials Therapy Center" [level=3] [ref=e4219]
+                      - heading "Cameriño St. Brgy. Luciano" [level=3] [ref=e4221]
+                      - heading "Trece Martires City" [level=3] [ref=e4223]
+                    - generic [ref=e4224]:
+                      - heading "09474295648" [level=3] [ref=e4227]
+                      - heading / [level=3] [ref=e4229]
+                      - heading "09475126717" [level=3] [ref=e4231]
+                    - heading "eladschoolofpotentials@gmail.com" [level=3] [ref=e4233]:
+                      - link "eladschoolofpotentials@gmail.com" [ref=e4235] [cursor=pointer]:
+                        - /url: mailto:eladschoolofpotentials@gmail.com
+                    - paragraph [ref=e4237]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PECS (AAC), PROMPT, Oral Placement Therapy, SOS-Feeding
+                  - generic [ref=e4240]:
+                    - img [ref=e4244]
+                    - img [ref=e4251]
+              - listitem [ref=e4254]:
+                - generic:
+                  - generic [ref=e4256]:
+                    - generic [ref=e4260]:
+                      - heading "Sandbox Clinic Clark" [level=3] [ref=e4263]
+                      - heading "Unit 1, Ground Floor, Kessler Medical Suites, Clark Center 3, Berthaphil III, Clark Freeport Zone" [level=3] [ref=e4265]
+                      - heading "Angeles City" [level=3] [ref=e4267]
+                    - generic [ref=e4268]:
+                      - heading "+63 918 908 0881" [level=3] [ref=e4271]
+                      - heading / [level=3] [ref=e4273]
+                      - heading "(045) 499 7583" [level=3] [ref=e4275]
+                    - heading "solutions.sandboxclinic@gmail.com" [level=3] [ref=e4277]:
+                      - link "solutions.sandboxclinic@gmail.com" [ref=e4279] [cursor=pointer]:
+                        - /url: mailto:solutions.sandboxclinic@gmail.com
+                    - paragraph [ref=e4281]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PECS (AAC), PROMPT, Oral Placement Therapy, Auditory Verbal Therapy, Aqua speech therapy
+                  - generic [ref=e4284]:
+                    - img [ref=e4290]
+                    - img [ref=e4295]
+                    - img [ref=e4302]
+                    - img [ref=e4308]
+                    - img [ref=e4315]
+              - listitem [ref=e4318]:
+                - generic:
+                  - generic [ref=e4320]:
+                    - generic [ref=e4324]:
+                      - heading "TalkActive Therapy Center" [level=3] [ref=e4327]
+                      - heading "903A Timog corner Busilak Street, Barangka Drive, Mandaluyong City" [level=3] [ref=e4329]
+                      - heading "Mandaluyong" [level=3] [ref=e4331]
+                    - generic [ref=e4332]:
+                      - heading "+63288184656" [level=3] [ref=e4335]
+                      - heading / [level=3] [ref=e4337]
+                      - heading "+639556894686" [level=3] [ref=e4339]
+                    - heading "talkactivetherapycenter@gmail.com" [level=3] [ref=e4341]:
+                      - link "talkactivetherapycenter@gmail.com" [ref=e4343] [cursor=pointer]:
+                        - /url: mailto:talkactivetherapycenter@gmail.com
+                    - paragraph [ref=e4345]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PROMPT, Oral Placement Therapy, Auditory Verbal Therapy
+                  - generic [ref=e4348]:
+                    - img [ref=e4352]
+                    - img [ref=e4359]
+                    - img [ref=e4365]
+                    - img [ref=e4372]
+              - listitem [ref=e4375]:
+                - generic:
+                  - generic [ref=e4377]:
+                    - generic [ref=e4381]:
+                      - heading "TalkActive Therapy Center Taguig" [level=3] [ref=e4384]
+                      - heading "50B A.Bonifacio Street, AFPHOVAI Phase 4, Taguig City" [level=3] [ref=e4386]
+                      - heading "Taguig" [level=3] [ref=e4388]
+                    - generic [ref=e4389]:
+                      - heading "+6382511766" [level=3] [ref=e4392]
+                      - heading / [level=3] [ref=e4394]
+                      - heading "+639975338477 (Viber)" [level=3] [ref=e4396]
+                    - heading "talkactivetaguig@gmail.com" [level=3] [ref=e4398]:
+                      - link "talkactivetaguig@gmail.com" [ref=e4400] [cursor=pointer]:
+                        - /url: mailto:talkactivetaguig@gmail.com
+                    - paragraph [ref=e4402]: Regular SLP Services, Augmentative and Alternative Communication (AAC), PROMPT
+                  - generic [ref=e4405]:
+                    - img [ref=e4409]
+                    - img [ref=e4416]
+                    - img [ref=e4422]
+                    - img [ref=e4429]
+              - listitem [ref=e4432]:
+                - generic:
+                  - generic [ref=e4434]:
+                    - generic [ref=e4438]:
+                      - heading "Sandbox Clinic - East" [level=3] [ref=e4441]
+                      - heading "Level 4, Robinsons Metro East, Marcos Highway, Brgy. Dela Paz, Santolan, Pasig, Philippines, 1600" [level=3] [ref=e4443]
+                      - heading "Pasig City" [level=3] [ref=e4445]
+                    - generic [ref=e4446]:
+                      - heading "+63917-118-9289" [level=3] [ref=e4449]
+                      - heading / [level=3] [ref=e4451]
+                      - heading "+63917-873-8885" [level=3] [ref=e4453]
+                    - heading "east.sandboxclinic@gmail.com" [level=3] [ref=e4455]:
+                      - link "east.sandboxclinic@gmail.com" [ref=e4457] [cursor=pointer]:
+                        - /url: mailto:east.sandboxclinic@gmail.com
+                    - paragraph [ref=e4459]: Regular SLP Services, Augmentative and Alternative Communication (AAC)
+                  - generic [ref=e4462]:
+                    - img [ref=e4466]
+                    - img [ref=e4473]
+          - button "Load More" [ref=e4481] [cursor=pointer]:
+            - generic [ref=e4483]: Load More
+        - contentinfo:
+          - generic [ref=e4484]:
+            - generic:
+              - paragraph [ref=e4491]: Philippine Association of Speech-Language Pathologists
+              - generic [ref=e4494]:
+                - paragraph [ref=e4497]: MENU
+                - navigation "Site" [ref=e4498]:
+                  - list [ref=e4499]:
+                    - listitem [ref=e4500]:
+                      - generic [ref=e4501] [cursor=pointer]:
+                        - generic [ref=e4503]: Membership
+                        - button "Membership" [ref=e4504]:
+                          - generic [ref=e4505]:
+                            - img
+                    - listitem [ref=e4506]:
+                      - generic [ref=e4507] [cursor=pointer]:
+                        - generic [ref=e4509]: About
+                        - button "About" [ref=e4510]:
+                          - generic [ref=e4511]:
+                            - img
+                    - listitem [ref=e4512]:
+                      - link "Events" [ref=e4515] [cursor=pointer]:
+                        - /url: https://www.pasp.org.ph/event-list
+                    - listitem [ref=e4516]:
+                      - generic [ref=e4517] [cursor=pointer]:
+                        - link "Support" [ref=e4519]:
+                          - /url: https://www.pasp.org.ph/support-pasp
+                        - button "Support" [ref=e4520]:
+                          - generic [ref=e4521]:
+                            - img
+              - generic [ref=e4522]:
+                - generic:
+                  - generic [ref=e4524]:
+                    - paragraph [ref=e4527]: CONTACT
+                    - paragraph [ref=e4529]:
+                      - link "+63 917 518 7277" [ref=e4531] [cursor=pointer]:
+                        - /url: tel:+639175187277
+                  - generic [ref=e4532]:
+                    - paragraph [ref=e4535]: ADDRESS
+                    - paragraph [ref=e4537]: Manila, Philippines
+              - generic [ref=e4540]:
+                - paragraph [ref=e4543]: RESOURCES
+                - generic [ref=e4544]:
+                  - paragraph [ref=e4545]:
+                    - link "AAC Brochure" [ref=e4547] [cursor=pointer]:
+                      - /url: https://drive.google.com/file/d/1j22b3TTlBO64CeStd-DgJCZDcNNchiO0/view
+                  - paragraph [ref=e4548]:
+                    - link "AAC SIG Newsletter Vol 1" [ref=e4550] [cursor=pointer]:
+                      - /url: https://drive.google.com/file/d/10qOg0MSgF9MYdlkqzNZa4usqWL6yRN1f/view
+                  - paragraph [ref=e4551]:
+                    - link "Groups SLPs Can Help" [ref=e4553] [cursor=pointer]:
+                      - /url: https://drive.google.com/file/d/13niKeYmK-hRqxzMi1Rp-b5OUwbLPVaVe/view?usp=drivesdk
+                  - paragraph [ref=e4554]:
+                    - link "PASP Filipino SLP Survey" [ref=e4556] [cursor=pointer]:
+                      - /url: https://drive.google.com/file/d/11U2dDdXXGqk42_iGGLUGT4S0PRiGcAKx/view
+                  - paragraph [ref=e4557]:
+                    - link "RA 11249 - SLP Act" [ref=e4559] [cursor=pointer]:
+                      - /url: https://www.officialgazette.gov.ph/downloads/2019/03mar/20190322-RA-11249-RRD.pdf
+                  - paragraph [ref=e4560]:
+                    - link "PRB - SLP Resolution No. 2" [ref=e4562] [cursor=pointer]:
+                      - /url: https://drive.google.com/file/d/13niKeYmK-hRqxzMi1Rp-b5OUwbLPVaVe/view?usp=drivesdk
+                  - paragraph [ref=e4563]
+              - generic [ref=e4566]:
+                - paragraph [ref=e4569]: SOCIAL
+                - paragraph [ref=e4571]:
+                  - link "Facebook" [ref=e4573] [cursor=pointer]:
+                    - /url: https://www.facebook.com/pasp.org.ph/
+                - paragraph [ref=e4575]:
+                  - link "Youtube" [ref=e4577] [cursor=pointer]:
+                    - /url: https://www.youtube.com/c/paspofficial
+                - paragraph [ref=e4579]:
+                  - link "Instagram" [ref=e4581] [cursor=pointer]:
+                    - /url: https://www.instagram.com/pasp.org.ph/
+              - generic [ref=e4582]:
+                - generic:
+                  - paragraph [ref=e4586]: © 2025 Philippine Association of Speech-Language Pathologists
+                  - generic [ref=e4587]:
+                    - paragraph [ref=e4590]:
+                      - link "Privacy Policy" [ref=e4592] [cursor=pointer]:
+                        - /url: https://www.pasp.org.ph/privacy-policy
+                    - paragraph [ref=e4594]:
+                      - link "Terms of Use" [ref=e4595] [cursor=pointer]:
+                        - /url: https://www.pasp.org.ph/terms-of-use
+    - dialog "Renewal Instructions" [active] [ref=e4597]:
+      - generic [ref=e4600]:
+        - generic [ref=e4602]:
+          - generic:
+            - heading "Welcome to the New PASP Website!" [level=4] [ref=e4605]
+            - generic [ref=e4606]:
+              - paragraph [ref=e4607]: If you’re an existing member logging in for the first time, please note that all members must update their membership information before accessing their profiles.
+              - paragraph [ref=e4608]
+              - paragraph [ref=e4609]:
+                - generic [ref=e4610]:
+                  - text: "➡️ Update your profile here:"
+                  - link "https://www.pasp.org.ph/membership-information" [ref=e4613] [cursor=pointer]:
+                    - /url: https://www.pasp.org.ph/membership-information
+              - paragraph [ref=e4614]
+              - paragraph [ref=e4615]: If your membership has lapsed, you’ll need to renew before regaining access.
+              - paragraph [ref=e4616]:
+                - generic [ref=e4617]:
+                  - text: "➡️ Renew your membership here:"
+                  - link "https://www.pasp.org.ph/membership-information" [ref=e4620] [cursor=pointer]:
+                    - /url: https://www.pasp.org.ph/membership-information
+              - paragraph [ref=e4621]:
+                - generic [ref=e4622]:
+                  - text: "➡️ Follow renewal instructions here:"
+                  - link "Instagram Guide" [ref=e4625] [cursor=pointer]:
+                    - /url: https://www.instagram.com/p/DFyrWQSzsvR/?utm_source=ig_web_copy_link&igsh=MzRlODBiNWFlZA==
+              - paragraph [ref=e4626]
+              - paragraph [ref=e4627]: "🔹 Important: Carefully enter your email address to ensure you receive the next steps via email."
+              - paragraph [ref=e4628]
+              - paragraph [ref=e4629]: Thank you for your patience as we transition to this improved system—we appreciate your commitment to PASP!
+        - button "Back to site" [ref=e4631] [cursor=pointer]:
+          - img [ref=e4632]
+    - region "bottom of page"
+  - region "We use cookies on our website to see how you interact with it. By accepting, you agree to our use of such cookies.Privacy Policy" [ref=e4635]:
+    - generic [ref=e4636]:
+      - generic [ref=e4637]:
+        - generic [ref=e4639]:
+          - text: We use cookies on our website to see how you interact with it. By accepting, you agree to our use of such cookies.
+          - link [ref=e4640] [cursor=pointer]:
+            - /url: https://www.pasp.org.ph/privacy-policy
+            - text: Privacy Policy
+        - generic [ref=e4641]:
+          - button "Settings" [ref=e4642] [cursor=pointer]
+          - button "Accept" [ref=e4643] [cursor=pointer]
+      - button "Close" [ref=e4645]:
+        - img "Close" [ref=e4646] [cursor=pointer]

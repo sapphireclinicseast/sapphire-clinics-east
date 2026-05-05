@@ -1,0 +1,34 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - link "SCEI Patient Portal" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e5]: SCEI
+        - generic [ref=e6]: Patient Portal
+      - navigation [ref=e7]:
+        - link "Book" [ref=e8] [cursor=pointer]:
+          - /url: /book
+        - link "My Bookings" [ref=e9] [cursor=pointer]:
+          - /url: /bookings
+  - main [ref=e10]:
+    - generic [ref=e11]:
+      - generic [ref=e12]:
+        - heading "Book an appointment" [level=1] [ref=e13]
+        - paragraph [ref=e14]: Sapphire Clinics East — Patient Online Booking
+      - generic [ref=e15]:
+        - generic [ref=e16]:
+          - button "Returning patient" [ref=e17]
+          - button "New patient" [ref=e18]
+        - generic [ref=e20]:
+          - generic [ref=e21]:
+            - text: Email
+            - textbox "Email" [ref=e22]
+          - generic [ref=e23]:
+            - text: Last name
+            - textbox "Last name" [ref=e24]
+          - button "Continue" [ref=e25]
+          - paragraph [ref=e26]:
+            - text: Don't have a record yet?
+            - button "Register as a new patient." [ref=e27]
+  - contentinfo [ref=e28]: © 2026 Sapphire Clinics East
+  - alert [ref=e29]

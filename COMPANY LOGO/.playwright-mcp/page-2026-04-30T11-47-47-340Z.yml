@@ -1,0 +1,296 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - heading "Schools & Clinics Dashboard — Speech-Language Pathology" [level=1] [ref=e5]
+        - paragraph [ref=e6]: Philippine Association of Speech-Language Pathologists — schools offering BSLP and registered SLP clinics & centers
+        - generic [ref=e7]:
+          - button "OT" [ref=e8] [cursor=pointer]
+          - button "SLP" [ref=e9] [cursor=pointer]
+      - generic [ref=e10]:
+        - generic "Read-only public view" [ref=e11]: 👁 View Only
+        - generic [ref=e12]: Connecting…
+  - generic [ref=e13]:
+    - generic [ref=e14]:
+      - generic [ref=e15]:
+        - generic [ref=e16]: SLP Schools
+        - generic [ref=e17]: "5"
+      - generic [ref=e18]:
+        - generic [ref=e19]: SLP Clinics & Centers
+        - generic [ref=e20]: "78"
+      - generic [ref=e21]:
+        - generic [ref=e22]: Regions Covered
+        - generic [ref=e23]: "9"
+      - generic [ref=e24]:
+        - generic [ref=e25]: Cities/Municipalities
+        - generic [ref=e26]: "52"
+    - generic [ref=e27]:
+      - heading "Geographic Distribution click markers for details" [level=2] [ref=e28]:
+        - text: Geographic Distribution
+        - generic [ref=e29]: click markers for details
+      - generic [ref=e30]:
+        - generic:
+          - generic:
+            - img
+        - generic:
+          - generic [ref=e114]:
+            - button "Zoom in" [ref=e115] [cursor=pointer]: +
+            - button "Zoom out" [ref=e116] [cursor=pointer]: −
+          - generic [ref=e118]:
+            - generic [ref=e119]:
+              - generic [ref=e121]:
+                - radio "Carto Voyager" [checked] [ref=e122]
+                - text: Carto Voyager
+              - generic [ref=e124]:
+                - radio "Carto Light" [ref=e125]
+                - text: Carto Light
+              - generic [ref=e127]:
+                - radio "Esri World" [ref=e128]
+                - text: Esri World
+              - generic [ref=e130]:
+                - radio "OpenStreetMap" [ref=e131]
+                - text: OpenStreetMap
+            - generic [ref=e133]:
+              - generic [ref=e135]:
+                - checkbox "Schools" [checked] [ref=e136]
+                - text: Schools
+              - generic [ref=e138]:
+                - checkbox "Clinics" [checked] [ref=e139]
+                - text: Clinics
+          - generic [ref=e140]:
+            - link "Leaflet" [ref=e141] [cursor=pointer]:
+              - /url: https://leafletjs.com
+              - img [ref=e142]
+              - text: Leaflet
+            - text: "| ©"
+            - link "OSM" [ref=e146] [cursor=pointer]:
+              - /url: https://www.openstreetmap.org/
+            - text: ©
+            - link "CARTO" [ref=e147] [cursor=pointer]:
+              - /url: https://carto.com/
+      - generic [ref=e148]:
+        - generic [ref=e149]: School (BSOT program)
+        - generic [ref=e151]: Clinic / Center
+        - generic [ref=e153]: "Tip: schools and clinics in the same area indicate strong intern-pipeline density."
+    - generic [ref=e154]:
+      - heading "Schools per Region" [level=2] [ref=e156]
+      - heading "Schools per City / Municipality" [level=2] [ref=e159]
+    - generic [ref=e161]:
+      - heading "Clinics per Region" [level=2] [ref=e163]
+      - heading "Clinic-to-School Ratio by Region" [level=2] [ref=e166]
+    - generic [ref=e168]:
+      - heading "Tuition & Enrollment Data fill in as you call each school" [level=2] [ref=e169]:
+        - text: Tuition & Enrollment Data
+        - generic [ref=e170]: fill in as you call each school
+      - paragraph [ref=e171]: Enter the number of students currently enrolled, the annual tuition fee, and any miscellaneous/other fees per school. Averages compute live (overall and per region).
+      - generic [ref=e172]:
+        - button "⟳ Refresh from Server" [ref=e173] [cursor=pointer]
+        - button "Download CSV" [ref=e174] [cursor=pointer]
+        - button "Download PDF" [ref=e175] [cursor=pointer]
+      - table [ref=e177]:
+        - rowgroup [ref=e178]:
+          - 'row "School Region City # Students Number of Scholars Tuition / Year (₱) Other Fees (₱) Total / Student" [ref=e179]':
+            - columnheader "School" [ref=e180]
+            - columnheader "Region" [ref=e181]
+            - columnheader "City" [ref=e182]
+            - columnheader "# Students" [ref=e183]
+            - columnheader "Number of Scholars" [ref=e184]
+            - columnheader "Tuition / Year (₱)" [ref=e185]
+            - columnheader "Other Fees (₱)" [ref=e186]
+            - columnheader "Total / Student" [ref=e187]
+        - rowgroup [ref=e188]:
+          - row "University of the Philippines Manila College of Allied Medical Professions (CAMP), UP-PGH Compound, Pedro Gil St., Malate, Manila NCR Manila 7 —" [ref=e189]:
+            - cell "University of the Philippines Manila College of Allied Medical Professions (CAMP), UP-PGH Compound, Pedro Gil St., Malate, Manila" [ref=e190]:
+              - text: University of the Philippines Manila
+              - text: College of Allied Medical Professions (CAMP), UP-PGH Compound, Pedro Gil St., Malate, Manila
+            - cell "NCR" [ref=e191]
+            - cell "Manila" [ref=e192]
+            - cell [ref=e193]:
+              - spinbutton
+            - cell "7" [ref=e194]:
+              - spinbutton: "7"
+            - cell [ref=e195]:
+              - spinbutton
+            - cell [ref=e196]:
+              - spinbutton
+            - cell "—" [ref=e197]
+          - row "University of Santo Tomas College of Rehabilitation Sciences, España Blvd., Sampaloc, Manila NCR Manila —" [ref=e198]:
+            - cell "University of Santo Tomas College of Rehabilitation Sciences, España Blvd., Sampaloc, Manila" [ref=e199]:
+              - text: University of Santo Tomas
+              - text: College of Rehabilitation Sciences, España Blvd., Sampaloc, Manila
+            - cell "NCR" [ref=e200]
+            - cell "Manila" [ref=e201]
+            - cell [ref=e202]:
+              - spinbutton
+            - cell [ref=e203]:
+              - spinbutton
+            - cell [ref=e204]:
+              - spinbutton
+            - cell [ref=e205]:
+              - spinbutton
+            - cell "—" [ref=e206]
+          - row "De La Salle Medical and Health Sciences Institute Governor D. Mangubat Avenue, Brgy. Zone IV, City of Dasmariñas, Cavite Region IV-A Dasmariñas —" [ref=e207]:
+            - cell "De La Salle Medical and Health Sciences Institute Governor D. Mangubat Avenue, Brgy. Zone IV, City of Dasmariñas, Cavite" [ref=e208]:
+              - text: De La Salle Medical and Health Sciences Institute
+              - text: Governor D. Mangubat Avenue, Brgy. Zone IV, City of Dasmariñas, Cavite
+            - cell "Region IV-A" [ref=e209]
+            - cell "Dasmariñas" [ref=e210]
+            - cell [ref=e211]:
+              - spinbutton
+            - cell [ref=e212]:
+              - spinbutton
+            - cell [ref=e213]:
+              - spinbutton
+            - cell [ref=e214]:
+              - spinbutton
+            - cell "—" [ref=e215]
+          - row "Cebu Doctors' University Dr. P.V. Larrazabal Jr. Ave., North Reclamation Area, Mandaue City, Cebu Region VII Mandaue —" [ref=e216]:
+            - cell "Cebu Doctors' University Dr. P.V. Larrazabal Jr. Ave., North Reclamation Area, Mandaue City, Cebu" [ref=e217]:
+              - text: Cebu Doctors' University
+              - text: Dr. P.V. Larrazabal Jr. Ave., North Reclamation Area, Mandaue City, Cebu
+            - cell "Region VII" [ref=e218]
+            - cell "Mandaue" [ref=e219]
+            - cell [ref=e220]:
+              - spinbutton
+            - cell [ref=e221]:
+              - spinbutton
+            - cell [ref=e222]:
+              - spinbutton
+            - cell [ref=e223]:
+              - spinbutton
+            - cell "—" [ref=e224]
+          - row "University of Batangas Hilltop Road, Batangas City, Batangas Region IV-A Batangas City —" [ref=e225]:
+            - cell "University of Batangas Hilltop Road, Batangas City, Batangas" [ref=e226]:
+              - text: University of Batangas
+              - text: Hilltop Road, Batangas City, Batangas
+            - cell "Region IV-A" [ref=e227]
+            - cell "Batangas City" [ref=e228]
+            - cell [ref=e229]:
+              - spinbutton
+            - cell [ref=e230]:
+              - spinbutton
+            - cell [ref=e231]:
+              - spinbutton
+            - cell [ref=e232]:
+              - spinbutton
+            - cell "—" [ref=e233]
+      - generic [ref=e234]:
+        - generic [ref=e235]:
+          - generic [ref=e236]: Schools w/ Data
+          - generic [ref=e237]: 0/5
+        - generic [ref=e238]:
+          - generic [ref=e239]: Avg Tuition
+          - generic [ref=e240]: —
+        - generic [ref=e241]:
+          - generic [ref=e242]: Avg Other Fees
+          - generic [ref=e243]: —
+        - generic [ref=e244]:
+          - generic [ref=e245]: Avg Total / Student
+          - generic [ref=e246]: —
+        - generic [ref=e247]:
+          - generic [ref=e248]: Total Students Reported
+          - generic [ref=e249]: "0"
+        - generic [ref=e250]:
+          - generic [ref=e251]: Total Scholars Funded
+          - generic [ref=e252]: "7"
+    - generic [ref=e253]:
+      - heading "Board Exam Passing Rates fill in as data becomes available" [level=2] [ref=e254]:
+        - text: Board Exam Passing Rates
+        - generic [ref=e255]: fill in as data becomes available
+      - paragraph [ref=e256]: Enter passing rates (%) per school. The chart and national average update live.
+      - generic [ref=e257]:
+        - button "⟳ Refresh from Server" [ref=e258] [cursor=pointer]
+        - button "Download CSV" [ref=e259] [cursor=pointer]
+        - button "Download PDF" [ref=e260] [cursor=pointer]
+      - generic [ref=e261]:
+        - table [ref=e264]:
+          - rowgroup [ref=e265]:
+            - row "School Region Passing Rate (%)" [ref=e266]:
+              - columnheader "School" [ref=e267]
+              - columnheader "Region" [ref=e268]
+              - columnheader "Passing Rate (%)" [ref=e269]
+          - rowgroup [ref=e270]:
+            - row "University of the Philippines Manila NCR" [ref=e271]:
+              - cell "University of the Philippines Manila" [ref=e272]
+              - cell "NCR" [ref=e273]
+              - cell [ref=e274]:
+                - spinbutton
+            - row "University of Santo Tomas NCR" [ref=e275]:
+              - cell "University of Santo Tomas" [ref=e276]
+              - cell "NCR" [ref=e277]
+              - cell [ref=e278]:
+                - spinbutton
+            - row "De La Salle Medical and Health Sciences Institute Region IV-A" [ref=e279]:
+              - cell "De La Salle Medical and Health Sciences Institute" [ref=e280]
+              - cell "Region IV-A" [ref=e281]
+              - cell [ref=e282]:
+                - spinbutton
+            - row "Cebu Doctors' University Region VII" [ref=e283]:
+              - cell "Cebu Doctors' University" [ref=e284]
+              - cell "Region VII" [ref=e285]
+              - cell [ref=e286]:
+                - spinbutton
+            - row "University of Batangas Region IV-A" [ref=e287]:
+              - cell "University of Batangas" [ref=e288]
+              - cell "Region IV-A" [ref=e289]
+              - cell [ref=e290]:
+                - spinbutton
+        - generic [ref=e294]:
+          - generic [ref=e295]: Awaiting data
+          - generic [ref=e296]: —
+    - generic [ref=e297]:
+      - heading "Full Directory searchable" [level=2] [ref=e298]:
+        - text: Full Directory
+        - generic [ref=e299]: searchable
+      - generic [ref=e300]:
+        - button "Schools (5)" [ref=e301] [cursor=pointer]
+        - button "Clinics (78)" [ref=e302] [cursor=pointer]
+      - textbox "Search by name, city, region…" [ref=e303]
+      - generic [ref=e304]:
+        - button "Download Directory CSV" [ref=e305] [cursor=pointer]
+        - button "Download Directory PDF" [ref=e306] [cursor=pointer]
+      - table [ref=e308]:
+        - rowgroup [ref=e309]:
+          - row "Type Name City Region Address" [ref=e310]:
+            - columnheader "Type" [ref=e311]
+            - columnheader "Name" [ref=e312]
+            - columnheader "City" [ref=e313]
+            - columnheader "Region" [ref=e314]
+            - columnheader "Address" [ref=e315]
+        - rowgroup [ref=e316]:
+          - row "SCHOOL University of the Philippines Manila Manila NCR College of Allied Medical Professions (CAMP), UP-PGH Compound, Pedro Gil St., Malate, Manila" [ref=e317]:
+            - cell "SCHOOL" [ref=e318]:
+              - generic [ref=e319]: SCHOOL
+            - cell "University of the Philippines Manila" [ref=e320]
+            - cell "Manila" [ref=e321]
+            - cell "NCR" [ref=e322]
+            - cell "College of Allied Medical Professions (CAMP), UP-PGH Compound, Pedro Gil St., Malate, Manila" [ref=e323]
+          - row "SCHOOL University of Santo Tomas Manila NCR College of Rehabilitation Sciences, España Blvd., Sampaloc, Manila" [ref=e324]:
+            - cell "SCHOOL" [ref=e325]:
+              - generic [ref=e326]: SCHOOL
+            - cell "University of Santo Tomas" [ref=e327]
+            - cell "Manila" [ref=e328]
+            - cell "NCR" [ref=e329]
+            - cell "College of Rehabilitation Sciences, España Blvd., Sampaloc, Manila" [ref=e330]
+          - row "SCHOOL De La Salle Medical and Health Sciences Institute Dasmariñas Region IV-A Governor D. Mangubat Avenue, Brgy. Zone IV, City of Dasmariñas, Cavite" [ref=e331]:
+            - cell "SCHOOL" [ref=e332]:
+              - generic [ref=e333]: SCHOOL
+            - cell "De La Salle Medical and Health Sciences Institute" [ref=e334]
+            - cell "Dasmariñas" [ref=e335]
+            - cell "Region IV-A" [ref=e336]
+            - cell "Governor D. Mangubat Avenue, Brgy. Zone IV, City of Dasmariñas, Cavite" [ref=e337]
+          - row "SCHOOL Cebu Doctors' University Mandaue Region VII Dr. P.V. Larrazabal Jr. Ave., North Reclamation Area, Mandaue City, Cebu" [ref=e338]:
+            - cell "SCHOOL" [ref=e339]:
+              - generic [ref=e340]: SCHOOL
+            - cell "Cebu Doctors' University" [ref=e341]
+            - cell "Mandaue" [ref=e342]
+            - cell "Region VII" [ref=e343]
+            - cell "Dr. P.V. Larrazabal Jr. Ave., North Reclamation Area, Mandaue City, Cebu" [ref=e344]
+          - row "SCHOOL University of Batangas Batangas City Region IV-A Hilltop Road, Batangas City, Batangas" [ref=e345]:
+            - cell "SCHOOL" [ref=e346]:
+              - generic [ref=e347]: SCHOOL
+            - cell "University of Batangas" [ref=e348]
+            - cell "Batangas City" [ref=e349]
+            - cell "Region IV-A" [ref=e350]
+            - cell "Hilltop Road, Batangas City, Batangas" [ref=e351]
+    - generic [ref=e352]: "Data source: PAOT Directory of OT Schools 2024 & PAOT Directory of OT Clinics and Centers 2024. Coordinates are approximate (city-centroid level) for visualization purposes."

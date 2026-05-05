@@ -441,6 +441,9 @@ interface InventoryItem {
   isBundle?: boolean
   issuedOfficialInvoice?: boolean
   bundleComponents?: { id: string; quantity: number; component: { id: string; name: string; sku: string; quantity: number } }[]
+  dimensionLength?: number | null
+  dimensionWidth?: number | null
+  dimensionHeight?: number | null
 }
 
 interface Adjustment {
@@ -454,6 +457,22 @@ interface Adjustment {
   remarks: string | null
   adjustmentDate: string
   adjustedBy?: { name: string }
+  referenceNumber?: string | null
+  batchRefId?: string | null
+  batch?: { referenceNumber: string } | null
+  displayRef?: string | null
+}
+
+interface FbRow {
+  itemId: string
+  itemName: string
+  itemSku: string
+  dimL: string
+  dimW: string
+  dimH: string
+  manPrice: string
+  manPriceIsForeign: boolean
+  quantity: string
 }
 
 interface Consignment {
@@ -561,6 +580,9 @@ export default function InventoryPage() {
   const [fReorderLevel, setFReorderLevel] = useState('')
   const [fSupplierId, setFSupplierId] = useState('')
   const [fExchangeRate, setFExchangeRate] = useState('')
+  const [fDimL, setFDimL] = useState('')
+  const [fDimW, setFDimW] = useState('')
+  const [fDimH, setFDimH] = useState('')
   const [fRevenueAccountId, setFRevenueAccountId] = useState('')
   const [fRevenueAccountSearch, setFRevenueAccountSearch] = useState('')
   const [revenueAccounts, setRevenueAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
@@ -658,6 +680,25 @@ export default function InventoryPage() {
   const [adjForeignCurrency, setAdjForeignCurrency] = useState('CNY')
   const [adjExchangeRate, setAdjExchangeRate] = useState('')
 
+  // ── Freight batch adjustment state
+  const [fbOpen, setFbOpen] = useState(false)
+  const [fbDate, setFbDate] = useState(new Date().toISOString().split('T')[0])
+  const [fbRemarks, setFbRemarks] = useState('')
+  const [fbHasForeign, setFbHasForeign] = useState(true)
+  const [fbCurrency, setFbCurrency] = useState('CNY')
+  const [fbExRate, setFbExRate] = useState('')
+  const [fbFreight1, setFbFreight1] = useState('')
+  const [fbFreight1Foreign, setFbFreight1Foreign] = useState(false)
+  const [fbFreight2, setFbFreight2] = useState('')
+  const [fbFreight2Foreign, setFbFreight2Foreign] = useState(false)
+  const [fbFreight3, setFbFreight3] = useState('')
+  const [fbFreight3Foreign, setFbFreight3Foreign] = useState(false)
+  const [fbRows, setFbRows] = useState<FbRow[]>([{ itemId: '', itemName: '', itemSku: '', dimL: '', dimW: '', dimH: '', manPrice: '', manPriceIsForeign: true, quantity: '' }])
+  const [fbProofUrls, setFbProofUrls] = useState<string[]>([])
+  const [fbUploading, setFbUploading] = useState(false)
+  const [fbSaving, setFbSaving] = useState(false)
+  const fbFileRef = useRef<HTMLInputElement>(null)
+
   // ── Consignment state
   const [consignments, setConsignments] = useState<Consignment[]>([])
   const [conModalOpen, setConModalOpen] = useState(false)
@@ -737,6 +778,38 @@ export default function InventoryPage() {
     })
     return sorted
   }, [items, invSortField, invSortDir])
+
+  // Freight batch: total freight in PHP (real-time)
+  const fbTotalFreightPHP = useMemo(() => {
+    const exRate = fbHasForeign && fbExRate ? parseFloat(fbExRate) : 1
+    const f1 = (parseFloat(fbFreight1) || 0) * (fbFreight1Foreign ? exRate : 1)
+    const f2 = (parseFloat(fbFreight2) || 0) * (fbFreight2Foreign ? exRate : 1)
+    const f3 = (parseFloat(fbFreight3) || 0) * (fbFreight3Foreign ? exRate : 1)
+    return f1 + f2 + f3
+  }, [fbHasForeign, fbExRate, fbFreight1, fbFreight1Foreign, fbFreight2, fbFreight2Foreign, fbFreight3, fbFreight3Foreign])
+
+  // Freight batch: per-row computed values (CBM, unit cost)
+  const fbComputedRows = useMemo(() => {
+    const exRate = fbHasForeign && fbExRate ? parseFloat(fbExRate) : 1
+    const rowsWithCbm = fbRows.map(r => {
+      const l = parseFloat(r.dimL) || 0; const w = parseFloat(r.dimW) || 0; const h = parseFloat(r.dimH) || 0
+      const cbmPerUnit = l > 0 && w > 0 && h > 0 ? (l * w * h) / 1_000_000 : 0
+      const qty = parseInt(r.quantity) || 0
+      return { cbmPerUnit, totalCbm: cbmPerUnit * qty }
+    })
+    const grandTotalCbm = rowsWithCbm.reduce((s, r) => s + r.totalCbm, 0)
+    const validCount = fbRows.filter(r => r.itemId && parseInt(r.quantity) > 0).length
+    return fbRows.map((r, i) => {
+      const { cbmPerUnit, totalCbm } = rowsWithCbm[i]
+      const qty = parseInt(r.quantity) || 0
+      const cbmShare = grandTotalCbm > 0 ? totalCbm / grandTotalCbm : (validCount > 0 ? 1 / validCount : 0)
+      const freightPerUnit = qty > 0 ? (cbmShare * fbTotalFreightPHP) / qty : 0
+      const manPrice = parseFloat(r.manPrice) || 0
+      const manPricePHP = r.manPriceIsForeign && fbHasForeign ? manPrice * exRate : manPrice
+      const unitCost = manPricePHP + freightPerUnit
+      return { cbmPerUnit, totalCbm, freightPerUnit, manPricePHP, unitCost }
+    })
+  }, [fbRows, fbTotalFreightPHP, fbHasForeign, fbExRate])
 
   const toggleSort = (field: typeof invSortField) => {
     if (invSortField === field) {
@@ -911,6 +984,7 @@ export default function InventoryPage() {
     setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFSourceAccountId(''); setFSourceAccountSearch(''); setFExpenseAccountId(''); setFExpenseAccountSearch('')
     setVariants([]); setNewVariantType('Color'); setNewVariantLabel(''); setNewVariantQty(0)
     setIssuedOfficialInvoice(false)
+    setFDimL(''); setFDimW(''); setFDimH('')
     setIsBundle(false); setBundleComponents([]); setBundleComponentId(''); setBundleComponentQty(1)
     setShowInlineSupplier(false); setError('')
     setItemModalOpen(true)
@@ -931,6 +1005,9 @@ export default function InventoryPage() {
     setFReorderLevel(item.reorderLevel != null ? String(item.reorderLevel) : '')
     setFSupplierId(item.supplierId || '')
     setFExchangeRate(item.supplierExchangeRate != null ? String(item.supplierExchangeRate) : '')
+    setFDimL(item.dimensionLength != null ? String(item.dimensionLength) : '')
+    setFDimW(item.dimensionWidth != null ? String(item.dimensionWidth) : '')
+    setFDimH(item.dimensionHeight != null ? String(item.dimensionHeight) : '')
     setFRevenueAccountId(item.revenueAccountId || '')
     setFRevenueAccountSearch(item.revenueAccount ? `${item.revenueAccount.accountNumber} ${item.revenueAccount.accountTitle}` : '')
     setFSourceAccountId(item.sourceAccountId || '')
@@ -1067,6 +1144,9 @@ export default function InventoryPage() {
       quantity: fInitialQty || '0',
       reorderLevel: fReorderLevel || null,
       supplierId: fSupplierId || null,
+      dimensionLength: fDimL || null,
+      dimensionWidth: fDimW || null,
+      dimensionHeight: fDimH || null,
       revenueAccountId: fRevenueAccountId || null,
       sourceAccountId: fSourceAccountId || null,
       expenseAccountId: fExpenseAccountId || null,
@@ -1245,6 +1325,68 @@ export default function InventoryPage() {
       setAdjModalOpen(false); fetchAdjustments(); fetchItems(); fetchAllItems()
     } catch { setError('Network error') }
     finally { setSaving(false) }
+  }
+
+  function openFbModal() {
+    setFbDate(new Date().toISOString().split('T')[0])
+    setFbRemarks(''); setFbHasForeign(true); setFbCurrency('CNY'); setFbExRate('')
+    setFbFreight1(''); setFbFreight1Foreign(false)
+    setFbFreight2(''); setFbFreight2Foreign(false)
+    setFbFreight3(''); setFbFreight3Foreign(false)
+    setFbRows([{ itemId: '', itemName: '', itemSku: '', dimL: '', dimW: '', dimH: '', manPrice: '', manPriceIsForeign: true, quantity: '' }])
+    setFbProofUrls([]); setError('')
+    setFbOpen(true)
+  }
+
+  async function handleFbUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    setFbUploading(true)
+    const urls: string[] = []
+    for (const file of Array.from(files)) {
+      const fd = new FormData()
+      fd.append('file', file)
+      try {
+        const r = await fetch('/api/upload', { method: 'POST', body: fd })
+        const d = await r.json()
+        if (r.ok && d.url) urls.push(d.url)
+        else setError(d.error || 'Upload failed')
+      } catch { setError('Upload failed') }
+    }
+    setFbProofUrls(prev => [...prev, ...urls])
+    setFbUploading(false)
+    if (fbFileRef.current) fbFileRef.current.value = ''
+  }
+
+  async function handleFbSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setFbSaving(true); setError('')
+    try {
+      const res = await fetch('/api/inventory/adjustments/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          adjustmentDate: fbDate,
+          hasForeignPurchase: fbHasForeign,
+          foreignCurrency: fbCurrency,
+          exchangeRate: fbExRate || undefined,
+          freight1Amount: fbFreight1 || undefined,
+          freight1IsForeign: fbFreight1Foreign,
+          freight2Amount: fbFreight2 || undefined,
+          freight2IsForeign: fbFreight2Foreign,
+          freight3Amount: fbFreight3 || undefined,
+          freight3IsForeign: fbFreight3Foreign,
+          proofUrls: fbProofUrls.length > 0 ? fbProofUrls : undefined,
+          remarks: fbRemarks || undefined,
+          rows: fbRows.filter(r => r.itemId && r.quantity),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Something went wrong'); setFbSaving(false); return }
+      setFbOpen(false)
+      fetchAdjustments(); fetchItems(); fetchAllItems()
+    } catch { setError('Network error') }
+    finally { setFbSaving(false) }
   }
 
   async function handleAdjDelete(id: string) {
@@ -2168,6 +2310,38 @@ setTimeout(()=>window.print(),500);
                     </div>
                   </div>
 
+                  {/* Dimensions (L × W × H for CBM freight calculation) */}
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>
+                      Dimensions <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(cm, inclusive of packaging — used for CBM)</span>
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>L (cm)</label>
+                        <input type="number" step="0.01" min="0" value={fDimL} onChange={e => setFDimL(e.target.value)}
+                          placeholder="0"
+                          className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      </div>
+                      <div>
+                        <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>W (cm)</label>
+                        <input type="number" step="0.01" min="0" value={fDimW} onChange={e => setFDimW(e.target.value)}
+                          placeholder="0"
+                          className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      </div>
+                      <div>
+                        <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>H (cm)</label>
+                        <input type="number" step="0.01" min="0" value={fDimH} onChange={e => setFDimH(e.target.value)}
+                          placeholder="0"
+                          className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      </div>
+                    </div>
+                    {fDimL && fDimW && fDimH && parseFloat(fDimL) > 0 && parseFloat(fDimW) > 0 && parseFloat(fDimH) > 0 && (
+                      <p className="mt-1.5 text-xs font-medium" style={{ color: 'var(--teal)' }}>
+                        CBM: {((parseFloat(fDimL) * parseFloat(fDimW) * parseFloat(fDimH)) / 1_000_000).toFixed(6)} m³
+                      </p>
+                    )}
+                  </div>
+
                   {/* Supplier */}
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Supplier</label>
@@ -2795,6 +2969,11 @@ setTimeout(()=>window.print(),500);
                   <Upload size={14} /> Bulk Upload
                 </button>
                 <button onClick={openAdjCreate}
+                  className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-medium border"
+                  style={{ borderColor: 'var(--light-gray)', color: '#dc2626' }}>
+                  <TrendingDown size={14} /> Shrinkage
+                </button>
+                <button onClick={openFbModal}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
                   style={{ background: 'var(--teal)' }}>
                   <Plus size={18} /> New Adjustment
@@ -2808,6 +2987,7 @@ setTimeout(()=>window.print(),500);
               <table className="w-full text-sm">
                 <thead>
                   <tr style={{ background: 'var(--off-white)' }}>
+                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Ref #</th>
                     <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Date</th>
                     <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Item</th>
                     <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Type</th>
@@ -2821,13 +3001,20 @@ setTimeout(()=>window.print(),500);
                 <tbody>
                   {adjustments.length === 0 ? (
                     <tr>
-                      <td colSpan={canWrite ? 8 : 7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
+                      <td colSpan={canWrite ? 9 : 8} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
                         <ArrowUpDown size={32} className="mx-auto mb-2 opacity-40" />
                         <p>No adjustments</p>
                       </td>
                     </tr>
                   ) : adjustments.slice((adjPage - 1) * adjPageSize, adjPage * adjPageSize).map((adj) => (
                     <tr key={adj.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
+                      <td className="px-4 py-3">
+                        {(adj.displayRef || adj.batch?.referenceNumber || adj.referenceNumber) ? (
+                          <span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: '#f0fdfa', color: 'var(--teal)' }}>
+                            {adj.displayRef || adj.batch?.referenceNumber || adj.referenceNumber}
+                          </span>
+                        ) : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
+                      </td>
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{formatDate(adj.adjustmentDate)}</td>
                       <td className="px-4 py-3">
                         <span className="font-mono text-xs" style={{ color: 'var(--charcoal)' }}>{adj.item?.sku}</span>
@@ -3192,6 +3379,270 @@ setTimeout(()=>window.print(),500);
                     </button>
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* ── Freight Batch Adjustment Modal ─────────────── */}
+          {fbOpen && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-6 pb-6 overflow-y-auto">
+              <div className="bg-white rounded-2xl shadow-xl w-full mx-4" style={{ maxWidth: '960px' }}>
+                {/* Header */}
+                <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+                  <div>
+                    <h3 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>New Adjustment — Freight Purchase</h3>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>Enter items, manufacturer prices, freight costs, and the system will compute unit costs proportionally by CBM.</p>
+                  </div>
+                  <button onClick={() => setFbOpen(false)} className="p-1 hover:bg-gray-100 rounded-lg ml-4">
+                    <X size={20} style={{ color: 'var(--mid-gray)' }} />
+                  </button>
+                </div>
+
+                <form onSubmit={handleFbSubmit}>
+                  <div className="px-6 py-5 space-y-5">
+                    {error && <div className="p-3 rounded-lg text-sm bg-red-50 text-red-600 flex items-center gap-1"><AlertCircle size={14} />{error}</div>}
+
+                    {/* Date + Remarks */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Purchase Date</label>
+                        <input type="date" value={fbDate} onChange={e => setFbDate(e.target.value)} required
+                          className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Remarks</label>
+                        <input type="text" value={fbRemarks} onChange={e => setFbRemarks(e.target.value)} placeholder="e.g. PO-2025-001 shipment"
+                          className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                      </div>
+                    </div>
+
+                    {/* Exchange Rate */}
+                    <div className="p-4 rounded-xl border space-y-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--charcoal)' }}>Exchange Rate</span>
+                        <label className="flex items-center gap-2 text-xs cursor-pointer" style={{ color: 'var(--charcoal)' }}>
+                          <input type="checkbox" checked={!fbHasForeign} onChange={e => setFbHasForeign(!e.target.checked)} className="rounded" />
+                          No foreign purchase (all PHP)
+                        </label>
+                      </div>
+                      {fbHasForeign && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Foreign Currency</label>
+                            <select value={fbCurrency} onChange={e => setFbCurrency(e.target.value)}
+                              className="w-full px-3 py-2 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                              {['CNY','USD','EUR','JPY','KRW','SGD','HKD'].map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Exchange Rate (PHP per 1 {fbCurrency})</label>
+                            <input type="number" step="0.0001" min="0" value={fbExRate} onChange={e => setFbExRate(e.target.value)} placeholder="e.g. 7.80"
+                              className="w-full px-3 py-2 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Freight Costs */}
+                    <div className="p-4 rounded-xl border space-y-3" style={{ borderColor: 'var(--light-gray)' }}>
+                      <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--charcoal)' }}>Freight Costs</span>
+                      {[
+                        { label: 'Manufacturing → Warehouse', val: fbFreight1, setVal: setFbFreight1, isForeign: fbFreight1Foreign, setForeign: setFbFreight1Foreign },
+                        { label: 'Foreign → Local', val: fbFreight2, setVal: setFbFreight2, isForeign: fbFreight2Foreign, setForeign: setFbFreight2Foreign },
+                        { label: 'Warehouse → Office', val: fbFreight3, setVal: setFbFreight3, isForeign: fbFreight3Foreign, setForeign: setFbFreight3Foreign },
+                      ].map(({ label, val, setVal, isForeign, setForeign }) => (
+                        <div key={label} className="flex items-center gap-3">
+                          <span className="text-xs w-44 shrink-0" style={{ color: 'var(--mid-gray)' }}>{label}</span>
+                          <input type="number" step="0.01" min="0" value={val} onChange={e => setVal(e.target.value)} placeholder="0.00"
+                            className="flex-1 px-3 py-2 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                          <button type="button" onClick={() => setForeign(!isForeign)}
+                            className="px-3 py-2 rounded-lg border text-xs font-medium transition-colors"
+                            style={isForeign && fbHasForeign
+                              ? { background: '#f0fdfa', borderColor: 'var(--teal)', color: 'var(--teal)' }
+                              : { borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                            {isForeign && fbHasForeign ? fbCurrency : 'PHP'}
+                          </button>
+                          {isForeign && fbHasForeign && val && fbExRate && (
+                            <span className="text-xs w-28 text-right shrink-0" style={{ color: 'var(--teal)' }}>
+                              = ₱{((parseFloat(val) || 0) * (parseFloat(fbExRate) || 1)).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                      <div className="flex items-center justify-between pt-2 border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                        <span className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Total Freight (PHP)</span>
+                        <span className="text-sm font-bold" style={{ color: 'var(--teal)' }}>
+                          ₱{fbTotalFreightPHP.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Item Table */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--charcoal)' }}>Items</span>
+                        <button type="button"
+                          onClick={() => setFbRows(prev => [...prev, { itemId: '', itemName: '', itemSku: '', dimL: '', dimW: '', dimH: '', manPrice: '', manPriceIsForeign: true, quantity: '' }])}
+                          className="text-xs px-2.5 py-1 rounded-lg border flex items-center gap-1"
+                          style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                          <Plus size={12} /> Add Row
+                        </button>
+                      </div>
+                      <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs" style={{ minWidth: '860px' }}>
+                            <thead>
+                              <tr style={{ background: 'var(--off-white)' }}>
+                                <th className="text-left px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)', minWidth: '200px' }}>Item</th>
+                                <th className="text-left px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)', width: '140px' }}>Mfr. Price</th>
+                                <th className="text-right px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)', width: '64px' }}>Qty</th>
+                                <th className="text-right px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)', width: '60px' }}>L (cm)</th>
+                                <th className="text-right px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)', width: '60px' }}>W (cm)</th>
+                                <th className="text-right px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)', width: '60px' }}>H (cm)</th>
+                                <th className="text-right px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)', width: '90px' }}>CBM/unit</th>
+                                <th className="text-right px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)', width: '90px' }}>Total CBM</th>
+                                <th className="text-right px-3 py-2 font-semibold" style={{ color: 'var(--teal)', width: '100px' }}>Unit Cost (₱)</th>
+                                <th className="px-2 py-2" style={{ width: '32px' }}></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {fbRows.map((row, i) => {
+                                const computed = fbComputedRows[i]
+                                return (
+                                  <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                                    {/* Item selector */}
+                                    <td className="px-2 py-1.5">
+                                      <select value={row.itemId}
+                                        onChange={e => {
+                                          const selected = allItems.find(it => it.id === e.target.value)
+                                          setFbRows(prev => prev.map((r, idx) => idx !== i ? r : {
+                                            ...r,
+                                            itemId: e.target.value,
+                                            itemName: selected?.name || '',
+                                            itemSku: selected?.sku || '',
+                                            dimL: selected?.dimensionLength != null ? String(selected.dimensionLength) : r.dimL,
+                                            dimW: selected?.dimensionWidth != null ? String(selected.dimensionWidth) : r.dimW,
+                                            dimH: selected?.dimensionHeight != null ? String(selected.dimensionHeight) : r.dimH,
+                                          }))
+                                        }}
+                                        className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                                        <option value="">— Select item —</option>
+                                        {allItems.map(it => <option key={it.id} value={it.id}>{it.sku} — {it.name}</option>)}
+                                      </select>
+                                    </td>
+                                    {/* Manufacturer price + currency toggle */}
+                                    <td className="px-2 py-1.5">
+                                      <div className="flex gap-1">
+                                        <input type="number" step="0.01" min="0" value={row.manPrice}
+                                          onChange={e => setFbRows(prev => prev.map((r, idx) => idx !== i ? r : { ...r, manPrice: e.target.value }))}
+                                          placeholder="0.00"
+                                          className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                                        {fbHasForeign && (
+                                          <button type="button"
+                                            onClick={() => setFbRows(prev => prev.map((r, idx) => idx !== i ? r : { ...r, manPriceIsForeign: !r.manPriceIsForeign }))}
+                                            className="px-2 py-1 rounded border text-xs shrink-0 transition-colors"
+                                            style={row.manPriceIsForeign
+                                              ? { background: '#f0fdfa', borderColor: 'var(--teal)', color: 'var(--teal)' }
+                                              : { borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                                            {row.manPriceIsForeign ? fbCurrency : 'PHP'}
+                                          </button>
+                                        )}
+                                      </div>
+                                    </td>
+                                    {/* Quantity */}
+                                    <td className="px-2 py-1.5">
+                                      <input type="number" min="1" value={row.quantity}
+                                        onChange={e => setFbRows(prev => prev.map((r, idx) => idx !== i ? r : { ...r, quantity: e.target.value }))}
+                                        className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none text-right" style={{ borderColor: 'var(--light-gray)' }} />
+                                    </td>
+                                    {/* L / W / H */}
+                                    {(['dimL', 'dimW', 'dimH'] as const).map(dim => (
+                                      <td key={dim} className="px-2 py-1.5">
+                                        <input type="number" step="0.01" min="0" value={row[dim]}
+                                          onChange={e => setFbRows(prev => prev.map((r, idx) => idx !== i ? r : { ...r, [dim]: e.target.value }))}
+                                          className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none text-right" style={{ borderColor: 'var(--light-gray)' }} />
+                                      </td>
+                                    ))}
+                                    {/* CBM/unit */}
+                                    <td className="px-3 py-1.5 text-right" style={{ color: 'var(--mid-gray)' }}>
+                                      {computed.cbmPerUnit > 0 ? computed.cbmPerUnit.toFixed(6) : '—'}
+                                    </td>
+                                    {/* Total CBM */}
+                                    <td className="px-3 py-1.5 text-right" style={{ color: 'var(--mid-gray)' }}>
+                                      {computed.totalCbm > 0 ? computed.totalCbm.toFixed(6) : '—'}
+                                    </td>
+                                    {/* Unit Cost */}
+                                    <td className="px-3 py-1.5 text-right font-semibold" style={{ color: 'var(--teal)' }}>
+                                      {row.itemId && row.quantity ? `₱${computed.unitCost.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+                                    </td>
+                                    {/* Remove row */}
+                                    <td className="px-2 py-1.5 text-center">
+                                      {fbRows.length > 1 && (
+                                        <button type="button" onClick={() => setFbRows(prev => prev.filter((_, idx) => idx !== i))}
+                                          className="p-1 rounded hover:bg-red-50">
+                                          <X size={12} className="text-red-400" />
+                                        </button>
+                                      )}
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Proof of Purchase */}
+                    <div>
+                      <label className="block text-xs font-medium mb-2" style={{ color: 'var(--charcoal)' }}>
+                        Proof of Purchase <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(PDF, JPG, PNG, Word)</span>
+                      </label>
+                      <input ref={fbFileRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" className="hidden" onChange={handleFbUpload} />
+                      <button type="button" onClick={() => fbFileRef.current?.click()} disabled={fbUploading}
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm disabled:opacity-50"
+                        style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                        {fbUploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                        {fbUploading ? 'Uploading…' : 'Upload Files'}
+                      </button>
+                      {fbProofUrls.length > 0 && (
+                        <div className="mt-2 space-y-1">
+                          {fbProofUrls.map((url, i) => {
+                            const filename = url.split('/').pop() || url
+                            return (
+                              <div key={i} className="flex items-center gap-2 p-2 rounded-lg text-xs" style={{ background: 'var(--off-white)' }}>
+                                <FileText size={12} style={{ color: 'var(--mid-gray)' }} />
+                                <span className="flex-1 truncate" style={{ color: 'var(--charcoal)' }}>{filename}</span>
+                                <a href={url} target="_blank" rel="noreferrer"
+                                  className="px-2 py-0.5 rounded border text-xs" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
+                                  View
+                                </a>
+                                <button type="button" onClick={() => setFbProofUrls(prev => prev.filter((_, idx) => idx !== i))}
+                                  className="p-0.5 rounded hover:bg-red-50">
+                                  <X size={11} className="text-red-400" />
+                                </button>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Footer */}
+                  <div className="flex gap-3 px-6 py-4 border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                    <button type="button" onClick={() => setFbOpen(false)}
+                      className="flex-1 py-2.5 rounded-xl border text-sm font-medium"
+                      style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                      Cancel
+                    </button>
+                    <button type="submit" disabled={fbSaving || fbRows.filter(r => r.itemId && r.quantity).length === 0}
+                      className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                      style={{ background: 'var(--teal)' }}>
+                      {fbSaving ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : 'Record Freight Batch'}
+                    </button>
+                  </div>
+                </form>
               </div>
             </div>
           )}

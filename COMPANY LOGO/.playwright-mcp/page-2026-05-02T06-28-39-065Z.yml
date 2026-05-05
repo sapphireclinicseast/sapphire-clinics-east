@@ -1,0 +1,23 @@
+- generic [ref=e2]:
+  - generic:
+    - generic:
+      - img
+    - generic:
+      - tooltip "Emilio Aguinaldo College - Manila 1113-1117 San Marcelino St., Paco, Manila":
+        - text: Emilio Aguinaldo College - Manila
+        - generic: 1113-1117 San Marcelino St., Paco, Manila
+      - tooltip "Philippine Rehabilitation Institute Foundation, Inc. 56 Banawe Street, Quezon City":
+        - text: Philippine Rehabilitation Institute Foundation, Inc.
+        - generic: 56 Banawe Street, Quezon City
+      - tooltip "University of Perpetual Help System DALTA - Las Piñas Alabang-Zapote Avenue, Pamplona 3, Las Piñas City":
+        - text: University of Perpetual Help System DALTA - Las Piñas
+        - generic: Alabang-Zapote Avenue, Pamplona 3, Las Piñas City
+      - tooltip "University of Perpetual Help System - Perpetual Help College of Manila 1240 V. Concepcion St., Sampaloc, Manila":
+        - text: University of Perpetual Help System - Perpetual Help College of Manila
+        - generic: 1240 V. Concepcion St., Sampaloc, Manila
+      - tooltip "University of Santo Tomas España Blvd., Sampaloc, Manila":
+        - text: University of Santo Tomas
+        - generic: España Blvd., Sampaloc, Manila
+      - tooltip "University of the Philippines Manila UP-PGH Compound, Pedro Gil St., Malate, Manila":
+        - text: University of the Philippines Manila
+        - generic: UP-PGH Compound, Pedro Gil St., Malate, Manila

@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SCEI ERP — Sapphire Clinics East, Inc.</title>
+  <meta name="description" content="SCEI ERP — Consolidated access portal for all Sapphire Clinics East enterprise applications." />
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="icon" type="image/png" href="/favicon.png" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=DM+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --sapphire:        #1A7B8A;
+      --sapphire-dark:   #0F5866;
+      --sapphire-light:  #2BA3B5;
+      --sapphire-50:     #E8F4F6;
+      --charcoal:        #1E2A33;
+      --ink:             #0B1419;
+      --muted:           #5B6B75;
+      --line:            #E2E8EC;
+      --bg:              #F6F8F9;
+      --card:            #FFFFFF;
+      --radius:          14px;
+      --shadow-sm:       0 1px 2px rgba(15, 88, 102, 0.05);
+      --shadow-md:       0 8px 24px -8px rgba(15, 88, 102, 0.18);
+      --shadow-lg:       0 24px 48px -16px rgba(15, 88, 102, 0.25);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', system-ui, -apple-system, Segoe UI, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 10% -10%, rgba(26, 123, 138, 0.08), transparent 50%),
+        radial-gradient(circle at 90% 0%, rgba(43, 163, 181, 0.08), transparent 45%),
+        var(--bg);
+    }
+
+    /* ── Header ───────────────────────────────────── */
+    header {
+      padding: 28px 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-mark {
+      width: 42px;
+      height: 42px;
+      flex: 0 0 auto;
+    }
+
+    .brand-text {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.1;
+    }
+
+    .brand-text .name {
+      font-family: 'DM Sans', 'Inter', sans-serif;
+      font-weight: 800;
+      font-size: 15px;
+      letter-spacing: 3px;
+      color: var(--sapphire);
+    }
+
+    .brand-text .sub {
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--muted);
+      letter-spacing: 2px;
+      margin-top: 3px;
+    }
+
+    .header-meta {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
+      display: inline-block;
+      margin-right: 7px;
+    }
+
+    /* ── Hero ─────────────────────────────────────── */
+    .hero {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 64px 40px 24px;
+      text-align: center;
+    }
+
+    .eyebrow {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--sapphire);
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      background: var(--sapphire-50);
+      padding: 7px 14px;
+      border-radius: 100px;
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      font-family: 'DM Sans', 'Inter', sans-serif;
+      font-size: clamp(36px, 5vw, 56px);
+      font-weight: 800;
+      margin: 0 0 16px;
+      letter-spacing: -1px;
+      color: var(--charcoal);
+    }
+
+    h1 .accent {
+      color: var(--sapphire);
+    }
+
+    .hero p {
+      color: var(--muted);
+      font-size: 17px;
+      max-width: 620px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+
+    .hero .tagline {
+      font-family: 'DM Sans', 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--sapphire);
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+
+    /* ── Search ───────────────────────────────────── */
+    .search-wrap {
+      max-width: 560px;
+      margin: 32px auto 0;
+      position: relative;
+    }
+
+    .search-wrap input {
+      width: 100%;
+      padding: 16px 20px 16px 50px;
+      border: 1px solid var(--line);
+      border-radius: 100px;
+      font-size: 15px;
+      font-family: inherit;
+      background: var(--card);
+      box-shadow: var(--shadow-sm);
+      transition: all .2s ease;
+      color: var(--ink);
+    }
+
+    .search-wrap input:focus {
+      outline: none;
+      border-color: var(--sapphire);
+      box-shadow: 0 0 0 4px rgba(26, 123, 138, 0.12), var(--shadow-sm);
+    }
+
+    .search-wrap svg {
+      position: absolute;
+      left: 20px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      pointer-events: none;
+    }
+
+    /* ── Modules grid ─────────────────────────────── */
+    .modules {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 40px 40px 80px;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 18px;
+    }
+
+    @media (max-width: 1200px) {
+      .modules { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 900px) {
+      .modules { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    .module {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 22px 20px;
+      text-decoration: none;
+      color: inherit;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      position: relative;
+      transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+    }
+
+    .module::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(26, 123, 138, 0), rgba(43, 163, 181, 0.06));
+      opacity: 0;
+      transition: opacity .25s ease;
+      pointer-events: none;
+    }
+
+    .module:hover {
+      transform: translateY(-3px);
+      box-shadow: var(--shadow-md);
+      border-color: var(--sapphire-light);
+    }
+
+    .module:hover::before {
+      opacity: 1;
+    }
+
+    .module:hover .icon {
+      background: var(--sapphire);
+      color: #fff;
+    }
+
+    .module:hover .arrow {
+      transform: translateX(4px);
+      color: var(--sapphire);
+    }
+
+    .module-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .icon {
+      width: 46px;
+      height: 46px;
+      border-radius: 11px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--sapphire-50);
+      color: var(--sapphire);
+      transition: all .25s ease;
+    }
+
+    .icon svg {
+      width: 22px;
+      height: 22px;
+      stroke-width: 2;
+    }
+
+    .arrow {
+      width: 20px;
+      height: 20px;
+      color: var(--muted);
+      transition: all .2s ease;
+    }
+
+    /* Hide arrow on cards with access badge (badge takes its slot) */
+    .module:has(.access-badge) .arrow { display: none; }
+
+    .module h3 {
+      font-family: 'DM Sans', 'Inter', sans-serif;
+      font-size: 17px;
+      font-weight: 700;
+      margin: 0;
+      color: var(--charcoal);
+      letter-spacing: -0.2px;
+    }
+
+    .module p {
+      font-size: 13.5px;
+      color: var(--muted);
+      line-height: 1.55;
+      margin: 0;
+      flex: 1;
+    }
+
+    .module .domain {
+      font-family: 'SF Mono', 'JetBrains Mono', 'Menlo', Consolas, monospace;
+      font-size: 10px;
+      color: var(--sapphire);
+      font-weight: 500;
+      padding-top: 10px;
+      border-top: 1px dashed var(--line);
+      letter-spacing: -0.3px;
+      white-space: nowrap;
+    }
+
+    /* Split module (e.g. Queue — SBEA/SBGH) */
+    .module-split { cursor: default; }
+    .module-split:hover { transform: none; }
+
+    /* Access-level badges */
+    .access-badge {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 8px;
+      border-radius: 100px;
+      font-size: 9.5px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      line-height: 1;
+      z-index: 2;
+      white-space: nowrap;
+    }
+    .access-badge::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .access-admin  { background: #FEF2F2; color: #B91C1C; }
+    .access-open   { background: #ECFDF5; color: #047857; }
+    .access-code   { background: #FFFBEB; color: #B45309; }
+
+    /* Access legend */
+    .access-legend {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0 40px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      justify-content: center;
+      align-items: center;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .access-legend .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .access-legend .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .access-legend .dot-admin { background: #B91C1C; }
+    .access-legend .dot-open  { background: #047857; }
+    .access-legend .dot-code  { background: #B45309; }
+
+    /* Button-style module (opens modal) */
+    .module-button {
+      font-family: inherit;
+      text-align: left;
+      cursor: pointer;
+      width: 100%;
+    }
+    .module-button:focus-visible {
+      outline: 2px solid var(--sapphire);
+      outline-offset: 2px;
+    }
+
+    .branch-picker {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding-top: 12px;
+      border-top: 1px dashed var(--line);
+    }
+
+    .branch-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 8px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      text-decoration: none;
+      color: var(--charcoal);
+      background: var(--card);
+      transition: all .2s ease;
+      position: relative;
+      z-index: 1;
+    }
+
+    .branch-btn:hover {
+      border-color: var(--sapphire);
+      background: var(--sapphire);
+      color: #fff;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px -4px rgba(26, 123, 138, 0.35);
+    }
+
+    .branch-btn .branch-code {
+      font-family: 'DM Sans', 'Inter', sans-serif;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+    }
+
+    .branch-btn .branch-name {
+      font-size: 10.5px;
+      color: var(--muted);
+      margin-top: 2px;
+      font-weight: 500;
+    }
+
+    .branch-btn:hover .branch-name { color: rgba(255, 255, 255, 0.85); }
+
+    /* ── Footer ───────────────────────────────────── */
+    footer {
+      text-align: center;
+      padding: 28px 40px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12.5px;
+      background: rgba(255, 255, 255, 0.6);
+    }
+
+    footer a {
+      color: var(--sapphire);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    footer a:hover { text-decoration: underline; }
+
+    /* ── Responsive ──────────────────────────────── */
+    @media (max-width: 640px) {
+      header { padding: 18px 20px; }
+      .hero { padding: 40px 20px 16px; }
+      .modules { padding: 28px 20px 60px; grid-template-columns: 1fr; }
+      .header-meta .hide-sm { display: none; }
+    }
+
+    /* No-results state */
+    .no-results {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--muted);
+    }
+
+    /* ── Modal (service picker) ─────────────────── */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(11, 20, 25, 0.55);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 20px;
+      animation: fadeIn .18s ease;
+    }
+    .modal-backdrop.open { display: flex; }
+
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+
+    .modal {
+      background: var(--card);
+      border-radius: 18px;
+      width: 100%;
+      max-width: 720px;
+      box-shadow: var(--shadow-lg);
+      overflow: hidden;
+      animation: slideUp .24s ease;
+    }
+
+    .modal-head {
+      padding: 22px 26px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .modal-head h2 {
+      font-family: 'DM Sans', 'Inter', sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--charcoal);
+      margin: 0;
+      letter-spacing: -0.2px;
+    }
+
+    .modal-head .sub {
+      font-size: 12.5px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--muted);
+      padding: 6px;
+      border-radius: 8px;
+      display: flex;
+      transition: all .15s ease;
+    }
+    .modal-close:hover { background: var(--bg); color: var(--charcoal); }
+
+    .modal-body {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+    }
+
+    .branch-col { padding: 22px 26px; }
+    .branch-col + .branch-col { border-left: 1px solid var(--line); }
+
+    .branch-col h3 {
+      font-family: 'DM Sans', 'Inter', sans-serif;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      color: var(--sapphire);
+      margin: 0 0 4px;
+    }
+
+    .branch-col .branch-sub {
+      font-size: 11.5px;
+      color: var(--muted);
+      margin-bottom: 14px;
+      letter-spacing: 0.3px;
+    }
+
+    .service-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .service-link {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--card);
+      text-decoration: none;
+      color: var(--charcoal);
+      font-size: 13.5px;
+      font-weight: 500;
+      transition: all .15s ease;
+    }
+
+    .service-link:hover {
+      border-color: var(--sapphire);
+      background: var(--sapphire);
+      color: #fff;
+      transform: translateX(2px);
+    }
+
+    .service-link .svc-code {
+      font-family: 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+      font-size: 11px;
+      opacity: 0.6;
+      font-weight: 500;
+    }
+    .service-link:hover .svc-code { opacity: 1; color: rgba(255, 255, 255, 0.85); }
+
+    @media (max-width: 560px) {
+      .modal-body { grid-template-columns: 1fr; }
+      .branch-col + .branch-col { border-left: none; border-top: 1px solid var(--line); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── Header ────────────────────────────────── -->
+  <header>
+    <a class="brand" href="/" aria-label="SCEI ERP Home">
+      <svg class="brand-mark" viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <g transform="translate(110, 110)">
+          <polygon fill="none" stroke="#1A7B8A" stroke-width="6" points="0,-88 88,0 0,88 -88,0"/>
+          <polygon fill="none" stroke="#1A7B8A" stroke-width="4.5" points="44,-44 44,44 -44,44 -44,-44"/>
+          <polygon fill="none" stroke="#1A7B8A" stroke-width="3.2" points="0,-44 44,0 0,44 -44,0"/>
+          <polygon fill="#1A7B8A" points="0,-14 14,0 0,14 -14,0"/>
+        </g>
+      </svg>
+      <div class="brand-text">
+        <span class="name">SCEI&nbsp;ERP</span>
+        <span class="sub">SAPPHIRE CLINICS EAST</span>
+      </div>
+    </a>
+    <div class="header-meta">
+      <span><span class="status-dot"></span><span class="hide-sm">All systems operational</span></span>
+    </div>
+  </header>
+
+  <!-- ── Hero ──────────────────────────────────── -->
+  <section class="hero">
+    <h1>Sapphire Clinics East <span class="accent">Inc.</span></h1>
+    <p class="tagline">Enterprise Resource Planning</p>
+
+    <div class="search-wrap">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="search" type="search" placeholder="Search modules — e.g. scheduling, accounting, HR…" autocomplete="off" />
+    </div>
+  </section>
+
+  <!-- ── Access legend ─────────────────────────── -->
+  <div class="access-legend" aria-label="Access level legend">
+    <span class="legend-item"><span class="dot dot-admin"></span> Admin-issued credentials</span>
+    <span class="legend-item"><span class="dot dot-open"></span> Public (open)</span>
+    <span class="legend-item"><span class="dot dot-code"></span> Public (access code)</span>
+  </div>
+
+  <!-- ── Modules ───────────────────────────────── -->
+  <main class="modules" id="modules">
+
+    <a class="module" href="https://marketing.sapphireclinicseast.org" target="_blank" rel="noopener" data-keys="marketing campaigns content social admin">
+      <span class="access-badge access-admin" title="Admin-issued credentials">Admin</span>
+      <div class="module-head">
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
+        </div>
+        <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </div>
+      <h3>Marketing/Operations</h3>
+      <p>Client scheduling, client data, clinic utilization, satisfaction surveys, and peer evaluations.</p>
+      <div class="domain">marketing.sapphireclinicseast.org</div>
+    </a>
+
+    <a class="module" href="https://hr.sapphireclinicseast.org" target="_blank" rel="noopener" data-keys="hr human resources staff employees payroll admin">
+      <span class="access-badge access-admin" title="Admin-issued credentials">Admin</span>
+      <div class="module-head">
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </div>
+      <h3>Human Resources</h3>
+      <p>Employee records, incident management, hiring and onboarding, meetings, BIR submission, accomplishment reports, and document tracking.</p>
+      <div class="domain">hr.sapphireclinicseast.org</div>
+    </a>
+
+    <button class="module module-button" type="button" data-open-modal="schedules" data-keys="schedules clinician scheduling roster shift ot pt slp md sped psych orthosis sbea sbgh code">
+      <span class="access-badge access-code" title="Public with access code">Code</span>
+      <div class="module-head">
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/></svg>
+        </div>
+        <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </div>
+      <h3>Schedules</h3>
+      <p>Clinician rosters, shift planning, and clinic-wide session calendars.</p>
+      <div class="domain">schedules.sapphireclinicseast.org</div>
+    </button>
+
+    <div class="module module-split" data-keys="queue patient waiting list front desk decking sbgh sbea greenhills east open">
+      <span class="access-badge access-open" title="Public (open)">Open</span>
+      <div class="module-head">
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+      </div>
+      <h3>Queue</h3>
+      <p>Real-time patient queuing, front-desk decking, and session flow tracking.</p>
+      <div class="branch-picker">
+        <a class="branch-btn" href="https://queue.sapphireclinicseast.org/sbea" target="_blank" rel="noopener">
+          <span class="branch-code">SBEA</span>
+          <span class="branch-name">Sandbox East</span>
+        </a>
+        <a class="branch-btn" href="https://queue.sapphireclinicseast.org/sbgh" target="_blank" rel="noopener">
+          <span class="branch-code">SBGH</span>
+          <span class="branch-name">Sandbox Greenhills</span>
+        </a>
+      </div>
+    </div>
+
+    <a class="module" href="https://teletherapy.sapphireclinicseast.org" target="_blank" rel="noopener" data-keys="teletherapy online video session virtual admin">
+      <span class="access-badge access-admin" title="Admin-issued credentials">Admin</span>
+      <div class="module-head">
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2"/></svg>
+        </div>
+        <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </div>
+      <h3>Teletherapy</h3>
+      <p>Note taking, session history, and teletherapy services.</p>
+      <div class="domain">teletherapy.sapphireclinicseast.org</div>
+    </a>
+
+    <a class="module" href="https://seminars.sapphireclinicseast.org" target="_blank" rel="noopener" data-keys="seminars training events workshops education ceu open">
+      <span class="access-badge access-open" title="Public (open)">Open</span>
+      <div class="module-head">
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+        </div>
+        <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </div>
+      <h3>Seminars</h3>
+      <p>In-house continuing education, training, and clinical learning events.</p>
+      <div class="domain">seminars.sapphireclinicseast.org</div>
+    </a>
+
+    <a class="module" href="https://survey.sapphireclinicseast.org" target="_blank" rel="noopener" data-keys="survey feedback form questionnaire evaluation peer eval code">
+      <span class="access-badge access-code" title="Public with access code">Code</span>
+      <div class="module-head">
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13l2 2 4-4"/></svg>
+        </div>
+        <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </div>
+      <h3>Survey</h3>
+      <p>Customer satisfaction surveys.</p>
+      <div class="domain">survey.sapphireclinicseast.org</div>
+    </a>
+
+    <a class="module" href="https://accounting.sapphireclinicseast.org" target="_blank" rel="noopener" data-keys="accounting finance pos sales inventory ar receivables admin">
+      <span class="access-badge access-admin" title="Admin-issued credentials">Admin</span>
+      <div class="module-head">
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+        </div>
+        <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </div>
+      <h3>Accounting</h3>
+      <p>Point of sales, accounting recording, receivables tracking, payroll, inventory and procurement, and asset management.</p>
+      <div class="domain">accounting.sapphireclinicseast.org</div>
+    </a>
+
+    <a class="module" href="https://client.sapphireclinicseast.org" target="_blank" rel="noopener" data-keys="client patient portal records profile open">
+      <span class="access-badge access-open" title="Public (open)">Open</span>
+      <div class="module-head">
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
+        <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </div>
+      <h3>Client Portal</h3>
+      <p>Patient-facing portal for profiles, appointments, and session history.</p>
+      <div class="domain">client.sapphireclinicseast.org</div>
+    </a>
+
+    <a class="module" href="https://templates.sapphireclinicseast.org" target="_blank" rel="noopener" data-keys="templates forms documents letters birthday holiday code">
+      <span class="access-badge access-code" title="Public with access code">Code</span>
+      <div class="module-head">
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="8" x="3" y="3" rx="1"/><rect width="8" height="8" x="13" y="3" rx="1"/><rect width="8" height="8" x="3" y="13" rx="1"/><rect width="8" height="8" x="13" y="13" rx="1"/></svg>
+        </div>
+        <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </div>
+      <h3>Templates</h3>
+      <p>Reusable document, form, and communication templates for all departments.</p>
+      <div class="domain">templates.sapphireclinicseast.org</div>
+    </a>
+
+  </main>
+
+  <!-- ── Schedules modal ─────────────────────────── -->
+  <div class="modal-backdrop" id="schedules-modal" role="dialog" aria-modal="true" aria-labelledby="schedules-modal-title">
+    <div class="modal">
+      <div class="modal-head">
+        <div>
+          <h2 id="schedules-modal-title">Open a Schedule</h2>
+          <div class="sub">Select a branch &amp; service</div>
+        </div>
+        <button class="modal-close" type="button" data-close-modal aria-label="Close">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="branch-col">
+          <h3>SBEA</h3>
+          <div class="branch-sub">Sandbox East</div>
+          <div class="service-list">
+            <a class="service-link" href="https://schedules.sapphireclinicseast.org/sbea/ot"       target="_blank" rel="noopener">Occupational Therapy <span class="svc-code">/ot</span></a>
+            <a class="service-link" href="https://schedules.sapphireclinicseast.org/sbea/pt"       target="_blank" rel="noopener">Physical Therapy     <span class="svc-code">/pt</span></a>
+            <a class="service-link" href="https://schedules.sapphireclinicseast.org/sbea/slp"      target="_blank" rel="noopener">Speech Therapy       <span class="svc-code">/slp</span></a>
+            <a class="service-link" href="https://schedules.sapphireclinicseast.org/sbea/md"       target="_blank" rel="noopener">Medical (MD)         <span class="svc-code">/md</span></a>
+            <a class="service-link" href="https://schedules.sapphireclinicseast.org/sbea/sped"     target="_blank" rel="noopener">SPED                 <span class="svc-code">/sped</span></a>
+            <a class="service-link" href="https://schedules.sapphireclinicseast.org/sbea/psych"    target="_blank" rel="noopener">Psychotherapy        <span class="svc-code">/psych</span></a>
+            <a class="service-link" href="https://schedules.sapphireclinicseast.org/sbea/orthosis" target="_blank" rel="noopener">Orthosis             <span class="svc-code">/orthosis</span></a>
+          </div>
+        </div>
+        <div class="branch-col">
+          <h3>SBGH</h3>
+          <div class="branch-sub">Sandbox Greenhills</div>
+          <div class="service-list">
+            <a class="service-link" href="https://schedules.sapphireclinicseast.org/sbgh/ot"       target="_blank" rel="noopener">Occupational Therapy <span class="svc-code">/ot</span></a>
+            <a class="service-link" href="https://schedules.sapphireclinicseast.org/sbgh/pt"       target="_blank" rel="noopener">Physical Therapy     <span class="svc-code">/pt</span></a>
+            <a class="service-link" href="https://schedules.sapphireclinicseast.org/sbgh/slp"      target="_blank" rel="noopener">Speech Therapy       <span class="svc-code">/slp</span></a>
+            <a class="service-link" href="https://schedules.sapphireclinicseast.org/sbgh/md"       target="_blank" rel="noopener">Medical (MD)         <span class="svc-code">/md</span></a>
+            <a class="service-link" href="https://schedules.sapphireclinicseast.org/sbgh/sped"     target="_blank" rel="noopener">SPED                 <span class="svc-code">/sped</span></a>
+            <a class="service-link" href="https://schedules.sapphireclinicseast.org/sbgh/psych"    target="_blank" rel="noopener">Psychotherapy        <span class="svc-code">/psych</span></a>
+            <a class="service-link" href="https://schedules.sapphireclinicseast.org/sbgh/orthosis" target="_blank" rel="noopener">Orthosis             <span class="svc-code">/orthosis</span></a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    &copy; <span id="year"></span> Sapphire Clinics East, Inc. &nbsp;·&nbsp;
+    <a href="https://sapphireclinicseast.org" target="_blank" rel="noopener">sapphireclinicseast.org</a>
+  </footer>
+
+  <script>
+    // Footer year
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    // Live search / filter
+    const search = document.getElementById('search');
+    const modules = document.querySelectorAll('.module');
+    const grid = document.getElementById('modules');
+
+    // Remove any stray no-results node
+    function clearNoResults() {
+      const n = grid.querySelector('.no-results');
+      if (n) n.remove();
+    }
+
+    search.addEventListener('input', (e) => {
+      const q = e.target.value.trim().toLowerCase();
+      let visible = 0;
+      modules.forEach((m) => {
+        const hay = (m.textContent + ' ' + (m.dataset.keys || '')).toLowerCase();
+        const show = !q || hay.includes(q);
+        m.style.display = show ? '' : 'none';
+        if (show) visible++;
+      });
+      clearNoResults();
+      if (visible === 0) {
+        const div = document.createElement('div');
+        div.className = 'no-results';
+        div.textContent = 'No modules match "' + q + '".';
+        grid.appendChild(div);
+      }
+    });
+
+    // Keyboard shortcut: "/" to focus search
+    document.addEventListener('keydown', (e) => {
+      if (e.key === '/' && document.activeElement !== search) {
+        e.preventDefault();
+        search.focus();
+      }
+    });
+
+    // Modal (service picker)
+    const openModal = (id) => {
+      const m = document.getElementById(id);
+      if (m) { m.classList.add('open'); document.body.style.overflow = 'hidden'; }
+    };
+    const closeModal = (m) => {
+      m.classList.remove('open');
+      document.body.style.overflow = '';
+    };
+
+    document.querySelectorAll('[data-open-modal]').forEach((btn) => {
+      btn.addEventListener('click', () => openModal(btn.dataset.openModal + '-modal'));
+    });
+
+    document.querySelectorAll('.modal-backdrop').forEach((bd) => {
+      bd.addEventListener('click', (e) => { if (e.target === bd) closeModal(bd); });
+      bd.querySelectorAll('[data-close-modal]').forEach((btn) =>
+        btn.addEventListener('click', () => closeModal(bd))
+      );
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        document.querySelectorAll('.modal-backdrop.open').forEach(closeModal);
+      }
+    });
+  </script>
+
+</body>
+</html>

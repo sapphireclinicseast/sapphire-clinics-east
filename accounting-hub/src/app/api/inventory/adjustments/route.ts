@@ -27,6 +27,7 @@ export async function GET(req: Request) {
       include: {
         item: { select: { name: true, sku: true } },
         adjustedBy: { select: { name: true } },
+        batch: { select: { referenceNumber: true } },
       },
       orderBy: { adjustmentDate: 'desc' },
       skip: (params.page - 1) * params.pageSize,
@@ -35,7 +36,12 @@ export async function GET(req: Request) {
     prisma.inventoryAdjustment.count({ where }),
   ])
 
-  return NextResponse.json(paginatedResult(adjustments, total, params))
+  // Enrich with display reference numbers for records without one
+  const enriched = adjustments.map((adj, idx) => ({
+    ...adj,
+    displayRef: adj.batch?.referenceNumber ?? adj.referenceNumber ?? null,
+  }))
+  return NextResponse.json(paginatedResult(enriched, total, params))
 }
 
 export async function POST(req: Request) {

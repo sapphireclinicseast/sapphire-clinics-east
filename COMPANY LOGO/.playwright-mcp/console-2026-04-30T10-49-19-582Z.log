@@ -1,0 +1,2 @@
+[    2226ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ https://aurafinance.sapphireclinicseast.org/data/:0
+[    2735ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://aurafinance.sapphireclinicseast.org/favicon.ico:0

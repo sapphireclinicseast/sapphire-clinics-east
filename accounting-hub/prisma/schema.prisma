@@ -64,6 +64,7 @@ model User {
   suppliersCreated      Supplier[]              @relation("SupplierCreatedBy")
   inventoryItems        InventoryItem[]         @relation("ItemCreatedBy")
   inventoryAdjustments  InventoryAdjustment[]   @relation("AdjustmentBy")
+  inventoryAdjBatches   InventoryAdjustmentBatch[] @relation("AdjBatchCreatedBy")
   transfersRequested    ConsignmentTransfer[]   @relation("TransferRequestedBy")
   transfersApproved     ConsignmentTransfer[]   @relation("TransferApprovedBy")
 
@@ -302,6 +303,9 @@ model InventoryItem {
   supplierId           String?
   supplier             Supplier? @relation(fields: [supplierId], references: [id])
   supplierExchangeRate Decimal?
+  dimensionLength      Decimal?   // cm — length inclusive of packaging (for CBM)
+  dimensionWidth       Decimal?   // cm — width inclusive of packaging (for CBM)
+  dimensionHeight      Decimal?   // cm — height inclusive of packaging (for CBM)
   revenueAccountId     String?
   revenueAccount       Account?  @relation("InventoryRevenueAccount", fields: [revenueAccountId], references: [id], onDelete: SetNull)
   sourceAccountId      String?
@@ -378,6 +382,9 @@ model InventoryAdjustment {
   adjustmentDate    DateTime
   remarks           String
   batchId           String?        // Groups adjustments from same bulk upload
+  batchRefId        String?        // FK to InventoryAdjustmentBatch (freight batches)
+  batch             InventoryAdjustmentBatch? @relation(fields: [batchRefId], references: [id])
+  referenceNumber   String?        // Auto-generated display reference
   foreignCost       Decimal?       // Cost per unit in foreign currency
   foreignCurrency   String?        // e.g. CNY, USD
   exchangeRate      Decimal?       // Computed: localTotal / foreignTotal
@@ -392,6 +399,33 @@ model InventoryAdjustment {
   @@index([adjustedById])
   @@index([adjustmentDate])
   @@index([batchId])
+  @@index([batchRefId])
+}
+
+model InventoryAdjustmentBatch {
+  id                 String    @id @default(cuid())
+  referenceNumber    String    @unique
+  adjustmentDate     DateTime
+  hasForeignPurchase Boolean   @default(true)
+  foreignCurrency    String?
+  exchangeRate       Decimal?
+  freight1Amount     Decimal?   // Manufacturing → Warehouse
+  freight1IsForeign  Boolean   @default(false)
+  freight2Amount     Decimal?   // Foreign → Local
+  freight2IsForeign  Boolean   @default(false)
+  freight3Amount     Decimal?   // Warehouse → Office
+  freight3IsForeign  Boolean   @default(false)
+  totalFreightPHP    Decimal   @default(0)
+  proofUrls          Json?
+  remarks            String?
+  createdById        String
+  createdBy          User      @relation("AdjBatchCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt          DateTime  @default(now())
+
+  adjustments        InventoryAdjustment[]
+
+  @@index([createdById])
+  @@index([adjustmentDate])
 }
 
 model ConsignmentTransfer {

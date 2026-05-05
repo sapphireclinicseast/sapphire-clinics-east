@@ -1,0 +1,34 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic:
+      - generic:
+        - img
+    - generic:
+      - generic [ref=e115]:
+        - button "Zoom in" [ref=e116] [cursor=pointer]: +
+        - button "Zoom out" [ref=e117] [cursor=pointer]: −
+      - generic [ref=e118]:
+        - link "Leaflet" [ref=e119] [cursor=pointer]:
+          - /url: https://leafletjs.com
+          - img [ref=e120]
+          - text: Leaflet
+        - text: "| © OSM © CARTO/Esri"
+  - generic [ref=e124]:
+    - heading "Schools & Clinics" [level=1] [ref=e125]
+    - generic [ref=e126]:
+      - generic [ref=e127]: Show
+      - combobox "Show" [ref=e128]:
+        - option "Occupational Therapy" [selected]
+        - option "Speech-Language Pathology"
+        - option "Both (OT + SLP)"
+    - generic [ref=e129]:
+      - generic [ref=e130]:
+        - checkbox "Schools" [checked] [ref=e131]
+        - text: Schools
+      - generic [ref=e132]:
+        - checkbox "Clinics" [checked] [ref=e133]
+        - text: Clinics
+    - generic [ref=e134]:
+      - generic [ref=e135]: School
+      - generic [ref=e137]: Clinic
+    - generic [ref=e139]: 18 schools · 94 clinics

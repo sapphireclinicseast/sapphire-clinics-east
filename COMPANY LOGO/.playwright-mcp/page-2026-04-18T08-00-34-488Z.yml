@@ -1,0 +1,56 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - link "SC Sapphire Clinics East Patient Portal" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e5]: SC
+        - generic [ref=e6]:
+          - generic [ref=e7]: Sapphire Clinics East
+          - generic [ref=e8]: Patient Portal
+      - navigation [ref=e9]:
+        - link "Book" [ref=e10] [cursor=pointer]:
+          - /url: /book
+        - link "My Bookings" [ref=e11] [cursor=pointer]:
+          - /url: /bookings
+  - main [ref=e12]:
+    - generic [ref=e13]:
+      - generic [ref=e16]:
+        - generic [ref=e17]: Online booking
+        - heading "Book your next appointment with ease." [level=1] [ref=e19]:
+          - text: Book your next
+          - text: appointment with ease.
+        - paragraph [ref=e20]: Pick from our team of therapists across Sandbox East and Greenhills. Your slot is confirmed once downpayment is received.
+        - generic [ref=e21]:
+          - generic [ref=e22]:
+            - generic [ref=e23]: ✓
+            - text: 7 services · 2 branches
+          - generic [ref=e24]:
+            - generic [ref=e25]: ✓
+            - text: In-clinic or teletherapy
+          - generic [ref=e26]:
+            - generic [ref=e27]: ✓
+            - text: Secure PayMongo checkout
+      - generic [ref=e29]:
+        - generic [ref=e31]:
+          - heading "Get started" [level=2] [ref=e32]
+          - paragraph [ref=e33]: Returning or new? Choose below.
+        - generic [ref=e34]:
+          - button "Returning patient" [ref=e35]
+          - button "New patient" [ref=e36]
+        - generic [ref=e37]:
+          - generic [ref=e38]:
+            - generic [ref=e39]: Email
+            - textbox "Email" [ref=e40]:
+              - /placeholder: you@example.com
+          - generic [ref=e41]:
+            - generic [ref=e42]: Last name
+            - textbox "Last name" [ref=e43]:
+              - /placeholder: Dela Cruz
+          - button "Continue" [ref=e44] [cursor=pointer]
+          - paragraph [ref=e45]:
+            - text: Don't have a record yet?
+            - button "Register as a new patient" [ref=e46]
+  - contentinfo [ref=e47]:
+    - generic [ref=e48]: © 2026 Sapphire Clinics East
+    - generic [ref=e49]: sapphireclinicseast.org
+  - alert [ref=e50]

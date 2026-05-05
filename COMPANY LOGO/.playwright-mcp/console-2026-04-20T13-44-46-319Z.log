@@ -1,0 +1,9 @@
+[     360ms] Error: Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+    at rX (https://verdanarehab.com/_next/static/chunks/0o75ek-dasqyt.js:1:47213)
+    at iu (https://verdanarehab.com/_next/static/chunks/0o75ek-dasqyt.js:1:98254)
+    at sd (https://verdanarehab.com/_next/static/chunks/0o75ek-dasqyt.js:1:138944)
+    at https://verdanarehab.com/_next/static/chunks/0o75ek-dasqyt.js:1:133830
+    at se (https://verdanarehab.com/_next/static/chunks/0o75ek-dasqyt.js:1:133931)
+    at s$ (https://verdanarehab.com/_next/static/chunks/0o75ek-dasqyt.js:1:160495)
+    at MessagePort.O (https://verdanarehab.com/_next/static/chunks/0o75ek-dasqyt.js:1:8660)
+[     535ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://verdanarehab.com/account?_rsc=3h8z9:0

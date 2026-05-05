@@ -48,6 +48,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const token = searchParams.get('token')
   const queryBranch = searchParams.get('branch')
+  const debug = searchParams.get('debug') === '1'
 
   // Auth: either valid session OR matching external token
   let authedBranch: string | null = null
@@ -129,14 +130,58 @@ export async function GET(req: NextRequest) {
 
   // ── Group schedules by staff ──
   const byStaff = new Map<string, typeof schedules>()
+  // For ?debug=1 only — track why each schedule was kept or filtered out.
+  const debugRows: Array<{
+    staffId: string
+    staffName: string
+    department: string
+    patientId: string | null
+    patientName: string | null
+    startTime: string
+    endTime: string
+    targetCount: number
+    completed: number
+    excluded: 'none' | 'no-patient' | 'target-met' | 'patient-already-assessed-this-year'
+  }> = []
   for (const sch of schedules) {
-    if (!sch.patient) continue
+    const staffName = `${sch.staff.firstName} ${sch.staff.lastName}`
     const t = targetMap.get(sch.staffId)
     const targetCount = t?.targetCount ?? 10
     const completed   = t?.completed   ?? 0
-    if (completed >= targetCount) continue  // already met target
-    // Skip if this patient already assessed this therapist this year
-    if (alreadyAssessed.has(`${sch.staffId}|${sch.patientId}`)) continue
+    if (!sch.patient) {
+      if (debug) debugRows.push({
+        staffId: sch.staffId, staffName, department: sch.staff.department,
+        patientId: sch.patientId, patientName: null,
+        startTime: sch.startTime, endTime: sch.endTime,
+        targetCount, completed, excluded: 'no-patient',
+      })
+      continue
+    }
+    const patientName = `${sch.patient.firstName} ${sch.patient.lastName}`
+    if (completed >= targetCount) {
+      if (debug) debugRows.push({
+        staffId: sch.staffId, staffName, department: sch.staff.department,
+        patientId: sch.patient.id, patientName,
+        startTime: sch.startTime, endTime: sch.endTime,
+        targetCount, completed, excluded: 'target-met',
+      })
+      continue
+    }
+    if (alreadyAssessed.has(`${sch.staffId}|${sch.patientId}`)) {
+      if (debug) debugRows.push({
+        staffId: sch.staffId, staffName, department: sch.staff.department,
+        patientId: sch.patient.id, patientName,
+        startTime: sch.startTime, endTime: sch.endTime,
+        targetCount, completed, excluded: 'patient-already-assessed-this-year',
+      })
+      continue
+    }
+    if (debug) debugRows.push({
+      staffId: sch.staffId, staffName, department: sch.staff.department,
+      patientId: sch.patient.id, patientName,
+      startTime: sch.startTime, endTime: sch.endTime,
+      targetCount, completed, excluded: 'none',
+    })
     if (!byStaff.has(sch.staffId)) byStaff.set(sch.staffId, [])
     byStaff.get(sch.staffId)!.push(sch)
   }
@@ -221,6 +266,28 @@ export async function GET(req: NextRequest) {
 
   // Sort by startTime
   targetsOut.sort((a, b) => a.startTime.localeCompare(b.startTime))
+
+  if (debug) {
+    // Build a per-staff diagnostic summary so the operator can see exactly why
+    // a schedule was (or wasn't) chosen. Useful when count=0 looks wrong.
+    const totalSchedulesConsidered = schedules.length
+    const reasonCounts = debugRows.reduce<Record<string, number>>((acc, r) => {
+      acc[r.excluded] = (acc[r.excluded] ?? 0) + 1
+      return acc
+    }, {})
+    return NextResponse.json({
+      date: todayStr,
+      branch: authedBranch,
+      count: targetsOut.length,
+      targets: targetsOut,
+      debug: {
+        totalSchedulesConsidered,
+        reasonCounts,
+        schedules: debugRows,
+        priorAssignmentsThisYear: priorAssignments.length,
+      },
+    })
+  }
 
   return NextResponse.json({
     date: todayStr,

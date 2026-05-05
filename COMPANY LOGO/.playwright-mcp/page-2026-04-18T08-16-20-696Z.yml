@@ -1,0 +1,64 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - link "SC Sapphire Clinics East Patient Portal" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e5]: SC
+        - generic [ref=e6]:
+          - generic [ref=e7]: Sapphire Clinics East
+          - generic [ref=e8]: Patient Portal
+      - navigation [ref=e9]:
+        - link "Book" [ref=e10] [cursor=pointer]:
+          - /url: /book
+        - link "My Bookings" [ref=e11] [cursor=pointer]:
+          - /url: /bookings
+  - main [ref=e12]:
+    - generic [ref=e13]:
+      - generic [ref=e14]:
+        - generic [ref=e18]: 1. Service
+        - generic [ref=e23]: 2. Slot
+        - generic [ref=e28]: 3. Confirm
+      - generic [ref=e29]:
+        - heading "Pick a service" [level=1] [ref=e30]
+        - paragraph [ref=e31]: Start by choosing a branch and the service you need.
+        - generic [ref=e32]:
+          - generic [ref=e33]: Branch
+          - generic [ref=e34]:
+            - button "Sandbox East" [ref=e35] [cursor=pointer]: Sandbox East
+            - button "Sandbox Greenhills" [ref=e37] [cursor=pointer]: Sandbox Greenhills
+        - generic [ref=e39]:
+          - generic [ref=e40]: Service
+          - generic [ref=e41]:
+            - button "🧘 Physical Therapy PT" [ref=e42]:
+              - generic [ref=e43]: 🧘
+              - generic [ref=e44]: Physical Therapy
+              - generic [ref=e45]: PT
+            - button "✋ Occupational Therapy OT" [ref=e46]:
+              - generic [ref=e47]: ✋
+              - generic [ref=e48]: Occupational Therapy
+              - generic [ref=e49]: OT
+            - button "💬 Speech-Language Pathology SLP" [ref=e50]:
+              - generic [ref=e51]: 💬
+              - generic [ref=e52]: Speech-Language Pathology
+              - generic [ref=e53]: SLP
+            - button "📚 Special Education SPED" [ref=e54]:
+              - generic [ref=e55]: 📚
+              - generic [ref=e56]: Special Education
+              - generic [ref=e57]: SPED
+            - button "🩺 Medical Doctor MD" [ref=e58]:
+              - generic [ref=e59]: 🩺
+              - generic [ref=e60]: Medical Doctor
+              - generic [ref=e61]: MD
+            - button "🧠 Psychology PSYCHOLOGY" [ref=e62]:
+              - generic [ref=e63]: 🧠
+              - generic [ref=e64]: Psychology
+              - generic [ref=e65]: PSYCHOLOGY
+            - button "🦾 Orthosis / Prosthesis ORTHOSIS" [ref=e66]:
+              - generic [ref=e67]: 🦾
+              - generic [ref=e68]: Orthosis / Prosthesis
+              - generic [ref=e69]: ORTHOSIS
+        - button "Continue → Pick a slot" [disabled] [ref=e71]
+  - contentinfo [ref=e72]:
+    - generic [ref=e73]: © 2026 Sapphire Clinics East
+    - generic [ref=e74]: sapphireclinicseast.org
+  - alert [ref=e75]

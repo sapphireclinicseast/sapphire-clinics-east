@@ -1,0 +1,612 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - heading "Schools & Clinics Dashboard — Occupational Therapy" [level=1] [ref=e5]
+        - paragraph [ref=e6]: Philippine Academy of Occupational Therapists — schools offering BSOT and registered OT clinics & centers
+        - generic [ref=e7]:
+          - button "OT" [ref=e8] [cursor=pointer]
+          - button "SLP" [ref=e9] [cursor=pointer]
+      - generic [ref=e10]:
+        - generic [ref=e11]: ☁ Connected to server
+        - button "⚙" [ref=e12] [cursor=pointer]
+  - generic [ref=e13]:
+    - generic [ref=e14]:
+      - generic [ref=e15]:
+        - generic [ref=e16]: OT Schools
+        - generic [ref=e17]: "17"
+      - generic [ref=e18]:
+        - generic [ref=e19]: OT Clinics & Centers
+        - generic [ref=e20]: "94"
+      - generic [ref=e21]:
+        - generic [ref=e22]: Regions Covered
+        - generic [ref=e23]: "13"
+      - generic [ref=e24]:
+        - generic [ref=e25]: Cities/Municipalities
+        - generic [ref=e26]: "48"
+    - generic [ref=e27]:
+      - heading "Geographic Distribution click markers for details" [level=2] [ref=e28]:
+        - text: Geographic Distribution
+        - generic [ref=e29]: click markers for details
+      - generic [ref=e30]:
+        - generic:
+          - generic:
+            - img
+        - generic:
+          - generic [ref=e142]:
+            - button "Zoom in" [ref=e143] [cursor=pointer]: +
+            - button "Zoom out" [ref=e144] [cursor=pointer]: −
+          - generic [ref=e146]:
+            - generic [ref=e147]:
+              - generic [ref=e149]:
+                - radio "Carto Voyager" [checked] [ref=e150]
+                - text: Carto Voyager
+              - generic [ref=e152]:
+                - radio "Carto Light" [ref=e153]
+                - text: Carto Light
+              - generic [ref=e155]:
+                - radio "Esri World" [ref=e156]
+                - text: Esri World
+              - generic [ref=e158]:
+                - radio "OpenStreetMap" [ref=e159]
+                - text: OpenStreetMap
+            - generic [ref=e161]:
+              - generic [ref=e163]:
+                - checkbox "Schools" [checked] [ref=e164]
+                - text: Schools
+              - generic [ref=e166]:
+                - checkbox "Clinics" [checked] [ref=e167]
+                - text: Clinics
+          - generic [ref=e168]:
+            - link "Leaflet" [ref=e169] [cursor=pointer]:
+              - /url: https://leafletjs.com
+              - img [ref=e170]
+              - text: Leaflet
+            - text: "| ©"
+            - link "OSM" [ref=e174] [cursor=pointer]:
+              - /url: https://www.openstreetmap.org/
+            - text: ©
+            - link "CARTO" [ref=e175] [cursor=pointer]:
+              - /url: https://carto.com/
+      - generic [ref=e176]:
+        - generic [ref=e177]: School (BSOT program)
+        - generic [ref=e179]: Clinic / Center
+        - generic [ref=e181]: "Tip: schools and clinics in the same area indicate strong intern-pipeline density."
+    - generic [ref=e182]:
+      - heading "Schools per Region" [level=2] [ref=e184]
+      - heading "Schools per City / Municipality" [level=2] [ref=e187]
+    - generic [ref=e189]:
+      - heading "Clinics per Region" [level=2] [ref=e191]
+      - heading "Clinic-to-School Ratio by Region" [level=2] [ref=e194]
+    - generic [ref=e196]:
+      - heading "Tuition & Enrollment Data fill in as you call each school" [level=2] [ref=e197]:
+        - text: Tuition & Enrollment Data
+        - generic [ref=e198]: fill in as you call each school
+      - paragraph [ref=e199]: Enter the number of students currently enrolled, the annual tuition fee, and any miscellaneous/other fees per school. Averages compute live (overall and per region).
+      - generic [ref=e200]:
+        - button "💾 Save to Server" [ref=e201] [cursor=pointer]
+        - button "⟳ Refresh from Server" [ref=e202] [cursor=pointer]
+        - button "Download CSV" [ref=e203] [cursor=pointer]
+        - button "Download PDF" [ref=e204] [cursor=pointer]
+        - button "Backup to JSON" [ref=e205] [cursor=pointer]
+        - button "Restore from JSON" [ref=e206] [cursor=pointer]
+        - button "Reset" [ref=e207] [cursor=pointer]
+      - table [ref=e209]:
+        - rowgroup [ref=e210]:
+          - 'row "School Region City # Students Number of Scholars Tuition / Year (₱) Other Fees (₱) Total / Student" [ref=e211]':
+            - columnheader "School" [ref=e212]
+            - columnheader "Region" [ref=e213]
+            - columnheader "City" [ref=e214]
+            - columnheader "# Students" [ref=e215]
+            - columnheader "Number of Scholars" [ref=e216]
+            - columnheader "Tuition / Year (₱)" [ref=e217]
+            - columnheader "Other Fees (₱)" [ref=e218]
+            - columnheader "Total / Student" [ref=e219]
+        - rowgroup [ref=e220]:
+          - row "Angeles University Foundation McArthur Highway, Angeles City, Pampanga Region III Angeles City —" [ref=e221]:
+            - cell "Angeles University Foundation McArthur Highway, Angeles City, Pampanga" [ref=e222]:
+              - text: Angeles University Foundation
+              - text: McArthur Highway, Angeles City, Pampanga
+            - cell "Region III" [ref=e223]
+            - cell "Angeles City" [ref=e224]
+            - cell [ref=e225]:
+              - spinbutton [ref=e226]
+            - cell [ref=e227]:
+              - spinbutton [ref=e228]
+            - cell [ref=e229]:
+              - spinbutton [ref=e230]
+            - cell [ref=e231]:
+              - spinbutton [ref=e232]
+            - cell "—" [ref=e233]
+          - row "De La Salle Medical and Health Sciences Institute Governor D. Mangubat Avenue, Brgy. Zone IV, City of Dasmariñas, Cavite Region IV-A Dasmariñas —" [ref=e234]:
+            - cell "De La Salle Medical and Health Sciences Institute Governor D. Mangubat Avenue, Brgy. Zone IV, City of Dasmariñas, Cavite" [ref=e235]:
+              - text: De La Salle Medical and Health Sciences Institute
+              - text: Governor D. Mangubat Avenue, Brgy. Zone IV, City of Dasmariñas, Cavite
+            - cell "Region IV-A" [ref=e236]
+            - cell "Dasmariñas" [ref=e237]
+            - cell [ref=e238]:
+              - spinbutton [ref=e239]
+            - cell [ref=e240]:
+              - spinbutton [ref=e241]
+            - cell [ref=e242]:
+              - spinbutton [ref=e243]
+            - cell [ref=e244]:
+              - spinbutton [ref=e245]
+            - cell "—" [ref=e246]
+          - row "Emilio Aguinaldo College - Manila 1113-1117 San Marcelino St., Paco, Manila NCR Manila —" [ref=e247]:
+            - cell "Emilio Aguinaldo College - Manila 1113-1117 San Marcelino St., Paco, Manila" [ref=e248]:
+              - text: Emilio Aguinaldo College - Manila
+              - text: 1113-1117 San Marcelino St., Paco, Manila
+            - cell "NCR" [ref=e249]
+            - cell "Manila" [ref=e250]
+            - cell [ref=e251]:
+              - spinbutton [ref=e252]
+            - cell [ref=e253]:
+              - spinbutton [ref=e254]
+            - cell [ref=e255]:
+              - spinbutton [ref=e256]
+            - cell [ref=e257]:
+              - spinbutton [ref=e258]
+            - cell "—" [ref=e259]
+          - row "Philippine Rehabilitation Institute Foundation, Inc. 56 Banawe Street, Quezon City NCR Quezon City —" [ref=e260]:
+            - cell "Philippine Rehabilitation Institute Foundation, Inc. 56 Banawe Street, Quezon City" [ref=e261]:
+              - text: Philippine Rehabilitation Institute Foundation, Inc.
+              - text: 56 Banawe Street, Quezon City
+            - cell "NCR" [ref=e262]
+            - cell "Quezon City" [ref=e263]
+            - cell [ref=e264]:
+              - spinbutton [ref=e265]
+            - cell [ref=e266]:
+              - spinbutton [ref=e267]
+            - cell [ref=e268]:
+              - spinbutton [ref=e269]
+            - cell [ref=e270]:
+              - spinbutton [ref=e271]
+            - cell "—" [ref=e272]
+          - row "University of Batangas Hilltop Road, Batangas City, Batangas Region IV-A Batangas City —" [ref=e273]:
+            - cell "University of Batangas Hilltop Road, Batangas City, Batangas" [ref=e274]:
+              - text: University of Batangas
+              - text: Hilltop Road, Batangas City, Batangas
+            - cell "Region IV-A" [ref=e275]
+            - cell "Batangas City" [ref=e276]
+            - cell [ref=e277]:
+              - spinbutton [ref=e278]
+            - cell [ref=e279]:
+              - spinbutton [ref=e280]
+            - cell [ref=e281]:
+              - spinbutton [ref=e282]
+            - cell [ref=e283]:
+              - spinbutton [ref=e284]
+            - cell "—" [ref=e285]
+          - row "University of Perpetual Help - Dr. Jose G. Tamayo Medical University Old National Highway, Sto. Niño, Biñan, Laguna Region IV-A Biñan —" [ref=e286]:
+            - cell "University of Perpetual Help - Dr. Jose G. Tamayo Medical University Old National Highway, Sto. Niño, Biñan, Laguna" [ref=e287]:
+              - text: University of Perpetual Help - Dr. Jose G. Tamayo Medical University
+              - text: Old National Highway, Sto. Niño, Biñan, Laguna
+            - cell "Region IV-A" [ref=e288]
+            - cell "Biñan" [ref=e289]
+            - cell [ref=e290]:
+              - spinbutton [ref=e291]
+            - cell [ref=e292]:
+              - spinbutton [ref=e293]
+            - cell [ref=e294]:
+              - spinbutton [ref=e295]
+            - cell [ref=e296]:
+              - spinbutton [ref=e297]
+            - cell "—" [ref=e298]
+          - row "University of Perpetual Help System DALTA - Las Piñas Alabang-Zapote Avenue, Pamplona 3, Las Piñas City NCR Las Piñas —" [ref=e299]:
+            - cell "University of Perpetual Help System DALTA - Las Piñas Alabang-Zapote Avenue, Pamplona 3, Las Piñas City" [ref=e300]:
+              - text: University of Perpetual Help System DALTA - Las Piñas
+              - text: Alabang-Zapote Avenue, Pamplona 3, Las Piñas City
+            - cell "NCR" [ref=e301]
+            - cell "Las Piñas" [ref=e302]
+            - cell [ref=e303]:
+              - spinbutton [ref=e304]
+            - cell [ref=e305]:
+              - spinbutton [ref=e306]
+            - cell [ref=e307]:
+              - spinbutton [ref=e308]
+            - cell [ref=e309]:
+              - spinbutton [ref=e310]
+            - cell "—" [ref=e311]
+          - row "University of Perpetual Help System - Perpetual Help College of Manila 1240 V. Concepcion St., Sampaloc, Manila NCR Manila —" [ref=e312]:
+            - cell "University of Perpetual Help System - Perpetual Help College of Manila 1240 V. Concepcion St., Sampaloc, Manila" [ref=e313]:
+              - text: University of Perpetual Help System - Perpetual Help College of Manila
+              - text: 1240 V. Concepcion St., Sampaloc, Manila
+            - cell "NCR" [ref=e314]
+            - cell "Manila" [ref=e315]
+            - cell [ref=e316]:
+              - spinbutton [ref=e317]
+            - cell [ref=e318]:
+              - spinbutton [ref=e319]
+            - cell [ref=e320]:
+              - spinbutton [ref=e321]
+            - cell [ref=e322]:
+              - spinbutton [ref=e323]
+            - cell "—" [ref=e324]
+          - row "University of Santo Tomas España Blvd., Sampaloc, Manila NCR Manila —" [ref=e325]:
+            - cell "University of Santo Tomas España Blvd., Sampaloc, Manila" [ref=e326]:
+              - text: University of Santo Tomas
+              - text: España Blvd., Sampaloc, Manila
+            - cell "NCR" [ref=e327]
+            - cell "Manila" [ref=e328]
+            - cell [ref=e329]:
+              - spinbutton [ref=e330]
+            - cell [ref=e331]:
+              - spinbutton [ref=e332]
+            - cell [ref=e333]:
+              - spinbutton [ref=e334]
+            - cell [ref=e335]:
+              - spinbutton [ref=e336]
+            - cell "—" [ref=e337]
+          - row "University of the Philippines Manila UP-PGH Compound, Pedro Gil St., Malate, Manila NCR Manila —" [ref=e338]:
+            - cell "University of the Philippines Manila UP-PGH Compound, Pedro Gil St., Malate, Manila" [ref=e339]:
+              - text: University of the Philippines Manila
+              - text: UP-PGH Compound, Pedro Gil St., Malate, Manila
+            - cell "NCR" [ref=e340]
+            - cell "Manila" [ref=e341]
+            - cell [ref=e342]:
+              - spinbutton [ref=e343]
+            - cell [ref=e344]:
+              - spinbutton [ref=e345]
+            - cell [ref=e346]:
+              - spinbutton [ref=e347]
+            - cell [ref=e348]:
+              - spinbutton [ref=e349]
+            - cell "—" [ref=e350]
+          - row "Cebu Doctors' University Dr. P.V. Larrazabal Jr. Ave., North Reclamation Area, Mandaue City, Cebu Region VII Mandaue —" [ref=e351]:
+            - cell "Cebu Doctors' University Dr. P.V. Larrazabal Jr. Ave., North Reclamation Area, Mandaue City, Cebu" [ref=e352]:
+              - text: Cebu Doctors' University
+              - text: Dr. P.V. Larrazabal Jr. Ave., North Reclamation Area, Mandaue City, Cebu
+            - cell "Region VII" [ref=e353]
+            - cell "Mandaue" [ref=e354]
+            - cell [ref=e355]:
+              - spinbutton [ref=e356]
+            - cell [ref=e357]:
+              - spinbutton [ref=e358]
+            - cell [ref=e359]:
+              - spinbutton [ref=e360]
+            - cell [ref=e361]:
+              - spinbutton [ref=e362]
+            - cell "—" [ref=e363]
+          - row "Southwestern University PHINMA Urgello St., Sambag 2, Cebu City, Cebu Region VII Cebu City —" [ref=e364]:
+            - cell "Southwestern University PHINMA Urgello St., Sambag 2, Cebu City, Cebu" [ref=e365]:
+              - text: Southwestern University PHINMA
+              - text: Urgello St., Sambag 2, Cebu City, Cebu
+            - cell "Region VII" [ref=e366]
+            - cell "Cebu City" [ref=e367]
+            - cell [ref=e368]:
+              - spinbutton [ref=e369]
+            - cell [ref=e370]:
+              - spinbutton [ref=e371]
+            - cell [ref=e372]:
+              - spinbutton [ref=e373]
+            - cell [ref=e374]:
+              - spinbutton [ref=e375]
+            - cell "—" [ref=e376]
+          - row "St. Paul University Iloilo Gen. Luna St., Iloilo City, Iloilo Region VI Iloilo City —" [ref=e377]:
+            - cell "St. Paul University Iloilo Gen. Luna St., Iloilo City, Iloilo" [ref=e378]:
+              - text: St. Paul University Iloilo
+              - text: Gen. Luna St., Iloilo City, Iloilo
+            - cell "Region VI" [ref=e379]
+            - cell "Iloilo City" [ref=e380]
+            - cell [ref=e381]:
+              - spinbutton [ref=e382]
+            - cell [ref=e383]:
+              - spinbutton [ref=e384]
+            - cell [ref=e385]:
+              - spinbutton [ref=e386]
+            - cell [ref=e387]:
+              - spinbutton [ref=e388]
+            - cell "—" [ref=e389]
+          - row "University of Bohol 0186 Dr. Cecilio Putong St., Cogon, Tagbilaran City, Bohol Region VII Tagbilaran City —" [ref=e390]:
+            - cell "University of Bohol 0186 Dr. Cecilio Putong St., Cogon, Tagbilaran City, Bohol" [ref=e391]:
+              - text: University of Bohol
+              - text: 0186 Dr. Cecilio Putong St., Cogon, Tagbilaran City, Bohol
+            - cell "Region VII" [ref=e392]
+            - cell "Tagbilaran City" [ref=e393]
+            - cell [ref=e394]:
+              - spinbutton [ref=e395]
+            - cell [ref=e396]:
+              - spinbutton [ref=e397]
+            - cell [ref=e398]:
+              - spinbutton [ref=e399]
+            - cell [ref=e400]:
+              - spinbutton [ref=e401]
+            - cell "—" [ref=e402]
+          - row "Velez College 41 F. Ramos St., Cebu City, Cebu Region VII Cebu City —" [ref=e403]:
+            - cell "Velez College 41 F. Ramos St., Cebu City, Cebu" [ref=e404]:
+              - text: Velez College
+              - text: 41 F. Ramos St., Cebu City, Cebu
+            - cell "Region VII" [ref=e405]
+            - cell "Cebu City" [ref=e406]
+            - cell [ref=e407]:
+              - spinbutton [ref=e408]
+            - cell [ref=e409]:
+              - spinbutton [ref=e410]
+            - cell [ref=e411]:
+              - spinbutton [ref=e412]
+            - cell [ref=e413]:
+              - spinbutton [ref=e414]
+            - cell "—" [ref=e415]
+          - row "Davao Doctors College, Inc. Gen. Malvar St., Davao City, Davao del Sur Region XI Davao City —" [ref=e416]:
+            - cell "Davao Doctors College, Inc. Gen. Malvar St., Davao City, Davao del Sur" [ref=e417]:
+              - text: Davao Doctors College, Inc.
+              - text: Gen. Malvar St., Davao City, Davao del Sur
+            - cell "Region XI" [ref=e418]
+            - cell "Davao City" [ref=e419]
+            - cell [ref=e420]:
+              - spinbutton [ref=e421]
+            - cell [ref=e422]:
+              - spinbutton [ref=e423]
+            - cell [ref=e424]:
+              - spinbutton [ref=e425]
+            - cell [ref=e426]:
+              - spinbutton [ref=e427]
+            - cell "—" [ref=e428]
+          - row "Liceo de Cagayan University Rodelsa Circle, Brgy. Macasandig, Cagayan de Oro City Region X Cagayan de Oro —" [ref=e429]:
+            - cell "Liceo de Cagayan University Rodelsa Circle, Brgy. Macasandig, Cagayan de Oro City" [ref=e430]:
+              - text: Liceo de Cagayan University
+              - text: Rodelsa Circle, Brgy. Macasandig, Cagayan de Oro City
+            - cell "Region X" [ref=e431]
+            - cell "Cagayan de Oro" [ref=e432]
+            - cell [ref=e433]:
+              - spinbutton [ref=e434]
+            - cell [ref=e435]:
+              - spinbutton [ref=e436]
+            - cell [ref=e437]:
+              - spinbutton [ref=e438]
+            - cell [ref=e439]:
+              - spinbutton [ref=e440]
+            - cell "—" [ref=e441]
+      - generic [ref=e443]:
+        - generic [ref=e444]: Awaiting data
+        - generic [ref=e445]: —
+    - generic [ref=e446]:
+      - heading "Board Exam Passing Rates fill in as data becomes available" [level=2] [ref=e447]:
+        - text: Board Exam Passing Rates
+        - generic [ref=e448]: fill in as data becomes available
+      - paragraph [ref=e449]: Enter passing rates (%) per school. The chart and national average update live.
+      - generic [ref=e450]:
+        - button "💾 Save to Server" [ref=e451] [cursor=pointer]
+        - button "⟳ Refresh from Server" [ref=e452] [cursor=pointer]
+        - button "Download CSV" [ref=e453] [cursor=pointer]
+        - button "Download PDF" [ref=e454] [cursor=pointer]
+        - button "Backup to JSON" [ref=e455] [cursor=pointer]
+        - button "Restore from JSON" [ref=e456] [cursor=pointer]
+        - button "Reset" [ref=e457] [cursor=pointer]
+      - generic [ref=e458]:
+        - table [ref=e461]:
+          - rowgroup [ref=e462]:
+            - row "School Region Passing Rate (%)" [ref=e463]:
+              - columnheader "School" [ref=e464]
+              - columnheader "Region" [ref=e465]
+              - columnheader "Passing Rate (%)" [ref=e466]
+          - rowgroup [ref=e467]:
+            - row "Angeles University Foundation Region III" [ref=e468]:
+              - cell "Angeles University Foundation" [ref=e469]
+              - cell "Region III" [ref=e470]
+              - cell [ref=e471]:
+                - spinbutton [ref=e472]
+            - row "De La Salle Medical and Health Sciences Institute Region IV-A" [ref=e473]:
+              - cell "De La Salle Medical and Health Sciences Institute" [ref=e474]
+              - cell "Region IV-A" [ref=e475]
+              - cell [ref=e476]:
+                - spinbutton [ref=e477]
+            - row "Emilio Aguinaldo College - Manila NCR" [ref=e478]:
+              - cell "Emilio Aguinaldo College - Manila" [ref=e479]
+              - cell "NCR" [ref=e480]
+              - cell [ref=e481]:
+                - spinbutton [ref=e482]
+            - row "Philippine Rehabilitation Institute Foundation, Inc. NCR" [ref=e483]:
+              - cell "Philippine Rehabilitation Institute Foundation, Inc." [ref=e484]
+              - cell "NCR" [ref=e485]
+              - cell [ref=e486]:
+                - spinbutton [ref=e487]
+            - row "University of Batangas Region IV-A" [ref=e488]:
+              - cell "University of Batangas" [ref=e489]
+              - cell "Region IV-A" [ref=e490]
+              - cell [ref=e491]:
+                - spinbutton [ref=e492]
+            - row "University of Perpetual Help - Dr. Jose G. Tamayo Medical University Region IV-A" [ref=e493]:
+              - cell "University of Perpetual Help - Dr. Jose G. Tamayo Medical University" [ref=e494]
+              - cell "Region IV-A" [ref=e495]
+              - cell [ref=e496]:
+                - spinbutton [ref=e497]
+            - row "University of Perpetual Help System DALTA - Las Piñas NCR" [ref=e498]:
+              - cell "University of Perpetual Help System DALTA - Las Piñas" [ref=e499]
+              - cell "NCR" [ref=e500]
+              - cell [ref=e501]:
+                - spinbutton [ref=e502]
+            - row "University of Perpetual Help System - Perpetual Help College of Manila NCR" [ref=e503]:
+              - cell "University of Perpetual Help System - Perpetual Help College of Manila" [ref=e504]
+              - cell "NCR" [ref=e505]
+              - cell [ref=e506]:
+                - spinbutton [ref=e507]
+            - row "University of Santo Tomas NCR" [ref=e508]:
+              - cell "University of Santo Tomas" [ref=e509]
+              - cell "NCR" [ref=e510]
+              - cell [ref=e511]:
+                - spinbutton [ref=e512]
+            - row "University of the Philippines Manila NCR" [ref=e513]:
+              - cell "University of the Philippines Manila" [ref=e514]
+              - cell "NCR" [ref=e515]
+              - cell [ref=e516]:
+                - spinbutton [ref=e517]
+            - row "Cebu Doctors' University Region VII" [ref=e518]:
+              - cell "Cebu Doctors' University" [ref=e519]
+              - cell "Region VII" [ref=e520]
+              - cell [ref=e521]:
+                - spinbutton [ref=e522]
+            - row "Southwestern University PHINMA Region VII" [ref=e523]:
+              - cell "Southwestern University PHINMA" [ref=e524]
+              - cell "Region VII" [ref=e525]
+              - cell [ref=e526]:
+                - spinbutton [ref=e527]
+            - row "St. Paul University Iloilo Region VI" [ref=e528]:
+              - cell "St. Paul University Iloilo" [ref=e529]
+              - cell "Region VI" [ref=e530]
+              - cell [ref=e531]:
+                - spinbutton [ref=e532]
+            - row "University of Bohol Region VII" [ref=e533]:
+              - cell "University of Bohol" [ref=e534]
+              - cell "Region VII" [ref=e535]
+              - cell [ref=e536]:
+                - spinbutton [ref=e537]
+            - row "Velez College Region VII" [ref=e538]:
+              - cell "Velez College" [ref=e539]
+              - cell "Region VII" [ref=e540]
+              - cell [ref=e541]:
+                - spinbutton [ref=e542]
+            - row "Davao Doctors College, Inc. Region XI" [ref=e543]:
+              - cell "Davao Doctors College, Inc." [ref=e544]
+              - cell "Region XI" [ref=e545]
+              - cell [ref=e546]:
+                - spinbutton [ref=e547]
+            - row "Liceo de Cagayan University Region X" [ref=e548]:
+              - cell "Liceo de Cagayan University" [ref=e549]
+              - cell "Region X" [ref=e550]
+              - cell [ref=e551]:
+                - spinbutton [ref=e552]
+        - generic [ref=e556]:
+          - generic [ref=e557]: Awaiting data
+          - generic [ref=e558]: —
+    - generic [ref=e559]:
+      - heading "Full Directory searchable" [level=2] [ref=e560]:
+        - text: Full Directory
+        - generic [ref=e561]: searchable
+      - generic [ref=e562]:
+        - button "Schools (17)" [ref=e563] [cursor=pointer]
+        - button "Clinics (94)" [ref=e564] [cursor=pointer]
+      - textbox "Search by name, city, region…" [ref=e565]
+      - generic [ref=e566]:
+        - button "Download Directory CSV" [ref=e567] [cursor=pointer]
+        - button "Download Directory PDF" [ref=e568] [cursor=pointer]
+      - table [ref=e570]:
+        - rowgroup [ref=e571]:
+          - row "Type Name City Region Address" [ref=e572]:
+            - columnheader "Type" [ref=e573]
+            - columnheader "Name" [ref=e574]
+            - columnheader "City" [ref=e575]
+            - columnheader "Region" [ref=e576]
+            - columnheader "Address" [ref=e577]
+        - rowgroup [ref=e578]:
+          - row "SCHOOL Angeles University Foundation Angeles City Region III McArthur Highway, Angeles City, Pampanga" [ref=e579]:
+            - cell "SCHOOL" [ref=e580]:
+              - generic [ref=e581]: SCHOOL
+            - cell "Angeles University Foundation" [ref=e582]
+            - cell "Angeles City" [ref=e583]
+            - cell "Region III" [ref=e584]
+            - cell "McArthur Highway, Angeles City, Pampanga" [ref=e585]
+          - row "SCHOOL De La Salle Medical and Health Sciences Institute Dasmariñas Region IV-A Governor D. Mangubat Avenue, Brgy. Zone IV, City of Dasmariñas, Cavite" [ref=e586]:
+            - cell "SCHOOL" [ref=e587]:
+              - generic [ref=e588]: SCHOOL
+            - cell "De La Salle Medical and Health Sciences Institute" [ref=e589]
+            - cell "Dasmariñas" [ref=e590]
+            - cell "Region IV-A" [ref=e591]
+            - cell "Governor D. Mangubat Avenue, Brgy. Zone IV, City of Dasmariñas, Cavite" [ref=e592]
+          - row "SCHOOL Emilio Aguinaldo College - Manila Manila NCR 1113-1117 San Marcelino St., Paco, Manila" [ref=e593]:
+            - cell "SCHOOL" [ref=e594]:
+              - generic [ref=e595]: SCHOOL
+            - cell "Emilio Aguinaldo College - Manila" [ref=e596]
+            - cell "Manila" [ref=e597]
+            - cell "NCR" [ref=e598]
+            - cell "1113-1117 San Marcelino St., Paco, Manila" [ref=e599]
+          - row "SCHOOL Philippine Rehabilitation Institute Foundation, Inc. Quezon City NCR 56 Banawe Street, Quezon City" [ref=e600]:
+            - cell "SCHOOL" [ref=e601]:
+              - generic [ref=e602]: SCHOOL
+            - cell "Philippine Rehabilitation Institute Foundation, Inc." [ref=e603]
+            - cell "Quezon City" [ref=e604]
+            - cell "NCR" [ref=e605]
+            - cell "56 Banawe Street, Quezon City" [ref=e606]
+          - row "SCHOOL University of Batangas Batangas City Region IV-A Hilltop Road, Batangas City, Batangas" [ref=e607]:
+            - cell "SCHOOL" [ref=e608]:
+              - generic [ref=e609]: SCHOOL
+            - cell "University of Batangas" [ref=e610]
+            - cell "Batangas City" [ref=e611]
+            - cell "Region IV-A" [ref=e612]
+            - cell "Hilltop Road, Batangas City, Batangas" [ref=e613]
+          - row "SCHOOL University of Perpetual Help - Dr. Jose G. Tamayo Medical University Biñan Region IV-A Old National Highway, Sto. Niño, Biñan, Laguna" [ref=e614]:
+            - cell "SCHOOL" [ref=e615]:
+              - generic [ref=e616]: SCHOOL
+            - cell "University of Perpetual Help - Dr. Jose G. Tamayo Medical University" [ref=e617]
+            - cell "Biñan" [ref=e618]
+            - cell "Region IV-A" [ref=e619]
+            - cell "Old National Highway, Sto. Niño, Biñan, Laguna" [ref=e620]
+          - row "SCHOOL University of Perpetual Help System DALTA - Las Piñas Las Piñas NCR Alabang-Zapote Avenue, Pamplona 3, Las Piñas City" [ref=e621]:
+            - cell "SCHOOL" [ref=e622]:
+              - generic [ref=e623]: SCHOOL
+            - cell "University of Perpetual Help System DALTA - Las Piñas" [ref=e624]
+            - cell "Las Piñas" [ref=e625]
+            - cell "NCR" [ref=e626]
+            - cell "Alabang-Zapote Avenue, Pamplona 3, Las Piñas City" [ref=e627]
+          - row "SCHOOL University of Perpetual Help System - Perpetual Help College of Manila Manila NCR 1240 V. Concepcion St., Sampaloc, Manila" [ref=e628]:
+            - cell "SCHOOL" [ref=e629]:
+              - generic [ref=e630]: SCHOOL
+            - cell "University of Perpetual Help System - Perpetual Help College of Manila" [ref=e631]
+            - cell "Manila" [ref=e632]
+            - cell "NCR" [ref=e633]
+            - cell "1240 V. Concepcion St., Sampaloc, Manila" [ref=e634]
+          - row "SCHOOL University of Santo Tomas Manila NCR España Blvd., Sampaloc, Manila" [ref=e635]:
+            - cell "SCHOOL" [ref=e636]:
+              - generic [ref=e637]: SCHOOL
+            - cell "University of Santo Tomas" [ref=e638]
+            - cell "Manila" [ref=e639]
+            - cell "NCR" [ref=e640]
+            - cell "España Blvd., Sampaloc, Manila" [ref=e641]
+          - row "SCHOOL University of the Philippines Manila Manila NCR UP-PGH Compound, Pedro Gil St., Malate, Manila" [ref=e642]:
+            - cell "SCHOOL" [ref=e643]:
+              - generic [ref=e644]: SCHOOL
+            - cell "University of the Philippines Manila" [ref=e645]
+            - cell "Manila" [ref=e646]
+            - cell "NCR" [ref=e647]
+            - cell "UP-PGH Compound, Pedro Gil St., Malate, Manila" [ref=e648]
+          - row "SCHOOL Cebu Doctors' University Mandaue Region VII Dr. P.V. Larrazabal Jr. Ave., North Reclamation Area, Mandaue City, Cebu" [ref=e649]:
+            - cell "SCHOOL" [ref=e650]:
+              - generic [ref=e651]: SCHOOL
+            - cell "Cebu Doctors' University" [ref=e652]
+            - cell "Mandaue" [ref=e653]
+            - cell "Region VII" [ref=e654]
+            - cell "Dr. P.V. Larrazabal Jr. Ave., North Reclamation Area, Mandaue City, Cebu" [ref=e655]
+          - row "SCHOOL Southwestern University PHINMA Cebu City Region VII Urgello St., Sambag 2, Cebu City, Cebu" [ref=e656]:
+            - cell "SCHOOL" [ref=e657]:
+              - generic [ref=e658]: SCHOOL
+            - cell "Southwestern University PHINMA" [ref=e659]
+            - cell "Cebu City" [ref=e660]
+            - cell "Region VII" [ref=e661]
+            - cell "Urgello St., Sambag 2, Cebu City, Cebu" [ref=e662]
+          - row "SCHOOL St. Paul University Iloilo Iloilo City Region VI Gen. Luna St., Iloilo City, Iloilo" [ref=e663]:
+            - cell "SCHOOL" [ref=e664]:
+              - generic [ref=e665]: SCHOOL
+            - cell "St. Paul University Iloilo" [ref=e666]
+            - cell "Iloilo City" [ref=e667]
+            - cell "Region VI" [ref=e668]
+            - cell "Gen. Luna St., Iloilo City, Iloilo" [ref=e669]
+          - row "SCHOOL University of Bohol Tagbilaran City Region VII 0186 Dr. Cecilio Putong St., Cogon, Tagbilaran City, Bohol" [ref=e670]:
+            - cell "SCHOOL" [ref=e671]:
+              - generic [ref=e672]: SCHOOL
+            - cell "University of Bohol" [ref=e673]
+            - cell "Tagbilaran City" [ref=e674]
+            - cell "Region VII" [ref=e675]
+            - cell "0186 Dr. Cecilio Putong St., Cogon, Tagbilaran City, Bohol" [ref=e676]
+          - row "SCHOOL Velez College Cebu City Region VII 41 F. Ramos St., Cebu City, Cebu" [ref=e677]:
+            - cell "SCHOOL" [ref=e678]:
+              - generic [ref=e679]: SCHOOL
+            - cell "Velez College" [ref=e680]
+            - cell "Cebu City" [ref=e681]
+            - cell "Region VII" [ref=e682]
+            - cell "41 F. Ramos St., Cebu City, Cebu" [ref=e683]
+          - row "SCHOOL Davao Doctors College, Inc. Davao City Region XI Gen. Malvar St., Davao City, Davao del Sur" [ref=e684]:
+            - cell "SCHOOL" [ref=e685]:
+              - generic [ref=e686]: SCHOOL
+            - cell "Davao Doctors College, Inc." [ref=e687]
+            - cell "Davao City" [ref=e688]
+            - cell "Region XI" [ref=e689]
+            - cell "Gen. Malvar St., Davao City, Davao del Sur" [ref=e690]
+          - row "SCHOOL Liceo de Cagayan University Cagayan de Oro Region X Rodelsa Circle, Brgy. Macasandig, Cagayan de Oro City" [ref=e691]:
+            - cell "SCHOOL" [ref=e692]:
+              - generic [ref=e693]: SCHOOL
+            - cell "Liceo de Cagayan University" [ref=e694]
+            - cell "Cagayan de Oro" [ref=e695]
+            - cell "Region X" [ref=e696]
+            - cell "Rodelsa Circle, Brgy. Macasandig, Cagayan de Oro City" [ref=e697]
+    - generic [ref=e698]: "Data source: PAOT Directory of OT Schools 2024 & PAOT Directory of OT Clinics and Centers 2024. Coordinates are approximate (city-centroid level) for visualization purposes."

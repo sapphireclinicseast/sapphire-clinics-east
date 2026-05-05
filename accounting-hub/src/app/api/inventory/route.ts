@@ -34,7 +34,7 @@ export async function GET(req: Request) {
   if (all) {
     const items = await prisma.inventoryItem.findMany({
       where,
-      select: { id: true, name: true, sku: true, branch: true, quantity: true, sellingPrice: true, unitCost: true, barcode: true, rewardPointsPrice: true, variants: { where: { isActive: true }, select: { id: true, variantType: true, variantLabel: true, quantity: true }, orderBy: { variantLabel: 'asc' } } },
+      select: { id: true, name: true, sku: true, branch: true, quantity: true, sellingPrice: true, unitCost: true, barcode: true, rewardPointsPrice: true, dimensionLength: true, dimensionWidth: true, dimensionHeight: true, variants: { where: { isActive: true }, select: { id: true, variantType: true, variantLabel: true, quantity: true }, orderBy: { variantLabel: 'asc' } } },
       orderBy: { sku: 'asc' },
     })
     // Ensure Decimal fields are serialized as numbers
@@ -77,7 +77,8 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { name, skuDepartment, skuCategory, skuSubcategory, branch, accountSubType,
             unitCost, sellingPrice, rewardPointsPrice, quantity, reorderLevel, supplierId, supplierExchangeRate,
-            revenueAccountId, sourceAccountId, expenseAccountId } = body
+            revenueAccountId, sourceAccountId, expenseAccountId,
+            dimensionLength, dimensionWidth, dimensionHeight } = body
 
     if (!name?.trim() || !skuDepartment || !skuCategory || !skuSubcategory || !branch) {
       return NextResponse.json({ error: 'Name, SKU components, and branch are required' }, { status: 400 })
@@ -122,6 +123,9 @@ export async function POST(req: Request) {
         sourceAccountId: sourceAccountId || null,
         expenseAccountId: expenseAccountId || null,
         issuedOfficialInvoice: body.issuedOfficialInvoice || false,
+        dimensionLength: dimensionLength ? parseFloat(dimensionLength) : null,
+        dimensionWidth: dimensionWidth ? parseFloat(dimensionWidth) : null,
+        dimensionHeight: dimensionHeight ? parseFloat(dimensionHeight) : null,
         createdById: session.user.id,
       },
       include: { supplier: { select: { supplierName: true } } },
@@ -152,7 +156,8 @@ export async function PUT(req: Request) {
   try {
     const { id, name, branch, accountSubType, unitCost, sellingPrice, rewardPointsPrice, quantity,
             reorderLevel, supplierId, supplierExchangeRate, revenueAccountId, sourceAccountId, expenseAccountId,
-            issuedOfficialInvoice } = await req.json()
+            issuedOfficialInvoice,
+            dimensionLength, dimensionWidth, dimensionHeight } = await req.json()
 
     if (!id) {
       return NextResponse.json({ error: 'Item ID is required' }, { status: 400 })
@@ -174,6 +179,9 @@ export async function PUT(req: Request) {
     if (sourceAccountId !== undefined) data.sourceAccountId = sourceAccountId || null
     if (expenseAccountId !== undefined) data.expenseAccountId = expenseAccountId || null
     if (issuedOfficialInvoice !== undefined) data.issuedOfficialInvoice = issuedOfficialInvoice
+    if (dimensionLength !== undefined) data.dimensionLength = dimensionLength !== '' && dimensionLength !== null ? parseFloat(dimensionLength) : null
+    if (dimensionWidth !== undefined) data.dimensionWidth = dimensionWidth !== '' && dimensionWidth !== null ? parseFloat(dimensionWidth) : null
+    if (dimensionHeight !== undefined) data.dimensionHeight = dimensionHeight !== '' && dimensionHeight !== null ? parseFloat(dimensionHeight) : null
 
     const item = await prisma.inventoryItem.update({ where: { id }, data })
 

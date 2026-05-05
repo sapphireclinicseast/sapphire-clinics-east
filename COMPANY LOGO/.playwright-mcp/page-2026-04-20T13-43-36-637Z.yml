@@ -1,0 +1,76 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - link "Verdana Rehab Solutions" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - img "Verdana Rehab Solutions" [ref=e5]
+      - navigation [ref=e6]:
+        - link "Home" [ref=e7] [cursor=pointer]:
+          - /url: /
+        - link "Shop" [ref=e8] [cursor=pointer]:
+          - /url: /collections
+        - link "About Us" [ref=e9] [cursor=pointer]:
+          - /url: /about
+      - generic [ref=e10]:
+        - link "Search" [ref=e11] [cursor=pointer]:
+          - /url: /search
+          - img [ref=e12]
+        - link "Account" [ref=e15] [cursor=pointer]:
+          - /url: /account
+          - img [ref=e16]
+        - button "Cart" [ref=e19]:
+          - img [ref=e20]
+  - main [ref=e23]:
+    - generic [ref=e24]:
+      - img [ref=e25]
+      - heading "Your cart is empty" [level=1] [ref=e28]
+      - paragraph [ref=e29]: Add some products to get started.
+      - link "Continue Shopping" [ref=e30] [cursor=pointer]:
+        - /url: /collections
+  - contentinfo [ref=e31]:
+    - generic [ref=e32]:
+      - generic [ref=e33]:
+        - generic [ref=e34]:
+          - img "Verdana Rehab Solutions" [ref=e35]
+          - paragraph [ref=e36]: Curated rehab products by board-certified therapists. Supporting every child's development journey.
+          - generic [ref=e37]:
+            - link "Facebook" [ref=e38] [cursor=pointer]:
+              - /url: https://www.facebook.com/verdanarehabsolutions
+              - img [ref=e39]
+            - link "Instagram" [ref=e41] [cursor=pointer]:
+              - /url: https://www.instagram.com/verdanarehabsolutions
+              - img [ref=e42]
+            - link "TikTok" [ref=e45] [cursor=pointer]:
+              - /url: https://www.tiktok.com/@verdanarehabsolutions
+              - img [ref=e46]
+        - generic [ref=e48]:
+          - heading "Shop" [level=3] [ref=e49]
+          - list [ref=e50]:
+            - listitem [ref=e51]:
+              - link "All Collections" [ref=e52] [cursor=pointer]:
+                - /url: /collections
+            - listitem [ref=e53]:
+              - link "Search Products" [ref=e54] [cursor=pointer]:
+                - /url: /search
+        - generic [ref=e55]:
+          - heading "Help" [level=3] [ref=e56]
+          - list [ref=e57]:
+            - listitem [ref=e58]:
+              - link "FAQs" [ref=e59] [cursor=pointer]:
+                - /url: /faqs
+            - listitem [ref=e60]:
+              - link "Contact Us" [ref=e61] [cursor=pointer]:
+                - /url: /contact
+            - listitem [ref=e62]:
+              - link "Privacy Policy" [ref=e63] [cursor=pointer]:
+                - /url: /privacy-policy
+        - generic [ref=e64]:
+          - heading "About" [level=3] [ref=e65]
+          - list [ref=e66]:
+            - listitem [ref=e67]:
+              - link "Who We Are" [ref=e68] [cursor=pointer]:
+                - /url: /about
+      - generic [ref=e69]:
+        - paragraph [ref=e70]: © 2026 Verdana Rehab Solutions. All rights reserved.
+        - paragraph [ref=e71]: Progress, Made Possible.
+  - alert [ref=e72]

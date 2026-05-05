@@ -1,0 +1,40 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic:
+      - generic:
+        - img
+      - generic:
+        - button "1" [ref=e130] [cursor=pointer]:
+          - generic [ref=e131]: "1"
+        - button "2" [ref=e132] [cursor=pointer]:
+          - generic [ref=e133]: "2"
+        - button "3" [ref=e134] [cursor=pointer]:
+          - generic [ref=e135]: "3"
+        - button "4" [ref=e136] [cursor=pointer]:
+          - generic [ref=e137]: "4"
+        - button "5" [ref=e138] [cursor=pointer]:
+          - generic [ref=e139]: "5"
+        - button "6" [ref=e140] [cursor=pointer]:
+          - generic [ref=e141]: "6"
+  - generic [ref=e142]:
+    - heading "OT Schools — Metro Manila" [level=2] [ref=e143]
+    - generic [ref=e144]: 6 BSOT programs
+    - list [ref=e145]:
+      - listitem [ref=e146]:
+        - generic [ref=e147]: Emilio Aguinaldo College - Manila
+        - generic [ref=e148]: 1113-1117 San Marcelino St., Paco, Manila
+      - listitem [ref=e149]:
+        - generic [ref=e150]: Philippine Rehabilitation Institute Foundation, Inc.
+        - generic [ref=e151]: 56 Banawe Street, Quezon City
+      - listitem [ref=e152]:
+        - generic [ref=e153]: University of Perpetual Help System - Perpetual Help College of Manila
+        - generic [ref=e154]: 1240 V. Concepcion St., Sampaloc, Manila
+      - listitem [ref=e155]:
+        - generic [ref=e156]: University of Perpetual Help System DALTA - Las Piñas
+        - generic [ref=e157]: Alabang-Zapote Avenue, Pamplona 3, Las Piñas City
+      - listitem [ref=e158]:
+        - generic [ref=e159]: University of Santo Tomas
+        - generic [ref=e160]: España Blvd., Sampaloc, Manila
+      - listitem [ref=e161]:
+        - generic [ref=e162]: University of the Philippines Manila
+        - generic [ref=e163]: UP-PGH Compound, Pedro Gil St., Malate, Manila
