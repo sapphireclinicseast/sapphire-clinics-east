@@ -5,6 +5,47 @@ import { prisma } from '@/lib/prisma'
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 const READ_ROLES = [...WRITE_ROLES, 'VIEWER']
 
+// Day names by Date.getUTCDay()
+const DAYS_NAMES = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']
+
+/** Format a DateTime as HH:mm in Philippine Time (UTC+8) */
+function fmtTimePH(dt: Date | null | undefined): string | null {
+  if (!dt) return null
+  const d = new Date(dt)
+  const totalMin = (d.getUTCHours() * 60 + d.getUTCMinutes() + 8 * 60) % (24 * 60)
+  const h = Math.floor(totalMin / 60), m = totalMin % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+/** Get YYYY-MM-DD string from a midnight-UTC date record */
+function fmtDateStr(dt: Date): string {
+  return dt.toISOString().substring(0, 10)
+}
+
+/** Compute cutoff start/end Dates from settings */
+function cutoffDateRange(
+  settings: { cutoff1Start: number; cutoff1End: number; cutoff2Start: number; cutoff2End: number; cutoff2EndLastDay: boolean },
+  year: number, month: number, cutoffNumStr: string
+): { startDate: Date; endDate: Date } {
+  let startDay: number, endDay: number
+  if (cutoffNumStr === '1') {
+    startDay = settings.cutoff1Start; endDay = settings.cutoff1End
+  } else {
+    startDay = settings.cutoff2Start
+    endDay = settings.cutoff2EndLastDay ? new Date(year, month, 0).getDate() : settings.cutoff2End
+  }
+  let startDate: Date, endDate: Date
+  if (startDay > endDay) {
+    startDate = new Date(Date.UTC(year, month - 2, startDay))
+    endDate = new Date(Date.UTC(year, month - 1, endDay))
+  } else {
+    startDate = new Date(Date.UTC(year, month - 1, startDay))
+    endDate = new Date(Date.UTC(year, month - 1, endDay))
+  }
+  endDate = new Date(endDate); endDate.setDate(endDate.getDate() + 1)
+  return { startDate, endDate }
+}
+
 /**
  * TRAIN Law withholding tax (Philippines, 2023 onwards)
  * Semi-monthly (per cutoff) tax table — annual brackets divided by 24
@@ -221,12 +262,25 @@ export async function POST(req: Request) {
     let totalLateMinutes = 0
     let totalUndertimeMinutes = 0
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const dailyBreakdown: Record<string, any[]> = {
+      basicPay: [], overtimePay: [], holidayPay: [], nightDiffPay: [], restDayPay: [],
+      lateDeduction: [], undertimeDeduction: [],
+    }
+    const empDaySchedules = emp.daySchedules as Record<string, { in: string; out: string }> | null
+
     for (const rec of empRecords) {
       const hours = Number(rec.hoursWorked || 0)
       if (hours <= 0) continue
 
       daysWorked++
       totalHoursWorked += hours
+
+      const recDate = fmtDateStr(rec.date)
+      const recTimeIn = fmtTimePH(rec.timeIn)
+      const recTimeOut = fmtTimePH(rec.timeOut)
+      const dayName = DAYS_NAMES[rec.date.getUTCDay()]
+      const scheduledOut = empDaySchedules?.[dayName]?.out || emp.scheduleOut
 
       // Apply late grace period — only count late minutes beyond the grace
       const effectiveLate = Math.max(0, rec.lateMinutes - lateGrace)
@@ -240,9 +294,11 @@ export async function POST(req: Request) {
         if (rec.holidayType === 'REGULAR') {
           dayPay = dailyRate * regHolidayRate
           holidayPay += dayPay - dailyRate
+          dailyBreakdown.holidayPay.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, holidayType: 'REGULAR', holidayRate: regHolidayRate, dailyRate, totalDayPay: dayPay, amount: dayPay - dailyRate })
         } else if (rec.holidayType === 'SPECIAL_NON_WORKING') {
           dayPay = dailyRate * specHolidayRate
           holidayPay += dayPay - dailyRate
+          dailyBreakdown.holidayPay.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, holidayType: 'SPECIAL_NON_WORKING', holidayRate: specHolidayRate, dailyRate, totalDayPay: dayPay, amount: dayPay - dailyRate })
         }
       }
 
@@ -250,9 +306,11 @@ export async function POST(req: Request) {
       if (rec.isRestDay && !rec.isHoliday) {
         dayPay = dailyRate * restDayRate
         restDayPay += dayPay - dailyRate
+        dailyBreakdown.restDayPay.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, restDayRate, dailyRate, totalDayPay: dayPay, amount: dayPay - dailyRate })
       }
 
       basicPay += dailyRate
+      dailyBreakdown.basicPay.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, hours, dailyRate, amount: dailyRate })
 
       // Overtime — only counted if employee has an approved OT request covering this date
       if (rec.overtimeMinutes > 0 && hasApprovedOT(emp.id, rec.date)) {
@@ -262,13 +320,22 @@ export async function POST(req: Request) {
         const otHours = Math.min(roundedOTMinutes / 60, otMaxHrs)
         if (otHours > 0) {
           totalOTHours += otHours
-          overtimePay += hourlyRate * otMultiplier * otHours
+          const otAmt = hourlyRate * otMultiplier * otHours
+          overtimePay += otAmt
+          dailyBreakdown.overtimePay.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, scheduledOut, rawMinutes: rec.overtimeMinutes, roundedMinutes: roundedOTMinutes, otHours, multiplier: otMultiplier, hourlyRate, amount: otAmt })
         }
       }
 
-      // Night differential (simplified — assume any hours after 10pm)
-      // This is a simplification; actual implementation would check time ranges
+      // Night differential (simplified — not yet tracked per-day)
       void nightDiffMult
+
+      // Late / undertime breakdown
+      if (effectiveLate > 0) {
+        dailyBreakdown.lateDeduction.push({ date: recDate, timeIn: recTimeIn, lateMinutes: rec.lateMinutes, gracePeriod: lateGrace, effectiveLate, hourlyRate, amount: (effectiveLate / 60) * hourlyRate })
+      }
+      if (rec.undertimeMinutes > 0) {
+        dailyBreakdown.undertimeDeduction.push({ date: recDate, timeOut: recTimeOut, undertimeMinutes: rec.undertimeMinutes, hourlyRate, amount: (rec.undertimeMinutes / 60) * hourlyRate })
+      }
     }
 
     // Deductions — mandatory contributions
@@ -351,7 +418,7 @@ export async function POST(req: Request) {
           overtimeHours: totalOTHours,
           lateMinutes: totalLateMinutes,
           undertimeMinutes: totalUndertimeMinutes,
-          details: adjDetails.length > 0 ? { adjustments: adjDetails } : undefined,
+          details: { adjustments: adjDetails, dailyBreakdown },
           status: 'DRAFT',
           createdById: session.user.id as string,
         },
@@ -383,7 +450,7 @@ export async function POST(req: Request) {
           overtimeHours: totalOTHours,
           lateMinutes: totalLateMinutes,
           undertimeMinutes: totalUndertimeMinutes,
-          details: adjDetails.length > 0 ? { adjustments: adjDetails } : undefined,
+          details: { adjustments: adjDetails, dailyBreakdown },
           status: 'DRAFT',
           createdById: session.user.id as string,
         },
@@ -417,4 +484,224 @@ export async function PUT(req: Request) {
   })
 
   return NextResponse.json({ updated: ids.length })
+}
+
+// Regenerate a single employee's payslip — re-reads schedules, timekeeping, and adjustments
+export async function PATCH(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+
+  try {
+    const body = await req.json()
+    const { employeeId, cutoffPeriod, branch } = body
+    if (!employeeId || !cutoffPeriod || !branch) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+    }
+
+    const qBranch = branch === 'SANDBOX_EAST' ? 'SBEA' : branch === 'SANDBOX_GREENHILLS' ? 'SBGH' : branch
+
+    // Don't allow regenerating LOCKED payslips
+    const existing = await prisma.employeePayslip.findUnique({
+      where: { employeeId_cutoffPeriod_branch: { employeeId, cutoffPeriod, branch: qBranch } },
+      select: { status: true },
+    })
+    if (existing?.status === 'LOCKED') {
+      return NextResponse.json({ error: 'Cannot regenerate a locked payslip. Unlock payroll first.' }, { status: 400 })
+    }
+
+    // Settings + date range
+    let settings = await prisma.employeeSettings.findFirst()
+    if (!settings) settings = await prisma.employeeSettings.create({ data: {} })
+
+    const [yearStr, monthStr, cutoffNumStr] = cutoffPeriod.split('-')
+    const year = parseInt(yearStr), month = parseInt(monthStr)
+    const { startDate, endDate } = cutoffDateRange(settings, year, month, cutoffNumStr)
+
+    // Fetch the employee with latest schedule
+    const emp = await prisma.employee.findUnique({
+      where: { id: employeeId },
+      include: { benefits: { where: { isActive: true } } },
+    })
+    if (!emp || !emp.isActive) {
+      return NextResponse.json({ error: 'Employee not found or inactive' }, { status: 404 })
+    }
+
+    // Timekeeping records for this employee in the cutoff window
+    const empRecords = await prisma.timekeepingRecord.findMany({
+      where: {
+        employeeId,
+        date: { gte: startDate, lt: endDate },
+        OR: [{ uploadId: null }, { upload: { status: 'FINALIZED' } }],
+      },
+      orderBy: { date: 'asc' },
+    })
+
+    // Approved OT requests
+    const otRequests = await prisma.employeeRequest.findMany({
+      where: {
+        requestType: 'OVERTIME', status: 'APPROVED', employeeId,
+        startDate: { lt: endDate },
+        OR: [
+          { endDate: { gte: startDate } },
+          { endDate: null, startDate: { gte: startDate } },
+        ],
+      },
+      select: { startDate: true, endDate: true },
+    })
+    function hasOT(date: Date): boolean {
+      const d = date.getTime()
+      return otRequests.some(r => {
+        const s = r.startDate ? r.startDate.getTime() : null
+        const e = r.endDate ? r.endDate.getTime() : null
+        if (!s) return false
+        if (!e) return d >= s && d <= s + 86400000 - 1
+        return d >= s && d <= e
+      })
+    }
+
+    // Cutoff adjustments
+    const empAdjs = await prisma.cutoffAdjustment.findMany({
+      where: { cutoffPeriod, employeeId, branch: qBranch },
+    })
+
+    // === Run computation (mirrors POST logic) ===
+    const standardHours = Number(settings.standardHoursPerDay)
+    const otMultiplier = Number(settings.overtimeMultiplier)
+    const nightDiffMult = Number(settings.nightDiffMultiplier)
+    const regHolidayRate = Number(settings.regularHolidayRate)
+    const specHolidayRate = Number(settings.specialHolidayRate)
+    const restDayRate = Number(settings.restDayRate)
+    const lateGrace = Number(settings.lateGraceMinutes) || 0
+    const otInterval = Number(settings.otIntervalMinutes) || 30
+    const otMaxHrs = Number(settings.otMaxHours) || 3
+
+    const dailyRate = emp.rateType === 'DAILY' ? Number(emp.dailyRate) : Number(emp.monthlyRate) / 22
+    const hourlyRate = dailyRate / standardHours
+
+    let basicPay = 0, overtimePay = 0, holidayPay = 0, restDayPay = 0
+    let nightDiffPay = 0, daysWorked = 0, totalHoursWorked = 0
+    let totalOTHours = 0, totalLateMinutes = 0, totalUndertimeMinutes = 0
+    void nightDiffMult
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const dailyBreakdown: Record<string, any[]> = {
+      basicPay: [], overtimePay: [], holidayPay: [], nightDiffPay: [], restDayPay: [],
+      lateDeduction: [], undertimeDeduction: [],
+    }
+    const empDaySchedules = emp.daySchedules as Record<string, { in: string; out: string }> | null
+
+    for (const rec of empRecords) {
+      const hours = Number(rec.hoursWorked || 0)
+      if (hours <= 0) continue
+
+      daysWorked++; totalHoursWorked += hours
+
+      const recDate = fmtDateStr(rec.date)
+      const recTimeIn = fmtTimePH(rec.timeIn)
+      const recTimeOut = fmtTimePH(rec.timeOut)
+      const dayName = DAYS_NAMES[rec.date.getUTCDay()]
+      const scheduledOut = empDaySchedules?.[dayName]?.out || emp.scheduleOut
+
+      const effectiveLate = Math.max(0, rec.lateMinutes - lateGrace)
+      totalLateMinutes += effectiveLate
+      totalUndertimeMinutes += rec.undertimeMinutes
+
+      let dayPay = dailyRate
+
+      if (rec.isHoliday) {
+        if (rec.holidayType === 'REGULAR') {
+          dayPay = dailyRate * regHolidayRate; holidayPay += dayPay - dailyRate
+          dailyBreakdown.holidayPay.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, holidayType: 'REGULAR', holidayRate: regHolidayRate, dailyRate, totalDayPay: dayPay, amount: dayPay - dailyRate })
+        } else if (rec.holidayType === 'SPECIAL_NON_WORKING') {
+          dayPay = dailyRate * specHolidayRate; holidayPay += dayPay - dailyRate
+          dailyBreakdown.holidayPay.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, holidayType: 'SPECIAL_NON_WORKING', holidayRate: specHolidayRate, dailyRate, totalDayPay: dayPay, amount: dayPay - dailyRate })
+        }
+      }
+      if (rec.isRestDay && !rec.isHoliday) {
+        dayPay = dailyRate * restDayRate; restDayPay += dayPay - dailyRate
+        dailyBreakdown.restDayPay.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, restDayRate, dailyRate, totalDayPay: dayPay, amount: dayPay - dailyRate })
+      }
+
+      basicPay += dailyRate
+      dailyBreakdown.basicPay.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, hours, dailyRate, amount: dailyRate })
+
+      if (rec.overtimeMinutes > 0 && hasOT(rec.date)) {
+        const roundedOTMinutes = Math.floor(rec.overtimeMinutes / otInterval) * otInterval
+        const otHours = Math.min(roundedOTMinutes / 60, otMaxHrs)
+        if (otHours > 0) {
+          totalOTHours += otHours
+          const otAmt = hourlyRate * otMultiplier * otHours
+          overtimePay += otAmt
+          dailyBreakdown.overtimePay.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, scheduledOut, rawMinutes: rec.overtimeMinutes, roundedMinutes: roundedOTMinutes, otHours, multiplier: otMultiplier, hourlyRate, amount: otAmt })
+        }
+      }
+      if (effectiveLate > 0) dailyBreakdown.lateDeduction.push({ date: recDate, timeIn: recTimeIn, lateMinutes: rec.lateMinutes, gracePeriod: lateGrace, effectiveLate, hourlyRate, amount: (effectiveLate / 60) * hourlyRate })
+      if (rec.undertimeMinutes > 0) dailyBreakdown.undertimeDeduction.push({ date: recDate, timeOut: recTimeOut, undertimeMinutes: rec.undertimeMinutes, hourlyRate, amount: (rec.undertimeMinutes / 60) * hourlyRate })
+    }
+
+    const sssBenefit = emp.benefits.find(b => b.benefitType === 'SSS')
+    const philBenefit = emp.benefits.find(b => b.benefitType === 'PHILHEALTH')
+    const pagBenefit = emp.benefits.find(b => b.benefitType === 'PAGIBIG')
+
+    const timing = (settings as unknown as Record<string, unknown>).benefitDeductionTiming as string || 'HALF_HALF'
+    const cutoffNumFinal = cutoffPeriod.split('-')[2]
+    const benefitMultiplier = timing === 'HALF_HALF' ? 0.5
+      : timing === 'FIRST_CUTOFF' ? (cutoffNumFinal === '1' ? 1 : 0)
+      : timing === 'SECOND_CUTOFF' ? (cutoffNumFinal === '2' ? 1 : 0) : 0.5
+
+    const sssDeduction = sssBenefit && settings.sssEnabled ? Number(sssBenefit.employeeShare) * benefitMultiplier : 0
+    const philhealthDeduction = philBenefit && settings.philhealthEnabled ? Number(philBenefit.employeeShare) * benefitMultiplier : 0
+    const pagibigDeduction = pagBenefit && settings.pagibigEnabled ? Number(pagBenefit.employeeShare) * benefitMultiplier : 0
+    const sssEmployerShare = sssBenefit && settings.sssEnabled ? Number(sssBenefit.employerShare) * benefitMultiplier : 0
+    const philhealthEmployerShare = philBenefit && settings.philhealthEnabled ? Number(philBenefit.employerShare) * benefitMultiplier : 0
+    const pagibigEmployerShare = pagBenefit && settings.pagibigEnabled ? Number(pagBenefit.employerShare) * benefitMultiplier : 0
+
+    const lateDeduction = (totalLateMinutes / 60) * hourlyRate
+    const undertimeDeduction = (totalUndertimeMinutes / 60) * hourlyRate
+
+    let allowanceAmount = 0, adjDeductionAmount = 0, nonTaxableAllowance = 0
+    const adjDetails: { allowanceLabel?: string | null; allowanceType?: string; deductionLabel?: string | null }[] = []
+    for (const adj of empAdjs) {
+      const allowAmt = Number(adj.allowance) || 0
+      const dedAmt = Number(adj.deduction) || 0
+      allowanceAmount += allowAmt; adjDeductionAmount += dedAmt
+      if (adj.allowanceType !== 'TAXABLE') nonTaxableAllowance += allowAmt
+      adjDetails.push({ allowanceLabel: adj.allowanceLabel, allowanceType: adj.allowanceType, deductionLabel: adj.deductionLabel })
+    }
+
+    const grossPay = basicPay + overtimePay + holidayPay + restDayPay + nightDiffPay + allowanceAmount
+    const preTaxDeductions = sssDeduction + philhealthDeduction + pagibigDeduction
+    const taxablePerCutoff = grossPay - preTaxDeductions - nonTaxableAllowance
+    const taxDeduction = computeTrainTax(taxablePerCutoff)
+    const totalDeductions = sssDeduction + philhealthDeduction + pagibigDeduction + taxDeduction + lateDeduction + undertimeDeduction + adjDeductionAmount
+    const netPay = grossPay - totalDeductions
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const upsertFields: any = {
+      basicPay, overtimePay, holidayPay, nightDiffPay, restDayPay,
+      allowances: allowanceAmount, grossPay,
+      sssDeduction, philhealthDeduction, pagibigDeduction,
+      sssEmployerShare, philhealthEmployerShare, pagibigEmployerShare,
+      taxDeduction, lateDeduction, undertimeDeduction, otherDeductions: adjDeductionAmount,
+      totalDeductions, netPay, daysWorked, hoursWorked: totalHoursWorked,
+      overtimeHours: totalOTHours, lateMinutes: totalLateMinutes, undertimeMinutes: totalUndertimeMinutes,
+      details: { adjustments: adjDetails, dailyBreakdown },
+      status: 'DRAFT',
+      createdById: session.user.id as string,
+    }
+
+    const payslip = await prisma.employeePayslip.upsert({
+      where: { employeeId_cutoffPeriod_branch: { employeeId, cutoffPeriod, branch: qBranch } },
+      update: upsertFields,
+      create: { employeeId, cutoffPeriod, branch: qBranch, ...upsertFields },
+      include: { employee: { select: { id: true, firstName: true, lastName: true, email: true, department: true, branch: true, rateType: true, dailyRate: true, monthlyRate: true, employeeBioId: true } } },
+    })
+
+    return NextResponse.json(payslip)
+  } catch (err) {
+    console.error('Regenerate payslip error:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
 }

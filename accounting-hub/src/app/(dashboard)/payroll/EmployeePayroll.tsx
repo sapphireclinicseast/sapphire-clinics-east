@@ -432,6 +432,8 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
   const [emailSent, setEmailSent] = useState<Record<string, boolean>>({})
   const [downloadingAllPdfs, setDownloadingAllPdfs] = useState(false)
   const [emailingAll, setEmailingAll] = useState(false)
+  const [regeneratingId, setRegeneratingId] = useState('')
+  const [breakdownModal, setBreakdownModal] = useState<{ payslip: Payslip; type: 'basicPay' | 'overtimePay' | 'holidayPay' | 'nightDiffPay' | 'restDayPay' } | null>(null)
 
   /* ── Holiday Presets ── */
   const [showHolidayPresets, setShowHolidayPresets] = useState(false)
@@ -723,6 +725,26 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
       setError(err instanceof Error ? err.message : 'Failed to generate payslips')
     }
     setGenerating(false)
+  }
+
+  const regeneratePayslip = async (p: Payslip) => {
+    if (p.status === 'LOCKED') { setError('Cannot regenerate a locked payslip. Unlock payroll first.'); return }
+    setRegeneratingId(p.id)
+    setError('')
+    try {
+      const r = await fetch('/api/payroll/employee-payslips', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId: p.employeeId, cutoffPeriod, branch: branch || 'SBEA' }),
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || 'Regeneration failed')
+      // Update this payslip in local state immediately
+      setPayslips(prev => prev.map(ps => ps.id === p.id ? { ...d, employee: ps.employee } : ps))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to regenerate payslip')
+    }
+    setRegeneratingId('')
   }
 
   const saveLeaveMaxDays = async () => {
@@ -4300,11 +4322,26 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                             <div>
                               <p className="font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Earnings</p>
                               <div className="space-y-1">
-                                <div className="flex justify-between"><span>Basic Pay</span><span className="font-mono">{formatCurrency(toNum(p.basicPay))}</span></div>
-                                <div className="flex justify-between"><span>Overtime</span><span className="font-mono">{formatCurrency(toNum(p.overtimePay))}</span></div>
-                                <div className="flex justify-between"><span>Holiday Pay</span><span className="font-mono">{formatCurrency(toNum(p.holidayPay))}</span></div>
-                                <div className="flex justify-between"><span>Night Diff</span><span className="font-mono">{formatCurrency(toNum(p.nightDiffPay))}</span></div>
-                                <div className="flex justify-between"><span>Rest Day</span><span className="font-mono">{formatCurrency(toNum(p.restDayPay))}</span></div>
+                                {/* Clickable earning items — click label to see daily breakdown */}
+                                {([
+                                  { key: 'basicPay', label: 'Basic Pay', value: p.basicPay },
+                                  { key: 'overtimePay', label: 'Overtime', value: p.overtimePay },
+                                  { key: 'holidayPay', label: 'Holiday Pay', value: p.holidayPay },
+                                  { key: 'nightDiffPay', label: 'Night Diff', value: p.nightDiffPay },
+                                  { key: 'restDayPay', label: 'Rest Day', value: p.restDayPay },
+                                ] as const).map(item => (
+                                  <div key={item.key} className="flex justify-between items-center">
+                                    <button
+                                      onClick={e => { e.stopPropagation(); setBreakdownModal({ payslip: p, type: item.key }) }}
+                                      className="flex items-center gap-1 text-left hover:underline"
+                                      style={{ color: 'var(--teal)' }}
+                                      title="Click to see daily breakdown">
+                                      {item.label}
+                                      <Eye size={10} style={{ opacity: 0.6 }} />
+                                    </button>
+                                    <span className="font-mono">{formatCurrency(toNum(item.value))}</span>
+                                  </div>
+                                ))}
                                 <div className="flex justify-between border-t pt-1 font-bold" style={{ borderColor: 'var(--light-gray)' }}><span>Gross Pay</span><span className="font-mono">{formatCurrency(toNum(p.grossPay))}</span></div>
                               </div>
                             </div>
@@ -4333,8 +4370,17 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                               </div>
                             </div>
                           </div>
-                          {/* PDF & Email Actions */}
-                          <div className="flex items-center gap-2 mt-4 pt-3 border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                          {/* PDF, Email & Regenerate Actions */}
+                          <div className="flex items-center gap-2 mt-4 pt-3 border-t flex-wrap" style={{ borderColor: 'var(--light-gray)' }}>
+                            {canWrite && p.status !== 'LOCKED' && (
+                              <button onClick={e => { e.stopPropagation(); regeneratePayslip(p) }} disabled={regeneratingId === p.id}
+                                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold border disabled:opacity-50 transition-all hover:opacity-90"
+                                style={{ borderColor: '#0d9488', color: '#0d9488' }}
+                                title="Re-run computation from latest timekeeping and schedule data">
+                                {regeneratingId === p.id ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                                {regeneratingId === p.id ? 'Regenerating…' : 'Regenerate Payslip'}
+                              </button>
+                            )}
                             <button onClick={() => downloadPayslipPdf(p)} disabled={pdfGenerating === p.id}
                               className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium text-white transition-all hover:opacity-90 active:scale-[0.97]"
                               style={{ background: 'var(--teal)' }}>
@@ -4383,6 +4429,158 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
           </div>
         </div>
       )}
+
+      {/* ══════════════════════════════════════════════════════════════
+          PAY BREAKDOWN MODAL
+          ══════════════════════════════════════════════════════════════ */}
+      {breakdownModal && (() => {
+        const { payslip: bp, type } = breakdownModal
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const bd = bp.details?.dailyBreakdown as Record<string, any[]> | null | undefined
+        const rows = bd?.[type] ?? []
+
+        const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+        const fmtD = (s: string) => { const [,m,d] = s.split('-'); return `${MONTH_ABBR[parseInt(m)-1]} ${parseInt(d)}` }
+        const fc = formatCurrency
+
+        const titles: Record<string, string> = {
+          basicPay: 'Basic Pay', overtimePay: 'Overtime Pay',
+          holidayPay: 'Holiday Pay', nightDiffPay: 'Night Differential', restDayPay: 'Rest Day Pay',
+        }
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: 'rgba(0,0,0,0.5)' }}
+            onClick={() => setBreakdownModal(null)}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col"
+              onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+                <div>
+                  <p className="font-bold text-sm" style={{ color: 'var(--charcoal)' }}>{titles[type]} — Daily Breakdown</p>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                    {bp.employee.firstName} {bp.employee.lastName} &middot; {bp.cutoffPeriod}
+                  </p>
+                </div>
+                <button onClick={() => setBreakdownModal(null)} className="p-1.5 rounded-lg hover:bg-gray-100">
+                  <X size={15} />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="overflow-y-auto flex-1 px-5 py-4">
+                {rows.length === 0 ? (
+                  <div className="py-10 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>
+                    <p>No daily breakdown available for this payslip.</p>
+                    <p className="text-xs mt-1">Click <strong>Regenerate Payslip</strong> to compute the per-day breakdown.</p>
+                  </div>
+                ) : (
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr style={{ background: 'var(--off-white)' }}>
+                        <th className="text-left px-3 py-2 font-semibold rounded-tl-lg" style={{ color: 'var(--charcoal)' }}>Date</th>
+                        {type === 'basicPay' && <>
+                          <th className="text-center px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Time In</th>
+                          <th className="text-center px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Time Out</th>
+                          <th className="text-right px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Hrs Worked</th>
+                          <th className="text-right px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Daily Rate</th>
+                          <th className="text-right px-3 py-2 font-semibold rounded-tr-lg" style={{ color: 'var(--charcoal)' }}>Amount</th>
+                        </>}
+                        {type === 'overtimePay' && <>
+                          <th className="text-center px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Sched Out</th>
+                          <th className="text-center px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Actual Out</th>
+                          <th className="text-right px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>OT Hrs</th>
+                          <th className="text-right px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Rate ×{rows[0]?.multiplier ?? ''}</th>
+                          <th className="text-right px-3 py-2 font-semibold rounded-tr-lg" style={{ color: 'var(--charcoal)' }}>Amount</th>
+                        </>}
+                        {(type === 'holidayPay' || type === 'restDayPay') && <>
+                          <th className="text-center px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Time In</th>
+                          <th className="text-center px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Time Out</th>
+                          <th className="text-left px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>{type === 'holidayPay' ? 'Holiday' : 'Type'}</th>
+                          <th className="text-right px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Rate</th>
+                          <th className="text-right px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Day Pay</th>
+                          <th className="text-right px-3 py-2 font-semibold rounded-tr-lg" style={{ color: 'var(--charcoal)' }}>Premium</th>
+                        </>}
+                        {type === 'nightDiffPay' && <>
+                          <th className="text-center px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Time In</th>
+                          <th className="text-center px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Time Out</th>
+                          <th className="text-right px-3 py-2 font-semibold rounded-tr-lg" style={{ color: 'var(--charcoal)' }}>Amount</th>
+                        </>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((r, i) => (
+                        <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                          <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{fmtD(r.date)}</td>
+                          {type === 'basicPay' && <>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeIn ?? '—'}</td>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeOut ?? '—'}</td>
+                            <td className="px-3 py-2 text-right font-mono">{Number(r.hours).toFixed(1)}</td>
+                            <td className="px-3 py-2 text-right font-mono">{fc(r.dailyRate)}/day</td>
+                            <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{fc(r.amount)}</td>
+                          </>}
+                          {type === 'overtimePay' && <>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.scheduledOut ?? '—'}</td>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeOut ?? '—'}</td>
+                            <td className="px-3 py-2 text-right font-mono">{Number(r.otHours).toFixed(2)} hr{Number(r.roundedMinutes) < Number(r.rawMinutes) ? <span className="text-[10px] ml-1" style={{ color: '#d97706' }} title={`Rounded down from ${r.rawMinutes} min`}>↓{r.rawMinutes}m</span> : null}</td>
+                            <td className="px-3 py-2 text-right font-mono">{fc(Number(r.hourlyRate) * Number(r.multiplier))}/hr</td>
+                            <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{fc(r.amount)}</td>
+                          </>}
+                          {(type === 'holidayPay' || type === 'restDayPay') && <>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeIn ?? '—'}</td>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeOut ?? '—'}</td>
+                            <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>
+                              {type === 'holidayPay'
+                                ? (r.holidayType === 'REGULAR' ? 'Regular Holiday' : 'Special Non-Working')
+                                : 'Rest Day'}
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono">{Number(r.holidayRate ?? r.restDayRate).toFixed(2)}×</td>
+                            <td className="px-3 py-2 text-right font-mono">{fc(r.totalDayPay)}</td>
+                            <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{fc(r.amount)}</td>
+                          </>}
+                          {type === 'nightDiffPay' && <>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeIn ?? '—'}</td>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeOut ?? '—'}</td>
+                            <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{fc(r.amount)}</td>
+                          </>}
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t font-bold" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                        <td className="px-3 py-2" colSpan={type === 'basicPay' ? 5 : type === 'overtimePay' ? 5 : type === 'nightDiffPay' ? 3 : 6}
+                          style={{ color: 'var(--charcoal)' }}>
+                          Total ({rows.length} day{rows.length !== 1 ? 's' : ''})
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--deep-teal)' }}>
+                          {fc(rows.reduce((s: number, r) => s + Number(r.amount), 0))}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                )}
+
+                {/* Formula hint */}
+                {rows.length > 0 && type === 'basicPay' && (
+                  <p className="text-[10px] mt-3 px-1" style={{ color: 'var(--mid-gray)' }}>
+                    Each day = 1 × Daily Rate regardless of exact hours worked (daily-rate employees get paid per day present).
+                  </p>
+                )}
+                {rows.length > 0 && type === 'overtimePay' && (
+                  <p className="text-[10px] mt-3 px-1" style={{ color: 'var(--mid-gray)' }}>
+                    Formula: OT Hours (rounded down to nearest interval) × Multiplier × Hourly Rate. Only days with an approved OT request are counted.
+                  </p>
+                )}
+                {rows.length > 0 && (type === 'holidayPay' || type === 'restDayPay') && (
+                  <p className="text-[10px] mt-3 px-1" style={{ color: 'var(--mid-gray)' }}>
+                    Premium shown = Day Pay − Base Daily Rate (the extra amount on top of regular pay).
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
