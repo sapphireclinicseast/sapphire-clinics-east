@@ -9,7 +9,10 @@ export interface PeerEvalPDFInput {
   questions: Record<string, string> // qKey -> question label
   averages: Record<string, number>  // qKey -> avg score
   responses: Array<{
-    assessorName: string
+    /** @deprecated — kept optional for backward compat; no longer rendered.
+     *  PDFs are anonymized: assessor names are intentionally omitted and
+     *  qualitative comments are pooled across all assessors. */
+    assessorName?: string
     submittedAt: string
     overallAvg: number
     scores: Record<string, number>
@@ -127,72 +130,93 @@ export async function generatePeerEvalResultPDF(input: PeerEvalPDFInput): Promis
     y += rowH
   }
 
-  // Individual assessments
+  // Qualitative feedback — ANONYMIZED.
+  // The previous version of this PDF rendered one card per assessor with
+  // their name and individual comments visible. By design we now pool all
+  // strengths and all improvements into two combined sections with no
+  // assessor attribution, so the assessee can read the feedback without
+  // identifying who wrote what.
+  const allStrengths    = input.responses
+    .map(r => (r.strengths    ?? '').trim())
+    .filter(s => s.length > 0)
+  const allImprovements = input.responses
+    .map(r => (r.improvements ?? '').trim())
+    .filter(s => s.length > 0)
+
   y += 3
   newPageIfNeeded(12)
   doc.setDrawColor(229, 231, 235); doc.line(margin, y, W - margin, y)
   y += 5
   doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(55, 65, 81)
-  doc.text(`INDIVIDUAL ASSESSMENTS (${input.responses.length})`, margin, y)
+  doc.text(
+    `QUALITATIVE FEEDBACK — ${input.responses.length} anonymous response${input.responses.length !== 1 ? 's' : ''}`,
+    margin, y,
+  )
   y += 5
 
-  for (const resp of input.responses) {
-    newPageIfNeeded(32)
-    // assessor card header
-    doc.setFillColor(249, 250, 251)
-    doc.roundedRect(margin, y, usable, 8, 1.5, 1.5, 'F')
-    doc.setFontSize(8.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(17, 24, 39)
-    doc.text(resp.assessorName, margin + 3, y + 5.5)
-    const [rr, rg, rb] = colorForScore(resp.overallAvg)
-    doc.setTextColor(rr, rg, rb)
-    doc.text(`${resp.overallAvg.toFixed(2)} / 5`, W - margin - 3, y + 5.5, { align: 'right' })
-    doc.setFontSize(6.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(156, 163, 175)
-    doc.text(new Date(resp.submittedAt).toLocaleDateString(), W - margin - 22, y + 5.5, { align: 'right' })
-    y += 10
+  /** Render a pooled feedback section as a stack of bullet entries.
+   *  Pagination-aware so long feedback blocks flow across pages cleanly. */
+  function renderPooled(
+    heading: string,
+    items: string[],
+    fillBg: [number, number, number],
+    accentBar: [number, number, number],
+    headingColor: [number, number, number],
+    bodyColor: [number, number, number],
+  ) {
+    if (items.length === 0) return
+    const [fr, fg, fb] = fillBg
+    const [ar, ag, ab] = accentBar
+    const [hr, hg, hb] = headingColor
+    const [br, bg, bb] = bodyColor
+    newPageIfNeeded(14)
+    y += 1
+    // Section heading band
+    doc.setFillColor(fr, fg, fb)
+    doc.roundedRect(margin + 3, y, usable - 6, 7, 1.5, 1.5, 'F')
+    doc.setFillColor(ar, ag, ab)
+    doc.rect(margin + 3, y + 1, 1, 5, 'F')
+    doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor(hr, hg, hb)
+    doc.text(`${heading}  (${items.length})`, margin + 7, y + 4.5)
+    y += 9
 
-    // per-question mini bars
-    for (const key of qKeys) {
-      newPageIfNeeded(6)
-      const val = resp.scores[key] ?? 0
-      const [vr, vg, vb] = colorForScore(val)
-      doc.setFontSize(6.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(156, 163, 175)
-      doc.text(key.toUpperCase(), margin + 3, y + 2.5)
-      const mX = margin + 15, mW = usable - 30
-      doc.setFillColor(229, 231, 235); doc.roundedRect(mX, y, mW, 3, 0.8, 0.8, 'F')
-      const mFill = Math.max(0, (val / 5) * mW)
-      if (mFill > 0) { doc.setFillColor(vr, vg, vb); doc.roundedRect(mX, y, mFill, 3, 0.8, 0.8, 'F') }
-      doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor(vr, vg, vb)
-      doc.text(String(val), margin + usable - 5, y + 2.5)
-      y += 5
+    // Each item as a bullet
+    doc.setFontSize(7.4); doc.setFont('helvetica', 'normal'); doc.setTextColor(br, bg, bb)
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      const lines = doc.splitTextToSize(item, usable - 14)
+      const h = Math.max(5, lines.length * 3.4 + 1.5)
+      newPageIfNeeded(h + 2)
+      // Bullet dot
+      doc.setFillColor(br, bg, bb)
+      doc.circle(margin + 7, y + 1.7, 0.7, 'F')
+      doc.text(lines, margin + 11, y + 2.5)
+      y += h
     }
+    y += 2
+  }
 
-    if (resp.strengths) {
-      newPageIfNeeded(12)
-      y += 1
-      const lines = doc.splitTextToSize(resp.strengths, usable - 14)
-      const h = Math.max(9, lines.length * 3.3 + 6)
-      doc.setFillColor(240, 253, 244); doc.roundedRect(margin + 3, y, usable - 6, h, 1.5, 1.5, 'F')
-      doc.setFillColor(74, 222, 128); doc.rect(margin + 3, y + 1, 1, h - 2, 'F')
-      doc.setFontSize(6); doc.setFont('helvetica', 'bold'); doc.setTextColor(6, 95, 70)
-      doc.text('STRENGTHS', margin + 7, y + 4)
-      doc.setFontSize(7); doc.setFont('helvetica', 'normal'); doc.setTextColor(22, 101, 52)
-      doc.text(lines, margin + 7, y + 8)
-      y += h + 1
-    }
-    if (resp.improvements) {
-      newPageIfNeeded(12)
-      y += 1
-      const lines = doc.splitTextToSize(resp.improvements, usable - 14)
-      const h = Math.max(9, lines.length * 3.3 + 6)
-      doc.setFillColor(255, 251, 235); doc.roundedRect(margin + 3, y, usable - 6, h, 1.5, 1.5, 'F')
-      doc.setFillColor(251, 191, 36); doc.rect(margin + 3, y + 1, 1, h - 2, 'F')
-      doc.setFontSize(6); doc.setFont('helvetica', 'bold'); doc.setTextColor(146, 64, 14)
-      doc.text('AREAS FOR IMPROVEMENT', margin + 7, y + 4)
-      doc.setFontSize(7); doc.setFont('helvetica', 'normal'); doc.setTextColor(146, 64, 14)
-      doc.text(lines, margin + 7, y + 8)
-      y += h + 1
-    }
-    y += 3
+  renderPooled(
+    'STRENGTHS',
+    allStrengths,
+    [240, 253, 244], // fill
+    [74, 222, 128],  // accent
+    [6, 95, 70],     // heading
+    [22, 101, 52],   // body
+  )
+  renderPooled(
+    'AREAS FOR IMPROVEMENT',
+    allImprovements,
+    [255, 251, 235],
+    [251, 191, 36],
+    [146, 64, 14],
+    [146, 64, 14],
+  )
+
+  if (allStrengths.length === 0 && allImprovements.length === 0) {
+    doc.setFontSize(7.5); doc.setFont('helvetica', 'italic'); doc.setTextColor(156, 163, 175)
+    doc.text('No qualitative comments were submitted.', margin, y + 4)
+    y += 8
   }
 
   // Footer on every page
