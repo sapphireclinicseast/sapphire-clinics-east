@@ -39,6 +39,7 @@ export async function GET(req: NextRequest) {
       sentAt: true,
       createdAt: true,
       gmailAccountId: true,
+      nextTrancheAt: true,
     },
   })
 

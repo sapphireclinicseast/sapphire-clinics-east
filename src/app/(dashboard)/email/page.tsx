@@ -498,6 +498,7 @@ interface HistoryRow {
   status: string
   scheduledAt: string | null
   sentAt: string | null
+  nextTrancheAt: string | null
   createdAt: string
 }
 
@@ -557,7 +558,24 @@ function CampaignHistory() {
   }
 
   function statusBadge(row: HistoryRow) {
-    // "Partial" — failed after some recipients received; show counts
+    // New 'partial' status: send-loop hit the daily cap or a transient rate-limit
+    // and auto-scheduled the next tranche. Show progress + next-batch ETA.
+    if (row.status === 'partial') {
+      const nextLabel = row.nextTrancheAt
+        ? new Date(row.nextTrancheAt).toLocaleString('en-PH', {
+            month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+          })
+        : null
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase"
+          style={{ background: '#FEF3C7', color: '#92400E' }}
+          title={nextLabel ? 'Next batch fires automatically — no action needed' : ''}>
+          Partial ({row.sentCount}/{row.recipientCount})
+          {nextLabel ? <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>· next batch {nextLabel}</span> : null}
+        </span>
+      )
+    }
+    // Legacy: 'failed' with sentCount > 0 — older partials before the auto-tranche feature
     if (row.status === 'failed' && row.sentCount > 0 && row.sentCount < row.recipientCount) {
       return (
         <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase"

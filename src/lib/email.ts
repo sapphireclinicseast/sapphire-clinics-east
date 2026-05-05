@@ -5,6 +5,32 @@ import path from 'path'
 
 const TOKEN_FILE = path.join(process.cwd(), 'uploads', 'google-oauth.json')
 
+// ── Tranche limits ────────────────────────────────────────────────────────
+// Gmail's per-user daily send quota is 500 for regular accounts and ~2000 for
+// Workspace. We send at most this many in a single tranche, then pause until
+// tomorrow (the BullMQ scheduled-emails worker resumes the campaign).
+const DAILY_CAP_PER_TRANCHE = 450
+// Time of day (PHT, UTC+8) to fire the next tranche. 09:00 local = 01:00 UTC.
+const NEXT_TRANCHE_HOUR_PHT = 9
+
+function nextTrancheTime(now: Date = new Date()): Date {
+  // Construct "tomorrow at 09:00 PHT" expressed as a UTC instant.
+  // PHT is UTC+8 with no DST, so 09:00 PHT == 01:00 UTC.
+  const tomorrow = new Date(now)
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
+  tomorrow.setUTCHours(NEXT_TRANCHE_HOUR_PHT - 8, 0, 0, 0)
+  return tomorrow
+}
+
+async function scheduleNextTranche(campaignId: string, when: Date): Promise<void> {
+  // Dynamic import to avoid a circular dep (queue.ts imports executeSendCampaign).
+  const { emailQueue } = await import('./queue')
+  const delay = Math.max(0, when.getTime() - Date.now())
+  // Use a tranche-specific jobId so multiple successive tranches don't collide.
+  const jobId = `${campaignId}_${when.toISOString().slice(0, 10)}`
+  await emailQueue.add('send-email', { campaignId }, { delay, jobId })
+}
+
 export function getLegacyRefreshToken(): string | null {
   if (process.env.GOOGLE_REFRESH_TOKEN) return process.env.GOOGLE_REFRESH_TOKEN
   try {
@@ -56,6 +82,12 @@ export function makeEmailBody(to: string, subject: string, body: string, from: s
 /**
  * Actually sends the emails for a campaign. Called by both the route (send-now)
  * and the BullMQ worker (scheduled delivery).
+ *
+ * Tranche behaviour: each invocation sends at most DAILY_CAP_PER_TRANCHE
+ * recipients, then sets status='partial' and queues a fresh delayed job for
+ * tomorrow 09:00 PHT. The worker re-enters this function the next day; the
+ * resume-detection picks up where sentCount left off. The campaign auto-
+ * progresses to 'sent' once sentCount === recipients.length.
  */
 export async function executeSendCampaign(campaignId: string): Promise<void> {
   const campaign = await prisma.emailCampaign.findUnique({ where: { id: campaignId } })
@@ -120,10 +152,12 @@ export async function executeSendCampaign(campaignId: string): Promise<void> {
     throw new Error('No patients with email addresses in this group')
   }
 
-  // Resume support: if the campaign was previously partially sent (status
-  // 'failed' with sentCount > 0), pick up where it left off. Otherwise start
-  // fresh and reset sentCount to 0.
-  const resuming = campaign.status === 'failed' && campaign.sentCount > 0 && campaign.sentCount < recipients.length
+  // Resume support: pick up where a previous tranche left off. We detect both
+  // legacy 'failed' partials and the new 'partial' status.
+  const resuming =
+    (campaign.status === 'failed' || campaign.status === 'partial') &&
+    campaign.sentCount > 0 &&
+    campaign.sentCount < recipients.length
   const startFrom = resuming ? campaign.sentCount : 0
 
   await prisma.emailCampaign.update({
@@ -132,10 +166,12 @@ export async function executeSendCampaign(campaignId: string): Promise<void> {
       status: 'sending',
       recipientCount: recipients.length,
       ...(resuming ? {} : { sentCount: 0 }),
+      nextTrancheAt: null,
     },
   })
 
   let sentCount = startFrom
+  let trancheSentCount = 0    // emails sent in THIS invocation
   let rateLimitHit = false
   try {
     const gmail = await getGmailClient(refreshToken)
@@ -170,6 +206,7 @@ export async function executeSendCampaign(campaignId: string): Promise<void> {
         }
       }
       sentCount++
+      trancheSentCount++
       // Throttle ~4 messages/sec to stay safely under Gmail per-user limits.
       await new Promise(r => setTimeout(r, 250))
       // Persist progress every 10 sends so the UI can show "Partial (x/N)".
@@ -179,29 +216,48 @@ export async function executeSendCampaign(campaignId: string): Promise<void> {
           data: { sentCount },
         }).catch(() => undefined)
       }
+      // Stop once we've hit today's tranche cap; resume tomorrow.
+      if (trancheSentCount >= DAILY_CAP_PER_TRANCHE) break
     }
 
+    const fullyDone = sentCount >= recipients.length
+    if (fullyDone) {
+      await prisma.emailCampaign.update({
+        where: { id: campaignId },
+        data: { status: 'sent', sentAt: new Date(), sentCount, nextTrancheAt: null },
+      })
+      return
+    }
+
+    // Not yet done — either we hit DAILY_CAP_PER_TRANCHE or Gmail rate-limited
+    // us partway. In both cases, schedule the next tranche for tomorrow 09:00
+    // PHT and mark status='partial' so the UI shows the next-batch ETA.
+    const next = nextTrancheTime()
+    await prisma.emailCampaign.update({
+      where: { id: campaignId },
+      data: { status: 'partial', sentCount, nextTrancheAt: next },
+    })
+    await scheduleNextTranche(campaignId, next)
+
     if (rateLimitHit) {
-      // Mark as failed so the operator sees a Resume button. The UI shows
-      // "Partial (x/N)" because sentCount < recipientCount.
+      // Surface to caller for logging, but the DB is already in 'partial'.
+      throw new Error(
+        `Rate limit hit at ${sentCount}/${recipients.length}. ` +
+        `Next tranche scheduled for ${next.toISOString()}.`
+      )
+    }
+  } catch (err) {
+    // If we already moved to 'partial' above, don't downgrade to 'failed'.
+    const cur = await prisma.emailCampaign.findUnique({
+      where: { id: campaignId },
+      select: { status: true },
+    })
+    if (cur?.status !== 'partial' && cur?.status !== 'sent') {
       await prisma.emailCampaign.update({
         where: { id: campaignId },
         data: { status: 'failed', sentCount },
-      })
-      throw new Error(`Rate limit hit at ${sentCount}/${recipients.length}. Resume later when the quota resets.`)
+      }).catch(() => undefined)
     }
-
-    await prisma.emailCampaign.update({
-      where: { id: campaignId },
-      data: { status: 'sent', sentAt: new Date(), sentCount },
-    })
-  } catch (err) {
-    // Preserve whatever we managed to send before the crash so the UI can
-    // render "Partial (x/N)" instead of just "Failed".
-    await prisma.emailCampaign.update({
-      where: { id: campaignId },
-      data: { status: 'failed', sentCount },
-    }).catch(() => undefined)
     throw err
   }
 }

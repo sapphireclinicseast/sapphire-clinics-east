@@ -267,6 +267,7 @@ model EmailCampaign {
   status         String    @default("draft")
   recipientCount Int       @default(0)
   sentCount      Int       @default(0)
+  nextTrancheAt   DateTime? @db.Timestamp(3)
   scheduledAt    DateTime?
   sentAt         DateTime?
   gmailAccountId String?
