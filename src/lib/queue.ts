@@ -209,13 +209,21 @@ export function startWorker() {
   )
 
   emailWorker.on('failed', async (job, err) => {
-    if (job) {
-      console.error(`Email campaign ${job.data.campaignId} failed:`, err.message)
-      await prisma.emailCampaign.update({
-        where: { id: job.data.campaignId },
-        data: { status: 'failed' },
-      }).catch(() => null)
-    }
+    if (!job) return
+    console.error(`Email campaign ${job.data.campaignId} failed:`, err.message)
+    // Don't downgrade 'partial' (tranche scheduled for next day) or 'sent'
+    // (already complete) to 'failed'. executeSendCampaign legitimately
+    // throws after each tranche to surface the rate-limit info, even though
+    // the campaign is healthy and waiting on its next job.
+    const cur = await prisma.emailCampaign.findUnique({
+      where: { id: job.data.campaignId },
+      select: { status: true },
+    }).catch(() => null)
+    if (cur?.status === 'partial' || cur?.status === 'sent') return
+    await prisma.emailCampaign.update({
+      where: { id: job.data.campaignId },
+      data: { status: 'failed' },
+    }).catch(() => null)
   })
 
   console.log('✓ BullMQ email worker started')

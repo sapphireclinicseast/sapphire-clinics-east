@@ -240,9 +240,12 @@ export async function executeSendCampaign(campaignId: string): Promise<void> {
     await scheduleNextTranche(campaignId, next)
 
     if (rateLimitHit) {
-      // Surface to caller for logging, but the DB is already in 'partial'.
-      throw new Error(
-        `Rate limit hit at ${sentCount}/${recipients.length}. ` +
+      // Log only — do NOT throw. Throwing causes BullMQ to mark the job
+      // failed, which historically clobbered the campaign's 'partial'
+      // status with 'failed'. The DB is already in the correct 'partial'
+      // state with the next tranche scheduled.
+      console.warn(
+        `[email] Rate limit hit at ${sentCount}/${recipients.length}. ` +
         `Next tranche scheduled for ${next.toISOString()}.`
       )
     }
