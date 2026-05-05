@@ -28,10 +28,22 @@ const BUBBLE_STYLES = [
 // Cute emojis to scatter
 const EMOJIS = ['💖', '⭐', '🌟', '✨', '💫', '🎉', '🌈', '🦋', '🌻', '🌸', '🥰', '😊']
 
+// Survey responses round-tripped through JSON.stringify can carry literal
+// backslash-n / backslash-r sequences (and stray control whitespace) at
+// display time. Strip them so the speech bubble renders clean prose.
+function cleanComment(s: string): string {
+  return s
+    .replace(/\\r\\n|\\n|\\r/g, ' ') // literal "\n" / "\r\n" pairs → space
+    .replace(/[\r\n]+/g, ' ')        // real newlines collapse to space
+    .replace(/\s{2,}/g, ' ')         // multiple spaces → one
+    .trim()
+}
+
 function SpeechBubble({ text, index, submittedAt, surveyType }: { text: string; index: number; submittedAt: string; surveyType: string }) {
   const style = BUBBLE_STYLES[index % BUBBLE_STYLES.length]
   const emoji = EMOJIS[index % EMOJIS.length]
   const rotation = [-2, 1, -1, 2, 0, -1.5, 1.5][index % 7]
+  const cleanedText = cleanComment(text)
 
   // Survey type → friendly label
   const typeLabel: Record<string, string> = {
@@ -65,7 +77,7 @@ function SpeechBubble({ text, index, submittedAt, surveyType }: { text: string; 
           className={`${style.text} text-[15px] leading-relaxed font-medium`}
           style={{ fontFamily: 'var(--font-body)' }}
         >
-          &ldquo;{text}&rdquo;
+          &ldquo;{cleanedText}&rdquo;
         </p>
 
         {/* Meta info */}
