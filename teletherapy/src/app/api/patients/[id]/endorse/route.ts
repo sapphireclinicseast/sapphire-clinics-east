@@ -37,45 +37,56 @@ export async function POST(
     return NextResponse.json({ error: 'Can only endorse to clinicians in the same department' }, { status: 403 })
   }
 
-  // Create/update assignment for the current clinician as ENDORSED
-  await prisma.patientAssignment.upsert({
-    where: {
-      patientId_therapistAccountId_status: {
+  // New endorsement model:
+  //   - Exactly ONE row per (patient, therapist).
+  //   - The current clinician's row flips to DEACTIVATED (read-only,
+  //     can still see past notes for continuity of care).
+  //   - The receiving clinician's row is created ACTIVE, OR if they
+  //     already had a DEACTIVATED row from a previous cycle it flips
+  //     back to ACTIVE.
+  // Wrapped in a transaction so a partial failure doesn't leave the
+  // patient with two ACTIVE owners or two read-only rows.
+  await prisma.$transaction([
+    prisma.patientAssignment.upsert({
+      where: {
+        patientId_therapistAccountId: {
+          patientId,
+          therapistAccountId: session.user.id,
+        },
+      },
+      update: {
+        status: 'DEACTIVATED',
+        endorsedToId: endorseToAccountId,
+        endorsedAt: new Date(),
+      },
+      create: {
         patientId,
         therapistAccountId: session.user.id,
-        status: 'ACTIVE',
+        status: 'DEACTIVATED',
+        endorsedToId: endorseToAccountId,
+        endorsedAt: new Date(),
       },
-    },
-    update: {
-      status: 'ENDORSED',
-      endorsedToId: endorseToAccountId,
-      endorsedAt: new Date(),
-    },
-    create: {
-      patientId,
-      therapistAccountId: session.user.id,
-      status: 'ENDORSED',
-      endorsedToId: endorseToAccountId,
-      endorsedAt: new Date(),
-    },
-  })
-
-  // Create an ACTIVE assignment for the new clinician
-  await prisma.patientAssignment.upsert({
-    where: {
-      patientId_therapistAccountId_status: {
+    }),
+    prisma.patientAssignment.upsert({
+      where: {
+        patientId_therapistAccountId: {
+          patientId,
+          therapistAccountId: endorseToAccountId,
+        },
+      },
+      update: {
+        status: 'ACTIVE',
+        // Clear stale endorsement metadata when re-activating.
+        endorsedToId: null,
+        endorsedAt: null,
+      },
+      create: {
         patientId,
         therapistAccountId: endorseToAccountId,
         status: 'ACTIVE',
       },
-    },
-    update: {},
-    create: {
-      patientId,
-      therapistAccountId: endorseToAccountId,
-      status: 'ACTIVE',
-    },
-  })
+    }),
+  ])
 
   return NextResponse.json({
     success: true,

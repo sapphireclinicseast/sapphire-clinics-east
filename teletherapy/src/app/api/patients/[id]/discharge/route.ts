@@ -18,13 +18,14 @@ export async function POST(
     return NextResponse.json({ error: 'Discharge remarks are required' }, { status: 400 })
   }
 
-  // Create/update assignment as DISCHARGED
+  // New model: at most one row per (patient, therapist). Flip the
+  // current row to DISCHARGED in place — same key whether it was
+  // ACTIVE, DEACTIVATED, or didn't exist yet.
   await prisma.patientAssignment.upsert({
     where: {
-      patientId_therapistAccountId_status: {
+      patientId_therapistAccountId: {
         patientId,
         therapistAccountId: session.user.id,
-        status: 'ACTIVE',
       },
     },
     update: {

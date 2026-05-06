@@ -21,7 +21,7 @@ interface PatientItem {
   phone: string | null
   patientType: string
   diagnosis: string | null
-  assignmentStatus: 'ACTIVE' | 'ENDORSED' | 'DISCHARGED'
+  assignmentStatus: 'ACTIVE' | 'DEACTIVATED' | 'ENDORSED' | 'DISCHARGED'
 }
 
 export default function PatientsPage() {
@@ -29,7 +29,7 @@ export default function PatientsPage() {
   const [patients, setPatients] = useState<PatientItem[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'ENDORSED' | 'DISCHARGED'>('ALL')
+  const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'DEACTIVATED' | 'ENDORSED' | 'DISCHARGED'>('ALL')
   const { branches, isMultiBranch, activeStaffId, switchBranch } = useBranchSwitcher()
 
   useEffect(() => {
@@ -53,11 +53,14 @@ export default function PatientsPage() {
 
   const statusBadge = (status: string) => {
     switch (status) {
+      // DEACTIVATED = previously assigned, now read-only (continuity of care).
+      // ENDORSED is a legacy alias for DEACTIVATED — treat the same.
+      case 'DEACTIVATED':
       case 'ENDORSED':
         return (
-          <span className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+          <span className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[var(--paper-2)] text-[var(--mid-gray)] border border-[var(--paper-3)]">
             <ArrowRightLeft size={11} />
-            Endorsed
+            Read-only
           </span>
         )
       case 'DISCHARGED':
@@ -76,6 +79,7 @@ export default function PatientsPage() {
         )
     }
   }
+  const isReadOnly = (s: string) => s === 'DEACTIVATED' || s === 'ENDORSED' || s === 'DISCHARGED'
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -151,32 +155,38 @@ export default function PatientsPage() {
         </div>
       ) : (
         <div className="space-y-2">
-          {filtered.map((patient, i) => (
-            <button
-              key={patient.id}
-              onClick={() => router.push(`/patients/${patient.id}`)}
-              className={`card-static w-full text-left !p-4 hover:shadow-md hover:border-[var(--teal)]/30 transition-all active:scale-[0.995] animate-fade-up stagger-${Math.min(i + 3, 8)}`}
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#A85C3D] to-[#C69849] flex items-center justify-center text-white font-bold text-[13px] shrink-0">
-                  {patient.firstName[0]}{patient.lastName[0]}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <p className="font-semibold text-[var(--charcoal)] text-[14px]">
-                      {patient.lastName}, {patient.firstName}
-                    </p>
-                    {statusBadge(patient.assignmentStatus)}
+          {filtered.map((patient, i) => {
+            const ro = isReadOnly(patient.assignmentStatus)
+            return (
+              <button
+                key={patient.id}
+                onClick={() => router.push(`/patients/${patient.id}`)}
+                className={`card-static w-full text-left !p-4 hover:shadow-md hover:border-[var(--teal)]/30 transition-all active:scale-[0.995] animate-fade-up stagger-${Math.min(i + 3, 8)} ${
+                  ro ? 'opacity-60 bg-[var(--paper-2)]/40' : ''
+                }`}
+                title={ro ? 'Read-only — view past notes for continuity of care' : undefined}
+              >
+                <div className="flex items-center gap-4">
+                  <div className={`w-11 h-11 rounded-full ${ro ? 'bg-[var(--paper-3)]' : 'bg-gradient-to-br from-[#A85C3D] to-[#C69849]'} flex items-center justify-center font-bold text-[13px] shrink-0 ${ro ? 'text-[var(--mid-gray)]' : 'text-white'}`}>
+                    {patient.firstName[0]}{patient.lastName[0]}
                   </div>
-                  <p className="text-[12px] text-[var(--mid-gray)]">
-                    {patient.patientType} {patient.diagnosis ? `· ${patient.diagnosis}` : ''}
-                    {patient.email ? ` · ${patient.email}` : ''}
-                  </p>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <p className={`font-semibold text-[14px] ${ro ? 'text-[var(--mid-gray)]' : 'text-[var(--charcoal)]'}`}>
+                        {patient.lastName}, {patient.firstName}
+                      </p>
+                      {statusBadge(patient.assignmentStatus)}
+                    </div>
+                    <p className="text-[12px] text-[var(--mid-gray)]">
+                      {patient.patientType} {patient.diagnosis ? `· ${patient.diagnosis}` : ''}
+                      {patient.email ? ` · ${patient.email}` : ''}
+                    </p>
+                  </div>
+                  <ChevronRight size={18} className="text-[var(--mid-gray)] shrink-0" />
                 </div>
-                <ChevronRight size={18} className="text-[var(--mid-gray)] shrink-0" />
-              </div>
-            </button>
-          ))}
+              </button>
+            )
+          })}
         </div>
       )}
     </div>

@@ -248,9 +248,10 @@ model SessionNote {
 }
 
 enum PatientAssignmentStatus {
-  ACTIVE
-  ENDORSED
-  DISCHARGED
+  ACTIVE       // current write-owner of the patient
+  DEACTIVATED  // previously assigned; read-only continuity-of-care visibility
+  DISCHARGED   // discharged by this consultant; no edits
+  ENDORSED     // legacy — equivalent to DEACTIVATED, kept so old data still parses
 }
 
 model PatientAssignment {
@@ -268,7 +269,11 @@ model PatientAssignment {
   createdAt         DateTime                @default(now())
   updatedAt         DateTime                @updatedAt
 
-  @@unique([patientId, therapistAccountId, status])
+  // Exactly ONE row per (patient, therapist). Status changes in place
+  // when the patient is endorsed away or back. Without this constraint
+  // re-endorsement cycles collide on the old (patient, therapist, status)
+  // unique key (P2002).
+  @@unique([patientId, therapistAccountId])
 }
 
 model CaptureToken {

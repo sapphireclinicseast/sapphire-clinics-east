@@ -52,12 +52,17 @@ export async function GET(req: NextRequest) {
     if (s.patient) patientMap.set(s.patient.id, s.patient)
   }
 
-  // 2. Also get patients endorsed TO this clinician (via PatientAssignment)
+  // 2. Also get patients tied to this clinician via PatientAssignment.
+  //    Include both ACTIVE (currently owned, write-allowed) and
+  //    DEACTIVATED (previously owned, read-only continuity-of-care).
+  //    Freshly-endorsed-to patients with no sessions yet need to appear,
+  //    so we don't gate on having a confirmed session here — assignment
+  //    is itself the access grant.
   if (!isAdmin) {
-    const endorsedAssignments = await prisma.patientAssignment.findMany({
+    const myAssignments = await prisma.patientAssignment.findMany({
       where: {
         therapistAccountId: session.user.id,
-        status: 'ACTIVE',
+        status: { in: ['ACTIVE', 'DEACTIVATED'] },
       },
       include: {
         patient: {
@@ -73,21 +78,9 @@ export async function GET(req: NextRequest) {
         },
       },
     })
-
-    // For endorsed patients, verify they have at least one confirmed session with this clinician
-    for (const a of endorsedAssignments) {
+    for (const a of myAssignments) {
       if (a.patient && !patientMap.has(a.patient.id)) {
-        const hasSession = await prisma.schedule.findFirst({
-          where: {
-            patientId: a.patient.id,
-            staffId: effectiveStaffId,
-            status: 'CONFIRMED',
-          },
-          select: { id: true },
-        })
-        if (hasSession) {
-          patientMap.set(a.patient.id, a.patient)
-        }
+        patientMap.set(a.patient.id, a.patient)
       }
     }
   }

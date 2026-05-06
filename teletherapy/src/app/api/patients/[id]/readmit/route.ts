@@ -13,22 +13,23 @@ export async function POST(
 
   const { id: patientId } = await params
 
-  const discharged = await prisma.patientAssignment.findUnique({
+  // New model: at most one row per (patient, therapist). Find that
+  // single row, confirm it's DISCHARGED, flip back to ACTIVE.
+  const row = await prisma.patientAssignment.findUnique({
     where: {
-      patientId_therapistAccountId_status: {
+      patientId_therapistAccountId: {
         patientId,
         therapistAccountId: session.user.id,
-        status: 'DISCHARGED',
       },
     },
   })
 
-  if (!discharged) {
+  if (!row || row.status !== 'DISCHARGED') {
     return NextResponse.json({ error: 'No discharged assignment found' }, { status: 404 })
   }
 
   await prisma.patientAssignment.update({
-    where: { id: discharged.id },
+    where: { id: row.id },
     data: {
       status: 'ACTIVE',
       dischargeRemarks: null,

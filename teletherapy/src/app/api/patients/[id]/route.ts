@@ -118,19 +118,29 @@ export async function GET(
     otherServices = Array.from(deptSet).sort()
   }
 
-  // Get assignment info
+  // Get assignment info — there's at most one row per (patient, therapist)
+  // in the new model. Status drives write access.
   const assignment = await prisma.patientAssignment.findFirst({
     where: {
       patientId: id,
       therapistAccountId: session.user.id,
     },
-    orderBy: { createdAt: 'desc' },
   })
+
+  // Read-only when the clinician has been endorsed-away or discharged
+  // the patient, but they still keep visibility into past sessions for
+  // continuity of care. Admins always have write access.
+  const readOnly = !isAdmin && (
+    assignment?.status === 'DEACTIVATED' ||
+    assignment?.status === 'ENDORSED' ||
+    assignment?.status === 'DISCHARGED'
+  )
 
   return NextResponse.json({
     patient,
     sessions: ownSessions,
     assignment,
+    readOnly,
     otherServices, // e.g. ["MD", "OT"] — departments the patient also sees
   })
 }

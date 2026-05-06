@@ -100,6 +100,7 @@ export default function PatientDetailPage() {
   const [dischargeRemarks, setDischargeRemarks] = useState('')
   const [discharging, setDischarging] = useState(false)
   const [assignmentStatus, setAssignmentStatus] = useState<string | null>(null)
+  const [readOnly, setReadOnly] = useState(false)
   const [readmitting, setReadmitting] = useState(false)
 
   const [toast, setToast] = useState<string | null>(null)
@@ -116,6 +117,7 @@ export default function PatientDetailPage() {
         setSessions(data.sessions)
         setOtherServices(data.otherServices ?? [])
         setAssignmentStatus(data.assignment?.status ?? null)
+        setReadOnly(!!data.readOnly)
       }
     } catch {}
     setLoading(false)
@@ -303,16 +305,45 @@ export default function PatientDetailPage() {
         </div>
       </div>
 
-      {/* Action buttons */}
-      <div className="flex gap-3 mb-6 animate-fade-up stagger-3">
-        <button
-          onClick={loadEndorseStaff}
-          className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[14px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors"
-        >
-          <ArrowRightLeft size={18} />
-          Endorse to
-        </button>
-        {assignmentStatus === 'DISCHARGED' ? (
+      {/* Read-only banner — visible whenever this clinician no longer
+          owns the patient (endorsed away or discharged). The patient
+          and their notes are still visible for continuity of care, but
+          we hide the write-action buttons. */}
+      {readOnly && (
+        <div className="card-static !p-4 mb-4 animate-fade-up stagger-3 border-l-4 border-[var(--mid-gray)] bg-[var(--paper-2)]/40">
+          <p className="text-[13px] font-semibold text-[var(--narra)] mb-1 flex items-center gap-2">
+            <ShieldAlert size={15} className="text-[var(--mid-gray)]" />
+            Read-only — you don&rsquo;t currently own this patient
+          </p>
+          <p className="text-[12px] text-[var(--mid-gray)] leading-relaxed">
+            {assignmentStatus === 'DISCHARGED'
+              ? 'This patient was discharged. You can review past sessions and notes, but cannot edit them. Re-admit if the patient returns to your care.'
+              : 'You endorsed this patient to another clinician. You can still view all sessions and notes (yours and theirs going forward) for continuity of care, but cannot make new edits unless they endorse the patient back to you.'}
+          </p>
+        </div>
+      )}
+
+      {/* Action buttons — hidden in read-only mode */}
+      {!readOnly && (
+        <div className="flex gap-3 mb-6 animate-fade-up stagger-3">
+          <button
+            onClick={loadEndorseStaff}
+            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[14px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors"
+          >
+            <ArrowRightLeft size={18} />
+            Endorse to
+          </button>
+          <button
+            onClick={() => setShowDischarge(true)}
+            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[14px] font-semibold bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors"
+          >
+            <UserX size={18} />
+            Discharged
+          </button>
+        </div>
+      )}
+      {readOnly && assignmentStatus === 'DISCHARGED' && (
+        <div className="flex gap-3 mb-6 animate-fade-up stagger-3">
           <button
             onClick={handleReadmit}
             disabled={readmitting}
@@ -322,16 +353,8 @@ export default function PatientDetailPage() {
             {readmitting ? <Loader2 size={18} className="animate-spin" /> : <UserCheck size={18} />}
             Re-admit
           </button>
-        ) : (
-          <button
-            onClick={() => setShowDischarge(true)}
-            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[14px] font-semibold bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors"
-          >
-            <UserX size={18} />
-            Discharged
-          </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Endorse modal */}
       {showEndorse && (
