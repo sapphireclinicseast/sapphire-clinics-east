@@ -54,6 +54,17 @@ export async function POST(
       },
       data: { lockedAt: lockStamp },
     }),
+    // Lock IE / PR / Other documents the discharger uploaded for this
+    // patient. Same rule as endorsement: read-only for everyone but
+    // admin going forward.
+    prisma.patientDocument.updateMany({
+      where: {
+        uploadedById: session.user.id,
+        patientId,
+        lockedAt: null,
+      },
+      data: { lockedAt: lockStamp },
+    }),
   ])
 
   return NextResponse.json({ success: true })

@@ -41,15 +41,33 @@ export async function POST(
     )
   }
 
-  // Authorization: clinician must be in same department or admin
+  // Authorization: admin OR (the original uploader AND active owner
+  // AND the document is not locked). We don't want Caitlynn emailing
+  // out an IE that Eloisa prepared and signed.
   const isAdmin = session.user.role === 'ADMIN'
   if (!isAdmin) {
-    const account = await prisma.therapistAccount.findUnique({
-      where: { id: session.user.id },
-      include: { staff: { select: { department: true, branch: true } } },
+    if (doc.uploadedById !== session.user.id) {
+      return NextResponse.json(
+        { error: 'Only the original uploader can send this IE.' },
+        { status: 403 },
+      )
+    }
+    const active = await prisma.patientAssignment.findFirst({
+      where: { patientId, therapistAccountId: session.user.id, status: 'ACTIVE' },
+      select: { id: true },
     })
-    if (!account || account.staff.department !== doc.department) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (!active) {
+      return NextResponse.json(
+        { error: 'You no longer have active access to this patient.' },
+        { status: 403 },
+      )
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((doc as any).lockedAt) {
+      return NextResponse.json(
+        { error: 'This document is locked and cannot be sent.' },
+        { status: 403 },
+      )
     }
   }
 

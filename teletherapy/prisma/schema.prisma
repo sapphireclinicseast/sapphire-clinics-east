@@ -141,6 +141,14 @@ model PatientDocument {
   emailedToPatientAt DateTime?
   emailedById        String?       // marketing User.id
 
+  // Permanent freeze marker. Stamped when the uploader is endorsed
+  // or discharged off the patient. Once set, the document cannot be
+  // re-uploaded or deleted by anyone except an admin — even if the
+  // patient is later endorsed back to the original uploader. New
+  // documents the same uploader creates after re-endorsement are
+  // unlocked again. Mirrors SessionNote.lockedAt for consistency.
+  lockedAt     DateTime?
+
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
 

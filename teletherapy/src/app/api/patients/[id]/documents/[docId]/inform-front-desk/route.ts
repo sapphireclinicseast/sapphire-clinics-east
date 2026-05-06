@@ -28,15 +28,34 @@ export async function POST(
     )
   }
 
-  // Authorization: same department or admin
+  // Authorization: admin OR (the original uploader AND active owner
+  // AND the document is not locked). Same rule as DELETE so a
+  // non-uploader (e.g. Caitlynn looking at Eloisa's PR) can't flag
+  // somebody else's signed PR for billing.
   const isAdmin = session.user.role === 'ADMIN'
   if (!isAdmin) {
-    const account = await prisma.therapistAccount.findUnique({
-      where: { id: session.user.id },
-      include: { staff: { select: { department: true } } },
+    if (doc.uploadedById !== session.user.id) {
+      return NextResponse.json(
+        { error: 'Only the original uploader can flag this PR.' },
+        { status: 403 },
+      )
+    }
+    const active = await prisma.patientAssignment.findFirst({
+      where: { patientId, therapistAccountId: session.user.id, status: 'ACTIVE' },
+      select: { id: true },
     })
-    if (!account || account.staff.department !== doc.department) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (!active) {
+      return NextResponse.json(
+        { error: 'You no longer have active access to this patient.' },
+        { status: 403 },
+      )
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((doc as any).lockedAt) {
+      return NextResponse.json(
+        { error: 'This document is locked and cannot be modified.' },
+        { status: 403 },
+      )
     }
   }
 

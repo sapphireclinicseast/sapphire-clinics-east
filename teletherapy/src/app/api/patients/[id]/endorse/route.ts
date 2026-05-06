@@ -103,6 +103,18 @@ export async function POST(
       },
       data: { lockedAt: lockStamp },
     }),
+    // Same freeze for IE / PR / Other documents the endorser uploaded.
+    // The receiving clinician (and admins) can still SEE them; they
+    // just can't re-upload over them or delete them. New uploads by
+    // the new active owner stay unlocked.
+    prisma.patientDocument.updateMany({
+      where: {
+        uploadedById: session.user.id,
+        patientId,
+        lockedAt: null,
+      },
+      data: { lockedAt: lockStamp },
+    }),
   ])
 
   return NextResponse.json({

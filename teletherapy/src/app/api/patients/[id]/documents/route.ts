@@ -78,7 +78,36 @@ export async function GET(
     orderBy: { createdAt: 'desc' },
   })
 
-  return NextResponse.json({ documents })
+  // Per-document write permission.
+  //
+  // Even within the same department, only the original uploader can
+  // re-upload or delete a document — Caitlynn (current active owner)
+  // should NOT be able to delete the IE Eloisa prepared. And once a
+  // document is locked (uploader was endorsed/discharged off the
+  // patient), no one but admin can mutate it, even the original
+  // uploader if they get re-endorsed back later.
+  //
+  // For non-admin we also require the user is currently the ACTIVE
+  // owner of the patient (so a DEACTIVATED clinician can't tamper
+  // with their own old uploads either — view-only end-to-end).
+  let canMutateAsActive = isAdmin
+  if (!isAdmin) {
+    const active = await prisma.patientAssignment.findFirst({
+      where: { patientId, therapistAccountId: session.user.id, status: 'ACTIVE' },
+      select: { id: true },
+    })
+    canMutateAsActive = !!active
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const documentsWithPerms = documents.map((d: any) => ({
+    ...d,
+    canEdit:
+      isAdmin ||
+      (canMutateAsActive && d.uploadedById === session.user.id && !d.lockedAt),
+  }))
+
+  return NextResponse.json({ documents: documentsWithPerms })
 }
 
 // POST — upload a new document

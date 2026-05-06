@@ -22,6 +22,7 @@ import {
   Bell,
   CheckCircle2,
   Send,
+  Lock,
 } from 'lucide-react'
 
 export interface PatientProfile {
@@ -50,6 +51,15 @@ interface PatientDocument {
   sentToPatientAt?: string | null
   sentToPatientCc?: string | null
   informedFrontDeskAt?: string | null
+  // Server-stamped freeze marker. Set when the uploader is endorsed
+  // or discharged off the patient. Once set, the document is read-only
+  // for everyone except admin (used to render Lock icon + disable
+  // re-upload / delete affordances).
+  lockedAt?: string | null
+  // Server-computed: true iff (admin) OR (this user uploaded it AND
+  // they're the active owner AND it isn't locked). Drives whether the
+  // re-upload + delete buttons render at all for this row.
+  canEdit?: boolean
 }
 
 interface Props {
@@ -371,7 +381,15 @@ function DocumentSection({
                   >
                     <Eye size={13} />
                   </a>
-                  {canManage && (
+                  {/* Re-upload + delete are scoped per-document, not
+                      blanket per-section. Only the original uploader
+                      (who is currently the active owner AND whose
+                      document isn't locked) sees these buttons. So
+                      Caitlynn viewing Eloisa's IE/PR/Other uploads
+                      gets the View icon only. Server (DELETE route)
+                      enforces the same rules — these UI gates are
+                      just the cosmetic mirror. */}
+                  {doc.canEdit ? (
                     <>
                       <label
                         className="p-1.5 rounded-md text-amber-600 hover:bg-amber-50 transition-colors cursor-pointer"
@@ -399,12 +417,23 @@ function DocumentSection({
                         <Trash2 size={13} />
                       </button>
                     </>
-                  )}
+                  ) : doc.lockedAt ? (
+                    <span
+                      className="p-1.5 rounded-md text-[var(--mid-gray)]"
+                      title="Locked — frozen at endorsement; only admins can modify"
+                    >
+                      <Lock size={13} />
+                    </span>
+                  ) : null}
                 </div>
               </div>
 
-              {/* IE: Send Email to patient */}
-              {isIE && canManage && (
+              {/* IE: Send Email to patient. Gated per-document on
+                  canEdit (not section-level canManage) — sending an
+                  IE Eloisa prepared from Caitlynn's account would
+                  put Eloisa's signed document on the wire under
+                  Caitlynn's session, which the user wants prevented. */}
+              {isIE && doc.canEdit && (
                 <button
                   onClick={() => {
                     if (sentAt) setPendingResend({ doc, kind: 'IE' })
@@ -427,8 +456,10 @@ function DocumentSection({
                 </button>
               )}
 
-              {/* PR: Inform Front Desk */}
-              {isPR && canManage && (
+              {/* PR: Inform Front Desk. Same gating as Send IE —
+                  only the original uploader (active + unlocked) can
+                  flag their own PR for billing. */}
+              {isPR && doc.canEdit && (
                 <button
                   onClick={() => {
                     if (informedAt) setPendingResend({ doc, kind: 'PR' })
