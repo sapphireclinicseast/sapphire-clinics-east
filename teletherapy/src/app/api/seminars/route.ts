@@ -72,16 +72,47 @@ export async function GET() {
   }
 
   const myEmail = session.user.email.toLowerCase()
-  const seminars = (data.seminars ?? []).map((s) => {
-    const registered = (s.registeredEmails ?? []).includes(myEmail)
-    // Only expose meetingLink if I'm registered.
-    const { registeredEmails: _omit, meetingLink, ...rest } = s
-    return {
-      ...rest,
-      myRegistration: registered ? { registered: true } : { registered: false },
-      meetingLink: registered ? meetingLink : '',
-    }
-  })
+
+  // ── Department-scoped visibility ──
+  // HR tags each seminar with disciplineFocus[], e.g. ["OT"] or
+  // ["OT","PT","SLP","SPED","Psych"]. We hide a seminar from a clinician
+  // whose department isn't in that list. Empty / missing list = visible
+  // to everyone (general seminar). Admins also see all.
+  //
+  // Normalize both sides because HR uses short codes (Psych, MD) while
+  // the teletherapy session enum is sometimes spelled out (PSYCHOLOGY).
+  const myRole = (session.user as { role?: string }).role ?? ''
+  const myDept = ((session.user as { department?: string }).department ?? '').toUpperCase()
+  const isAdmin = myRole === 'ADMIN'
+
+  function normDept(s: string): string {
+    const u = (s || '').trim().toUpperCase()
+    if (u === 'PSYCH' || u === 'PSYCHOLOGY') return 'PSYCHOLOGY'
+    if (u === 'MD' || u === 'DOCTOR') return 'MD'
+    return u
+  }
+  const myDeptNorm = normDept(myDept)
+
+  function visibleToMe(s: HRSeminar): boolean {
+    if (isAdmin) return true
+    const focus = (s.disciplineFocus ?? []).map(normDept).filter(Boolean)
+    if (focus.length === 0) return true                   // untagged → all
+    if (!myDeptNorm) return true                          // no dept on user → don't hide
+    return focus.includes(myDeptNorm)
+  }
+
+  const seminars = (data.seminars ?? [])
+    .filter(visibleToMe)
+    .map((s) => {
+      const registered = (s.registeredEmails ?? []).includes(myEmail)
+      // Only expose meetingLink if I'm registered.
+      const { registeredEmails: _omit, meetingLink, ...rest } = s
+      return {
+        ...rest,
+        myRegistration: registered ? { registered: true } : { registered: false },
+        meetingLink: registered ? meetingLink : '',
+      }
+    })
 
   return NextResponse.json({ seminars })
 }
