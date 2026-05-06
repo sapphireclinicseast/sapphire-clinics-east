@@ -18,6 +18,7 @@ import {
   GraduationCap,
   CalendarDays,
   Wallet,
+  FileText,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -35,6 +36,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
     { href: '/patients', label: 'Patients', icon: Users },
     { href: '/patients-love', label: 'What Patients Love About You', icon: Heart },
     { href: '/seminars', label: 'Seminars & Trainings', icon: GraduationCap },
+    { href: '/templates', label: 'Templates & Forms', icon: FileText },
     { href: '/payroll', label: 'Payroll', icon: Wallet },
     { href: '/settings', label: 'Settings', icon: Settings },
     ...(isAdmin
