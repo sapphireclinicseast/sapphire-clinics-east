@@ -110,8 +110,11 @@ export async function GET(req: NextRequest) {
   })
   const targetMap = new Map(targets.map(t => [t.staffId, t]))
 
-  // Build a set of (staffId|patientId) pairs already assigned this year
-  // so we never pick the same patient twice to assess the same therapist.
+  // Build a set of (staffId|patientId) pairs the patient already actually
+  // submitted feedback on this therapist this year — so we don't ask the same
+  // patient twice. We intentionally only count COMPLETED assignments here:
+  // PENDING/EXPIRED ones (auto-created QRs never scanned) used to lock the
+  // pair too, which silently blocked re-prompting for the rest of the year.
   const yearStart = new Date(`${year}-01-01T00:00:00`)
   const yearEnd   = new Date(`${year + 1}-01-01T00:00:00`)
   const priorAssignments = await prisma.surveyAssignment.findMany({
@@ -119,6 +122,7 @@ export async function GET(req: NextRequest) {
       branch: authedBranch,
       createdAt: { gte: yearStart, lt: yearEnd },
       patientId: { not: null },
+      status: 'COMPLETED',
     },
     select: { staffId: true, patientId: true },
   })
