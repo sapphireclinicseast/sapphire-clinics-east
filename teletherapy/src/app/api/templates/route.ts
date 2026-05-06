@@ -13,6 +13,7 @@
  */
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 
 const HR_API_BASE = process.env.HR_API_BASE ?? 'https://hr.sapphireclinicseast.org/api'
 
@@ -85,11 +86,24 @@ export async function GET() {
     ? null
     : SCOPE_ALLOWED[myDept] ?? null
 
-  // Hit both upstream endpoints in parallel. Both are open + cheap.
-  const [tplRes, testRes] = await Promise.all([
+  // Hit both upstream endpoints in parallel + read this user's pin list
+  // from teletherapy's own DB. Pins are per-clinician (see
+  // /api/templates/[id]/pin).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const accountPromise = prisma.therapistAccount.findUnique({
+    where: { id: session.user.id },
+    select: { pinnedTemplateIds: true } as any,
+  })
+  const [tplRes, testRes, account] = await Promise.all([
     fetch(`${HR_API_BASE}/templates/public`, { cache: 'no-store' }),
     fetch(`${HR_API_BASE}/standardized-tests/public`, { cache: 'no-store' }),
+    accountPromise,
   ])
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pinnedRaw = (account as any)?.pinnedTemplateIds
+  const pinnedSet = new Set<string>(
+    Array.isArray(pinnedRaw) ? pinnedRaw.filter((x): x is string => typeof x === 'string') : [],
+  )
   if (!tplRes.ok) {
     return NextResponse.json({ error: `HR templates returned ${tplRes.status}` }, { status: 502 })
   }
@@ -148,6 +162,7 @@ export async function GET() {
       // Clinicians see the row but cannot download — only admins
       // get usable docx/pdf/link/formLink for internal-only items.
       internalOnly: !!t.internalOnly,
+      pinned: pinnedSet.has(t.id),
       docxUrl: t.internalOnly && !isAdmin ? '' : abs(t.docxUrl),
       pdfUrl:  t.internalOnly && !isAdmin ? '' : abs(t.pdfUrl),
       link:    t.internalOnly && !isAdmin ? '' : (t.link ?? ''),

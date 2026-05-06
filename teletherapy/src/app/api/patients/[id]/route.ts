@@ -60,32 +60,36 @@ export async function GET(
 
   const staffSelect = { firstName: true, lastName: true, department: true }
 
-  // For NON-ADMIN clinicians: show sessions handled by THIS clinician across all branches
-  // Admin sees everything
+  // ── Sessions visible to this clinician ──
+  // Continuity-of-care rule: if THIS clinician has an assignment row
+  // (any status) for the patient, they see EVERY confirmed session for
+  // the patient regardless of which staff handled it. That covers:
+  //   - the receiving clinician seeing the endorser's past notes
+  //   - the original clinician (now read-only) still seeing notes
+  //     added by the new owner
+  //   - admins of course see everything.
+  // If they have NO assignment row, they only see sessions they
+  // personally handled (the original "I had a session with X" case).
   let ownSessions
   if (isAdmin) {
     ownSessions = await prisma.schedule.findMany({
-      where: {
-        patientId: id,
-        status: 'CONFIRMED',
-      },
-      include: {
-        staff: { select: staffSelect },
-        sessionNote: { select: sessionNoteSelect },
-      },
+      where: { patientId: id, status: 'CONFIRMED' },
+      include: { staff: { select: staffSelect }, sessionNote: { select: sessionNoteSelect } },
       orderBy: { date: 'desc' },
     })
   } else {
+    const myAssignment = await prisma.patientAssignment.findFirst({
+      where: { patientId: id, therapistAccountId: session.user.id },
+      select: { id: true, status: true },
+    })
+    const sharedView = !!myAssignment // any status — ACTIVE, DEACTIVATED, DISCHARGED, ENDORSED
     ownSessions = await prisma.schedule.findMany({
       where: {
         patientId: id,
         status: 'CONFIRMED',
-        staffId: { in: effectiveStaffIds },
+        ...(sharedView ? {} : { staffId: { in: effectiveStaffIds } }),
       },
-      include: {
-        staff: { select: staffSelect },
-        sessionNote: { select: sessionNoteSelect },
-      },
+      include: { staff: { select: staffSelect }, sessionNote: { select: sessionNoteSelect } },
       orderBy: { date: 'desc' },
     })
   }

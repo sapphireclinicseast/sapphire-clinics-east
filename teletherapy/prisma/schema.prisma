@@ -224,6 +224,10 @@ model TherapistAccount {
   resetTokenExpiry DateTime?
   createdAt        DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
+  // Per-user template pin list. HR template IDs (strings) — they live
+  // in the HR hub's DB, not here, so we keep the relationship loose
+  // (no foreign key) and just store the IDs the user has pinned.
+  pinnedTemplateIds   Json          @default("[]")
   sessionNotes        SessionNote[]
   patientAssignments  PatientAssignment[]
   endorsedPatients    PatientAssignment[] @relation("EndorsedTo")

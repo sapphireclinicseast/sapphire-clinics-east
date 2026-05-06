@@ -13,6 +13,8 @@ import {
   UserCog,
   Stethoscope,
   Eye,
+  Pin,
+  PinOff,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import BranchSwitcher, { useBranchSwitcher } from '@/components/BranchSwitcher'
@@ -27,6 +29,7 @@ interface Template {
   compilation: string
   templateSize: string
   internalOnly: boolean
+  pinned: boolean
   docxUrl: string
   pdfUrl: string
   link: string
@@ -46,7 +49,7 @@ interface ApiResponse {
   standardizedTests: StdTest[]
 }
 
-type Filter = 'all' | 'technical' | 'admin' | 'hr'
+type Filter = 'all' | 'pinned' | 'technical' | 'admin' | 'hr'
 
 export default function TemplatesPage() {
   const [data, setData] = useState<ApiResponse | null>(null)
@@ -77,10 +80,39 @@ export default function TemplatesPage() {
   // Active filter applied on top of the API's already-scoped list.
   // The API returns only what this clinician is allowed to see; the
   // filter buttons just narrow that further by category.
+  // Optimistic pin state — keeps the UI snappy while the server update
+  // is in flight; reconciled on the next fetch.
+  const [pinningId, setPinningId] = useState<string | null>(null)
+  const [optimisticPins, setOptimisticPins] = useState<Record<string, boolean>>({})
+
+  async function togglePin(t: Template) {
+    const currently = optimisticPins[t.id] ?? t.pinned
+    const next = !currently
+    setOptimisticPins((m) => ({ ...m, [t.id]: next }))
+    setPinningId(t.id)
+    try {
+      const res = await fetch(`/api/templates/${t.id}/pin`, {
+        method: next ? 'POST' : 'DELETE',
+      })
+      if (!res.ok) {
+        // Roll back on failure.
+        setOptimisticPins((m) => ({ ...m, [t.id]: !next }))
+      }
+    } catch {
+      setOptimisticPins((m) => ({ ...m, [t.id]: !next }))
+    }
+    setPinningId(null)
+  }
+  function isPinned(t: Template): boolean {
+    return optimisticPins[t.id] ?? t.pinned
+  }
+
   const visibleTemplates = useMemo(() => {
     if (!data) return []
     let list = data.templates
-    if (filter === 'technical') {
+    if (filter === 'pinned') {
+      list = list.filter((t) => optimisticPins[t.id] ?? t.pinned)
+    } else if (filter === 'technical') {
       // The clinician's own department (the "technical" one).
       const ownDept = data.department
       list = ownDept ? list.filter((t) => t.department === ownDept) : list
@@ -102,6 +134,8 @@ export default function TemplatesPage() {
 
   const visibleTests = useMemo(() => {
     if (!data) return []
+    // Standardized tests don't get pinned individually; only show them
+    // under All / Technical filters (pinned/admin/hr would be empty).
     if (filter !== 'all' && filter !== 'technical') return []
     if (!search.trim()) return data.standardizedTests
     const q = search.trim().toLowerCase()
@@ -151,6 +185,7 @@ export default function TemplatesPage() {
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-2 mb-4 animate-fade-up stagger-1">
         <FilterButton active={filter === 'all'} onClick={() => setFilter('all')} icon={<ClipboardList size={13} />} label="All" />
+        <FilterButton active={filter === 'pinned'} onClick={() => setFilter('pinned')} icon={<Pin size={13} />} label="Pinned" />
         <FilterButton active={filter === 'technical'} onClick={() => setFilter('technical')} icon={<Stethoscope size={13} />} label="Technical Department" />
         <FilterButton active={filter === 'admin'} onClick={() => setFilter('admin')} icon={<Briefcase size={13} />} label="Admin/Operations" />
         <FilterButton active={filter === 'hr'} onClick={() => setFilter('hr')} icon={<UserCog size={13} />} label="HR" />
@@ -213,7 +248,13 @@ export default function TemplatesPage() {
               </div>
               <div className="space-y-2">
                 {items.map((t) => (
-                  <TemplateRow key={t.id} t={t} />
+                  <TemplateRow
+                    key={t.id}
+                    t={t}
+                    pinned={isPinned(t)}
+                    pinning={pinningId === t.id}
+                    onTogglePin={() => togglePin(t)}
+                  />
                 ))}
               </div>
             </section>
@@ -259,7 +300,12 @@ function FilterButton({ active, onClick, icon, label }: {
   )
 }
 
-function TemplateRow({ t }: { t: Template }) {
+function TemplateRow({ t, pinned, pinning, onTogglePin }: {
+  t: Template
+  pinned: boolean
+  pinning: boolean
+  onTogglePin: () => void
+}) {
   // Online form templates (Google Form / external link) get a Sun-tinted
   // card + ribbon to make them stand out. Internal-only templates go
   // grey + muted because clinicians can see they exist but can't
@@ -274,6 +320,47 @@ function TemplateRow({ t }: { t: Template }) {
         isInternal && 'bg-[var(--paper-2)] border-[var(--paper-3)] opacity-70',
       )}
     >
+      {/* Left rail: prominent template number + pin toggle, both immediately visible. */}
+      <div className="flex sm:flex-col items-center gap-2 sm:w-[88px] sm:shrink-0">
+        {t.templateNo && (
+          <div
+            className={cn(
+              'w-full px-2 py-2 rounded-xl text-center font-bold tracking-wider text-[12px] leading-tight',
+              hasOnlineForm && !isInternal
+                ? 'bg-[var(--sun)] text-white'
+                : isInternal
+                  ? 'bg-[var(--paper-3)] text-[var(--mid-gray)]'
+                  : 'bg-[var(--narra)] text-[var(--paper)]',
+            )}
+            style={{ fontFamily: 'var(--font-display)' }}
+            title={`Template ${t.templateNo}`}
+          >
+            {t.templateNo}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={onTogglePin}
+          disabled={pinning}
+          className={cn(
+            'inline-flex items-center justify-center w-8 h-8 rounded-lg transition-colors disabled:opacity-50',
+            pinned
+              ? 'bg-[var(--clay-tint)] text-[var(--clay)] hover:bg-[var(--clay)] hover:text-white'
+              : 'text-[var(--mid-gray)] hover:bg-[var(--paper-2)]',
+          )}
+          title={pinned ? 'Unpin from your Pinned tab' : 'Pin to your Pinned tab'}
+          aria-label={pinned ? 'Unpin' : 'Pin'}
+        >
+          {pinning ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : pinned ? (
+            <Pin size={14} fill="currentColor" />
+          ) : (
+            <PinOff size={14} />
+          )}
+        </button>
+      </div>
+
       <div className="flex items-start gap-3 flex-1 min-w-0">
         <div
           className={cn(
@@ -298,11 +385,6 @@ function TemplateRow({ t }: { t: Template }) {
             >
               {t.templateName}
             </p>
-            {t.templateNo && (
-              <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[var(--paper-2)] text-[var(--mid-gray)] border border-[var(--paper-3)]">
-                {t.templateNo}
-              </span>
-            )}
             {t.versionNumber && (
               <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[var(--paper-2)] text-[var(--mid-gray)] border border-[var(--paper-3)]">
                 v{t.versionNumber}
