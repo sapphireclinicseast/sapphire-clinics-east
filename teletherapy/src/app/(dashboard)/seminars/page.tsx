@@ -262,6 +262,101 @@ export default function SeminarsPage() {
         </div>
       </div>
 
+      {/* Tabs */}
+      <div className="flex gap-1 p-1 rounded-xl bg-[var(--light-gray)] mb-5 animate-fade-up stagger-1">
+        <button
+          onClick={() => handleTabChange('upcoming')}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-[13px] font-semibold transition-all',
+            activeTab === 'upcoming'
+              ? 'bg-white text-[var(--charcoal)] shadow-sm'
+              : 'text-[var(--mid-gray)] hover:text-[var(--charcoal)]'
+          )}
+        >
+          <GraduationCap size={14} />
+          Upcoming
+        </button>
+        <button
+          onClick={() => handleTabChange('certificates')}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-[13px] font-semibold transition-all',
+            activeTab === 'certificates'
+              ? 'bg-white text-[var(--charcoal)] shadow-sm'
+              : 'text-[var(--mid-gray)] hover:text-[var(--charcoal)]'
+          )}
+        >
+          <Award size={14} />
+          My Certificates
+        </button>
+      </div>
+
+      {/* ── Certificates tab ── */}
+      {activeTab === 'certificates' && (
+        certsLoading ? (
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <Loader2 className="w-8 h-8 text-[var(--teal)] animate-spin" />
+            <p className="text-sm text-[var(--mid-gray)]">Loading your certificates...</p>
+          </div>
+        ) : certificates.length === 0 ? (
+          <div className="card-static text-center py-16 animate-fade-up">
+            <div className="w-14 h-14 rounded-2xl bg-[var(--pale-teal)] flex items-center justify-center mx-auto mb-3">
+              <Award size={24} className="text-[var(--teal)]" />
+            </div>
+            <p className="text-[var(--mid-gray)] text-sm font-medium">
+              No certificates yet. They will appear here once uploaded by HR.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3 animate-fade-up">
+            {certificates.map((cert, i) => (
+              <div
+                key={`${cert.seminarId}-${cert.certificateFile}`}
+                className={cn('card-static flex items-start gap-4', `stagger-${Math.min(i + 1, 10)}`)}
+              >
+                <div className="w-10 h-10 rounded-xl bg-[var(--pale-teal)] flex items-center justify-center shrink-0">
+                  <FileText size={18} className="text-[var(--teal)]" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-bold text-[14px] text-[var(--charcoal)] leading-snug mb-1" style={{ fontFamily: 'var(--font-display)' }}>
+                    {cert.seminarTitle}
+                  </h3>
+                  <div className="flex items-center gap-3 text-[11px] text-[var(--mid-gray)] flex-wrap">
+                    {cert.seminarDate && (
+                      <span className="flex items-center gap-1">
+                        <Calendar size={11} className="text-[var(--teal)]" />
+                        {formatDate(cert.seminarDate)}
+                      </span>
+                    )}
+                    {cert.uploadedAt && (
+                      <span className="flex items-center gap-1">
+                        <Clock size={11} className="text-[var(--teal)]" />
+                        Issued {new Date(cert.uploadedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </span>
+                    )}
+                    <span className="badge !text-[10px] bg-green-50 text-green-700 border border-green-200 flex items-center gap-1">
+                      <CheckCircle2 size={10} />
+                      Certificate Ready
+                    </span>
+                  </div>
+                </div>
+                <a
+                  href={cert.certificateUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-primary !py-2 !px-3 !text-[12px] !rounded-lg flex items-center gap-1.5 shrink-0"
+                >
+                  View
+                  <ExternalLink size={12} />
+                </a>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+
+      {/* ── Upcoming seminars tab ── */}
+      {activeTab === 'upcoming' && <>
+
       {/* Search */}
       <div className="relative mb-5 animate-fade-up stagger-1">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mid-gray)]" />
@@ -482,6 +577,7 @@ export default function SeminarsPage() {
           onClose={() => setObjectivesSeminar(null)}
         />
       )}
+      </>}
     </div>
   )
 }
