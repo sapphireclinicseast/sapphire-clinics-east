@@ -61,15 +61,16 @@ export async function GET(
   const staffSelect = { firstName: true, lastName: true, department: true }
 
   // ── Sessions visible to this clinician ──
-  // Continuity-of-care rule: if THIS clinician has an assignment row
-  // (any status) for the patient, they see EVERY confirmed session for
-  // the patient regardless of which staff handled it. That covers:
-  //   - the receiving clinician seeing the endorser's past notes
-  //   - the original clinician (now read-only) still seeing notes
-  //     added by the new owner
-  //   - admins of course see everything.
-  // If they have NO assignment row, they only see sessions they
-  // personally handled (the original "I had a session with X" case).
+  // Continuity-of-care rule, scoped to discipline:
+  //   - Admin sees every confirmed session.
+  //   - A clinician with an assignment row (ACTIVE / DEACTIVATED /
+  //     DISCHARGED / legacy ENDORSED) for the patient sees sessions
+  //     from any staff in the SAME DEPARTMENT as them. So an OT
+  //     receiving an endorsement sees the previous OT's notes but
+  //     NOT the patient's MD or PT sessions, which is the right
+  //     scope for clinical handoff.
+  //   - A clinician with no assignment row only sees sessions they
+  //     personally handled (the legacy "I had a session with X" case).
   let ownSessions
   if (isAdmin) {
     ownSessions = await prisma.schedule.findMany({
@@ -82,13 +83,26 @@ export async function GET(
       where: { patientId: id, therapistAccountId: session.user.id },
       select: { id: true, status: true },
     })
-    const sharedView = !!myAssignment // any status — ACTIVE, DEACTIVATED, DISCHARGED, ENDORSED
-    ownSessions = await prisma.schedule.findMany({
-      where: {
+    const sharedView = !!myAssignment
+
+    let where: Record<string, unknown>
+    if (sharedView && currentDepartment) {
+      // Cross-staff but same-department visibility for continuity of care.
+      where = {
         patientId: id,
         status: 'CONFIRMED',
-        ...(sharedView ? {} : { staffId: { in: effectiveStaffIds } }),
-      },
+        staff: { department: currentDepartment },
+      }
+    } else {
+      // Fallback: only sessions this clinician personally handled.
+      where = {
+        patientId: id,
+        status: 'CONFIRMED',
+        staffId: { in: effectiveStaffIds },
+      }
+    }
+    ownSessions = await prisma.schedule.findMany({
+      where,
       include: { staff: { select: staffSelect }, sessionNote: { select: sessionNoteSelect } },
       orderBy: { date: 'desc' },
     })
