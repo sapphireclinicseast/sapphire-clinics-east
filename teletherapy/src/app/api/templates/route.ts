@@ -101,12 +101,14 @@ export async function GET() {
   const allTemplates = tplData.ok ? tplData.templates ?? [] : []
   const allTests = testData.ok ? testData.tests ?? [] : []
 
+  // Internal-only templates are surfaced too, but flagged so the UI
+  // can render them muted/disabled. Clinicians can SEE that they
+  // exist (helps when troubleshooting "where is form X") but cannot
+  // download them — only admins get usable links.
   const filteredTemplates = (allowedDepts === null
     ? allTemplates
     : allTemplates.filter((t) => allowedDepts.includes(t.department))
   )
-    // Internal-only templates are gated even further; clinicians don't see them.
-    .filter((t) => !t.internalOnly || isAdmin)
     // Stable sort by department then template number for predictable UI.
     .sort((a, b) =>
       a.department.localeCompare(b.department) ||
@@ -142,10 +144,14 @@ export async function GET() {
       versionNumber: t.versionNumber ?? '',
       compilation: t.compilation ?? '',
       templateSize: t.templateSize ?? '',
-      docxUrl: abs(t.docxUrl),
-      pdfUrl: abs(t.pdfUrl),
-      link: t.link ?? '',
-      formLink: t.formLink ?? '',
+      // Surface internalOnly so the UI can render those rows muted.
+      // Clinicians see the row but cannot download — only admins
+      // get usable docx/pdf/link/formLink for internal-only items.
+      internalOnly: !!t.internalOnly,
+      docxUrl: t.internalOnly && !isAdmin ? '' : abs(t.docxUrl),
+      pdfUrl:  t.internalOnly && !isAdmin ? '' : abs(t.pdfUrl),
+      link:    t.internalOnly && !isAdmin ? '' : (t.link ?? ''),
+      formLink:t.internalOnly && !isAdmin ? '' : (t.formLink ?? ''),
     })),
     standardizedTests: filteredTests.map((t) => ({
       id: t.id,

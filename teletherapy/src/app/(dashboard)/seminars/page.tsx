@@ -15,8 +15,20 @@ import {
   Search,
   X,
   Target,
+  Award,
+  FileText,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+
+interface Certificate {
+  seminarId: string
+  seminarTitle: string
+  seminarDate: string
+  certificateFile: string
+  certificateUrl: string
+  uploadedAt: string | null
+  source: 'registered' | 'manual'
+}
 
 interface Seminar {
   id: string
@@ -128,6 +140,7 @@ function formatTimeRange(start: string | null | undefined, end: string | null | 
 }
 
 export default function SeminarsPage() {
+  const [activeTab, setActiveTab] = useState<'upcoming' | 'certificates'>('upcoming')
   const [seminars, setSeminars] = useState<Seminar[]>([])
   const [loading, setLoading] = useState(true)
   const [registeringId, setRegisteringId] = useState<string | null>(null)
@@ -135,6 +148,8 @@ export default function SeminarsPage() {
   const [search, setSearch] = useState('')
   const [toast, setToast] = useState<string | null>(null)
   const [objectivesSeminar, setObjectivesSeminar] = useState<Seminar | null>(null)
+  const [certificates, setCertificates] = useState<Certificate[]>([])
+  const [certsLoading, setCertsLoading] = useState(false)
 
   useEffect(() => { fetchSeminars() }, [])
 
@@ -193,6 +208,29 @@ export default function SeminarsPage() {
   function showToast(msg: string) {
     setToast(msg)
     setTimeout(() => setToast(null), 4500)
+  }
+
+  async function fetchCertificates() {
+    setCertsLoading(true)
+    try {
+      const res = await fetch('/api/certificates', { cache: 'no-store' })
+      if (res.ok) {
+        const data = await res.json()
+        setCertificates(data.certificates ?? [])
+      } else {
+        showToast('Failed to load certificates')
+      }
+    } catch {
+      showToast('Failed to load certificates')
+    }
+    setCertsLoading(false)
+  }
+
+  function handleTabChange(tab: 'upcoming' | 'certificates') {
+    setActiveTab(tab)
+    if (tab === 'certificates' && certificates.length === 0 && !certsLoading) {
+      fetchCertificates()
+    }
   }
 
   const q = search.trim().toLowerCase()

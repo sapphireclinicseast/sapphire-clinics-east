@@ -26,6 +26,7 @@ interface Template {
   versionNumber: string
   compilation: string
   templateSize: string
+  internalOnly: boolean
   docxUrl: string
   pdfUrl: string
   link: string
@@ -259,15 +260,42 @@ function FilterButton({ active, onClick, icon, label }: {
 }
 
 function TemplateRow({ t }: { t: Template }) {
+  // Online form templates (Google Form / external link) get a Sun-tinted
+  // card + ribbon to make them stand out. Internal-only templates go
+  // grey + muted because clinicians can see they exist but can't
+  // download them.
+  const hasOnlineForm = !!(t.formLink || t.link)
+  const isInternal = t.internalOnly
   return (
-    <div className="card-static !p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+    <div
+      className={cn(
+        'card-static !p-4 flex flex-col sm:flex-row sm:items-center gap-3 transition-colors',
+        hasOnlineForm && !isInternal && 'border-2 border-[var(--sun)] bg-[var(--sun-tint)]/30 shadow-[0_2px_12px_rgba(198,152,73,0.12)]',
+        isInternal && 'bg-[var(--paper-2)] border-[var(--paper-3)] opacity-70',
+      )}
+    >
       <div className="flex items-start gap-3 flex-1 min-w-0">
-        <div className="w-10 h-10 rounded-xl bg-[var(--sage-tint)] text-[var(--moss)] flex items-center justify-center shrink-0">
+        <div
+          className={cn(
+            'w-10 h-10 rounded-xl flex items-center justify-center shrink-0',
+            hasOnlineForm && !isInternal
+              ? 'bg-[var(--sun)] text-white'
+              : isInternal
+                ? 'bg-[var(--paper-3)] text-[var(--mid-gray)]'
+                : 'bg-[var(--sage-tint)] text-[var(--moss)]',
+          )}
+        >
           <FileText size={18} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-            <p className="font-bold text-[14px] text-[var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>
+            <p
+              className={cn(
+                'font-bold text-[14px]',
+                isInternal ? 'text-[var(--mid-gray)]' : 'text-[var(--narra)]',
+              )}
+              style={{ fontFamily: 'var(--font-display)' }}
+            >
               {t.templateName}
             </p>
             {t.templateNo && (
@@ -280,14 +308,58 @@ function TemplateRow({ t }: { t: Template }) {
                 v{t.versionNumber}
               </span>
             )}
+            {hasOnlineForm && !isInternal && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[var(--sun)] text-[var(--ink)]">
+                <ExternalLink size={10} />
+                Online Form
+              </span>
+            )}
+            {isInternal && (
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[var(--mid-gray)] text-white">
+                Internal Only
+              </span>
+            )}
           </div>
           {t.description && (
-            <p className="text-[12px] text-[var(--mid-gray)] leading-relaxed line-clamp-2">{t.description}</p>
+            <p
+              className={cn(
+                'text-[12px] leading-relaxed line-clamp-2',
+                isInternal ? 'text-[var(--mid-gray)]/80' : 'text-[var(--mid-gray)]',
+              )}
+            >
+              {t.description}
+            </p>
           )}
         </div>
       </div>
 
       <div className="flex items-center justify-end gap-2 sm:shrink-0 flex-wrap">
+        {/* For internal-only templates the API blanks out the URLs for
+            non-admins, so the buttons just won't render. */}
+        {t.formLink && (
+          <a
+            href={t.formLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-[12px] font-bold px-4 py-2 rounded-lg bg-[var(--sun)] text-[var(--ink)] hover:bg-[#b3852f] hover:text-white transition-colors shadow-sm"
+            title="Open online form (Google Forms)"
+          >
+            <ExternalLink size={13} />
+            Open Online Form
+          </a>
+        )}
+        {t.link && (
+          <a
+            href={t.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-lg bg-[var(--sun)] text-[var(--ink)] hover:bg-[#b3852f] hover:text-white transition-colors"
+            title="Open link"
+          >
+            <ExternalLink size={13} />
+            Open
+          </a>
+        )}
         {t.pdfUrl && (
           <a
             href={t.pdfUrl}
@@ -309,30 +381,6 @@ function TemplateRow({ t }: { t: Template }) {
           >
             <Download size={14} />
             DOCX
-          </a>
-        )}
-        {t.formLink && (
-          <a
-            href={t.formLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-lg bg-[var(--clay)] text-white hover:bg-[var(--clay)]/85 transition-colors"
-            title="Open online form"
-          >
-            <ExternalLink size={13} />
-            Form
-          </a>
-        )}
-        {t.link && (
-          <a
-            href={t.link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-lg border border-[var(--paper-3)] text-[var(--narra)] hover:bg-[var(--paper-2)] transition-colors"
-            title="Open link"
-          >
-            <ExternalLink size={13} />
-            Open
           </a>
         )}
       </div>
