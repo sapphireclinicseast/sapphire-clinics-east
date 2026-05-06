@@ -21,26 +21,40 @@ export async function POST(
   // New model: at most one row per (patient, therapist). Flip the
   // current row to DISCHARGED in place — same key whether it was
   // ACTIVE, DEACTIVATED, or didn't exist yet.
-  await prisma.patientAssignment.upsert({
-    where: {
-      patientId_therapistAccountId: {
+  // Discharge also permanently freezes the discharger's notes for
+  // this patient (same rule as endorsement): once you stop being the
+  // active owner, your historical notes become read-only forever.
+  const lockStamp = new Date()
+  await prisma.$transaction([
+    prisma.patientAssignment.upsert({
+      where: {
+        patientId_therapistAccountId: {
+          patientId,
+          therapistAccountId: session.user.id,
+        },
+      },
+      update: {
+        status: 'DISCHARGED',
+        dischargeRemarks: remarks,
+        dischargedAt: lockStamp,
+      },
+      create: {
         patientId,
         therapistAccountId: session.user.id,
+        status: 'DISCHARGED',
+        dischargeRemarks: remarks,
+        dischargedAt: lockStamp,
       },
-    },
-    update: {
-      status: 'DISCHARGED',
-      dischargeRemarks: remarks,
-      dischargedAt: new Date(),
-    },
-    create: {
-      patientId,
-      therapistAccountId: session.user.id,
-      status: 'DISCHARGED',
-      dischargeRemarks: remarks,
-      dischargedAt: new Date(),
-    },
-  })
+    }),
+    prisma.sessionNote.updateMany({
+      where: {
+        therapistAccountId: session.user.id,
+        schedule: { patientId },
+        lockedAt: null,
+      },
+      data: { lockedAt: lockStamp },
+    }),
+  ])
 
   return NextResponse.json({ success: true })
 }

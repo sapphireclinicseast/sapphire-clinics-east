@@ -31,6 +31,13 @@ export async function DELETE(
     if (!allowedStaffIds.includes(schedule.staffId) && schedule.staffId !== session.user.staffId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
+    // Locked notes can't be deleted either — same rule as edit.
+    if (schedule.sessionNote.lockedAt) {
+      return NextResponse.json(
+        { error: 'This note is locked and cannot be deleted.' },
+        { status: 403 },
+      )
+    }
   }
 
   await prisma.sessionNote.delete({

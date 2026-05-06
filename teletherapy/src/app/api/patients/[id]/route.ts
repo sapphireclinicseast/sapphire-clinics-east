@@ -56,6 +56,10 @@ export async function GET(
     discontinuedRemarks: true,
     emailSentAt: true,
     createdAt: true,
+    // Permanent freeze marker. Set when the authoring clinician was
+    // endorsed/discharged off this patient. The frontend uses it to
+    // gate edit/delete affordances (canEdit also checks it below).
+    lockedAt: true,
   }
 
   // Include staff.id so the frontend can compute per-session edit
@@ -64,16 +68,19 @@ export async function GET(
   const staffSelect = { id: true, firstName: true, lastName: true, department: true }
 
   // ── Sessions visible to this clinician ──
-  // Continuity-of-care rule, scoped to discipline:
+  // Continuity-of-care rule, scoped to discipline AND active status:
   //   - Admin sees every confirmed session.
-  //   - A clinician with an assignment row (ACTIVE / DEACTIVATED /
-  //     DISCHARGED / legacy ENDORSED) for the patient sees sessions
-  //     from any staff in the SAME DEPARTMENT as them. So an OT
-  //     receiving an endorsement sees the previous OT's notes but
-  //     NOT the patient's MD or PT sessions, which is the right
-  //     scope for clinical handoff.
-  //   - A clinician with no assignment row only sees sessions they
-  //     personally handled (the legacy "I had a session with X" case).
+  //   - A clinician with an ACTIVE assignment row sees sessions from
+  //     any staff in the SAME DEPARTMENT as them. So an OT receiving
+  //     an endorsement sees the previous OT's notes (read-only,
+  //     because those notes are locked) but NOT MD or PT sessions.
+  //   - A clinician with a non-ACTIVE row (DEACTIVATED / DISCHARGED /
+  //     legacy ENDORSED) OR no row at all only sees sessions they
+  //     personally handled. Critically, a DEACTIVATED clinician must
+  //     NOT see new notes the active owner is writing — they only
+  //     see their own historical contribution. If endorsed back to
+  //     ACTIVE, they regain same-department visibility (and by then
+  //     the other clinician's notes are locked, so still read-only).
   let ownSessions
   if (isAdmin) {
     ownSessions = await prisma.schedule.findMany({
@@ -86,7 +93,12 @@ export async function GET(
       where: { patientId: id, therapistAccountId: session.user.id },
       select: { id: true, status: true },
     })
-    const sharedView = !!myAssignment
+    // Only ACTIVE owners get cross-staff continuity-of-care view.
+    // Anything else (DEACTIVATED, DISCHARGED, legacy ENDORSED, or no
+    // assignment at all) falls back to "only sessions I personally
+    // handled" — which is exactly what a deactivated clinician needs
+    // so they can't peek at the new owner's ongoing notes.
+    const sharedView = myAssignment?.status === 'ACTIVE'
 
     let where: Record<string, unknown>
     if (sharedView && currentDepartment) {
@@ -157,18 +169,26 @@ export async function GET(
     assignment?.status === 'DISCHARGED'
   )
 
-  // Per-session edit permission. The clinician who delivered the
-  // session is the only one who can edit/delete its note (regardless
-  // of who currently owns the patient). Admins can always edit.
-  // This means: even after re-endorsement, neither party can edit the
-  // OTHER's notes — Eloisa cannot retroactively edit Caitlynn's notes,
-  // and once Eloisa endorsed away, she also can't edit her own old
-  // notes anymore (because she's no longer ACTIVE for the patient,
-  // readOnly=true catches that on the frontend).
+  // Per-session edit permission. Three things must all be true for a
+  // clinician to edit/delete a session note:
+  //   1. They are the staff who actually delivered the session
+  //      (mineSet check) — you don't get to edit someone else's note.
+  //   2. They are not currently in read-only mode for this patient
+  //      (i.e. they are the ACTIVE owner) — DEACTIVATED/DISCHARGED
+  //      clinicians can view but not write.
+  //   3. The note itself is not locked. lockedAt is stamped on the
+  //      note the moment the author is endorsed/discharged off the
+  //      patient. Once stamped, it never clears — even if the patient
+  //      is endorsed back to that same clinician, their old notes
+  //      stay frozen at the signature point. New notes they write
+  //      after re-endorsement start unlocked again.
+  // Admins always get edit access.
   const mineSet = new Set(effectiveStaffIds)
   const sessionsWithPerms = ownSessions.map((s) => ({
     ...s,
-    canEdit: isAdmin || (!readOnly && mineSet.has(s.staffId)),
+    canEdit:
+      isAdmin ||
+      (!readOnly && mineSet.has(s.staffId) && !s.sessionNote?.lockedAt),
   }))
 
   return NextResponse.json({

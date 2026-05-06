@@ -24,6 +24,7 @@ import {
   ShieldAlert,
   UserCheck,
   Eye,
+  Lock,
 } from 'lucide-react'
 import { formatTime, formatDate, cn } from '@/lib/utils'
 import PsychologyNoteDisplay from '@/components/PsychologyNoteDisplay'
@@ -64,10 +65,14 @@ interface SessionItem {
     discontinuedRemarks: string | null
     emailSentAt: string | null
     createdAt: string
+    // Permanent freeze marker. Set when the authoring clinician was
+    // endorsed/discharged off the patient. The UI uses it to render
+    // a "View only — signed by …" footer; canEdit also falls to false.
+    lockedAt: string | null
   } | null
   // Server-computed: true iff the logged-in clinician is the staff who
-  // delivered this session (and is currently the active owner of the
-  // patient). Admins always get true.
+  // delivered this session AND is currently the active owner of the
+  // patient AND the note is not locked. Admins always get true.
   canEdit?: boolean
 }
 
@@ -687,9 +692,13 @@ export default function PatientDetailPage() {
                         )}
 
                         {/* Actions — only the clinician who delivered the
-                            session can edit/delete its note. Other clinicians
-                            (incl. the new active owner viewing the endorser's
-                            past notes) get a one-line "View only" message. */}
+                            session can edit/delete its note, and only while
+                            it isn't locked. Locked notes (frozen at the
+                            moment the author was endorsed/discharged off
+                            the patient) are read-only forever, even if the
+                            patient is endorsed BACK to the original author.
+                            Two distinct read-only footers help the viewer
+                            understand WHY edit isn't available. */}
                         {s.canEdit ? (
                           <div className="pt-3 border-t border-[var(--light-gray)] flex items-center justify-between">
                             <button
@@ -706,6 +715,11 @@ export default function PatientDetailPage() {
                               <Trash2 size={13} />
                               Delete note
                             </button>
+                          </div>
+                        ) : s.sessionNote.lockedAt ? (
+                          <div className="pt-3 border-t border-[var(--light-gray)] flex items-center gap-2 text-[11px] text-[var(--mid-gray)] italic">
+                            <Lock size={12} />
+                            Locked — signed by {s.staff.firstName} {s.staff.lastName}. Notes are frozen at endorsement and cannot be edited.
                           </div>
                         ) : (
                           <div className="pt-3 border-t border-[var(--light-gray)] flex items-center gap-2 text-[11px] text-[var(--mid-gray)] italic">

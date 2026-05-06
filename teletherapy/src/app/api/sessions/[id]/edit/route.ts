@@ -32,6 +32,16 @@ export async function PATCH(
     if (!allowedStaffIds.includes(schedule.staffId) && schedule.staffId !== session.user.staffId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
+    // Locked notes are permanently read-only. lockedAt is stamped when
+    // the author is endorsed/discharged off the patient and never
+    // clears, so this rejection holds even if the patient is later
+    // endorsed back to the same clinician.
+    if (schedule.sessionNote.lockedAt) {
+      return NextResponse.json(
+        { error: 'This note is locked. Notes become read-only after the author is endorsed or discharged off the patient.' },
+        { status: 403 },
+      )
+    }
   }
 
   const updateData: Record<string, unknown> = {}

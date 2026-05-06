@@ -40,12 +40,18 @@ export async function POST(
   // New endorsement model:
   //   - Exactly ONE row per (patient, therapist).
   //   - The current clinician's row flips to DEACTIVATED (read-only,
-  //     can still see past notes for continuity of care).
+  //     can still see past notes they personally delivered).
   //   - The receiving clinician's row is created ACTIVE, OR if they
   //     already had a DEACTIVATED row from a previous cycle it flips
   //     back to ACTIVE.
+  //   - All SessionNotes the endorser authored for this patient get
+  //     stamped with lockedAt=now. This is permanent: even if the
+  //     patient is endorsed back to them later, those notes stay
+  //     read-only because they were signed at a specific point in
+  //     time and that signature shouldn't be retroactively editable.
   // Wrapped in a transaction so a partial failure doesn't leave the
-  // patient with two ACTIVE owners or two read-only rows.
+  // patient with two ACTIVE owners or unlocked stale notes.
+  const lockStamp = new Date()
   await prisma.$transaction([
     prisma.patientAssignment.upsert({
       where: {
@@ -57,14 +63,14 @@ export async function POST(
       update: {
         status: 'DEACTIVATED',
         endorsedToId: endorseToAccountId,
-        endorsedAt: new Date(),
+        endorsedAt: lockStamp,
       },
       create: {
         patientId,
         therapistAccountId: session.user.id,
         status: 'DEACTIVATED',
         endorsedToId: endorseToAccountId,
-        endorsedAt: new Date(),
+        endorsedAt: lockStamp,
       },
     }),
     prisma.patientAssignment.upsert({
@@ -85,6 +91,17 @@ export async function POST(
         therapistAccountId: endorseToAccountId,
         status: 'ACTIVE',
       },
+    }),
+    // Permanently freeze the endorser's notes for this patient.
+    // updateMany skips already-locked rows (lockedAt: null filter)
+    // so the original lock timestamp is preserved across cycles.
+    prisma.sessionNote.updateMany({
+      where: {
+        therapistAccountId: session.user.id,
+        schedule: { patientId },
+        lockedAt: null,
+      },
+      data: { lockedAt: lockStamp },
     }),
   ])
 

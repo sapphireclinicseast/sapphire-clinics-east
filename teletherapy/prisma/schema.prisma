@@ -247,6 +247,13 @@ model SessionNote {
   isInitialEvaluation Boolean           @default(false)
   emailSentAt         DateTime?
   emailSentTo         String?
+  // Permanent freeze marker. Set when the authoring clinician is
+  // endorsed/discharged off the patient. Once stamped, the note can
+  // never be edited again — even if the patient is endorsed BACK to
+  // the same clinician later. This is by design: the note is signed
+  // by who delivered it at the time it was delivered, and a later
+  // re-endorsement should not unlock historical clinical content.
+  lockedAt            DateTime?
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
 }

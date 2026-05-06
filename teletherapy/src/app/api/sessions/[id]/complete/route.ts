@@ -28,6 +28,13 @@ export async function POST(
     if (!allowedStaffIds.includes(schedule.staffId) && schedule.staffId !== session.user.staffId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
+    // If we'd be mutating an existing note, refuse if it's locked.
+    if (schedule.sessionNote?.lockedAt) {
+      return NextResponse.json(
+        { error: 'This note is locked and cannot be modified.' },
+        { status: 403 },
+      )
+    }
   }
 
   // If a session note already exists (e.g. created by QR capture), update it
