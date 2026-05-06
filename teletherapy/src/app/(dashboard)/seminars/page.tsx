@@ -14,6 +14,7 @@ import {
   ExternalLink,
   Search,
   X,
+  Target,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -34,6 +35,10 @@ interface Seminar {
   speakerTitle: string
   speakerHeadshot: string | null
   description: string
+  // Free-form learning objectives string from HR; usually multi-line
+  // with literal "\n" / "\t" markers that we render verbatim with
+  // whitespace-pre-line for readability.
+  objectives?: string
   disciplineFocus: string[]
   targetAudience: string
   feeAmount: number
@@ -129,6 +134,7 @@ export default function SeminarsPage() {
   const [unregisteringId, setUnregisteringId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [toast, setToast] = useState<string | null>(null)
+  const [objectivesSeminar, setObjectivesSeminar] = useState<Seminar | null>(null)
 
   useEffect(() => { fetchSeminars() }, [])
 
@@ -346,9 +352,22 @@ export default function SeminarsPage() {
                 </div>
 
                 {s.description && (
-                  <p className="text-[12.5px] text-[var(--charcoal)]/80 leading-relaxed mb-4 line-clamp-3">
+                  <p className="text-[12.5px] text-[var(--charcoal)]/80 leading-relaxed mb-3 line-clamp-3">
                     {s.description}
                   </p>
+                )}
+
+                {/* Objectives button — opens a modal with the full
+                    learning objectives list when present. */}
+                {s.objectives && s.objectives.trim() && (
+                  <button
+                    onClick={() => setObjectivesSeminar(s)}
+                    className="inline-flex items-center gap-1.5 mb-4 text-[12px] font-semibold px-3 py-1.5 rounded-lg border border-[var(--teal)]/30 text-[var(--teal)] hover:bg-[var(--pale-teal)] hover:border-[var(--teal)]/60 transition-colors"
+                    title="View learning objectives"
+                  >
+                    <Target size={13} />
+                    Objectives
+                  </button>
                 )}
 
                 {/* Dedicated meeting-link section — for both pure-virtual
@@ -379,7 +398,7 @@ export default function SeminarsPage() {
 
                 <div className="flex items-center justify-between gap-3 pt-3 border-t border-[var(--light-gray)]">
                   <p className="text-[11px] text-[var(--mid-gray)]">
-                    Free for clinicians {s.feeAmount > 0 ? `(public fee: ₱${s.feeAmount.toLocaleString()})` : ''}
+                    Free for in-house clinicians {s.feeAmount > 0 ? `(Public fee: ₱${s.feeAmount.toLocaleString()})` : ''}
                   </p>
                   {registered ? (
                     <div className="flex items-center gap-2">
@@ -418,6 +437,64 @@ export default function SeminarsPage() {
           })}
         </div>
       )}
+
+      {objectivesSeminar && (
+        <ObjectivesModal
+          seminar={objectivesSeminar}
+          onClose={() => setObjectivesSeminar(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function ObjectivesModal({ seminar, onClose }: {
+  seminar: Seminar; onClose: () => void
+}) {
+  // Objectives often arrive with literal "\n" / "\t" characters. We
+  // render with whitespace-pre-line so existing line breaks survive,
+  // and replace tabs with two spaces so numbered lists indent cleanly.
+  const text = (seminar.objectives ?? '').replace(/\t/g, '  ')
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
+      onClick={onClose}
+    >
+      <div
+        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-hidden flex flex-col animate-gate"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="hero-gradient px-5 py-4 flex items-center gap-3 shrink-0">
+          <Target size={18} className="text-white shrink-0" />
+          <div className="flex-1 min-w-0">
+            <h2 className="text-[15px] font-bold text-white tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
+              Learning Objectives
+            </h2>
+            <p className="text-white/70 text-[11px] truncate">{seminar.title}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-white/70 hover:text-white p-1 rounded-md hover:bg-white/10 transition-colors"
+            title="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="p-5 overflow-y-auto">
+          {text.trim() ? (
+            <p
+              className="text-[13.5px] text-[var(--charcoal)] leading-relaxed whitespace-pre-line"
+              style={{ fontFamily: 'var(--font-body)' }}
+            >
+              {text}
+            </p>
+          ) : (
+            <p className="text-[12px] text-[var(--mid-gray)] italic text-center py-6">
+              No objectives recorded for this seminar yet.
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
