@@ -457,6 +457,7 @@ jobs:
           REMOTE_SCRIPT
 
       # ── 8. Deploy Accounting Hub (Docker) ────────────────────────
+      # ── 8. Deploy Accounting Hub (Docker) ────────────────────────
       - name: Deploy Accounting Hub
         uses: appleboy/ssh-action@v1
         with:
@@ -466,19 +467,22 @@ jobs:
           script: |
             set -eo pipefail
             ACCT_DIR="/opt/sapphire-marketing-hub"
-            DOCKER_DIR="$ACCT_DIR/accounting-hub/docker"
+            # DEPLOY_DIR is the AUTHORITATIVE location for the running accounting hub.
+            # All docker compose operations MUST use this path and its .env file.
+            # NEVER run docker compose from $ACCT_DIR/accounting-hub/docker — that
+            # directory uses .env.production and a different compose project name,
+            # which causes container hijacking and credential mismatches.
+            DEPLOY_DIR="/opt/accounting"
+            DOCKER_DIR="$DEPLOY_DIR/docker"
 
-            echo "→ Pulling latest accounting-hub code..."
+            echo "→ Pulling latest accounting-hub code into git mirror..."
             cd "$ACCT_DIR"
             git fetch origin main
             # Only update the accounting-hub/ subtree; preserve any in-flight edits
             # to the marketing hub (src/, prisma/, etc.) living at the repo root.
-            # A blanket `git reset --hard origin/main` would discard them.
             git checkout origin/main -- accounting-hub/
             # Also sync client-portal/ and teletherapy/ source so the daily
             # snapshot of this directory captures the rebrand + any UI updates.
-            # These two apps are deployed from elsewhere (Docker / PM2), but
-            # the backup script reads from /opt/sapphire-marketing-hub.
             git checkout origin/main -- client-portal/ 2>/dev/null || true
             git checkout origin/main -- teletherapy/   2>/dev/null || true
             git checkout origin/main -- .github/ scripts/ 2>/dev/null || true
@@ -486,8 +490,20 @@ jobs:
             echo "   client-portal/  synced to: $(git log -1 --oneline origin/main -- client-portal/)"
             echo "   teletherapy/    synced to: $(git log -1 --oneline origin/main -- teletherapy/)"
 
+            echo "→ Syncing git mirror to live deploy directory ($DEPLOY_DIR)..."
+            # Excludes: .env files (authoritative versions live in DEPLOY_DIR/docker/),
+            # build artifacts, and user-uploaded files.
+            rsync -a --delete \
+              --exclude='docker/.env' \
+              --exclude='docker/.env.production' \
+              --exclude='node_modules' \
+              --exclude='.next' \
+              --exclude='uploads' \
+              "$ACCT_DIR/accounting-hub/" "$DEPLOY_DIR/"
+            echo "   Source synced OK."
+
             echo "→ Running DB migrations on accounting_db..."
-            MIGRATION_DIR="$ACCT_DIR/accounting-hub/prisma/migrations"
+            MIGRATION_DIR="$DEPLOY_DIR/prisma/migrations"
             for sql_file in "$MIGRATION_DIR"/*/migration.sql; do
               [ -f "$sql_file" ] && docker exec -i accounting_db psql -U sapphire -d sapphire_accounting < "$sql_file" 2>&1 || true
             done
@@ -500,60 +516,32 @@ jobs:
               WHERE email IN ('main@sapphireclinicseast.org', 'admin@sapphireclinicseast.org');
             " 2>&1 && echo "   Password updated OK (SCEI)" || echo "   Password update failed"
 
-            echo "→ Checking docker compose env file..."
-            cd "$DOCKER_DIR"
-            if [ ! -f ".env.production" ]; then
-              echo "⚠ .env.production not found — checking parent directories..."
-              if [ -f "$ACCT_DIR/.env.production" ]; then
-                cp "$ACCT_DIR/.env.production" .env.production
-              elif [ -f "/opt/sapphire/docker/.env.production" ]; then
-                cp "/opt/sapphire/docker/.env.production" .env.production
-              else
-                echo "❌ Could not find .env.production — build may fail"
-              fi
-            fi
-            echo "   .env.production status: $([ -f .env.production ] && echo 'found' || echo 'MISSING')"
-
-            # Tier 3: Enable General Ledger auto-posting. Idempotent — sets the
-            # flag if missing, leaves it alone if already present.
-            if [ -f .env.production ]; then
-              if grep -q "^ENABLE_GL_POSTING=" .env.production; then
-                sed -i 's|^ENABLE_GL_POSTING=.*|ENABLE_GL_POSTING=true|' .env.production
-                echo "   ENABLE_GL_POSTING already present — set to true."
-              else
-                echo "ENABLE_GL_POSTING=true" >> .env.production
-                echo "   ENABLE_GL_POSTING=true appended."
-              fi
-            fi
-
-            echo "→ Ensuring NEXTAUTH_URL is correct for accounting hub..."
-            # The env file may have been copied from the marketing hub — fix the URL
-            if grep -q "NEXTAUTH_URL" .env.production 2>/dev/null; then
-              sed -i 's|NEXTAUTH_URL=.*|NEXTAUTH_URL=https://accounting.sapphireclinicseast.org|' .env.production
+            echo "→ Enabling GL auto-posting flag..."
+            if grep -q "^ENABLE_GL_POSTING=" "$DOCKER_DIR/.env" 2>/dev/null; then
+              sed -i 's|^ENABLE_GL_POSTING=.*|ENABLE_GL_POSTING=true|' "$DOCKER_DIR/.env"
+              echo "   ENABLE_GL_POSTING set to true."
             else
-              echo "NEXTAUTH_URL=https://accounting.sapphireclinicseast.org" >> .env.production
+              echo "ENABLE_GL_POSTING=true" >> "$DOCKER_DIR/.env"
+              echo "   ENABLE_GL_POSTING=true appended."
             fi
-            echo "   NEXTAUTH_URL=$(grep NEXTAUTH_URL .env.production)"
 
-            echo "→ Syncing postgres password to match .env.production..."
-            PG_PASS=$(grep "^POSTGRES_PASSWORD" .env.production 2>/dev/null | cut -d= -f2-)
+            echo "→ Syncing postgres password to match $DOCKER_DIR/.env..."
+            PG_PASS=$(grep "^POSTGRES_PASSWORD" "$DOCKER_DIR/.env" 2>/dev/null | cut -d= -f2-)
             echo "   POSTGRES_PASSWORD length: ${#PG_PASS}"
             if [ -n "$PG_PASS" ]; then
-              docker exec accounting_db psql -U sapphire -d sapphire_accounting -c "ALTER USER sapphire WITH PASSWORD '${PG_PASS}';" 2>&1 \
+              docker exec accounting_db psql -U sapphire -d sapphire_accounting \
+                -c "ALTER USER sapphire WITH PASSWORD '${PG_PASS}';" 2>&1 \
                 && echo "   Postgres password synced OK" \
                 || echo "   ⚠ Postgres password sync failed (non-fatal)"
             else
-              echo "   ⚠ POSTGRES_PASSWORD not found in .env.production"
+              echo "   ⚠ POSTGRES_PASSWORD not found in $DOCKER_DIR/.env"
             fi
 
-            echo "→ Removing any stale accounting_app container not managed by compose..."
-            docker stop accounting_app 2>/dev/null || true
-            docker rm accounting_app 2>/dev/null || true
-
-            echo "→ Rebuilding and restarting via docker compose..."
-            docker compose --env-file .env.production build app 2>&1
+            echo "→ Rebuilding and restarting via docker compose (from $DOCKER_DIR)..."
+            cd "$DOCKER_DIR"
+            docker compose build app 2>&1
             echo "   Image built successfully."
-            docker compose --env-file .env.production up -d --force-recreate app 2>&1
+            docker compose up -d --force-recreate app 2>&1
             echo "   Container started."
 
             echo "→ Waiting 20s for app to stabilize..."
@@ -575,19 +563,8 @@ jobs:
                 -w "%{redirect_url}" -o /dev/null 2>&1 || echo "FAIL")
               if echo "$LOGIN_RESULT" | grep -q "error="; then
                 echo "   ⚠ Login test FAILED — redirect: $LOGIN_RESULT"
-                echo "   → Checking if DB connection works..."
-                docker exec accounting_db psql -U sapphire -d sapphire_accounting -c "SELECT email, LEFT(\"passwordHash\",15) FROM \"User\" WHERE email='main@sapphireclinicseast.org';" 2>&1
                 echo "   → App container DATABASE_URL:"
                 docker exec accounting_app env 2>/dev/null | grep DATABASE_URL | sed "s|://[^:]*:[^@]*@|://USER:PASS@|g"
-                echo "   → Attempting to fix: resetting postgres password from .env.production..."
-                PG_PASS2=$(grep "^POSTGRES_PASSWORD" .env.production 2>/dev/null | cut -d= -f2-)
-                docker exec accounting_db psql -U sapphire -d sapphire_accounting -c "ALTER USER sapphire WITH PASSWORD '${PG_PASS2}';" 2>&1
-                echo "   → Restarting app container..."
-                docker compose --env-file .env.production restart app 2>&1
-                sleep 10
-                echo "   → Retesting..."
-                RETRY_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/ 2>&1 || echo "000")
-                echo "   Retry HTTP: $RETRY_CODE"
               else
                 echo "   ✅ Login test passed — redirect: $LOGIN_RESULT"
               fi
@@ -597,6 +574,7 @@ jobs:
 
             echo "→ Container logs (last 40 lines):"
             docker logs accounting_app --tail 40 2>&1 || true
+
 
             echo "→ Container env (auth-related, masked):"
             docker exec accounting_app env 2>/dev/null | grep -E "NEXTAUTH_URL|AUTH_TRUST|NODE_ENV" || true
