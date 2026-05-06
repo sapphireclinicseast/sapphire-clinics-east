@@ -24,7 +24,7 @@ import {
   ShieldAlert,
   UserCheck,
 } from 'lucide-react'
-import { formatTime, formatDate } from '@/lib/utils'
+import { formatTime, formatDate, cn } from '@/lib/utils'
 import PsychologyNoteDisplay from '@/components/PsychologyNoteDisplay'
 import OTNoteDisplay from '@/components/OTNoteDisplay'
 import SLPNoteDisplay from '@/components/SLPNoteDisplay'
@@ -274,18 +274,40 @@ export default function PatientDetailPage() {
         Back to Patients
       </button>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
+      <div className={cn(
+        'grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6',
+        // Whole-page muted state when this clinician no longer owns the
+        // patient. Slight desaturation + lower opacity makes it visually
+        // obvious without preventing reading.
+        readOnly && 'grayscale-[0.4] opacity-90'
+      )}>
         <div className="min-w-0">
 
       {/* Patient header */}
-      <div className="hero-gradient rounded-2xl p-6 mb-6 animate-fade-up">
+      <div className={cn(
+        'rounded-2xl p-6 mb-6 animate-fade-up',
+        readOnly
+          ? 'bg-[var(--paper-2)] border border-[var(--paper-3)]'
+          : 'hero-gradient'
+      )}>
         <div className="relative z-10 flex items-center gap-4">
-          <div className="w-14 h-14 rounded-full bg-white/15 flex items-center justify-center text-white font-bold text-lg backdrop-blur-sm border border-white/20">
+          <div className={cn(
+            'w-14 h-14 rounded-full flex items-center justify-center font-bold text-lg backdrop-blur-sm border',
+            readOnly
+              ? 'bg-[var(--paper-3)] text-[var(--mid-gray)] border-[var(--paper-3)]'
+              : 'bg-white/15 text-white border-white/20'
+          )}>
             {patient.firstName[0]}{patient.lastName[0]}
           </div>
           <div className="flex-1">
-            <h1 className="text-xl font-bold text-white">{patientName}</h1>
-            <p className="text-white/60 text-sm mt-0.5">
+            <h1 className={cn(
+              'text-xl font-bold',
+              readOnly ? 'text-[var(--mid-gray)]' : 'text-white'
+            )}>{patientName}</h1>
+            <p className={cn(
+              'text-sm mt-0.5',
+              readOnly ? 'text-[var(--mid-gray)]/80' : 'text-white/60'
+            )}>
               {patient.patientType} {patient.diagnosis ? `· ${patient.diagnosis}` : ''}
               {patient.email ? ` · ${patient.email}` : ''}
             </p>
@@ -552,29 +574,37 @@ export default function PatientDetailPage() {
                     {expanded ? <ChevronUp size={16} className="text-[var(--mid-gray)]" /> : <ChevronDown size={16} className="text-[var(--mid-gray)]" />}
                   </button>
 
-                  {/* Expanded: no notes yet — show action buttons */}
+                  {/* Expanded: no notes yet — show action buttons (write only) */}
                   {expanded && !s.sessionNote && (
                     <div className="px-4 pb-4 pt-0 border-t border-[var(--light-gray)]">
                       <div className="pt-3">
-                        <p className="text-[13px] text-[var(--mid-gray)] mb-3">
-                          No notes recorded for this session. You can add notes now:
-                        </p>
-                        <div className="flex gap-3">
-                          <button
-                            onClick={() => router.push(`/session/${s.id}?action=complete`)}
-                            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold bg-green-600 text-white hover:bg-green-700 transition-colors"
-                          >
-                            <CheckCircle2 size={16} />
-                            Completed
-                          </button>
-                          <button
-                            onClick={() => router.push(`/session/${s.id}?action=discontinue`)}
-                            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors"
-                          >
-                            <XCircle size={16} />
-                            Discontinued
-                          </button>
-                        </div>
+                        {readOnly ? (
+                          <p className="text-[13px] text-[var(--mid-gray)] italic">
+                            No notes recorded. The current owner of this patient can add notes.
+                          </p>
+                        ) : (
+                          <>
+                            <p className="text-[13px] text-[var(--mid-gray)] mb-3">
+                              No notes recorded for this session. You can add notes now:
+                            </p>
+                            <div className="flex gap-3">
+                              <button
+                                onClick={() => router.push(`/session/${s.id}?action=complete`)}
+                                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold bg-green-600 text-white hover:bg-green-700 transition-colors"
+                              >
+                                <CheckCircle2 size={16} />
+                                Completed
+                              </button>
+                              <button
+                                onClick={() => router.push(`/session/${s.id}?action=discontinue`)}
+                                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors"
+                              >
+                                <XCircle size={16} />
+                                Discontinued
+                              </button>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   )}
@@ -632,36 +662,40 @@ export default function PatientDetailPage() {
                                     <Paperclip size={12} />
                                     {att.fileName}
                                   </a>
-                                  <button
-                                    onClick={() => handleDeleteAttachment(s.id, i)}
-                                    className="text-[var(--mid-gray)] hover:text-red-500 shrink-0 ml-2 p-0.5"
-                                    title="Delete attachment"
-                                  >
-                                    <X size={14} />
-                                  </button>
+                                  {!readOnly && (
+                                    <button
+                                      onClick={() => handleDeleteAttachment(s.id, i)}
+                                      className="text-[var(--mid-gray)] hover:text-red-500 shrink-0 ml-2 p-0.5"
+                                      title="Delete attachment"
+                                    >
+                                      <X size={14} />
+                                    </button>
+                                  )}
                                 </div>
                               ))}
                             </div>
                           </div>
                         )}
 
-                        {/* Actions */}
-                        <div className="pt-3 border-t border-[var(--light-gray)] flex items-center justify-between">
-                          <button
-                            onClick={() => router.push(`/session/${s.id}?edit=true`)}
-                            className="flex items-center gap-1.5 text-[12px] text-[var(--teal)] hover:underline font-medium transition-colors"
-                          >
-                            <Pencil size={13} />
-                            Edit notes
-                          </button>
-                          <button
-                            onClick={() => handleDeleteNote(s.id)}
-                            className="flex items-center gap-1.5 text-[12px] text-red-500 hover:text-red-700 font-medium transition-colors"
-                          >
-                            <Trash2 size={13} />
-                            Delete note
-                          </button>
-                        </div>
+                        {/* Actions — hidden in read-only mode */}
+                        {!readOnly && (
+                          <div className="pt-3 border-t border-[var(--light-gray)] flex items-center justify-between">
+                            <button
+                              onClick={() => router.push(`/session/${s.id}?edit=true`)}
+                              className="flex items-center gap-1.5 text-[12px] text-[var(--teal)] hover:underline font-medium transition-colors"
+                            >
+                              <Pencil size={13} />
+                              Edit notes
+                            </button>
+                            <button
+                              onClick={() => handleDeleteNote(s.id)}
+                              className="flex items-center gap-1.5 text-[12px] text-red-500 hover:text-red-700 font-medium transition-colors"
+                            >
+                              <Trash2 size={13} />
+                              Delete note
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -677,7 +711,7 @@ export default function PatientDetailPage() {
 
         {/* Right sidebar: Patient Widgets */}
         <aside className="lg:sticky lg:top-4 lg:self-start space-y-3">
-          <PatientWidgets patient={patient} canManage={true} />
+          <PatientWidgets patient={patient} canManage={!readOnly} />
         </aside>
       </div>
     </div>
