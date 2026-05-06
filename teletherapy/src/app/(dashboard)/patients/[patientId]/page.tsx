@@ -23,6 +23,7 @@ import {
   Info,
   ShieldAlert,
   UserCheck,
+  Eye,
 } from 'lucide-react'
 import { formatTime, formatDate, cn } from '@/lib/utils'
 import PsychologyNoteDisplay from '@/components/PsychologyNoteDisplay'
@@ -54,7 +55,7 @@ interface SessionItem {
   endTime: string
   sessionType: string
   status: string
-  staff: { firstName: string; lastName: string; department: string }
+  staff: { id: string; firstName: string; lastName: string; department: string }
   sessionNote: {
     id: string
     status: string
@@ -64,6 +65,10 @@ interface SessionItem {
     emailSentAt: string | null
     createdAt: string
   } | null
+  // Server-computed: true iff the logged-in clinician is the staff who
+  // delivered this session (and is currently the active owner of the
+  // patient). Admins always get true.
+  canEdit?: boolean
 }
 
 interface StaffOption {
@@ -574,13 +579,17 @@ export default function PatientDetailPage() {
                     {expanded ? <ChevronUp size={16} className="text-[var(--mid-gray)]" /> : <ChevronDown size={16} className="text-[var(--mid-gray)]" />}
                   </button>
 
-                  {/* Expanded: no notes yet — show action buttons (write only) */}
+                  {/* Expanded: no notes yet — show add-note buttons only when
+                      this clinician owns the session (s.canEdit). A read-only
+                      viewer of the patient sees a passive line; a clinician
+                      who can see the session for continuity but didn't deliver
+                      it (different staff in same dept) sees nothing actionable. */}
                   {expanded && !s.sessionNote && (
                     <div className="px-4 pb-4 pt-0 border-t border-[var(--light-gray)]">
                       <div className="pt-3">
-                        {readOnly ? (
+                        {!s.canEdit ? (
                           <p className="text-[13px] text-[var(--mid-gray)] italic">
-                            No notes recorded. The current owner of this patient can add notes.
+                            No notes recorded yet. Only {s.staff.firstName} {s.staff.lastName} can add notes for this session.
                           </p>
                         ) : (
                           <>
@@ -662,7 +671,7 @@ export default function PatientDetailPage() {
                                     <Paperclip size={12} />
                                     {att.fileName}
                                   </a>
-                                  {!readOnly && (
+                                  {s.canEdit && (
                                     <button
                                       onClick={() => handleDeleteAttachment(s.id, i)}
                                       className="text-[var(--mid-gray)] hover:text-red-500 shrink-0 ml-2 p-0.5"
@@ -677,8 +686,11 @@ export default function PatientDetailPage() {
                           </div>
                         )}
 
-                        {/* Actions — hidden in read-only mode */}
-                        {!readOnly && (
+                        {/* Actions — only the clinician who delivered the
+                            session can edit/delete its note. Other clinicians
+                            (incl. the new active owner viewing the endorser's
+                            past notes) get a one-line "View only" message. */}
+                        {s.canEdit ? (
                           <div className="pt-3 border-t border-[var(--light-gray)] flex items-center justify-between">
                             <button
                               onClick={() => router.push(`/session/${s.id}?edit=true`)}
@@ -694,6 +706,11 @@ export default function PatientDetailPage() {
                               <Trash2 size={13} />
                               Delete note
                             </button>
+                          </div>
+                        ) : (
+                          <div className="pt-3 border-t border-[var(--light-gray)] flex items-center gap-2 text-[11px] text-[var(--mid-gray)] italic">
+                            <Eye size={12} />
+                            View only — signed by {s.staff.firstName} {s.staff.lastName}.
                           </div>
                         )}
                       </div>

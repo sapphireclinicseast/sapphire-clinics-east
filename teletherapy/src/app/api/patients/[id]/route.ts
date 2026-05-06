@@ -58,7 +58,10 @@ export async function GET(
     createdAt: true,
   }
 
-  const staffSelect = { firstName: true, lastName: true, department: true }
+  // Include staff.id so the frontend can compute per-session edit
+  // permissions (only the staff who actually delivered the session
+  // is allowed to edit / delete that note — see canEdit below).
+  const staffSelect = { id: true, firstName: true, lastName: true, department: true }
 
   // ── Sessions visible to this clinician ──
   // Continuity-of-care rule, scoped to discipline:
@@ -154,9 +157,23 @@ export async function GET(
     assignment?.status === 'DISCHARGED'
   )
 
+  // Per-session edit permission. The clinician who delivered the
+  // session is the only one who can edit/delete its note (regardless
+  // of who currently owns the patient). Admins can always edit.
+  // This means: even after re-endorsement, neither party can edit the
+  // OTHER's notes — Eloisa cannot retroactively edit Caitlynn's notes,
+  // and once Eloisa endorsed away, she also can't edit her own old
+  // notes anymore (because she's no longer ACTIVE for the patient,
+  // readOnly=true catches that on the frontend).
+  const mineSet = new Set(effectiveStaffIds)
+  const sessionsWithPerms = ownSessions.map((s) => ({
+    ...s,
+    canEdit: isAdmin || (!readOnly && mineSet.has(s.staffId)),
+  }))
+
   return NextResponse.json({
     patient,
-    sessions: ownSessions,
+    sessions: sessionsWithPerms,
     assignment,
     readOnly,
     otherServices, // e.g. ["MD", "OT"] — departments the patient also sees
