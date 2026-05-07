@@ -114,7 +114,7 @@ const SITE_CONFIG = {
     greenhills: {
       name:    'Sandbox Clinic – Greenhills Branch',
       address: 'Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City',
-      email:   'east.sandboxclinic@gmail.com',
+      email:   'greenhills.sandboxclinic@gmail.com',
       hrEmail: 'hr.sandboxclinicgh@gmail.com',
       phones:  ['+63 917 770 1686', '(02) 8529-1590'],
       services: [
