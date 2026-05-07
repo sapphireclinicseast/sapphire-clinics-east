@@ -5,7 +5,16 @@ import { useRouter } from 'next/navigation'
 import { getSession } from '@/lib/session'
 
 const SERVICES_SBEA = ['PT', 'OT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS'] as const
-const SERVICES_SBGH = ['PT', 'OT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'PSYCHIATRY', 'DEVELOPMENTAL_PEDIATRICIAN'] as const
+// SBGH note: there's no standalone "Medical Doctor" service here — the MD
+// track at SBGH is delivered through two sub-specialties: Psychiatry and
+// Developmental Pediatrician. Each carries its own dept code so the rest of
+// the system (Decking, downpayments) keeps working unchanged. A small
+// "Medical Doctor" tag is rendered above each card to make the parent
+// category obvious and prevent confusion with PT/OT/SLP/etc.
+const SERVICES_SBGH = ['PT', 'OT', 'SLP', 'SPED', 'PSYCHOLOGY', 'PSYCHIATRY', 'DEVELOPMENTAL_PEDIATRICIAN'] as const
+
+// Departments that are sub-specialties of the Medical Doctor service.
+const MD_SUBSPECIALTIES = new Set(['PSYCHIATRY', 'DEVELOPMENTAL_PEDIATRICIAN'])
 
 const SERVICE_LABELS: Record<string, string> = {
   PT: 'Physical Therapy',
@@ -76,7 +85,20 @@ export default function BookStep1Page() {
                 }`}
                 style={{ fontFamily: 'var(--font-display)' }}
               >
-                <div className="text-2xl mb-1.5 leading-none">{SERVICE_EMOJI[s] ?? '✨'}</div>
+                <div className="flex items-start justify-between mb-1.5">
+                  <div className="text-2xl leading-none">{SERVICE_EMOJI[s] ?? '✨'}</div>
+                  {MD_SUBSPECIALTIES.has(s) && (
+                    <span
+                      className={`text-[9px] font-bold uppercase tracking-[0.08em] px-1.5 py-0.5 rounded ${
+                        service === s
+                          ? 'bg-white/25 text-white'
+                          : 'bg-[color:var(--paper-2)] text-[color:var(--mid-gray)]'
+                      }`}
+                    >
+                      Medical Doctor
+                    </span>
+                  )}
+                </div>
                 <div className={`text-[13.5px] font-semibold leading-tight ${service === s ? '' : 'text-[color:var(--deep-teal)]'}`}>
                   {SERVICE_LABELS[s] ?? s}
                 </div>
