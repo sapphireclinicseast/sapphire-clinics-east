@@ -28,53 +28,7 @@ export async function GET(req: Request) {
   const sync = searchParams.get('sync') === 'true'
   const includeInactive = searchParams.get('includeInactive') === 'true'
 
-  // Cleanup: remove duplicate employees (same name+branch, prefer the one with externalStaffId)
-  if (sync) {
-    try {
-      const allEmps = await prisma.employee.findMany({ where: { isActive: true } })
-      const seen = new Map<string, typeof allEmps[0]>()
-      for (const emp of allEmps) {
-        const key = `${emp.firstName.toUpperCase()}|${emp.lastName.toUpperCase()}|${emp.branch}`
-        const prev = seen.get(key)
-        if (prev) {
-          // Prefer the one with externalStaffId (synced). If both have it, keep the newer one.
-          const keepSynced = emp.externalStaffId && !prev.externalStaffId ? emp : prev
-          const removeDup = keepSynced === emp ? prev : emp
-          // Clear bio ID on duplicate first (unique constraint), then soft-delete
-          if (removeDup.employeeBioId) {
-            await prisma.employee.update({ where: { id: removeDup.id }, data: { employeeBioId: null } })
-          }
-          await prisma.employee.update({ where: { id: removeDup.id }, data: { isActive: false } })
-          seen.set(key, keepSynced)
-        } else {
-          seen.set(key, emp)
-        }
-      }
-    } catch (e) {
-      console.error('Duplicate cleanup error:', e)
-    }
-  }
-
-  // Purge: deactivate any synced employees (externalStaffId set) that are NOT ADMINISTRATION
-  // and NOT Verdana. These were incorrectly added when the department filter was briefly
-  // removed. Manually-added employees (no externalStaffId) are left untouched.
-  if (sync) {
-    try {
-      await prisma.employee.updateMany({
-        where: {
-          isActive: true,
-          externalStaffId: { not: null },
-          branch: { notIn: ['VERDANA', 'VDNA'] },
-          department: { not: 'ADMINISTRATION' },
-        },
-        data: { isActive: false },
-      })
-    } catch (e) {
-      console.error('Non-admin employee purge error:', e)
-    }
-  }
-
-  // Sync from marketing hub (which also fetches gov IDs from HR platform via includeHR)
+  // Sync from marketing hub
   if (sync) {
     try {
       const res = await fetch(`${MARKETING_HUB_URL}/api/staff/external?includeHR=true`, {
@@ -84,24 +38,27 @@ export async function GET(req: Request) {
       if (res.ok) {
         const data = await res.json()
         const staff = data.staff || []
+
+        // Track which externalStaffIds are valid employees (for purge step below)
+        const validExternalIds = new Set<string>()
+
         for (const s of staff) {
-          const dept = s.department || ''
           const br = s.branch || ''
-          // Only sync ADMINISTRATION staff into payroll (all branches).
-          // Verdana Store staff are ALL synced regardless of department.
           const isVerdana = ['VDNA', 'VERDANA'].includes(br.toUpperCase())
-          if (!isVerdana && dept !== 'ADMINISTRATION') continue
-          // Normalize Verdana branch name for accounting hub
+          // Only sync staff with employmentType='employee' (not consultants/therapists on
+          // retainer). Verdana Store staff are ALL synced regardless of employment type.
+          if (!isVerdana && s.employmentType !== 'employee') continue
+
+          validExternalIds.add(s.id)
           const normalizedBranch = isVerdana ? 'VERDANA' : br
 
           try {
-            // Build update/create data — always sync basic fields.
-            // isActive: true reactivates employees that were soft-deleted and re-synced.
-            // Use HR job title (human-readable) if available, fall back to marketing hub slug.
+            // Fields to sync — deliberately excludes dailyRate / monthlyRate / rateType
+            // so manually-entered pay rates are never overwritten.
             const syncData: Record<string, unknown> = {
               firstName: s.firstName || '',
               lastName: s.lastName || '',
-              department: dept,
+              department: s.department || '',
               branch: normalizedBranch,
               jobTitle: s.hrJobTitle || s.jobTitle || null,
               email: s.email || null,
@@ -109,48 +66,10 @@ export async function GET(req: Request) {
               isActive: true,
             }
 
-            // Sync employeeId as biometric ID
-            // Use marketing hub's employeeId (branch-specific bio ID), NOT hrEmployeeId (HR platform ID shared across branches)
-            const empId = s.employeeId
-            if (empId) {
-              const bioId = parseInt(empId)
-              if (!isNaN(bioId)) {
-                // Check if another employee already has this bioId (unique constraint)
-                const bioConflict = await prisma.employee.findFirst({
-                  where: { employeeBioId: bioId, externalStaffId: { not: s.id } },
-                })
-                if (!bioConflict) {
-                  syncData.employeeBioId = bioId
-                }
-              }
-            }
+            // Marketing Hub employeeId = biometric device ID = Bio ID in accounting hub.
+            const bioId = s.employeeId ? parseInt(s.employeeId) : NaN
 
-            // Look up existing by externalStaffId first
-            let existing = await prisma.employee.findUnique({ where: { externalStaffId: s.id } })
-
-            // If not found by externalStaffId, try matching by name+branch to link manual entries
-            if (!existing) {
-              const nameMatch = await prisma.employee.findFirst({
-                where: {
-                  firstName: { equals: s.firstName || '', mode: 'insensitive' },
-                  lastName: { equals: s.lastName || '', mode: 'insensitive' },
-                  branch: normalizedBranch,
-                  externalStaffId: null, // only match unlinked manual entries
-                },
-              })
-              if (nameMatch) {
-                // Link the manual entry to the marketing hub record
-                await prisma.employee.update({
-                  where: { id: nameMatch.id },
-                  data: { externalStaffId: s.id },
-                })
-                existing = { ...nameMatch, externalStaffId: s.id }
-              }
-            }
-
-            // Always sync government IDs and bank details from HR platform — HR platform
-            // is the authoritative source. Previously the gov IDs were only filled when
-            // empty, which prevented corrections from propagating (JULIE ANN JOVILLO issue).
+            // Always sync government IDs and bank details from HR platform (authoritative source).
             if (s.sss) syncData.sssNumber = s.sss
             if (s.philhealth) syncData.philhealthNumber = s.philhealth
             if (s.pagibig) syncData.pagibigNumber = s.pagibig
@@ -158,22 +77,119 @@ export async function GET(req: Request) {
             if (s.bankName) syncData.bankName = s.bankName
             if (s.bankAccountNo) syncData.bankAccountNo = s.bankAccountNo
 
-            await prisma.employee.upsert({
-              where: { externalStaffId: s.id },
-              update: syncData,
-              create: {
-                externalStaffId: s.id,
-                ...syncData,
-                firstName: syncData.firstName as string,
-                lastName: syncData.lastName as string,
-                department: syncData.department as string,
-                branch: syncData.branch as string,
-              },
-            })
+            // ── Find existing record (priority: Bio ID → externalStaffId → name+branch) ──
+            // This prevents duplicate creation when the same person already exists.
+            let existing: { id: string; employeeBioId: number | null; externalStaffId: string | null; branch: string } | null = null
+
+            // 1. Match by Bio ID + same branch (most reliable — same physical device ID)
+            if (!isNaN(bioId) && bioId > 0) {
+              existing = await prisma.employee.findFirst({
+                where: { employeeBioId: bioId, branch: normalizedBranch },
+                select: { id: true, employeeBioId: true, externalStaffId: true, branch: true },
+              }) ?? null
+            }
+
+            // 2. Match by externalStaffId (previously synced record)
+            if (!existing) {
+              existing = await prisma.employee.findUnique({
+                where: { externalStaffId: s.id },
+                select: { id: true, employeeBioId: true, externalStaffId: true, branch: true },
+              }) ?? null
+            }
+
+            // 3. Match by name + branch (catches manually-entered records, any link state)
+            if (!existing) {
+              existing = await prisma.employee.findFirst({
+                where: {
+                  firstName: { equals: s.firstName || '', mode: 'insensitive' },
+                  lastName: { equals: s.lastName || '', mode: 'insensitive' },
+                  branch: normalizedBranch,
+                },
+                select: { id: true, employeeBioId: true, externalStaffId: true, branch: true },
+              }) ?? null
+            }
+
+            // Set Bio ID on syncData only if no conflict with a DIFFERENT record
+            if (!isNaN(bioId) && bioId > 0) {
+              const bioConflict = await prisma.employee.findFirst({
+                where: { employeeBioId: bioId, ...(existing ? { id: { not: existing.id } } : {}) },
+                select: { id: true },
+              })
+              if (!bioConflict) syncData.employeeBioId = bioId
+            }
+
+            if (existing) {
+              // Ensure the record is linked to this Marketing Hub staff ID
+              if (existing.externalStaffId !== s.id) {
+                await prisma.employee.update({ where: { id: existing.id }, data: { externalStaffId: s.id } })
+              }
+              // Update info fields only — pay rates (dailyRate, monthlyRate, rateType) are untouched
+              await prisma.employee.update({ where: { id: existing.id }, data: syncData })
+            } else {
+              // Genuinely new employee not found by any matching method — create
+              await prisma.employee.create({
+                data: {
+                  externalStaffId: s.id,
+                  ...syncData,
+                  firstName: syncData.firstName as string,
+                  lastName: syncData.lastName as string,
+                  department: syncData.department as string,
+                  branch: syncData.branch as string,
+                },
+              })
+            }
           } catch (empErr) {
             console.error(`Employee sync error for ${s.firstName} ${s.lastName} (${br}):`, empErr)
-            // continue syncing the rest
           }
+        }
+
+        // ── Purge: deactivate synced employees no longer in the valid employee set ──
+        // Catches consultants/clinical staff added by a previous code version.
+        // Manually-entered employees (no externalStaffId) are never touched.
+        if (validExternalIds.size > 0) {
+          try {
+            const toDeactivate = await prisma.employee.findMany({
+              where: {
+                isActive: true,
+                externalStaffId: { not: null },
+                NOT: [{ externalStaffId: { in: [...validExternalIds] } }],
+              },
+              select: { id: true, employeeBioId: true },
+            })
+            for (const emp of toDeactivate) {
+              // Clear Bio ID first to release the unique constraint, then deactivate
+              await prisma.employee.update({
+                where: { id: emp.id },
+                data: { ...(emp.employeeBioId ? { employeeBioId: null } : {}), isActive: false },
+              })
+            }
+          } catch (purgeErr) {
+            console.error('Non-employee purge error:', purgeErr)
+          }
+        }
+
+        // ── Duplicate cleanup: deactivate same-name+branch extras, keep synced record ──
+        // Run after sync so any records reactivated above are also deduplicated.
+        try {
+          const activeEmps = await prisma.employee.findMany({ where: { isActive: true } })
+          const seen = new Map<string, typeof activeEmps[0]>()
+          for (const emp of activeEmps) {
+            const key = `${emp.firstName.toUpperCase()}|${emp.lastName.toUpperCase()}|${emp.branch}`
+            const prev = seen.get(key)
+            if (prev) {
+              const keepSynced = emp.externalStaffId && !prev.externalStaffId ? emp : prev
+              const removeDup = keepSynced === emp ? prev : emp
+              if (removeDup.employeeBioId) {
+                await prisma.employee.update({ where: { id: removeDup.id }, data: { employeeBioId: null } })
+              }
+              await prisma.employee.update({ where: { id: removeDup.id }, data: { isActive: false } })
+              seen.set(key, keepSynced)
+            } else {
+              seen.set(key, emp)
+            }
+          }
+        } catch (dupErr) {
+          console.error('Duplicate cleanup error:', dupErr)
         }
       }
     } catch (e) {
