@@ -427,79 +427,105 @@ export default function SeminarsPage() {
               <div
                 key={s.id}
                 className={cn(
-                  'card-static animate-fade-up',
+                  'card-static animate-fade-up relative',
                   `stagger-${Math.min(i + 2, 10)}`,
                   registered && 'border-2 border-[var(--teal)]/30'
                 )}
               >
-                <div className="flex flex-col lg:flex-row lg:items-start gap-4 mb-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                      {/* Classification (Workshop / Webinar / etc.).
-                          Prefer the preset; fall back to the freeform
-                          classificationOther if the curator picked
-                          "Other" on the HR side. Sand palette so it
-                          reads distinctly from the format badge. */}
-                      {(() => {
-                        const cls = (s.classification || s.classificationOther || '').trim()
-                        if (!cls) return null
-                        return (
-                          <span className="badge !text-[10px] bg-[var(--clay)]/10 text-[var(--clay)] border border-[var(--clay)]/30 capitalize">
-                            {cls}
-                          </span>
-                        )
-                      })()}
-                      <span className="badge badge-teal !text-[10px]">{FORMAT_LABEL[s.format] ?? s.format}</span>
-                      {(s.disciplineFocus ?? []).map((d) => (
-                        <span key={d} className="badge !text-[10px] bg-[var(--sand-light)] text-[var(--sand-dark)] border border-[var(--sand-dark)]/20">
-                          {d}
-                        </span>
-                      ))}
-                      {registered && (
-                        <span className="badge !text-[10px] bg-green-50 text-green-700 border border-green-200 flex items-center gap-1">
-                          <CheckCircle2 size={11} />
-                          Registered
-                        </span>
-                      )}
-                    </div>
-                    <h2
-                      className="font-bold text-[16px] text-[var(--charcoal)] leading-snug"
-                      style={{ fontFamily: 'var(--font-display)' }}
-                    >
-                      {s.title}
-                    </h2>
+                {/* Speaker block — floated in the upper-right via
+                    absolute positioning so it doesn't dictate flex
+                    row height. Previously the 88px avatar + button
+                    (~107px tall) made the title row much taller than
+                    the title needed, leaving a big gap before the
+                    date/time row. With absolute positioning the title
+                    and details flow tight and the avatar just sits
+                    in the corner. The card body gets right-padding
+                    on lg+ screens to clear the avatar; on small
+                    screens the avatar drops below (handled via the
+                    no-pr / static positioning below).
+                    The About Speaker button only renders when
+                    aboutSpeaker is non-empty; opening a modal with
+                    no bio would be pointless. */}
+                {(s.speakerName || s.speakerHeadshot) && (
+                  <div className="hidden lg:flex absolute top-4 right-4 flex-col items-center gap-1.5 w-[88px] z-[1]">
+                    <SpeakerAvatar
+                      src={s.speakerHeadshot}
+                      name={s.speakerName}
+                      size={72}
+                    />
+                    {s.aboutSpeaker && s.aboutSpeaker.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => setAboutSpeaker({ name: s.speakerName, title: s.speakerTitle, headshot: s.speakerHeadshot, bio: s.aboutSpeaker || '' })}
+                        className="text-[11px] font-semibold text-[var(--teal)] hover:underline whitespace-nowrap"
+                      >
+                        About Speaker
+                      </button>
+                    )}
                   </div>
+                )}
 
-                  {/* Speaker block — upper right of the card.
-                      Renders whenever we have a speaker name (so the
-                      avatar — headshot or initials fallback — is
-                      always visible for any seminar with a speaker
-                      attached). The About Speaker button only renders
-                      when aboutSpeaker is non-empty; opening a modal
-                      with no bio would be pointless.
-                      SpeakerAvatar handles the broken-image fallback
-                      internally via React state, so a 404 swaps to the
-                      initials circle in place rather than leaving a
-                      broken-image icon. */}
-                  {(s.speakerName || s.speakerHeadshot) && (
-                    <div className="flex flex-col items-center gap-2 lg:w-[120px] shrink-0">
-                      <SpeakerAvatar
-                        src={s.speakerHeadshot}
-                        name={s.speakerName}
-                        size={88}
-                      />
+                {/* Reserve right-side space on lg+ so the badges /
+                    title don't run under the absolute avatar. The
+                    extra ~110px = avatar (88) + a bit of margin. */}
+                <div className={cn('mb-2', (s.speakerName || s.speakerHeadshot) && 'lg:pr-[110px]')}>
+                  <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                    {/* Classification (Workshop / Webinar / etc.).
+                        Prefer the preset; fall back to the freeform
+                        classificationOther if the curator picked
+                        "Other" on the HR side. Sand palette so it
+                        reads distinctly from the format badge. */}
+                    {(() => {
+                      const cls = (s.classification || s.classificationOther || '').trim()
+                      if (!cls) return null
+                      return (
+                        <span className="badge !text-[10px] bg-[var(--clay)]/10 text-[var(--clay)] border border-[var(--clay)]/30 capitalize">
+                          {cls}
+                        </span>
+                      )
+                    })()}
+                    <span className="badge badge-teal !text-[10px]">{FORMAT_LABEL[s.format] ?? s.format}</span>
+                    {(s.disciplineFocus ?? []).map((d) => (
+                      <span key={d} className="badge !text-[10px] bg-[var(--sand-light)] text-[var(--sand-dark)] border border-[var(--sand-dark)]/20">
+                        {d}
+                      </span>
+                    ))}
+                    {registered && (
+                      <span className="badge !text-[10px] bg-green-50 text-green-700 border border-green-200 flex items-center gap-1">
+                        <CheckCircle2 size={11} />
+                        Registered
+                      </span>
+                    )}
+                  </div>
+                  <h2
+                    className="font-bold text-[16px] text-[var(--charcoal)] leading-snug"
+                    style={{ fontFamily: 'var(--font-display)' }}
+                  >
+                    {s.title}
+                  </h2>
+                </div>
+
+                {/* Mobile / small-screen speaker block — visible only
+                    when the absolute desktop block is hidden, so the
+                    headshot is still accessible on phones/tablets. */}
+                {(s.speakerName || s.speakerHeadshot) && (
+                  <div className="lg:hidden flex items-center gap-3 mb-3 pb-3 border-b border-[var(--light-gray)]">
+                    <SpeakerAvatar src={s.speakerHeadshot} name={s.speakerName} size={56} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12px] font-semibold text-[var(--charcoal)] truncate">{s.speakerName}</p>
+                      {s.speakerTitle && <p className="text-[11px] text-[var(--mid-gray)] truncate">{s.speakerTitle}</p>}
                       {s.aboutSpeaker && s.aboutSpeaker.trim() && (
                         <button
                           type="button"
                           onClick={() => setAboutSpeaker({ name: s.speakerName, title: s.speakerTitle, headshot: s.speakerHeadshot, bio: s.aboutSpeaker || '' })}
-                          className="text-[11px] font-semibold text-[var(--teal)] hover:underline whitespace-nowrap"
+                          className="text-[11px] font-semibold text-[var(--teal)] hover:underline mt-0.5"
                         >
                           About Speaker
                         </button>
                       )}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[12px] text-[var(--mid-gray)] mb-3">
                   <div className="flex items-center gap-2">
