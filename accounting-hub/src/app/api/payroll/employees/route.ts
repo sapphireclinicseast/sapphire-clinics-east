@@ -68,9 +68,9 @@ export async function GET(req: Request) {
         for (const s of staff) {
           const dept = s.department || ''
           const br = s.branch || ''
-          // Sync ADMINISTRATION and FRONT_DESK as employees, plus ALL Verdana Store staff
+          // Sync ALL staff regardless of department — clinical staff (OT, PT, SLP, etc.)
+          // are also salaried employees and must appear in the payroll system.
           const isVerdana = ['VDNA', 'VERDANA'].includes(br.toUpperCase())
-          if (!isVerdana && !['FRONT_DESK', 'ADMINISTRATION'].includes(dept)) continue
           // Normalize Verdana branch name for accounting hub
           const normalizedBranch = isVerdana ? 'VERDANA' : br
 
