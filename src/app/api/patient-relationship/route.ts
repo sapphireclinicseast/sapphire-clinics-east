@@ -76,7 +76,17 @@ export async function GET(req: NextRequest) {
           }
         }
       }
-    } catch {}
+    } catch (err) {
+      // Don't swallow — log it and surface to caller. Today's "Registration
+      // Form empty" bug was the empty {} catch hiding a real fetch failure.
+      console.error('[patient-relationship/waitlist] HR fetch failed:', err)
+      return NextResponse.json({
+        responses: [],
+        total: 0,
+        formTitle: form.title,
+        _warning: `Could not reach HR Platform: ${(err as Error).message ?? 'unknown error'}`,
+      })
+    }
 
     // Filter by branch if needed
     let filtered = responses

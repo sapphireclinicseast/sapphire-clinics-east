@@ -35,6 +35,12 @@ export async function GET(
     const data = await res.json()
     return NextResponse.json(data)
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e.message || 'Failed to fetch from HR platform' })
+    // Visible in `docker logs sapphire_app` so an outage is obvious.
+    console.error('[registration-forms/responses] HR fetch failed:', e)
+    return NextResponse.json({
+      ok: false,
+      error: e.message || 'Failed to fetch from HR platform',
+      _warning: 'HR Platform unreachable — Registration Form responses cannot be loaded right now.',
+    })
   }
 }
