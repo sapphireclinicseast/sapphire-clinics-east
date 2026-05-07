@@ -175,7 +175,6 @@ document.addEventListener('DOMContentLoaded', () => {
   initHeroSlider();
   initScrollReveal();
   initBranchTabs();
-  initAccTabs();
   initFAQs();
   initLightbox();
   initScrollTop();
@@ -364,14 +363,6 @@ function initBranchTabs() {
 function switchBranch(key) {
   document.querySelectorAll('.branch-tab').forEach(t => t.classList.toggle('active', t.dataset.branch === key));
   document.querySelectorAll('.branch-panel').forEach(p => p.classList.toggle('active', p.id === `${key}Panel`));
-}
-
-/* ── Accomplishment Tabs ────────────────────────────────────────── */
-function initAccTabs() { /* Activated by switchAcc() */ }
-
-function switchAcc(year) {
-  document.querySelectorAll('.acc-tab').forEach(t => t.classList.toggle('active', t.dataset.year === year));
-  document.querySelectorAll('.acc-panel').forEach(p => p.classList.toggle('active', p.id === `acc${year}`));
 }
 
 /* ── FAQs ───────────────────────────────────────────────────────── */

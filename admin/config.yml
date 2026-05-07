@@ -52,9 +52,9 @@ collections:
         hint: "Write the full post here. You can use bold, bullet points, headings, etc."
 
 
-  # ── 2. Upcoming Events & Training ────────────────────────────────
+  # ── 2. Upcoming Events ────────────────────────────────
   - name: "events"
-    label: "📅 Events & Training"
+    label: "📅 Events"
     folder: "content/events"
     create: true
     delete: true

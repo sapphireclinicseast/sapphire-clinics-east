@@ -157,20 +157,7 @@
     <!-- Desktop Links -->
     <div class="nav-links">
 
-      <!-- About Us Dropdown -->
-      <div class="nav-dropdown">
-        <button class="nav-link" onclick="scrollToSection('about')">
-          About Us ▾
-        </button>
-        <div class="dropdown-menu">
-          <span class="dropdown-item" onclick="scrollToSection('leadership')">
-            👥 Leadership
-          </span>
-          <span class="dropdown-item" onclick="scrollToSection('accomplishments')">
-            🏆 Accomplishments
-          </span>
-        </div>
-      </div>
+      <button class="nav-link" onclick="scrollToSection('about')">About Us</button>
 
       <!-- Branches Dropdown -->
       <div class="nav-dropdown">
@@ -210,8 +197,6 @@
 <div class="mobile-nav" id="mobileNav" role="dialog" aria-label="Mobile navigation">
   <button class="mobile-nav-close" onclick="closeMobileNav()" aria-label="Close navigation">&times;</button>
   <button class="mobile-nav-link" onclick="scrollToSection('about')">About Us</button>
-  <button class="mobile-nav-link" onclick="scrollToSection('leadership')" style="font-size: 0.9em; opacity: 0.85; padding-left: 24px;">— Leadership</button>
-  <button class="mobile-nav-link" onclick="scrollToSection('accomplishments')" style="font-size: 0.9em; opacity: 0.85; padding-left: 24px;">— Accomplishments</button>
   <button class="mobile-nav-link" onclick="scrollToSection('branches')">Branches</button>
   <a class="mobile-nav-link" href="/hiring">Careers</a>
   <a class="mobile-nav-link" href="/seminars">Trainings</a>
@@ -586,66 +571,6 @@
       </div>
 
     </div><!-- /greenhillsPanel -->
-
-  </div>
-</section>
-
-
-<!-- ================================================================
-  ACCOMPLISHMENTS
-================================================================ -->
-<section id="accomplishments" class="accomplishments-section">
-  <div class="container">
-
-    <div class="section-header reveal">
-      <span class="section-tag amber">Annual Reports</span>
-      <h2 class="section-title">Accomplishments</h2>
-      <p class="section-subtitle">Year-by-year performance, milestones, and impact reports for Sapphire Clinics East, Inc.</p>
-    </div>
-
-    <!-- Year Tabs -->
-    <div class="acc-tabs reveal">
-      <button class="acc-tab active" data-year="2024" onclick="switchAcc('2024')">
-        📊 2024 Report — Inaugural Year
-      </button>
-      <button class="acc-tab" data-year="2025" onclick="switchAcc('2025')">
-        📈 2025 Report — Expansion Year
-      </button>
-    </div>
-
-    <!-- 2024 Panel -->
-    <div id="acc2024" class="acc-panel active">
-      <div class="acc-open-btn reveal">
-        <a href="scei-2024-report.html" target="_blank" class="btn btn-outline btn-sm">
-          <i data-lucide="external-link" style="width:14px;height:14px"></i>
-          Open in Full Page
-        </a>
-      </div>
-      <div class="acc-iframe-wrap reveal">
-        <iframe src="scei-2024-report.html"
-                title="SCEI 2024 Annual Accomplishment Report"
-                loading="lazy"
-                allow="same-origin">
-        </iframe>
-      </div>
-    </div>
-
-    <!-- 2025 Panel -->
-    <div id="acc2025" class="acc-panel">
-      <div class="acc-open-btn reveal">
-        <a href="scei-2025-report.html" target="_blank" class="btn btn-outline btn-sm">
-          <i data-lucide="external-link" style="width:14px;height:14px"></i>
-          Open in Full Page
-        </a>
-      </div>
-      <div class="acc-iframe-wrap reveal">
-        <iframe src="scei-2025-report.html"
-                title="SCEI 2025 Annual Accomplishment Report"
-                loading="lazy"
-                allow="same-origin">
-        </iframe>
-      </div>
-    </div>
 
   </div>
 </section>
@@ -1093,7 +1018,6 @@
       <span class="footer-link" onclick="scrollToSection('about')">About Us</span>
       <span class="footer-link" onclick="scrollToSection('leadership')">Leadership</span>
       <span class="footer-link" onclick="scrollToSection('branches')">Branches</span>
-      <span class="footer-link" onclick="scrollToSection('accomplishments')">Accomplishments</span>
       <span class="footer-link" onclick="scrollToSection('careers')">Careers</span>
       <span class="footer-link" onclick="scrollToSection('faqs')">FAQs</span>
     </div>

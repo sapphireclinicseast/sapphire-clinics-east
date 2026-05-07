@@ -761,52 +761,6 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading); line-height: 1.25; }
 .lightbox-prev { left: 20px; }
 .lightbox-next { right: 20px; }
 
-/* ── ACCOMPLISHMENTS ───────────────────────────────────────────── */
-.accomplishments-section { padding: var(--section-padding); background: var(--bg-alt); }
-.acc-tabs {
-  display: flex; gap: 8px;
-  margin-bottom: 32px;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-.acc-tab {
-  padding: 12px 28px;
-  background: var(--bg-card);
-  border: 2px solid var(--border);
-  border-radius: 100px;
-  font-size: 15px; font-weight: 600;
-  cursor: pointer;
-  transition: all var(--transition);
-  font-family: var(--font-body);
-  color: var(--text-muted);
-}
-.acc-tab:hover { border-color: var(--primary-light); color: var(--primary); }
-.acc-tab.active {
-  background: var(--primary-dark);
-  border-color: var(--primary-dark);
-  color: #fff;
-}
-.acc-panel { display: none; }
-.acc-panel.active { display: block; }
-.acc-iframe-wrap {
-  border-radius: var(--radius);
-  overflow: hidden;
-  box-shadow: var(--shadow-xl);
-  border: 1px solid var(--border);
-  background: #fff;
-}
-.acc-iframe-wrap iframe {
-  width: 100%;
-  height: 90vh;
-  min-height: 600px;
-  border: none;
-  display: block;
-}
-.acc-open-btn {
-  text-align: right;
-  margin-bottom: 12px;
-}
-
 /* ── CAREERS ───────────────────────────────────────────────────── */
 .careers-section { padding: var(--section-padding); background: #fff; }
 .career-card {
@@ -1189,7 +1143,6 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading); line-height: 1.25; }
   .gallery-grid { grid-template-columns: repeat(2, 1fr); }
   .contact-grid { grid-template-columns: 1fr; }
   .branch-tab { padding: 10px 16px; font-size: 14px; }
-  .acc-iframe-wrap iframe { height: 75vh; }
   .lightbox-prev, .lightbox-next { display: none; }
   .career-branches { grid-template-columns: 1fr; }
 }
