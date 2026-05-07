@@ -55,6 +55,25 @@ export async function GET(req: Request) {
     }
   }
 
+  // Purge: deactivate any synced employees (externalStaffId set) that are NOT ADMINISTRATION
+  // and NOT Verdana. These were incorrectly added when the department filter was briefly
+  // removed. Manually-added employees (no externalStaffId) are left untouched.
+  if (sync) {
+    try {
+      await prisma.employee.updateMany({
+        where: {
+          isActive: true,
+          externalStaffId: { not: null },
+          branch: { notIn: ['VERDANA', 'VDNA'] },
+          department: { not: 'ADMINISTRATION' },
+        },
+        data: { isActive: false },
+      })
+    } catch (e) {
+      console.error('Non-admin employee purge error:', e)
+    }
+  }
+
   // Sync from marketing hub (which also fetches gov IDs from HR platform via includeHR)
   if (sync) {
     try {
