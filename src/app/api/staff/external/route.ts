@@ -96,6 +96,9 @@ export async function GET(req: NextRequest) {
                 philhealth: hr?.philhealth || null,
                 pagibig: hr?.pagibig || null,
                 tin: hr?.tin || null,
+                // HR platform is authoritative for bank details; fall back to Staff table values
+                bankName: (hr?.bankName as string) || s.bankName || null,
+                bankAccountNo: (hr?.bankAccountNo as string) || s.bankAccountNo || null,
                 hrJobTitle: hr?.jobTitle || null,
                 hrEmployeeId: hr?.employeeId || null,
               }
