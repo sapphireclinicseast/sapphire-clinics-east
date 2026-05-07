@@ -54,6 +54,7 @@ export async function GET(req: NextRequest) {
         department: true,
         branch: true,
         jobTitle: true,
+        employmentType: true,
         hrPlatformId: true,
         sss: true,
         philhealth: true,
