@@ -156,9 +156,21 @@
 
     <!-- Desktop Links -->
     <div class="nav-links">
-      <button class="nav-link" onclick="scrollToSection('home')">Home</button>
-      <button class="nav-link" onclick="scrollToSection('about')">About Us</button>
-      <button class="nav-link" onclick="scrollToSection('leadership')">Leadership</button>
+
+      <!-- About Us Dropdown -->
+      <div class="nav-dropdown">
+        <button class="nav-link" onclick="scrollToSection('about')">
+          About Us ▾
+        </button>
+        <div class="dropdown-menu">
+          <span class="dropdown-item" onclick="scrollToSection('leadership')">
+            👥 Leadership
+          </span>
+          <span class="dropdown-item" onclick="scrollToSection('accomplishments')">
+            🏆 Accomplishments
+          </span>
+        </div>
+      </div>
 
       <!-- Branches Dropdown -->
       <div class="nav-dropdown">
@@ -175,16 +187,15 @@
         </div>
       </div>
 
-      <button class="nav-link" onclick="scrollToSection('accomplishments')">Accomplishments</button>
-      <button class="nav-link" onclick="scrollToSection('careers')">Careers</button>
+      <a class="nav-link" href="/hiring">Careers</a>
+      <a class="nav-link" href="/seminars">Trainings</a>
       <button class="nav-link" onclick="scrollToSection('faqs')">FAQs</button>
       <button class="nav-link" onclick="scrollToSection('news')">News</button>
-      <button class="nav-link" onclick="scrollToSection('contact')">Contact</button>
     </div>
 
     <!-- Book CTA -->
     <div class="nav-cta">
-      <button class="btn btn-accent btn-sm" onclick="scrollToSection('contact')">Book a Session</button>
+      <a class="btn btn-accent btn-sm" href="/booking">Book a Session</a>
     </div>
 
     <!-- Hamburger -->
@@ -198,16 +209,15 @@
 <!-- Mobile Navigation -->
 <div class="mobile-nav" id="mobileNav" role="dialog" aria-label="Mobile navigation">
   <button class="mobile-nav-close" onclick="closeMobileNav()" aria-label="Close navigation">&times;</button>
-  <button class="mobile-nav-link" onclick="scrollToSection('home')">Home</button>
   <button class="mobile-nav-link" onclick="scrollToSection('about')">About Us</button>
-  <button class="mobile-nav-link" onclick="scrollToSection('leadership')">Leadership</button>
+  <button class="mobile-nav-link" onclick="scrollToSection('leadership')" style="font-size: 0.9em; opacity: 0.85; padding-left: 24px;">— Leadership</button>
+  <button class="mobile-nav-link" onclick="scrollToSection('accomplishments')" style="font-size: 0.9em; opacity: 0.85; padding-left: 24px;">— Accomplishments</button>
   <button class="mobile-nav-link" onclick="scrollToSection('branches')">Branches</button>
-  <button class="mobile-nav-link" onclick="scrollToSection('accomplishments')">Accomplishments</button>
-  <button class="mobile-nav-link" onclick="scrollToSection('careers')">Careers</button>
+  <a class="mobile-nav-link" href="/hiring">Careers</a>
+  <a class="mobile-nav-link" href="/seminars">Trainings</a>
   <button class="mobile-nav-link" onclick="scrollToSection('faqs')">FAQs</button>
   <button class="mobile-nav-link" onclick="scrollToSection('news')">News</button>
-  <button class="mobile-nav-link" onclick="scrollToSection('contact')">Contact</button>
-  <button class="mobile-nav-link" onclick="scrollToSection('contact')" style="color: var(--accent); margin-top: 12px;">Book a Session →</button>
+  <a class="mobile-nav-link" href="/booking" style="color: var(--accent); margin-top: 12px;">Book a Session →</a>
 </div>
 
 
