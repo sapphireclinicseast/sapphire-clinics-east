@@ -297,12 +297,13 @@ export async function PUT(
     const { patientName, patientEmail, patientId, isActive, deleteReason, accountId,
             dateObtained, paymentModeId, agency, approvedServices, diagnosis, vipTier, attachmentUrl, attachmentUrls, balance, rewardPoints, totalGlAmount, branch, soaStatus } = body
 
-    // Look up wallet type so we can protect HMO balance from manual edits.
-    // GL now allows a manually-maintained 'Remaining Balance (Usable Amount)' that
-    // represents how much of the Guarantee Letter approval is still consumable —
-    // distinct from totalGlAmount (AR / what the agency owes us).
+    // Look up wallet type so we can protect certain balances from manual edits.
+    // HMO: balance computed from unpaid orders (always read-only).
+    // GL: balance is set once at wallet creation and auto-managed by orders thereafter
+    //     (decremented on order, restored on void) — read-only after creation.
+    // VIP / PREPAID_CARD / DOWNPAYMENT / ADVANCE / PACKAGE: user-maintained balances.
     const existing = await prisma.digitalWallet.findUnique({ where: { id }, select: { walletType: true } })
-    const isBalanceReadOnly = existing?.walletType === 'HMO'
+    const isBalanceReadOnly = existing?.walletType === 'HMO' || existing?.walletType === 'GL'
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = {}
@@ -319,8 +320,7 @@ export async function PUT(
     if (vipTier !== undefined) data.vipTier = vipTier || null
     if (attachmentUrl !== undefined) data.attachmentUrl = attachmentUrl || null
     if (attachmentUrls !== undefined) data.attachmentUrls = Array.isArray(attachmentUrls) && attachmentUrls.length > 0 ? attachmentUrls : null
-    // HMO balance is computed from unpaid POS orders — never allow manual edits.
-    // VIP / PREPAID_CARD / DOWNPAYMENT / ADVANCE / PACKAGE / GL balances are user-maintained.
+    // HMO and GL balances are managed by the system — reject any manual override.
     if (balance !== undefined && !isBalanceReadOnly) {
       const balNum = balance !== '' && balance !== null ? Number(balance) : 0
       data.balance = isNaN(balNum) ? 0 : balNum
