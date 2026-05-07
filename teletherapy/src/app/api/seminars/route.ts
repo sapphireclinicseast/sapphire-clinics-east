@@ -37,6 +37,10 @@ interface HRSeminar {
   maxParticipants: number
   registeredCount: number
   registeredEmails: string[]
+  // Lowercase emails of registrants whose certificateFile is set on
+  // HR. Used to decide whether the logged-in user can still
+  // unregister — once their cert is uploaded they cannot.
+  registeredCertEmails?: string[]
 }
 
 // GET /api/seminars
@@ -126,12 +130,18 @@ export async function GET() {
     .filter(visibleToMe)
     .map((s) => {
       const registered = (s.registeredEmails ?? []).includes(myEmail)
+      // myHasCertificate locks the unregister UI on the frontend.
+      // Server-side the HR unregister handler also rejects with 409
+      // for any email in registeredCertEmails, so this is just the
+      // cosmetic mirror.
+      const myHasCertificate = (s.registeredCertEmails ?? []).includes(myEmail)
       // Only expose meetingLink if I'm registered.
-      const { registeredEmails: _omit, meetingLink, ...rest } = s
+      const { registeredEmails: _omit, registeredCertEmails: _omit2, meetingLink, ...rest } = s
       return {
         ...rest,
         speakerHeadshot: absHeadshot(s.speakerHeadshot),
         myRegistration: registered ? { registered: true } : { registered: false },
+        myHasCertificate,
         meetingLink: registered ? meetingLink : '',
       }
     })

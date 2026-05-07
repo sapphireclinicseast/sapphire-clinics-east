@@ -65,6 +65,12 @@ interface Seminar {
   maxParticipants: number
   registeredCount: number
   myRegistration: { registered: boolean }
+  // Server-stamped: true iff a certificate has already been uploaded
+  // for the logged-in user on this seminar. When true, the Unregister
+  // affordance is hidden — the cert is signed proof of attendance and
+  // dropping the registration would orphan it. Server-side, the HR
+  // unregister handler rejects with 409 for the same case.
+  myHasCertificate?: boolean
 }
 
 const FORMAT_LABEL: Record<string, string> = {
@@ -611,18 +617,34 @@ export default function SeminarsPage() {
                         <CheckCircle2 size={14} />
                         You&rsquo;re in
                       </span>
-                      <button
-                        onClick={() => handleUnregister(s.id, s.title)}
-                        disabled={unregisteringId === s.id}
-                        className="text-[12px] font-semibold px-3 py-1.5 rounded-lg border border-[var(--clay)]/40 text-[var(--clay)] hover:bg-[var(--clay)] hover:text-white hover:border-[var(--clay)] transition-colors disabled:opacity-50 inline-flex items-center gap-1.5"
-                        title="Unregister from this seminar"
-                      >
-                        {unregisteringId === s.id ? (
-                          <><Loader2 size={13} className="animate-spin" /> Unregistering…</>
-                        ) : (
-                          <>Unregister</>
-                        )}
-                      </button>
+                      {/* Unregister is hidden once a certificate has
+                          been issued for this user — the cert is
+                          signed proof of attendance and removing the
+                          registration would orphan it. Server-side
+                          the HR handler also rejects this with 409,
+                          so a stale client can't bypass the rule. */}
+                      {s.myHasCertificate ? (
+                        <span
+                          className="text-[11px] text-[var(--mid-gray)] italic inline-flex items-center gap-1.5"
+                          title="Certificate already issued — contact HR if removal is required"
+                        >
+                          <Award size={12} className="text-[var(--clay)]" />
+                          Certificate issued — locked
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleUnregister(s.id, s.title)}
+                          disabled={unregisteringId === s.id}
+                          className="text-[12px] font-semibold px-3 py-1.5 rounded-lg border border-[var(--clay)]/40 text-[var(--clay)] hover:bg-[var(--clay)] hover:text-white hover:border-[var(--clay)] transition-colors disabled:opacity-50 inline-flex items-center gap-1.5"
+                          title="Unregister from this seminar"
+                        >
+                          {unregisteringId === s.id ? (
+                            <><Loader2 size={13} className="animate-spin" /> Unregistering…</>
+                          ) : (
+                            <>Unregister</>
+                          )}
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <button
