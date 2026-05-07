@@ -20,8 +20,18 @@ interface StaffMember {
   branch: string
   jobTitle: string | null
   employmentType: string | null
+  employeeId: string | null
+  dob: string | null
+  // Government IDs + banking — synced one-way from HR Hub. Sensitive.
+  tin: string | null
+  sss: string | null
+  pagibig: string | null
+  philhealth: string | null
+  bankName: string | null
+  bankAccountNo: string | null
   hrPlatformId: string | null
   createdAt: string
+  updatedAt?: string | null
 }
 
 type SortCol = 'name' | 'department' | 'branch' | 'email' | 'phone' | 'jobTitle' | 'sex' | 'employmentType'
@@ -141,6 +151,12 @@ export default function StaffClient({ role }: { role: string }) {
   const [mergeGroup,  setMergeGroup]  = useState<StaffMember[] | null>(null)
   const [mergeKeepId, setMergeKeepId] = useState<string>('')
   const [merging,     setMerging]     = useState(false)
+
+  // Staff details popup — opens when an admin clicks a staff name.
+  const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null)
+  // Roles allowed to view the full HR profile (TIN, SSS, banking, etc.).
+  // Excludes FRONT_DESK and MARKETING_ADMIN by design.
+  const canViewStaffDetails = ['ADMIN', 'SBEA_ADMIN', 'SBGH_ADMIN'].includes(role)
 
   // Pagination
   const [page,     setPage]     = useState(1)
@@ -487,8 +503,20 @@ export default function StaffClient({ role }: { role: string }) {
                 ) : paginatedDisplayed.map(s => (
                   <tr key={s.id} style={{ borderBottom: '1px solid var(--light-gray)' }}
                     className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 text-sm font-medium" style={{ color: 'var(--charcoal)' }}>
-                      {s.lastName}, {s.firstName}
+                    <td className="px-4 py-3 text-sm font-medium">
+                      {canViewStaffDetails ? (
+                        <button
+                          onClick={() => setSelectedStaff(s)}
+                          className="text-left transition-colors hover:underline"
+                          style={{ color: 'var(--charcoal)', cursor: 'pointer', background: 'none', border: 'none', padding: 0, font: 'inherit' }}
+                          title="Click to view full HR profile">
+                          {s.lastName}, {s.firstName}
+                        </button>
+                      ) : (
+                        <span style={{ color: 'var(--charcoal)' }}>
+                          {s.lastName}, {s.firstName}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3"><DeptBadge dept={s.department} /></td>
                     <td className="px-4 py-3 text-sm" style={{ color: 'var(--mid-gray)' }}>
@@ -549,6 +577,105 @@ export default function StaffClient({ role }: { role: string }) {
           </>
         )}
       </div>
+
+      {/* Staff Details Modal — surfaces every field synced from HR Hub.
+          Visible ONLY to ADMIN / SBEA_ADMIN / SBGH_ADMIN. Defense-in-depth:
+          even if a non-admin somehow set selectedStaff, the modal won't render. */}
+      {selectedStaff && canViewStaffDetails && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+             style={{ background: 'rgba(0,0,0,0.45)' }}
+             onClick={() => setSelectedStaff(null)}>
+          <div className="rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+               style={{ background: '#fff' }}
+               onClick={(e) => e.stopPropagation()}>
+            {/* Header */}
+            <div className="px-6 py-5 border-b flex items-start justify-between"
+                 style={{ borderColor: 'var(--light-gray)' }}>
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                     style={{ background: 'var(--paper)' }}>
+                  <UserCog size={18} style={{ color: 'var(--narra)' }} />
+                </div>
+                <div>
+                  <p className="text-base font-bold" style={{ color: 'var(--ink)', fontFamily: 'var(--font-display)' }}>
+                    {selectedStaff.lastName}, {selectedStaff.firstName}
+                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <DeptBadge dept={selectedStaff.department} />
+                    <BranchChip branch={selectedStaff.branch} />
+                    {selectedStaff.employmentType && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                        style={selectedStaff.employmentType === 'employee'
+                          ? { background: '#DBEAFE', color: '#1E40AF' }
+                          : { background: '#FEF3C7', color: '#92400E' }}>
+                        {selectedStaff.employmentType.charAt(0).toUpperCase() + selectedStaff.employmentType.slice(1)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <button onClick={() => setSelectedStaff(null)}
+                      className="p-1.5 rounded-lg hover:bg-stone-100"
+                      title="Close">
+                <X size={18} style={{ color: 'var(--mid-gray)' }} />
+              </button>
+            </div>
+
+            {/* Body — sections of fields */}
+            <div className="px-6 py-5 space-y-6 text-sm">
+              <DetailSection title="Role">
+                <DetailRow label="Employee ID" value={selectedStaff.employeeId} mono />
+                <DetailRow label="Job Title"   value={selectedStaff.jobTitle ? selectedStaff.jobTitle.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : null} />
+                <DetailRow label="Department"  value={selectedStaff.department.replace(/_/g, ' ')} />
+                <DetailRow label="Branch"      value={selectedStaff.branch} />
+                <DetailRow label="Employment"  value={selectedStaff.employmentType ? (selectedStaff.employmentType.charAt(0).toUpperCase() + selectedStaff.employmentType.slice(1)) : null} />
+              </DetailSection>
+
+              <DetailSection title="Contact">
+                <DetailRow label="Email"     value={selectedStaff.email} />
+                <DetailRow label="Phone"     value={selectedStaff.phone} mono />
+                <DetailRow label="Birthday"  value={selectedStaff.dob ? new Date(selectedStaff.dob).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' }) : null} />
+                <DetailRow label="Sex"       value={selectedStaff.sex} />
+              </DetailSection>
+
+              <DetailSection title="Government IDs"
+                             note="Sensitive — synced one-way from HR Hub. Edit in HR Platform.">
+                <DetailRow label="TIN"        value={selectedStaff.tin} mono />
+                <DetailRow label="SSS"        value={selectedStaff.sss} mono />
+                <DetailRow label="Pag-IBIG"   value={selectedStaff.pagibig} mono />
+                <DetailRow label="PhilHealth" value={selectedStaff.philhealth} mono />
+              </DetailSection>
+
+              <DetailSection title="Banking"
+                             note="Sensitive — synced one-way from HR Hub. Edit in HR Platform.">
+                <DetailRow label="Bank Name"        value={selectedStaff.bankName} />
+                <DetailRow label="Bank Account No." value={selectedStaff.bankAccountNo} mono />
+              </DetailSection>
+
+              <DetailSection title="System">
+                <DetailRow label="HR Platform ID" value={selectedStaff.hrPlatformId} mono small />
+                <DetailRow label="Created"        value={selectedStaff.createdAt ? new Date(selectedStaff.createdAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }) : null} small />
+                {selectedStaff.updatedAt && (
+                  <DetailRow label="Last Synced"  value={new Date(selectedStaff.updatedAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })} small />
+                )}
+              </DetailSection>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-3 border-t flex items-center justify-between"
+                 style={{ borderColor: 'var(--light-gray)', background: 'var(--paper)' }}>
+              <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                All fields except Sex flow one-way from HR Hub. To edit, use the HR Platform Staff Profile.
+              </p>
+              <button onClick={() => setSelectedStaff(null)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+                      style={{ background: 'var(--narra)', color: '#fff' }}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Merge Modal */}
       {mergeGroup && (
@@ -619,6 +746,41 @@ export default function StaffClient({ role }: { role: string }) {
         </div>
       )}
 
+    </div>
+  )
+}
+
+// ── Staff details modal helpers ──────────────────────────────────
+function DetailSection({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="text-[11px] font-bold uppercase tracking-wider mb-2"
+         style={{ color: 'var(--mid-gray)' }}>{title}</p>
+      <div className="rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="divide-y" style={{ borderColor: 'var(--light-gray)' }}>
+          {children}
+        </div>
+      </div>
+      {note && (
+        <p className="text-[11px] mt-1.5 px-1 italic" style={{ color: 'var(--mid-gray)' }}>{note}</p>
+      )}
+    </div>
+  )
+}
+
+function DetailRow({ label, value, mono, small }: { label: string; value: string | null | undefined; mono?: boolean; small?: boolean }) {
+  return (
+    <div className="flex items-baseline gap-3 px-4 py-2.5" style={{ background: '#fff' }}>
+      <span className="text-[11px] font-medium uppercase tracking-wider w-28 flex-shrink-0"
+            style={{ color: 'var(--mid-gray)' }}>{label}</span>
+      <span className={small ? 'text-[12px]' : 'text-[13px]'}
+            style={{
+              color: value ? 'var(--ink)' : 'var(--mid-gray)',
+              fontFamily: mono && value ? 'ui-monospace, SFMono-Regular, Menlo, monospace' : undefined,
+              wordBreak: 'break-all',
+            }}>
+        {value && value.toString().trim().length > 0 ? value : '—'}
+      </span>
     </div>
   )
 }
