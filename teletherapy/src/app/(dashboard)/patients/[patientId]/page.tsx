@@ -405,8 +405,35 @@ export default function PatientDetailPage() {
         </div>
       )}
 
-      {/* Action buttons — hidden in read-only mode */}
-      {!readOnly && (
+      {/* Action buttons.
+          Three mutually exclusive states based on the requester's
+          OWN PatientAssignment row (admin and clinician share this
+          logic — admins never go read-only, but they DO accumulate
+          their own DISCHARGED row when they click Discharged on a
+          patient, and need a way back from that):
+            • assignmentStatus === 'DISCHARGED' → show Re-admit only.
+              Hits POST /api/patients/[id]/readmit which finds the
+              caller's own DISCHARGED row and flips it back to ACTIVE.
+            • !readOnly (active owner OR admin without a discharged
+              row)           → show Endorse + Discharge.
+            • read-only (DEACTIVATED / legacy ENDORSED for clinicians)
+                            → show no actions.
+          assignmentStatus is checked first so an admin who already
+          discharged the patient sees Re-admit instead of being able
+          to discharge twice. */}
+      {assignmentStatus === 'DISCHARGED' ? (
+        <div className="flex gap-3 mb-6 animate-fade-up stagger-3">
+          <button
+            onClick={handleReadmit}
+            disabled={readmitting}
+            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[14px] font-semibold bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors disabled:opacity-50"
+            title="Re-admit this patient as active"
+          >
+            {readmitting ? <Loader2 size={18} className="animate-spin" /> : <UserCheck size={18} />}
+            Re-admit
+          </button>
+        </div>
+      ) : !readOnly ? (
         <div className="flex gap-3 mb-6 animate-fade-up stagger-3">
           <button
             onClick={loadEndorseStaff}
@@ -423,20 +450,7 @@ export default function PatientDetailPage() {
             Discharged
           </button>
         </div>
-      )}
-      {readOnly && assignmentStatus === 'DISCHARGED' && (
-        <div className="flex gap-3 mb-6 animate-fade-up stagger-3">
-          <button
-            onClick={handleReadmit}
-            disabled={readmitting}
-            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[14px] font-semibold bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors disabled:opacity-50"
-            title="Re-admit this patient as active"
-          >
-            {readmitting ? <Loader2 size={18} className="animate-spin" /> : <UserCheck size={18} />}
-            Re-admit
-          </button>
-        </div>
-      )}
+      ) : null}
 
       {/* Admin-only "wipe everything clinical for this patient".
           Visible regardless of readOnly state (admins are never
