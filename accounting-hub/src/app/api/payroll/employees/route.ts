@@ -79,7 +79,7 @@ export async function GET(req: Request) {
 
             // ── Find existing record (priority: Bio ID → externalStaffId → name+branch) ──
             // This prevents duplicate creation when the same person already exists.
-            let existing: { id: string; employeeBioId: number | null; externalStaffId: string | null; branch: string } | null = null
+            let existing: { id: string; employeeBioId: number | null; externalStaffId: string | null; branch: string; isActive?: boolean } | null = null
 
             // 1. Match by Bio ID + same branch (most reliable — same physical device ID)
             if (!isNaN(bioId) && bioId > 0) {
@@ -98,6 +98,7 @@ export async function GET(req: Request) {
             }
 
             // 3. Match by name + branch (catches manually-entered records, any link state)
+            // Prefer active records so we don't accidentally relink a soft-deleted duplicate.
             if (!existing) {
               existing = await prisma.employee.findFirst({
                 where: {
@@ -105,7 +106,8 @@ export async function GET(req: Request) {
                   lastName: { equals: s.lastName || '', mode: 'insensitive' },
                   branch: normalizedBranch,
                 },
-                select: { id: true, employeeBioId: true, externalStaffId: true, branch: true },
+                select: { id: true, employeeBioId: true, externalStaffId: true, branch: true, isActive: true },
+                orderBy: { isActive: 'desc' }, // prefer active records
               }) ?? null
             }
 
@@ -113,9 +115,17 @@ export async function GET(req: Request) {
             if (!isNaN(bioId) && bioId > 0) {
               const bioConflict = await prisma.employee.findFirst({
                 where: { employeeBioId: bioId, ...(existing ? { id: { not: existing.id } } : {}) },
-                select: { id: true },
+                select: { id: true, firstName: true, lastName: true, branch: true },
               })
-              if (!bioConflict) syncData.employeeBioId = bioId
+              if (!bioConflict) {
+                syncData.employeeBioId = bioId
+              } else {
+                console.warn(
+                  `[payroll-sync] Bio ID ${bioId} conflict for ${s.firstName} ${s.lastName} (${normalizedBranch}): ` +
+                  `already assigned to employee ${(bioConflict as Record<string,unknown>).firstName} ${(bioConflict as Record<string,unknown>).lastName} ` +
+                  `(${(bioConflict as Record<string,unknown>).branch}) — Bio ID skipped`
+                )
+              }
             }
 
             if (existing) {
