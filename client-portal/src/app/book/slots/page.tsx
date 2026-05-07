@@ -93,6 +93,14 @@ function BookSlotsPage() {
 
   useEffect(() => { loadSlots() }, [loadSlots])
 
+  // For MD-track services, the clinician is a doctor — relabel everywhere
+  // ("Therapist" → "Doctor") so patients booking Psychiatry / DevPed / MD
+  // don't get confused.
+  const isDoctorDept = department === 'MD' || department === 'PSYCHIATRY' || department === 'DEVELOPMENTAL_PEDIATRICIAN'
+  const clinicianWord = isDoctorDept ? 'doctor' : 'therapist'
+  const ClinicianWord = isDoctorDept ? 'Doctor' : 'Therapist'
+  const CLINICIAN_WORD = ClinicianWord.toUpperCase()
+
   const daysOfWeek = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart])
 
   const byDay = useMemo(() => {
@@ -147,7 +155,7 @@ function BookSlotsPage() {
       <div className="card-static">
         <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
           <div>
-            <h1 className="text-[28px] text-[color:var(--deep-teal)] leading-tight">Pick your therapist and slots</h1>
+            <h1 className="text-[28px] text-[color:var(--deep-teal)] leading-tight">Pick your {clinicianWord} and slots</h1>
             <p className="text-sm text-[color:var(--mid-gray)] mt-1 flex items-center gap-2 flex-wrap">
               <span className="px-2 py-0.5 rounded-md bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)] text-xs font-semibold" style={{ fontFamily: 'var(--font-display)' }}>{branch}</span>
               <span className="px-2 py-0.5 rounded-md bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)] text-xs font-semibold" style={{ fontFamily: 'var(--font-display)' }}>{department}</span>
@@ -158,35 +166,41 @@ function BookSlotsPage() {
 
         {err && <div className="px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800 mb-4">{err}</div>}
 
-        {/* Therapist selector */}
+        {/* Clinician selector — labelled "Doctor" for MD-track services */}
         <div className="mb-6">
-          <div className="label">Therapist</div>
+          <div className="label">{CLINICIAN_WORD}</div>
           {loadingTherapists ? (
-            <div className="text-sm text-[color:var(--mid-gray)]">Loading therapists…</div>
+            <div className="text-sm text-[color:var(--mid-gray)]">Loading {clinicianWord}s…</div>
           ) : therapists.length === 0 ? (
-            <div className="text-sm text-[color:var(--mid-gray)] italic">No therapists available for this service yet.</div>
+            <div className="text-sm text-[color:var(--mid-gray)] italic">No {clinicianWord}s available for this service yet.</div>
           ) : (
             <div className="flex gap-2 flex-wrap">
               {therapists.map((t) => {
                 const active = selectedTherapist?.id === t.id
+                const sexLabel = t.sex === 'M' ? '♂ Male' : t.sex === 'F' ? '♀ Female' : '— Unspecified'
                 return (
                   <button
                     key={t.id}
                     onClick={() => { setSelectedTherapist(t); setPicks([]) }}
-                    className={`inline-flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl border-[1.5px] transition-all ${
+                    className={`inline-flex items-center gap-3 px-4 py-2.5 rounded-2xl border-[1.5px] transition-all ${
                       active
                         ? 'bg-gradient-to-br from-[color:var(--teal)] to-[color:var(--deep-teal)] border-transparent text-white shadow-[0_4px_14px_rgba(46,94,90,0.3)]'
                         : 'bg-white border-[color:var(--light-gray)] hover:border-[color:var(--bright-teal)]'
                     }`}
                     style={{ fontFamily: 'var(--font-display)' }}
                   >
-                    <span className={`inline-flex items-center justify-center w-9 h-9 rounded-full text-sm font-semibold ${active ? 'bg-white/20 text-white' : 'bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)]'}`}>
+                    <span className={`inline-flex items-center justify-center w-10 h-10 rounded-full text-sm font-semibold ${active ? 'bg-white/20 text-white' : 'bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)]'}`}>
                       {t.initials}
                     </span>
-                    <span className="flex flex-col items-start leading-tight">
-                      <span className="text-[13px] font-semibold">{t.initials}</span>
+                    <span className="flex flex-col items-start leading-tight text-left">
+                      {/* Job title is the headline (e.g. "Developmental Pediatrician")
+                          when present — otherwise fall back to the dept-derived word
+                          so we never repeat the initials we just rendered in the avatar. */}
+                      <span className="text-[13px] font-semibold">
+                        {t.jobTitle ?? ClinicianWord}
+                      </span>
                       <span className={`text-[11px] ${active ? 'text-white/80' : 'text-[color:var(--mid-gray)]'}`}>
-                        {t.sex === 'M' ? '♂ Male' : t.sex === 'F' ? '♀ Female' : '— Unspecified'}
+                        {sexLabel}
                       </span>
                     </span>
                   </button>

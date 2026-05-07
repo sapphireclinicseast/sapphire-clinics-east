@@ -37,6 +37,7 @@ export interface Therapist {
   id: string
   initials: string
   sex: 'M' | 'F' | null
+  jobTitle: string | null
 }
 export interface AvailableSlot {
   staffId: string

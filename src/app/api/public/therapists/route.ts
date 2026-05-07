@@ -35,9 +35,24 @@ export async function GET(req: NextRequest) {
       firstName: true,
       lastName: true,
       sex: true,
+      jobTitle: true,
       deckingConfig: { select: { workDays: true } },
     },
   })
+
+  // HR Platform sends jobTitle as a slug (e.g. "developmental-pediatrician").
+  // Render to a clean human form for the patient portal.
+  function prettifyJobTitle(raw: string | null): string | null {
+    if (!raw) return null
+    const t = raw.trim()
+    if (!t) return null
+    return t
+      .replace(/[-_]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .split(' ')
+      .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
+      .join(' ')
+  }
 
   const therapists = staff
     .filter((s) => {
@@ -51,6 +66,7 @@ export async function GET(req: NextRequest) {
         id: s.id,
         initials: `${s.firstName?.[0] ?? '?'}${s.lastName?.[0] ?? '?'}`.toUpperCase(),
         sex,
+        jobTitle: prettifyJobTitle(s.jobTitle),
       }
     })
 
