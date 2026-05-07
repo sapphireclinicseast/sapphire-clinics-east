@@ -537,6 +537,16 @@ jobs:
               echo "   ⚠ POSTGRES_PASSWORD not found in $DOCKER_DIR/.env"
             fi
 
+            echo "→ One-time GL balance restore (2026-05-06 hotfix — safe to re-run)..."
+            # These wallets had their Remaining Balance reset to totalGlAmount by a now-fixed
+            # code bug (edit form was sending balance on every PUT). Only updates if the
+            # balance is still at the exact wrong reset value; safe no-op otherwise.
+            docker exec accounting_db psql -U sapphire -d sapphire_accounting -c "
+              UPDATE \"DigitalWallet\" SET balance = 27812    WHERE id = 'cmnztc93f000u01pcz8v8b0hp' AND balance = 38546;
+              UPDATE \"DigitalWallet\" SET balance = 28112    WHERE id = 'cmnzu9cea000m01o8ccfkz4oi' AND balance = 38846;
+              UPDATE \"DigitalWallet\" SET balance = 33312.5  WHERE id = 'cmo9hyiww00i901nz3rz8gs9z' AND balance = 41612.5;
+            " 2>&1 && echo "   GL balance restore done (0 rows = already correct)." || echo "   GL balance restore skipped/failed (non-fatal)."
+
             echo "→ Rebuilding and restarting via docker compose (from $DOCKER_DIR)..."
             cd "$DOCKER_DIR"
             docker compose build app 2>&1
