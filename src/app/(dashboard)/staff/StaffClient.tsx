@@ -24,7 +24,7 @@ interface StaffMember {
   createdAt: string
 }
 
-type SortCol = 'name' | 'department' | 'branch' | 'email' | 'phone' | 'jobTitle' | 'sex'
+type SortCol = 'name' | 'department' | 'branch' | 'email' | 'phone' | 'jobTitle' | 'sex' | 'employmentType'
 type SortDir = 'asc' | 'desc'
 
 function branchFromRole(role: string): string | null {
@@ -135,7 +135,7 @@ export default function StaffClient({ role }: { role: string }) {
   // Sort + filter
   const [sortCol, setSortCol] = useState<SortCol | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>('asc')
-  const [filters, setFilters] = useState({ name: '', department: '', branch: '', email: '', phone: '', jobTitle: '', sex: '' })
+  const [filters, setFilters] = useState({ name: '', department: '', branch: '', email: '', phone: '', jobTitle: '', sex: '', employmentType: '' })
 
   // Merge duplicates
   const [mergeGroup,  setMergeGroup]  = useState<StaffMember[] | null>(null)
@@ -190,6 +190,7 @@ export default function StaffClient({ role }: { role: string }) {
       if (filters.phone      && !(s.phone  ?? '').includes(filters.phone))                            return false
       if (filters.jobTitle   && !(s.jobTitle ?? '').toLowerCase().includes(filters.jobTitle.toLowerCase())) return false
       if (filters.sex        && (s.sex ?? '') !== filters.sex) return false
+      if (filters.employmentType && (s.employmentType ?? '') !== filters.employmentType) return false
       return true
     })
     .sort((a, b) => {
@@ -202,6 +203,7 @@ export default function StaffClient({ role }: { role: string }) {
         case 'email':      va = a.email ?? '';                    vb = b.email ?? '';                  break
         case 'phone':      va = a.phone ?? '';                    vb = b.phone ?? '';                  break
         case 'jobTitle':   va = a.jobTitle ?? '';                  vb = b.jobTitle ?? '';                break
+        case 'employmentType': va = a.employmentType ?? ''; vb = b.employmentType ?? ''; break
         default:
           return a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName)
       }
@@ -260,6 +262,7 @@ export default function StaffClient({ role }: { role: string }) {
     { col: 'name',       label: 'Name' },
     { col: 'department', label: 'Department' },
     { col: 'jobTitle',   label: 'Job Title' },
+    { col: 'employmentType', label: 'Employment' },
     { col: 'branch',     label: 'Branch' },
     { col: 'sex',        label: 'Sex' },
     { col: 'email',      label: 'Email' },
@@ -426,6 +429,16 @@ export default function StaffClient({ role }: { role: string }) {
                       onChange={e => setFilters(f => ({ ...f, jobTitle: e.target.value }))}
                       style={filterInputStyle} />
                   </th>
+                  {/* Employment — synced from HR Platform Staff Profile */}
+                  <th className="px-3 py-1.5">
+                    <select value={filters.employmentType}
+                      onChange={e => setFilters(f => ({ ...f, employmentType: e.target.value }))}
+                      style={filterInputStyle}>
+                      <option value="">All</option>
+                      <option value="employee">Employee</option>
+                      <option value="consultant">Consultant</option>
+                    </select>
+                  </th>
                   {/* Branch — dropdown for admin, static label for branch-locked roles */}
                   <th className="px-3 py-1.5">
                     {!autoBranch ? (
@@ -467,7 +480,7 @@ export default function StaffClient({ role }: { role: string }) {
               <tbody>
                 {displayed.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-10 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>
+                    <td colSpan={8} className="py-10 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>
                       No staff match your filters. Try syncing from HR Platform.
                     </td>
                   </tr>
@@ -480,6 +493,16 @@ export default function StaffClient({ role }: { role: string }) {
                     <td className="px-4 py-3"><DeptBadge dept={s.department} /></td>
                     <td className="px-4 py-3 text-sm" style={{ color: 'var(--mid-gray)' }}>
                       {s.jobTitle ? s.jobTitle.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '—'}
+                    </td>
+                    <td className="px-4 py-3">
+                      {s.employmentType
+                        ? <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                            style={s.employmentType === 'employee'
+                              ? { background: '#DBEAFE', color: '#1E40AF' }
+                              : { background: '#FEF3C7', color: '#92400E' }}>
+                            {s.employmentType.charAt(0).toUpperCase() + s.employmentType.slice(1)}
+                          </span>
+                        : <span style={{ color: 'var(--mid-gray)', fontSize: '13px' }}>—</span>}
                     </td>
                     <td className="px-4 py-3"><BranchChip branch={s.branch} /></td>
                     <td className="px-4 py-3">
