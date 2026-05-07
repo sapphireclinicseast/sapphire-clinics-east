@@ -15,6 +15,7 @@ const VALID_DEPTS: Set<string> = new Set([
 
 interface HRStaff {
   hrId: string
+  employeeId: string | null
   firstName: string
   lastName: string
   branch: string
@@ -25,6 +26,14 @@ interface HRStaff {
   phone: string | null
   birthday: string | null
   sex: string | null
+  // Financial / government-ID fields — synced one-way from HR Hub.
+  // Sensitive: keep server-side; do NOT surface in non-admin views.
+  tin: string | null
+  sss: string | null
+  pagibig: string | null
+  philhealth: string | null
+  bankName: string | null
+  bankAccountNo: string | null
 }
 
 export async function POST() {
@@ -121,6 +130,17 @@ export async function POST() {
       branch:         hr.branch,
       jobTitle:       hr.jobTitle,
       employmentType: hr.employmentType,
+      employeeId:     hr.employeeId,
+      // Financial / gov-ID fields — written one-way from HR. If HR
+      // returns null for any of these, the local field is set to null
+      // (HR is the single source of truth, so a deletion on HR clears
+      // the local copy on the next sync).
+      tin:            hr.tin,
+      sss:            hr.sss,
+      pagibig:        hr.pagibig,
+      philhealth:     hr.philhealth,
+      bankName:       hr.bankName,
+      bankAccountNo:  hr.bankAccountNo,
       hrPlatformId:   hr.hrId,
     }
 
