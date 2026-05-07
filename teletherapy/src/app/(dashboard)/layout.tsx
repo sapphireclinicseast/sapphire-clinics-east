@@ -45,7 +45,13 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
   ]
 
   return (
-    <div className="min-h-screen flex">
+    // h-screen + overflow-hidden pins the layout to exactly the
+    // viewport height so the document body never scrolls. All
+    // vertical scrolling happens inside <main> (overflow-y-auto
+    // below), which keeps the sidebar visible at all times — the
+    // user reported losing sight of the Sign Out button when long
+    // patient lists pushed the body taller than the viewport.
+    <div className="h-screen overflow-hidden flex">
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
@@ -87,8 +93,10 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
         {/* Divider */}
         <div className="mx-5 h-px bg-white/8" />
 
-        {/* Nav */}
-        <nav className="flex-1 py-5 px-3 space-y-1">
+        {/* Nav — overflow-y-auto so on short viewports the nav
+            scrolls internally instead of pushing the user card +
+            Sign Out button below the fold. */}
+        <nav className="flex-1 py-5 px-3 space-y-1 overflow-y-auto">
           {navItems.map((item) => {
             const Icon = item.icon
             // Match exact path, or descendant routes — but NOT lookalike prefixes
