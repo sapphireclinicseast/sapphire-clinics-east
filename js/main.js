@@ -67,6 +67,7 @@ const SITE_CONFIG = {
     { name: 'Asian Institute of Management',  imgSrc: 'PARTNERS/ASIAN INSTITUTE OF MANAGEMENT.png' },
     { name: 'National University East Ortigas', imgSrc: 'PARTNERS/NATIONAL UNIVERSITY EAST ORTIGAS.png' },
     { name: "The Abba's Orchard",             imgSrc: "PARTNERS/THE ABBA'S ORCHARD.png" },
+    { name: 'Xavier School',                  imgSrc: 'PARTNERS/XAVIER SCHOOL.png' },
     { name: 'Bomba Pilipinas',                imgSrc: 'PARTNERS/BOMBA PILIPINAS.png' },
   ],
 
