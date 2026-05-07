@@ -93,9 +93,11 @@ export default function AdminPage() {
 
   async function fetchData() {
     setLoading(true)
+    // cache: 'no-store' on the accounts fetch so a stale browser/CDN
+    // cache can't keep showing pre-change passwords after Save.
     const [staffRes, accountsRes, ccRes] = await Promise.all([
       fetch('/api/staff'),
-      fetch('/api/therapist-accounts'),
+      fetch('/api/therapist-accounts', { cache: 'no-store' }),
       fetch('/api/admin/branch-cc-emails'),
     ])
     if (staffRes.ok) setStaffList((await staffRes.json()).staff ?? [])
@@ -197,6 +199,12 @@ export default function AdminPage() {
         showToast('Password changed successfully')
         setChangingPasswordId(null)
         setNewPassword('')
+        // Refresh the list so the new lastPlainPassword shows up
+        // immediately under this row. Without this the UI keeps
+        // displaying pre-change state (or nothing, for accounts
+        // that previously had no recorded password) and the admin
+        // thinks the change didn't take.
+        fetchData()
       } else {
         showToast((await res.json()).error ?? 'Failed')
       }
@@ -394,10 +402,21 @@ export default function AdminPage() {
                       )}
                     </div>
                     <p className="text-[12px] text-[var(--mid-gray)]">{acct.email}</p>
-                    {acct.lastPlainPassword && (
+                    {acct.lastPlainPassword ? (
                       <p className="text-[11px] text-[var(--mid-gray)] flex items-center gap-1 mt-0.5">
                         <KeyRound size={10} />
                         Password: <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded text-[10px] select-all">{acct.lastPlainPassword}</span>
+                      </p>
+                    ) : (
+                      // Legacy accounts created before lastPlainPassword
+                      // was tracked: bcrypt is one-way so we can't
+                      // recover the original. Make this state explicit
+                      // so the admin understands they need to issue a
+                      // new password (the Change-password button on the
+                      // right of this row) to make the value visible.
+                      <p className="text-[11px] text-amber-700 flex items-center gap-1 mt-0.5 italic">
+                        <KeyRound size={10} />
+                        Password not recorded — click the key icon to set a new one.
                       </p>
                     )}
                     <p className="text-[11px] text-[var(--mid-gray)] flex items-center gap-1 mt-0.5">
