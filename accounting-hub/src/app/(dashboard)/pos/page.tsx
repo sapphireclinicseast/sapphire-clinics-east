@@ -2109,7 +2109,12 @@ function OrderFormModal({
                       const displayName = agency ? `${w.patientName} (${agency})` : w.patientName
                       return (
                         <button key={w.id} onClick={() => {
-                          setPayments([{ method: 'GL', amount: 0, walletId: w.id, reference: displayName }])
+                          setPayments(prev => {
+                            const existingIdx = prev.findIndex(pm => pm.method === 'GL')
+                            const newPay = { method: 'GL' as const, amount: 0, walletId: w.id, reference: displayName }
+                            if (existingIdx >= 0) return prev.map((pm, i) => i === existingIdx ? newPay : pm)
+                            return [...prev, newPay]
+                          })
                           setShowGlPay(false)
                           setGlSearch('')
                           setGlWallets([])
@@ -2144,7 +2149,12 @@ function OrderFormModal({
                   <div className="max-h-32 overflow-y-auto space-y-1">
                     {advanceWallets.map(w => (
                       <button key={w.id} onClick={() => {
-                        setPayments([{ method: 'ADVANCE', amount: 0, walletId: w.id, reference: w.patientName }])
+                        setPayments(prev => {
+                          const existingIdx = prev.findIndex(pm => pm.method === 'ADVANCE')
+                          const newPay = { method: 'ADVANCE' as const, amount: 0, walletId: w.id, reference: w.patientName }
+                          if (existingIdx >= 0) return prev.map((pm, i) => i === existingIdx ? newPay : pm)
+                          return [...prev, newPay]
+                        })
                         setShowAdvancePay(false)
                         setAdvanceSearch('')
                         setAdvanceWallets([])
