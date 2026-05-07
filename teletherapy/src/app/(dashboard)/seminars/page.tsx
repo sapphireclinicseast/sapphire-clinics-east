@@ -471,35 +471,23 @@ export default function SeminarsPage() {
                   </div>
 
                   {/* Speaker block — upper right of the card.
-                      Renders when we have either a headshot OR an
-                      aboutSpeaker bio (or both); skipped when neither
-                      is set so we don't leave an empty column. The
-                      headshot uses an <img> to the HR-served URL
-                      (absolutised by the proxy) and falls back to a
-                      teal initial-circle on load error. The About
-                      Speaker button only renders when aboutSpeaker
-                      is non-empty — pointless to open an empty modal. */}
-                  {(s.speakerHeadshot || (s.aboutSpeaker && s.aboutSpeaker.trim())) && (
+                      Renders whenever we have a speaker name (so the
+                      avatar — headshot or initials fallback — is
+                      always visible for any seminar with a speaker
+                      attached). The About Speaker button only renders
+                      when aboutSpeaker is non-empty; opening a modal
+                      with no bio would be pointless.
+                      SpeakerAvatar handles the broken-image fallback
+                      internally via React state, so a 404 swaps to the
+                      initials circle in place rather than leaving a
+                      broken-image icon. */}
+                  {(s.speakerName || s.speakerHeadshot) && (
                     <div className="flex flex-col items-center gap-2 lg:w-[120px] shrink-0">
-                      {s.speakerHeadshot ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={s.speakerHeadshot}
-                          alt={s.speakerName || 'Speaker'}
-                          className="w-[88px] h-[88px] rounded-full object-cover border-2 border-[var(--pale-teal)] shadow-sm"
-                          onError={(e) => {
-                            // Hide the broken image so the fallback
-                            // initials block (rendered by sibling) can
-                            // take over visually. Cheaper than a state
-                            // toggle for a render-once event.
-                            (e.currentTarget as HTMLImageElement).style.display = 'none'
-                          }}
-                        />
-                      ) : (
-                        <div className="w-[88px] h-[88px] rounded-full bg-[var(--pale-teal)] flex items-center justify-center text-[var(--teal)] font-bold text-[24px]" style={{ fontFamily: 'var(--font-display)' }}>
-                          {(s.speakerName || '?').split(' ').filter(Boolean).map((n) => n[0]).slice(0, 2).join('').toUpperCase()}
-                        </div>
-                      )}
+                      <SpeakerAvatar
+                        src={s.speakerHeadshot}
+                        name={s.speakerName}
+                        size={88}
+                      />
                       {s.aboutSpeaker && s.aboutSpeaker.trim() && (
                         <button
                           type="button"
@@ -683,6 +671,49 @@ export default function SeminarsPage() {
   )
 }
 
+// Round speaker avatar with graceful fallback. If the image errors
+// (404, CORS, etc.) we swap to a teal initials circle in-place via
+// state — cleaner than the previous trick of hiding the <img> with
+// inline style, which left a sized-but-empty hole. Used both on the
+// seminar card (88px) and inside the AboutSpeakerModal header (64px).
+function SpeakerAvatar({ src, name, size }: {
+  src: string | null | undefined
+  name: string
+  size: number
+}) {
+  const [errored, setErrored] = useState(false)
+  const initials = (name || '?')
+    .split(' ')
+    .filter(Boolean)
+    .map((n) => n[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase()
+  const dim = `${size}px`
+  const fontPx = Math.max(12, Math.round(size * 0.30))
+
+  if (src && !errored) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt={name || 'Speaker'}
+        style={{ width: dim, height: dim }}
+        className="rounded-full object-cover border-2 border-[var(--pale-teal)] shadow-sm shrink-0"
+        onError={() => setErrored(true)}
+      />
+    )
+  }
+  return (
+    <div
+      style={{ width: dim, height: dim, fontSize: fontPx }}
+      className="rounded-full bg-[var(--pale-teal)] flex items-center justify-center text-[var(--teal)] font-bold shrink-0"
+    >
+      <span style={{ fontFamily: 'var(--font-display)' }}>{initials}</span>
+    </div>
+  )
+}
+
 // Renders the speaker bio. Mirrors ObjectivesModal in styling so the
 // two modals feel like siblings; a small header card pairs the
 // headshot (or initials fallback) with the speaker's name + title,
@@ -692,7 +723,6 @@ function AboutSpeakerModal({ speaker, onClose }: {
   speaker: { name: string; title: string; headshot: string | null; bio: string }
   onClose: () => void
 }) {
-  const initials = (speaker.name || '?').split(' ').filter(Boolean).map((n) => n[0]).slice(0, 2).join('').toUpperCase()
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
@@ -703,18 +733,7 @@ function AboutSpeakerModal({ speaker, onClose }: {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-5 border-b border-[var(--light-gray)] flex items-center gap-4">
-          {speaker.headshot ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={speaker.headshot}
-              alt={speaker.name || 'Speaker'}
-              className="w-16 h-16 rounded-full object-cover border-2 border-[var(--pale-teal)] shrink-0"
-            />
-          ) : (
-            <div className="w-16 h-16 rounded-full bg-[var(--pale-teal)] flex items-center justify-center text-[var(--teal)] font-bold text-[18px] shrink-0" style={{ fontFamily: 'var(--font-display)' }}>
-              {initials}
-            </div>
-          )}
+          <SpeakerAvatar src={speaker.headshot} name={speaker.name} size={64} />
           <div className="flex-1 min-w-0">
             <h3 className="font-bold text-[16px] text-[var(--charcoal)] leading-snug" style={{ fontFamily: 'var(--font-display)' }}>
               {speaker.name || 'Speaker'}

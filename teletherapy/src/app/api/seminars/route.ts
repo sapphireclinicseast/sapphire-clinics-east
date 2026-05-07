@@ -114,16 +114,24 @@ export async function GET() {
     return focus.includes(myDeptNorm)
   }
 
-  // HR returns speakerHeadshot as a relative path (e.g.
-  // /seminar-attachments/<id>.png) served by the HR origin. The
-  // teletherapy frontend has no proxy for those files, so absolutise
-  // here so <img src> works directly. Same pattern as the templates
-  // proxy.
+  // HR stores speakerHeadshot as a BARE filename (e.g.
+  // 'speaker_mouxb6y1a8b6160b.png'), served via the public route
+  // GET ${HR_API_BASE}/seminar-attachments/:filename. Build the
+  // absolute URL here so the teletherapy frontend can <img src>
+  // directly without a teletherapy-side proxy.
+  //
+  // Defensive variants:
+  //   - already absolute (http(s)://…) → pass through
+  //   - leading slash (e.g. '/seminar-attachments/foo.png' or
+  //     '/api/seminar-attachments/foo.png' from a future schema
+  //     change) → prepend HR origin and respect the path
+  //   - bare filename → prepend ${HR_API_BASE}/seminar-attachments/
   const HR_ORIGIN = HR_API_BASE.replace(/\/api\/?$/, '')
   function absHeadshot(u: string | null | undefined): string | null {
     if (!u) return null
     if (/^https?:\/\//i.test(u)) return u
-    return `${HR_ORIGIN}${u.startsWith('/') ? u : '/' + u}`
+    if (u.startsWith('/')) return `${HR_ORIGIN}${u}`
+    return `${HR_API_BASE}/seminar-attachments/${u}`
   }
 
   const seminars = (data.seminars ?? [])
