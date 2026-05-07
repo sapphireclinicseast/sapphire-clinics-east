@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import {
   ArrowLeft,
   Loader2,
@@ -25,6 +26,7 @@ import {
   UserCheck,
   Eye,
   Lock,
+  ShieldX,
 } from 'lucide-react'
 import { formatTime, formatDate, cn } from '@/lib/utils'
 import PsychologyNoteDisplay from '@/components/PsychologyNoteDisplay'
@@ -87,6 +89,12 @@ export default function PatientDetailPage() {
   const params = useParams()
   const router = useRouter()
   const patientId = params.patientId as string
+  // Used to gate admin-only affordances (currently: the bulk
+  // "Delete all clinical data" button). The role lives in the JWT
+  // and is set at sign-in from TherapistAccount.role.
+  const { data: nextAuthSession } = useSession()
+  const isAdmin =
+    (nextAuthSession?.user as { role?: string } | undefined)?.role === 'ADMIN'
 
   const [patient, setPatient] = useState<PatientDetail | null>(null)
   const [sessions, setSessions] = useState<SessionItem[]>([])
@@ -112,6 +120,15 @@ export default function PatientDetailPage() {
   const [assignmentStatus, setAssignmentStatus] = useState<string | null>(null)
   const [readOnly, setReadOnly] = useState(false)
   const [readmitting, setReadmitting] = useState(false)
+
+  // Admin-only "wipe everything clinical" flow. Two-step: clicking
+  // the button opens the modal; the modal requires the admin to type
+  // the patient's exact name before the Delete button enables. This
+  // is the only place in the app that can remove a clinician's
+  // locked notes / documents — so we deliberately make it slow.
+  const [showAdminWipe, setShowAdminWipe] = useState(false)
+  const [adminWipeNameInput, setAdminWipeNameInput] = useState('')
+  const [adminWiping, setAdminWiping] = useState(false)
 
   const [toast, setToast] = useState<string | null>(null)
 
@@ -203,6 +220,39 @@ export default function PatientDetailPage() {
       }
     } catch { showToast('Re-admit failed') }
     setReadmitting(false)
+  }
+
+  // Admin-only bulk wipe. Sends the typed name as confirmName — the
+  // server normalises whitespace + case, but we also enforce the
+  // match client-side via the disabled button so a misclick can't
+  // reach the network.
+  async function handleAdminWipe() {
+    if (!patient) return
+    setAdminWiping(true)
+    try {
+      const res = await fetch(`/api/patients/${patientId}/admin-wipe`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmName: adminWipeNameInput }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        showToast(
+          `Wiped: ${data.deleted.sessionNotes} notes, ` +
+          `${data.deleted.patientDocuments} documents, ` +
+          `${data.deleted.attachmentFiles} attachments`,
+        )
+        setShowAdminWipe(false)
+        setAdminWipeNameInput('')
+        fetchPatient()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        showToast(data.error ?? 'Admin wipe failed')
+      }
+    } catch {
+      showToast('Admin wipe failed')
+    }
+    setAdminWiping(false)
   }
 
   async function handleDeleteNote(scheduleId: string) {
@@ -388,6 +438,26 @@ export default function PatientDetailPage() {
         </div>
       )}
 
+      {/* Admin-only "wipe everything clinical for this patient".
+          Visible regardless of readOnly state (admins are never
+          read-only) so the button shows up on Active, Deactivated,
+          Endorsed and Discharged patients alike — useful for cleanup
+          on accidentally-created records or legitimate data removal
+          requests. The destructive cascade lives behind a typed-name
+          confirm modal so a misclick can't trigger it. */}
+      {isAdmin && (
+        <div className="mb-6 animate-fade-up stagger-3">
+          <button
+            onClick={() => setShowAdminWipe(true)}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[12px] font-semibold bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 transition-colors"
+            title="Admin only — delete all session notes and documents for this patient"
+          >
+            <ShieldX size={14} />
+            Admin: Delete all clinical data for this patient
+          </button>
+        </div>
+      )}
+
       {/* Endorse modal */}
       {showEndorse && (
         <div className="card-static mb-6 animate-gate">
@@ -454,6 +524,61 @@ export default function PatientDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Admin wipe modal — type-the-name confirmation */}
+      {showAdminWipe && patient && (() => {
+        // Local helpers: same normalization the server uses, so the
+        // disabled state matches what the server would accept.
+        const normalize = (s: string) => s.toUpperCase().replace(/\s+/g, ' ').trim()
+        const expected = normalize(`${patient.firstName} ${patient.lastName}`)
+        const matches = normalize(adminWipeNameInput) === expected
+        return (
+          <div className="card-static mb-6 animate-gate border-red-300 !bg-red-50/40">
+            <h3 className="font-bold text-red-700 mb-2 flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
+              <ShieldX size={18} />
+              Delete all clinical data for this patient
+            </h3>
+            <p className="text-[13px] text-red-700/90 mb-1">
+              This permanently removes <strong>every session note</strong>, <strong>Initial Evaluation</strong>, <strong>Progress Report</strong>, <strong>Other Document</strong> and all attached files for{' '}
+              <strong>{patient.firstName} {patient.lastName}</strong>.
+            </p>
+            <p className="text-[12px] text-red-700/80 mb-4">
+              The patient record and schedule history are kept. This action is admin-only and cannot be undone.
+            </p>
+            <div className="mb-4">
+              <label className="block text-[12px] font-semibold text-red-700 mb-1.5">
+                Type the patient&apos;s full name to confirm:
+              </label>
+              <input
+                type="text"
+                value={adminWipeNameInput}
+                onChange={(e) => setAdminWipeNameInput(e.target.value)}
+                placeholder={`${patient.firstName} ${patient.lastName}`}
+                className="input !rounded-xl !border-red-300 focus:!border-red-500"
+                autoFocus
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={handleAdminWipe}
+                disabled={adminWiping || !matches}
+                className="btn-danger flex-1 py-2.5 rounded-xl"
+              >
+                {adminWiping ? <Loader2 size={16} className="animate-spin" /> : <ShieldX size={16} />}
+                Permanently delete
+              </button>
+              <button
+                onClick={() => { setShowAdminWipe(false); setAdminWipeNameInput('') }}
+                className="btn-secondary px-5 rounded-xl"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Other Services Notice — patient confidentiality */}
       {otherServices.length > 0 && (
