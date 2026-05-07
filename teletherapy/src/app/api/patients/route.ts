@@ -53,8 +53,14 @@ export async function GET(req: NextRequest) {
   }
 
   // 2. Also get patients tied to this clinician via PatientAssignment.
-  //    Include both ACTIVE (currently owned, write-allowed) and
-  //    DEACTIVATED (previously owned, read-only continuity-of-care).
+  //    Include every assignment row regardless of status:
+  //      - ACTIVE       — currently owned, write-allowed.
+  //      - DEACTIVATED  — previously owned, read-only (continuity of care).
+  //      - DISCHARGED   — discharged by THIS clinician; needs to stay in
+  //                       their list so they can re-admit, review history,
+  //                       etc. The Patients page has a dedicated DISCHARGED
+  //                       filter tab that depends on these rows.
+  //      - ENDORSED     — legacy equivalent of DEACTIVATED.
   //    Freshly-endorsed-to patients with no sessions yet need to appear,
   //    so we don't gate on having a confirmed session here — assignment
   //    is itself the access grant.
@@ -62,7 +68,6 @@ export async function GET(req: NextRequest) {
     const myAssignments = await prisma.patientAssignment.findMany({
       where: {
         therapistAccountId: session.user.id,
-        status: { in: ['ACTIVE', 'DEACTIVATED'] },
       },
       include: {
         patient: {
