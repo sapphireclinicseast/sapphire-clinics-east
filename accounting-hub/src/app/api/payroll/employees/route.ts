@@ -68,83 +68,93 @@ export async function GET(req: Request) {
         for (const s of staff) {
           const dept = s.department || ''
           const br = s.branch || ''
-          // Sync ALL staff regardless of department — clinical staff (OT, PT, SLP, etc.)
-          // are also salaried employees and must appear in the payroll system.
+          // Only sync ADMINISTRATION staff into payroll (all branches).
+          // Verdana Store staff are ALL synced regardless of department.
           const isVerdana = ['VDNA', 'VERDANA'].includes(br.toUpperCase())
+          if (!isVerdana && dept !== 'ADMINISTRATION') continue
           // Normalize Verdana branch name for accounting hub
           const normalizedBranch = isVerdana ? 'VERDANA' : br
 
-          // Build update/create data — always sync basic fields
-          // Use HR job title (human-readable) if available, fall back to marketing hub slug
-          const syncData: Record<string, unknown> = {
-            firstName: s.firstName || '',
-            lastName: s.lastName || '',
-            department: dept,
-            branch: normalizedBranch,
-            jobTitle: s.hrJobTitle || s.jobTitle || null,
-            email: s.email || null,
-            phone: s.phone || null,
-          }
+          try {
+            // Build update/create data — always sync basic fields.
+            // isActive: true reactivates employees that were soft-deleted and re-synced.
+            // Use HR job title (human-readable) if available, fall back to marketing hub slug.
+            const syncData: Record<string, unknown> = {
+              firstName: s.firstName || '',
+              lastName: s.lastName || '',
+              department: dept,
+              branch: normalizedBranch,
+              jobTitle: s.hrJobTitle || s.jobTitle || null,
+              email: s.email || null,
+              phone: s.phone || null,
+              isActive: true,
+            }
 
-          // Sync employeeId as biometric ID
-          // Use marketing hub's employeeId (branch-specific bio ID), NOT hrEmployeeId (HR platform ID shared across branches)
-          const empId = s.employeeId
-          if (empId) {
-            const bioId = parseInt(empId)
-            if (!isNaN(bioId)) {
-              // Check if another employee already has this bioId (unique constraint)
-              const bioConflict = await prisma.employee.findFirst({
-                where: { employeeBioId: bioId, externalStaffId: { not: s.id } },
-              })
-              if (!bioConflict) {
-                syncData.employeeBioId = bioId
+            // Sync employeeId as biometric ID
+            // Use marketing hub's employeeId (branch-specific bio ID), NOT hrEmployeeId (HR platform ID shared across branches)
+            const empId = s.employeeId
+            if (empId) {
+              const bioId = parseInt(empId)
+              if (!isNaN(bioId)) {
+                // Check if another employee already has this bioId (unique constraint)
+                const bioConflict = await prisma.employee.findFirst({
+                  where: { employeeBioId: bioId, externalStaffId: { not: s.id } },
+                })
+                if (!bioConflict) {
+                  syncData.employeeBioId = bioId
+                }
               }
             }
-          }
 
-          // Look up existing by externalStaffId first
-          let existing = await prisma.employee.findUnique({ where: { externalStaffId: s.id } })
+            // Look up existing by externalStaffId first
+            let existing = await prisma.employee.findUnique({ where: { externalStaffId: s.id } })
 
-          // If not found by externalStaffId, try matching by name+branch to link manual entries
-          if (!existing) {
-            const nameMatch = await prisma.employee.findFirst({
-              where: {
-                firstName: { equals: s.firstName || '', mode: 'insensitive' },
-                lastName: { equals: s.lastName || '', mode: 'insensitive' },
-                branch: normalizedBranch,
-                externalStaffId: null, // only match unlinked manual entries
+            // If not found by externalStaffId, try matching by name+branch to link manual entries
+            if (!existing) {
+              const nameMatch = await prisma.employee.findFirst({
+                where: {
+                  firstName: { equals: s.firstName || '', mode: 'insensitive' },
+                  lastName: { equals: s.lastName || '', mode: 'insensitive' },
+                  branch: normalizedBranch,
+                  externalStaffId: null, // only match unlinked manual entries
+                },
+              })
+              if (nameMatch) {
+                // Link the manual entry to the marketing hub record
+                await prisma.employee.update({
+                  where: { id: nameMatch.id },
+                  data: { externalStaffId: s.id },
+                })
+                existing = { ...nameMatch, externalStaffId: s.id }
+              }
+            }
+
+            // Always sync government IDs and bank details from HR platform — HR platform
+            // is the authoritative source. Previously the gov IDs were only filled when
+            // empty, which prevented corrections from propagating (JULIE ANN JOVILLO issue).
+            if (s.sss) syncData.sssNumber = s.sss
+            if (s.philhealth) syncData.philhealthNumber = s.philhealth
+            if (s.pagibig) syncData.pagibigNumber = s.pagibig
+            if (s.tin) syncData.tinNumber = s.tin
+            if (s.bankName) syncData.bankName = s.bankName
+            if (s.bankAccountNo) syncData.bankAccountNo = s.bankAccountNo
+
+            await prisma.employee.upsert({
+              where: { externalStaffId: s.id },
+              update: syncData,
+              create: {
+                externalStaffId: s.id,
+                ...syncData,
+                firstName: syncData.firstName as string,
+                lastName: syncData.lastName as string,
+                department: syncData.department as string,
+                branch: syncData.branch as string,
               },
             })
-            if (nameMatch) {
-              // Link the manual entry to the marketing hub record
-              await prisma.employee.update({
-                where: { id: nameMatch.id },
-                data: { externalStaffId: s.id },
-              })
-              existing = { ...nameMatch, externalStaffId: s.id }
-            }
+          } catch (empErr) {
+            console.error(`Employee sync error for ${s.firstName} ${s.lastName} (${br}):`, empErr)
+            // continue syncing the rest
           }
-
-          // Pre-fill government IDs from HR platform if not already set
-          if (s.sss && (!existing || !existing.sssNumber)) syncData.sssNumber = s.sss
-          if (s.philhealth && (!existing || !existing.philhealthNumber)) syncData.philhealthNumber = s.philhealth
-          if (s.pagibig && (!existing || !existing.pagibigNumber)) syncData.pagibigNumber = s.pagibig
-          if (s.tin && (!existing || !existing.tinNumber)) syncData.tinNumber = s.tin
-          if (s.bankName) syncData.bankName = s.bankName
-          if (s.bankAccountNo) syncData.bankAccountNo = s.bankAccountNo
-
-          await prisma.employee.upsert({
-            where: { externalStaffId: s.id },
-            update: syncData,
-            create: {
-              externalStaffId: s.id,
-              ...syncData,
-              firstName: syncData.firstName as string,
-              lastName: syncData.lastName as string,
-              department: syncData.department as string,
-              branch: syncData.branch as string,
-            },
-          })
         }
       }
     } catch (e) {
