@@ -20,6 +20,15 @@ interface HRSeminar {
   speakerName: string
   speakerTitle: string
   speakerHeadshot: string | null
+  // Workshop / Webinar / Conference / Symposium / etc. The HR creator
+  // form lets curators pick a preset or enter a freeform value via
+  // classificationOther — we surface both so the UI can show whichever
+  // is set without having to know the preset list.
+  classification?: string
+  classificationOther?: string
+  // Long-form bio of the speaker, shown in the "About Speaker" modal
+  // on each seminar card.
+  aboutSpeaker?: string
   description: string
   disciplineFocus: string[]
   targetAudience: string
@@ -101,6 +110,18 @@ export async function GET() {
     return focus.includes(myDeptNorm)
   }
 
+  // HR returns speakerHeadshot as a relative path (e.g.
+  // /seminar-attachments/<id>.png) served by the HR origin. The
+  // teletherapy frontend has no proxy for those files, so absolutise
+  // here so <img src> works directly. Same pattern as the templates
+  // proxy.
+  const HR_ORIGIN = HR_API_BASE.replace(/\/api\/?$/, '')
+  function absHeadshot(u: string | null | undefined): string | null {
+    if (!u) return null
+    if (/^https?:\/\//i.test(u)) return u
+    return `${HR_ORIGIN}${u.startsWith('/') ? u : '/' + u}`
+  }
+
   const seminars = (data.seminars ?? [])
     .filter(visibleToMe)
     .map((s) => {
@@ -109,6 +130,7 @@ export async function GET() {
       const { registeredEmails: _omit, meetingLink, ...rest } = s
       return {
         ...rest,
+        speakerHeadshot: absHeadshot(s.speakerHeadshot),
         myRegistration: registered ? { registered: true } : { registered: false },
         meetingLink: registered ? meetingLink : '',
       }

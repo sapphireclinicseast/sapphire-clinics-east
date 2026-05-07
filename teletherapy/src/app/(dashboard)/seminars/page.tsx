@@ -46,6 +46,13 @@ interface Seminar {
   speakerName: string
   speakerTitle: string
   speakerHeadshot: string | null
+  // HR's classification picker offers presets like Workshop / Webinar
+  // / Conference / Symposium; classificationOther holds a free-form
+  // value when the curator picks "Other". Either may be set.
+  classification?: string
+  classificationOther?: string
+  // Long-form bio shown in the "About Speaker" modal.
+  aboutSpeaker?: string
   description: string
   // Free-form learning objectives string from HR; usually multi-line
   // with literal "\n" / "\t" markers that we render verbatim with
@@ -148,6 +155,15 @@ export default function SeminarsPage() {
   const [search, setSearch] = useState('')
   const [toast, setToast] = useState<string | null>(null)
   const [objectivesSeminar, setObjectivesSeminar] = useState<Seminar | null>(null)
+  // About-Speaker modal state. We snapshot the relevant fields off
+  // the seminar (rather than holding the whole Seminar object) so a
+  // background refetch can't change what's currently shown.
+  const [aboutSpeaker, setAboutSpeaker] = useState<{
+    name: string
+    title: string
+    headshot: string | null
+    bio: string
+  } | null>(null)
   const [certificates, setCertificates] = useState<Certificate[]>([])
   const [certsLoading, setCertsLoading] = useState(false)
 
@@ -413,6 +429,20 @@ export default function SeminarsPage() {
                 <div className="flex flex-col lg:flex-row lg:items-start gap-4 mb-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                      {/* Classification (Workshop / Webinar / etc.).
+                          Prefer the preset; fall back to the freeform
+                          classificationOther if the curator picked
+                          "Other" on the HR side. Sand palette so it
+                          reads distinctly from the format badge. */}
+                      {(() => {
+                        const cls = (s.classification || s.classificationOther || '').trim()
+                        if (!cls) return null
+                        return (
+                          <span className="badge !text-[10px] bg-[var(--clay)]/10 text-[var(--clay)] border border-[var(--clay)]/30 capitalize">
+                            {cls}
+                          </span>
+                        )
+                      })()}
                       <span className="badge badge-teal !text-[10px]">{FORMAT_LABEL[s.format] ?? s.format}</span>
                       {(s.disciplineFocus ?? []).map((d) => (
                         <span key={d} className="badge !text-[10px] bg-[var(--sand-light)] text-[var(--sand-dark)] border border-[var(--sand-dark)]/20">
@@ -433,6 +463,48 @@ export default function SeminarsPage() {
                       {s.title}
                     </h2>
                   </div>
+
+                  {/* Speaker block — upper right of the card.
+                      Renders when we have either a headshot OR an
+                      aboutSpeaker bio (or both); skipped when neither
+                      is set so we don't leave an empty column. The
+                      headshot uses an <img> to the HR-served URL
+                      (absolutised by the proxy) and falls back to a
+                      teal initial-circle on load error. The About
+                      Speaker button only renders when aboutSpeaker
+                      is non-empty — pointless to open an empty modal. */}
+                  {(s.speakerHeadshot || (s.aboutSpeaker && s.aboutSpeaker.trim())) && (
+                    <div className="flex flex-col items-center gap-2 lg:w-[120px] shrink-0">
+                      {s.speakerHeadshot ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={s.speakerHeadshot}
+                          alt={s.speakerName || 'Speaker'}
+                          className="w-[88px] h-[88px] rounded-full object-cover border-2 border-[var(--pale-teal)] shadow-sm"
+                          onError={(e) => {
+                            // Hide the broken image so the fallback
+                            // initials block (rendered by sibling) can
+                            // take over visually. Cheaper than a state
+                            // toggle for a render-once event.
+                            (e.currentTarget as HTMLImageElement).style.display = 'none'
+                          }}
+                        />
+                      ) : (
+                        <div className="w-[88px] h-[88px] rounded-full bg-[var(--pale-teal)] flex items-center justify-center text-[var(--teal)] font-bold text-[24px]" style={{ fontFamily: 'var(--font-display)' }}>
+                          {(s.speakerName || '?').split(' ').filter(Boolean).map((n) => n[0]).slice(0, 2).join('').toUpperCase()}
+                        </div>
+                      )}
+                      {s.aboutSpeaker && s.aboutSpeaker.trim() && (
+                        <button
+                          type="button"
+                          onClick={() => setAboutSpeaker({ name: s.speakerName, title: s.speakerTitle, headshot: s.speakerHeadshot, bio: s.aboutSpeaker || '' })}
+                          className="text-[11px] font-semibold text-[var(--teal)] hover:underline whitespace-nowrap"
+                        >
+                          About Speaker
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[12px] text-[var(--mid-gray)] mb-3">
@@ -577,7 +649,72 @@ export default function SeminarsPage() {
           onClose={() => setObjectivesSeminar(null)}
         />
       )}
+
+      {aboutSpeaker && (
+        <AboutSpeakerModal
+          speaker={aboutSpeaker}
+          onClose={() => setAboutSpeaker(null)}
+        />
+      )}
       </>}
+    </div>
+  )
+}
+
+// Renders the speaker bio. Mirrors ObjectivesModal in styling so the
+// two modals feel like siblings; a small header card pairs the
+// headshot (or initials fallback) with the speaker's name + title,
+// and the bio body uses whitespace-pre-line so paragraph breaks the
+// curator typed in HR survive verbatim.
+function AboutSpeakerModal({ speaker, onClose }: {
+  speaker: { name: string; title: string; headshot: string | null; bio: string }
+  onClose: () => void
+}) {
+  const initials = (speaker.name || '?').split(' ').filter(Boolean).map((n) => n[0]).slice(0, 2).join('').toUpperCase()
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto animate-gate"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-5 border-b border-[var(--light-gray)] flex items-center gap-4">
+          {speaker.headshot ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={speaker.headshot}
+              alt={speaker.name || 'Speaker'}
+              className="w-16 h-16 rounded-full object-cover border-2 border-[var(--pale-teal)] shrink-0"
+            />
+          ) : (
+            <div className="w-16 h-16 rounded-full bg-[var(--pale-teal)] flex items-center justify-center text-[var(--teal)] font-bold text-[18px] shrink-0" style={{ fontFamily: 'var(--font-display)' }}>
+              {initials}
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <h3 className="font-bold text-[16px] text-[var(--charcoal)] leading-snug" style={{ fontFamily: 'var(--font-display)' }}>
+              {speaker.name || 'Speaker'}
+            </h3>
+            {speaker.title && (
+              <p className="text-[12px] text-[var(--mid-gray)] leading-snug">{speaker.title}</p>
+            )}
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 text-[var(--mid-gray)] hover:text-[var(--charcoal)] transition-colors shrink-0"
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="p-5">
+          <p className="text-[13px] text-[var(--charcoal)] leading-relaxed whitespace-pre-line">
+            {speaker.bio || 'No biography provided.'}
+          </p>
+        </div>
+      </div>
     </div>
   )
 }
