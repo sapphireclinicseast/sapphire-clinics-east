@@ -3814,9 +3814,9 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
           ...(walletDetail.walletType === 'GL' ? { diagnosis: walletEditForm.diagnosis || null } : {}),
           ...(walletDetail.walletType === 'GL' ? { approvedServices: editApprovedServices.length > 0 ? editApprovedServices : null } : {}),
           vipTier: walletEditForm.vipTier || null,
-          // HMO balance stays read-only (computed from unpaid POS orders). GL balance
-          // = 'Remaining Balance (Usable Amount)' is manually maintained.
-          ...(walletDetail.walletType !== 'HMO' ? { balance: walletEditForm.balance } : {}),
+          // HMO balance is computed from unpaid POS orders — never editable.
+          // GL balance is set at creation and auto-managed by orders — not editable after creation.
+          ...(walletDetail.walletType !== 'HMO' && walletDetail.walletType !== 'GL' ? { balance: walletEditForm.balance } : {}),
           attachmentUrl: walletEditForm.attachmentUrl || null,
           attachmentUrls: walletDetail.walletType === 'GL' ? walletEditAttachments : undefined,
           accountId: walletEditForm.accountId || null,
@@ -5110,22 +5110,25 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                     <input type="date" value={walletEditForm.dateObtained || ''} onChange={e => setWalletEditForm(p => ({ ...p, dateObtained: e.target.value }))}
                       className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
-                  {/* HMO balance is still auto-computed from unpaid POS orders.
-                      GL 'Remaining Balance' is now manually editable — represents the
-                      usable amount still available on the Guarantee Letter (Total GL
-                      approved amount minus what's already consumed against real orders). */}
-                  {walletDetail.walletType !== 'HMO' && (
+                  {/* HMO balance is auto-computed from unpaid POS orders — read-only.
+                      GL balance is auto-managed by orders (decremented on create, restored on void).
+                      It is set once at wallet creation and cannot be manually edited thereafter. */}
+                  {walletDetail.walletType !== 'HMO' && walletDetail.walletType !== 'GL' && (
                     <div>
-                      <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>
-                        {walletDetail.walletType === 'GL' ? 'Remaining Balance (Usable Amount)' : 'Balance'}
-                      </label>
+                      <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Balance</label>
                       <input type="number" step="0.01" value={walletEditForm.balance || ''} onChange={e => setWalletEditForm(p => ({ ...p, balance: e.target.value }))}
                         className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-                      {walletDetail.walletType === 'GL' && (
-                        <p className="text-[10px] mt-1" style={{ color: 'var(--mid-gray)' }}>
-                          Amount still usable for future orders. For the full approved GL amount, use the Approved SOA field.
-                        </p>
-                      )}
+                    </div>
+                  )}
+                  {walletDetail.walletType === 'GL' && (
+                    <div>
+                      <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Remaining Balance (Usable Amount)</label>
+                      <div className="w-full px-3 py-2 rounded-xl border text-sm bg-gray-50" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                        {formatCurrency(toNum(walletEditForm.balance))}
+                      </div>
+                      <p className="text-[10px] mt-1" style={{ color: 'var(--mid-gray)' }}>
+                        Read-only. Set at wallet creation; automatically decremented by orders and restored on void.
+                      </p>
                     </div>
                   )}
                   {walletDetail.walletType === 'VIP' && (
