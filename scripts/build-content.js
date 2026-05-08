@@ -13,20 +13,37 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 
-/** Parse YAML-style frontmatter from a markdown file */
+/** Parse YAML-style frontmatter from a markdown file.
+ *  Handles single-line key:value pairs and folded multi-line values where
+ *  the CMS wraps long titles/summaries onto indented continuation lines. */
 function parseFrontmatter(raw) {
   const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
   if (!match) return null;
 
   const data = {};
+  let lastKey = null;
   match[1].split(/\r?\n/).forEach(line => {
+    if (!line.trim()) { lastKey = null; return; }
+
+    // Indented line with no preceding key → ignore.
+    // Indented line right after a key:value → treat as folded continuation
+    // (YAML's default behavior: newline replaced by single space).
+    const isContinuation = /^\s/.test(line) && lastKey !== null;
+    if (isContinuation) {
+      data[lastKey] = `${data[lastKey]} ${line.trim()}`.trim();
+      return;
+    }
+
     const colonIdx = line.indexOf(':');
-    if (colonIdx === -1) return;
+    if (colonIdx === -1) { lastKey = null; return; }
     const key = line.slice(0, colonIdx).trim();
     let   val = line.slice(colonIdx + 1).trim();
     // Strip surrounding quotes
     val = val.replace(/^["']|["']$/g, '');
-    if (key) data[key] = val;
+    if (key) {
+      data[key] = val;
+      lastKey = key;
+    }
   });
 
   return { ...data, body: match[2].trim() };

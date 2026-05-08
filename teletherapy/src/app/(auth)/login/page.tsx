@@ -32,7 +32,18 @@ function LoginForm() {
       setError('Invalid email or password')
       setLoading(false)
     } else {
-      router.push(callbackUrl)
+      // Use a full navigation when callbackUrl is on a different origin
+      // (e.g. when this page is served via the marketing-site proxy at
+      // sapphireclinicseast.org/stafflogin and we need to land back on
+      // teletherapy.sapphireclinicseast.org). router.push only handles
+      // same-origin paths reliably.
+      const isAbsolute = /^https?:\/\//i.test(callbackUrl)
+      const isCrossOrigin = isAbsolute && new URL(callbackUrl).origin !== window.location.origin
+      if (isCrossOrigin) {
+        window.location.href = callbackUrl
+      } else {
+        router.push(callbackUrl)
+      }
     }
   }
 

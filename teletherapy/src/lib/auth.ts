@@ -33,6 +33,14 @@ declare module 'next-auth' {
   }
 }
 
+// Scope auth cookies to the parent domain so a session set when logging
+// in via the marketing-site proxy (sapphireclinicseast.org/stafflogin)
+// is also valid on teletherapy.sapphireclinicseast.org.
+const COOKIE_DOMAIN = process.env.NODE_ENV === 'production'
+  ? '.sapphireclinicseast.org'
+  : undefined
+const SECURE_COOKIES = process.env.NODE_ENV === 'production'
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
   session: {
@@ -41,6 +49,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   pages: {
     signIn: '/login',
+  },
+  cookies: {
+    sessionToken: {
+      name: SECURE_COOKIES ? '__Secure-authjs.session-token' : 'authjs.session-token',
+      options: { httpOnly: true, sameSite: 'lax', path: '/', secure: SECURE_COOKIES, domain: COOKIE_DOMAIN },
+    },
+    callbackUrl: {
+      name: SECURE_COOKIES ? '__Secure-authjs.callback-url' : 'authjs.callback-url',
+      options: { httpOnly: true, sameSite: 'lax', path: '/', secure: SECURE_COOKIES, domain: COOKIE_DOMAIN },
+    },
+    // CSRF token cannot use the __Host- prefix when we set Domain, so use __Secure- instead.
+    csrfToken: {
+      name: SECURE_COOKIES ? '__Secure-authjs.csrf-token' : 'authjs.csrf-token',
+      options: { httpOnly: true, sameSite: 'lax', path: '/', secure: SECURE_COOKIES, domain: COOKIE_DOMAIN },
+    },
   },
   providers: [
     CredentialsProvider({
