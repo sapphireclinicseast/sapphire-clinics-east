@@ -59,7 +59,7 @@ function LoginForm() {
           {/* Header */}
           <div className="text-center mb-8">
             <h1 className="text-[22px] font-bold text-[var(--charcoal)] tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-              SCEI Teletherapy
+              SCEI Staff Portal
             </h1>
             <p className="text-[13px] text-[var(--mid-gray)] mt-1">
               Sapphire Clinics East, Inc.
