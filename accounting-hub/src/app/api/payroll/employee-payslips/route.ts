@@ -245,6 +245,7 @@ export async function POST(req: Request) {
   const otMaxHrs = Number(settings.otMaxHours) || 3
 
   const payslips = []
+  const errors: string[] = []
 
   for (const emp of employees) {
     const empRecords = recByEmp.get(emp.id) || []
@@ -280,12 +281,30 @@ export async function POST(req: Request) {
       const recTimeIn = fmtTimePH(rec.timeIn)
       const recTimeOut = fmtTimePH(rec.timeOut)
       const dayName = DAYS_NAMES[rec.date.getUTCDay()]
-      const scheduledOut = empDaySchedules?.[dayName]?.out || emp.scheduleOut
+      // Check holiday schedule key first (REGULAR_HOLIDAY / SPECIAL_HOLIDAY in daySchedules),
+      // then per-day override, then employee default schedule
+      const holidayKey = rec.isHoliday ? (rec.holidayType === 'REGULAR' ? 'REGULAR_HOLIDAY' : 'SPECIAL_HOLIDAY') : null
+      const daySched = (holidayKey ? empDaySchedules?.[holidayKey] : null) ?? empDaySchedules?.[dayName] ?? null
+      const scheduledIn = daySched?.in || emp.scheduleIn
+      const scheduledOut = daySched?.out || emp.scheduleOut
+
+      // Recompute late/undertime from actual clock times + current schedule so that
+      // payslips stay correct even when an employee's schedule changes after upload.
+      let computedLate = rec.lateMinutes
+      let computedUndertime = rec.undertimeMinutes
+      if (rec.timeIn && rec.timeOut) {
+        const phtIn = new Date(rec.timeIn.getTime() + 8 * 60 * 60 * 1000)
+        const phtOut = new Date(rec.timeOut.getTime() + 8 * 60 * 60 * 1000)
+        const [schInH, schInM] = scheduledIn.split(':').map(Number)
+        const [schOutH, schOutM] = scheduledOut.split(':').map(Number)
+        computedLate = Math.max(0, (phtIn.getUTCHours() * 60 + phtIn.getUTCMinutes()) - (schInH * 60 + schInM))
+        computedUndertime = Math.max(0, (schOutH * 60 + schOutM) - (phtOut.getUTCHours() * 60 + phtOut.getUTCMinutes()))
+      }
 
       // Apply late grace period — only count late minutes beyond the grace
-      const effectiveLate = Math.max(0, rec.lateMinutes - lateGrace)
+      const effectiveLate = Math.max(0, computedLate - lateGrace)
       totalLateMinutes += effectiveLate
-      totalUndertimeMinutes += rec.undertimeMinutes
+      totalUndertimeMinutes += computedUndertime
 
       let dayPay = dailyRate
 
@@ -331,10 +350,10 @@ export async function POST(req: Request) {
 
       // Late / undertime breakdown
       if (effectiveLate > 0) {
-        dailyBreakdown.lateDeduction.push({ date: recDate, timeIn: recTimeIn, lateMinutes: rec.lateMinutes, gracePeriod: lateGrace, effectiveLate, hourlyRate, amount: (effectiveLate / 60) * hourlyRate })
+        dailyBreakdown.lateDeduction.push({ date: recDate, timeIn: recTimeIn, lateMinutes: computedLate, gracePeriod: lateGrace, effectiveLate, hourlyRate, amount: (effectiveLate / 60) * hourlyRate })
       }
-      if (rec.undertimeMinutes > 0) {
-        dailyBreakdown.undertimeDeduction.push({ date: recDate, timeOut: recTimeOut, undertimeMinutes: rec.undertimeMinutes, hourlyRate, amount: (rec.undertimeMinutes / 60) * hourlyRate })
+      if (computedUndertime > 0) {
+        dailyBreakdown.undertimeDeduction.push({ date: recDate, timeOut: recTimeOut, undertimeMinutes: computedUndertime, hourlyRate, amount: (computedUndertime / 60) * hourlyRate })
       }
     }
 
@@ -457,11 +476,13 @@ export async function POST(req: Request) {
       })
       payslips.push(payslip)
     } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
       console.error(`Payslip generation error for ${emp.firstName} ${emp.lastName}:`, e)
+      errors.push(`${emp.firstName} ${emp.lastName}: ${msg}`)
     }
   }
 
-  return NextResponse.json({ generated: payslips.length, payslips })
+  return NextResponse.json({ generated: payslips.length, payslips, errors })
 }
 
 // Finalize payslips
@@ -602,11 +623,25 @@ export async function PATCH(req: Request) {
       const recTimeIn = fmtTimePH(rec.timeIn)
       const recTimeOut = fmtTimePH(rec.timeOut)
       const dayName = DAYS_NAMES[rec.date.getUTCDay()]
-      const scheduledOut = empDaySchedules?.[dayName]?.out || emp.scheduleOut
+      const holidayKey = rec.isHoliday ? (rec.holidayType === 'REGULAR' ? 'REGULAR_HOLIDAY' : 'SPECIAL_HOLIDAY') : null
+      const daySched = (holidayKey ? empDaySchedules?.[holidayKey] : null) ?? empDaySchedules?.[dayName] ?? null
+      const scheduledIn = daySched?.in || emp.scheduleIn
+      const scheduledOut = daySched?.out || emp.scheduleOut
 
-      const effectiveLate = Math.max(0, rec.lateMinutes - lateGrace)
+      let computedLate = rec.lateMinutes
+      let computedUndertime = rec.undertimeMinutes
+      if (rec.timeIn && rec.timeOut) {
+        const phtIn = new Date(rec.timeIn.getTime() + 8 * 60 * 60 * 1000)
+        const phtOut = new Date(rec.timeOut.getTime() + 8 * 60 * 60 * 1000)
+        const [schInH, schInM] = scheduledIn.split(':').map(Number)
+        const [schOutH, schOutM] = scheduledOut.split(':').map(Number)
+        computedLate = Math.max(0, (phtIn.getUTCHours() * 60 + phtIn.getUTCMinutes()) - (schInH * 60 + schInM))
+        computedUndertime = Math.max(0, (schOutH * 60 + schOutM) - (phtOut.getUTCHours() * 60 + phtOut.getUTCMinutes()))
+      }
+
+      const effectiveLate = Math.max(0, computedLate - lateGrace)
       totalLateMinutes += effectiveLate
-      totalUndertimeMinutes += rec.undertimeMinutes
+      totalUndertimeMinutes += computedUndertime
 
       let dayPay = dailyRate
 
@@ -637,8 +672,8 @@ export async function PATCH(req: Request) {
           dailyBreakdown.overtimePay.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, scheduledOut, rawMinutes: rec.overtimeMinutes, roundedMinutes: roundedOTMinutes, otHours, multiplier: otMultiplier, hourlyRate, amount: otAmt })
         }
       }
-      if (effectiveLate > 0) dailyBreakdown.lateDeduction.push({ date: recDate, timeIn: recTimeIn, lateMinutes: rec.lateMinutes, gracePeriod: lateGrace, effectiveLate, hourlyRate, amount: (effectiveLate / 60) * hourlyRate })
-      if (rec.undertimeMinutes > 0) dailyBreakdown.undertimeDeduction.push({ date: recDate, timeOut: recTimeOut, undertimeMinutes: rec.undertimeMinutes, hourlyRate, amount: (rec.undertimeMinutes / 60) * hourlyRate })
+      if (effectiveLate > 0) dailyBreakdown.lateDeduction.push({ date: recDate, timeIn: recTimeIn, lateMinutes: computedLate, gracePeriod: lateGrace, effectiveLate, hourlyRate, amount: (effectiveLate / 60) * hourlyRate })
+      if (computedUndertime > 0) dailyBreakdown.undertimeDeduction.push({ date: recDate, timeOut: recTimeOut, undertimeMinutes: computedUndertime, hourlyRate, amount: (computedUndertime / 60) * hourlyRate })
     }
 
     const sssBenefit = emp.benefits.find(b => b.benefitType === 'SSS')
