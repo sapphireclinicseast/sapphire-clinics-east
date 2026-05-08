@@ -712,6 +712,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
 
   const generatePayslips = async () => {
     setGenerating(true)
+    setError('')
     try {
       const r = await fetch('/api/payroll/employee-payslips', {
         method: 'POST',
@@ -721,6 +722,9 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'Generation failed')
       fetchPayslips()
+      if (d.errors?.length) {
+        setError(`Generated ${d.generated} payslip(s) with ${d.errors.length} error(s): ${d.errors.slice(0, 3).join('; ')}${d.errors.length > 3 ? ` (+${d.errors.length - 3} more)` : ''}`)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate payslips')
     }
@@ -2139,6 +2143,49 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                                 <input type="time" value={override.out}
                                   onChange={e => {
                                     const next = { ...ds, [day]: { ...override, out: e.target.value } }
+                                    setFormData(p => ({ ...p, daySchedules: next }))
+                                  }}
+                                  className="px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)', width: '110px' }} />
+                              </>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="col-span-2">
+                    <label className="font-medium mb-2 block" style={{ color: 'var(--charcoal)' }}>Holiday Schedule Overrides <span className="text-xs font-normal" style={{ color: 'var(--mid-gray)' }}>(optional — use if holiday hours differ from regular schedule)</span></label>
+                    <div className="space-y-1.5">
+                      {(['REGULAR_HOLIDAY', 'SPECIAL_HOLIDAY'] as const).map(key => {
+                        const ds = formData.daySchedules || {}
+                        const override = ds[key]
+                        const hasOverride = !!override
+                        const label = key === 'REGULAR_HOLIDAY' ? 'Regular Holiday' : 'Special Non-Working Holiday'
+                        return (
+                          <div key={key} className="flex items-center gap-2">
+                            <label className="flex items-center gap-1.5 text-xs cursor-pointer" style={{ minWidth: '180px' }}>
+                              <input type="checkbox" checked={hasOverride}
+                                onChange={() => {
+                                  const next = { ...ds }
+                                  if (hasOverride) { delete next[key] } else { next[key] = { in: formData.scheduleIn || '08:00', out: formData.scheduleOut || '17:00' } }
+                                  setFormData(p => ({ ...p, daySchedules: Object.keys(next).length > 0 ? next : null }))
+                                }}
+                                className="rounded" style={{ accentColor: 'var(--teal)' }} />
+                              {label}
+                            </label>
+                            {hasOverride && (
+                              <>
+                                <input type="time" value={override.in}
+                                  onChange={e => {
+                                    const next = { ...ds, [key]: { ...override, in: e.target.value } }
+                                    setFormData(p => ({ ...p, daySchedules: next }))
+                                  }}
+                                  className="px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)', width: '110px' }} />
+                                <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</span>
+                                <input type="time" value={override.out}
+                                  onChange={e => {
+                                    const next = { ...ds, [key]: { ...override, out: e.target.value } }
                                     setFormData(p => ({ ...p, daySchedules: next }))
                                   }}
                                   className="px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)', width: '110px' }} />
