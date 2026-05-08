@@ -47,11 +47,12 @@ jobs:
 
       # ── 3. Set up SSH key directly ───────────────────────────────
       - name: Set up SSH key
+        continue-on-error: true   # ssh-keyscan failure must not cascade — run: steps already use -o StrictHostKeyChecking=no
         run: |
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts || true
 
       # ── 4. Sync files to VPS (rsync — fast incremental updates) ──
       - name: Deploy files to VPS
@@ -463,25 +464,33 @@ jobs:
       # full rebuild.  A full rebuild happens in step 8 right after.
       - name: Restart Accounting Hub (fast recovery)
         if: always()
+        continue-on-error: true   # timeout must not block the full rebuild in step 8
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          command_timeout: 3m
+          command_timeout: 5m
           script: |
-            DOCKER_DIR="/opt/accounting/docker"
-            echo "→ Ensuring accounting_app container is running (existing image)..."
-            cd "$DOCKER_DIR"
-            # Start with current image — no build, no downtime.
-            docker compose up -d --no-recreate app 2>&1 || docker compose up -d app 2>&1 || true
-            sleep 5
+            echo "→ Fast recovery: start accounting_app from existing image (no build)..."
+            # `docker start` is the fastest path — directly restarts a stopped container
+            # without going through compose dependency checks or image pulls.
+            if docker start accounting_app 2>&1; then
+              echo "   docker start accounting_app: OK"
+            else
+              echo "   docker start failed (container may not exist yet) — trying compose --no-build..."
+              cd "/opt/accounting/docker"
+              docker compose up -d --no-recreate --no-build app 2>&1 \
+                || echo "   --no-build also failed — step 8 full rebuild will handle this."
+            fi
+            sleep 8
             HTTP=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/ 2>&1 || echo "000")
             echo "   accounting_app health: HTTP $HTTP"
 
       # ── 8. Deploy Accounting Hub (Docker) ────────────────────────
       # ── 8. Deploy Accounting Hub (Docker) ────────────────────────
       - name: Deploy Accounting Hub
+        if: always()   # must run even when ssh-keyscan or marketing-hub build fails
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
