@@ -199,10 +199,15 @@ export async function POST(req: Request) {
       // Subtract 1 hour for lunch if worked more than 5 hours
       if (hoursWorked > 5) hoursWorked -= 1
 
-      // Parse schedule — check for per-day override first
+      // Parse schedule — check holiday key first, then per-day override, then default
+      // REGULAR_HOLIDAY / SPECIAL_HOLIDAY keys in daySchedules allow separate holiday schedules
       const dayOfWeek = DAYS_OF_WEEK[dateObj.getUTCDay()]
-      const daySched = emp.daySchedules && typeof emp.daySchedules === 'object' && !Array.isArray(emp.daySchedules)
-        ? (emp.daySchedules as Record<string, { in: string; out: string }>)[dayOfWeek] : null
+      const holidaySchedKey = isHoliday
+        ? (holidayType === 'REGULAR' ? 'REGULAR_HOLIDAY' : 'SPECIAL_HOLIDAY')
+        : null
+      const ds = emp.daySchedules && typeof emp.daySchedules === 'object' && !Array.isArray(emp.daySchedules)
+        ? (emp.daySchedules as Record<string, { in: string; out: string }>) : null
+      const daySched = (holidaySchedKey ? ds?.[holidaySchedKey] : null) ?? ds?.[dayOfWeek] ?? null
       const schedIn = daySched?.in || emp.scheduleIn
       const schedOut = daySched?.out || emp.scheduleOut
       const [schInH, schInM] = schedIn.split(':').map(Number)
