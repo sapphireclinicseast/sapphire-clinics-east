@@ -71,7 +71,7 @@ export default function CapturePage() {
     <div className="min-h-screen bg-[#0F2520] flex flex-col">
       {/* Header */}
       <div className="bg-[#1B3F38] px-4 py-3 text-center">
-        <h1 className="text-white font-semibold text-sm">SCEI Teletherapy</h1>
+        <h1 className="text-white font-semibold text-sm">SCEI Staff Portal</h1>
         <p className="text-white/50 text-xs">Capture Session Notes</p>
       </div>
 

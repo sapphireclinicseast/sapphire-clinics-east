@@ -289,7 +289,7 @@ export async function POST(
           ${schedule.sessionNote.notes ? renderNotesHtml(schedule.sessionNote.notes) : ''}
           ${attachmentListHtml}
           <p style="font-size: 13px; color: #7A908C; margin-top: 24px;">
-            This is an automated message from SCEI Teletherapy. Please contact your clinician directly if you have questions.
+            This is an automated message from SCEI Staff Portal. Please contact your clinician directly if you have questions.
           </p>
         </div>
       </div>

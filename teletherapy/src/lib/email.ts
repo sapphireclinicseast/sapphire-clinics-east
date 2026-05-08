@@ -11,7 +11,7 @@ function getResend(): Resend {
   return _resend
 }
 
-const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? 'SCEI Teletherapy <noreply@do-not-reply.sapphireclinicseast.org>'
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? 'SCEI Staff Portal <noreply@do-not-reply.sapphireclinicseast.org>'
 
 interface Attachment {
   filename: string

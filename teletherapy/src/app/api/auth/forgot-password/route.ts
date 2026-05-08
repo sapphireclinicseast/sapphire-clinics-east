@@ -41,12 +41,12 @@ export async function POST(req: NextRequest) {
 
   await sendEmail({
     to: email,
-    subject: 'SCEI Teletherapy — Password Reset',
+    subject: 'SCEI Staff Portal — Password Reset',
     html: `
       <div style="font-family: 'Gill Sans', Arial, sans-serif; max-width: 500px; margin: 0 auto; color: #1B3F38;">
         <div style="background: linear-gradient(135deg, #1B3F38, #26554B); padding: 24px; border-radius: 12px 12px 0 0; text-align: center;">
           <h1 style="color: white; margin: 0; font-size: 20px;">Password Reset</h1>
-          <p style="color: rgba(255,255,255,0.7); margin: 4px 0 0; font-size: 13px;">SCEI Teletherapy</p>
+          <p style="color: rgba(255,255,255,0.7); margin: 4px 0 0; font-size: 13px;">SCEI Staff Portal</p>
         </div>
         <div style="background: white; padding: 28px; border: 1px solid #E0E8E6; border-top: none; border-radius: 0 0 12px 12px;">
           <p>Hi <strong>${account.staff.firstName}</strong>,</p>

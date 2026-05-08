@@ -78,7 +78,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="font-bold text-[14px] text-white leading-tight tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-              SCEI Teletherapy
+              SCEI Staff Portal
             </p>
             <p className="text-[10px] text-white/40 mt-0.5">Sapphire Clinics East</p>
           </div>
@@ -162,7 +162,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-2">
             <Video size={18} className="text-[var(--teal)]" />
             <h1 className="font-bold text-[15px] text-[var(--charcoal)]" style={{ fontFamily: 'var(--font-display)' }}>
-              SCEI Teletherapy
+              SCEI Staff Portal
             </h1>
           </div>
         </header>

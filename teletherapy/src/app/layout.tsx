@@ -20,8 +20,8 @@ const manrope = Manrope({
 })
 
 export const metadata: Metadata = {
-  title: 'SCEI Teletherapy',
-  description: 'Sapphire Clinics East - Teletherapy Platform',
+  title: 'SCEI Staff Portal',
+  description: 'Sapphire Clinics East - Staff Portal',
 }
 
 export default function RootLayout({
