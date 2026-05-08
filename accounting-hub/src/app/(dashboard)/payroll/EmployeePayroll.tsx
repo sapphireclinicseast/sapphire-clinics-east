@@ -536,7 +536,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
       if (branch) params.set('branch', branch)
       if (tkStartDate) params.set('startDate', tkStartDate)
       if (tkEndDate) params.set('endDate', tkEndDate)
-      params.set('minStatus', 'ACCEPTED') // Only show accepted/finalized TK data
+      // Show all TK records regardless of upload review status — records are valid once uploaded
       const r = await fetch(`/api/payroll/timekeeping/records?${params}`)
       const d = await r.json()
       setTkRecords(Array.isArray(d) ? d : [])

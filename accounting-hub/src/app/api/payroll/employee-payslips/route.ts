@@ -167,15 +167,13 @@ export async function POST(req: Request) {
     include: { benefits: { where: { isActive: true } } },
   })
 
-  // Get timekeeping records for this period — only FINALIZED uploads or manual entries
+  // Get timekeeping records for this period — any upload status + manual entries
+  // The upload review workflow (UPLOADED → ACCEPTED → FINALIZED) is an optional audit step
+  // and must not gate payslip generation; records are valid once the upload is processed.
   const records = await prisma.timekeepingRecord.findMany({
     where: {
       date: { gte: startDate, lt: endDate },
       employee: { branch: qBranch, isActive: true },
-      OR: [
-        { uploadId: null }, // manual entries
-        { upload: { status: 'FINALIZED' } },
-      ],
     },
     orderBy: { date: 'asc' },
   })
@@ -549,12 +547,11 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: 'Employee not found or inactive' }, { status: 404 })
     }
 
-    // Timekeeping records for this employee in the cutoff window
+    // Timekeeping records for this employee in the cutoff window — any upload status
     const empRecords = await prisma.timekeepingRecord.findMany({
       where: {
         employeeId,
         date: { gte: startDate, lt: endDate },
-        OR: [{ uploadId: null }, { upload: { status: 'FINALIZED' } }],
       },
       orderBy: { date: 'asc' },
     })
