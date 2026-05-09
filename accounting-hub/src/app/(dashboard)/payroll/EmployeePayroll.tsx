@@ -4254,7 +4254,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                   className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-white"
                   style={{ background: generating ? 'var(--mid-gray)' : 'var(--teal)' }}>
                   {generating ? <Loader2 size={13} className="animate-spin" /> : <DollarSign size={13} />}
-                  Generate Payslips
+                  {payslips.length > 0 ? 'Regenerate All' : 'Generate Payslips'}
                 </button>
                 <button onClick={createBankFile}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border"
@@ -4334,6 +4334,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                   <SortTh field="psTax" className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Tax</SortTh>
                   <SortTh field="psNet" className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Net Pay</SortTh>
                   <SortTh field="psStatus" className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Status</SortTh>
+                  {canWrite && <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}></th>}
                   <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}></th>
                 </tr>
               </thead>
@@ -4374,13 +4375,26 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                           {p.status}
                         </span>
                       </td>
+                      {canWrite && (
+                        <td className="px-3 py-2.5 text-center" onClick={e => e.stopPropagation()}>
+                          {p.status !== 'LOCKED' && (
+                            <button onClick={() => regeneratePayslip(p)} disabled={regeneratingId === p.id}
+                              className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium border transition-all hover:opacity-80 disabled:opacity-40 mx-auto"
+                              style={{ borderColor: '#0d9488', color: '#0d9488' }}
+                              title="Re-run computation from latest timekeeping data">
+                              {regeneratingId === p.id ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                              {regeneratingId === p.id ? '…' : 'Regen'}
+                            </button>
+                          )}
+                        </td>
+                      )}
                       <td className="px-3 py-2.5 text-center">
                         {expandedPayslip === p.id ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                       </td>
                     </tr>
                     {expandedPayslip === p.id && (
                       <tr key={`${p.id}-detail`}>
-                        <td colSpan={11} className="px-6 py-4" style={{ background: 'var(--off-white)' }}>
+                        <td colSpan={canWrite ? 12 : 11} className="px-6 py-4" style={{ background: 'var(--off-white)' }}>
                           <div className="grid grid-cols-3 gap-4 text-xs">
                             <div>
                               <p className="font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Earnings</p>
