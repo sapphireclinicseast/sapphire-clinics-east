@@ -4429,7 +4429,6 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                                 <div className="flex justify-between"><span>PhilHealth</span><span className="font-mono">{formatCurrency(toNum(p.philhealthDeduction))}</span></div>
                                 <div className="flex justify-between"><span>Pag-IBIG</span><span className="font-mono">{formatCurrency(toNum(p.pagibigDeduction))}</span></div>
                                 <div className="flex justify-between"><span>Tax</span><span className="font-mono">{formatCurrency(toNum(p.taxDeduction))}</span></div>
-                                <div className="flex justify-between"><span>Late</span><span className="font-mono">{formatCurrency(toNum(p.lateDeduction))}</span></div>
                                 <div className="flex justify-between"><span>Undertime</span><span className="font-mono">{formatCurrency(toNum(p.undertimeDeduction))}</span></div>
                                 <div className="flex justify-between border-t pt-1 font-bold" style={{ borderColor: 'var(--light-gray)' }}><span>Total</span><span className="font-mono">{formatCurrency(toNum(p.totalDeductions))}</span></div>
                               </div>

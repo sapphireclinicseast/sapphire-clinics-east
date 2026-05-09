@@ -402,8 +402,9 @@ export async function POST(req: Request) {
     const philhealthEmployerShare = philBenefit && settings.philhealthEnabled ? Number(philBenefit.employerShare) * benefitMultiplier : 0
     const pagibigEmployerShare = pagBenefit && settings.pagibigEnabled ? Number(pagBenefit.employerShare) * benefitMultiplier : 0
 
-    // Late & undertime deductions
-    const lateDeduction = (totalLateMinutes / 60) * hourlyRate
+    // Late is informational only — undertime already captures the full missed-time penalty
+    // because required time-out shifts by the late arrival (no double-deduction).
+    const lateDeduction = 0
     const undertimeDeduction = (totalUndertimeMinutes / 60) * hourlyRate
 
     // Cutoff adjustments (allowances & deductions) — aggregate multiple lines
@@ -734,7 +735,8 @@ export async function PATCH(req: Request) {
     const philhealthEmployerShare = philBenefit && settings.philhealthEnabled ? Number(philBenefit.employerShare) * benefitMultiplier : 0
     const pagibigEmployerShare = pagBenefit && settings.pagibigEnabled ? Number(pagBenefit.employerShare) * benefitMultiplier : 0
 
-    const lateDeduction = (totalLateMinutes / 60) * hourlyRate
+    // Late is informational only — undertime already captures the full missed-time penalty
+    const lateDeduction = 0
     const undertimeDeduction = (totalUndertimeMinutes / 60) * hourlyRate
 
     let allowanceAmount = 0, adjDeductionAmount = 0, nonTaxableAllowance = 0
