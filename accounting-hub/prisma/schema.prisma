@@ -1270,6 +1270,9 @@ model EmployeePayslip {
   status           PayslipStatus @default(DRAFT)
   taxRemitted      Boolean      @default(false)
   salariesRemitted Boolean      @default(false)
+  salaryPaymentId  String?      // set when salary is remitted
+  benefitsRemitted Boolean      @default(false)
+  benefitPaymentId String?      // set when SSS/PHIC/HDMF is remitted
   createdById      String
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
@@ -1277,6 +1280,9 @@ model EmployeePayslip {
   @@unique([employeeId, cutoffPeriod, branch])
   @@index([taxRemitted])
   @@index([salariesRemitted])
+  @@index([benefitsRemitted])
+  @@index([salaryPaymentId])
+  @@index([benefitPaymentId])
   @@index([employeeId])
   @@index([cutoffPeriod])
   @@index([branch])

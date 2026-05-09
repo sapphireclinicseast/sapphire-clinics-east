@@ -89,6 +89,12 @@ export async function DELETE(req: Request) {
         data: { salariesRemitted: false, salaryPaymentId: null },
       })
 
+      // Un-remit EmployeePayslip records linked via salaryPaymentId
+      await tx.employeePayslip.updateMany({
+        where: { salaryPaymentId: id },
+        data: { salariesRemitted: false, salaryPaymentId: null },
+      })
+
       // Also un-remit via fallback (old records matched by branch + cutoffPeriod)
       if (payment.branch && payment.cutoffPeriod) {
         const periods = payment.cutoffPeriod.split(', ').map(s => s.trim()).filter(Boolean)
@@ -155,8 +161,9 @@ export async function POST(req: Request) {
 
   try {
     const {
-      payrollEntryIds,   // for CONSULTANT per-person
-      payableIds,        // legacy aggregate (EMPLOYEE)
+      payrollEntryIds,      // for CONSULTANT per-person
+      employeePayslipIds,   // for EMPLOYEE per-person
+      payableIds,           // legacy aggregate
       paymentDate,
       fromAccountId,
       proofUrl,
@@ -255,9 +262,86 @@ export async function POST(req: Request) {
       return NextResponse.json(result, { status: 201 })
     }
 
-    // ── Legacy aggregate path (EMPLOYEE or old data) ──
+    // ── EMPLOYEE per-person path ──
+    if (employeePayslipIds?.length) {
+      const payslips = await prisma.employeePayslip.findMany({
+        where: { id: { in: employeePayslipIds }, salariesRemitted: false },
+        include: { employee: { select: { firstName: true, lastName: true } } },
+      })
+      if (!payslips.length) return NextResponse.json({ error: 'No valid unremitted employee payslips found' }, { status: 404 })
+
+      const totalNet = payslips.reduce((s, p) => s + Number(p.netPay), 0)
+      const descriptions = payslips.map(p => `${p.employee.lastName} ${p.employee.firstName} (${p.cutoffPeriod})`).join(', ')
+
+      const result = await prisma.$transaction(async (tx) => {
+        const lines: { accountId: string; debit: number; credit: number; description: string }[] = [
+          { accountId: mapping.salariesPayableAccountId!, debit: totalNet, credit: 0, description: `Salaries Payable — ${descriptions}` },
+          { accountId: fromAccountId, debit: 0, credit: totalNet, description: 'Cash/Bank — Salary Payment' },
+        ]
+        if (hasFee) {
+          lines.push({ accountId: feeExpenseAccountId, debit: feeAmt, credit: 0, description: 'Remittance Fee Expense' })
+          lines.push({ accountId: feeCashAccountId || fromAccountId, debit: 0, credit: feeAmt, description: 'Cash/Bank — Remittance Fee' })
+        }
+
+        const journalEntry = await tx.journalEntry.create({
+          data: {
+            entryDate: new Date(paymentDate),
+            description: `Salary Payment${hasFee ? ` (+ ₱${feeAmt} fee)` : ''} — ${descriptions}`,
+            referenceType: 'SALARY_PAYMENT',
+            referenceId: payslips.map(p => p.id).join(';'),
+            totalAmount: totalNet + feeAmt,
+            branch: payslips[0].branch,
+            createdById: session.user.id as string,
+            lines: { create: lines },
+          },
+        })
+
+        const payment = await tx.salaryPayment.create({
+          data: {
+            paymentDate: new Date(paymentDate),
+            totalAmount: totalNet + feeAmt,
+            fromAccountId,
+            proofUrl: proofUrl || null,
+            notes: notes ? `${notes}${hasFee ? ` | Fee: ₱${feeAmt}` : ''}` : (hasFee ? `Fee: ₱${feeAmt}` : null),
+            paymentType: 'EMPLOYEE',
+            cutoffPeriod: [...new Set(payslips.map(p => p.cutoffPeriod))].join(', '),
+            branch: payslips[0].branch,
+            journalEntryId: journalEntry.id,
+            createdById: session.user.id as string,
+          },
+        })
+
+        await tx.employeePayslip.updateMany({
+          where: { id: { in: payslips.map(p => p.id) } },
+          data: { salariesRemitted: true, salaryPaymentId: payment.id },
+        })
+
+        // If all locked payslips in a period are now remitted, mark the aggregate too
+        const periods = [...new Set(payslips.map(p => `${p.cutoffPeriod}|${p.branch}`))]
+        for (const key of periods) {
+          const [cp, br] = key.split('|')
+          const payable = await tx.payrollPayableStatus.findFirst({
+            where: { cutoffPeriod: cp, branch: br, payrollType: 'EMPLOYEE' },
+          })
+          if (payable && !payable.salariesRemitted) {
+            const remaining = await tx.employeePayslip.count({
+              where: { cutoffPeriod: cp, branch: br, status: 'LOCKED', salariesRemitted: false },
+            })
+            if (remaining === 0) {
+              await tx.payrollPayableStatus.update({ where: { id: payable.id }, data: { salariesRemitted: true, salaryPaymentId: payment.id } })
+            }
+          }
+        }
+
+        return { payment, journalEntry }
+      })
+
+      return NextResponse.json(result, { status: 201 })
+    }
+
+    // ── Legacy aggregate path ──
     const ids: string[] = payableIds || []
-    if (!ids.length) return NextResponse.json({ error: 'payrollEntryIds or payableIds required' }, { status: 400 })
+    if (!ids.length) return NextResponse.json({ error: 'payrollEntryIds, employeePayslipIds, or payableIds required' }, { status: 400 })
 
     const payables = await prisma.payrollPayableStatus.findMany({ where: { id: { in: ids }, salariesRemitted: false } })
     if (!payables.length) return NextResponse.json({ error: 'No valid unremitted payable records found' }, { status: 404 })

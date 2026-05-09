@@ -175,8 +175,30 @@ interface SalaryPayableEntry {
   taxAmount: number | null
   netPay: number
   salariesRemitted: boolean
-  status: string
+  status?: string
   isAggregateRow?: boolean
+  isConsultantEntry?: boolean
+  isEmployeePayslip?: boolean
+  employeeId?: string
+  employeeName?: string | null
+}
+
+interface BenefitEmployeeEntry {
+  id: string
+  employeeId: string
+  employeeName: string
+  department: string
+  branch: string
+  cutoffPeriod: string
+  sssEE: number
+  sssER: number
+  philEE: number
+  philER: number
+  pagEE: number
+  pagER: number
+  totalBenefitsPayable: number
+  benefitsRemitted: boolean
+  benefitPaymentId: string | null
 }
 
 interface AccountBrief {
@@ -899,18 +921,22 @@ export default function PayrollPage() {
   const [coaSearch, setCoaSearch] = useState('')
 
   // Salaries Payable tab state
-  const [salariesPayables, setSalariesPayables] = useState<SalaryPayableEntry[]>([])
+  const [salPayableSubTab, setSalPayableSubTab] = useState<'employees' | 'consultants'>('employees')
+  const [salariesPayables, setSalariesPayables] = useState<SalaryPayableEntry[]>([])   // consultants
+  const [empSalPayables, setEmpSalPayables] = useState<SalaryPayableEntry[]>([])       // employees
   const [loadingSalPayable, setLoadingSalPayable] = useState(false)
+  const [loadingEmpSalPayable, setLoadingEmpSalPayable] = useState(false)
   const [showSalRemitted, setShowSalRemitted] = useState(false)
+  const [showEmpSalRemitted, setShowEmpSalRemitted] = useState(false)
 
   // Benefits Payable tab state
-  interface BenefitPayableRow { id: string; cutoffPeriod: string; branch: string; payrollType: string; totalBenefitsPayable: number; benefitsRemitted: boolean }
-  const [benefitsPayables, setBenefitsPayables] = useState<BenefitPayableRow[]>([])
+  const [benefitsPayables, setBenefitsPayables] = useState<BenefitEmployeeEntry[]>([])
   const [loadingBenPayable, setLoadingBenPayable] = useState(false)
   const [showBenRemitted, setShowBenRemitted] = useState(false)
 
   // Multi-select for salary/benefit payables
   const [selectedSalaryPayableIds, setSelectedSalaryPayableIds] = useState<string[]>([])
+  const [selectedEmpSalPayableIds, setSelectedEmpSalPayableIds] = useState<string[]>([])
   const [selectedBenefitPayableIds, setSelectedBenefitPayableIds] = useState<string[]>([])
 
   // Remit modal state (shared between salary and benefit payments)
@@ -1073,11 +1099,11 @@ export default function PayrollPage() {
     }
   }, [mainTab, taxFilter, fetchTaxPayable, fetchTaxPayments, fetchTaxSettings])
 
-  // Fetch salaries payable
+  // Fetch consultant salaries payable
   const fetchSalariesPayable = useCallback(async () => {
     setLoadingSalPayable(true)
     try {
-      const params = new URLSearchParams()
+      const params = new URLSearchParams({ payrollType: 'CONSULTANT' })
       if (branch) params.set('branch', branch)
       if (showSalRemitted) params.set('showRemitted', 'true')
       const res = await fetch(`/api/payroll/salaries-payable?${params}`)
@@ -1085,6 +1111,19 @@ export default function PayrollPage() {
     } catch { setSalariesPayables([]) }
     finally { setLoadingSalPayable(false) }
   }, [branch, showSalRemitted])
+
+  // Fetch employee salaries payable
+  const fetchEmpSalPayable = useCallback(async () => {
+    setLoadingEmpSalPayable(true)
+    try {
+      const params = new URLSearchParams({ payrollType: 'EMPLOYEE' })
+      if (branch) params.set('branch', branch)
+      if (showEmpSalRemitted) params.set('showRemitted', 'true')
+      const res = await fetch(`/api/payroll/salaries-payable?${params}`)
+      setEmpSalPayables(await res.json())
+    } catch { setEmpSalPayables([]) }
+    finally { setLoadingEmpSalPayable(false) }
+  }, [branch, showEmpSalRemitted])
 
   // Fetch benefits payable
   const fetchBenefitsPayable = useCallback(async () => {
@@ -1111,10 +1150,15 @@ export default function PayrollPage() {
   useEffect(() => {
     if (mainTab === 'salaries-payable') {
       fetchSalariesPayable()
+      fetchEmpSalPayable()
       fetch('/api/payroll/salary-payments?paymentType=CONSULTANT')
         .then(r => r.json()).then(setSalaryPayments).catch(() => setSalaryPayments([]))
     }
-  }, [mainTab, fetchSalariesPayable])
+  }, [mainTab, fetchSalariesPayable, fetchEmpSalPayable])
+
+  useEffect(() => {
+    if (mainTab === 'salaries-payable') fetchEmpSalPayable()
+  }, [showEmpSalRemitted]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (mainTab === 'benefits-payable') fetchBenefitsPayable()
@@ -1257,7 +1301,11 @@ export default function PayrollPage() {
   /* ── Remit payment ── */
   const handleRemit = async () => {
     if (!remitFromAccountId) return
-    const ids = showRemitModal === 'salary' ? selectedSalaryPayableIds : selectedBenefitPayableIds
+    // For salary modal: use whichever subtab is active
+    const isEmpSalary = showRemitModal === 'salary' && salPayableSubTab === 'employees'
+    const ids = showRemitModal === 'salary'
+      ? (isEmpSalary ? selectedEmpSalPayableIds : selectedSalaryPayableIds)
+      : selectedBenefitPayableIds
     if (!ids.length) return
     setRemitting(true)
     try {
@@ -1274,12 +1322,21 @@ export default function PayrollPage() {
 
       const endpoint = showRemitModal === 'salary' ? '/api/payroll/salary-payments' : '/api/payroll/benefit-payments'
       const hasFee = showRemitModal === 'salary' && Number(remitFeeAmount) > 0
-      const isSalaryPerPerson = showRemitModal === 'salary' && salariesPayables.some(p => ids.includes(p.id) && !p.isAggregateRow)
+
+      let bodyIds: Record<string, string[]>
+      if (showRemitModal === 'benefit') {
+        bodyIds = { employeePayslipIds: ids }
+      } else if (isEmpSalary) {
+        bodyIds = { employeePayslipIds: ids }
+      } else {
+        bodyIds = { payrollEntryIds: ids }
+      }
+
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...(isSalaryPerPerson ? { payrollEntryIds: ids } : { payableIds: ids }),
+          ...bodyIds,
           paymentDate: remitDate,
           fromAccountId: remitFromAccountId,
           proofUrl: proofFinalUrl || null,
@@ -1297,8 +1354,9 @@ export default function PayrollPage() {
       setRemitProofFile(null)
       setRemitProofFileName('')
       setSelectedSalaryPayableIds([])
+      setSelectedEmpSalPayableIds([])
       setSelectedBenefitPayableIds([])
-      if (mainTab === 'salaries-payable') fetchSalariesPayable()
+      if (mainTab === 'salaries-payable') { fetchSalariesPayable(); fetchEmpSalPayable() }
       if (mainTab === 'benefits-payable') fetchBenefitsPayable()
     } catch (e) { setError(String(e)) }
     finally { setRemitting(false); setRemitUploading(false) }
@@ -1374,6 +1432,7 @@ export default function PayrollPage() {
         await fetchTaxPayments()
       } else {
         fetchSalariesPayable()
+        fetchEmpSalPayable()
         fetch('/api/payroll/salary-payments?paymentType=CONSULTANT')
           .then(r => r.json()).then(setSalaryPayments).catch(() => setSalaryPayments([]))
       }
@@ -4657,30 +4716,53 @@ export default function PayrollPage() {
          TAB: SALARIES PAYABLE
          ═══════════════════════════════════════════════════════════ */}
       {mainTab === 'salaries-payable' && (() => {
-        const salUnremitted = salariesPayables.filter(p => !p.salariesRemitted)
-        const salSelectedTotal = salariesPayables.filter(p => selectedSalaryPayableIds.includes(p.id)).reduce((s, p) => s + p.netPay, 0)
+        const isEmpTab = salPayableSubTab === 'employees'
+        const activePayables = isEmpTab ? empSalPayables : salariesPayables
+        const activeSelected = isEmpTab ? selectedEmpSalPayableIds : selectedSalaryPayableIds
+        const setActiveSelected = isEmpTab ? setSelectedEmpSalPayableIds : setSelectedSalaryPayableIds
+        const unremitted = activePayables.filter(p => !p.salariesRemitted)
+        const selectedTotal = activePayables.filter(p => activeSelected.includes(p.id)).reduce((s, p) => s + p.netPay, 0)
+        const isLoading = isEmpTab ? loadingEmpSalPayable : loadingSalPayable
         return (
         <div className="space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Salaries Payable</h2>
             <div className="flex items-center gap-3">
-              {selectedSalaryPayableIds.length > 0 && (
+              {activeSelected.length > 0 && (
                 <button onClick={() => { setShowRemitModal('salary'); setRemitFromAccountId(''); setRemitFromSearch(''); setRemitProofUrl(''); setRemitNotes(''); setRemitFeeAmount(''); setRemitFeeExpenseAccountId(''); setRemitFeeExpenseSearch(''); setRemitFeeCashAccountId(''); setRemitFeeCashSearch('') }}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
                   style={{ background: 'var(--teal)' }}>
-                  <BadgeDollarSign size={14} /> Remit Selected ({selectedSalaryPayableIds.length})
+                  <BadgeDollarSign size={14} /> Remit Selected ({activeSelected.length})
                 </button>
               )}
               <label className="flex items-center gap-2 text-xs cursor-pointer" style={{ color: 'var(--mid-gray)' }}>
-                <input type="checkbox" checked={showSalRemitted} onChange={e => setShowSalRemitted(e.target.checked)} />
+                <input type="checkbox"
+                  checked={isEmpTab ? showEmpSalRemitted : showSalRemitted}
+                  onChange={e => isEmpTab ? setShowEmpSalRemitted(e.target.checked) : setShowSalRemitted(e.target.checked)} />
                 Show already remitted
               </label>
             </div>
           </div>
-          {loadingSalPayable ? (
+
+          {/* Subtabs */}
+          <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'var(--off-white)', width: 'fit-content' }}>
+            {(['employees', 'consultants'] as const).map(t => (
+              <button key={t} onClick={() => setSalPayableSubTab(t)}
+                className="px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+                style={salPayableSubTab === t ? { background: 'white', color: 'var(--deep-teal)', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' } : { color: 'var(--mid-gray)' }}>
+                {t === 'employees' ? 'Employees' : 'Consultants'}
+              </button>
+            ))}
+          </div>
+
+          {isLoading ? (
             <div className="flex justify-center py-12"><Loader2 size={20} className="animate-spin" style={{ color: 'var(--teal)' }} /></div>
-          ) : salariesPayables.length === 0 ? (
-            <p className="text-center py-12 text-sm" style={{ color: 'var(--mid-gray)' }}>No salaries payable records. Finalize payroll to create entries.</p>
+          ) : activePayables.length === 0 ? (
+            <p className="text-center py-12 text-sm" style={{ color: 'var(--mid-gray)' }}>
+              {isEmpTab
+                ? 'No employee salary records. Lock employee payslips to see them here.'
+                : 'No consultant salary records. Finalize consultant payroll to create entries.'}
+            </p>
           ) : (
             <div className="space-y-3">
             <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
@@ -4689,37 +4771,39 @@ export default function PayrollPage() {
                   <tr style={{ background: 'var(--off-white)' }}>
                     <th className="px-3 py-2.5 w-10">
                       <input type="checkbox"
-                        checked={salUnremitted.length > 0 && salUnremitted.every(p => selectedSalaryPayableIds.includes(p.id))}
+                        checked={unremitted.length > 0 && unremitted.every(p => activeSelected.includes(p.id))}
                         onChange={e => {
-                          if (e.target.checked) setSelectedSalaryPayableIds(prev => [...new Set([...prev, ...salUnremitted.map(p => p.id)])])
-                          else setSelectedSalaryPayableIds(prev => prev.filter(id => !salUnremitted.find(p => p.id === id)))
+                          if (e.target.checked) setActiveSelected(prev => [...new Set([...prev, ...unremitted.map(p => p.id)])])
+                          else setActiveSelected(prev => prev.filter(id => !unremitted.find(p => p.id === id)))
                         }} />
                     </th>
-                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Consultant</th>
+                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>
+                      {isEmpTab ? 'Employee' : 'Consultant'}
+                    </th>
                     <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Cutoff Period</th>
                     <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Branch</th>
                     <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Gross Pay</th>
-                    <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Tax (5%)</th>
+                    <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Deductions</th>
                     <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Net Pay</th>
                     <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {salariesPayables.length === 0 ? (
-                    <tr><td colSpan={8} className="px-4 py-10 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>No unremitted salaries — all caught up!</td></tr>
-                  ) : salariesPayables.map(p => (
+                  {activePayables.map(p => (
                     <tr key={p.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                       <td className="px-3 py-2.5">
                         {!p.salariesRemitted && (
                           <input type="checkbox"
-                            checked={selectedSalaryPayableIds.includes(p.id)}
-                            onChange={e => setSelectedSalaryPayableIds(prev =>
+                            checked={activeSelected.includes(p.id)}
+                            onChange={e => setActiveSelected(prev =>
                               e.target.checked ? [...prev, p.id] : prev.filter(id => id !== p.id)
                             )} />
                         )}
                       </td>
                       <td className="px-3 py-2.5">
-                        <p className="font-medium" style={{ color: 'var(--charcoal)' }}>{p.consultantName || '—'}</p>
+                        <p className="font-medium" style={{ color: 'var(--charcoal)' }}>
+                          {isEmpTab ? (p.employeeName || '—') : (p.consultantName || '—')}
+                        </p>
                         {p.department && <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{DEPT_LABELS[p.department] || p.department}</p>}
                       </td>
                       <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{getCutoffLabel(p.cutoffPeriod)}</td>
@@ -4737,17 +4821,17 @@ export default function PayrollPage() {
                 </tbody>
               </table>
             </div>
-            {salariesPayables.some(p => !p.salariesRemitted) && (
+            {unremitted.length > 0 && (
               <div className="flex items-center justify-between px-4 py-3 rounded-xl" style={{ background: 'var(--off-white)' }}>
                 <span className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>
-                  Total unremitted: <span style={{ color: 'var(--teal)' }}>{formatCurrency(salUnremitted.reduce((s, p) => s + p.netPay, 0))}</span>
-                  {selectedSalaryPayableIds.length > 0 && <span className="ml-3">Selected: <span style={{ color: 'var(--deep-teal)' }}>{formatCurrency(salSelectedTotal)}</span></span>}
+                  Total unremitted: <span style={{ color: 'var(--teal)' }}>{formatCurrency(unremitted.reduce((s, p) => s + p.netPay, 0))}</span>
+                  {activeSelected.length > 0 && <span className="ml-3">Selected: <span style={{ color: 'var(--deep-teal)' }}>{formatCurrency(selectedTotal)}</span></span>}
                 </span>
-                {selectedSalaryPayableIds.length > 0 && (
+                {activeSelected.length > 0 && (
                   <button onClick={() => { setShowRemitModal('salary'); setRemitFromAccountId(''); setRemitFromSearch(''); setRemitProofUrl(''); setRemitNotes(''); setRemitFeeAmount(''); setRemitFeeExpenseAccountId(''); setRemitFeeExpenseSearch(''); setRemitFeeCashAccountId(''); setRemitFeeCashSearch('') }}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
                     style={{ background: 'var(--teal)' }}>
-                    <BadgeDollarSign size={14} /> Remit Selected ({selectedSalaryPayableIds.length} payslips)
+                    <BadgeDollarSign size={14} /> Remit Selected ({activeSelected.length} payslips)
                   </button>
                 )}
               </div>
@@ -4755,14 +4839,13 @@ export default function PayrollPage() {
             </div>
           )}
 
-          {/* Salary Payment History */}
-          {salaryPayments.length > 0 && (
+          {/* Salary Payment History — only on Consultants tab */}
+          {salPayableSubTab === 'consultants' && salaryPayments.length > 0 && (
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--mid-gray)' }}>Payment History</p>
               <div className="space-y-3">
                 {salaryPayments.map(sp => (
                   <div key={sp.id} className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-                    {/* Payment header row */}
                     <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                       <div className="flex flex-wrap items-center gap-4">
                         <span className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>
@@ -4790,7 +4873,6 @@ export default function PayrollPage() {
                         )}
                       </div>
                     </div>
-                    {/* Individuals included in this remittance */}
                     {sp.consultants && sp.consultants.length > 0 ? (
                       <table className="w-full text-xs">
                         <tbody>
@@ -4821,7 +4903,7 @@ export default function PayrollPage() {
          ═══════════════════════════════════════════════════════════ */}
       {mainTab === 'benefits-payable' && (() => {
         const benUnremitted = benefitsPayables.filter(p => !p.benefitsRemitted)
-        const benSelectedTotal = benefitsPayables.filter(p => selectedBenefitPayableIds.includes(p.id)).reduce((s, p) => s + Number(p.totalBenefitsPayable), 0)
+        const benSelectedTotal = benefitsPayables.filter(p => selectedBenefitPayableIds.includes(p.id)).reduce((s, p) => s + p.totalBenefitsPayable, 0)
         return (
         <div className="space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-3">
@@ -4843,7 +4925,7 @@ export default function PayrollPage() {
           {loadingBenPayable ? (
             <div className="flex justify-center py-12"><Loader2 size={20} className="animate-spin" style={{ color: 'var(--teal)' }} /></div>
           ) : benefitsPayables.length === 0 ? (
-            <p className="text-center py-12 text-sm" style={{ color: 'var(--mid-gray)' }}>No benefits payable records. Finalize employee payroll to create entries.</p>
+            <p className="text-center py-12 text-sm" style={{ color: 'var(--mid-gray)' }}>No benefits payable records. Lock employee payslips to see individual contributions here.</p>
           ) : (
             <div className="space-y-3">
             <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
@@ -4858,10 +4940,16 @@ export default function PayrollPage() {
                           else setSelectedBenefitPayableIds(prev => prev.filter(id => !benUnremitted.find(p => p.id === id)))
                         }} />
                     </th>
-                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Cutoff Period</th>
+                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Employee</th>
+                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Cutoff</th>
                     <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Branch</th>
-                    <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Type</th>
-                    <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Amount</th>
+                    <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>SSS EE</th>
+                    <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>SSS ER</th>
+                    <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>PHIC EE</th>
+                    <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>PHIC ER</th>
+                    <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>HDMF EE</th>
+                    <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>HDMF ER</th>
+                    <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Total</th>
                     <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Status</th>
                   </tr>
                 </thead>
@@ -4877,10 +4965,19 @@ export default function PayrollPage() {
                             )} />
                         )}
                       </td>
-                      <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{p.cutoffPeriod}</td>
+                      <td className="px-3 py-2.5">
+                        <p className="font-medium" style={{ color: 'var(--charcoal)' }}>{p.employeeName}</p>
+                        {p.department && <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{DEPT_LABELS[p.department] || p.department}</p>}
+                      </td>
+                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{getCutoffLabel(p.cutoffPeriod)}</td>
                       <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{p.branch}</td>
-                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{p.payrollType}</td>
-                      <td className="px-3 py-2.5 text-right font-mono font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(p.totalBenefitsPayable)}</td>
+                      <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{p.sssEE > 0 ? formatCurrency(p.sssEE) : '—'}</td>
+                      <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{p.sssER > 0 ? formatCurrency(p.sssER) : '—'}</td>
+                      <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{p.philEE > 0 ? formatCurrency(p.philEE) : '—'}</td>
+                      <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{p.philER > 0 ? formatCurrency(p.philER) : '—'}</td>
+                      <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{p.pagEE > 0 ? formatCurrency(p.pagEE) : '—'}</td>
+                      <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{p.pagER > 0 ? formatCurrency(p.pagER) : '—'}</td>
+                      <td className="px-3 py-2.5 text-right font-mono font-semibold" style={{ color: 'var(--teal)' }}>{formatCurrency(p.totalBenefitsPayable)}</td>
                       <td className="px-3 py-2.5 text-center">
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={p.benefitsRemitted ? { background: '#dcfce7', color: '#16a34a' } : { background: '#fef3c7', color: '#d97706' }}>
                           {p.benefitsRemitted ? 'REMITTED' : 'PENDING'}
@@ -4891,16 +4988,19 @@ export default function PayrollPage() {
                 </tbody>
               </table>
             </div>
-            {selectedBenefitPayableIds.length > 0 && (
+            {(benUnremitted.length > 0 || selectedBenefitPayableIds.length > 0) && (
               <div className="flex items-center justify-between px-4 py-3 rounded-xl" style={{ background: 'var(--off-white)' }}>
                 <span className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>
-                  Selected: <span style={{ color: 'var(--teal)' }}>{formatCurrency(benSelectedTotal)}</span> ({selectedBenefitPayableIds.length} entries)
+                  Total unremitted: <span style={{ color: 'var(--teal)' }}>{formatCurrency(benUnremitted.reduce((s, p) => s + p.totalBenefitsPayable, 0))}</span>
+                  {selectedBenefitPayableIds.length > 0 && <span className="ml-3">Selected: <span style={{ color: 'var(--deep-teal)' }}>{formatCurrency(benSelectedTotal)}</span></span>}
                 </span>
-                <button onClick={() => { setShowRemitModal('benefit'); setRemitFromAccountId(''); setRemitFromSearch(''); setRemitProofUrl(''); setRemitNotes('') }}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
-                  style={{ background: 'var(--teal)' }}>
-                  <BadgeDollarSign size={14} /> Remit Selected
-                </button>
+                {selectedBenefitPayableIds.length > 0 && (
+                  <button onClick={() => { setShowRemitModal('benefit'); setRemitFromAccountId(''); setRemitFromSearch(''); setRemitProofUrl(''); setRemitNotes('') }}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
+                    style={{ background: 'var(--teal)' }}>
+                    <BadgeDollarSign size={14} /> Remit Selected ({selectedBenefitPayableIds.length} employees)
+                  </button>
+                )}
               </div>
             )}
             </div>
@@ -4993,10 +5093,15 @@ export default function PayrollPage() {
          REMIT PAYMENT MODAL
          ═══════════════════════════════════════════════════════════ */}
       {showRemitModal && (() => {
-        const ids = showRemitModal === 'salary' ? selectedSalaryPayableIds : selectedBenefitPayableIds
+        const isEmpSalaryModal = showRemitModal === 'salary' && salPayableSubTab === 'employees'
+        const ids = showRemitModal === 'salary'
+          ? (isEmpSalaryModal ? selectedEmpSalPayableIds : selectedSalaryPayableIds)
+          : selectedBenefitPayableIds
         const modalTotal = showRemitModal === 'salary'
-          ? salariesPayables.filter(p => ids.includes(p.id)).reduce((s, p) => s + p.netPay, 0)
-          : benefitsPayables.filter(p => ids.includes(p.id)).reduce((s, p) => s + Number(p.totalBenefitsPayable), 0)
+          ? (isEmpSalaryModal
+              ? empSalPayables.filter(p => ids.includes(p.id)).reduce((s, p) => s + p.netPay, 0)
+              : salariesPayables.filter(p => ids.includes(p.id)).reduce((s, p) => s + p.netPay, 0))
+          : benefitsPayables.filter(p => ids.includes(p.id)).reduce((s, p) => s + p.totalBenefitsPayable, 0)
         const feeAmt = showRemitModal === 'salary' ? (Number(remitFeeAmount) || 0) : 0
         return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowRemitModal(null)}>

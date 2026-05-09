@@ -10,25 +10,51 @@ export async function GET(req: Request) {
   const showRemitted = searchParams.get('showRemitted') === 'true'
   const branch = searchParams.get('branch') || ''
 
+  // Per-employee benefit contributions from LOCKED payslips
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const where: any = {}
+  const where: any = { status: 'LOCKED' }
   if (!showRemitted) where.benefitsRemitted = false
   if (branch) where.branch = branch
-  // Only show records that have benefits payable > 0
-  where.totalBenefitsPayable = { gt: 0 }
 
-  const payables = await prisma.payrollPayableStatus.findMany({
+  // Only show employees who have at least one benefit contribution
+  where.OR = [
+    { sssDeduction: { gt: 0 } },
+    { philhealthDeduction: { gt: 0 } },
+    { pagibigDeduction: { gt: 0 } },
+    { sssEmployerShare: { gt: 0 } },
+    { philhealthEmployerShare: { gt: 0 } },
+    { pagibigEmployerShare: { gt: 0 } },
+  ]
+
+  const payslips = await prisma.employeePayslip.findMany({
     where,
-    orderBy: { cutoffPeriod: 'desc' },
+    include: { employee: { select: { id: true, firstName: true, lastName: true, department: true } } },
+    orderBy: [{ cutoffPeriod: 'desc' }, { branch: 'asc' }],
   })
 
-  return NextResponse.json(payables.map(p => ({
-    id: p.id,
-    cutoffPeriod: p.cutoffPeriod,
-    branch: p.branch,
-    payrollType: p.payrollType,
-    totalBenefitsPayable: Number(p.totalBenefitsPayable),
-    benefitsRemitted: p.benefitsRemitted,
-    benefitPaymentId: p.benefitPaymentId,
-  })))
+  return NextResponse.json(payslips.map(p => {
+    const sssEE = Number(p.sssDeduction)
+    const sssER = Number(p.sssEmployerShare)
+    const philEE = Number(p.philhealthDeduction)
+    const philER = Number(p.philhealthEmployerShare)
+    const pagEE = Number(p.pagibigDeduction)
+    const pagER = Number(p.pagibigEmployerShare)
+    return {
+      id: p.id,
+      employeeId: p.employeeId,
+      employeeName: `${p.employee.lastName}, ${p.employee.firstName}`,
+      department: p.employee.department ?? '',
+      branch: p.branch,
+      cutoffPeriod: p.cutoffPeriod,
+      sssEE,
+      sssER,
+      philEE,
+      philER,
+      pagEE,
+      pagER,
+      totalBenefitsPayable: sssEE + sssER + philEE + philER + pagEE + pagER,
+      benefitsRemitted: p.benefitsRemitted,
+      benefitPaymentId: p.benefitPaymentId,
+    }
+  }))
 }
