@@ -435,7 +435,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
   const [downloadingAllPdfs, setDownloadingAllPdfs] = useState(false)
   const [emailingAll, setEmailingAll] = useState(false)
   const [regeneratingId, setRegeneratingId] = useState('')
-  const [breakdownModal, setBreakdownModal] = useState<{ payslip: Payslip; type: 'basicPay' | 'overtimePay' | 'holidayPay' | 'nightDiffPay' | 'restDayPay' } | null>(null)
+  const [breakdownModal, setBreakdownModal] = useState<{ payslip: Payslip; type: 'basicPay' | 'overtimePay' | 'holidayPay' | 'nightDiffPay' | 'restDayPay' | 'daysWorked' | 'hoursWorked' | 'otHours' | 'late' | 'undertime' } | null>(null)
 
   /* ── Holiday Presets ── */
   const [showHolidayPresets, setShowHolidayPresets] = useState(false)
@@ -4437,11 +4437,25 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                             <div>
                               <p className="font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Summary</p>
                               <div className="space-y-1">
-                                <div className="flex justify-between"><span>Days Worked</span><span className="font-mono">{toNum(p.daysWorked).toFixed(0)}</span></div>
-                                <div className="flex justify-between"><span>Hours Worked</span><span className="font-mono">{toNum(p.hoursWorked).toFixed(1)}</span></div>
-                                <div className="flex justify-between"><span>OT Hours</span><span className="font-mono">{toNum(p.overtimeHours).toFixed(1)}</span></div>
-                                <div className="flex justify-between"><span>Late</span><span className="font-mono">{p.lateMinutes} min</span></div>
-                                <div className="flex justify-between"><span>Undertime</span><span className="font-mono">{p.undertimeMinutes} min</span></div>
+                                {([
+                                  { key: 'daysWorked' as const, label: 'Days Worked', value: toNum(p.daysWorked).toFixed(0) },
+                                  { key: 'hoursWorked' as const, label: 'Hours Worked', value: (() => { const m = Math.round(toNum(p.hoursWorked) * 60); const h = Math.floor(m / 60); return `${h}h ${String(m % 60).padStart(2,'0')}m` })() },
+                                  { key: 'otHours' as const, label: 'OT Hours', value: (() => { const m = Math.round(toNum(p.overtimeHours) * 60); const h = Math.floor(m / 60); return m > 0 ? `${h}h ${String(m % 60).padStart(2,'0')}m` : '—' })() },
+                                  { key: 'late' as const, label: 'Late', value: (() => { const tot = toNum(p.lateMinutes); if (!tot) return '—'; const h = Math.floor(tot / 60); const m = tot % 60; return h > 0 ? `${h}h ${String(m).padStart(2,'0')}m` : `${m}m` })() },
+                                  { key: 'undertime' as const, label: 'Undertime', value: (() => { const tot = toNum(p.undertimeMinutes); if (!tot) return '—'; const h = Math.floor(tot / 60); const m = tot % 60; return h > 0 ? `${h}h ${String(m).padStart(2,'0')}m` : `${m}m` })() },
+                                ]).map(item => (
+                                  <div key={item.key} className="flex justify-between items-center">
+                                    <button
+                                      onClick={e => { e.stopPropagation(); setBreakdownModal({ payslip: p, type: item.key }) }}
+                                      className="flex items-center gap-1 text-left hover:underline"
+                                      style={{ color: 'var(--teal)' }}
+                                      title="Click to see daily breakdown">
+                                      {item.label}
+                                      <Eye size={10} style={{ opacity: 0.6 }} />
+                                    </button>
+                                    <span className="font-mono">{item.value}</span>
+                                  </div>
+                                ))}
                                 <div className="flex justify-between"><span>Rate Type</span><span>{p.employee.rateType === 'DAILY' ? 'Daily' : 'Monthly'}</span></div>
                                 <div className="flex justify-between"><span>Rate</span><span className="font-mono">{formatCurrency(toNum(p.employee.rateType === 'DAILY' ? p.employee.dailyRate : p.employee.monthlyRate))}</span></div>
                               </div>
@@ -4514,16 +4528,37 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
         const { payslip: bp, type } = breakdownModal
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const bd = bp.details?.dailyBreakdown as Record<string, any[]> | null | undefined
-        const rows = bd?.[type] ?? []
+
+        // Map modal type → source array in dailyBreakdown
+        const srcKey: Record<string, string> = {
+          basicPay: 'basicPay', overtimePay: 'overtimePay', holidayPay: 'holidayPay',
+          nightDiffPay: 'nightDiffPay', restDayPay: 'restDayPay',
+          daysWorked: 'basicPay', hoursWorked: 'basicPay',
+          otHours: 'overtimePay', late: 'lateDeduction', undertime: 'undertimeDeduction',
+        }
+        const rows = bd?.[srcKey[type]] ?? []
 
         const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
         const fmtD = (s: string) => { const [,m,d] = s.split('-'); return `${MONTH_ABBR[parseInt(m)-1]} ${parseInt(d)}` }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const fmtDOW = (s: string) => { const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']; const dt = new Date(s + 'T00:00:00Z'); return days[dt.getUTCDay()] }
         const fc = formatCurrency
+        const fmtMin = (min: number) => { const h = Math.floor(min / 60); const m = min % 60; return h > 0 ? `${h}h ${String(m).padStart(2,'0')}m` : `${m}m` }
+        const fmtHrs = (hrs: number) => { const tot = Math.round(hrs * 60); const h = Math.floor(tot / 60); const m = tot % 60; return `${h}h ${String(m).padStart(2,'0')}m` }
 
         const titles: Record<string, string> = {
           basicPay: 'Basic Pay', overtimePay: 'Overtime Pay',
           holidayPay: 'Holiday Pay', nightDiffPay: 'Night Differential', restDayPay: 'Rest Day Pay',
+          daysWorked: 'Days Worked', hoursWorked: 'Hours Worked',
+          otHours: 'Overtime Hours', late: 'Late', undertime: 'Undertime',
         }
+
+        // Summary totals for footer
+        const totalDaysWorked = rows.filter((r: { date?: string }) => r.date).length
+        const totalHrsWorked = rows.reduce((s: number, r: { hours?: number }) => s + Number(r.hours || 0), 0)
+        const totalOTMin = rows.reduce((s: number, r: { roundedMinutes?: number }) => s + Number(r.roundedMinutes || 0), 0)
+        const totalLateMin = rows.reduce((s: number, r: { effectiveLate?: number }) => s + Number(r.effectiveLate || 0), 0)
+        const totalUTMin = rows.reduce((s: number, r: { undertimeMinutes?: number }) => s + Number(r.undertimeMinutes || 0), 0)
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -4556,6 +4591,41 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                     <thead>
                       <tr style={{ background: 'var(--off-white)' }}>
                         <th className="text-left px-3 py-2 font-semibold rounded-tl-lg" style={{ color: 'var(--charcoal)' }}>Date</th>
+
+                        {/* ── Days Worked ── */}
+                        {type === 'daysWorked' && (
+                          <th className="text-center px-3 py-2 font-semibold rounded-tr-lg" style={{ color: 'var(--charcoal)' }}>Status</th>
+                        )}
+
+                        {/* ── Hours Worked ── */}
+                        {type === 'hoursWorked' && <>
+                          <th className="text-center px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Time In</th>
+                          <th className="text-center px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Time Out</th>
+                          <th className="text-right px-3 py-2 font-semibold rounded-tr-lg" style={{ color: 'var(--charcoal)' }}>Hours</th>
+                        </>}
+
+                        {/* ── OT Hours ── */}
+                        {type === 'otHours' && <>
+                          <th className="text-center px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Time In</th>
+                          <th className="text-center px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Time Out</th>
+                          <th className="text-right px-3 py-2 font-semibold rounded-tr-lg" style={{ color: 'var(--charcoal)' }}>OT</th>
+                        </>}
+
+                        {/* ── Late ── */}
+                        {type === 'late' && <>
+                          <th className="text-center px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Time In</th>
+                          <th className="text-center px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Time Out</th>
+                          <th className="text-right px-3 py-2 font-semibold rounded-tr-lg" style={{ color: 'var(--charcoal)' }}>Late</th>
+                        </>}
+
+                        {/* ── Undertime ── */}
+                        {type === 'undertime' && <>
+                          <th className="text-center px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Time In</th>
+                          <th className="text-center px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Time Out</th>
+                          <th className="text-right px-3 py-2 font-semibold rounded-tr-lg" style={{ color: 'var(--charcoal)' }}>Undertime</th>
+                        </>}
+
+                        {/* ── Earnings types (existing) ── */}
                         {type === 'basicPay' && <>
                           <th className="text-center px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Time In</th>
                           <th className="text-center px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Time Out</th>
@@ -4586,9 +4656,65 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                       </tr>
                     </thead>
                     <tbody>
-                      {rows.map((r, i) => (
+                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                      {rows.map((r: any, i: number) => (
                         <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                          <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{fmtD(r.date)}</td>
+                          <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>
+                            {r.date ? <>{fmtD(r.date)} <span className="text-[10px] font-normal" style={{ color: 'var(--mid-gray)' }}>{fmtDOW(r.date)}</span></> : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
+                          </td>
+
+                          {/* Days Worked */}
+                          {type === 'daysWorked' && (
+                            <td className="px-3 py-2 text-center">
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ background: '#dcfce7', color: '#059669' }}>Present</span>
+                            </td>
+                          )}
+
+                          {/* Hours Worked */}
+                          {type === 'hoursWorked' && <>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeIn ?? '—'}</td>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeOut ?? '—'}</td>
+                            <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{fmtHrs(Number(r.hours || 0))}</td>
+                          </>}
+
+                          {/* OT Hours */}
+                          {type === 'otHours' && <>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeIn ?? '—'}</td>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeOut ?? '—'}</td>
+                            <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: '#7c3aed' }}>
+                              {fmtMin(Number(r.roundedMinutes || 0))}
+                              {Number(r.roundedMinutes) < Number(r.rawMinutes) && (
+                                <span className="text-[10px] ml-1 font-normal" style={{ color: '#d97706' }} title={`Raw: ${r.rawMinutes}m, rounded down`}>↓</span>
+                              )}
+                            </td>
+                          </>}
+
+                          {/* Late */}
+                          {type === 'late' && <>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>
+                              {r.timeIn ?? '—'}
+                              {r.scheduledIn && <span className="block text-[10px]" style={{ color: '#d97706' }}>sched {r.scheduledIn}</span>}
+                            </td>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeOut ?? '—'}</td>
+                            <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: '#dc2626' }}>
+                              {fmtMin(Number(r.effectiveLate || 0))}
+                              {Number(r.gracePeriod) > 0 && Number(r.lateMinutes) !== Number(r.effectiveLate) && (
+                                <span className="block text-[10px] font-normal" style={{ color: 'var(--mid-gray)' }}>raw {fmtMin(Number(r.lateMinutes))}, –{r.gracePeriod}m grace</span>
+                              )}
+                            </td>
+                          </>}
+
+                          {/* Undertime */}
+                          {type === 'undertime' && <>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeIn ?? '—'}</td>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>
+                              {r.timeOut ?? '—'}
+                              {r.scheduledOut && <span className="block text-[10px]" style={{ color: '#d97706' }}>sched {r.scheduledOut}</span>}
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: '#dc2626' }}>{fmtMin(Number(r.undertimeMinutes || 0))}</td>
+                          </>}
+
+                          {/* ── Existing earnings rows ── */}
                           {type === 'basicPay' && <>
                             <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeIn ?? '—'}</td>
                             <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeOut ?? '—'}</td>
@@ -4625,13 +4751,35 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                     </tbody>
                     <tfoot>
                       <tr className="border-t font-bold" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-                        <td className="px-3 py-2" colSpan={type === 'basicPay' ? 5 : type === 'overtimePay' ? 5 : type === 'nightDiffPay' ? 3 : 6}
-                          style={{ color: 'var(--charcoal)' }}>
-                          Total ({rows.length} day{rows.length !== 1 ? 's' : ''})
-                        </td>
-                        <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--deep-teal)' }}>
-                          {fc(rows.reduce((s: number, r) => s + Number(r.amount), 0))}
-                        </td>
+                        {type === 'daysWorked' && <>
+                          <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>Total</td>
+                          <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--deep-teal)' }}>{totalDaysWorked} day{totalDaysWorked !== 1 ? 's' : ''}</td>
+                        </>}
+                        {type === 'hoursWorked' && <>
+                          <td className="px-3 py-2" colSpan={3} style={{ color: 'var(--charcoal)' }}>Total ({totalDaysWorked} day{totalDaysWorked !== 1 ? 's' : ''})</td>
+                          <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--deep-teal)' }}>{fmtHrs(totalHrsWorked)}</td>
+                        </>}
+                        {type === 'otHours' && <>
+                          <td className="px-3 py-2" colSpan={3} style={{ color: 'var(--charcoal)' }}>Total ({rows.length} day{rows.length !== 1 ? 's' : ''})</td>
+                          <td className="px-3 py-2 text-right font-mono" style={{ color: '#7c3aed' }}>{fmtMin(totalOTMin)}</td>
+                        </>}
+                        {type === 'late' && <>
+                          <td className="px-3 py-2" colSpan={3} style={{ color: 'var(--charcoal)' }}>Total ({rows.length} day{rows.length !== 1 ? 's' : ''} late)</td>
+                          <td className="px-3 py-2 text-right font-mono" style={{ color: '#dc2626' }}>{fmtMin(totalLateMin)}</td>
+                        </>}
+                        {type === 'undertime' && <>
+                          <td className="px-3 py-2" colSpan={3} style={{ color: 'var(--charcoal)' }}>Total ({rows.length} day{rows.length !== 1 ? 's' : ''})</td>
+                          <td className="px-3 py-2 text-right font-mono" style={{ color: '#dc2626' }}>{fmtMin(totalUTMin)}</td>
+                        </>}
+                        {['basicPay','overtimePay','holidayPay','nightDiffPay','restDayPay'].includes(type) && <>
+                          <td className="px-3 py-2" colSpan={type === 'basicPay' ? 5 : type === 'overtimePay' ? 5 : type === 'nightDiffPay' ? 3 : 6}
+                            style={{ color: 'var(--charcoal)' }}>
+                            Total ({rows.length} day{rows.length !== 1 ? 's' : ''})
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--deep-teal)' }}>
+                            {fc(rows.reduce((s: number, r: { amount?: number }) => s + Number(r.amount), 0))}
+                          </td>
+                        </>}
                       </tr>
                     </tfoot>
                   </table>
@@ -4643,9 +4791,19 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                     Each day = 1 × Daily Rate regardless of exact hours worked (daily-rate employees get paid per day present).
                   </p>
                 )}
-                {rows.length > 0 && type === 'overtimePay' && (
+                {rows.length > 0 && (type === 'otHours' || type === 'overtimePay') && (
                   <p className="text-[10px] mt-3 px-1" style={{ color: 'var(--mid-gray)' }}>
-                    Formula: OT Hours (rounded down to nearest interval) × Multiplier × Hourly Rate. Only days with an approved OT request are counted.
+                    OT starts after the employee completes their full scheduled hours (time-out baseline shifts by late arrival). Rounded down to nearest interval. Only days with an approved OT request are counted.
+                  </p>
+                )}
+                {rows.length > 0 && type === 'late' && (
+                  <p className="text-[10px] mt-3 px-1" style={{ color: 'var(--mid-gray)' }}>
+                    Grace period minutes are deducted before computing the deductible late. The required time-out still shifts by the full late arrival.
+                  </p>
+                )}
+                {rows.length > 0 && type === 'undertime' && (
+                  <p className="text-[10px] mt-3 px-1" style={{ color: 'var(--mid-gray)' }}>
+                    Undertime = minutes short of the required time-out (scheduled out + late arrival). Employee must complete full scheduled hours before leaving.
                   </p>
                 )}
                 {rows.length > 0 && (type === 'holidayPay' || type === 'restDayPay') && (

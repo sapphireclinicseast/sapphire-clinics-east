@@ -373,10 +373,10 @@ export async function POST(req: Request) {
 
       // Late / undertime breakdown
       if (effectiveLate > 0) {
-        dailyBreakdown.lateDeduction.push({ date: recDate, timeIn: recTimeIn, lateMinutes: computedLate, gracePeriod: lateGrace, effectiveLate, hourlyRate, amount: (effectiveLate / 60) * hourlyRate })
+        dailyBreakdown.lateDeduction.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, scheduledIn, lateMinutes: computedLate, gracePeriod: lateGrace, effectiveLate, hourlyRate, amount: (effectiveLate / 60) * hourlyRate })
       }
       if (computedUndertime > 0) {
-        dailyBreakdown.undertimeDeduction.push({ date: recDate, timeOut: recTimeOut, undertimeMinutes: computedUndertime, hourlyRate, amount: (computedUndertime / 60) * hourlyRate })
+        dailyBreakdown.undertimeDeduction.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, scheduledOut, undertimeMinutes: computedUndertime, hourlyRate, amount: (computedUndertime / 60) * hourlyRate })
       }
     }
 
@@ -713,8 +713,8 @@ export async function PATCH(req: Request) {
           dailyBreakdown.overtimePay.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, scheduledOut, rawMinutes: recomputedOT, roundedMinutes: roundedOTMinutes, otHours, multiplier: otMultiplier, hourlyRate, amount: otAmt })
         }
       }
-      if (effectiveLate > 0) dailyBreakdown.lateDeduction.push({ date: recDate, timeIn: recTimeIn, lateMinutes: computedLate, gracePeriod: lateGrace, effectiveLate, hourlyRate, amount: (effectiveLate / 60) * hourlyRate })
-      if (computedUndertime > 0) dailyBreakdown.undertimeDeduction.push({ date: recDate, timeOut: recTimeOut, undertimeMinutes: computedUndertime, hourlyRate, amount: (computedUndertime / 60) * hourlyRate })
+      if (effectiveLate > 0) dailyBreakdown.lateDeduction.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, scheduledIn, lateMinutes: computedLate, gracePeriod: lateGrace, effectiveLate, hourlyRate, amount: (effectiveLate / 60) * hourlyRate })
+      if (computedUndertime > 0) dailyBreakdown.undertimeDeduction.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, scheduledOut, undertimeMinutes: computedUndertime, hourlyRate, amount: (computedUndertime / 60) * hourlyRate })
     }
 
     const sssBenefit = emp.benefits.find(b => b.benefitType === 'SSS')
