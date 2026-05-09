@@ -631,6 +631,7 @@ jobs:
 
       # ── 9. Setup automated database backups ──
       - name: Setup Database Backups
+        continue-on-error: true
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -673,7 +674,7 @@ jobs:
             mkdir -p "$ONLINE_DIR" "$MIRROR_DIR" "$OFFLINE_DIR" "$UPLOADS_LIVE_MIRROR"
             chmod 700 "$ONLINE_DIR" "$MIRROR_DIR" "$UPLOADS_LIVE_MIRROR"
             chmod 700 "$OFFLINE_DIR"
-            chown -R root:root "$OFFLINE_DIR"
+            chown -R root:root "$OFFLINE_DIR" 2>/dev/null || true
 
             BACKUP_FILE="$ONLINE_DIR/sapphire_marketing_$TIMESTAMP.sql.gz"
 
