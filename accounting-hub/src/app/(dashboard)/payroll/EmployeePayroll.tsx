@@ -298,7 +298,7 @@ interface TkUploadRecord {
 export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoffMonth: parentCutoffMonth, cutoffYear: parentCutoffYear, cutoffHalf: parentCutoffHalf, cutoffPeriod: parentCutoffPeriod }: { canWrite: boolean; branch: string; cutoffMonth: number; cutoffYear: number; cutoffHalf: number; cutoffPeriod: string }) {
   const now = new Date()
 
-  const [subTab, setSubTab] = useState<'list' | 'settings' | 'requests' | 'tk-upload' | 'tk-data' | 'benefits' | 'leave-settings' | 'adjustments' | 'holidays' | 'payslips'>('list')
+  const [subTab, setSubTab] = useState<'list' | 'settings' | 'requests' | 'tk-upload' | 'tk-data' | 'benefits' | 'leave-settings' | 'adjustments' | 'holidays' | 'payslips' | 'lates'>('list')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -464,6 +464,19 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
   const [empPastPayslips, setEmpPastPayslips] = useState<Payslip[]>([])
   const [loadingPastPayslips, setLoadingPastPayslips] = useState(false)
 
+  /* ── Lates Tab ── */
+  interface LateRecord { date: string; dayOfWeek: string; timeIn: string | null; scheduledIn: string; lateMinutes: number; withinGrace: boolean; effectiveLate: number }
+  interface LateEmployee { id: string; firstName: string; lastName: string; department: string; branch: string; lateCount: number; withinGraceCount: number; beyondGraceCount: number; totalLateMinutes: number; lates: LateRecord[] }
+  const nowDate = new Date()
+  const [latesData, setLatesData] = useState<LateEmployee[]>([])
+  const [latesGrace, setLatesGrace] = useState(0)
+  const [latesLoading, setLatesLoading] = useState(false)
+  const [latesLoaded, setLatesLoaded] = useState(false)
+  const [latesDateFrom, setLatesDateFrom] = useState(`${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}-01`)
+  const [latesDateTo, setLatesDateTo] = useState(`${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}-${String(nowDate.getDate()).padStart(2, '0')}`)
+  const [latesEmpFilter, setLatesEmpFilter] = useState('')
+  const [latesExpanded, setLatesExpanded] = useState('')
+
   /* ── Column Sorting ── */
   const [sortField, setSortField] = useState('')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
@@ -565,6 +578,21 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     } catch { /* ignore */ }
   }, [cutoffPeriod, branch])
 
+  const fetchLates = useCallback(async (from = latesDateFrom, to = latesDateTo) => {
+    if (!from || !to) return
+    setLatesLoading(true)
+    try {
+      const params = new URLSearchParams({ dateFrom: from, dateTo: to })
+      if (branch) params.set('branch', branch)
+      const r = await fetch(`/api/payroll/lates?${params}`)
+      const d = await r.json()
+      setLatesData(d.employees || [])
+      setLatesGrace(d.lateGrace || 0)
+      setLatesLoaded(true)
+    } catch { /* ignore */ }
+    setLatesLoading(false)
+  }, [branch, latesDateFrom, latesDateTo])
+
   const fetchLeaveSettings = useCallback(async () => {
     setLeaveLoading(true)
     try {
@@ -614,7 +642,8 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     else if (subTab === 'leave-settings') fetchLeaveSettings()
     else if (subTab === 'adjustments') fetchEmployees()
     else if (subTab === 'payslips') fetchPayslips()
-  }, [subTab, leaveYear, fetchEmployees, fetchSettings, fetchRequests, fetchTimekeeping, fetchApprovedRequests, fetchPastUploads, fetchHolidays, fetchPayslips, fetchLeaveSettings])
+    else if (subTab === 'lates') fetchLates()
+  }, [subTab, leaveYear, fetchEmployees, fetchSettings, fetchRequests, fetchTimekeeping, fetchApprovedRequests, fetchPastUploads, fetchHolidays, fetchPayslips, fetchLeaveSettings, fetchLates])
 
   /* ═══════════════════════════════════════════════════════════════
      ACTIONS
@@ -1817,6 +1846,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     { key: 'adjustments', label: 'Allowance/Deduction', icon: DollarSign },
     { key: 'holidays', label: 'Holiday Setting', icon: Calendar },
     { key: 'payslips', label: 'Payslip Generation', icon: FileText },
+    { key: 'lates', label: 'Lates', icon: AlertCircle },
   ]
 
   return (
@@ -4519,6 +4549,200 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
           </div>
         </div>
       )}
+
+      {/* ══════════════════════════════════════════════════════════════
+          LATES TAB
+          ══════════════════════════════════════════════════════════════ */}
+      {subTab === 'lates' && (() => {
+        const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+        const fmtD = (s: string) => { const [,m,d] = s.split('-'); return `${MONTH_ABBR[parseInt(m)-1]} ${parseInt(d)}` }
+        const fmtDOW = (s: string) => { const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']; const dt = new Date(s + 'T00:00:00Z'); return days[dt.getUTCDay()] }
+        const fmtMin = (min: number) => { const h = Math.floor(min / 60); const m = min % 60; return h > 0 ? `${h}h ${String(m).padStart(2,'0')}m` : `${m}m` }
+
+        const filtered = latesData.filter(e =>
+          !latesEmpFilter || `${e.firstName} ${e.lastName}`.toLowerCase().includes(latesEmpFilter.toLowerCase())
+        )
+
+        // Severity badge
+        const badge = (count: number) => {
+          if (count >= 6) return { label: 'High Risk', bg: '#fee2e2', color: '#dc2626' }
+          if (count >= 4) return { label: 'Warning', bg: '#ffedd5', color: '#ea580c' }
+          if (count >= 2) return { label: 'Watch', bg: '#fef3c7', color: '#d97706' }
+          return { label: 'Low', bg: '#f0fdf4', color: '#16a34a' }
+        }
+
+        return (
+          <div className="space-y-4">
+            {/* Controls */}
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="block text-[10px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>From</label>
+                <input type="date" value={latesDateFrom} onChange={e => setLatesDateFrom(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+              <div>
+                <label className="block text-[10px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>To</label>
+                <input type="date" value={latesDateTo} onChange={e => setLatesDateTo(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+              <button onClick={() => fetchLates(latesDateFrom, latesDateTo)} disabled={latesLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-60"
+                style={{ background: 'var(--teal)' }}>
+                {latesLoading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                {latesLoading ? 'Loading…' : 'Load'}
+              </button>
+              {latesLoaded && (
+                <div className="relative ml-1">
+                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
+                  <input value={latesEmpFilter} onChange={e => setLatesEmpFilter(e.target.value)}
+                    placeholder="Filter employee…"
+                    className="pl-7 pr-3 py-1.5 rounded-lg border text-xs w-44" style={{ borderColor: 'var(--light-gray)' }} />
+                </div>
+              )}
+              {latesLoaded && latesGrace > 0 && (
+                <span className="text-[10px] px-2 py-1 rounded-lg" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                  Grace: {latesGrace} min
+                </span>
+              )}
+            </div>
+
+            {/* Stats row */}
+            {latesLoaded && !latesLoading && (
+              <div className="flex flex-wrap gap-3">
+                {[
+                  { label: 'Employees with Lates', value: filtered.length, color: 'var(--charcoal)' },
+                  { label: 'Total Late Incidents', value: filtered.reduce((s, e) => s + e.lateCount, 0), color: '#dc2626' },
+                  { label: 'Beyond Grace', value: filtered.reduce((s, e) => s + e.beyondGraceCount, 0), color: '#ea580c' },
+                  { label: 'Within Grace Only', value: filtered.reduce((s, e) => s + e.withinGraceCount, 0), color: '#d97706' },
+                ].map(s => (
+                  <div key={s.label} className="px-4 py-2.5 rounded-xl text-center" style={{ background: 'var(--off-white)', minWidth: 120 }}>
+                    <p className="text-xl font-bold" style={{ color: s.color }}>{s.value}</p>
+                    <p className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>{s.label}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Table */}
+            {!latesLoaded ? (
+              <div className="py-16 text-center text-sm rounded-xl" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                <AlertCircle size={28} className="mx-auto mb-2 opacity-30" />
+                <p>Select a date range and click <strong>Load</strong> to see late records.</p>
+              </div>
+            ) : latesLoading ? (
+              <div className="py-16 text-center"><Loader2 size={24} className="animate-spin mx-auto" style={{ color: 'var(--teal)' }} /></div>
+            ) : filtered.length === 0 ? (
+              <div className="py-16 text-center text-sm rounded-xl" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                <CheckCircle2 size={28} className="mx-auto mb-2" style={{ color: '#16a34a', opacity: 0.5 }} />
+                <p>No late arrivals recorded for this period.</p>
+              </div>
+            ) : (
+              <div className="rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr style={{ background: 'var(--off-white)' }}>
+                      <th className="text-left px-4 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Employee</th>
+                      <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Dept</th>
+                      <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Late Count</th>
+                      <th className="text-center px-3 py-2.5 font-semibold" style={{ color: '#ea580c' }}>Beyond Grace</th>
+                      <th className="text-center px-3 py-2.5 font-semibold" style={{ color: '#d97706' }}>Within Grace</th>
+                      <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Total Late Time</th>
+                      <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Risk Level</th>
+                      <th className="px-3 py-2.5 w-6"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map(emp => {
+                      const b = badge(emp.lateCount)
+                      const isOpen = latesExpanded === emp.id
+                      return (
+                        <>
+                          <tr key={emp.id}
+                            className="border-t hover:bg-gray-50 cursor-pointer"
+                            style={{ borderColor: 'var(--light-gray)' }}
+                            onClick={() => setLatesExpanded(isOpen ? '' : emp.id)}>
+                            <td className="px-4 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>
+                              {emp.firstName} {emp.lastName}
+                            </td>
+                            <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{emp.department}</td>
+                            <td className="px-3 py-2.5 text-center">
+                              <span className="font-bold text-sm" style={{ color: '#dc2626' }}>{emp.lateCount}</span>
+                            </td>
+                            <td className="px-3 py-2.5 text-center font-mono" style={{ color: '#ea580c' }}>
+                              {emp.beyondGraceCount > 0 ? emp.beyondGraceCount : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
+                            </td>
+                            <td className="px-3 py-2.5 text-center font-mono" style={{ color: '#d97706' }}>
+                              {emp.withinGraceCount > 0 ? emp.withinGraceCount : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>
+                              {fmtMin(emp.totalLateMinutes)}
+                            </td>
+                            <td className="px-3 py-2.5 text-center">
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                                style={{ background: b.bg, color: b.color }}>
+                                {b.label}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2.5 text-center" style={{ color: 'var(--mid-gray)' }}>
+                              {isOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                            </td>
+                          </tr>
+                          {isOpen && (
+                            <tr key={`${emp.id}-detail`}>
+                              <td colSpan={8} className="px-0 py-0" style={{ background: 'var(--off-white)' }}>
+                                <div className="px-8 py-3">
+                                  <table className="w-full text-[11px]">
+                                    <thead>
+                                      <tr>
+                                        <th className="text-left py-1.5 font-semibold pr-6" style={{ color: 'var(--mid-gray)' }}>Date</th>
+                                        <th className="text-left py-1.5 font-semibold pr-6" style={{ color: 'var(--mid-gray)' }}>Day</th>
+                                        <th className="text-center py-1.5 font-semibold pr-6" style={{ color: 'var(--mid-gray)' }}>Sched In</th>
+                                        <th className="text-center py-1.5 font-semibold pr-6" style={{ color: 'var(--mid-gray)' }}>Actual In</th>
+                                        <th className="text-right py-1.5 font-semibold pr-6" style={{ color: 'var(--mid-gray)' }}>Late</th>
+                                        <th className="text-center py-1.5 font-semibold" style={{ color: 'var(--mid-gray)' }}>Status</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {emp.lates.map((l, i) => (
+                                        <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                                          <td className="py-1.5 pr-6 font-medium" style={{ color: 'var(--charcoal)' }}>{fmtD(l.date)}</td>
+                                          <td className="py-1.5 pr-6" style={{ color: 'var(--mid-gray)' }}>{fmtDOW(l.date)}</td>
+                                          <td className="py-1.5 pr-6 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{l.scheduledIn}</td>
+                                          <td className="py-1.5 pr-6 text-center font-mono" style={{ color: l.withinGrace ? '#d97706' : '#dc2626', fontWeight: 600 }}>{l.timeIn ?? '—'}</td>
+                                          <td className="py-1.5 pr-6 text-right font-mono" style={{ color: l.withinGrace ? '#d97706' : '#dc2626' }}>{fmtMin(l.lateMinutes)}</td>
+                                          <td className="py-1.5 text-center">
+                                            {l.withinGrace
+                                              ? <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: '#fef3c7', color: '#d97706' }}>Within Grace</span>
+                                              : <span className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: '#fee2e2', color: '#dc2626' }}>Late +{fmtMin(l.effectiveLate)}</span>
+                                            }
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                    <tfoot>
+                                      <tr className="border-t font-semibold" style={{ borderColor: 'var(--light-gray)' }}>
+                                        <td colSpan={4} className="py-1.5 pr-6" style={{ color: 'var(--charcoal)' }}>
+                                          Total — {emp.lateCount} incident{emp.lateCount !== 1 ? 's' : ''}
+                                        </td>
+                                        <td className="py-1.5 pr-6 text-right font-mono" style={{ color: '#dc2626' }}>{fmtMin(emp.totalLateMinutes)}</td>
+                                        <td></td>
+                                      </tr>
+                                    </tfoot>
+                                  </table>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* ══════════════════════════════════════════════════════════════
           PAY BREAKDOWN MODAL
