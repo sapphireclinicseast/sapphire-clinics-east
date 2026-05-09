@@ -298,20 +298,32 @@ export async function POST(req: Request) {
       const scheduledIn = daySched?.in || emp.scheduleIn
       const scheduledOut = daySched?.out || emp.scheduleOut
 
-      // Recompute late/undertime from actual clock times + current schedule so that
-      // payslips stay correct even when an employee's schedule changes after upload.
+      // Recompute late/undertime/overtime from actual clock times + current schedule.
+      // Rule: employee must complete their full scheduled hours before overtime counts.
+      // Required time-out = scheduledOut + rawLate, so if someone arrives 5 min late
+      // their overtime baseline shifts by 5 min (11:05 in → OT starts after 8:05 PM).
+      // Late grace period only suppresses the late *deduction* — the shift still applies.
       let computedLate = rec.lateMinutes
       let computedUndertime = rec.undertimeMinutes
+      let recomputedOT = rec.overtimeMinutes // fallback when no raw times available
       if (rec.timeIn && rec.timeOut) {
         const phtIn = new Date(rec.timeIn.getTime() + 8 * 60 * 60 * 1000)
         const phtOut = new Date(rec.timeOut.getTime() + 8 * 60 * 60 * 1000)
         const [schInH, schInM] = scheduledIn.split(':').map(Number)
         const [schOutH, schOutM] = scheduledOut.split(':').map(Number)
-        computedLate = Math.max(0, (phtIn.getUTCHours() * 60 + phtIn.getUTCMinutes()) - (schInH * 60 + schInM))
-        computedUndertime = Math.max(0, (schOutH * 60 + schOutM) - (phtOut.getUTCHours() * 60 + phtOut.getUTCMinutes()))
+        const actualInMin = phtIn.getUTCHours() * 60 + phtIn.getUTCMinutes()
+        const actualOutMin = phtOut.getUTCHours() * 60 + phtOut.getUTCMinutes()
+        const scheduledInMin = schInH * 60 + schInM
+        const scheduledOutMin = schOutH * 60 + schOutM
+        // Raw late arrival (before grace period)
+        computedLate = Math.max(0, actualInMin - scheduledInMin)
+        // Required time-out shifts by the full late arrival so employee completes full hours
+        const requiredOutMin = scheduledOutMin + computedLate
+        computedUndertime = Math.max(0, requiredOutMin - actualOutMin)
+        recomputedOT = Math.max(0, actualOutMin - requiredOutMin)
       }
 
-      // Apply late grace period — only count late minutes beyond the grace
+      // Apply late grace period — only count late minutes beyond the grace as a deduction
       const effectiveLate = Math.max(0, computedLate - lateGrace)
       totalLateMinutes += effectiveLate
       totalUndertimeMinutes += computedUndertime
@@ -341,17 +353,18 @@ export async function POST(req: Request) {
       basicPay += dailyRate
       dailyBreakdown.basicPay.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, hours, dailyRate, amount: dailyRate })
 
-      // Overtime — only counted if employee has an approved OT request covering this date
-      if (rec.overtimeMinutes > 0 && hasApprovedOT(emp.id, rec.date)) {
+      // Overtime — only counted if employee has an approved OT request covering this date.
+      // Uses recomputedOT (from shifted baseline) so OT only starts after full hours are done.
+      if (recomputedOT > 0 && hasApprovedOT(emp.id, rec.date)) {
         // Round down to nearest interval (e.g. 45min with 30min interval = 30min)
-        const roundedOTMinutes = Math.floor(rec.overtimeMinutes / otInterval) * otInterval
+        const roundedOTMinutes = Math.floor(recomputedOT / otInterval) * otInterval
         // Convert to hours and cap at max
         const otHours = Math.min(roundedOTMinutes / 60, otMaxHrs)
         if (otHours > 0) {
           totalOTHours += otHours
           const otAmt = hourlyRate * otMultiplier * otHours
           overtimePay += otAmt
-          dailyBreakdown.overtimePay.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, scheduledOut, rawMinutes: rec.overtimeMinutes, roundedMinutes: roundedOTMinutes, otHours, multiplier: otMultiplier, hourlyRate, amount: otAmt })
+          dailyBreakdown.overtimePay.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, scheduledOut, rawMinutes: recomputedOT, roundedMinutes: roundedOTMinutes, otHours, multiplier: otMultiplier, hourlyRate, amount: otAmt })
         }
       }
 
@@ -647,15 +660,24 @@ export async function PATCH(req: Request) {
       const scheduledIn = daySched?.in || emp.scheduleIn
       const scheduledOut = daySched?.out || emp.scheduleOut
 
+      // Same rule as POST: employee must complete full scheduled hours before OT counts.
+      // Required time-out = scheduledOut + rawLate (shifted by actual late arrival).
       let computedLate = rec.lateMinutes
       let computedUndertime = rec.undertimeMinutes
+      let recomputedOT = rec.overtimeMinutes // fallback when no raw times available
       if (rec.timeIn && rec.timeOut) {
         const phtIn = new Date(rec.timeIn.getTime() + 8 * 60 * 60 * 1000)
         const phtOut = new Date(rec.timeOut.getTime() + 8 * 60 * 60 * 1000)
         const [schInH, schInM] = scheduledIn.split(':').map(Number)
         const [schOutH, schOutM] = scheduledOut.split(':').map(Number)
-        computedLate = Math.max(0, (phtIn.getUTCHours() * 60 + phtIn.getUTCMinutes()) - (schInH * 60 + schInM))
-        computedUndertime = Math.max(0, (schOutH * 60 + schOutM) - (phtOut.getUTCHours() * 60 + phtOut.getUTCMinutes()))
+        const actualInMin = phtIn.getUTCHours() * 60 + phtIn.getUTCMinutes()
+        const actualOutMin = phtOut.getUTCHours() * 60 + phtOut.getUTCMinutes()
+        const scheduledInMin = schInH * 60 + schInM
+        const scheduledOutMin = schOutH * 60 + schOutM
+        computedLate = Math.max(0, actualInMin - scheduledInMin)
+        const requiredOutMin = scheduledOutMin + computedLate
+        computedUndertime = Math.max(0, requiredOutMin - actualOutMin)
+        recomputedOT = Math.max(0, actualOutMin - requiredOutMin)
       }
 
       const effectiveLate = Math.max(0, computedLate - lateGrace)
@@ -681,14 +703,14 @@ export async function PATCH(req: Request) {
       basicPay += dailyRate
       dailyBreakdown.basicPay.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, hours, dailyRate, amount: dailyRate })
 
-      if (rec.overtimeMinutes > 0 && hasOT(rec.date)) {
-        const roundedOTMinutes = Math.floor(rec.overtimeMinutes / otInterval) * otInterval
+      if (recomputedOT > 0 && hasOT(rec.date)) {
+        const roundedOTMinutes = Math.floor(recomputedOT / otInterval) * otInterval
         const otHours = Math.min(roundedOTMinutes / 60, otMaxHrs)
         if (otHours > 0) {
           totalOTHours += otHours
           const otAmt = hourlyRate * otMultiplier * otHours
           overtimePay += otAmt
-          dailyBreakdown.overtimePay.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, scheduledOut, rawMinutes: rec.overtimeMinutes, roundedMinutes: roundedOTMinutes, otHours, multiplier: otMultiplier, hourlyRate, amount: otAmt })
+          dailyBreakdown.overtimePay.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, scheduledOut, rawMinutes: recomputedOT, roundedMinutes: roundedOTMinutes, otHours, multiplier: otMultiplier, hourlyRate, amount: otAmt })
         }
       }
       if (effectiveLate > 0) dailyBreakdown.lateDeduction.push({ date: recDate, timeIn: recTimeIn, lateMinutes: computedLate, gracePeriod: lateGrace, effectiveLate, hourlyRate, amount: (effectiveLate / 60) * hourlyRate })
