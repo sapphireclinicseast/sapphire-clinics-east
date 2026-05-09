@@ -4563,12 +4563,13 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
           !latesEmpFilter || `${e.firstName} ${e.lastName}`.toLowerCase().includes(latesEmpFilter.toLowerCase())
         )
 
-        // Severity badge
-        const badge = (count: number) => {
-          if (count >= 6) return { label: 'High Risk', bg: '#fee2e2', color: '#dc2626' }
-          if (count >= 4) return { label: 'Warning', bg: '#ffedd5', color: '#ea580c' }
-          if (count >= 2) return { label: 'Watch', bg: '#fef3c7', color: '#d97706' }
-          return { label: 'Low', bg: '#f0fdf4', color: '#16a34a' }
+        // Severity badge — based on BEYOND-GRACE lates only (within-grace lates are forgiven)
+        const badge = (beyondGrace: number) => {
+          if (beyondGrace >= 6) return { label: 'High Risk', bg: '#fee2e2', color: '#dc2626' }
+          if (beyondGrace >= 4) return { label: 'Warning', bg: '#ffedd5', color: '#ea580c' }
+          if (beyondGrace >= 2) return { label: 'Watch', bg: '#fef3c7', color: '#d97706' }
+          if (beyondGrace >= 1) return { label: 'Low', bg: '#f0fdf4', color: '#16a34a' }
+          return { label: 'Within Grace', bg: '#eff6ff', color: '#3b82f6' }
         }
 
         return (
@@ -4647,13 +4648,13 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                       <th className="text-center px-3 py-2.5 font-semibold" style={{ color: '#ea580c' }}>Beyond Grace</th>
                       <th className="text-center px-3 py-2.5 font-semibold" style={{ color: '#d97706' }}>Within Grace</th>
                       <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Total Late Time</th>
-                      <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Risk Level</th>
+                      <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Risk Level <span className="font-normal text-[10px]" style={{ color: 'var(--mid-gray)' }}>(excl. grace)</span></th>
                       <th className="px-3 py-2.5 w-6"></th>
                     </tr>
                   </thead>
                   <tbody>
                     {filtered.map(emp => {
-                      const b = badge(emp.lateCount)
+                      const b = badge(emp.beyondGraceCount)
                       const isOpen = latesExpanded === emp.id
                       return (
                         <>
