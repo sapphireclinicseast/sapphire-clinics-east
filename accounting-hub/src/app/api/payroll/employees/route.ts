@@ -248,6 +248,7 @@ export async function POST(req: Request) {
     rateType, dailyRate, monthlyRate, employeeBioId,
     sssNumber, philhealthNumber, pagibigNumber, tinNumber,
     dateHired, regularizationDate, scheduleIn, scheduleOut, daySchedules, restDay,
+    ignoreTimekeeping,
   } = body
 
   if (!firstName || !lastName || !department || !branch) {
@@ -276,6 +277,7 @@ export async function POST(req: Request) {
       scheduleOut: scheduleOut || '17:00',
       daySchedules: daySchedules || null,
       restDay: restDay || 'SUNDAY',
+      ignoreTimekeeping: ignoreTimekeeping === true,
     },
   })
 
@@ -304,6 +306,7 @@ function buildUpdateData(data: Record<string, unknown>): Record<string, unknown>
   if (data.scheduleOut !== undefined) updateData.scheduleOut = data.scheduleOut
   if (data.daySchedules !== undefined) updateData.daySchedules = data.daySchedules || null
   if (data.restDay !== undefined) updateData.restDay = data.restDay
+  if (data.ignoreTimekeeping !== undefined) updateData.ignoreTimekeeping = data.ignoreTimekeeping === true
   if (data.isActive !== undefined) updateData.isActive = data.isActive
   return updateData
 }

@@ -150,6 +150,7 @@ interface Employee {
   scheduleOut: string
   daySchedules?: Record<string, { in: string; out: string }> | null
   restDay: string
+  ignoreTimekeeping?: boolean
   isActive: boolean
   benefits: Benefit[]
 }
@@ -317,6 +318,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     jobTitle: '', rateType: 'DAILY', dailyRate: 0, monthlyRate: 0, employeeBioId: null,
     sssNumber: '', philhealthNumber: '', pagibigNumber: '', tinNumber: '',
     scheduleIn: '08:00', scheduleOut: '17:00', daySchedules: null, restDay: 'SUNDAY',
+    ignoreTimekeeping: false,
   })
 
   /* ── Settings ── */
@@ -645,6 +647,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
       philhealthNumber: emp.philhealthNumber || '', pagibigNumber: emp.pagibigNumber || '',
       tinNumber: emp.tinNumber || '', scheduleIn: emp.scheduleIn, scheduleOut: emp.scheduleOut,
       daySchedules: emp.daySchedules || null, restDay: emp.restDay,
+      ignoreTimekeeping: emp.ignoreTimekeeping ?? false,
     })
     setShowForm(true)
   }
@@ -2076,6 +2079,19 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                     <input type="number" value={formData.rateType === 'DAILY' ? (formData.dailyRate || '') : (formData.monthlyRate || '')}
                       onChange={e => setFormData(p => formData.rateType === 'DAILY' ? { ...p, dailyRate: parseFloat(e.target.value) || 0 } : { ...p, monthlyRate: parseFloat(e.target.value) || 0 })}
                       className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                  <div className="col-span-full">
+                    <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                      <input type="checkbox" checked={!!formData.ignoreTimekeeping}
+                        onChange={e => setFormData(p => ({ ...p, ignoreTimekeeping: e.target.checked }))}
+                        className="mt-0.5 rounded" style={{ accentColor: 'var(--teal)', width: 15, height: 15 }} />
+                      <span>
+                        <span className="font-medium text-sm" style={{ color: 'var(--charcoal)' }}>Not dependent on biometrics</span>
+                        <span className="block text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                          Payslip uses fixed half-month salary (monthly ÷ 2) regardless of attendance records. No late/undertime deductions applied.
+                        </span>
+                      </span>
+                    </label>
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Biometric ID</label>

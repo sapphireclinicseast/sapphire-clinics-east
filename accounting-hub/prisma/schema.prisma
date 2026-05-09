@@ -1062,6 +1062,7 @@ model Employee {
   scheduleOut       String    @default("17:00")  // Default clock-out time HH:mm
   daySchedules      Json?     // Per-day overrides: { "THURSDAY": { "in": "09:00", "out": "18:00" } }
   restDay           String    @default("SUNDAY") // e.g. "SUNDAY", "SATURDAY"
+  ignoreTimekeeping Boolean   @default(false) // If true: pays fixed half-month salary regardless of biometric attendance
   isActive          Boolean   @default(true)
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt

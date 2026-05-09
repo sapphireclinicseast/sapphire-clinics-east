@@ -268,6 +268,18 @@ export async function POST(req: Request) {
     }
     const empDaySchedules = emp.daySchedules as Record<string, { in: string; out: string }> | null
 
+    // ── Fixed-salary bypass: not dependent on biometrics ──────────────────
+    // When ignoreTimekeeping is true, pay exactly half the monthly equivalent
+    // regardless of attendance records. No late/undertime deductions apply.
+    if (emp.ignoreTimekeeping) {
+      basicPay = emp.rateType === 'MONTHLY'
+        ? Number(emp.monthlyRate) / 2
+        : Number(emp.dailyRate) * 11   // 11 working days ≈ half of 22
+      daysWorked = 11
+      totalHoursWorked = daysWorked * standardHours
+      dailyBreakdown.basicPay.push({ note: 'Fixed salary (not dependent on biometrics)', amount: basicPay })
+    } else
+
     for (const rec of empRecords) {
       const hours = Number(rec.hoursWorked || 0)
       if (hours <= 0) continue
@@ -609,6 +621,16 @@ export async function PATCH(req: Request) {
       lateDeduction: [], undertimeDeduction: [],
     }
     const empDaySchedules = emp.daySchedules as Record<string, { in: string; out: string }> | null
+
+    // ── Fixed-salary bypass: not dependent on biometrics ──────────────────
+    if (emp.ignoreTimekeeping) {
+      basicPay = emp.rateType === 'MONTHLY'
+        ? Number(emp.monthlyRate) / 2
+        : Number(emp.dailyRate) * 11
+      daysWorked = 11
+      totalHoursWorked = daysWorked * standardHours
+      dailyBreakdown.basicPay.push({ note: 'Fixed salary (not dependent on biometrics)', amount: basicPay })
+    } else
 
     for (const rec of empRecords) {
       const hours = Number(rec.hoursWorked || 0)
