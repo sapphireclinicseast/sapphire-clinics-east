@@ -3746,7 +3746,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
             <button onClick={async () => {
               if (!branch) return
               setAdjLoading(true)
-              const cp = `${adjCutoffYear}-${adjCutoffMonth}-${adjCutoffHalf}`
+              const cp = cutoffPeriod
               try {
                 // Fetch ALL employees for this branch (not filtered by search/dept)
                 const allBranchEmps: Employee[] = await (await fetch(`/api/payroll/employees?branch=${branch}`)).json()
@@ -3796,7 +3796,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
             <button onClick={async () => {
               if (!branch) return
               setAdjLoading(true)
-              const cp = `${adjCutoffYear}-${adjCutoffMonth}-${adjCutoffHalf}`
+              const cp = cutoffPeriod
               try {
                 // Fetch ALL employees for this branch
                 const allBranchEmps: Employee[] = await (await fetch(`/api/payroll/employees?branch=${branch}`)).json()
@@ -3990,7 +3990,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                   )}
                   <button onClick={async () => {
                     setAdjSaving(true)
-                    const cp = `${adjCutoffYear}-${adjCutoffMonth}-${adjCutoffHalf}`
+                    const cp = cutoffPeriod
                     try {
                       await fetch('/api/payroll/cutoff-adjustments', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
