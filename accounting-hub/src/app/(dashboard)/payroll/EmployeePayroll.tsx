@@ -580,6 +580,41 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     } catch { /* ignore */ }
   }, [cutoffPeriod, branch])
 
+  // Shared loader for the Allowance/Deduction tab — used by auto-load, Load button, and post-save refresh
+  const fetchAdjRows = useCallback(async (cutoff: string, br: string) => {
+    if (!br) return
+    setAdjLoading(true)
+    setAdjSaved(false)
+    try {
+      const [empsRes, adjRes] = await Promise.all([
+        fetch(`/api/payroll/employees?branch=${br}`),
+        fetch(`/api/payroll/cutoff-adjustments?cutoffPeriod=${cutoff}&branch=${br}`),
+      ])
+      const allBranchEmps: Employee[] = empsRes.ok ? await empsRes.json() : []
+      const adjData = adjRes.ok ? await adjRes.json() : []
+      const existing = Array.isArray(adjData) ? adjData : []
+      const existByEmp = new Map<string, { allowance: number; allowanceType: string; allowanceLabel: string; deduction: number; deductionLabel: string }[]>()
+      for (const a of existing) {
+        if (!existByEmp.has(a.employeeId)) existByEmp.set(a.employeeId, [])
+        existByEmp.get(a.employeeId)!.push(a)
+      }
+      const rows: AdjustmentRow[] = []
+      let rk = 0
+      for (const emp of (Array.isArray(allBranchEmps) ? allBranchEmps : [])) {
+        const empAdjs = existByEmp.get(emp.id)
+        if (empAdjs && empAdjs.length > 0) {
+          for (const ex of empAdjs) {
+            rows.push({ employeeId: emp.id, employeeName: `${emp.firstName} ${emp.lastName}`, allowance: toNum(ex.allowance), allowanceType: ex.allowanceType || 'NON_TAXABLE', allowanceLabel: ex.allowanceLabel || '', deduction: toNum(ex.deduction), deductionLabel: ex.deductionLabel || '', rowKey: `r${rk++}` })
+          }
+        } else {
+          rows.push({ employeeId: emp.id, employeeName: `${emp.firstName} ${emp.lastName}`, allowance: 0, allowanceType: 'NON_TAXABLE', allowanceLabel: '', deduction: 0, deductionLabel: '', rowKey: `r${rk++}` })
+        }
+      }
+      setAdjRows(rows)
+    } catch { /* ignore */ }
+    setAdjLoading(false)
+  }, [])
+
   const fetchLates = useCallback(async (from = latesDateFrom, to = latesDateTo) => {
     if (!from || !to) return
     setLatesLoading(true)
@@ -642,10 +677,18 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     else if (subTab === 'holidays') fetchHolidays()
     else if (subTab === 'benefits') fetchEmployees()
     else if (subTab === 'leave-settings') fetchLeaveSettings()
-    else if (subTab === 'adjustments') fetchEmployees()
+    else if (subTab === 'adjustments') { fetchEmployees(); if (branch) fetchAdjRows(cutoffPeriod, branch) }
     else if (subTab === 'payslips') fetchPayslips()
     else if (subTab === 'lates') fetchLates()
-  }, [subTab, leaveYear, fetchEmployees, fetchSettings, fetchRequests, fetchTimekeeping, fetchApprovedRequests, fetchPastUploads, fetchHolidays, fetchPayslips, fetchLeaveSettings, fetchLates])
+  }, [subTab, leaveYear, fetchEmployees, fetchSettings, fetchRequests, fetchTimekeeping, fetchApprovedRequests, fetchPastUploads, fetchHolidays, fetchPayslips, fetchLeaveSettings, fetchLates, fetchAdjRows, cutoffPeriod, branch])
+
+  // When cutoff period or branch changes while on the adjustments tab, reload fresh data.
+  // When leaving the tab, clear stale rows so the user always sees DB-fresh data on return.
+  useEffect(() => {
+    if (subTab !== 'adjustments') { setAdjRows([]); setAdjSaved(false); return }
+    if (branch) fetchAdjRows(cutoffPeriod, branch)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cutoffPeriod, branch])
 
   /* ═══════════════════════════════════════════════════════════════
      ACTIONS
@@ -3774,55 +3817,10 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
       {subTab === 'adjustments' && (
         <div className="space-y-3">
           <div className="flex items-center flex-wrap gap-2">
-            <button onClick={async () => {
-              if (!branch) return
-              setAdjLoading(true)
-              const cp = cutoffPeriod
-              try {
-                // Fetch ALL employees for this branch (not filtered by search/dept)
-                const allBranchEmps: Employee[] = await (await fetch(`/api/payroll/employees?branch=${branch}`)).json()
-                const r = await fetch(`/api/payroll/cutoff-adjustments?cutoffPeriod=${cp}&branch=${branch}`)
-                const data = await r.json()
-                const existing = Array.isArray(data) ? data : []
-                // Group existing adjustments by employee (multiple rows per employee)
-                const existByEmp = new Map<string, { allowance: number; allowanceType: string; allowanceLabel: string; deduction: number; deductionLabel: string }[]>()
-                for (const a of existing) {
-                  if (!existByEmp.has(a.employeeId)) existByEmp.set(a.employeeId, [])
-                  existByEmp.get(a.employeeId)!.push(a)
-                }
-                const rows: AdjustmentRow[] = []
-                let rk = 0
-                for (const emp of allBranchEmps) {
-                  const empAdjs = existByEmp.get(emp.id)
-                  if (empAdjs && empAdjs.length > 0) {
-                    for (const ex of empAdjs) {
-                      rows.push({
-                        employeeId: emp.id,
-                        employeeName: `${emp.firstName} ${emp.lastName}`,
-                        allowance: toNum(ex.allowance),
-                        allowanceType: ex.allowanceType || 'NON_TAXABLE',
-                        allowanceLabel: ex.allowanceLabel || '',
-                        deduction: toNum(ex.deduction),
-                        deductionLabel: ex.deductionLabel || '',
-                        rowKey: `r${rk++}`,
-                      })
-                    }
-                  } else {
-                    rows.push({
-                      employeeId: emp.id,
-                      employeeName: `${emp.firstName} ${emp.lastName}`,
-                      allowance: 0, allowanceType: 'NON_TAXABLE', allowanceLabel: '',
-                      deduction: 0, deductionLabel: '',
-                      rowKey: `r${rk++}`,
-                    })
-                  }
-                }
-                setAdjRows(rows)
-                setAdjSaved(false)
-              } catch { /* ignore */ }
-              setAdjLoading(false)
-            }} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium text-white transition-all hover:opacity-90" style={{ background: 'var(--teal)' }}>
-              <Search size={13} /> Load
+            <button onClick={() => fetchAdjRows(cutoffPeriod, branch)}
+              disabled={!branch || adjLoading}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium text-white transition-all hover:opacity-90" style={{ background: 'var(--teal)' }}>
+              {adjLoading ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />} Refresh
             </button>
             <button onClick={async () => {
               if (!branch) return
@@ -4024,36 +4022,16 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                     setAdjSaving(true)
                     setError('')
                     const cp = cutoffPeriod
+                    const br = branch
                     try {
                       const r = await fetch('/api/payroll/cutoff-adjustments', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ cutoffPeriod: cp, branch, adjustments: adjRows }),
+                        body: JSON.stringify({ cutoffPeriod: cp, branch: br, adjustments: adjRows }),
                       })
                       const d = await r.json()
                       if (!r.ok) throw new Error(d.error || 'Save failed')
-                      // Re-fetch from server to confirm persistence
-                      const allBranchEmps: Employee[] = await (await fetch(`/api/payroll/employees?branch=${branch}`)).json()
-                      const reloadR = await fetch(`/api/payroll/cutoff-adjustments?cutoffPeriod=${cp}&branch=${branch}`)
-                      const reloadData = await reloadR.json()
-                      const existing = Array.isArray(reloadData) ? reloadData : []
-                      const existByEmp = new Map<string, { allowance: number; allowanceType: string; allowanceLabel: string; deduction: number; deductionLabel: string }[]>()
-                      for (const a of existing) {
-                        if (!existByEmp.has(a.employeeId)) existByEmp.set(a.employeeId, [])
-                        existByEmp.get(a.employeeId)!.push(a)
-                      }
-                      const rows: AdjustmentRow[] = []
-                      let rk = 0
-                      for (const emp of allBranchEmps) {
-                        const empAdjs = existByEmp.get(emp.id)
-                        if (empAdjs && empAdjs.length > 0) {
-                          for (const ex of empAdjs) {
-                            rows.push({ employeeId: emp.id, employeeName: `${emp.firstName} ${emp.lastName}`, allowance: toNum(ex.allowance), allowanceType: ex.allowanceType || 'NON_TAXABLE', allowanceLabel: ex.allowanceLabel || '', deduction: toNum(ex.deduction), deductionLabel: ex.deductionLabel || '', rowKey: `r${rk++}` })
-                          }
-                        } else {
-                          rows.push({ employeeId: emp.id, employeeName: `${emp.firstName} ${emp.lastName}`, allowance: 0, allowanceType: 'NON_TAXABLE', allowanceLabel: '', deduction: 0, deductionLabel: '', rowKey: `r${rk++}` })
-                        }
-                      }
-                      setAdjRows(rows)
+                      // Re-fetch from server to confirm persistence and refresh the table
+                      await fetchAdjRows(cp, br)
                       setAdjSaved(true)
                     } catch (err) { setError(err instanceof Error ? err.message : 'Failed to save adjustments') }
                     setAdjSaving(false)
@@ -4521,9 +4499,9 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                                 {/* Allowance/Deduction adjustments */}
                                 {(() => {
                                   const adjs = (p.details?.adjustments || []) as { allowanceLabel?: string | null; allowanceType?: string; allowanceAmount?: number; deductionLabel?: string | null; deductionAmount?: number }[]
-                                  const hasAmounts = adjs.some(a => a.allowanceAmount !== undefined)
-                                  if (hasAmounts) {
-                                    return adjs.filter(a => (a.allowanceAmount ?? 0) > 0).map((a, i) => (
+                                  const allowanceItems = adjs.filter(a => (a.allowanceAmount ?? 0) > 0)
+                                  if (allowanceItems.length > 0) {
+                                    return allowanceItems.map((a, i) => (
                                       <div key={`adj-allow-${i}`} className="flex justify-between items-center">
                                         <span>
                                           {a.allowanceLabel || 'Allowance'}
@@ -4535,7 +4513,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                                       </div>
                                     ))
                                   }
-                                  // Fallback for older payslips: show total only
+                                  // Fallback: older payslips without per-line amounts — show total
                                   if (toNum(p.allowances) > 0) {
                                     return <div className="flex justify-between items-center"><span>Allowances</span><span className="font-mono">{formatCurrency(toNum(p.allowances))}</span></div>
                                   }
@@ -4563,15 +4541,16 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                                 {/* Adjustment deductions */}
                                 {(() => {
                                   const adjs = (p.details?.adjustments || []) as { allowanceLabel?: string | null; allowanceType?: string; allowanceAmount?: number; deductionLabel?: string | null; deductionAmount?: number }[]
-                                  const hasAmounts = adjs.some(a => a.deductionAmount !== undefined)
-                                  if (hasAmounts) {
-                                    return adjs.filter(a => (a.deductionAmount ?? 0) > 0).map((a, i) => (
+                                  const deductionItems = adjs.filter(a => (a.deductionAmount ?? 0) > 0)
+                                  if (deductionItems.length > 0) {
+                                    return deductionItems.map((a, i) => (
                                       <div key={`adj-ded-${i}`} className="flex justify-between items-center">
                                         <span>{a.deductionLabel || 'Other Deduction'}</span>
                                         <span className="font-mono">{formatCurrency(a.deductionAmount ?? 0)}</span>
                                       </div>
                                     ))
                                   }
+                                  // Fallback: older payslips — show total
                                   if (toNum(p.otherDeductions) > 0) {
                                     return <div className="flex justify-between"><span>Other Deductions</span><span className="font-mono">{formatCurrency(toNum(p.otherDeductions))}</span></div>
                                   }
