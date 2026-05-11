@@ -51,13 +51,8 @@ export async function GET(req: Request) {
   return NextResponse.json(requests)
 }
 
-// Create a request — requires authentication
+// Create a request — public, no authentication required
 export async function POST(req: Request) {
-  const session = await auth()
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
   const body = await req.json()
   const { employeeId, consultantId, requestType, leaveType, isHalfDay, halfDayPeriod, startDate, endDate, reason, attachment, requestedTimeIn, requestedTimeOut, requestedScheduleIn, requestedScheduleOut, changeToWorkingDay } = body
 
