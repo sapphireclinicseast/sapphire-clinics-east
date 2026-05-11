@@ -4020,15 +4020,42 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                     </span>
                   )}
                   <button onClick={async () => {
+                    if (!branch) { setError('Please select a branch before saving'); return }
                     setAdjSaving(true)
+                    setError('')
                     const cp = cutoffPeriod
                     try {
-                      await fetch('/api/payroll/cutoff-adjustments', {
+                      const r = await fetch('/api/payroll/cutoff-adjustments', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ cutoffPeriod: cp, branch, adjustments: adjRows }),
                       })
+                      const d = await r.json()
+                      if (!r.ok) throw new Error(d.error || 'Save failed')
+                      // Re-fetch from server to confirm persistence
+                      const allBranchEmps: Employee[] = await (await fetch(`/api/payroll/employees?branch=${branch}`)).json()
+                      const reloadR = await fetch(`/api/payroll/cutoff-adjustments?cutoffPeriod=${cp}&branch=${branch}`)
+                      const reloadData = await reloadR.json()
+                      const existing = Array.isArray(reloadData) ? reloadData : []
+                      const existByEmp = new Map<string, { allowance: number; allowanceType: string; allowanceLabel: string; deduction: number; deductionLabel: string }[]>()
+                      for (const a of existing) {
+                        if (!existByEmp.has(a.employeeId)) existByEmp.set(a.employeeId, [])
+                        existByEmp.get(a.employeeId)!.push(a)
+                      }
+                      const rows: AdjustmentRow[] = []
+                      let rk = 0
+                      for (const emp of allBranchEmps) {
+                        const empAdjs = existByEmp.get(emp.id)
+                        if (empAdjs && empAdjs.length > 0) {
+                          for (const ex of empAdjs) {
+                            rows.push({ employeeId: emp.id, employeeName: `${emp.firstName} ${emp.lastName}`, allowance: toNum(ex.allowance), allowanceType: ex.allowanceType || 'NON_TAXABLE', allowanceLabel: ex.allowanceLabel || '', deduction: toNum(ex.deduction), deductionLabel: ex.deductionLabel || '', rowKey: `r${rk++}` })
+                          }
+                        } else {
+                          rows.push({ employeeId: emp.id, employeeName: `${emp.firstName} ${emp.lastName}`, allowance: 0, allowanceType: 'NON_TAXABLE', allowanceLabel: '', deduction: 0, deductionLabel: '', rowKey: `r${rk++}` })
+                        }
+                      }
+                      setAdjRows(rows)
                       setAdjSaved(true)
-                    } catch { setError('Failed to save adjustments') }
+                    } catch (err) { setError(err instanceof Error ? err.message : 'Failed to save adjustments') }
                     setAdjSaving(false)
                   }} disabled={adjSaving}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium text-white transition-colors hover:opacity-80 active:scale-[0.97]"
