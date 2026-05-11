@@ -1273,6 +1273,7 @@ model EmployeePayslip {
   salaryPaymentId  String?      // set when salary is remitted
   benefitsRemitted Boolean      @default(false)
   benefitPaymentId String?      // set when SSS/PHIC/HDMF is remitted
+  computeTaxNow    Boolean      @default(false) // For cutoff 1 resignations: compute monthly tax now instead of waiting for cutoff 2
   createdById      String
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt

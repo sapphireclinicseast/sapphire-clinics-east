@@ -47,18 +47,20 @@ function cutoffDateRange(
 }
 
 /**
- * TRAIN Law withholding tax (Philippines, 2023 onwards)
- * Semi-monthly (per cutoff) tax table — annual brackets divided by 24
+ * TRAIN Law withholding tax (Philippines, 2023 onwards) — monthly basis.
+ * Tax is computed on full-month taxable income (annual brackets ÷ 12).
+ * It is deducted only on the 2nd cutoff (or on cutoff 1 when computeTaxNow
+ * is explicitly enabled, e.g. for resigning employees).
  */
-function computeTrainTax(taxablePerCutoff: number): number {
-  if (taxablePerCutoff <= 0) return 0
-  // Semi-monthly brackets (annual / 24)
-  if (taxablePerCutoff <= 10417) return 0
-  if (taxablePerCutoff <= 16667) return (taxablePerCutoff - 10417) * 0.15
-  if (taxablePerCutoff <= 33333) return 937.50 + (taxablePerCutoff - 16667) * 0.20
-  if (taxablePerCutoff <= 83333) return 4270.83 + (taxablePerCutoff - 33333) * 0.25
-  if (taxablePerCutoff <= 333333) return 16770.83 + (taxablePerCutoff - 83333) * 0.30
-  return 91770.83 + (taxablePerCutoff - 333333) * 0.35
+function computeTrainTaxMonthly(taxableMonthly: number): number {
+  if (taxableMonthly <= 0) return 0
+  // Monthly brackets (annual / 12)
+  if (taxableMonthly <= 20833) return 0
+  if (taxableMonthly <= 33333) return (taxableMonthly - 20833) * 0.15
+  if (taxableMonthly <= 66667) return 1875 + (taxableMonthly - 33333) * 0.20
+  if (taxableMonthly <= 166667) return 8541.67 + (taxableMonthly - 66667) * 0.25
+  if (taxableMonthly <= 666667) return 33541.67 + (taxableMonthly - 166667) * 0.30
+  return 183541.67 + (taxableMonthly - 666667) * 0.35
 }
 
 function allowedBranches(role: string): string[] | null {
@@ -119,13 +121,15 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json()
-  const { cutoffPeriod, branch } = body
+  const { cutoffPeriod, branch, computeTaxNowFor } = body
   // cutoffPeriod format: "2026-03-1" (year-month-cutoff#)
+  // computeTaxNowFor: optional string[] of employeeIds to compute tax on cutoff 1 (resignations)
 
   if (!cutoffPeriod || !branch) {
     return NextResponse.json({ error: 'Missing cutoffPeriod or branch' }, { status: 400 })
   }
 
+  const computeTaxNowSet = new Set<string>(computeTaxNowFor || [])
   const [yearStr, monthStr, cutoffNum] = cutoffPeriod.split('-')
   const year = parseInt(yearStr)
   const month = parseInt(monthStr)
@@ -230,6 +234,18 @@ export async function POST(req: Request) {
   for (const r of records) {
     if (!recByEmp.has(r.employeeId)) recByEmp.set(r.employeeId, [])
     recByEmp.get(r.employeeId)!.push(r)
+  }
+
+  // Pre-fetch cutoff 1 payslips so cutoff 2 can compute the full-month tax correctly
+  type C1Payslip = { grossPay: unknown; sssDeduction: unknown; philhealthDeduction: unknown; pagibigDeduction: unknown; taxDeduction: unknown; details: unknown }
+  const c1PayslipsByEmpId = new Map<string, C1Payslip>()
+  if (cutoffNum === '2') {
+    const c1Period = `${yearStr}-${monthStr}-1`
+    const c1Payslips = await prisma.employeePayslip.findMany({
+      where: { cutoffPeriod: c1Period, branch: qBranch },
+      select: { employeeId: true, grossPay: true, sssDeduction: true, philhealthDeduction: true, pagibigDeduction: true, taxDeduction: true, details: true },
+    })
+    for (const p of c1Payslips) c1PayslipsByEmpId.set(p.employeeId, p)
   }
 
   const standardHours = Number(settings.standardHoursPerDay)
@@ -424,11 +440,29 @@ export async function POST(req: Request) {
 
     const grossPay = basicPay + overtimePay + holidayPay + restDayPay + nightDiffPay + allowanceAmount
 
-    // TRAIN Law withholding tax (Philippines, 2023 onwards)
-    // Taxable income per cutoff = gross - pre-tax deductions (SSS, PhilHealth, Pag-IBIG) - non-taxable allowances
+    // TRAIN Law withholding tax (Philippines, 2023 onwards) — monthly basis.
+    // Tax is computed on the combined month (cutoff 1 + cutoff 2 taxable incomes) and
+    // deducted only on cutoff 2. On cutoff 1, tax is ₱0 unless computeTaxNow is set
+    // (used for employees who resign before cutoff 2).
     const preTaxDeductions = sssDeduction + philhealthDeduction + pagibigDeduction
     const taxablePerCutoff = grossPay - preTaxDeductions - nonTaxableAllowance
-    const taxDeduction = computeTrainTax(taxablePerCutoff)
+    let taxDeduction = 0
+    const empComputeNow = cutoffNum === '1' && computeTaxNowSet.has(emp.id)
+    if (cutoffNum === '2') {
+      const c1 = c1PayslipsByEmpId.get(emp.id)
+      let c1TaxableIncome = 0
+      if (c1) {
+        const c1Det = c1.details as Record<string, unknown> | null
+        c1TaxableIncome = typeof c1Det?.taxableIncome === 'number'
+          ? c1Det.taxableIncome
+          : Math.max(0, Number(c1.grossPay) - Number(c1.sssDeduction) - Number(c1.philhealthDeduction) - Number(c1.pagibigDeduction))
+      }
+      const monthlyTaxable = c1TaxableIncome + taxablePerCutoff
+      const c1TaxPaid = c1 ? Number(c1.taxDeduction) : 0
+      taxDeduction = Math.max(0, Math.round((computeTrainTaxMonthly(monthlyTaxable) - c1TaxPaid) * 100) / 100)
+    } else if (empComputeNow) {
+      taxDeduction = Math.round(computeTrainTaxMonthly(taxablePerCutoff) * 100) / 100
+    }
 
     const totalDeductions = sssDeduction + philhealthDeduction + pagibigDeduction + taxDeduction + lateDeduction + undertimeDeduction + adjDeductionAmount
     const netPay = grossPay - totalDeductions
@@ -461,7 +495,8 @@ export async function POST(req: Request) {
           overtimeHours: totalOTHours,
           lateMinutes: totalLateMinutes,
           undertimeMinutes: totalUndertimeMinutes,
-          details: { adjustments: adjDetails, dailyBreakdown },
+          details: { adjustments: adjDetails, dailyBreakdown, taxableIncome: taxablePerCutoff },
+          computeTaxNow: empComputeNow,
           status: 'DRAFT',
           createdById: session.user.id as string,
         },
@@ -493,7 +528,8 @@ export async function POST(req: Request) {
           overtimeHours: totalOTHours,
           lateMinutes: totalLateMinutes,
           undertimeMinutes: totalUndertimeMinutes,
-          details: { adjustments: adjDetails, dailyBreakdown },
+          details: { adjustments: adjDetails, dailyBreakdown, taxableIncome: taxablePerCutoff },
+          computeTaxNow: empComputeNow,
           status: 'DRAFT',
           createdById: session.user.id as string,
         },
@@ -540,7 +576,7 @@ export async function PATCH(req: Request) {
 
   try {
     const body = await req.json()
-    const { employeeId, cutoffPeriod, branch } = body
+    const { employeeId, cutoffPeriod, branch, computeTaxNow } = body
     if (!employeeId || !cutoffPeriod || !branch) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
@@ -752,7 +788,31 @@ export async function PATCH(req: Request) {
     const grossPay = basicPay + overtimePay + holidayPay + restDayPay + nightDiffPay + allowanceAmount
     const preTaxDeductions = sssDeduction + philhealthDeduction + pagibigDeduction
     const taxablePerCutoff = grossPay - preTaxDeductions - nonTaxableAllowance
-    const taxDeduction = computeTrainTax(taxablePerCutoff)
+
+    // TRAIN Law withholding tax — monthly basis (same logic as POST)
+    let taxDeduction = 0
+    const isC1 = cutoffNumStr === '1'
+    const shouldComputeNow = isC1 && !!computeTaxNow
+    if (cutoffNumStr === '2') {
+      const c1Period = `${yearStr}-${monthStr}-1`
+      const c1Payslip = await prisma.employeePayslip.findUnique({
+        where: { employeeId_cutoffPeriod_branch: { employeeId, cutoffPeriod: c1Period, branch: qBranch } },
+        select: { grossPay: true, sssDeduction: true, philhealthDeduction: true, pagibigDeduction: true, taxDeduction: true, details: true },
+      })
+      let c1TaxableIncome = 0
+      if (c1Payslip) {
+        const c1Det = c1Payslip.details as Record<string, unknown> | null
+        c1TaxableIncome = typeof c1Det?.taxableIncome === 'number'
+          ? c1Det.taxableIncome
+          : Math.max(0, Number(c1Payslip.grossPay) - Number(c1Payslip.sssDeduction) - Number(c1Payslip.philhealthDeduction) - Number(c1Payslip.pagibigDeduction))
+      }
+      const monthlyTaxable = c1TaxableIncome + taxablePerCutoff
+      const c1TaxPaid = c1Payslip ? Number(c1Payslip.taxDeduction) : 0
+      taxDeduction = Math.max(0, Math.round((computeTrainTaxMonthly(monthlyTaxable) - c1TaxPaid) * 100) / 100)
+    } else if (shouldComputeNow) {
+      taxDeduction = Math.round(computeTrainTaxMonthly(taxablePerCutoff) * 100) / 100
+    }
+
     const totalDeductions = sssDeduction + philhealthDeduction + pagibigDeduction + taxDeduction + lateDeduction + undertimeDeduction + adjDeductionAmount
     const netPay = grossPay - totalDeductions
 
@@ -765,7 +825,8 @@ export async function PATCH(req: Request) {
       taxDeduction, lateDeduction, undertimeDeduction, otherDeductions: adjDeductionAmount,
       totalDeductions, netPay, daysWorked, hoursWorked: totalHoursWorked,
       overtimeHours: totalOTHours, lateMinutes: totalLateMinutes, undertimeMinutes: totalUndertimeMinutes,
-      details: { adjustments: adjDetails, dailyBreakdown },
+      details: { adjustments: adjDetails, dailyBreakdown, taxableIncome: taxablePerCutoff },
+      computeTaxNow: shouldComputeNow,
       status: 'DRAFT',
       createdById: session.user.id as string,
     }

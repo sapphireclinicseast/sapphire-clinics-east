@@ -277,6 +277,7 @@ interface Payslip {
   undertimeMinutes: number
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   details?: any
+  computeTaxNow?: boolean
   pdfUrl?: string | null
   status: string
   employee: { id: string; firstName: string; lastName: string; department: string; branch: string; rateType: string; dailyRate: number | string; monthlyRate: number | string; email?: string | null; employeeBioId?: number | null }
@@ -435,6 +436,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
   const [downloadingAllPdfs, setDownloadingAllPdfs] = useState(false)
   const [emailingAll, setEmailingAll] = useState(false)
   const [regeneratingId, setRegeneratingId] = useState('')
+  const [togglingTaxId, setTogglingTaxId] = useState('')
   const [breakdownModal, setBreakdownModal] = useState<{ payslip: Payslip; type: 'basicPay' | 'overtimePay' | 'holidayPay' | 'nightDiffPay' | 'restDayPay' | 'daysWorked' | 'hoursWorked' | 'otHours' | 'late' | 'undertime' } | null>(null)
 
   /* ── Holiday Presets ── */
@@ -763,7 +765,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     setGenerating(false)
   }
 
-  const regeneratePayslip = async (p: Payslip) => {
+  const regeneratePayslip = async (p: Payslip, computeTaxNow?: boolean) => {
     if (p.status === 'LOCKED') { setError('Cannot regenerate a locked payslip. Unlock payroll first.'); return }
     setRegeneratingId(p.id)
     setError('')
@@ -771,7 +773,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
       const r = await fetch('/api/payroll/employee-payslips', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ employeeId: p.employeeId, cutoffPeriod, branch: branch || 'SBEA' }),
+        body: JSON.stringify({ employeeId: p.employeeId, cutoffPeriod, branch: branch || 'SBEA', ...(computeTaxNow !== undefined ? { computeTaxNow } : {}) }),
       })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'Regeneration failed')
@@ -781,6 +783,25 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
       setError(err instanceof Error ? err.message : 'Failed to regenerate payslip')
     }
     setRegeneratingId('')
+  }
+
+  const toggleComputeTaxNow = async (p: Payslip) => {
+    if (p.status === 'LOCKED') return
+    setTogglingTaxId(p.id)
+    setError('')
+    try {
+      const r = await fetch('/api/payroll/employee-payslips', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId: p.employeeId, cutoffPeriod, branch: branch || 'SBEA', computeTaxNow: !p.computeTaxNow }),
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || 'Toggle failed')
+      setPayslips(prev => prev.map(ps => ps.id === p.id ? { ...d, employee: ps.employee } : ps))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to toggle withholding tax')
+    }
+    setTogglingTaxId('')
   }
 
   const saveLeaveMaxDays = async () => {
@@ -4417,15 +4438,26 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                       </td>
                       {canWrite && (
                         <td className="px-3 py-2.5 text-center" onClick={e => e.stopPropagation()}>
+                          <div className="flex flex-col items-center gap-1">
                           {p.status !== 'LOCKED' && (
-                            <button onClick={() => regeneratePayslip(p)} disabled={regeneratingId === p.id}
-                              className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium border transition-all hover:opacity-80 disabled:opacity-40 mx-auto"
+                            <button onClick={() => regeneratePayslip(p)} disabled={regeneratingId === p.id || togglingTaxId === p.id}
+                              className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium border transition-all hover:opacity-80 disabled:opacity-40"
                               style={{ borderColor: '#0d9488', color: '#0d9488' }}
                               title="Re-run computation from latest timekeeping data">
                               {regeneratingId === p.id ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
                               {regeneratingId === p.id ? '…' : 'Regen'}
                             </button>
                           )}
+                          {p.status !== 'LOCKED' && cutoffPeriod.endsWith('-1') && (
+                            <button onClick={() => toggleComputeTaxNow(p)} disabled={togglingTaxId === p.id || regeneratingId === p.id}
+                              className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium border transition-all hover:opacity-80 disabled:opacity-40"
+                              style={{ borderColor: p.computeTaxNow ? '#d97706' : '#9ca3af', color: p.computeTaxNow ? '#d97706' : '#9ca3af', background: p.computeTaxNow ? '#fef3c7' : 'transparent' }}
+                              title={p.computeTaxNow ? 'Withholding tax is being deducted this cutoff (click to remove)' : 'Click to compute withholding tax now (for resignations)'}>
+                              {togglingTaxId === p.id ? <Loader2 size={11} className="animate-spin" /> : <DollarSign size={11} />}
+                              {p.computeTaxNow ? 'Tax ON' : 'Tax OFF'}
+                            </button>
+                          )}
+                          </div>
                         </td>
                       )}
                       <td className="px-3 py-2.5 text-center">
@@ -4468,7 +4500,15 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                                 <div className="flex justify-between"><span>SSS</span><span className="font-mono">{formatCurrency(toNum(p.sssDeduction))}</span></div>
                                 <div className="flex justify-between"><span>PhilHealth</span><span className="font-mono">{formatCurrency(toNum(p.philhealthDeduction))}</span></div>
                                 <div className="flex justify-between"><span>Pag-IBIG</span><span className="font-mono">{formatCurrency(toNum(p.pagibigDeduction))}</span></div>
-                                <div className="flex justify-between"><span>Tax</span><span className="font-mono">{formatCurrency(toNum(p.taxDeduction))}</span></div>
+                                <div className="flex justify-between items-center">
+                                  <span>
+                                    Tax
+                                    {cutoffPeriod.endsWith('-1') && !p.computeTaxNow && (
+                                      <span className="ml-1 text-[9px]" style={{ color: '#9ca3af' }}>(deducted on 2nd cutoff)</span>
+                                    )}
+                                  </span>
+                                  <span className="font-mono">{formatCurrency(toNum(p.taxDeduction))}</span>
+                                </div>
                                 <div className="flex justify-between"><span>Undertime</span><span className="font-mono">{formatCurrency(toNum(p.undertimeDeduction))}</span></div>
                                 <div className="flex justify-between border-t pt-1 font-bold" style={{ borderColor: 'var(--light-gray)' }}><span>Total</span><span className="font-mono">{formatCurrency(toNum(p.totalDeductions))}</span></div>
                               </div>
@@ -4503,12 +4543,21 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                           {/* PDF, Email & Regenerate Actions */}
                           <div className="flex items-center gap-2 mt-4 pt-3 border-t flex-wrap" style={{ borderColor: 'var(--light-gray)' }}>
                             {canWrite && p.status !== 'LOCKED' && (
-                              <button onClick={e => { e.stopPropagation(); regeneratePayslip(p) }} disabled={regeneratingId === p.id}
+                              <button onClick={e => { e.stopPropagation(); regeneratePayslip(p) }} disabled={regeneratingId === p.id || togglingTaxId === p.id}
                                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold border disabled:opacity-50 transition-all hover:opacity-90"
                                 style={{ borderColor: '#0d9488', color: '#0d9488' }}
                                 title="Re-run computation from latest timekeeping and schedule data">
                                 {regeneratingId === p.id ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
                                 {regeneratingId === p.id ? 'Regenerating…' : 'Regenerate Payslip'}
+                              </button>
+                            )}
+                            {canWrite && p.status !== 'LOCKED' && cutoffPeriod.endsWith('-1') && (
+                              <button onClick={e => { e.stopPropagation(); toggleComputeTaxNow(p) }} disabled={togglingTaxId === p.id || regeneratingId === p.id}
+                                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold border disabled:opacity-50 transition-all hover:opacity-90"
+                                style={{ borderColor: p.computeTaxNow ? '#d97706' : '#9ca3af', color: p.computeTaxNow ? '#d97706' : '#6b7280', background: p.computeTaxNow ? '#fef3c7' : 'transparent' }}
+                                title={p.computeTaxNow ? 'Withholding tax computed this cutoff — click to remove (will set tax back to ₱0)' : 'Compute withholding tax now (use for resignations — employee will not receive a 2nd cutoff)'}>
+                                {togglingTaxId === p.id ? <Loader2 size={13} className="animate-spin" /> : <DollarSign size={13} />}
+                                {togglingTaxId === p.id ? 'Computing…' : p.computeTaxNow ? 'Compute WHT Now: ON' : 'Compute WHT Now: OFF'}
                               </button>
                             )}
                             <button onClick={() => downloadPayslipPdf(p)} disabled={pdfGenerating === p.id}

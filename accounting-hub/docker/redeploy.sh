@@ -248,6 +248,8 @@ BEGIN
       ON DELETE SET NULL ON UPDATE CASCADE;
   END IF;
 END$$;
+-- Cutoff 1 resignation toggle: compute monthly withholding tax on cutoff 1 instead of waiting for cutoff 2
+ALTER TABLE "EmployeePayslip" ADD COLUMN IF NOT EXISTS "computeTaxNow" BOOLEAN NOT NULL DEFAULT false;
 SQL
 
 echo "Redeploy complete."
