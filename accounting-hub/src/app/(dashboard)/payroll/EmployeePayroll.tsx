@@ -4491,6 +4491,29 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                                     <span className="font-mono">{formatCurrency(toNum(item.value))}</span>
                                   </div>
                                 ))}
+                                {/* Allowance/Deduction adjustments */}
+                                {(() => {
+                                  const adjs = (p.details?.adjustments || []) as { allowanceLabel?: string | null; allowanceType?: string; allowanceAmount?: number; deductionLabel?: string | null; deductionAmount?: number }[]
+                                  const hasAmounts = adjs.some(a => a.allowanceAmount !== undefined)
+                                  if (hasAmounts) {
+                                    return adjs.filter(a => (a.allowanceAmount ?? 0) > 0).map((a, i) => (
+                                      <div key={`adj-allow-${i}`} className="flex justify-between items-center">
+                                        <span>
+                                          {a.allowanceLabel || 'Allowance'}
+                                          <span className="ml-1 text-[9px]" style={{ color: '#9ca3af' }}>
+                                            ({a.allowanceType === 'TAXABLE' ? 'Taxable' : 'Non-taxable'})
+                                          </span>
+                                        </span>
+                                        <span className="font-mono">{formatCurrency(a.allowanceAmount ?? 0)}</span>
+                                      </div>
+                                    ))
+                                  }
+                                  // Fallback for older payslips: show total only
+                                  if (toNum(p.allowances) > 0) {
+                                    return <div className="flex justify-between items-center"><span>Allowances</span><span className="font-mono">{formatCurrency(toNum(p.allowances))}</span></div>
+                                  }
+                                  return null
+                                })()}
                                 <div className="flex justify-between border-t pt-1 font-bold" style={{ borderColor: 'var(--light-gray)' }}><span>Gross Pay</span><span className="font-mono">{formatCurrency(toNum(p.grossPay))}</span></div>
                               </div>
                             </div>
@@ -4510,6 +4533,23 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                                   <span className="font-mono">{formatCurrency(toNum(p.taxDeduction))}</span>
                                 </div>
                                 <div className="flex justify-between"><span>Undertime</span><span className="font-mono">{formatCurrency(toNum(p.undertimeDeduction))}</span></div>
+                                {/* Adjustment deductions */}
+                                {(() => {
+                                  const adjs = (p.details?.adjustments || []) as { allowanceLabel?: string | null; allowanceType?: string; allowanceAmount?: number; deductionLabel?: string | null; deductionAmount?: number }[]
+                                  const hasAmounts = adjs.some(a => a.deductionAmount !== undefined)
+                                  if (hasAmounts) {
+                                    return adjs.filter(a => (a.deductionAmount ?? 0) > 0).map((a, i) => (
+                                      <div key={`adj-ded-${i}`} className="flex justify-between items-center">
+                                        <span>{a.deductionLabel || 'Other Deduction'}</span>
+                                        <span className="font-mono">{formatCurrency(a.deductionAmount ?? 0)}</span>
+                                      </div>
+                                    ))
+                                  }
+                                  if (toNum(p.otherDeductions) > 0) {
+                                    return <div className="flex justify-between"><span>Other Deductions</span><span className="font-mono">{formatCurrency(toNum(p.otherDeductions))}</span></div>
+                                  }
+                                  return null
+                                })()}
                                 <div className="flex justify-between border-t pt-1 font-bold" style={{ borderColor: 'var(--light-gray)' }}><span>Total</span><span className="font-mono">{formatCurrency(toNum(p.totalDeductions))}</span></div>
                               </div>
                             </div>

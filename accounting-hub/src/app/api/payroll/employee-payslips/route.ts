@@ -428,14 +428,14 @@ export async function POST(req: Request) {
     let allowanceAmount = 0
     let adjDeductionAmount = 0
     let nonTaxableAllowance = 0
-    const adjDetails: { allowanceLabel?: string | null; allowanceType?: string; deductionLabel?: string | null }[] = []
+    const adjDetails: { allowanceLabel?: string | null; allowanceType?: string; allowanceAmount?: number; deductionLabel?: string | null; deductionAmount?: number }[] = []
     for (const adj of empAdjs) {
       const allowAmt = Number(adj.allowance) || 0
       const dedAmt = Number(adj.deduction) || 0
       allowanceAmount += allowAmt
       adjDeductionAmount += dedAmt
       if (adj.allowanceType !== 'TAXABLE') nonTaxableAllowance += allowAmt
-      adjDetails.push({ allowanceLabel: adj.allowanceLabel, allowanceType: adj.allowanceType, deductionLabel: adj.deductionLabel })
+      adjDetails.push({ allowanceLabel: adj.allowanceLabel, allowanceType: adj.allowanceType, allowanceAmount: allowAmt, deductionLabel: adj.deductionLabel, deductionAmount: dedAmt })
     }
 
     const grossPay = basicPay + overtimePay + holidayPay + restDayPay + nightDiffPay + allowanceAmount
@@ -776,13 +776,13 @@ export async function PATCH(req: Request) {
     const undertimeDeduction = (totalUndertimeMinutes / 60) * hourlyRate
 
     let allowanceAmount = 0, adjDeductionAmount = 0, nonTaxableAllowance = 0
-    const adjDetails: { allowanceLabel?: string | null; allowanceType?: string; deductionLabel?: string | null }[] = []
+    const adjDetails: { allowanceLabel?: string | null; allowanceType?: string; allowanceAmount?: number; deductionLabel?: string | null; deductionAmount?: number }[] = []
     for (const adj of empAdjs) {
       const allowAmt = Number(adj.allowance) || 0
       const dedAmt = Number(adj.deduction) || 0
       allowanceAmount += allowAmt; adjDeductionAmount += dedAmt
       if (adj.allowanceType !== 'TAXABLE') nonTaxableAllowance += allowAmt
-      adjDetails.push({ allowanceLabel: adj.allowanceLabel, allowanceType: adj.allowanceType, deductionLabel: adj.deductionLabel })
+      adjDetails.push({ allowanceLabel: adj.allowanceLabel, allowanceType: adj.allowanceType, allowanceAmount: allowAmt, deductionLabel: adj.deductionLabel, deductionAmount: dedAmt })
     }
 
     const grossPay = basicPay + overtimePay + holidayPay + restDayPay + nightDiffPay + allowanceAmount
