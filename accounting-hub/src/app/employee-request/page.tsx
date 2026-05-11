@@ -106,7 +106,8 @@ export default function EmployeeRequestPage() {
     if (!dateStr || !selectedEmployee) { setScheduleDayType(''); setChangeToWorkingDay(null); return }
     const date = new Date(dateStr + 'T00:00:00')
     const dayName = DAY_NAMES[date.getDay()]
-    const isRest = selectedEmployee.restDay?.toUpperCase() === dayName
+    const restDays = (selectedEmployee.restDay || '').toUpperCase().split(',').map(d => d.trim())
+    const isRest = restDays.includes(dayName)
     setScheduleDayType(isRest ? 'rest' : 'working')
     setChangeToWorkingDay(isRest ? true : false) // default: flip to opposite
   }
