@@ -1827,6 +1827,16 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     return d.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: true })
   }
 
+  // Converts stored "HH:MM" (24-hour) strings to 12-hour AM/PM format
+  const fmtHHMM = (hhmm: string | null | undefined) => {
+    if (!hhmm) return '—'
+    const [h, m] = hhmm.split(':').map(Number)
+    if (isNaN(h) || isNaN(m)) return hhmm
+    const period = h >= 12 ? 'PM' : 'AM'
+    const hour12 = h % 12 || 12
+    return `${hour12}:${String(m).padStart(2, '0')} ${period}`
+  }
+
   const fmtDate = (iso: string | null | undefined) => {
     if (!iso) return '—'
     return new Date(iso).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -1984,9 +1994,9 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                       <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{emp.bankName || '—'}</td>
                       <td className="px-3 py-2.5 text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>{emp.bankAccountNo || '—'}</td>
                       <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>
-                        {emp.scheduleIn} – {emp.scheduleOut}
+                        {fmtHHMM(emp.scheduleIn)} – {fmtHHMM(emp.scheduleOut)}
                         {emp.daySchedules && Object.keys(emp.daySchedules).length > 0 && (
-                          <span className="ml-1 text-[10px] px-1 py-0.5 rounded" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }} title={Object.entries(emp.daySchedules).map(([d, s]) => `${d}: ${(s as {in:string;out:string}).in}–${(s as {in:string;out:string}).out}`).join(', ')}>+{Object.keys(emp.daySchedules).length} override{Object.keys(emp.daySchedules).length > 1 ? 's' : ''}</span>
+                          <span className="ml-1 text-[10px] px-1 py-0.5 rounded" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }} title={Object.entries(emp.daySchedules).map(([d, s]) => `${d}: ${fmtHHMM((s as {in:string;out:string}).in)}–${fmtHHMM((s as {in:string;out:string}).out)}`).join(', ')}>+{Object.keys(emp.daySchedules).length} override{Object.keys(emp.daySchedules).length > 1 ? 's' : ''}</span>
                         )}
                       </td>
                       <td className="px-3 py-2.5 text-center">
@@ -2735,7 +2745,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                             → {r.changeToWorkingDay ? 'Working Day' : 'Rest Day'}
                           </span>
                           {r.changeToWorkingDay && r.requestedScheduleIn && (
-                            <div className="text-[10px] font-mono">{r.requestedScheduleIn} – {r.requestedScheduleOut}</div>
+                            <div className="text-[10px] font-mono">{fmtHHMM(r.requestedScheduleIn)} – {fmtHHMM(r.requestedScheduleOut)}</div>
                           )}
                           {r.reason && <div className="text-[10px] truncate">{r.reason}</div>}
                         </div>
@@ -4708,8 +4718,8 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                                         <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                                           <td className="py-1.5 pr-6 font-medium" style={{ color: 'var(--charcoal)' }}>{fmtD(l.date)}</td>
                                           <td className="py-1.5 pr-6" style={{ color: 'var(--mid-gray)' }}>{fmtDOW(l.date)}</td>
-                                          <td className="py-1.5 pr-6 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{l.scheduledIn}</td>
-                                          <td className="py-1.5 pr-6 text-center font-mono" style={{ color: l.withinGrace ? '#d97706' : '#dc2626', fontWeight: 600 }}>{l.timeIn ?? '—'}</td>
+                                          <td className="py-1.5 pr-6 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{fmtHHMM(l.scheduledIn)}</td>
+                                          <td className="py-1.5 pr-6 text-center font-mono" style={{ color: l.withinGrace ? '#d97706' : '#dc2626', fontWeight: 600 }}>{fmtHHMM(l.timeIn)}</td>
                                           <td className="py-1.5 pr-6 text-right font-mono" style={{ color: l.withinGrace ? '#d97706' : '#dc2626' }}>{fmtMin(l.lateMinutes)}</td>
                                           <td className="py-1.5 text-center">
                                             {l.withinGrace
@@ -4896,15 +4906,15 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
 
                           {/* Hours Worked */}
                           {type === 'hoursWorked' && <>
-                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeIn ?? '—'}</td>
-                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeOut ?? '—'}</td>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{fmtHHMM(r.timeIn)}</td>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{fmtHHMM(r.timeOut)}</td>
                             <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{fmtHrs(Number(r.hours || 0))}</td>
                           </>}
 
                           {/* OT Hours */}
                           {type === 'otHours' && <>
-                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeIn ?? '—'}</td>
-                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeOut ?? '—'}</td>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{fmtHHMM(r.timeIn)}</td>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{fmtHHMM(r.timeOut)}</td>
                             <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: '#7c3aed' }}>
                               {fmtMin(Number(r.roundedMinutes || 0))}
                               {Number(r.roundedMinutes) < Number(r.rawMinutes) && (
@@ -4916,10 +4926,10 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                           {/* Late */}
                           {type === 'late' && <>
                             <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>
-                              {r.timeIn ?? '—'}
-                              {r.scheduledIn && <span className="block text-[10px]" style={{ color: '#d97706' }}>sched {r.scheduledIn}</span>}
+                              {fmtHHMM(r.timeIn)}
+                              {r.scheduledIn && <span className="block text-[10px]" style={{ color: '#d97706' }}>sched {fmtHHMM(r.scheduledIn)}</span>}
                             </td>
-                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeOut ?? '—'}</td>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{fmtHHMM(r.timeOut)}</td>
                             <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: '#dc2626' }}>
                               {fmtMin(Number(r.effectiveLate || 0))}
                               {Number(r.gracePeriod) > 0 && Number(r.lateMinutes) !== Number(r.effectiveLate) && (
@@ -4930,32 +4940,32 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
 
                           {/* Undertime */}
                           {type === 'undertime' && <>
-                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeIn ?? '—'}</td>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{fmtHHMM(r.timeIn)}</td>
                             <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>
-                              {r.timeOut ?? '—'}
-                              {r.scheduledOut && <span className="block text-[10px]" style={{ color: '#d97706' }}>sched {r.scheduledOut}</span>}
+                              {fmtHHMM(r.timeOut)}
+                              {r.scheduledOut && <span className="block text-[10px]" style={{ color: '#d97706' }}>sched {fmtHHMM(r.scheduledOut)}</span>}
                             </td>
                             <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: '#dc2626' }}>{fmtMin(Number(r.undertimeMinutes || 0))}</td>
                           </>}
 
                           {/* ── Existing earnings rows ── */}
                           {type === 'basicPay' && <>
-                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeIn ?? '—'}</td>
-                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeOut ?? '—'}</td>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{fmtHHMM(r.timeIn)}</td>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{fmtHHMM(r.timeOut)}</td>
                             <td className="px-3 py-2 text-right font-mono">{Number(r.hours).toFixed(1)}</td>
                             <td className="px-3 py-2 text-right font-mono">{fc(r.dailyRate)}/day</td>
                             <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{fc(r.amount)}</td>
                           </>}
                           {type === 'overtimePay' && <>
-                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.scheduledOut ?? '—'}</td>
-                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeOut ?? '—'}</td>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{fmtHHMM(r.scheduledOut)}</td>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{fmtHHMM(r.timeOut)}</td>
                             <td className="px-3 py-2 text-right font-mono">{Number(r.otHours).toFixed(2)} hr{Number(r.roundedMinutes) < Number(r.rawMinutes) ? <span className="text-[10px] ml-1" style={{ color: '#d97706' }} title={`Rounded down from ${r.rawMinutes} min`}>↓{r.rawMinutes}m</span> : null}</td>
                             <td className="px-3 py-2 text-right font-mono">{fc(Number(r.hourlyRate) * Number(r.multiplier))}/hr</td>
                             <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{fc(r.amount)}</td>
                           </>}
                           {(type === 'holidayPay' || type === 'restDayPay') && <>
-                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeIn ?? '—'}</td>
-                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeOut ?? '—'}</td>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{fmtHHMM(r.timeIn)}</td>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{fmtHHMM(r.timeOut)}</td>
                             <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>
                               {type === 'holidayPay'
                                 ? (r.holidayType === 'REGULAR' ? 'Regular Holiday' : 'Special Non-Working')
@@ -4966,8 +4976,8 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                             <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{fc(r.amount)}</td>
                           </>}
                           {type === 'nightDiffPay' && <>
-                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeIn ?? '—'}</td>
-                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{r.timeOut ?? '—'}</td>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{fmtHHMM(r.timeIn)}</td>
+                            <td className="px-3 py-2 text-center font-mono" style={{ color: 'var(--mid-gray)' }}>{fmtHHMM(r.timeOut)}</td>
                             <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{fc(r.amount)}</td>
                           </>}
                         </tr>
