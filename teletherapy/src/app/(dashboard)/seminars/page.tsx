@@ -30,10 +30,26 @@ interface Certificate {
   source: 'registered' | 'manual'
 }
 
+// One speaker as projected by the teletherapy proxy. headshot has
+// already been absolutised to the HR origin. aboutSpeaker / bio are
+// optional per-speaker overrides — the top-level aboutSpeaker on
+// the seminar is the canonical fallback when these are blank.
+interface Speaker {
+  id?: string
+  name?: string
+  title?: string
+  headshot?: string | null
+  aboutSpeaker?: string | null
+  bio?: string | null
+}
+
 interface Seminar {
   id: string
   title: string
   date: string
+  // Lifecycle state from HR. Drives the three-bucket sort below
+  // (upcoming-with-date → upcoming-TBD → completed/cancelled).
+  status?: 'upcoming' | 'completed' | 'cancelled' | string
   // Tentative-date support — when HR doesn't have a final calendar
   // date yet, dateUndefined is true and scheduledMonth holds 'YYYY-MM'.
   dateUndefined?: boolean
@@ -43,9 +59,13 @@ interface Seminar {
   format: 'virtual' | 'face-to-face' | 'hybrid' | string
   location: string
   meetingLink: string
+  // Legacy single-speaker fields. For multi-speaker seminars use
+  // speakers[] below; these stay populated for single-speaker
+  // seminars so older code paths still work.
   speakerName: string
   speakerTitle: string
   speakerHeadshot: string | null
+  speakers?: Speaker[]
   // HR's classification picker offers presets like Workshop / Webinar
   // / Conference / Symposium; classificationOther holds a free-form
   // value when the curator picks "Other". Either may be set.
@@ -163,12 +183,14 @@ export default function SeminarsPage() {
   const [objectivesSeminar, setObjectivesSeminar] = useState<Seminar | null>(null)
   // About-Speaker modal state. We snapshot the relevant fields off
   // the seminar (rather than holding the whole Seminar object) so a
-  // background refetch can't change what's currently shown.
+  // background refetch can't change what's currently shown. The
+  // shape supports multiple speakers; each entry uses its own
+  // aboutSpeaker / bio when set, else falls back to the seminar's
+  // top-level aboutSpeaker (passed as `fallbackBio`).
   const [aboutSpeaker, setAboutSpeaker] = useState<{
-    name: string
-    title: string
-    headshot: string | null
-    bio: string
+    seminarTitle: string
+    fallbackBio: string
+    speakers: Speaker[]
   } | null>(null)
   const [certificates, setCertificates] = useState<Certificate[]>([])
   const [certsLoading, setCertsLoading] = useState(false)
@@ -256,12 +278,82 @@ export default function SeminarsPage() {
   }
 
   const q = search.trim().toLowerCase()
-  const filtered = q
+  const searchHits = q
     ? seminars.filter((s) => {
-        const hay = `${s.title} ${s.speakerName} ${s.disciplineFocus?.join(' ') ?? ''} ${s.location}`.toLowerCase()
+        const allSpeakerNames = (s.speakers ?? []).map((sp) => sp.name || '').join(' ')
+        const hay = `${s.title} ${s.speakerName} ${allSpeakerNames} ${s.disciplineFocus?.join(' ') ?? ''} ${s.location}`.toLowerCase()
         return hay.includes(q)
       })
     : seminars
+
+  // ── Three-bucket sort ──
+  // 1. Upcoming with a confirmed date, future (closest first)
+  // 2. Upcoming with no confirmed date (TBD), by estimated month asc
+  // 3. Completed / cancelled / past-confirmed, most recent first
+  // Bucket assignment is stable: a single pass classifies each row
+  // and we sort within each bucket independently, then concatenate.
+  const filtered = (() => {
+    const now = new Date()
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+
+    function endDate(s: Seminar): Date | null {
+      if (s.dateUndefined) return null
+      if (!s.date) return null
+      const d = new Date(`${s.date}T${s.timeEnd || '23:59'}`)
+      return Number.isNaN(d.getTime()) ? null : d
+    }
+    function startDate(s: Seminar): Date | null {
+      if (s.dateUndefined) return null
+      if (!s.date) return null
+      const d = new Date(`${s.date}T${s.timeStart || '00:00'}`)
+      return Number.isNaN(d.getTime()) ? null : d
+    }
+    function monthStart(s: Seminar): Date | null {
+      const m = s.scheduledMonth || ''
+      const mm = m.match(/^(\d{4})[-/](\d{1,2})$/)
+      if (!mm) return null
+      return new Date(Number(mm[1]), Number(mm[2]) - 1, 1)
+    }
+    function bucketOf(s: Seminar): 1 | 2 | 3 {
+      const status = (s.status || 'upcoming').toLowerCase()
+      if (status === 'completed' || status === 'cancelled') return 3
+      if (s.dateUndefined) return 2
+      const end = endDate(s)
+      // If we can't parse the date, treat as TBD so it doesn't fall
+      // into "completed" by accident.
+      if (!end) return 2
+      return end >= startOfToday ? 1 : 3
+    }
+
+    const b1: Seminar[] = []
+    const b2: Seminar[] = []
+    const b3: Seminar[] = []
+    for (const s of searchHits) {
+      const b = bucketOf(s)
+      ;(b === 1 ? b1 : b === 2 ? b2 : b3).push(s)
+    }
+    // Bucket 1 — upcoming with date, ascending (soonest first)
+    b1.sort((a, b) => {
+      const da = startDate(a)?.getTime() ?? Number.POSITIVE_INFINITY
+      const db = startDate(b)?.getTime() ?? Number.POSITIVE_INFINITY
+      return da - db
+    })
+    // Bucket 2 — TBD, ascending by estimated month (rows with no
+    // month land last within the bucket)
+    b2.sort((a, b) => {
+      const da = monthStart(a)?.getTime() ?? Number.POSITIVE_INFINITY
+      const db = monthStart(b)?.getTime() ?? Number.POSITIVE_INFINITY
+      return da - db
+    })
+    // Bucket 3 — past/completed, descending (most recent first).
+    // Cancelled-but-no-date rows fall to the very end.
+    b3.sort((a, b) => {
+      const da = endDate(a)?.getTime() ?? 0
+      const db = endDate(b)?.getTime() ?? 0
+      return db - da
+    })
+    return [...b1, ...b2, ...b3]
+  })()
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -423,6 +515,29 @@ export default function SeminarsPage() {
             const isFaceToFace = s.format === 'face-to-face'
             const isFull = s.hasParticipantLimit && s.registeredCount >= s.maxParticipants
             const registered = s.myRegistration.registered
+
+            // Speakers to render. HR's multi-speaker form populates
+            // speakers[] (each with name/title/headshot/aboutSpeaker/
+            // bio). For legacy single-speaker seminars we fall back
+            // to the top-level speakerName/Title/Headshot. We prefer
+            // speakers[] whenever it has at least one entry so we
+            // pick up multi-speaker setups (e.g. "Interprofessional
+            // Collaboration in Dysphagia Management" with 2 speakers).
+            const displaySpeakers: Speaker[] = (s.speakers && s.speakers.length > 0)
+              ? s.speakers
+              : (s.speakerName || s.speakerHeadshot
+                  ? [{ name: s.speakerName, title: s.speakerTitle, headshot: s.speakerHeadshot, aboutSpeaker: s.aboutSpeaker ?? null }]
+                  : [])
+            const speakerNamesLine = displaySpeakers.map((sp) => {
+              const name = (sp.name || '').trim()
+              const title = (sp.title || '').trim()
+              return title ? `${name} · ${title}` : name
+            }).filter(Boolean).join(' / ')
+            // Does any speaker have a bio to show in the modal? If
+            // not, we hide the About Speaker button — pointless to
+            // open an empty modal.
+            const hasAnyBio = displaySpeakers.some((sp) => (sp.aboutSpeaker || sp.bio || '').trim() !== '')
+                          || (s.aboutSpeaker || '').trim() !== ''
             return (
               <div
                 key={s.id}
@@ -446,20 +561,42 @@ export default function SeminarsPage() {
                     The About Speaker button only renders when
                     aboutSpeaker is non-empty; opening a modal with
                     no bio would be pointless. */}
-                {(s.speakerName || s.speakerHeadshot) && (
+                {displaySpeakers.length > 0 && (
                   <div className="hidden lg:flex absolute top-4 right-4 flex-col items-center gap-1.5 w-[88px] z-[1]">
-                    <SpeakerAvatar
-                      src={s.speakerHeadshot}
-                      name={s.speakerName}
-                      size={72}
-                    />
-                    {s.aboutSpeaker && s.aboutSpeaker.trim() && (
+                    {/* Multi-speaker: avatars stack vertically, name
+                        underneath each. Single-speaker: just the
+                        avatar (name appears in the details line below
+                        the title). */}
+                    <div className="flex flex-col items-center gap-2">
+                      {displaySpeakers.slice(0, 3).map((sp, idx) => (
+                        <div key={sp.id || idx} className="flex flex-col items-center gap-0.5">
+                          <SpeakerAvatar
+                            src={sp.headshot}
+                            name={sp.name || ''}
+                            size={displaySpeakers.length > 1 ? 60 : 72}
+                          />
+                          {displaySpeakers.length > 1 && sp.name && (
+                            <p className="text-[10px] text-[var(--mid-gray)] text-center leading-tight max-w-[88px] truncate" title={sp.name}>
+                              {sp.name.split(',')[0]}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                      {displaySpeakers.length > 3 && (
+                        <p className="text-[10px] text-[var(--mid-gray)] italic">+{displaySpeakers.length - 3} more</p>
+                      )}
+                    </div>
+                    {hasAnyBio && (
                       <button
                         type="button"
-                        onClick={() => setAboutSpeaker({ name: s.speakerName, title: s.speakerTitle, headshot: s.speakerHeadshot, bio: s.aboutSpeaker || '' })}
+                        onClick={() => setAboutSpeaker({
+                          seminarTitle: s.title,
+                          fallbackBio: s.aboutSpeaker || '',
+                          speakers: displaySpeakers,
+                        })}
                         className="text-[11px] font-semibold text-[var(--teal)] hover:underline whitespace-nowrap"
                       >
-                        About Speaker
+                        About Speaker{displaySpeakers.length > 1 ? 's' : ''}
                       </button>
                     )}
                   </div>
@@ -468,7 +605,7 @@ export default function SeminarsPage() {
                 {/* Reserve right-side space on lg+ so the badges /
                     title don't run under the absolute avatar. The
                     extra ~110px = avatar (88) + a bit of margin. */}
-                <div className={cn('mb-2', (s.speakerName || s.speakerHeadshot) && 'lg:pr-[110px]')}>
+                <div className={cn('mb-2', displaySpeakers.length > 0 && 'lg:pr-[110px]')}>
                   <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                     {/* Classification (Workshop / Webinar / etc.).
                         Prefer the preset; fall back to the freeform
@@ -506,24 +643,38 @@ export default function SeminarsPage() {
                 </div>
 
                 {/* Mobile / small-screen speaker block — visible only
-                    when the absolute desktop block is hidden, so the
-                    headshot is still accessible on phones/tablets. */}
-                {(s.speakerName || s.speakerHeadshot) && (
-                  <div className="lg:hidden flex items-center gap-3 mb-3 pb-3 border-b border-[var(--light-gray)]">
-                    <SpeakerAvatar src={s.speakerHeadshot} name={s.speakerName} size={56} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[12px] font-semibold text-[var(--charcoal)] truncate">{s.speakerName}</p>
-                      {s.speakerTitle && <p className="text-[11px] text-[var(--mid-gray)] truncate">{s.speakerTitle}</p>}
-                      {s.aboutSpeaker && s.aboutSpeaker.trim() && (
-                        <button
-                          type="button"
-                          onClick={() => setAboutSpeaker({ name: s.speakerName, title: s.speakerTitle, headshot: s.speakerHeadshot, bio: s.aboutSpeaker || '' })}
-                          className="text-[11px] font-semibold text-[var(--teal)] hover:underline mt-0.5"
-                        >
-                          About Speaker
-                        </button>
-                      )}
-                    </div>
+                    when the absolute desktop block is hidden. Stacks
+                    all speakers vertically so each name + title is
+                    readable; on multi-speaker the headshots size
+                    down so the block doesn't dominate the card. */}
+                {displaySpeakers.length > 0 && (
+                  <div className="lg:hidden mb-3 pb-3 border-b border-[var(--light-gray)] space-y-2">
+                    {displaySpeakers.map((sp, idx) => (
+                      <div key={sp.id || idx} className="flex items-center gap-3">
+                        <SpeakerAvatar
+                          src={sp.headshot}
+                          name={sp.name || ''}
+                          size={displaySpeakers.length > 1 ? 44 : 56}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[12px] font-semibold text-[var(--charcoal)] truncate">{sp.name}</p>
+                          {sp.title && <p className="text-[11px] text-[var(--mid-gray)] truncate">{sp.title}</p>}
+                        </div>
+                      </div>
+                    ))}
+                    {hasAnyBio && (
+                      <button
+                        type="button"
+                        onClick={() => setAboutSpeaker({
+                          seminarTitle: s.title,
+                          fallbackBio: s.aboutSpeaker || '',
+                          speakers: displaySpeakers,
+                        })}
+                        className="text-[11px] font-semibold text-[var(--teal)] hover:underline"
+                      >
+                        About Speaker{displaySpeakers.length > 1 ? 's' : ''}
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -536,12 +687,10 @@ export default function SeminarsPage() {
                     <Clock size={13} className="text-[var(--teal)] shrink-0" />
                     <span>{formatTimeRange(s.timeStart, s.timeEnd)}</span>
                   </div>
-                  {s.speakerName && (
+                  {speakerNamesLine && (
                     <div className="flex items-center gap-2">
                       <UserIcon size={13} className="text-[var(--teal)] shrink-0" />
-                      <span>
-                        {s.speakerName}{s.speakerTitle ? ` · ${s.speakerTitle}` : ''}
-                      </span>
+                      <span title={speakerNamesLine}>{speakerNamesLine}</span>
                     </div>
                   )}
                   {/* Location / format row.
@@ -740,15 +889,32 @@ function SpeakerAvatar({ src, name, size }: {
   )
 }
 
-// Renders the speaker bio. Mirrors ObjectivesModal in styling so the
-// two modals feel like siblings; a small header card pairs the
-// headshot (or initials fallback) with the speaker's name + title,
-// and the bio body uses whitespace-pre-line so paragraph breaks the
-// curator typed in HR survive verbatim.
+// Renders the speaker bio(s). Mirrors ObjectivesModal in styling so
+// the two modals feel like siblings; for multi-speaker seminars the
+// modal renders one mini-card per speaker. Each speaker uses its own
+// aboutSpeaker / bio when set, else falls back to the seminar's
+// top-level aboutSpeaker (which is what the legacy single-speaker
+// form populates).
 function AboutSpeakerModal({ speaker, onClose }: {
-  speaker: { name: string; title: string; headshot: string | null; bio: string }
+  speaker: {
+    seminarTitle: string
+    fallbackBio: string
+    speakers: Speaker[]
+  }
   onClose: () => void
 }) {
+  const list = speaker.speakers && speaker.speakers.length > 0 ? speaker.speakers : []
+  // Pick the bio for a given speaker. Per-speaker overrides win over
+  // the seminar-level fallback. Order: speaker.aboutSpeaker →
+  // speaker.bio → seminar-level fallback → 'No biography provided.'.
+  // The fallback is only applied to the FIRST speaker so multi-
+  // speaker rows don't all show the same generic blob.
+  function bioFor(sp: Speaker, idx: number): string {
+    const own = (sp.aboutSpeaker || sp.bio || '').trim()
+    if (own) return own
+    if (idx === 0 && speaker.fallbackBio.trim()) return speaker.fallbackBio
+    return ''
+  }
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
@@ -758,16 +924,10 @@ function AboutSpeakerModal({ speaker, onClose }: {
         className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto animate-gate"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-5 border-b border-[var(--light-gray)] flex items-center gap-4">
-          <SpeakerAvatar src={speaker.headshot} name={speaker.name} size={64} />
-          <div className="flex-1 min-w-0">
-            <h3 className="font-bold text-[16px] text-[var(--charcoal)] leading-snug" style={{ fontFamily: 'var(--font-display)' }}>
-              {speaker.name || 'Speaker'}
-            </h3>
-            {speaker.title && (
-              <p className="text-[12px] text-[var(--mid-gray)] leading-snug">{speaker.title}</p>
-            )}
-          </div>
+        <div className="p-5 border-b border-[var(--light-gray)] flex items-center justify-between gap-4">
+          <h3 className="font-bold text-[15px] text-[var(--charcoal)] leading-snug" style={{ fontFamily: 'var(--font-display)' }}>
+            {list.length > 1 ? 'About the Speakers' : 'About the Speaker'}
+          </h3>
           <button
             onClick={onClose}
             className="p-1.5 text-[var(--mid-gray)] hover:text-[var(--charcoal)] transition-colors shrink-0"
@@ -776,10 +936,32 @@ function AboutSpeakerModal({ speaker, onClose }: {
             <X size={18} />
           </button>
         </div>
-        <div className="p-5">
-          <p className="text-[13px] text-[var(--charcoal)] leading-relaxed whitespace-pre-line">
-            {speaker.bio || 'No biography provided.'}
-          </p>
+        <div className="divide-y divide-[var(--light-gray)]">
+          {list.length === 0 ? (
+            <div className="p-5">
+              <p className="text-[13px] text-[var(--mid-gray)] italic">No speaker information.</p>
+            </div>
+          ) : list.map((sp, idx) => {
+            const bio = bioFor(sp, idx)
+            return (
+              <div key={sp.id || idx} className="p-5">
+                <div className="flex items-center gap-4 mb-3">
+                  <SpeakerAvatar src={sp.headshot} name={sp.name || ''} size={64} />
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-bold text-[15px] text-[var(--charcoal)] leading-snug" style={{ fontFamily: 'var(--font-display)' }}>
+                      {sp.name || 'Speaker'}
+                    </h4>
+                    {sp.title && (
+                      <p className="text-[12px] text-[var(--mid-gray)] leading-snug">{sp.title}</p>
+                    )}
+                  </div>
+                </div>
+                <p className="text-[13px] text-[var(--charcoal)] leading-relaxed whitespace-pre-line">
+                  {bio || 'No biography provided.'}
+                </p>
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>

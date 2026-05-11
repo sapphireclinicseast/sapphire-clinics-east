@@ -4,10 +4,28 @@ import { auth } from '@/lib/auth'
 const HR_API_BASE = process.env.HR_API_BASE ?? 'https://hr.sapphireclinicseast.org/api'
 const HR_API_KEY = process.env.HR_API_KEY ?? ''
 
+// One entry in HR's speakers[] array. Names/titles are free-text,
+// headshot is a bare filename served at /api/seminar-attachments/<f>.
+// aboutSpeaker / bio are optional per-speaker overrides — the
+// top-level aboutSpeaker on the seminar is the fallback when these
+// aren't set.
+interface HRSpeaker {
+  id?: string
+  name?: string
+  title?: string
+  headshot?: string | null
+  aboutSpeaker?: string | null
+  bio?: string | null
+}
+
 interface HRSeminar {
   id: string
   title: string
   date: string
+  // Lifecycle state from HR. 'upcoming' is the default; admin flips
+  // to 'completed' or 'cancelled' when the seminar is done. We use
+  // this on the frontend to bucket-sort into upcoming / TBD / past.
+  status?: 'upcoming' | 'completed' | 'cancelled' | string
   // HR sets dateUndefined=true and scheduledMonth='YYYY-MM' for tentative
   // seminars whose calendar date hasn't been finalised yet.
   dateUndefined?: boolean
@@ -17,17 +35,20 @@ interface HRSeminar {
   format: 'virtual' | 'face-to-face' | 'hybrid' | string
   location: string
   meetingLink: string
+  // Legacy single-speaker fields (still populated when there's exactly
+  // one speaker). For multi-speaker seminars, prefer speakers[] below.
   speakerName: string
   speakerTitle: string
   speakerHeadshot: string | null
+  speakers?: HRSpeaker[]
   // Workshop / Webinar / Conference / Symposium / etc. The HR creator
   // form lets curators pick a preset or enter a freeform value via
   // classificationOther — we surface both so the UI can show whichever
   // is set without having to know the preset list.
   classification?: string
   classificationOther?: string
-  // Long-form bio of the speaker, shown in the "About Speaker" modal
-  // on each seminar card.
+  // Long-form bio of the speaker(s), shown in the "About Speaker"
+  // modal. Falls back to per-speaker aboutSpeaker/bio when blank.
   aboutSpeaker?: string
   description: string
   disciplineFocus: string[]
@@ -145,9 +166,17 @@ export async function GET() {
       const myHasCertificate = (s.registeredCertEmails ?? []).includes(myEmail)
       // Only expose meetingLink if I'm registered.
       const { registeredEmails: _omit, registeredCertEmails: _omit2, meetingLink, ...rest } = s
+      // Each speaker's headshot is also a bare filename; map each
+      // through the same absHeadshot helper so the UI can render
+      // a card per speaker without knowing about HR's URL layout.
+      const speakers = (s.speakers ?? []).map((sp) => ({
+        ...sp,
+        headshot: absHeadshot(sp.headshot ?? null),
+      }))
       return {
         ...rest,
         speakerHeadshot: absHeadshot(s.speakerHeadshot),
+        speakers,
         myRegistration: registered ? { registered: true } : { registered: false },
         myHasCertificate,
         meetingLink: registered ? meetingLink : '',
