@@ -45,53 +45,47 @@ export async function GET(req: Request) {
 
 // POST: Save/update adjustments (bulk upsert)
 export async function POST(req: Request) {
-  const session = await auth()
-  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const { cutoffPeriod, branch, adjustments } = await req.json()
-
-  if (!cutoffPeriod || !branch || !Array.isArray(adjustments)) {
-    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
-  }
-
-  // Filter out rows with no allowance or deduction (empty lines)
-  const toCreate = adjustments
-    .filter((adj: { employeeId?: string; allowance?: number; deduction?: number }) =>
-      adj.employeeId && ((adj.allowance && Number(adj.allowance) > 0) || (adj.deduction && Number(adj.deduction) > 0))
-    )
-    .map((adj: { employeeId: string; allowance?: number; allowanceType?: string; allowanceLabel?: string; deduction?: number; deductionLabel?: string }) => ({
-      employeeId: adj.employeeId,
-      cutoffPeriod,
-      branch,
-      allowance: Number(adj.allowance) || 0,
-      allowanceType: adj.allowanceType || 'NON_TAXABLE',
-      allowanceLabel: adj.allowanceLabel || null,
-      deduction: Number(adj.deduction) || 0,
-      deductionLabel: adj.deductionLabel || null,
-    }))
-
-  // Atomic: delete existing then recreate so a failure on createMany
-  // cannot leave the period empty. Falls back to sequential if $transaction
-  // is unavailable for any reason.
   try {
-    await prisma.$transaction([
-      prisma.cutoffAdjustment.deleteMany({ where: { cutoffPeriod, branch } }),
-      ...(toCreate.length > 0 ? [prisma.cutoffAdjustment.createMany({ data: toCreate })] : []),
-    ])
-  } catch {
-    // $transaction batch failed — fall back to sequential (still best-effort)
-    try {
-      await prisma.cutoffAdjustment.deleteMany({ where: { cutoffPeriod, branch } })
-      if (toCreate.length > 0) await prisma.cutoffAdjustment.createMany({ data: toCreate })
-    } catch (err) {
-      console.error('cutoff-adjustments save error:', err)
-      return NextResponse.json({ error: 'Failed to save adjustments' }, { status: 500 })
+    const session = await auth()
+    if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-  }
 
-  return NextResponse.json({ saved: toCreate.length })
+    const body = await req.json()
+    const { cutoffPeriod, branch, adjustments } = body
+
+    if (!cutoffPeriod || !branch || !Array.isArray(adjustments)) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+    }
+
+    // Filter out rows with no allowance or deduction (empty lines)
+    const toCreate = adjustments
+      .filter((adj: { employeeId?: string; allowance?: number; deduction?: number }) =>
+        adj.employeeId && ((adj.allowance && Number(adj.allowance) > 0) || (adj.deduction && Number(adj.deduction) > 0))
+      )
+      .map((adj: { employeeId: string; allowance?: number; allowanceType?: string; allowanceLabel?: string; deduction?: number; deductionLabel?: string }) => ({
+        employeeId: adj.employeeId,
+        cutoffPeriod,
+        branch,
+        allowance: Number(adj.allowance) || 0,
+        allowanceType: adj.allowanceType || 'NON_TAXABLE',
+        allowanceLabel: adj.allowanceLabel || null,
+        deduction: Number(adj.deduction) || 0,
+        deductionLabel: adj.deductionLabel || null,
+      }))
+
+    // Sequential delete + recreate — no $transaction to avoid Prisma compatibility issues
+    await prisma.cutoffAdjustment.deleteMany({ where: { cutoffPeriod, branch } })
+    if (toCreate.length > 0) {
+      await prisma.cutoffAdjustment.createMany({ data: toCreate })
+    }
+
+    return NextResponse.json({ saved: toCreate.length })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error('cutoff-adjustments POST error:', msg)
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
 }
 
 // PUT: Pre-fill from previous cutoff
