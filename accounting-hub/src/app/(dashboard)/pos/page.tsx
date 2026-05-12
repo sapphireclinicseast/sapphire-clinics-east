@@ -3778,8 +3778,10 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       attachmentUrl: (walletDetail.attachmentUrl as string) || '',
       accountId: (walletDetail.accountId as string) || '',
       rewardPoints: String(walletDetail.rewardPoints || 0),
-      // Use '' when null so saving without touching this field keeps it null (not 0)
-      totalGlAmount: walletDetail.totalGlAmount != null ? String(toNum(walletDetail.totalGlAmount as string | number | null)) : '',
+      // Use '' when null so saving without touching this field keeps it null (not 0).
+      // Always read from totalGlAmount — never from balance — to prevent reversion.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      totalGlAmount: (walletDetail as any).totalGlAmount != null ? String(Number((walletDetail as any).totalGlAmount) || 0) : '',
       branch: (walletDetail.branch as string) || 'ALL',
       applicationNo: walletDetail.walletType === 'GL' ? detectedAppNo : '',
     })
@@ -3836,8 +3838,19 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         }),
       })
       if (r.ok) {
+        // Snapshot the GL amount that was just saved so we can re-apply it after
+        // the re-fetch (prevents read-after-write race where the GET returns a
+        // slightly stale totalGlAmount and makes it look like the value reverted).
+        const savedGlAmount = walletDetail.walletType === 'GL'
+          ? (walletEditForm.totalGlAmount !== '' ? Number(walletEditForm.totalGlAmount) : null)
+          : undefined
         setWalletEditing(false)
         await loadWalletDetail(walletDetail)
+        // Re-apply the saved amount after the reload in case the re-fetch was stale
+        if (savedGlAmount !== undefined) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          setWalletDetail((prev: any) => prev ? { ...prev, totalGlAmount: savedGlAmount } : null)
+        }
         fetchWallets()
       } else {
         const errData = await r.json().catch(() => ({}))

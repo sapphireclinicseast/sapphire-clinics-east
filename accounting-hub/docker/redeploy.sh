@@ -250,6 +250,42 @@ BEGIN
 END$$;
 -- Cutoff 1 resignation toggle: compute monthly withholding tax on cutoff 1 instead of waiting for cutoff 2
 ALTER TABLE "EmployeePayslip" ADD COLUMN IF NOT EXISTS "computeTaxNow" BOOLEAN NOT NULL DEFAULT false;
+
+-- Allow multiple rows per employee per cutoff (drop legacy unique constraint)
+-- Required so employees can have separate allowance + deduction rows in the same cutoff period
+DROP INDEX IF EXISTS "CutoffAdjustment_employeeId_cutoffPeriod_branch_key";
+CREATE INDEX IF NOT EXISTS "CutoffAdjustment_employeeId_cutoffPeriod_branch_idx" ON "CutoffAdjustment"("employeeId", "cutoffPeriod", "branch");
+
+-- Consultant cutoff adjustments table (mirrors CutoffAdjustment for consultants)
+CREATE TABLE IF NOT EXISTS "ConsultantCutoffAdjustment" (
+    "id"            TEXT        NOT NULL,
+    "consultantId"  TEXT        NOT NULL,
+    "cutoffPeriod"  TEXT        NOT NULL,
+    "branch"        TEXT        NOT NULL,
+    "allowance"     DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "allowanceType" TEXT        NOT NULL DEFAULT 'NON_TAXABLE',
+    "allowanceLabel" TEXT,
+    "deduction"     DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "deductionLabel" TEXT,
+    "createdAt"     TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt"     TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "ConsultantCutoffAdjustment_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "ConsultantCutoffAdjustment_consultantId_cutoffPeriod_branch_idx" ON "ConsultantCutoffAdjustment"("consultantId", "cutoffPeriod", "branch");
+CREATE INDEX IF NOT EXISTS "ConsultantCutoffAdjustment_consultantId_idx" ON "ConsultantCutoffAdjustment"("consultantId");
+CREATE INDEX IF NOT EXISTS "ConsultantCutoffAdjustment_cutoffPeriod_idx" ON "ConsultantCutoffAdjustment"("cutoffPeriod");
+CREATE INDEX IF NOT EXISTS "ConsultantCutoffAdjustment_branch_idx" ON "ConsultantCutoffAdjustment"("branch");
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'ConsultantCutoffAdjustment_consultantId_fkey'
+  ) THEN
+    ALTER TABLE "ConsultantCutoffAdjustment"
+      ADD CONSTRAINT "ConsultantCutoffAdjustment_consultantId_fkey"
+      FOREIGN KEY ("consultantId") REFERENCES "Consultant"("id")
+      ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END$$;
 SQL
 
 echo "Redeploy complete."
