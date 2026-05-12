@@ -183,6 +183,11 @@ function DashboardContent() {
 
   const utilization = totalCapacity > 0 ? (totalSessions / totalCapacity) * 100 : 0
   const avgPerTherapist = uniqueStaff > 0 ? totalSessions / uniqueStaff : 0
+  // Avg sessions per OPERATING day — uses the same workingDays denominator as
+  // the utilization calc (Saturday excluded), so the figure represents an
+  // average over days the clinic actually operates. Reacts to the same
+  // date / branch / department filters that drive totalSessions.
+  const avgPerDay = workingDays > 0 ? totalSessions / workingDays : 0
 
   // ── Day options for daily table ──
   const dayOptions = useMemo(() => {
@@ -365,10 +370,11 @@ function DashboardContent() {
       {loading && <div className="text-center py-8 text-sm text-gray-400">Loading...</div>}
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <KpiCard icon={<BarChart2 size={20} />} value={`${utilization.toFixed(1)}%`} label="Clinic Utilization" color="teal" />
         <KpiCard icon={<CalendarDays size={20} />} value={totalSessions.toLocaleString()} label="Total Sessions" color="blue" />
         <KpiCard icon={<Users size={20} />} value={avgPerTherapist.toFixed(1)} label="Avg Sessions per Therapist" color="amber" />
+        <KpiCard icon={<Activity size={20} />} value={avgPerDay.toFixed(1)} label="Avg Sessions per Day" color="purple" />
       </div>
 
       {/* Daily Table */}
@@ -571,11 +577,12 @@ function DashboardContent() {
 
 // ── Sub-components ───────────────────────────────────────────────────────────
 
-function KpiCard({ icon, value, label, color }: { icon: React.ReactNode; value: string; label: string; color: 'teal' | 'blue' | 'amber' }) {
+function KpiCard({ icon, value, label, color }: { icon: React.ReactNode; value: string; label: string; color: 'teal' | 'blue' | 'amber' | 'purple' }) {
   const colors = {
     teal: { border: 'border-t-teal-500', iconBg: 'bg-teal-50', iconColor: 'text-teal-600' },
     blue: { border: 'border-t-blue-500', iconBg: 'bg-blue-50', iconColor: 'text-blue-600' },
     amber: { border: 'border-t-amber-500', iconBg: 'bg-amber-50', iconColor: 'text-amber-500' },
+    purple: { border: 'border-t-purple-500', iconBg: 'bg-purple-50', iconColor: 'text-purple-600' },
   }[color]
   return (
     <div className={`bg-white border border-gray-200 ${colors.border} border-t-[3px] rounded-xl p-5 text-center hover:shadow-md transition-shadow`}>
