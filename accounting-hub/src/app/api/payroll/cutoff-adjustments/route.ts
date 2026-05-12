@@ -56,30 +56,30 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
-  // Delete all existing adjustments for this cutoff/branch, then recreate
-  await prisma.cutoffAdjustment.deleteMany({
-    where: { cutoffPeriod, branch },
-  })
-
   // Filter out rows with no allowance or deduction (empty lines)
   const toCreate = adjustments
     .filter((adj: { employeeId?: string; allowance?: number; deduction?: number }) =>
-      adj.employeeId && ((adj.allowance && adj.allowance > 0) || (adj.deduction && adj.deduction > 0))
+      adj.employeeId && ((adj.allowance && Number(adj.allowance) > 0) || (adj.deduction && Number(adj.deduction) > 0))
     )
     .map((adj: { employeeId: string; allowance?: number; allowanceType?: string; allowanceLabel?: string; deduction?: number; deductionLabel?: string }) => ({
       employeeId: adj.employeeId,
       cutoffPeriod,
       branch,
-      allowance: adj.allowance || 0,
+      allowance: Number(adj.allowance) || 0,
       allowanceType: adj.allowanceType || 'NON_TAXABLE',
       allowanceLabel: adj.allowanceLabel || null,
-      deduction: adj.deduction || 0,
+      deduction: Number(adj.deduction) || 0,
       deductionLabel: adj.deductionLabel || null,
     }))
 
-  if (toCreate.length > 0) {
-    await prisma.cutoffAdjustment.createMany({ data: toCreate })
-  }
+  // Atomic: delete existing then recreate — wrapped in a transaction so a
+  // createMany failure cannot leave the period with no data at all.
+  await prisma.$transaction(async (tx) => {
+    await tx.cutoffAdjustment.deleteMany({ where: { cutoffPeriod, branch } })
+    if (toCreate.length > 0) {
+      await tx.cutoffAdjustment.createMany({ data: toCreate })
+    }
+  })
 
   return NextResponse.json({ saved: toCreate.length })
 }

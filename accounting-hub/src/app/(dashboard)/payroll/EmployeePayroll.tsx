@@ -580,7 +580,8 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     } catch { /* ignore */ }
   }, [cutoffPeriod, branch])
 
-  // Shared loader for the Allowance/Deduction tab — used by auto-load, Load button, and post-save refresh
+  // Shared loader for the Allowance/Deduction tab — used by auto-load, Load button, and post-save refresh.
+  // Critical invariant: never overwrites adjRows if either fetch fails, to prevent blank-table→save→data-loss.
   const fetchAdjRows = useCallback(async (cutoff: string, br: string) => {
     if (!br) return
     setAdjLoading(true)
@@ -590,8 +591,13 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
         fetch(`/api/payroll/employees?branch=${br}`),
         fetch(`/api/payroll/cutoff-adjustments?cutoffPeriod=${cutoff}&branch=${br}`),
       ])
-      const allBranchEmps: Employee[] = empsRes.ok ? await empsRes.json() : []
-      const adjData = adjRes.ok ? await adjRes.json() : []
+      // If either fetch failed, keep existing adjRows intact — never overwrite with empty
+      if (!empsRes.ok || !adjRes.ok) {
+        setAdjLoading(false)
+        return
+      }
+      const allBranchEmps: Employee[] = await empsRes.json()
+      const adjData = await adjRes.json()
       const existing = Array.isArray(adjData) ? adjData : []
       const existByEmp = new Map<string, { allowance: number; allowanceType: string; allowanceLabel: string; deduction: number; deductionLabel: string }[]>()
       for (const a of existing) {
@@ -680,7 +686,8 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     else if (subTab === 'adjustments') { fetchEmployees(); if (branch) fetchAdjRows(cutoffPeriod, branch) }
     else if (subTab === 'payslips') fetchPayslips()
     else if (subTab === 'lates') fetchLates()
-  }, [subTab, leaveYear, fetchEmployees, fetchSettings, fetchRequests, fetchTimekeeping, fetchApprovedRequests, fetchPastUploads, fetchHolidays, fetchPayslips, fetchLeaveSettings, fetchLates, fetchAdjRows, cutoffPeriod, branch])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subTab, leaveYear, fetchEmployees, fetchSettings, fetchRequests, fetchTimekeeping, fetchApprovedRequests, fetchPastUploads, fetchHolidays, fetchPayslips, fetchLeaveSettings, fetchLates, fetchAdjRows])
 
   // When cutoff period or branch changes while on the adjustments tab, reload fresh data.
   // When leaving the tab, clear stale rows so the user always sees DB-fresh data on return.
@@ -4010,15 +4017,27 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                 </table>
               </div>
 
-              {canWrite && (
+              {canWrite && (() => {
+                const nonZeroCount = adjRows.filter(r => r.allowance > 0 || r.deduction > 0).length
+                return (
                 <div className="flex items-center justify-end gap-3">
                   {adjSaved && (
                     <span className="flex items-center gap-1 text-xs font-medium" style={{ color: '#16a34a' }}>
                       <CheckCircle2 size={14} /> Saved
                     </span>
                   )}
+                  {nonZeroCount > 0 && !adjSaved && (
+                    <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{nonZeroCount} entr{nonZeroCount === 1 ? 'y' : 'ies'} to save</span>
+                  )}
                   <button onClick={async () => {
                     if (!branch) { setError('Please select a branch before saving'); return }
+                    // Snapshot what we're saving at click time — prevents a background
+                    // fetchAdjRows call from overwriting adjRows before we submit.
+                    const rowsToSave = adjRows.slice()
+                    const nonZero = rowsToSave.filter(r => r.allowance > 0 || r.deduction > 0).length
+                    if (nonZero === 0 && adjRows.length > 0) {
+                      if (!confirm('All entries are currently ₱0. This will clear any existing adjustments for this period. Continue?')) return
+                    }
                     setAdjSaving(true)
                     setError('')
                     const cp = cutoffPeriod
@@ -4026,7 +4045,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                     try {
                       const r = await fetch('/api/payroll/cutoff-adjustments', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ cutoffPeriod: cp, branch: br, adjustments: adjRows }),
+                        body: JSON.stringify({ cutoffPeriod: cp, branch: br, adjustments: rowsToSave }),
                       })
                       const d = await r.json()
                       if (!r.ok) throw new Error(d.error || 'Save failed')
@@ -4041,7 +4060,8 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                     {adjSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Save Adjustments
                   </button>
                 </div>
-              )}
+                )
+              })()}
             </>
           )}
 
