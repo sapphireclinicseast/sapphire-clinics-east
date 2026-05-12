@@ -4047,8 +4047,9 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ cutoffPeriod: cp, branch: br, adjustments: rowsToSave }),
                       })
-                      const d = await r.json()
-                      if (!r.ok) throw new Error(d.error || 'Save failed')
+                      let d: { saved?: number; error?: string } = {}
+                      try { d = await r.json() } catch { /* empty body */ }
+                      if (!r.ok) throw new Error(d.error || `Save failed (${r.status})`)
                       // Re-fetch from server to confirm persistence and refresh the table
                       await fetchAdjRows(cp, br)
                       setAdjSaved(true)

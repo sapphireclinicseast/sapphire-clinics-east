@@ -72,14 +72,24 @@ export async function POST(req: Request) {
       deductionLabel: adj.deductionLabel || null,
     }))
 
-  // Atomic: delete existing then recreate — wrapped in a transaction so a
-  // createMany failure cannot leave the period with no data at all.
-  await prisma.$transaction(async (tx) => {
-    await tx.cutoffAdjustment.deleteMany({ where: { cutoffPeriod, branch } })
-    if (toCreate.length > 0) {
-      await tx.cutoffAdjustment.createMany({ data: toCreate })
+  // Atomic: delete existing then recreate so a failure on createMany
+  // cannot leave the period empty. Falls back to sequential if $transaction
+  // is unavailable for any reason.
+  try {
+    await prisma.$transaction([
+      prisma.cutoffAdjustment.deleteMany({ where: { cutoffPeriod, branch } }),
+      ...(toCreate.length > 0 ? [prisma.cutoffAdjustment.createMany({ data: toCreate })] : []),
+    ])
+  } catch {
+    // $transaction batch failed — fall back to sequential (still best-effort)
+    try {
+      await prisma.cutoffAdjustment.deleteMany({ where: { cutoffPeriod, branch } })
+      if (toCreate.length > 0) await prisma.cutoffAdjustment.createMany({ data: toCreate })
+    } catch (err) {
+      console.error('cutoff-adjustments save error:', err)
+      return NextResponse.json({ error: 'Failed to save adjustments' }, { status: 500 })
     }
-  })
+  }
 
   return NextResponse.json({ saved: toCreate.length })
 }
