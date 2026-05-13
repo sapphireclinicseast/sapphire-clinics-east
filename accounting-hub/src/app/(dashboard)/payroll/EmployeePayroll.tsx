@@ -280,7 +280,7 @@ interface Payslip {
   computeTaxNow?: boolean
   pdfUrl?: string | null
   status: string
-  employee: { id: string; firstName: string; lastName: string; department: string; branch: string; rateType: string; dailyRate: number | string; monthlyRate: number | string; email?: string | null; employeeBioId?: number | null }
+  employee: { id: string; firstName: string; lastName: string; department: string; branch: string; rateType: string; dailyRate: number | string; monthlyRate: number | string; email?: string | null; employeeBioId?: number | null; jobTitle?: string | null }
 }
 
 interface TkUploadRecord {
@@ -536,10 +536,11 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     } catch { /* ignore */ }
   }, [])
 
-  const fetchRequests = useCallback(async () => {
+  const fetchRequests = useCallback(async (statusOverride?: string) => {
     try {
       const params = new URLSearchParams()
-      if (reqStatusFilter) params.set('status', reqStatusFilter)
+      const effectiveStatus = statusOverride ?? reqStatusFilter
+      if (effectiveStatus) params.set('status', effectiveStatus)
       if (branch) params.set('branch', branch)
       const r = await fetch(`/api/payroll/employee-requests?${params}`)
       const d = await r.json()
@@ -783,6 +784,12 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     fetchRequests()
   }
 
+  const handleDeleteRequest = async (id: string) => {
+    if (!confirm('Delete this request? This cannot be undone.')) return
+    await fetch(`/api/payroll/employee-requests?id=${id}`, { method: 'DELETE' })
+    fetchRequests()
+  }
+
   const saveBenefit = async () => {
     if (!benefitEmpId) return
     await fetch('/api/payroll/employee-benefits', {
@@ -827,8 +834,10 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
       })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'Regeneration failed')
-      // Update this payslip in local state immediately
-      setPayslips(prev => prev.map(ps => ps.id === p.id ? { ...d, employee: ps.employee } : ps))
+      // Update this payslip in local state immediately.
+      // Prefer the fresh employee data returned by the server (includes jobTitle etc.)
+      // and fall back to the existing cached employee only if the server omitted it.
+      setPayslips(prev => prev.map(ps => ps.id === p.id ? { ...d, employee: d.employee || ps.employee } : ps))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to regenerate payslip')
     }
@@ -847,7 +856,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
       })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'Toggle failed')
-      setPayslips(prev => prev.map(ps => ps.id === p.id ? { ...d, employee: ps.employee } : ps))
+      setPayslips(prev => prev.map(ps => ps.id === p.id ? { ...d, employee: d.employee || ps.employee } : ps))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to toggle withholding tax')
     }
@@ -1047,24 +1056,39 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
   const buildEmployeePayslipPdf = async (p: Payslip) => {
     const { jsPDF } = await import('jspdf')
     const { default: autoTable } = await import('jspdf-autotable')
-    const ORANGE: [number, number, number] = [168, 92, 61]   // #A85C3D Clay
+    const ORANGE: [number, number, number] = [168, 92, 61]
     const NET_GREEN: [number, number, number] = [226, 239, 217]
     const WHITE: [number, number, number] = [255, 255, 255]
     const DARK: [number, number, number] = [30, 30, 30]
     const MID: [number, number, number] = [80, 80, 80]
     const LIGHT_BORDER: [number, number, number] = [210, 210, 210]
+    const LIGHT_GRAY_BG: [number, number, number] = [245, 245, 245]
 
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
     const pageW = doc.internal.pageSize.getWidth()
     const margin = 25.4
     let y = margin
 
+    // Pull derived data from the details JSON
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pDet = (p.details || {}) as Record<string, any>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const bd = (pDet.dailyBreakdown || {}) as Record<string, any[]>
+    const holidayOTPay = typeof pDet.holidayOvertimePay === 'number' ? pDet.holidayOvertimePay : 0
+    const cutoffStartStr: string | undefined = pDet.cutoffStart
+    const cutoffEndStr: string | undefined = pDet.cutoffEnd
+
+    // Detect fixed-salary (no timekeeping)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const basicPayBd: any[] = bd.basicPay || []
+    const isFixedSalary = basicPayBd.length === 1 && typeof basicPayBd[0]?.note === 'string' && basicPayBd[0].note.includes('Fixed salary')
+
     const branchInfo = BRANCH_INFO[p.branch] || BRANCH_INFO['']
     const branchLabel = BRANCHES.find(b => b.value === p.branch)?.label || p.branch
     const cutoffLabel = `${MONTHS[parseInt(p.cutoffPeriod.split('-')[1]) - 1]} ${p.cutoffPeriod.split('-')[0]} — ${p.cutoffPeriod.endsWith('-1') ? '1st Half' : '2nd Half'}`
     const fmtPHP = (n: number) => `PHP ${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
-    // Header
+    // ── Header ──────────────────────────────────────────────────────────────
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(16)
     doc.setTextColor(...ORANGE)
@@ -1074,14 +1098,8 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     doc.setTextColor(...MID)
     doc.text(branchInfo.address, pageW / 2, y, { align: 'center' })
     y += 5
-    if (branchInfo.phone) {
-      doc.text(branchInfo.phone, pageW / 2, y, { align: 'center' })
-      y += 5
-    }
-    if (branchInfo.tin) {
-      doc.text(branchInfo.tin, pageW / 2, y, { align: 'center' })
-      y += 5
-    }
+    if (branchInfo.phone) { doc.text(branchInfo.phone, pageW / 2, y, { align: 'center' }); y += 5 }
+    if (branchInfo.tin)   { doc.text(branchInfo.tin,   pageW / 2, y, { align: 'center' }); y += 5 }
     y += 3
 
     doc.setFontSize(16)
@@ -1090,16 +1108,17 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     doc.text('EMPLOYEE PAYSLIP', pageW / 2, y, { align: 'center' })
     y += 10
 
-    // Employee details
-    const details: [string, string][] = [
-      ['Name', `${p.employee.firstName} ${p.employee.lastName}`],
-      ['Department', p.employee.department],
-      ['Branch', branchLabel],
-      ['Rate Type', p.employee.rateType === 'DAILY' ? 'Daily' : 'Monthly'],
-      ['Rate', fmtPHP(toNum(p.employee.rateType === 'DAILY' ? p.employee.dailyRate : p.employee.monthlyRate))],
+    // ── Employee details ─────────────────────────────────────────────────────
+    const empInfoRows: [string, string][] = [
+      ['Name',        `${p.employee.firstName} ${p.employee.lastName}`],
+      ['Job Title',   formatJobTitle(p.employee.jobTitle) || '—'],
+      ['Department',  p.employee.department],
+      ['Branch',      branchLabel],
+      ['Rate Type',   p.employee.rateType === 'DAILY' ? 'Daily' : 'Monthly'],
+      ['Rate',        fmtPHP(toNum(p.employee.rateType === 'DAILY' ? p.employee.dailyRate : p.employee.monthlyRate))],
       ['Cutoff Period', cutoffLabel],
     ]
-    for (const [label, value] of details) {
+    for (const [label, value] of empInfoRows) {
       doc.setFontSize(9)
       doc.setFont('helvetica', 'bold')
       doc.setTextColor(...MID)
@@ -1114,7 +1133,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     const tableHeadStyles = { fillColor: ORANGE, textColor: WHITE, fontStyle: 'bold' as const, fontSize: 9, lineColor: ORANGE, lineWidth: 0 }
     const tableBodyStyles = { fontSize: 9, textColor: DARK, lineColor: LIGHT_BORDER, lineWidth: 0.3 }
 
-    // Earnings
+    // ── Earnings ─────────────────────────────────────────────────────────────
     doc.setFontSize(9)
     doc.setFont('helvetica', 'bold')
     doc.setTextColor(...DARK)
@@ -1124,12 +1143,13 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
       startY: y,
       head: [['Description', 'Amount']],
       body: [
-        ['Basic Pay', fmtPHP(toNum(p.basicPay))],
-        ['Overtime Pay', fmtPHP(toNum(p.overtimePay))],
-        ['Holiday Pay', fmtPHP(toNum(p.holidayPay))],
-        ['Night Differential', fmtPHP(toNum(p.nightDiffPay))],
-        ['Rest Day Pay', fmtPHP(toNum(p.restDayPay))],
-        ['Allowances', fmtPHP(toNum(p.allowances))],
+        ['Basic Pay',             fmtPHP(toNum(p.basicPay))],
+        ['Overtime Pay',          fmtPHP(toNum(p.overtimePay))],
+        ['Holiday Overtime Pay',  fmtPHP(holidayOTPay)],
+        ['Holiday Pay',           fmtPHP(toNum(p.holidayPay))],
+        ['Night Differential',    fmtPHP(toNum(p.nightDiffPay))],
+        ['Rest Day Pay',          fmtPHP(toNum(p.restDayPay))],
+        ['Allowances',            fmtPHP(toNum(p.allowances))],
       ].filter(r => parseFloat(r[1].replace(/[^0-9.-]/g, '')) > 0),
       theme: 'grid',
       headStyles: tableHeadStyles,
@@ -1141,41 +1161,50 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     y = (doc as any).lastAutoTable?.finalY ?? y
     y += 6
 
-    // Deductions
-    doc.text('DEDUCTIONS', margin, y)
-    y += 2
-    autoTable(doc, {
-      startY: y,
-      head: [['Description', 'Amount']],
-      body: [
-        ['SSS', fmtPHP(toNum(p.sssDeduction))],
-        ['PhilHealth', fmtPHP(toNum(p.philhealthDeduction))],
-        ['Pag-IBIG', fmtPHP(toNum(p.pagibigDeduction))],
-        ['Tax', fmtPHP(toNum(p.taxDeduction))],
-        ['Late Deduction', fmtPHP(toNum(p.lateDeduction))],
-        ['Undertime Deduction', fmtPHP(toNum(p.undertimeDeduction))],
-        ['Other Deductions', fmtPHP(toNum(p.otherDeductions))],
-      ].filter(r => parseFloat(r[1].replace(/[^0-9.-]/g, '')) > 0),
-      theme: 'grid',
-      headStyles: { ...tableHeadStyles, fillColor: [180, 40, 40] as [number, number, number] },
-      bodyStyles: tableBodyStyles,
-      columnStyles: { 0: { cellWidth: 'auto' }, 1: { halign: 'right', cellWidth: 50 } },
-      margin: { left: margin, right: margin },
-    })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    y = (doc as any).lastAutoTable?.finalY ?? y
-    y += 6
+    // ── Deductions (only rendered when at least one deduction exists) ────────
+    const deductionRows = [
+      ['SSS',                    fmtPHP(toNum(p.sssDeduction))],
+      ['PhilHealth',             fmtPHP(toNum(p.philhealthDeduction))],
+      ['Pag-IBIG',               fmtPHP(toNum(p.pagibigDeduction))],
+      ['Tax',                    fmtPHP(toNum(p.taxDeduction))],
+      ['Late / Undertime',       fmtPHP(toNum(p.undertimeDeduction))],
+      ['Other Deductions',       fmtPHP(toNum(p.otherDeductions))],
+    ].filter(r => parseFloat(r[1].replace(/[^0-9.-]/g, '')) > 0)
 
-    // Summary
+    if (deductionRows.length > 0) {
+      doc.setFontSize(9)
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(...DARK)
+      doc.text('DEDUCTIONS', margin, y)
+      y += 2
+      autoTable(doc, {
+        startY: y,
+        head: [['Description', 'Amount']],
+        body: deductionRows,
+        theme: 'grid',
+        headStyles: { ...tableHeadStyles, fillColor: [180, 40, 40] as [number, number, number] },
+        bodyStyles: tableBodyStyles,
+        columnStyles: { 0: { cellWidth: 'auto' }, 1: { halign: 'right', cellWidth: 50 } },
+        margin: { left: margin, right: margin },
+      })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      y = (doc as any).lastAutoTable?.finalY ?? y
+      y += 6
+    }
+
+    // ── Summary ───────────────────────────────────────────────────────────────
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(...DARK)
     doc.text('SUMMARY', margin, y)
     y += 2
     autoTable(doc, {
       startY: y,
       head: [['', 'Amount']],
       body: [
-        ['Gross Pay', fmtPHP(toNum(p.grossPay))],
+        ['Gross Pay',        fmtPHP(toNum(p.grossPay))],
         ['Total Deductions', `(${fmtPHP(toNum(p.totalDeductions))})`],
-        ['NET PAY', fmtPHP(toNum(p.netPay))],
+        ['NET PAY',          fmtPHP(toNum(p.netPay))],
       ],
       theme: 'grid',
       headStyles: tableHeadStyles,
@@ -1184,25 +1213,23 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
       margin: { left: margin, right: margin },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       didParseCell: (data: any) => {
-        if (data.row.index === 2) {
-          data.cell.styles.fillColor = NET_GREEN
-          data.cell.styles.fontStyle = 'bold'
-          data.cell.styles.textColor = [0, 80, 40]
-        }
-        if (data.row.index === 1) {
-          data.cell.styles.textColor = [180, 40, 40]
-        }
+        if (data.row.index === 2) { data.cell.styles.fillColor = NET_GREEN; data.cell.styles.fontStyle = 'bold'; data.cell.styles.textColor = [0, 80, 40] }
+        if (data.row.index === 1) { data.cell.styles.textColor = [180, 40, 40] }
       },
     })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     y = (doc as any).lastAutoTable?.finalY ?? y
     y += 10
 
-    // Attendance summary
+    // ── Attendance summary line ───────────────────────────────────────────────
     doc.setFontSize(8)
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(...MID)
-    doc.text(`Days Worked: ${toNum(p.daysWorked).toFixed(0)}  |  Hours: ${toNum(p.hoursWorked).toFixed(1)}  |  OT Hours: ${toNum(p.overtimeHours).toFixed(1)}  |  Late: ${p.lateMinutes} min  |  UT: ${p.undertimeMinutes} min`, margin, y)
+    const hotHrs = typeof pDet.holidayOTHours === 'number' ? pDet.holidayOTHours : 0
+    doc.text(
+      `Days Worked: ${toNum(p.daysWorked).toFixed(1)}  |  Hours: ${toNum(p.hoursWorked).toFixed(1)}  |  OT Hours: ${toNum(p.overtimeHours).toFixed(2)}  |  Hol. OT Hrs: ${hotHrs.toFixed(2)}  |  Late+UT: ${p.undertimeMinutes} min`,
+      margin, y
+    )
     y += 10
 
     doc.setFontSize(7)
@@ -1210,6 +1237,145 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     doc.text('Computer-generated payslip. No signature required.', pageW / 2, y, { align: 'center' })
     y += 4
     doc.text(`Generated: ${new Date().toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}`, pageW / 2, y, { align: 'center' })
+
+    // ── Page 2: Daily timelog (only for biometrics-based employees) ───────────
+    if (!isFixedSalary && cutoffStartStr && cutoffEndStr) {
+      doc.addPage()
+      y = margin
+
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(13)
+      doc.setTextColor(...ORANGE)
+      doc.text('DAILY ATTENDANCE BREAKDOWN', pageW / 2, y, { align: 'center' })
+      y += 5
+      doc.setFontSize(9)
+      doc.setTextColor(...MID)
+      doc.setFont('helvetica', 'normal')
+      doc.text(`${p.employee.firstName} ${p.employee.lastName}  ·  ${cutoffLabel}`, pageW / 2, y, { align: 'center' })
+      y += 8
+
+      // Build per-date maps from breakdown arrays
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      type DayRow = { timeIn: string; timeOut: string; regHrs: number; otHrs: number; holOtHrs: number; holiday: string; lateUt: number; leave: string }
+      const dayMap = new Map<string, DayRow>()
+      const getRow = (date: string): DayRow => {
+        if (!dayMap.has(date)) dayMap.set(date, { timeIn: '—', timeOut: '—', regHrs: 0, otHrs: 0, holOtHrs: 0, holiday: '', lateUt: 0, leave: '' })
+        return dayMap.get(date)!
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const entry of (bd.basicPay || []) as any[]) {
+        if (!entry.date) continue
+        const r = getRow(entry.date)
+        if (entry.timeIn) r.timeIn = entry.timeIn
+        if (entry.timeOut) r.timeOut = entry.timeOut
+        r.regHrs = typeof entry.hours === 'number' ? entry.hours : 0
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const entry of (bd.overtimePay || []) as any[]) {
+        if (!entry.date) continue
+        getRow(entry.date).otHrs = typeof entry.otHours === 'number' ? entry.otHours : 0
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const entry of (bd.holidayOvertimePay || []) as any[]) {
+        if (!entry.date) continue
+        getRow(entry.date).holOtHrs = typeof entry.otHours === 'number' ? entry.otHours : 0
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const entry of (bd.holidayPay || []) as any[]) {
+        if (!entry.date) continue
+        const ht = String(entry.holidayType || '')
+        getRow(entry.date).holiday = ht === 'REGULAR' ? 'Regular Holiday' : ht === 'SPECIAL_NON_WORKING' ? 'Special Holiday' : ht
+      }
+      // Late/undertime: undertimeMinutes from undertimeDeduction captures both (late shifts the baseline)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const entry of (bd.undertimeDeduction || []) as any[]) {
+        if (!entry.date) continue
+        getRow(entry.date).lateUt += typeof entry.undertimeMinutes === 'number' ? entry.undertimeMinutes : 0
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const entry of (bd.leavePay || []) as any[]) {
+        if (!entry.date) continue
+        const r = getRow(entry.date)
+        const lt = String(entry.leaveType || 'Leave')
+        r.leave = entry.isHalfDay ? `${lt} (Half)` : lt
+      }
+
+      // Enumerate all calendar days in cutoff range
+      const dateRows: string[][] = []
+      const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+      const DAY_ABBR = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+
+      const cursor = new Date(cutoffStartStr + 'T00:00:00Z')
+      const endD = new Date(cutoffEndStr + 'T00:00:00Z')
+      while (cursor <= endD) {
+        const ds = cursor.toISOString().substring(0, 10)
+        const dow = cursor.getUTCDay()
+        const dateLabel = `${MONTH_ABBR[cursor.getUTCMonth()]} ${cursor.getUTCDate()}, ${cursor.getUTCFullYear()} (${DAY_ABBR[dow]})`
+        const r = dayMap.get(ds)
+
+        let regHrsStr = '', otStr = '', holOtStr = '', holidayStr = '', lateUtStr = '', leaveStr = ''
+        let timeInStr = '—', timeOutStr = '—'
+
+        if (r) {
+          timeInStr = r.timeIn || '—'
+          timeOutStr = r.timeOut || '—'
+          regHrsStr = r.regHrs > 0 ? r.regHrs.toFixed(2) : ''
+          otStr = r.otHrs > 0 ? r.otHrs.toFixed(2) : ''
+          holOtStr = r.holOtHrs > 0 ? r.holOtHrs.toFixed(2) : ''
+          holidayStr = r.holiday || ''
+          lateUtStr = r.lateUt > 0 ? `${r.lateUt} min` : ''
+          leaveStr = r.leave || ''
+        }
+
+        // Absent / rest day with no data — show row still
+        dateRows.push([dateLabel, timeInStr, timeOutStr, regHrsStr, otStr, holOtStr, holidayStr, lateUtStr, leaveStr])
+        cursor.setUTCDate(cursor.getUTCDate() + 1)
+      }
+
+      autoTable(doc, {
+        startY: y,
+        head: [['Date', 'In', 'Out', 'Reg Hrs', 'OT', 'Hol OT', 'Holiday', 'Late/UT', 'Leave']],
+        body: dateRows,
+        theme: 'grid',
+        headStyles: { fillColor: ORANGE, textColor: WHITE, fontStyle: 'bold', fontSize: 7.5, lineColor: ORANGE, lineWidth: 0 },
+        bodyStyles: { fontSize: 7.5, textColor: DARK, lineColor: LIGHT_BORDER, lineWidth: 0.3 },
+        columnStyles: {
+          0: { cellWidth: 46 },
+          1: { cellWidth: 18, halign: 'center' },
+          2: { cellWidth: 18, halign: 'center' },
+          3: { cellWidth: 16, halign: 'right' },
+          4: { cellWidth: 13, halign: 'right' },
+          5: { cellWidth: 13, halign: 'right' },
+          6: { cellWidth: 'auto' },
+          7: { cellWidth: 18, halign: 'right' },
+          8: { cellWidth: 'auto' },
+        },
+        margin: { left: margin, right: margin },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        didParseCell: (data: any) => {
+          if (data.section === 'body') {
+            const dateStr = (dateRows[data.row.index]?.[0] as string) || ''
+            const isWeekend = dateStr.includes('(Sat)') || dateStr.includes('(Sun)')
+            const hasLeave = !!(dateRows[data.row.index]?.[8])
+            if (isWeekend) data.cell.styles.fillColor = [250, 250, 250]
+            if (hasLeave) data.cell.styles.fillColor = [235, 245, 255]
+          }
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        alternateRowStyles: { fillColor: LIGHT_GRAY_BG as any },
+      })
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      y = (doc as any).lastAutoTable?.finalY ?? y
+      y += 8
+
+      doc.setFontSize(7)
+      doc.setTextColor(150, 150, 150)
+      doc.text('Computer-generated payslip. No signature required.', pageW / 2, y, { align: 'center' })
+      y += 4
+      doc.text(`Generated: ${new Date().toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}`, pageW / 2, y, { align: 'center' })
+    }
 
     return doc
   }
@@ -2648,7 +2814,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             {(['PENDING', 'APPROVED', 'DENIED'] as const).map(s => (
-              <button key={s} onClick={() => setReqStatusFilter(s)}
+              <button key={s} onClick={() => { setReqStatusFilter(s); fetchRequests(s) }}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors"
                 style={reqStatusFilter === s
                   ? { background: s === 'APPROVED' ? '#059669' : s === 'DENIED' ? '#dc2626' : 'var(--teal)', color: 'white', borderColor: 'transparent' }
@@ -2656,7 +2822,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                 {s}
               </button>
             ))}
-            <button onClick={fetchRequests} className="p-1.5 rounded-lg hover:bg-gray-100">
+            <button onClick={() => fetchRequests()} className="p-1.5 rounded-lg hover:bg-gray-100">
               <RefreshCw size={14} style={{ color: 'var(--mid-gray)' }} />
             </button>
             <button onClick={() => setShowRequestLink(true)}
@@ -2786,11 +2952,12 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                   <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Filed</th>
                   {reqStatusFilter === 'PENDING' && canWrite && <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>}
                   {reqStatusFilter === 'APPROVED' && <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>}
+                  {reqStatusFilter === 'DENIED' && canWrite && <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>}
                 </tr>
               </thead>
               <tbody>
                 {requests.length === 0 ? (
-                  <tr><td colSpan={(reqStatusFilter === 'PENDING' && canWrite) || reqStatusFilter === 'APPROVED' ? 6 : 5} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No {reqStatusFilter.toLowerCase()} requests</td></tr>
+                  <tr><td colSpan={(reqStatusFilter === 'PENDING' && canWrite) || reqStatusFilter === 'APPROVED' || (reqStatusFilter === 'DENIED' && canWrite) ? 6 : 5} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No {reqStatusFilter.toLowerCase()} requests</td></tr>
                 ) : requests.map(r => {
                   const reqName = r.employee
                     ? `${r.employee.firstName} ${r.employee.lastName}`
@@ -2839,22 +3006,38 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                     )}
                     {reqStatusFilter === 'APPROVED' && (
                       <td className="px-3 py-2.5 text-center">
-                        {r.requestType === 'CERTIFICATE_OF_EMPLOYMENT' && (
-                          <button onClick={() => generateCoePdf(r)}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-medium text-white mx-auto"
-                            style={{ background: 'var(--teal)' }}
-                            title="Generate Certificate of Employment PDF">
-                            <FileDown size={12} /> Generate COE
-                          </button>
-                        )}
-                        {r.requestType === 'CERTIFICATE_OF_CONSULTATION' && (
-                          <button onClick={() => generateCocPdf(r)}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-medium text-white mx-auto"
-                            style={{ background: 'var(--teal)' }}
-                            title="Generate Certificate of Consultation PDF">
-                            <FileDown size={12} /> Generate COC
-                          </button>
-                        )}
+                        <div className="flex items-center justify-center gap-1.5">
+                          {r.requestType === 'CERTIFICATE_OF_EMPLOYMENT' && (
+                            <button onClick={() => generateCoePdf(r)}
+                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-medium text-white"
+                              style={{ background: 'var(--teal)' }}
+                              title="Generate Certificate of Employment PDF">
+                              <FileDown size={12} /> Generate COE
+                            </button>
+                          )}
+                          {r.requestType === 'CERTIFICATE_OF_CONSULTATION' && (
+                            <button onClick={() => generateCocPdf(r)}
+                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-medium text-white"
+                              style={{ background: 'var(--teal)' }}
+                              title="Generate Certificate of Consultation PDF">
+                              <FileDown size={12} /> Generate COC
+                            </button>
+                          )}
+                          {canWrite && (
+                            <button onClick={() => handleDeleteRequest(r.id)}
+                              className="p-1 rounded hover:bg-red-50" title="Delete request">
+                              <Trash2 size={13} className="text-red-400" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
+                    {reqStatusFilter === 'DENIED' && canWrite && (
+                      <td className="px-3 py-2.5 text-center">
+                        <button onClick={() => handleDeleteRequest(r.id)}
+                          className="p-1 rounded hover:bg-red-50" title="Delete request">
+                          <Trash2 size={13} className="text-red-400" />
+                        </button>
                       </td>
                     )}
                   </tr>

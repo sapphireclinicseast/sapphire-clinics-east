@@ -105,7 +105,7 @@ export async function GET(req: Request) {
   const payslips = await prisma.employeePayslip.findMany({
     where,
     include: {
-      employee: { select: { id: true, firstName: true, lastName: true, email: true, department: true, branch: true, rateType: true, dailyRate: true, monthlyRate: true, employeeBioId: true } },
+      employee: { select: { id: true, firstName: true, lastName: true, email: true, department: true, branch: true, rateType: true, dailyRate: true, monthlyRate: true, employeeBioId: true, jobTitle: true } },
     },
     orderBy: [{ employee: { lastName: 'asc' } }],
   })
@@ -206,6 +206,29 @@ export async function POST(req: Request) {
     otRequestsByEmp.get(req.employeeId)!.push({ startDate: req.startDate, endDate: req.endDate })
   }
 
+  // Fetch approved LEAVE requests for this branch/cutoff period (all leave types — UNPAID filtered in loop)
+  const approvedLeaveRequests = await prisma.employeeRequest.findMany({
+    where: {
+      requestType: 'LEAVE',
+      status: 'APPROVED',
+      employee: { branch: qBranch, isActive: true },
+      startDate: { lt: endDate },
+      OR: [
+        { endDate: { gte: startDate } },
+        { endDate: null, startDate: { gte: startDate } },
+      ],
+    },
+    select: { employeeId: true, startDate: true, endDate: true, leaveType: true, isHalfDay: true },
+  })
+
+  // Group leave requests by employeeId for fast lookup
+  const leaveRequestsByEmp = new Map<string, { startDate: Date | null; endDate: Date | null; leaveType: string | null; isHalfDay: boolean }[]>()
+  for (const req of approvedLeaveRequests) {
+    if (!req.employeeId) continue
+    if (!leaveRequestsByEmp.has(req.employeeId)) leaveRequestsByEmp.set(req.employeeId, [])
+    leaveRequestsByEmp.get(req.employeeId)!.push({ startDate: req.startDate, endDate: req.endDate, leaveType: req.leaveType, isHalfDay: req.isHalfDay })
+  }
+
   function hasApprovedOT(employeeId: string, date: Date): boolean {
     const reqs = otRequestsByEmp.get(employeeId) || []
     const d = date.getTime()
@@ -276,11 +299,13 @@ export async function POST(req: Request) {
     let totalOTHours = 0
     let totalLateMinutes = 0
     let totalUndertimeMinutes = 0
+    let holidayOvertimePay = 0
+    let totalHolidayOTHours = 0
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const dailyBreakdown: Record<string, any[]> = {
       basicPay: [], overtimePay: [], holidayPay: [], nightDiffPay: [], restDayPay: [],
-      lateDeduction: [], undertimeDeduction: [],
+      lateDeduction: [], undertimeDeduction: [], leavePay: [], holidayOvertimePay: [],
     }
     const empDaySchedules = emp.daySchedules as Record<string, { in: string; out: string }> | null
 
@@ -371,16 +396,27 @@ export async function POST(req: Request) {
 
       // Overtime — only counted if employee has an approved OT request covering this date.
       // Uses recomputedOT (from shifted baseline) so OT only starts after full hours are done.
+      // Holiday OT (regular holiday) is computed at regHolidayRate × otMultiplier and tracked
+      // separately — it is NOT included in overtimePay / totalOTHours.
       if (recomputedOT > 0 && hasApprovedOT(emp.id, rec.date)) {
         // Round down to nearest interval (e.g. 45min with 30min interval = 30min)
         const roundedOTMinutes = Math.floor(recomputedOT / otInterval) * otInterval
         // Convert to hours and cap at max
         const otHours = Math.min(roundedOTMinutes / 60, otMaxHrs)
         if (otHours > 0) {
-          totalOTHours += otHours
-          const otAmt = hourlyRate * otMultiplier * otHours
-          overtimePay += otAmt
-          dailyBreakdown.overtimePay.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, scheduledOut, rawMinutes: recomputedOT, roundedMinutes: roundedOTMinutes, otHours, multiplier: otMultiplier, hourlyRate, amount: otAmt })
+          if (rec.isHoliday && rec.holidayType === 'REGULAR') {
+            // Holiday OT rate: holiday premium × OT multiplier (e.g. 2.0 × 1.3 = 2.6)
+            const hotMult = regHolidayRate * otMultiplier
+            const hotAmt = hourlyRate * hotMult * otHours
+            holidayOvertimePay += hotAmt
+            totalHolidayOTHours += otHours
+            dailyBreakdown.holidayOvertimePay.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, scheduledOut, rawMinutes: recomputedOT, roundedMinutes: roundedOTMinutes, otHours, multiplier: hotMult, hourlyRate, amount: hotAmt })
+          } else {
+            totalOTHours += otHours
+            const otAmt = hourlyRate * otMultiplier * otHours
+            overtimePay += otAmt
+            dailyBreakdown.overtimePay.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, scheduledOut, rawMinutes: recomputedOT, roundedMinutes: roundedOTMinutes, otHours, multiplier: otMultiplier, hourlyRate, amount: otAmt })
+          }
         }
       }
 
@@ -393,6 +429,56 @@ export async function POST(req: Request) {
       }
       if (computedUndertime > 0) {
         dailyBreakdown.undertimeDeduction.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, scheduledOut, undertimeMinutes: computedUndertime, hourlyRate, amount: (computedUndertime / 60) * hourlyRate })
+      }
+    }
+
+    // ── Approved leave pay (paid leave types only) ──────────────────────────
+    // For each approved leave day in the cutoff that has no timekeeping record
+    // with actual hours and is not a rest day, add dailyRate (full) or dailyRate/2 (half-day).
+    if (!emp.ignoreTimekeeping) {
+      const empLeaveReqs = leaveRequestsByEmp.get(emp.id) || []
+      // Only dates with hours > 0 are already paid via attendance
+      const existingRecDates = new Set(
+        empRecords.filter(r => Number(r.hoursWorked || 0) > 0).map(r => fmtDateStr(r.date))
+      )
+      for (const leaveReq of empLeaveReqs) {
+        if (!leaveReq.leaveType || leaveReq.leaveType === 'UNPAID') continue
+        if (!leaveReq.startDate) continue
+        // Clamp leave range to cutoff window
+        const leaveStart = new Date(Math.max(leaveReq.startDate.getTime(), startDate.getTime()))
+        const leaveEnd = leaveReq.endDate
+          ? new Date(Math.min(leaveReq.endDate.getTime(), endDate.getTime() - 1))
+          : new Date(leaveReq.startDate.getTime())
+        const cursor = new Date(leaveStart)
+        while (cursor.getTime() <= leaveEnd.getTime()) {
+          const dateStr = fmtDateStr(cursor)
+          if (!existingRecDates.has(dateStr)) {
+            // Determine if this day is a rest day per employee schedule.
+            // daySchedules is a PARTIAL override map (e.g. Saturday/Sunday with different hours,
+            // or holiday schedules). Absence of a weekday from daySchedules does NOT make it a
+            // rest day — it simply means the employee uses their default schedule that day.
+            // Only treat a day as rest if it is BOTH absent from daySchedules AND is a
+            // standard weekend day (Saturday=6 or Sunday=0).
+            const dayName = DAYS_NAMES[cursor.getUTCDay()]
+            const isWeekend = cursor.getUTCDay() === 0 || cursor.getUTCDay() === 6
+            const isRest = empDaySchedules
+              ? !empDaySchedules[dayName] && isWeekend
+              : isWeekend
+            if (!isRest) {
+              const leaveAmount = leaveReq.isHalfDay ? dailyRate / 2 : dailyRate
+              basicPay += leaveAmount
+              daysWorked += leaveReq.isHalfDay ? 0.5 : 1
+              dailyBreakdown.leavePay.push({
+                date: dateStr,
+                leaveType: leaveReq.leaveType,
+                isHalfDay: leaveReq.isHalfDay,
+                dailyRate,
+                amount: leaveAmount,
+              })
+            }
+          }
+          cursor.setUTCDate(cursor.getUTCDate() + 1)
+        }
       }
     }
 
@@ -438,7 +524,7 @@ export async function POST(req: Request) {
       adjDetails.push({ allowanceLabel: adj.allowanceLabel, allowanceType: adj.allowanceType, allowanceAmount: allowAmt, deductionLabel: adj.deductionLabel, deductionAmount: dedAmt })
     }
 
-    const grossPay = basicPay + overtimePay + holidayPay + restDayPay + nightDiffPay + allowanceAmount
+    const grossPay = basicPay + overtimePay + holidayOvertimePay + holidayPay + restDayPay + nightDiffPay + allowanceAmount
 
     // TRAIN Law withholding tax (Philippines, 2023 onwards) — monthly basis.
     // Tax is computed on the combined month (cutoff 1 + cutoff 2 taxable incomes) and
@@ -495,7 +581,7 @@ export async function POST(req: Request) {
           overtimeHours: totalOTHours,
           lateMinutes: totalLateMinutes,
           undertimeMinutes: totalUndertimeMinutes,
-          details: { adjustments: adjDetails, dailyBreakdown, taxableIncome: taxablePerCutoff },
+          details: { adjustments: adjDetails, dailyBreakdown, taxableIncome: taxablePerCutoff, holidayOvertimePay, holidayOTHours: totalHolidayOTHours, cutoffStart: startDate.toISOString().substring(0, 10), cutoffEnd: new Date(endDate.getTime() - 86400000).toISOString().substring(0, 10) },
           computeTaxNow: empComputeNow,
           status: 'DRAFT',
           createdById: session.user.id as string,
@@ -528,7 +614,7 @@ export async function POST(req: Request) {
           overtimeHours: totalOTHours,
           lateMinutes: totalLateMinutes,
           undertimeMinutes: totalUndertimeMinutes,
-          details: { adjustments: adjDetails, dailyBreakdown, taxableIncome: taxablePerCutoff },
+          details: { adjustments: adjDetails, dailyBreakdown, taxableIncome: taxablePerCutoff, holidayOvertimePay, holidayOTHours: totalHolidayOTHours, cutoffStart: startDate.toISOString().substring(0, 10), cutoffEnd: new Date(endDate.getTime() - 86400000).toISOString().substring(0, 10) },
           computeTaxNow: empComputeNow,
           status: 'DRAFT',
           createdById: session.user.id as string,
@@ -641,6 +727,21 @@ export async function PATCH(req: Request) {
       })
     }
 
+    // Approved LEAVE requests for this employee in the cutoff window
+    const empLeaveRequests = await prisma.employeeRequest.findMany({
+      where: {
+        requestType: 'LEAVE',
+        status: 'APPROVED',
+        employeeId,
+        startDate: { lt: endDate },
+        OR: [
+          { endDate: { gte: startDate } },
+          { endDate: null, startDate: { gte: startDate } },
+        ],
+      },
+      select: { startDate: true, endDate: true, leaveType: true, isHalfDay: true },
+    })
+
     // Cutoff adjustments
     const empAdjs = await prisma.cutoffAdjustment.findMany({
       where: { cutoffPeriod, employeeId, branch: qBranch },
@@ -663,12 +764,13 @@ export async function PATCH(req: Request) {
     let basicPay = 0, overtimePay = 0, holidayPay = 0, restDayPay = 0
     let nightDiffPay = 0, daysWorked = 0, totalHoursWorked = 0
     let totalOTHours = 0, totalLateMinutes = 0, totalUndertimeMinutes = 0
+    let holidayOvertimePay = 0, totalHolidayOTHours = 0
     void nightDiffMult
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const dailyBreakdown: Record<string, any[]> = {
       basicPay: [], overtimePay: [], holidayPay: [], nightDiffPay: [], restDayPay: [],
-      lateDeduction: [], undertimeDeduction: [],
+      lateDeduction: [], undertimeDeduction: [], leavePay: [], holidayOvertimePay: [],
     }
     const empDaySchedules = emp.daySchedules as Record<string, { in: string; out: string }> | null
 
@@ -744,14 +846,63 @@ export async function PATCH(req: Request) {
         const roundedOTMinutes = Math.floor(recomputedOT / otInterval) * otInterval
         const otHours = Math.min(roundedOTMinutes / 60, otMaxHrs)
         if (otHours > 0) {
-          totalOTHours += otHours
-          const otAmt = hourlyRate * otMultiplier * otHours
-          overtimePay += otAmt
-          dailyBreakdown.overtimePay.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, scheduledOut, rawMinutes: recomputedOT, roundedMinutes: roundedOTMinutes, otHours, multiplier: otMultiplier, hourlyRate, amount: otAmt })
+          if (rec.isHoliday && rec.holidayType === 'REGULAR') {
+            const hotMult = regHolidayRate * otMultiplier
+            const hotAmt = hourlyRate * hotMult * otHours
+            holidayOvertimePay += hotAmt
+            totalHolidayOTHours += otHours
+            dailyBreakdown.holidayOvertimePay.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, scheduledOut, rawMinutes: recomputedOT, roundedMinutes: roundedOTMinutes, otHours, multiplier: hotMult, hourlyRate, amount: hotAmt })
+          } else {
+            totalOTHours += otHours
+            const otAmt = hourlyRate * otMultiplier * otHours
+            overtimePay += otAmt
+            dailyBreakdown.overtimePay.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, scheduledOut, rawMinutes: recomputedOT, roundedMinutes: roundedOTMinutes, otHours, multiplier: otMultiplier, hourlyRate, amount: otAmt })
+          }
         }
       }
       if (effectiveLate > 0) dailyBreakdown.lateDeduction.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, scheduledIn, lateMinutes: computedLate, gracePeriod: lateGrace, effectiveLate, hourlyRate, amount: (effectiveLate / 60) * hourlyRate })
       if (computedUndertime > 0) dailyBreakdown.undertimeDeduction.push({ date: recDate, timeIn: recTimeIn, timeOut: recTimeOut, scheduledOut, undertimeMinutes: computedUndertime, hourlyRate, amount: (computedUndertime / 60) * hourlyRate })
+    }
+
+    // ── Approved leave pay (paid leave types only) ──────────────────────────
+    if (!emp.ignoreTimekeeping) {
+      const existingRecDates = new Set(
+        empRecords.filter(r => Number(r.hoursWorked || 0) > 0).map(r => fmtDateStr(r.date))
+      )
+      for (const leaveReq of empLeaveRequests) {
+        if (!leaveReq.leaveType || leaveReq.leaveType === 'UNPAID') continue
+        if (!leaveReq.startDate) continue
+        const leaveStart = new Date(Math.max(leaveReq.startDate.getTime(), startDate.getTime()))
+        const leaveEnd = leaveReq.endDate
+          ? new Date(Math.min(leaveReq.endDate.getTime(), endDate.getTime() - 1))
+          : new Date(leaveReq.startDate.getTime())
+        const cursor = new Date(leaveStart)
+        while (cursor.getTime() <= leaveEnd.getTime()) {
+          const dateStr = fmtDateStr(cursor)
+          if (!existingRecDates.has(dateStr)) {
+            // daySchedules is a partial override map — absence of a weekday does NOT mean rest.
+            // Only treat as rest when the day is BOTH absent from daySchedules AND a weekend.
+            const dayName = DAYS_NAMES[cursor.getUTCDay()]
+            const isWeekend = cursor.getUTCDay() === 0 || cursor.getUTCDay() === 6
+            const isRest = empDaySchedules
+              ? !empDaySchedules[dayName] && isWeekend
+              : isWeekend
+            if (!isRest) {
+              const leaveAmount = leaveReq.isHalfDay ? dailyRate / 2 : dailyRate
+              basicPay += leaveAmount
+              daysWorked += leaveReq.isHalfDay ? 0.5 : 1
+              dailyBreakdown.leavePay.push({
+                date: dateStr,
+                leaveType: leaveReq.leaveType,
+                isHalfDay: leaveReq.isHalfDay,
+                dailyRate,
+                amount: leaveAmount,
+              })
+            }
+          }
+          cursor.setUTCDate(cursor.getUTCDate() + 1)
+        }
+      }
     }
 
     const sssBenefit = emp.benefits.find(b => b.benefitType === 'SSS')
@@ -785,7 +936,7 @@ export async function PATCH(req: Request) {
       adjDetails.push({ allowanceLabel: adj.allowanceLabel, allowanceType: adj.allowanceType, allowanceAmount: allowAmt, deductionLabel: adj.deductionLabel, deductionAmount: dedAmt })
     }
 
-    const grossPay = basicPay + overtimePay + holidayPay + restDayPay + nightDiffPay + allowanceAmount
+    const grossPay = basicPay + overtimePay + holidayOvertimePay + holidayPay + restDayPay + nightDiffPay + allowanceAmount
     const preTaxDeductions = sssDeduction + philhealthDeduction + pagibigDeduction
     const taxablePerCutoff = grossPay - preTaxDeductions - nonTaxableAllowance
 
@@ -825,7 +976,7 @@ export async function PATCH(req: Request) {
       taxDeduction, lateDeduction, undertimeDeduction, otherDeductions: adjDeductionAmount,
       totalDeductions, netPay, daysWorked, hoursWorked: totalHoursWorked,
       overtimeHours: totalOTHours, lateMinutes: totalLateMinutes, undertimeMinutes: totalUndertimeMinutes,
-      details: { adjustments: adjDetails, dailyBreakdown, taxableIncome: taxablePerCutoff },
+      details: { adjustments: adjDetails, dailyBreakdown, taxableIncome: taxablePerCutoff, holidayOvertimePay, holidayOTHours: totalHolidayOTHours, cutoffStart: startDate.toISOString().substring(0, 10), cutoffEnd: new Date(endDate.getTime() - 86400000).toISOString().substring(0, 10) },
       computeTaxNow: shouldComputeNow,
       status: 'DRAFT',
       createdById: session.user.id as string,
@@ -835,7 +986,7 @@ export async function PATCH(req: Request) {
       where: { employeeId_cutoffPeriod_branch: { employeeId, cutoffPeriod, branch: qBranch } },
       update: upsertFields,
       create: { employeeId, cutoffPeriod, branch: qBranch, ...upsertFields },
-      include: { employee: { select: { id: true, firstName: true, lastName: true, email: true, department: true, branch: true, rateType: true, dailyRate: true, monthlyRate: true, employeeBioId: true } } },
+      include: { employee: { select: { id: true, firstName: true, lastName: true, email: true, department: true, branch: true, rateType: true, dailyRate: true, monthlyRate: true, employeeBioId: true, jobTitle: true } } },
     })
 
     return NextResponse.json(payslip)
