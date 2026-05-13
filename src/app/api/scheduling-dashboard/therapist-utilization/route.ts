@@ -45,23 +45,52 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ therapists: [], summary: null })
   }
 
-  // ── 2. Fetch disabled decking slots for these staff ────────────────────────
+  // ── 2. Fetch ALL decking slots for these staff (used to count distinct
+  //       timeslots — one slot per (day, hour) regardless of how many seats
+  //       the decking module shows for that timeslot). The decking UI can
+  //       have up to 3 patients per timeslot for high-capacity sessions,
+  //       but for utilization purposes a session = a single timeslot. ────────
   const staffIds = configs.map(c => c.staffId)
 
-  const disabledSlots = await prisma.deckingSlot.findMany({
-    where: {
-      staffId: { in: staffIds },
-      disabled: true,
-    },
-    select: { staffId: true, dayOfWeek: true, startTime: true },
+  const allSlots = await prisma.deckingSlot.findMany({
+    where: { staffId: { in: staffIds } },
+    select: { staffId: true, dayOfWeek: true, startTime: true, disabled: true },
   })
 
-  // Build lookup: staffId -> Set of "DAY|startTime" for disabled slots
-  const disabledLookup = new Map<string, Set<string>>()
-  for (const ds of disabledSlots) {
-    const key = ds.staffId
-    if (!disabledLookup.has(key)) disabledLookup.set(key, new Set())
-    disabledLookup.get(key)!.add(`${ds.dayOfWeek}|${ds.startTime}`)
+  // Group by (staffId, day, time) and mark each group active if AT LEAST
+  // one row in it is non-disabled. This handles the edge case where one
+  // seat is taken down but the other is still bookable — the timeslot
+  // itself is still active (count = 1, not 0 and not 2).
+  const activeTimeslotsByStaff = new Map<string, Map<string, Set<string>>>() // staffId -> day -> Set of startTimes
+  for (const ds of allSlots) {
+    if (!activeTimeslotsByStaff.has(ds.staffId)) {
+      activeTimeslotsByStaff.set(ds.staffId, new Map())
+    }
+    const byDay = activeTimeslotsByStaff.get(ds.staffId)!
+    if (!byDay.has(ds.dayOfWeek)) byDay.set(ds.dayOfWeek, new Set())
+  }
+  // Second pass — only add a time to the active set if at least one row
+  // for that (day, time) tuple is NOT disabled. We do this by first
+  // collecting all timeslots, then removing those where ALL rows are
+  // disabled.
+  const slotStateByStaff = new Map<string, Map<string, Map<string, { anyActive: boolean }>>>()
+  for (const ds of allSlots) {
+    if (!slotStateByStaff.has(ds.staffId)) slotStateByStaff.set(ds.staffId, new Map())
+    const byDay = slotStateByStaff.get(ds.staffId)!
+    if (!byDay.has(ds.dayOfWeek)) byDay.set(ds.dayOfWeek, new Map())
+    const byTime = byDay.get(ds.dayOfWeek)!
+    if (!byTime.has(ds.startTime)) byTime.set(ds.startTime, { anyActive: false })
+    if (!ds.disabled) byTime.get(ds.startTime)!.anyActive = true
+  }
+  // Now materialize the active sets
+  for (const [staffId, byDay] of slotStateByStaff.entries()) {
+    for (const [day, byTime] of byDay.entries()) {
+      for (const [time, state] of byTime.entries()) {
+        if (state.anyActive) {
+          activeTimeslotsByStaff.get(staffId)?.get(day)?.add(time)
+        }
+      }
+    }
   }
 
   // ── 3. Count available slots per therapist in the date range ───────────────
@@ -92,25 +121,17 @@ export async function GET(req: NextRequest) {
 
   for (const cfg of configs) {
     const workDays = cfg.workDays as string[]
-    const [startH] = cfg.startTime.split(':').map(Number)
-    const [endH]   = cfg.endTime.split(':').map(Number)
-    const slotsPerDay = endH - startH // hourly slots
-    const disabled = disabledLookup.get(cfg.staffId) ?? new Set()
+    const byDay = activeTimeslotsByStaff.get(cfg.staffId)
 
     let totalSlots = 0
     for (const day of workDays) {
       const daysInRange = dayOfWeekCounts[day] ?? 0
       if (daysInRange === 0) continue
 
-      // Count non-disabled slots for this day
-      let activeSlotsForDay = 0
-      for (let h = startH; h < endH; h++) {
-        const timeStr = `${String(h).padStart(2, '0')}:00`
-        if (!disabled.has(`${day}|${timeStr}`)) {
-          activeSlotsForDay++
-        }
-      }
-      totalSlots += activeSlotsForDay * daysInRange
+      // Distinct active timeslots for this day (always 1 per (day, hour)
+      // regardless of seat count).
+      const activeTimeslotsForDay = byDay?.get(day)?.size ?? 0
+      totalSlots += activeTimeslotsForDay * daysInRange
     }
 
     therapistMap.set(cfg.staffId, {
