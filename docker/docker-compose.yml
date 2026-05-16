@@ -107,6 +107,7 @@ services:
         condition: service_started
     environment:
       MARKETING_URL: ${MARKETING_URL:-https://marketing.sapphireclinicseast.org}
+      ACCOUNTING_URL: ${ACCOUNTING_URL:-https://accounting.sapphireclinicseast.org}
       NODE_ENV: production
     ports:
       - "127.0.0.1:3005:3000"

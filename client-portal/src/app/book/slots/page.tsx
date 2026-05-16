@@ -58,6 +58,17 @@ function BookSlotsPage() {
   useEffect(() => {
     if (!getSession()) { router.push('/'); return }
     if (!branch || !department) { router.push('/book'); return }
+    // Phase-1 rollout: only allow online booking for the enabled services.
+    // If a user reaches /book/slots via a bookmark/URL for a disabled service,
+    // bounce them back to step 1 where the contact-clinic panel surfaces.
+    const ENABLED_SBEA = new Set(['PT', 'PSYCHOLOGY', 'MD'])
+    const ENABLED_SBGH = new Set(['PT', 'PSYCHOLOGY', 'PSYCHIATRY'])
+    const ok =
+      (branch === 'SBEA' && ENABLED_SBEA.has(department)) ||
+      (branch === 'SBGH' && ENABLED_SBGH.has(department))
+    if (!ok) {
+      router.push('/book')
+    }
   }, [router, branch, department])
 
   // Load therapists once.
