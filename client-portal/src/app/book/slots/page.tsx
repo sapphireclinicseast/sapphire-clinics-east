@@ -62,10 +62,11 @@ function BookSlotsPage() {
     // If a user reaches /book/slots via a bookmark/URL for a disabled service,
     // bounce them back to step 1 where the contact-clinic panel surfaces.
     // Phase-1 enabled depts — must mirror the SAME set in /book page.tsx.
-    // SBEA's old generic "MD" is now split into three explicit sub-specialties.
+    // SBEA's Developmental Pediatrician is intentionally offline-only for
+    // now; the tile still shows, but tapping it routes to the contact panel.
     const ENABLED_SBEA = new Set([
       'PT', 'PSYCHOLOGY',
-      'PSYCHIATRY', 'DEVELOPMENTAL_PEDIATRICIAN', 'REHABILITATION_MEDICINE',
+      'PSYCHIATRY', 'REHABILITATION_MEDICINE',
     ])
     const ENABLED_SBGH = new Set(['PT', 'PSYCHOLOGY', 'PSYCHIATRY'])
     const ok =

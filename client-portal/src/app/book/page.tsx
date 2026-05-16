@@ -20,11 +20,12 @@ const SERVICES_SBGH = [
 // Phase-1 rollout: only the listed services are bookable online today.
 // Everything else routes the patient to the front desk via call / Viber /
 // SMS / email / Facebook.
-// SBEA's old generic "MD" is replaced by its three concrete sub-specialties,
-// all of which inherit MD's online-enabled state.
+// SBEA's old generic "MD" is replaced by its concrete sub-specialties;
+// Developmental Pediatrician is still tile-visible but offline-only for
+// now (the clinic handles those requests by phone).
 const ONLINE_ENABLED_SBEA = new Set<string>([
   'PT', 'PSYCHOLOGY',
-  'PSYCHIATRY', 'DEVELOPMENTAL_PEDIATRICIAN', 'REHABILITATION_MEDICINE',
+  'PSYCHIATRY', 'REHABILITATION_MEDICINE',
 ])
 const ONLINE_ENABLED_SBGH = new Set<string>(['PT', 'PSYCHOLOGY', 'PSYCHIATRY'])
 
