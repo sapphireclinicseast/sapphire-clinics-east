@@ -169,7 +169,7 @@ function BookSlotsPage() {
             <h1 className="text-[28px] text-[color:var(--deep-teal)] leading-tight">Pick your {clinicianWord} and slots</h1>
             <p className="text-sm text-[color:var(--mid-gray)] mt-1 flex items-center gap-2 flex-wrap">
               <span className="px-2 py-0.5 rounded-md bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)] text-xs font-semibold" style={{ fontFamily: 'var(--font-display)' }}>{branch}</span>
-              <span className="px-2 py-0.5 rounded-md bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)] text-xs font-semibold" style={{ fontFamily: 'var(--font-display)' }}>{department}</span>
+              <span className="px-2 py-0.5 rounded-md bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)] text-xs font-semibold" style={{ fontFamily: 'var(--font-display)' }}>{department.replace(/_/g, ' ')}</span>
               <span className="text-[color:var(--mid-gray)]">Choose up to 3 possible time slots — the front desk confirms one.</span>
             </p>
           </div>

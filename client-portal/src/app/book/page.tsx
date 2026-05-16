@@ -141,7 +141,9 @@ export default function BookStep1Page() {
                     {SERVICE_LABELS[s] ?? s}
                   </div>
                   <div className={`text-[11px] mt-0.5 ${active && online ? 'text-white/70' : 'text-[color:var(--mid-gray)]'}`}>
-                    {s}
+                    {/* Show the department code as a tag, with underscores
+                        rendered as spaces (e.g. DEVELOPMENTAL PEDIATRICIAN). */}
+                    {s.replace(/_/g, ' ')}
                   </div>
                 </button>
               )

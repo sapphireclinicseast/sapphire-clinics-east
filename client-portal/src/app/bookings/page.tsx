@@ -136,7 +136,7 @@ function BookingCard({ b, i, onChange }: { b: Booking; i: number; onChange: (nb:
   async function handleCancel() {
     if (!canCancel) return
     const label = b.status === 'PENDING' ? 'this pending request' : 'this approved booking'
-    if (!confirm(`Cancel ${label} for ${b.department} on ${dateNice} ${b.startTime}?`)) return
+    if (!confirm(`Cancel ${label} for ${b.department.replace(/_/g, ' ')} on ${dateNice} ${b.startTime}?`)) return
     const s = getSession()
     if (!s) { clearSession(); router.push('/?expired=1'); return }
     setBusy(true)
@@ -163,7 +163,7 @@ function BookingCard({ b, i, onChange }: { b: Booking; i: number; onChange: (nb:
             {b.isTeletherapy && <span className="badge badge-teletherapy">Teletherapy</span>}
           </div>
           <div className="mt-2 text-[18px] text-[color:var(--deep-teal)] font-semibold" style={{ fontFamily: 'var(--font-heading)' }}>
-            {b.department} · {branchName}
+            {b.department.replace(/_/g, ' ')} · {branchName}
           </div>
           <div className="text-sm text-[color:var(--mid-gray)] mt-0.5 flex items-center gap-2 flex-wrap">
             <span>🗓 {dateNice}</span>

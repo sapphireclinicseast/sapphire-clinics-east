@@ -12,6 +12,18 @@ interface WalletInfo {
   holderInitials: string
 }
 
+// Branch enums come back as SANDBOX_EAST / SANDBOX_GREENHILLS / ALL.
+// Render them human-readable for the card display.
+function prettifyBranch(b: string): string {
+  if (!b) return '—'
+  if (b === 'ALL') return 'All branches'
+  return b
+    .split('_')
+    .filter(Boolean)
+    .map((w) => w[0] + w.slice(1).toLowerCase())
+    .join(' ')
+}
+
 export default function RewardsPage() {
   const [card, setCard] = useState('')
   const [busy, setBusy] = useState(false)
@@ -105,7 +117,7 @@ export default function RewardsPage() {
                   </div>
                   <div className="font-mono text-[18px] tracking-[0.08em] mt-0.5">{wallet.card}</div>
                   <div className="text-[11.5px] opacity-80 mt-1" style={{ fontFamily: 'var(--font-display)' }}>
-                    Holder: {wallet.holderInitials || '—'} · Branch: {wallet.branch}
+                    Holder: {wallet.holderInitials || '—'} · Branch: {prettifyBranch(wallet.branch)}
                   </div>
                 </div>
 

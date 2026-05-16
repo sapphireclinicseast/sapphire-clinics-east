@@ -79,7 +79,7 @@ function BookConfirmInner() {
           <div className="absolute top-0 right-0 w-32 h-32 rounded-full bg-[color:var(--bright-teal)]/10 blur-2xl -translate-y-8 translate-x-8 pointer-events-none"></div>
           <div className="relative space-y-3 text-sm">
             <Row label="Branch" value={branchName} />
-            <Row label="Service" value={department} />
+            <Row label="Service" value={department.replace(/_/g, ' ')} />
             <Row label="Therapist" value={<span className="inline-flex items-center gap-1.5">{therapistInitials} {sexIcon}</span>} />
           </div>
         </div>
