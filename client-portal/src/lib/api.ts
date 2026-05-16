@@ -38,6 +38,8 @@ export interface Therapist {
   initials: string
   sex: 'M' | 'F' | null
   jobTitle: string | null
+  /** false → staff has no DeckingTherapistConfig yet, so their week will be empty. */
+  hasSchedule: boolean
 }
 export interface AvailableSlot {
   staffId: string

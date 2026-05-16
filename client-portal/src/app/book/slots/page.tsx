@@ -222,6 +222,11 @@ function BookSlotsPage() {
                       <span className={`text-[11px] ${active ? 'text-white/80' : 'text-[color:var(--mid-gray)]'}`}>
                         {sexLabel}
                       </span>
+                      {!t.hasSchedule && (
+                        <span className={`text-[10px] italic mt-0.5 ${active ? 'text-white/70' : 'text-[color:var(--clay)]'}`}>
+                          Schedule not yet set
+                        </span>
+                      )}
                     </span>
                   </button>
                 )
@@ -233,6 +238,11 @@ function BookSlotsPage() {
         {/* Weekly calendar — only when a therapist is selected */}
         {selectedTherapist && (
           <>
+            {!selectedTherapist.hasSchedule && (
+              <div className="mb-3 px-4 py-3 rounded-xl bg-[color:var(--sun-tint)] border border-[color:var(--paper-3)] text-sm text-[color:var(--narra)]">
+                <strong>{selectedTherapist.jobTitle ?? selectedTherapist.initials}</strong> hasn&apos;t set up their schedule yet. Please pick another {clinicianWord}, or contact the clinic to request an appointment with them directly.
+              </div>
+            )}
             <div className="flex items-center justify-between mb-3">
               <div className="label !mb-0">Week of {fmtRange(weekStart, addDays(weekStart, 6))}</div>
               <div className="flex items-center gap-1.5" style={{ fontFamily: 'var(--font-display)' }}>

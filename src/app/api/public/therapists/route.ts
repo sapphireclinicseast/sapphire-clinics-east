@@ -40,24 +40,25 @@ export async function GET(req: NextRequest) {
   // Build the staff filter. For MD sub-specialty depts the underlying staff
   // rows are tagged department=MD with the specialty in jobTitle; otherwise
   // do a straight department equality match.
+  // We intentionally DON'T require a DeckingTherapistConfig here — staff
+  // who haven't had their Decking Module set up yet should still appear in
+  // the picker (with an empty week). Once their config is added they
+  // automatically start surfacing available slots.
   const mdJobTitleHint = MD_SPECIALTY_JOB_TITLE[department]
   const staffWhere: Prisma.StaffWhereInput = mdJobTitleHint
     ? {
         branch,
         department: 'MD',
         jobTitle: { contains: mdJobTitleHint, mode: 'insensitive' },
-        deckingConfig: { isNot: null },
       }
     : {
         branch,
         department: department as Prisma.EnumStaffDepartmentFilter['equals'],
-        deckingConfig: { isNot: null },
       }
 
-  // Only list therapists who actually consult with us (per the Decking Module):
-  // they must have a DeckingTherapistConfig with at least one working day.
   const staff = await prisma.staff.findMany({
     where: staffWhere,
+    orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
     select: {
       id: true,
       firstName: true,
@@ -82,21 +83,20 @@ export async function GET(req: NextRequest) {
       .join(' ')
   }
 
-  const therapists = staff
-    .filter((s) => {
-      const days = (s.deckingConfig?.workDays as string[] | null) ?? []
-      return days.length > 0
-    })
-    .map((s) => {
-      const raw = (s.sex ?? '').trim().toUpperCase()
-      const sex: 'M' | 'F' | null = raw === 'M' ? 'M' : raw === 'F' ? 'F' : null
-      return {
-        id: s.id,
-        initials: `${s.firstName?.[0] ?? '?'}${s.lastName?.[0] ?? '?'}`.toUpperCase(),
-        sex,
-        jobTitle: prettifyJobTitle(s.jobTitle),
-      }
-    })
+  const therapists = staff.map((s) => {
+    const raw = (s.sex ?? '').trim().toUpperCase()
+    const sex: 'M' | 'F' | null = raw === 'M' ? 'M' : raw === 'F' ? 'F' : null
+    const days = (s.deckingConfig?.workDays as string[] | null) ?? []
+    return {
+      id: s.id,
+      initials: `${s.firstName?.[0] ?? '?'}${s.lastName?.[0] ?? '?'}`.toUpperCase(),
+      sex,
+      jobTitle: prettifyJobTitle(s.jobTitle),
+      // hasSchedule lets the UI render a subtle "no schedule yet" hint
+      // alongside config-less staff. Frontend may choose to ignore it.
+      hasSchedule: days.length > 0,
+    }
+  })
 
   return withCors(NextResponse.json({ therapists }), origin)
 }
