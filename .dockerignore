@@ -23,3 +23,8 @@ teletherapy
 client-portal
 accounting-hub
 verdana-store
+
+# DB + uploads backup tarballs pile up to many GB on the VPS — never
+# include them in the build context (they crashed the build with
+# "no space left on device" when the dir grew past 10GB).
+backups
