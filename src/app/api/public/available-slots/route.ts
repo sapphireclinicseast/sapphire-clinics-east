@@ -14,8 +14,23 @@
 //      /api/decking/slots).
 
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { preflight, withCors } from '../_cors'
+
+/**
+ * MD sub-specialty mapping — the patient portal exposes three dept codes
+ * (PSYCHIATRY / DEVELOPMENTAL_PEDIATRICIAN / REHABILITATION_MEDICINE) that
+ * correspond to staff tagged `department=MD` in HR Platform with the real
+ * specialty in `jobTitle`. Values below are case-insensitive substrings
+ * we match against the jobTitle slug ("psychiatrist",
+ * "developmental-pediatrician", "rehab-medicine-doctor").
+ */
+const MD_SPECIALTY_JOB_TITLE: Record<string, string> = {
+  PSYCHIATRY:                'psychiatrist',
+  DEVELOPMENTAL_PEDIATRICIAN: 'developmental',
+  REHABILITATION_MEDICINE:    'rehab',
+}
 
 const DAY_NAMES = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'] as const
 const MAX_PATIENTS_PER_SLOT = 3
@@ -86,12 +101,24 @@ export async function GET(req: NextRequest) {
 
   // Load every therapist (of this branch+dept) that we need to consider.
   // If staffId is set, filter to that one; otherwise load all.
+  // For MD sub-specialty depts, the underlying staff are tagged department=MD
+  // with the specialty in their jobTitle — match those by case-insensitive
+  // substring instead of a straight dept equality.
+  const mdJobTitleHint = MD_SPECIALTY_JOB_TITLE[department]
+  const staffWhere: Prisma.StaffWhereInput = mdJobTitleHint
+    ? {
+        branch,
+        department: 'MD',
+        jobTitle: { contains: mdJobTitleHint, mode: 'insensitive' },
+        ...(staffId ? { id: staffId } : {}),
+      }
+    : {
+        branch,
+        department: department as Prisma.EnumStaffDepartmentFilter['equals'],
+        ...(staffId ? { id: staffId } : {}),
+      }
   const staffList = await prisma.staff.findMany({
-    where: {
-      branch,
-      department: department as never,
-      ...(staffId ? { id: staffId } : {}),
-    },
+    where: staffWhere,
     select: { id: true, firstName: true, lastName: true, sex: true },
   })
   if (staffList.length === 0) {
@@ -109,12 +136,13 @@ export async function GET(req: NextRequest) {
   const clinicSchedule = (clinicHoursRow?.schedule as Record<string, ClinicHoursDay> | null) ?? null
 
   // All DeckingSlot rows for these therapists — used for capacity + disabled flag.
-  // Filter by branch+dept so we don't scan the whole table.
+  // The staffId filter already scopes correctly; we deliberately don't filter
+  // by `department` here because MD sub-specialty staff have DeckingSlot rows
+  // tagged `department=MD` (not "PSYCHIATRY" etc.).
   const deckingSlots = await prisma.deckingSlot.findMany({
     where: {
       staffId: { in: staffList.map((s) => s.id) },
       branch,
-      department,
     },
     select: { staffId: true, dayOfWeek: true, startTime: true, disabled: true, patientId: true },
   })

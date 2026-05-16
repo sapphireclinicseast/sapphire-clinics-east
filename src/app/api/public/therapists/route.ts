@@ -2,8 +2,23 @@
 // Returns minimal, non-PII therapist info for the patient portal.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { preflight, withCors } from '../_cors'
+
+/**
+ * The portal exposes three MD sub-specialty tiles (Psychiatrist,
+ * Developmental Pediatrician, Rehab Medicine Doctor). In HR Platform those
+ * doctors are tagged `department=MD` with the real specialty in `jobTitle`.
+ * Rather than re-classifying every record, this route maps each
+ * sub-specialty dept code to a distinctive jobTitle substring, then queries
+ * MD-dept staff whose jobTitle contains that substring (case-insensitive).
+ */
+const MD_SPECIALTY_JOB_TITLE: Record<string, string> = {
+  PSYCHIATRY:                'psychiatrist',
+  DEVELOPMENTAL_PEDIATRICIAN: 'developmental',  // matches developmental-pediatrician
+  REHABILITATION_MEDICINE:    'rehab',          // matches rehab-medicine-doctor
+}
 
 export async function OPTIONS(req: NextRequest) {
   return preflight(req.headers.get('origin'))
@@ -22,14 +37,27 @@ export async function GET(req: NextRequest) {
     )
   }
 
+  // Build the staff filter. For MD sub-specialty depts the underlying staff
+  // rows are tagged department=MD with the specialty in jobTitle; otherwise
+  // do a straight department equality match.
+  const mdJobTitleHint = MD_SPECIALTY_JOB_TITLE[department]
+  const staffWhere: Prisma.StaffWhereInput = mdJobTitleHint
+    ? {
+        branch,
+        department: 'MD',
+        jobTitle: { contains: mdJobTitleHint, mode: 'insensitive' },
+        deckingConfig: { isNot: null },
+      }
+    : {
+        branch,
+        department: department as Prisma.EnumStaffDepartmentFilter['equals'],
+        deckingConfig: { isNot: null },
+      }
+
   // Only list therapists who actually consult with us (per the Decking Module):
   // they must have a DeckingTherapistConfig with at least one working day.
   const staff = await prisma.staff.findMany({
-    where: {
-      branch,
-      department: department as never,
-      deckingConfig: { isNot: null },
-    },
+    where: staffWhere,
     select: {
       id: true,
       firstName: true,
