@@ -61,7 +61,12 @@ function BookSlotsPage() {
     // Phase-1 rollout: only allow online booking for the enabled services.
     // If a user reaches /book/slots via a bookmark/URL for a disabled service,
     // bounce them back to step 1 where the contact-clinic panel surfaces.
-    const ENABLED_SBEA = new Set(['PT', 'PSYCHOLOGY', 'MD'])
+    // Phase-1 enabled depts — must mirror the SAME set in /book page.tsx.
+    // SBEA's old generic "MD" is now split into three explicit sub-specialties.
+    const ENABLED_SBEA = new Set([
+      'PT', 'PSYCHOLOGY',
+      'PSYCHIATRY', 'DEVELOPMENTAL_PEDIATRICIAN', 'REHABILITATION_MEDICINE',
+    ])
     const ENABLED_SBGH = new Set(['PT', 'PSYCHOLOGY', 'PSYCHIATRY'])
     const ok =
       (branch === 'SBEA' && ENABLED_SBEA.has(department)) ||
@@ -105,9 +110,13 @@ function BookSlotsPage() {
   useEffect(() => { loadSlots() }, [loadSlots])
 
   // For MD-track services, the clinician is a doctor — relabel everywhere
-  // ("Therapist" → "Doctor") so patients booking Psychiatry / DevPed / MD
-  // don't get confused.
-  const isDoctorDept = department === 'MD' || department === 'PSYCHIATRY' || department === 'DEVELOPMENTAL_PEDIATRICIAN'
+  // ("Therapist" → "Doctor") so patients booking Psychiatry / DevPed /
+  // Rehabilitation Medicine / generic MD don't get confused.
+  const isDoctorDept =
+    department === 'MD' ||
+    department === 'PSYCHIATRY' ||
+    department === 'DEVELOPMENTAL_PEDIATRICIAN' ||
+    department === 'REHABILITATION_MEDICINE'
   const clinicianWord = isDoctorDept ? 'doctor' : 'therapist'
   const ClinicianWord = isDoctorDept ? 'Doctor' : 'Therapist'
   const CLINICIAN_WORD = ClinicianWord.toUpperCase()

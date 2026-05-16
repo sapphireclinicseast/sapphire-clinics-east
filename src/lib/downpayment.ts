@@ -10,7 +10,10 @@ export const DOWNPAYMENT_RATES: Record<BranchCode, Record<string, number>> = {
     SLP: 1000,
     SPED: 500,
     PSYCHOLOGY: 1000,
-    MD: 1000,
+    MD: 1000,                            // legacy generic — kept for any stale records
+    PSYCHIATRY: 1000,                    // MD sub-specialty at SBEA
+    DEVELOPMENTAL_PEDIATRICIAN: 6000,    // MD sub-specialty at SBEA
+    REHABILITATION_MEDICINE: 1000,       // MD sub-specialty at SBEA
     ORTHOSIS: 0,
   },
   SBGH: {
@@ -21,6 +24,7 @@ export const DOWNPAYMENT_RATES: Record<BranchCode, Record<string, number>> = {
     PSYCHOLOGY: 1000,
     PSYCHIATRY: 1000,
     DEVELOPMENTAL_PEDIATRICIAN: 6000,
+    REHABILITATION_MEDICINE: 1000,
     MD: 1000,
   },
 }

@@ -4,17 +4,37 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSession } from '@/lib/session'
 
-const SERVICES_SBEA = ['PT', 'OT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS'] as const
-const SERVICES_SBGH = ['PT', 'OT', 'SLP', 'SPED', 'PSYCHOLOGY', 'PSYCHIATRY', 'DEVELOPMENTAL_PEDIATRICIAN'] as const
+// At both branches the "Medical Doctor" service is delivered through specific
+// sub-specialties — there's no generic-MD tile any more. SBEA splits across
+// three (Psychiatry / Developmental Pediatrician / Rehabilitation Medicine);
+// SBGH offers two (Psychiatry / Developmental Pediatrician).
+const SERVICES_SBEA = [
+  'PT', 'OT', 'SLP', 'SPED', 'PSYCHOLOGY', 'ORTHOSIS',
+  'PSYCHIATRY', 'DEVELOPMENTAL_PEDIATRICIAN', 'REHABILITATION_MEDICINE',
+] as const
+const SERVICES_SBGH = [
+  'PT', 'OT', 'SLP', 'SPED', 'PSYCHOLOGY',
+  'PSYCHIATRY', 'DEVELOPMENTAL_PEDIATRICIAN',
+] as const
 
 // Phase-1 rollout: only the listed services are bookable online today.
 // Everything else routes the patient to the front desk via call / Viber /
 // SMS / email / Facebook.
-const ONLINE_ENABLED_SBEA = new Set<string>(['PT', 'PSYCHOLOGY', 'MD'])
+// SBEA's old generic "MD" is replaced by its three concrete sub-specialties,
+// all of which inherit MD's online-enabled state.
+const ONLINE_ENABLED_SBEA = new Set<string>([
+  'PT', 'PSYCHOLOGY',
+  'PSYCHIATRY', 'DEVELOPMENTAL_PEDIATRICIAN', 'REHABILITATION_MEDICINE',
+])
 const ONLINE_ENABLED_SBGH = new Set<string>(['PT', 'PSYCHOLOGY', 'PSYCHIATRY'])
 
 // Departments that are sub-specialties of the Medical Doctor service.
-const MD_SUBSPECIALTIES = new Set(['PSYCHIATRY', 'DEVELOPMENTAL_PEDIATRICIAN'])
+// Used to surface the "Medical Doctor" tag on the upper-right of each tile.
+const MD_SUBSPECIALTIES = new Set([
+  'PSYCHIATRY',
+  'DEVELOPMENTAL_PEDIATRICIAN',
+  'REHABILITATION_MEDICINE',
+])
 
 const SERVICE_LABELS: Record<string, string> = {
   PT: 'Physical Therapy',
@@ -23,9 +43,12 @@ const SERVICE_LABELS: Record<string, string> = {
   SPED: 'Special Education',
   MD: 'Medical Doctor',
   PSYCHOLOGY: 'Psychology',
-  PSYCHIATRY: 'Psychiatry',
-  ORTHOSIS: 'Orthosis / Prosthesis',
+  // Person-noun labels for the MD sub-specialties (more natural on tiles
+  // where the patient is choosing who they want to see).
+  PSYCHIATRY: 'Psychiatrist',
   DEVELOPMENTAL_PEDIATRICIAN: 'Developmental Pediatrician',
+  REHABILITATION_MEDICINE: 'Rehabilitation Medicine',
+  ORTHOSIS: 'Orthosis / Prosthesis',
 }
 
 const BRANCH_CONTACTS: Record<'SBEA' | 'SBGH', { name: string; phone: string; email: string; facebook: string }> = {
@@ -282,6 +305,7 @@ const SERVICE_ICONS: Record<string, () => React.JSX.Element> = {
   PSYCHIATRY: IconPill,
   ORTHOSIS: IconBone,
   DEVELOPMENTAL_PEDIATRICIAN: IconBaby,
+  REHABILITATION_MEDICINE: IconAccessibility,
 }
 
 // PT — activity line (rehab / motion)
@@ -302,6 +326,8 @@ function IconPill() { return <SvgWrap><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-
 function IconBone() { return <SvgWrap><path d="M17 10c.7-.7 1.69 0 2.5 0a2.5 2.5 0 1 0 0-5 .5.5 0 0 1-.5-.5 2.5 2.5 0 1 0-5 0c0 .81.7 1.8 0 2.5l-7 7c-.7.7-1.69 0-2.5 0a2.5 2.5 0 0 0 0 5c.28 0 .5.22.5.5a2.5 2.5 0 1 0 5 0c0-.81-.7-1.8 0-2.5Z"/></SvgWrap> }
 // DevPed — baby
 function IconBaby() { return <SvgWrap><path d="M9 12h.01"/><path d="M15 12h.01"/><path d="M10 16c.5.3 1.2.5 2 .5s1.5-.2 2-.5"/><path d="M19 6.3a9 9 0 0 1 1.8 3.9 2 2 0 0 1 0 3.6 9 9 0 0 1-17.6 0 2 2 0 0 1 0-3.6A9 9 0 0 1 12 3c2 0 3.5 1.1 3.5 2.5s-.9 2.5-2 2.5c-.8 0-1.5-.4-1.5-1"/></SvgWrap> }
+// Rehabilitation Medicine — accessibility figure (Lucide "accessibility")
+function IconAccessibility() { return <SvgWrap><circle cx="16" cy="4" r="1"/><path d="m18 19 1-7-5.87.94"/><path d="m5 8 3-3 5.5 3-2.21 3.1"/><path d="M4.24 14.5a5 5 0 0 0 6.88 6"/><path d="M13.76 17.5a5 5 0 0 0-6.88-6"/></SvgWrap> }
 // Fallback
 function IconSparkle() { return <SvgWrap><path d="M12 3l1.6 4.8L18 9l-4.4 1.2L12 15l-1.6-4.8L6 9l4.4-1.2z"/></SvgWrap> }
 
