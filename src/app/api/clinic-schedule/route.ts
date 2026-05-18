@@ -123,6 +123,36 @@ export async function PUT(req: NextRequest) {
   if (isTeletherapy !== undefined) data.isTeletherapy = isTeletherapy
   if (meetLink !== undefined) data.meetLink = meetLink || null
 
+  // Auto-generate a Jitsi link when teletherapy is being TOGGLED ON during an
+  // edit (POST creates a link on initial save, but the PUT path used to leave
+  // meetLink null when a user flipped the toggle on an existing schedule —
+  // the symptom was "teletherapy link generator not working for MD" because
+  // MD bookings most often start in-person and get switched to teletherapy
+  // via edit, but the bug applies to every department equally).
+  const wantsLink = isTeletherapy === true && !meetLink
+  if (wantsLink) {
+    const existing = await prisma.schedule.findUnique({
+      where: { id },
+      select: {
+        date: true,
+        meetLink: true,
+        patient: { select: { firstName: true, lastName: true } },
+        staff:   { select: { firstName: true, lastName: true } },
+      },
+    })
+    if (existing && !existing.meetLink) {
+      const patientName = existing.patient
+        ? `${existing.patient.firstName}${existing.patient.lastName}`
+        : 'Patient'
+      const staffName = existing.staff
+        ? `${existing.staff.firstName}${existing.staff.lastName}`
+        : 'Staff'
+      const effDate = (data.date as Date | undefined) ?? existing.date
+      const dateStr = effDate.toISOString().split('T')[0]
+      data.meetLink = generateMeetLink(staffName, patientName, dateStr)
+    }
+  }
+
   const schedule = await prisma.schedule.update({
     where: { id },
     data,
