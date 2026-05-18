@@ -6,10 +6,13 @@ const HR_API_BASE = process.env.HR_API_BASE ?? 'https://hr.sapphireclinicseast.o
 const HR_API_KEY = process.env.HR_API_KEY ?? ''
 
 // POST /api/seminars/[id]/register
-// Registers the logged-in clinician for a seminar via the HR public
-// /seminar-register endpoint. We never pass paymentMethod, so the HR
-// handler enrols the user without charging — clinicians always attend
-// free regardless of the seminar's fee.
+// Registers the logged-in clinician for a seminar via HR's
+// bearer-authenticated /internal/seminars/:id/register endpoint.
+// Internal staff always attend free regardless of the seminar's
+// fee, and — critically — this endpoint bypasses the internalOnly
+// gate that the public /seminar-register rejects on. Previously
+// this route hit the public endpoint and any seminar HR marked
+// "internal only" returned 403 to staff trying to register.
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -17,6 +20,12 @@ export async function POST(
   const session = await auth()
   if (!session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  if (!HR_API_KEY) {
+    return NextResponse.json(
+      { error: 'HR_API_KEY is not configured on the server' },
+      { status: 500 }
+    )
   }
 
   const { id: seminarId } = await params
@@ -32,20 +41,22 @@ export async function POST(
   }
 
   const payload = {
-    seminarId,
     firstName: account.staff.firstName,
     lastName: account.staff.lastName,
     mobile: account.staff.phone || 'N/A',
     email: session.user.email,
     profession: account.staff.department, // OT / PT / SLP / SPED / PSYCHOLOGY / MD
-    // No paymentMethod → HR registers free regardless of fee.
+    // seminarId travels in the URL, not the body.
   }
 
   let res: Response
   try {
-    res = await fetch(`${HR_API_BASE}/seminar-register`, {
+    res = await fetch(`${HR_API_BASE}/internal/seminars/${encodeURIComponent(seminarId)}/register`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${HR_API_KEY}`,
+      },
       body: JSON.stringify(payload),
     })
   } catch (err) {

@@ -562,28 +562,33 @@ export default function SeminarsPage() {
                     aboutSpeaker is non-empty; opening a modal with
                     no bio would be pointless. */}
                 {displaySpeakers.length > 0 && (
-                  <div className="hidden lg:flex absolute top-4 right-4 flex-col items-center gap-1.5 w-[88px] z-[1]">
-                    {/* Multi-speaker: avatars stack vertically, name
-                        underneath each. Single-speaker: just the
-                        avatar (name appears in the details line below
-                        the title). */}
-                    <div className="flex flex-col items-center gap-2">
+                  <div className="hidden lg:flex absolute top-4 right-4 flex-col items-end gap-2 z-[1]">
+                    {/* Speakers are laid out horizontally so multi-speaker
+                        rows don't extend down and overlap the Register
+                        button. Each avatar gets a fixed-width column with
+                        the (first-name) label centered underneath. */}
+                    <div className="flex flex-row items-start gap-3">
                       {displaySpeakers.slice(0, 3).map((sp, idx) => (
-                        <div key={sp.id || idx} className="flex flex-col items-center gap-0.5">
+                        <div key={sp.id || idx} className="flex flex-col items-center gap-1 w-[72px]">
                           <SpeakerAvatar
                             src={sp.headshot}
                             name={sp.name || ''}
-                            size={displaySpeakers.length > 1 ? 60 : 72}
+                            size={displaySpeakers.length > 1 ? 56 : 72}
                           />
                           {displaySpeakers.length > 1 && sp.name && (
-                            <p className="text-[10px] text-[var(--mid-gray)] text-center leading-tight max-w-[88px] truncate" title={sp.name}>
+                            <p
+                              className="text-[10px] text-[var(--mid-gray)] text-center leading-tight w-full truncate"
+                              title={sp.name}
+                            >
                               {sp.name.split(',')[0]}
                             </p>
                           )}
                         </div>
                       ))}
                       {displaySpeakers.length > 3 && (
-                        <p className="text-[10px] text-[var(--mid-gray)] italic">+{displaySpeakers.length - 3} more</p>
+                        <p className="text-[10px] text-[var(--mid-gray)] italic self-center">
+                          +{displaySpeakers.length - 3} more
+                        </p>
                       )}
                     </div>
                     {hasAnyBio && (
@@ -603,9 +608,17 @@ export default function SeminarsPage() {
                 )}
 
                 {/* Reserve right-side space on lg+ so the badges /
-                    title don't run under the absolute avatar. The
-                    extra ~110px = avatar (88) + a bit of margin. */}
-                <div className={cn('mb-2', displaySpeakers.length > 0 && 'lg:pr-[110px]')}>
+                    title don't run under the absolute avatar block.
+                    Width depends on speaker count since avatars now
+                    sit horizontally: ~96px per avatar column + slack. */}
+                <div
+                  className={cn(
+                    'mb-2',
+                    displaySpeakers.length === 1 && 'lg:pr-[100px]',
+                    displaySpeakers.length === 2 && 'lg:pr-[180px]',
+                    displaySpeakers.length >= 3 && 'lg:pr-[260px]'
+                  )}
+                >
                   <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                     {/* Classification (Workshop / Webinar / etc.).
                         Prefer the preset; fall back to the freeform
