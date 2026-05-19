@@ -59,6 +59,11 @@ export default function DocumentsPage() {
   }, [level])
 
   function onFile(key: string, f: File | null) {
+    if (f && f.size > 30 * 1024 * 1024) {
+      setErr(`${f.name} is larger than 30 MB. Please upload a smaller version.`)
+      return
+    }
+    setErr(null)
     setFiles(prev => ({ ...prev, [key]: f }))
   }
 
@@ -112,7 +117,7 @@ export default function DocumentsPage() {
       <div className="card-static">
         <h1 className="text-[26px] leading-tight text-[color:var(--deep-teal)] mb-1">Upload required documents</h1>
         <p className="text-sm text-[color:var(--mid-gray)] mb-6">
-          For <span className="font-semibold text-[color:var(--narra)]">{levelLabel(level)}</span>. Accepted: PDF, JPG, PNG (max 10 MB each).
+          For <span className="font-semibold text-[color:var(--narra)]">{levelLabel(level)}</span>. Accepted: PDF, JPG, PNG (max 30 MB each).
         </p>
 
         {err && (

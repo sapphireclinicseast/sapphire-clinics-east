@@ -109,7 +109,21 @@ export default function SignaturePad({ onChange, initialValue, height = 160 }: P
         </div>
       ) : (
         <div>
-          <input type="file" accept="image/*" onChange={onUploadFile} className="block text-sm" />
+          {/* Native file pickers render as bare white "Choose File" buttons
+              that disappear on a paper background — wrap a styled label so
+              the affordance is obvious. */}
+          <label className="btn-secondary cursor-pointer inline-flex items-center gap-2" style={{ width: 'auto' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            {uploadedDataUrl ? 'Replace signature image' : 'Choose signature image'}
+            <input type="file" accept="image/*" onChange={onUploadFile} className="sr-only" />
+          </label>
+          <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-2" style={{ fontFamily: 'var(--font-display)' }}>
+            PNG or JPG of your handwritten signature.
+          </p>
           {uploadedDataUrl && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={uploadedDataUrl} alt="Uploaded signature preview" className="mt-3 max-h-32 rounded-lg bg-white p-2" style={{ border: '1px solid var(--paper-3)' }} />
