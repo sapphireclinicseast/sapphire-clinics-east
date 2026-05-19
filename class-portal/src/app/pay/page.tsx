@@ -8,18 +8,21 @@ import {
   type PaymentPlan, type PaymentRecord, type StoredUser,
 } from '@/lib/session'
 
-// Centavos (PHP × 100).
+// Centavos (PHP × 100). Each plan now carries its own pro-rated
+// miscellaneous slice (full year of misc = ₱5,000).
 const TUITION_ANNUAL   = 80_000_00
 const TUITION_BIANNUAL = 45_000_00
 const TUITION_MONTHLY  =  9_500_00
 const MISC_ANNUAL      =  5_000_00
+const MISC_BIANNUAL    =  2_500_00
+const MISC_MONTHLY     =    500_00
 
 const PLANS: Array<{
   plan: PaymentPlan; title: string; tuition: number; misc: number; period: string; deadline: string;
 }> = [
-  { plan: 'ANNUAL',   title: 'Annual',    tuition: TUITION_ANNUAL,   misc: MISC_ANNUAL, period: 'Annual SY 2026–2027', deadline: 'Every 5th of June (lump sum)' },
-  { plan: 'BIANNUAL', title: 'Bi-annual', tuition: TUITION_BIANNUAL, misc: MISC_ANNUAL, period: 'First half SY 2026–2027', deadline: 'Every 5th of December' },
-  { plan: 'MONTHLY',  title: 'Monthly',   tuition: TUITION_MONTHLY,  misc: 0,           period: thisMonthPeriod(),    deadline: 'Every 5th of the month' },
+  { plan: 'ANNUAL',   title: 'Annual',    tuition: TUITION_ANNUAL,   misc: MISC_ANNUAL,   period: 'Annual SY 2026–2027',     deadline: 'Every 5th of June (lump sum)' },
+  { plan: 'BIANNUAL', title: 'Bi-annual', tuition: TUITION_BIANNUAL, misc: MISC_BIANNUAL, period: 'First half SY 2026–2027', deadline: 'Every 5th of December' },
+  { plan: 'MONTHLY',  title: 'Monthly',   tuition: TUITION_MONTHLY,  misc: MISC_MONTHLY,  period: thisMonthPeriod(),         deadline: 'Every 5th of the month' },
 ]
 
 function thisMonthPeriod(): string {
@@ -130,7 +133,9 @@ export default function PayPage() {
               <Row item="Annual Tuition" amount={fmt(TUITION_ANNUAL)} deadline="Every 5th of June" />
               <Row item="Bi-annual Payment" amount={fmt(TUITION_BIANNUAL) + ' / half'} deadline="Every 5th of December" />
               <Row item="Monthly Payment" amount={fmt(TUITION_MONTHLY) + ' / month'} deadline="Every 5th of the month" />
-              <Row item="Miscellaneous" amount={fmt(MISC_ANNUAL) + ' / year'} deadline="With annual / bi-annual" />
+              <Row item="Miscellaneous (Annual)"    amount={fmt(MISC_ANNUAL)}     deadline="With annual payment" />
+              <Row item="Miscellaneous (Bi-annual)" amount={fmt(MISC_BIANNUAL) + ' / half'} deadline="With bi-annual payment" />
+              <Row item="Miscellaneous (Monthly)"   amount={fmt(MISC_MONTHLY) + ' / month'} deadline="With monthly payment" />
               <Row item="Books" amount="May ask with front desk" deadline="—" />
               <Row item="Uniform" amount="May ask with front desk" deadline="—" />
             </tbody>

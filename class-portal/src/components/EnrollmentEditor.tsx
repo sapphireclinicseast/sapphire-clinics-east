@@ -232,8 +232,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function SubHead({ children }: { children: React.ReactNode }) {
   return <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--mid-gray)] font-semibold" style={{ fontFamily: 'var(--font-display)' }}>{children}</div>
 }
-function Grid2({ children }: { children: React.ReactNode }) { return <div className="grid grid-cols-2 gap-3">{children}</div> }
-function Grid3({ children }: { children: React.ReactNode }) { return <div className="grid grid-cols-3 gap-3">{children}</div> }
+function Grid2({ children }: { children: React.ReactNode }) { return <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{children}</div> }
+function Grid3({ children }: { children: React.ReactNode }) { return <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">{children}</div> }
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="block"><span className="label">{label}</span>{children}</label>
 }
