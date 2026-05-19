@@ -6,7 +6,7 @@
 const DRAFT_KEY = 'scei_class_draft_v1'
 const SESSION_KEY = 'scei_class_session_v1'
 
-export type EnrollmentLevel = 'KINDER' | 'GRADE_1' | 'GRADE_2' | 'GRADE_3'
+export type EnrollmentLevel = 'KINDER' | 'GRADE_1' | 'GRADE_2' | 'GRADE_3' | 'GRADE_4' | 'GRADE_5' | 'GRADE_6'
 export type LrnStatus = 'NO_LRN' | 'WITH_LRN' | 'RETURNING'
 export type GuardianOfRecord = 'FATHER' | 'MOTHER' | 'OTHER'
 
@@ -122,6 +122,9 @@ export function levelLabel(l: EnrollmentLevel): string {
     case 'GRADE_1': return 'Grade 1'
     case 'GRADE_2': return 'Grade 2'
     case 'GRADE_3': return 'Grade 3'
+    case 'GRADE_4': return 'Grade 4'
+    case 'GRADE_5': return 'Grade 5'
+    case 'GRADE_6': return 'Grade 6'
   }
 }
 

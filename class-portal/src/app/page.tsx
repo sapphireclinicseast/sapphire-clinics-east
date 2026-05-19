@@ -5,14 +5,18 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { lookupStudent, type EnrollmentLevel } from '@/lib/api'
 import { getSession, setSession, setDraft, clearDraft, levelLabel } from '@/lib/session'
 import { AuroraBackground } from '@/components/ui/aurora-background'
+import { RotatingWord } from '@/components/ui/rotating-word'
 
 type Tab = 'returning' | 'new'
 
-const LEVELS: { value: EnrollmentLevel; title: string; sub: string }[] = [
-  { value: 'KINDER',  title: 'Kindergarten', sub: 'Ages 5–6' },
-  { value: 'GRADE_1', title: 'Grade 1',      sub: 'Ages 6–7' },
-  { value: 'GRADE_2', title: 'Grade 2',      sub: 'Ages 7–8' },
-  { value: 'GRADE_3', title: 'Grade 3',      sub: 'Ages 8–9' },
+const LEVELS: { value: EnrollmentLevel; title: string }[] = [
+  { value: 'KINDER',  title: 'Kindergarten' },
+  { value: 'GRADE_1', title: 'Grade 1' },
+  { value: 'GRADE_2', title: 'Grade 2' },
+  { value: 'GRADE_3', title: 'Grade 3' },
+  { value: 'GRADE_4', title: 'Grade 4' },
+  { value: 'GRADE_5', title: 'Grade 5' },
+  { value: 'GRADE_6', title: 'Grade 6' },
 ]
 
 export default function HomePage() {
@@ -81,19 +85,24 @@ function HomeInner() {
             <div className="mb-7 animate-fade-in-down">
               <div className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-white/60 backdrop-blur-md border border-[color:var(--paper-3)] text-[11.5px] uppercase tracking-[0.12em] text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>
                 <span aria-hidden>✨</span>
-                Kindergarten · Grade 1–3 · DepEd-accredited
+                Kindergarten · Grade 1–6 · DepEd-accredited
               </div>
             </div>
 
             <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold text-[color:var(--narra)] animate-fade-in-up animation-delay-200 leading-[1.02]" style={{ fontFamily: 'var(--font-display)' }}>
-              Enroll your student
+              Enroll your child
             </h1>
-            <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold bg-gradient-to-r from-[color:var(--moss)] via-[color:var(--sage)] to-[color:var(--narra)] bg-clip-text text-transparent animate-fade-in-up animation-delay-400 mt-1" style={{ fontFamily: 'var(--font-display)' }}>
-              in a graded class
+            <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold animate-fade-in-up animation-delay-400 mt-1 inline-flex items-baseline justify-center gap-2 flex-wrap" style={{ fontFamily: 'var(--font-display)' }}>
+              <span className="text-[color:var(--moss)]">in a</span>
+              <RotatingWord
+                words={['graded', 'special', 'dynamic', 'caring']}
+                className="bg-gradient-to-r from-[color:var(--moss)] via-[color:var(--sage)] to-[color:var(--narra)] bg-clip-text text-transparent"
+              />
+              <span className="text-[color:var(--narra)]">class</span>
             </h1>
 
             <p className="max-w-2xl mt-6 text-base md:text-lg lg:text-xl text-[color:var(--ink)]/80 leading-relaxed animate-fade-in-up animation-delay-600">
-              Sapphire Clinics East offers Kindergarten through Grade 3 in a small, attentive setting — with a DepEd-recognised graded class and a Learner Reference Number for every student.
+              Sapphire Clinics East offers Kindergarten through Grade 6 in a small, attentive setting — with a DepEd-recognised graded class and a Learner Reference Number for every child.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-3 mt-9 animate-fade-in-up animation-delay-800">
@@ -118,13 +127,13 @@ function HomeInner() {
               Online enrollment
             </div>
             <h1 className="text-[40px] md:text-[44px] leading-[1.05] mb-4">
-              Enroll your student<br/>in a few easy steps.
+              Enroll your child<br/>in a few easy steps.
             </h1>
             <p className="text-white/80 text-[15px] leading-relaxed mb-7 max-w-sm">
               Pick an enrollment level, fill out the learner profile, then upload the required documents. The admissions team will confirm next steps.
             </p>
             <div className="flex flex-col gap-2.5 text-[13px] text-white/85" style={{ fontFamily: 'var(--font-display)' }}>
-              <div className="flex items-center gap-2"><Check/> Kindergarten · Grade 1–3</div>
+              <div className="flex items-center gap-2"><Check/> Kindergarten · Grade 1–6</div>
               <div className="flex items-center gap-2"><Check/> Graded class · DepEd-accredited</div>
               <div className="flex items-center gap-2"><Check/> Issued LRN for every student</div>
             </div>
@@ -212,7 +221,6 @@ function HomeInner() {
                     className={`level-tile ${level === l.value ? 'level-tile-active' : ''}`}
                   >
                     <span className="level-tile-title">{l.title}</span>
-                    <span className="level-tile-sub">{l.sub}</span>
                   </button>
                 ))}
               </div>
