@@ -103,7 +103,17 @@ export default function SignaturePad({ onChange, initialValue, height = 160 }: P
               onPointerLeave={onUp}
             />
           </div>
-          <button type="button" className="text-xs text-[color:var(--mid-gray)] hover:text-[color:var(--narra)] mt-2 underline-offset-2 hover:underline" onClick={clearPad}>
+          <button
+            type="button"
+            onClick={clearPad}
+            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-semibold text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] transition-colors"
+            style={{ borderColor: 'var(--clay)', fontFamily: 'var(--font-display)' }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+              <path d="M10 11v6"/><path d="M14 11v6"/>
+            </svg>
             Clear pad
           </button>
         </div>
