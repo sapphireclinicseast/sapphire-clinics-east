@@ -1,10 +1,10 @@
 'use client'
 
 import { Suspense, useEffect, useState } from 'react'
-import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { lookupStudent, type EnrollmentLevel } from '@/lib/api'
 import { getSession, setSession, setDraft, clearDraft, levelLabel } from '@/lib/session'
+import Hero from '@/components/ui/animated-shader-hero'
 
 type Tab = 'returning' | 'new'
 
@@ -65,22 +65,29 @@ function HomeInner() {
     router.push('/enroll')
   }
 
+  function scrollToEnroll() {
+    const el = document.getElementById('enroll')
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
   return (
-    <div className="space-y-8 md:space-y-10">
-      {/* Top hero photo */}
-      <section className="animate-fade-up rounded-3xl overflow-hidden shadow-[0_8px_28px_rgba(27,63,56,0.10)] ring-1 ring-[color:var(--paper-3)]">
-        <Image
-          src="/hero-family.png"
-          alt="An SCEI parent with four students seated together"
-          width={2816}
-          height={1536}
-          priority
-          sizes="(max-width: 1024px) 100vw, 1024px"
-          className="block w-full h-auto"
+    <>
+      {/* Full-bleed animated shader hero. Negative-margin trick breaks out
+          of the parent <main>'s max-w-5xl + px-5 + py-8 so the hero spans
+          the entire viewport width. */}
+      <section className="relative left-1/2 right-1/2 -mx-[50vw] w-screen -mt-8">
+        <Hero
+          trustBadge={{ text: 'Kindergarten · Grade 1–3 · DepEd-accredited', icons: ['✨'] }}
+          headline={{ line1: 'Enroll your student', line2: 'in a graded class' }}
+          subtitle="Sapphire Clinics East offers Kindergarten through Grade 3 in a small, attentive setting — with a DepEd-recognised graded class and a Learner Reference Number for every student."
+          buttons={{
+            primary:   { text: 'Start enrollment', onClick: scrollToEnroll },
+            secondary: { text: 'About SCEI',       onClick: () => router.push('/about') },
+          }}
         />
       </section>
 
-      <div className="grid md:grid-cols-5 gap-8 md:gap-10 items-start">
+      <div id="enroll" className="grid md:grid-cols-5 gap-8 md:gap-10 items-start mt-12 scroll-mt-24">
       {/* Hero */}
       <section className="md:col-span-2 animate-fade-up md:sticky md:top-24">
         <div className="hero-gradient rounded-3xl p-8 md:p-9 relative">
@@ -200,7 +207,7 @@ function HomeInner() {
         </div>
       </section>
       </div>
-    </div>
+    </>
   )
 }
 

@@ -28,6 +28,8 @@ export default function AboutPage() {
             <li className="flex gap-3"><Dot/> Kindergarten and Grades 1–3 in one graded class.</li>
             <li className="flex gap-3"><Dot/> DepEd-accredited curriculum — your child stays on track with the national program.</li>
             <li className="flex gap-3"><Dot/> Every enrolled student is issued a Learner Reference Number (LRN).</li>
+            <li className="flex gap-3"><Dot/> Students are issued an official <span className="font-semibold">report card</span> each grading period.</li>
+            <li className="flex gap-3"><Dot/> Our graded classes are <span className="font-semibold">recognised</span> when your child transfers to another school — completed levels carry over.</li>
             <li className="flex gap-3"><Dot/> Small class sizes for individualised attention.</li>
             <li className="flex gap-3"><Dot/> Integrated with Sapphire Clinics East&apos;s allied health services when extra support is needed.</li>
           </ul>
@@ -45,7 +47,55 @@ export default function AboutPage() {
             <a href="/" className="btn-primary">Start enrollment →</a>
           </div>
         </div>
+
+        <div className="card-static">
+          <h2 className="text-[22px] leading-tight mb-1">Questions?</h2>
+          <p className="text-sm text-[color:var(--mid-gray)] mb-5">
+            If you have any questions about admissions, programs, or your child&apos;s enrollment, please reach out to us.
+          </p>
+
+          <div className="grid sm:grid-cols-2 gap-5">
+            <BranchCard
+              name="East Branch"
+              address="Level 4, Robinsons Metro East, Marcos Highway, Brgy. Dela Paz, Santolan, Pasig"
+              email="east.sandboxclinic@gmail.com"
+              phones={['+63 917 118 9289', '(02) 5310-4991']}
+            />
+            <BranchCard
+              name="Greenhills Branch"
+              address="Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City"
+              email="greenhills.sandboxclinic@gmail.com"
+              phones={['+63 917 770 1686', '(02) 8529-1590']}
+            />
+          </div>
+        </div>
       </section>
+    </div>
+  )
+}
+
+function BranchCard({ name, address, email, phones }: { name: string; address: string; email: string; phones: string[] }) {
+  return (
+    <div className="rounded-2xl p-5 border" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
+      <h3 className="text-[16px] font-semibold text-[color:var(--narra)] mb-3" style={{ fontFamily: 'var(--font-display)' }}>
+        {name}
+      </h3>
+      <ul className="space-y-2.5 text-[13.5px] text-[color:var(--ink)]">
+        <li className="flex gap-2.5"><span aria-hidden>📍</span><span>{address}</span></li>
+        <li className="flex gap-2.5"><span aria-hidden>✉️</span>
+          <a href={`mailto:${email}`} className="text-[color:var(--narra)] hover:underline break-all">{email}</a>
+        </li>
+        <li className="flex gap-2.5"><span aria-hidden>📞</span>
+          <span className="flex flex-wrap gap-x-2 gap-y-1">
+            {phones.map((p, i) => (
+              <span key={p} className="whitespace-nowrap">
+                <a href={`tel:${p.replace(/[^+\d]/g, '')}`} className="text-[color:var(--narra)] hover:underline">{p}</a>
+                {i < phones.length - 1 && <span className="text-[color:var(--mid-gray)] ml-2">|</span>}
+              </span>
+            ))}
+          </span>
+        </li>
+      </ul>
     </div>
   )
 }
