@@ -537,8 +537,8 @@ function PersonNameRow({ label, value, onChange, checkboxLabel, checked, onCheck
   )
 }
 
-function StepBar({ step }: { step: 1 | 2 | 3 }) {
-  const dot = (n: 1 | 2 | 3) => {
+function StepBar({ step }: { step: 1 | 2 | 3 | 4 }) {
+  const dot = (n: 1 | 2 | 3 | 4) => {
     if (n < step) return 'step-dot step-dot-done'
     if (n === step) return 'step-dot step-dot-active'
     return 'step-dot'
@@ -548,6 +548,7 @@ function StepBar({ step }: { step: 1 | 2 | 3 }) {
       <span className={dot(1)} />
       <span className={dot(2)} />
       <span className={dot(3)} />
+      <span className={dot(4)} />
     </div>
   )
 }

@@ -136,3 +136,124 @@ export function ageFromDob(dob: string): string {
   if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--
   return age >= 0 ? String(age) : ''
 }
+
+/* ─────────────────────────────────────────────────────────────────
+   Users + auth (MVP — localStorage backed)
+   Backend integration: replace getUsers/addUser/etc. with real
+   /api/public/students/* and /api/public/teachers/* once they
+   exist, and store only an HMAC-signed session token here.
+   ───────────────────────────────────────────────────────────── */
+
+const USERS_KEY = 'scei_class_users_v1'
+const AUTH_KEY = 'scei_class_auth_v1'
+
+export type UserRole = 'STUDENT' | 'TEACHER'
+export type AuthRole = UserRole | 'ADMIN'
+
+export interface StoredUser {
+  id: string
+  role: UserRole
+  email: string
+  password: string
+  firstName?: string
+  lastName?: string
+  level?: EnrollmentLevel
+  createdAt: string
+  /** Snapshot of the enrollment draft at signup (students only). */
+  enrollment?: Partial<EnrollmentDraft>
+}
+
+export interface AuthSession {
+  role: AuthRole
+  email: string
+  userId?: string
+  firstName?: string
+}
+
+export const ADMIN_EMAIL = 'main@sapphireclinicseast.org'
+export const ADMIN_PASSWORD = 'SCEI'
+
+export function getUsers(): StoredUser[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(USERS_KEY)
+    return raw ? (JSON.parse(raw) as StoredUser[]) : []
+  } catch { return [] }
+}
+
+function writeUsers(users: StoredUser[]) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(USERS_KEY, JSON.stringify(users))
+}
+
+export function findUser(role: UserRole, email: string): StoredUser | undefined {
+  const e = email.trim().toLowerCase()
+  return getUsers().find(u => u.role === role && u.email.toLowerCase() === e)
+}
+
+export function addUser(u: Omit<StoredUser, 'id' | 'createdAt'>): StoredUser {
+  const existing = findUser(u.role, u.email)
+  if (existing) throw new Error('A user with this email already exists for this role.')
+  const newUser: StoredUser = {
+    ...u,
+    id: 'usr_' + Math.random().toString(36).slice(2, 10),
+    createdAt: new Date().toISOString(),
+  }
+  writeUsers([...getUsers(), newUser])
+  return newUser
+}
+
+export function updateUser(id: string, patch: Partial<Omit<StoredUser, 'id' | 'createdAt' | 'role'>>) {
+  const users = getUsers()
+  const idx = users.findIndex(u => u.id === id)
+  if (idx < 0) throw new Error('User not found.')
+  // Disallow email collisions within the same role
+  if (patch.email) {
+    const collision = users.find(u => u.id !== id && u.role === users[idx].role && u.email.toLowerCase() === patch.email!.toLowerCase())
+    if (collision) throw new Error('Another user with this email already exists in this role.')
+  }
+  users[idx] = { ...users[idx], ...patch }
+  writeUsers(users)
+  return users[idx]
+}
+
+export function deleteUser(id: string) {
+  writeUsers(getUsers().filter(u => u.id !== id))
+}
+
+export function getAuth(): AuthSession | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(AUTH_KEY)
+    return raw ? (JSON.parse(raw) as AuthSession) : null
+  } catch { return null }
+}
+
+export function setAuth(a: AuthSession) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(AUTH_KEY, JSON.stringify(a))
+}
+
+export function clearAuth() {
+  if (typeof window === 'undefined') return
+  localStorage.removeItem(AUTH_KEY)
+}
+
+/** Attempt a sign-in. Throws on failure. */
+export function signIn(role: AuthRole, email: string, password: string): AuthSession {
+  if (role === 'ADMIN') {
+    if (email.trim().toLowerCase() !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
+      throw new Error('Invalid admin credentials.')
+    }
+    const session: AuthSession = { role: 'ADMIN', email: ADMIN_EMAIL }
+    setAuth(session)
+    return session
+  }
+  const user = findUser(role, email)
+  if (!user || user.password !== password) {
+    throw new Error('Email and password do not match a ' + role.toLowerCase() + ' account.')
+  }
+  const session: AuthSession = { role, email: user.email, userId: user.id, firstName: user.firstName }
+  setAuth(session)
+  return session
+}

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { submitDocuments } from '@/lib/api'
-import { getSession, getDraft, setDraft, clearDraft, clearSession, levelLabel, type EnrollmentLevel } from '@/lib/session'
+import { getSession, getDraft, setDraft, levelLabel, type EnrollmentLevel } from '@/lib/session'
 
 interface DocRequirement {
   key: string
@@ -28,18 +28,16 @@ export default function DocumentsPage() {
   const router = useRouter()
   const [ready, setReady] = useState(false)
   const [level, setLevel] = useState<EnrollmentLevel | null>(null)
-  const [firstName, setFirstName] = useState('')
   const [token, setToken] = useState('')
   const [files, setFiles] = useState<Record<string, File | null>>({})
   const [waiverSignedAt, setWaiverSignedAt] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
-  const [done, setDone] = useState(false)
 
   useEffect(() => {
     const s = getSession()
     if (!s) { router.replace('/?expired=1'); return }
-    setLevel(s.level); setFirstName(s.firstName); setToken(s.token)
+    setLevel(s.level); setToken(s.token)
     const draft = getDraft()
     if (draft?.waiverSignedAt) setWaiverSignedAt(draft.waiverSignedAt)
     setReady(true)
@@ -89,7 +87,7 @@ export default function DocumentsPage() {
       }
       await submitDocuments(token, { documents, waiverSignedAt })
       setDraft({ documents })
-      setDone(true)
+      router.push('/account-setup')
     } catch (e) {
       setErr((e as Error).message)
     } finally {
@@ -105,28 +103,7 @@ export default function DocumentsPage() {
     window.open(url, 'scei_waiver', 'width=720,height=860,resizable=yes,scrollbars=yes')
   }
 
-  function startOver() {
-    clearDraft(); clearSession()
-    router.push('/')
-  }
-
   if (!ready || !level) return null
-
-  if (done) {
-    return (
-      <div className="max-w-2xl mx-auto animate-fade-up">
-        <StepBar step={3} />
-        <div className="card-static text-center">
-          <div className="inline-flex w-14 h-14 rounded-full bg-[color:var(--sage-tint)] items-center justify-center mb-4 text-[color:var(--moss)] text-2xl">✓</div>
-          <h1 className="text-[26px] leading-tight text-[color:var(--deep-teal)] mb-2">Enrollment submitted</h1>
-          <p className="text-sm text-[color:var(--mid-gray)] mb-6">
-            Thanks, {firstName ? firstName + '’s family' : 'parents/guardians'}. Our admissions team will review the documents and reach out shortly to confirm the next steps.
-          </p>
-          <button className="btn-primary" onClick={startOver}>Enroll another student</button>
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="max-w-2xl mx-auto animate-fade-up">
@@ -199,8 +176,8 @@ function DocRow({ doc, file, onFile }: { doc: DocRequirement; file: File | null;
   )
 }
 
-function StepBar({ step }: { step: 1 | 2 | 3 }) {
-  const dot = (n: 1 | 2 | 3) => {
+function StepBar({ step }: { step: 1 | 2 | 3 | 4 }) {
+  const dot = (n: 1 | 2 | 3 | 4) => {
     if (n < step) return 'step-dot step-dot-done'
     if (n === step) return 'step-dot step-dot-active'
     return 'step-dot'
@@ -210,6 +187,7 @@ function StepBar({ step }: { step: 1 | 2 | 3 }) {
       <span className={dot(1)} />
       <span className={dot(2)} />
       <span className={dot(3)} />
+      <span className={dot(4)} />
     </div>
   )
 }

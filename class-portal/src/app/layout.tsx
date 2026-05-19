@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Montserrat, Manrope } from 'next/font/google'
 import './globals.css'
+import HeaderNav from '@/components/HeaderNav'
 
 const montserrat = Montserrat({
   subsets: ['latin'],
@@ -31,9 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <span className="text-[color:var(--narra)] font-semibold text-[16px] tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Sapphire Clinics East</span>
               <span className="text-[10.5px] text-[color:var(--mid-gray)] uppercase tracking-[0.16em]" style={{ fontFamily: 'var(--font-display)' }}>Class Portal</span>
             </a>
-            <nav className="flex gap-1 text-sm items-center" style={{ fontFamily: 'var(--font-display)' }}>
-              <a href="/about" className="px-3 py-2 rounded-lg text-[color:var(--narra)] hover:text-[color:var(--moss)] hover:bg-[color:var(--paper-2)] transition-colors">About Us</a>
-            </nav>
+            <HeaderNav />
           </div>
         </header>
         <main className="max-w-5xl mx-auto px-5 py-8">{children}</main>
