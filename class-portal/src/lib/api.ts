@@ -2,7 +2,7 @@
 // shape so we can drop in real /api/public/students/* routes later without
 // changing the page components.
 
-import type { EnrollmentDraft } from './session'
+import type { EnrollmentDraft, EnrollmentLevel } from './session'
 
 export const API_BASE = '/api/booking-proxy'
 
