@@ -87,9 +87,9 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
                 onSaved={updated => { setStudent(updated); onChange?.() }}
               />
             )}
-            {viewerRole === 'ADMIN' && (
+            {(viewerRole === 'ADMIN' || viewerRole === 'STUDENT') && (
               <button type="button" className="btn-secondary text-xs" onClick={() => setEditorOpen(true)}>
-                Edit enrollment
+                {viewerRole === 'STUDENT' ? 'Edit profile' : 'Edit enrollment'}
               </button>
             )}
           </div>
@@ -186,9 +186,10 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
         </div>
       )}
 
-      {editorOpen && viewerRole === 'ADMIN' && (
+      {editorOpen && (viewerRole === 'ADMIN' || viewerRole === 'STUDENT') && (
         <EnrollmentEditor
           student={student}
+          headerLabel={viewerRole === 'STUDENT' ? 'Edit your profile' : undefined}
           onClose={() => setEditorOpen(false)}
           onSaved={updated => { setStudent(updated); setEditorOpen(false); onChange?.() }}
         />

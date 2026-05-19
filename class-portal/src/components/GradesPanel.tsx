@@ -11,17 +11,25 @@ interface Props {
   viewer: { role: 'TEACHER' | 'ADMIN'; userId?: string }
 }
 
+type DraftRow = { q1: string; q2: string; q3: string; q4: string; yearAvg: string }
+
 export default function GradesPanel({ viewer }: Props) {
   const [students, setStudents] = useState<StoredUser[]>([])
   const [grades, setGrades] = useState<Record<string, GradeRecord>>({})
+  /** Per-student edit-mode flag. When a row is being edited, the inputs are
+   *  live; otherwise the saved values are read-only text. */
+  const [editingId, setEditingId] = useState<string | null>(null)
+  /** Pending draft values while editing — only committed on Save. */
+  const [draft, setDraft] = useState<DraftRow | null>(null)
+  /** Brief "Saved" flash so the teacher sees confirmation after Save. */
+  const [savedFlash, setSavedFlash] = useState<string | null>(null)
 
   function refresh() {
     let pool = getUsers().filter(u => u.role === 'STUDENT')
     if (viewer.role === 'TEACHER' && viewer.userId) {
       const allowed = new Set(teacherAssignedLevels(viewer.userId))
       // Teachers without explicit assignments still see every student so the
-      // page isn't empty before the admin assigns levels — they can flip to
-      // assignment-only filtering later.
+      // page isn't empty before the admin assigns levels.
       if (allowed.size > 0) pool = pool.filter(u => u.level && allowed.has(u.level as EnrollmentLevel))
     }
     setStudents(pool)
@@ -29,11 +37,43 @@ export default function GradesPanel({ viewer }: Props) {
   }
   useEffect(refresh, [viewer.role, viewer.userId])
 
-  async function handleUpdate(student: StoredUser, patch: Partial<GradeRecord>) {
+  function startEditing(student: StoredUser) {
+    const g = grades[student.id]
+    setEditingId(student.id)
+    setDraft({
+      q1: g?.q1 ?? '',
+      q2: g?.q2 ?? '',
+      q3: g?.q3 ?? '',
+      q4: g?.q4 ?? '',
+      yearAvg: g?.yearAvg ?? '',
+    })
+    setSavedFlash(null)
+  }
+
+  function cancelEditing() {
+    setEditingId(null)
+    setDraft(null)
+  }
+
+  function saveEditing(student: StoredUser) {
+    if (!draft) return
     const existing = grades[student.id] ?? { studentId: student.id, updatedAt: '' }
-    const next: GradeRecord = { ...existing, ...patch, studentId: student.id, updatedAt: new Date().toISOString(), teacherEmail: existing.teacherEmail }
+    const next: GradeRecord = {
+      ...existing,
+      studentId: student.id,
+      q1: draft.q1.trim() || undefined,
+      q2: draft.q2.trim() || undefined,
+      q3: draft.q3.trim() || undefined,
+      q4: draft.q4.trim() || undefined,
+      yearAvg: draft.yearAvg.trim() || undefined,
+      updatedAt: new Date().toISOString(),
+    }
     saveGrade(next)
     setGrades(g => ({ ...g, [student.id]: next }))
+    setEditingId(null)
+    setDraft(null)
+    setSavedFlash(student.id)
+    window.setTimeout(() => setSavedFlash(id => (id === student.id ? null : id)), 2500)
   }
 
   async function handleProof(student: StoredUser, file: File) {
@@ -43,7 +83,14 @@ export default function GradesPanel({ viewer }: Props) {
     }
     const fileId = 'grade_' + Math.random().toString(36).slice(2, 12)
     await putFile(fileId, file)
-    await handleUpdate(student, { proofFileId: fileId, proofFileName: file.name, proofFileType: file.type, proofFileSize: file.size })
+    const next: GradeRecord = {
+      ...(existing ?? { studentId: student.id, updatedAt: '' }),
+      studentId: student.id,
+      proofFileId: fileId, proofFileName: file.name, proofFileType: file.type, proofFileSize: file.size,
+      updatedAt: new Date().toISOString(),
+    }
+    saveGrade(next)
+    setGrades(g => ({ ...g, [student.id]: next }))
   }
 
   async function viewProof(g: GradeRecord) {
@@ -57,9 +104,9 @@ export default function GradesPanel({ viewer }: Props) {
 
   return (
     <div className="card-static">
-      <h2 className="text-[18px] leading-tight mb-3">Quarterly grades</h2>
+      <h2 className="text-[18px] leading-tight mb-1">Quarterly grades</h2>
       <p className="text-[12.5px] text-[color:var(--mid-gray)] mb-4">
-        Type the average per quarter and attach a proof document (Excel / Word / PDF).
+        Click <span className="font-semibold">Edit</span> on a student row to type quarterly averages, then <span className="font-semibold">Save</span> to finalize. Proof documents (Excel / Word / PDF) can be uploaded any time.
       </p>
 
       <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--paper-3)' }}>
@@ -73,25 +120,30 @@ export default function GradesPanel({ viewer }: Props) {
               <th className="py-2 px-3 text-center">Q4 Avg</th>
               <th className="py-2 px-3 text-center">Year Avg</th>
               <th className="py-2 px-3">Proof</th>
+              <th className="py-2 px-3"></th>
             </tr>
           </thead>
           <tbody>
             {students.length === 0 && (
-              <tr><td colSpan={7} className="py-6 px-3 text-center text-[color:var(--mid-gray)]">No students yet.</td></tr>
+              <tr><td colSpan={8} className="py-6 px-3 text-center text-[color:var(--mid-gray)]">No students yet.</td></tr>
             )}
             {students.map(s => {
               const g = grades[s.id]
+              const isEditing = editingId === s.id
               return (
                 <tr key={s.id} className="border-b align-top" style={{ borderColor: 'var(--paper-3)' }}>
                   <td className="py-2.5 px-3">
                     <div className="font-semibold text-[color:var(--narra)]">{s.firstName} {s.lastName}</div>
                     <div className="text-[11.5px] text-[color:var(--mid-gray)]">{s.level ? levelLabel(s.level) : '—'}</div>
+                    {savedFlash === s.id && (
+                      <div className="text-[11px] text-emerald-700 font-semibold mt-1">✓ Saved</div>
+                    )}
                   </td>
-                  <QuarterCell value={g?.q1} onChange={v => handleUpdate(s, { q1: v })} />
-                  <QuarterCell value={g?.q2} onChange={v => handleUpdate(s, { q2: v })} />
-                  <QuarterCell value={g?.q3} onChange={v => handleUpdate(s, { q3: v })} />
-                  <QuarterCell value={g?.q4} onChange={v => handleUpdate(s, { q4: v })} />
-                  <QuarterCell value={g?.yearAvg} onChange={v => handleUpdate(s, { yearAvg: v })} highlight />
+                  <QuarterCell value={isEditing ? draft?.q1 : g?.q1} editing={isEditing} onChange={v => setDraft(d => d ? { ...d, q1: v } : d)} />
+                  <QuarterCell value={isEditing ? draft?.q2 : g?.q2} editing={isEditing} onChange={v => setDraft(d => d ? { ...d, q2: v } : d)} />
+                  <QuarterCell value={isEditing ? draft?.q3 : g?.q3} editing={isEditing} onChange={v => setDraft(d => d ? { ...d, q3: v } : d)} />
+                  <QuarterCell value={isEditing ? draft?.q4 : g?.q4} editing={isEditing} onChange={v => setDraft(d => d ? { ...d, q4: v } : d)} />
+                  <QuarterCell value={isEditing ? draft?.yearAvg : g?.yearAvg} editing={isEditing} onChange={v => setDraft(d => d ? { ...d, yearAvg: v } : d)} highlight />
                   <td className="py-2.5 px-3">
                     {g?.proofFileId ? (
                       <div className="flex items-center gap-2">
@@ -108,6 +160,16 @@ export default function GradesPanel({ viewer }: Props) {
                       </label>
                     )}
                   </td>
+                  <td className="py-2.5 px-3 whitespace-nowrap">
+                    {isEditing ? (
+                      <div className="flex gap-1.5 justify-end">
+                        <button className="btn-secondary text-xs" onClick={cancelEditing}>Cancel</button>
+                        <button className="btn-primary text-xs" onClick={() => saveEditing(s)}>Save</button>
+                      </div>
+                    ) : (
+                      <button className="btn-secondary text-xs" onClick={() => startEditing(s)}>Edit</button>
+                    )}
+                  </td>
                 </tr>
               )
             })}
@@ -118,7 +180,14 @@ export default function GradesPanel({ viewer }: Props) {
   )
 }
 
-function QuarterCell({ value, onChange, highlight }: { value?: string; onChange: (v: string) => void; highlight?: boolean }) {
+function QuarterCell({ value, onChange, editing, highlight }: { value?: string; onChange: (v: string) => void; editing: boolean; highlight?: boolean }) {
+  if (!editing) {
+    return (
+      <td className="py-2 px-2 text-center" style={{ background: highlight ? 'var(--sage-tint)' : undefined }}>
+        <span className="font-mono font-semibold text-[color:var(--ink)]">{value || '—'}</span>
+      </td>
+    )
+  }
   return (
     <td className="py-2 px-2 text-center" style={{ background: highlight ? 'var(--sage-tint)' : undefined }}>
       <input
