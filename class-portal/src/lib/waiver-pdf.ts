@@ -389,16 +389,69 @@ export function generateWaiverPdf(record: WaiverRecord): jsPDF {
 
   // 9. Notarization
   sectionTitle(c, '9. Acknowledgment (For Notarization)')
-  bodyText(c, 'REPUBLIC OF THE PHILIPPINES )', { size: 9 })
-  bodyText(c, '_______________________________ )  S.S.', { size: 9 })
-  c.y += 1
+  ensureSpace(c, 14)
+
+  // Republic header — aligned closing parens column
+  const venueW = 80
+  const parenX = PAGE_MARGIN_X + venueW + 2
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  setColor(doc, COLOR_INK)
+  doc.text('REPUBLIC OF THE PHILIPPINES', PAGE_MARGIN_X, c.y + 3.5)
+  doc.text(')', parenX, c.y + 3.5)
+  c.y += 5
+  // Venue (city) blank line + ) S.S.
+  setDrawColor(doc, COLOR_INK)
+  doc.setLineWidth(0.3)
+  doc.line(PAGE_MARGIN_X, c.y + 3.8, PAGE_MARGIN_X + venueW, c.y + 3.8)
+  doc.text(') S.S.', parenX, c.y + 3.5)
+  c.y += 7
+
+  // BEFORE ME body — wraps naturally
   bodyText(c, 'BEFORE ME, a Notary Public for and in __________________, this _____ day of __________________, 20____, personally appeared the Parent/Guardian named above, with the competent evidence of identity stated in this Waiver, known to me to be the same person who executed the foregoing instrument, who acknowledged to me that the same is his/her free and voluntary act and deed.')
+  c.y += 1
   bodyText(c, 'WITNESS MY HAND AND SEAL on the date and place first above written.')
-  c.y += 2
-  bodyText(c, '                                                                               _____________________________')
-  bodyText(c, '                                                                               NOTARY PUBLIC', { bold: true })
-  c.y += 2
-  bodyText(c, 'Doc. No. _______;   Page No. _______;   Book No. _______;   Series of 20____.')
+  c.y += 5
+
+  // Notary signature block — centered horizontally on the page
+  ensureSpace(c, 14)
+  const sigLineW = 70
+  const sigCenterX = PAGE_W / 2
+  setDrawColor(doc, COLOR_INK)
+  doc.setLineWidth(0.4)
+  doc.line(sigCenterX - sigLineW / 2, c.y + 1, sigCenterX + sigLineW / 2, c.y + 1)
+  c.y += 4
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(9.5)
+  setColor(doc, COLOR_NARRA)
+  doc.text('NOTARY PUBLIC', sigCenterX, c.y + 3, { align: 'center' })
+  c.y += 8
+
+  // Doc / Page / Book / Series — evenly-spaced columns with underlines
+  ensureSpace(c, 8)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  setColor(doc, COLOR_INK)
+  const cols: Array<{ label: string; trailing?: string }> = [
+    { label: 'Doc. No.' },
+    { label: 'Page No.' },
+    { label: 'Book No.' },
+    { label: 'Series of 20', trailing: '.' },
+  ]
+  const colW = CONTENT_W / cols.length
+  cols.forEach((col, i) => {
+    const x = PAGE_MARGIN_X + i * colW
+    doc.text(col.label, x, c.y + 3.5)
+    const labelWidth = doc.getTextWidth(col.label)
+    const lineStart = x + labelWidth + 1.5
+    const lineEnd = x + colW - (col.trailing ? 5 : 8)
+    setDrawColor(doc, COLOR_INK)
+    doc.setLineWidth(0.3)
+    doc.line(lineStart, c.y + 3.8, lineEnd, c.y + 3.8)
+    if (col.trailing) doc.text(col.trailing, lineEnd + 1, c.y + 3.5)
+    if (i < cols.length - 1) doc.text(';', lineEnd + 1.5, c.y + 3.5)
+  })
+  c.y += 6
 
   // Page footers
   const pageCount = doc.getNumberOfPages()
