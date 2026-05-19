@@ -38,7 +38,7 @@ export default function SignInPage() {
         <h1 className="text-[26px] leading-tight text-[color:var(--deep-teal)] mb-1">Sign in</h1>
         <p className="text-sm text-[color:var(--mid-gray)] mb-6">Choose your role to continue.</p>
 
-        <div className="grid grid-cols-3 gap-2.5 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-6">
           {ROLES.map(r => (
             <button
               key={r.value}

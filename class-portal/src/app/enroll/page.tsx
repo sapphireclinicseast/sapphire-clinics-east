@@ -267,7 +267,7 @@ export default function EnrollPage() {
 
           {/* Personal */}
           <Section title="Student info">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field label="Full Last Name" required>
                 <UInput required value={lastName} onValue={setLastName} />
               </Field>
@@ -275,7 +275,7 @@ export default function EnrollPage() {
                 <UInput required value={firstName} onValue={setFirstName} />
               </Field>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field label="Full Middle Name" required>
                 <UInput required value={middleName} onValue={setMiddleName} />
               </Field>
@@ -284,7 +284,7 @@ export default function EnrollPage() {
               </Field>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <Field label="Date of Birth" required>
                 <input required type="date" className="input" value={dob} onChange={e => setDob(e.target.value)} />
               </Field>
@@ -316,7 +316,7 @@ export default function EnrollPage() {
               </Field>
             )}
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field label="Mother tongue" required>
                 <UInput required value={motherTongue} onValue={setMotherTongue} />
               </Field>
@@ -334,7 +334,7 @@ export default function EnrollPage() {
             <Field label="House Number and Street" required>
               <UInput required value={houseStreet} onValue={setHouseStreet} />
             </Field>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field label="Barangay" required>
                 <UInput required value={barangay} onValue={setBarangay} />
               </Field>
@@ -381,7 +381,7 @@ export default function EnrollPage() {
               hint={guardianFieldsDisabled ? `Disabled — ${guardianOfRecord === 'FATHER' ? 'Father' : 'Mother'} is the official guardian.` : undefined}
             />
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field label="Telephone Number" required>
                 <UInput required value={telephone} onValue={setTelephone} placeholder="(02) XXXX XXXX" />
               </Field>
@@ -413,7 +413,7 @@ export default function EnrollPage() {
                 <div className="text-[11.5px] uppercase tracking-[0.12em] text-[color:var(--mid-gray)] font-semibold" style={{ fontFamily: 'var(--font-display)' }}>
                   For Returning Learners (Balik-Aral) and Those Who Shall Transfer / Move In
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Field label="Last Grade Level Completed" required>
                     <UInput required value={lastGradeCompleted} onValue={setLastGradeCompleted} />
                   </Field>
@@ -421,7 +421,7 @@ export default function EnrollPage() {
                     <UInput required value={lastSchoolYearCompleted} onValue={setLastSchoolYearCompleted} placeholder="e.g. 2024 TO 2025" />
                   </Field>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Field label="School Name" required>
                     <UInput required value={previousSchoolName} onValue={setPreviousSchoolName} />
                   </Field>
@@ -539,7 +539,7 @@ function PersonNameRow({ label, value, onChange, checkboxLabel, checked, onCheck
           </label>
         )}
       </div>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <UInput value={value.lastName}   onValue={v => onChange({ ...value, lastName: v })}   placeholder="LAST NAME"   required={required} disabled={disabled} />
         <UInput value={value.firstName}  onValue={v => onChange({ ...value, firstName: v })}  placeholder="FIRST NAME"  required={required} disabled={disabled} />
         <UInput value={value.middleName} onValue={v => onChange({ ...value, middleName: v })} placeholder="MIDDLE NAME" required={required} disabled={disabled} />
