@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { lookupPatient, registerPatient } from '@/lib/api'
 import { getSession, setSession } from '@/lib/session'
 import Chatbot from '@/components/Chatbot'
+import { Hero3D } from '@/components/landing/Hero3D'
 
 type Tab = 'returning' | 'new'
 
@@ -68,44 +69,16 @@ function HomeInner() {
   }
 
   return (
-    <div className="grid md:grid-cols-5 gap-8 md:gap-10 items-start">
+    <div className="space-y-8 md:space-y-10">
       <Chatbot />
-      {/* Hero */}
-      <section className="md:col-span-2 animate-fade-up md:sticky md:top-24">
-        <div className="hero-gradient rounded-3xl p-8 md:p-9 relative">
-          <div className="relative z-10">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 backdrop-blur-sm text-[11px] uppercase tracking-[0.12em] mb-5" style={{ fontFamily: 'var(--font-display)' }}>
-              <span className="w-1.5 h-1.5 rounded-full bg-[color:var(--gold-light)] animate-pulse-ring"></span>
-              Online booking
-            </div>
-            <h1 className="text-[40px] md:text-[44px] leading-[1.05] mb-4">
-              Book your next<br/>appointment with ease.
-            </h1>
-            <p className="text-white/80 text-[15px] leading-relaxed mb-7 max-w-sm">
-              Pick a therapist, choose up to three possible slots, and the front desk will confirm your appointment.
-            </p>
-            <div className="flex flex-col gap-2.5 text-[13px] text-white/85" style={{ fontFamily: 'var(--font-display)' }}>
-              <div className="flex items-center gap-2"><Check/> 9 services · 2 branches</div>
-              <div className="flex items-center gap-2"><Check/> In-clinic or teletherapy</div>
-              <div className="flex items-center gap-2"><Check/> Secure PayMongo checkout</div>
-            </div>
-            {signedIn && (
-              <div className="mt-6 p-4 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-[11px] uppercase tracking-[0.1em] text-white/60" style={{ fontFamily: 'var(--font-display)' }}>Signed in as</div>
-                  <div className="font-semibold">{signedIn.firstName}</div>
-                </div>
-                <a href="/book" className="inline-flex items-center gap-1.5 bg-[color:var(--gold)] hover:bg-[color:var(--gold-light)] text-white text-sm font-semibold px-3.5 py-2 rounded-lg transition-colors" style={{ fontFamily: 'var(--font-display)' }}>
-                  Continue booking →
-                </a>
-              </div>
-            )}
-          </div>
-        </div>
+
+      {/* Hero — Splite 3D anatomy scene over a Narra/Sun gradient. */}
+      <section className="animate-fade-up">
+        <Hero3D signedInFirstName={signedIn?.firstName ?? null} />
       </section>
 
       {/* Auth card */}
-      <section className="md:col-span-3 animate-fade-up stagger-2">
+      <section className="max-w-2xl mx-auto animate-fade-up stagger-2">
         <div className="card-static">
           <div className="flex items-end justify-between mb-5">
             <div>
@@ -238,6 +211,4 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-function Check() {
-  return <span className="inline-flex w-4 h-4 rounded-full bg-white/20 items-center justify-center text-[10px]">✓</span>
-}
+// Check icon is now owned by Hero3D — removed the orphan local copy.

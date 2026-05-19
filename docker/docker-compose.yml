@@ -108,6 +108,10 @@ services:
     environment:
       MARKETING_URL: ${MARKETING_URL:-https://marketing.sapphireclinicseast.org}
       ACCOUNTING_URL: ${ACCOUNTING_URL:-https://accounting.sapphireclinicseast.org}
+      # Optional override for the hero 3D scene (Spline). When unset the
+      # component falls back to the public placeholder URL baked into
+      # the source. Pass the .splinecode URL from app.spline.design.
+      NEXT_PUBLIC_SPLINE_HERO_SCENE: ${NEXT_PUBLIC_SPLINE_HERO_SCENE:-}
       NODE_ENV: production
     ports:
       - "127.0.0.1:3005:3000"
