@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import {
   getUsers, getWaivers, saveWaiver,
   teacherAssignedLevels,
+  paymentStatusFor,
   levelLabel,
   type StoredUser, type EnrollmentLevel, type WaiverRecord,
 } from '@/lib/session'
@@ -113,26 +114,33 @@ export default function StudentListPanel({ viewer }: Props) {
                 <th className="py-2 px-3">Email</th>
                 <th className="py-2 px-3">Level</th>
                 <th className="py-2 px-3">Enrolled</th>
+                <th className="py-2 px-3">Payment</th>
                 <th className="py-2 px-3"></th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 && (
-                <tr><td colSpan={5} className="py-6 px-3 text-center text-[color:var(--mid-gray)]">
+                <tr><td colSpan={6} className="py-6 px-3 text-center text-[color:var(--mid-gray)]">
                   {students.length === 0 ? 'No students yet.' : 'No students match this search.'}
                 </td></tr>
               )}
-              {filtered.map(s => (
-                <tr key={s.id} className="border-b hover:bg-[color:var(--paper-2)] cursor-pointer" style={{ borderColor: 'var(--paper-3)' }} onClick={() => setSelected(s)}>
-                  <td className="py-2.5 px-3 font-semibold text-[color:var(--narra)]">{[s.firstName, s.lastName].filter(Boolean).join(' ') || '—'}</td>
-                  <td className="py-2.5 px-3 text-[12.5px]">{s.email}</td>
-                  <td className="py-2.5 px-3 text-[12.5px]">{s.level ? levelLabel(s.level) : '—'}</td>
-                  <td className="py-2.5 px-3 text-[12.5px] text-[color:var(--mid-gray)]">{new Date(s.createdAt).toLocaleDateString()}</td>
-                  <td className="py-2.5 px-3 text-right">
-                    <span className="btn-secondary text-xs" style={{ pointerEvents: 'none' }}>View →</span>
-                  </td>
-                </tr>
-              ))}
+              {filtered.map(s => {
+                const ps = paymentStatusFor(s.id)
+                return (
+                  <tr key={s.id} className="border-b hover:bg-[color:var(--paper-2)] cursor-pointer" style={{ borderColor: 'var(--paper-3)' }} onClick={() => setSelected(s)}>
+                    <td className="py-2.5 px-3 font-semibold text-[color:var(--narra)]">{[s.firstName, s.lastName].filter(Boolean).join(' ') || '—'}</td>
+                    <td className="py-2.5 px-3 text-[12.5px]">{s.email}</td>
+                    <td className="py-2.5 px-3 text-[12.5px]">{s.level ? levelLabel(s.level) : '—'}</td>
+                    <td className="py-2.5 px-3 text-[12.5px] text-[color:var(--mid-gray)]">{new Date(s.createdAt).toLocaleDateString()}</td>
+                    <td className="py-2.5 px-3">
+                      <PaymentStatusBadge status={ps} />
+                    </td>
+                    <td className="py-2.5 px-3 text-right">
+                      <span className="btn-secondary text-xs" style={{ pointerEvents: 'none' }}>View →</span>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -189,6 +197,12 @@ export default function StudentListPanel({ viewer }: Props) {
       )}
     </>
   )
+}
+
+function PaymentStatusBadge({ status }: { status: 'PAID' | 'PENDING' | 'NONE' }) {
+  if (status === 'PAID')    return <span className="badge badge-paid">Paid</span>
+  if (status === 'PENDING') return <span className="badge badge-pending">Pending</span>
+  return <span className="badge badge-pending">No payment yet</span>
 }
 
 function WitnessForm({ onCancel, onSign, defaultName }: { onCancel: () => void; onSign: (name: string, sig: string) => void; defaultName?: string }) {
