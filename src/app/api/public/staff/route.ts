@@ -18,8 +18,11 @@ export async function GET(req: NextRequest) {
   const origin = req.headers.get('origin')
   const { searchParams } = new URL(req.url)
   const branch = searchParams.get('branch') ?? ''
+  const department = searchParams.get('department') ?? ''
 
-  const where: Prisma.StaffWhereInput = branch ? { branch } : {}
+  const where: Prisma.StaffWhereInput = {}
+  if (branch) where.branch = branch
+  if (department) where.department = department as Prisma.EnumStaffDepartmentFilter['equals']
 
   const staff = await prisma.staff.findMany({
     where,

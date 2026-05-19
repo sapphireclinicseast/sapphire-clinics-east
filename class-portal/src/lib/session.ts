@@ -48,7 +48,9 @@ export interface EnrollmentDraft {
   zipCode?: string
 
   father?: NameParts
+  fatherOccupation?: string
   mother?: NameParts
+  motherOccupation?: string
   guardian?: NameParts
   guardianOfRecord?: GuardianOfRecord
   telephone?: string
@@ -240,6 +242,140 @@ export function setAuth(a: AuthSession) {
 export function clearAuth() {
   if (typeof window === 'undefined') return
   localStorage.removeItem(AUTH_KEY)
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Waiver records — full Parent/Guardian Waiver content
+   Stored once the parent signs. Teacher (witness) updates the same
+   record on sign-in. Backend integration: replace with
+   /api/public/students/:id/waiver later.
+   ───────────────────────────────────────────────────────────── */
+
+const WAIVERS_KEY = 'scei_class_waivers_v1'
+
+export interface WaiverPersonName {
+  printedName: string
+  signatureDataUrl: string
+  signedAt: string
+}
+
+export interface WaiverContent {
+  // Student
+  studentFullName: string
+  studentDob: string
+  studentAge: string
+  studentGender: string
+  gradeLevel: string
+  termOfEnrollment: string
+  studentNationality: string
+  studentReligion: string
+  homeAddress: string
+  cityProvince: string
+  previousSchool?: string
+  schoolYearAttended?: string
+  diagnosis?: string
+  dateOfDiagnosis?: string
+
+  // Primary parent/guardian
+  primary: {
+    fullName: string
+    relationship: string
+    mobile: string
+    altNumber?: string
+    email: string
+    occupation?: string
+    homeAddress: string
+    officeAddress?: string
+    govtId?: string
+    idNumber?: string
+  }
+
+  // Secondary parent/guardian
+  secondary?: {
+    fullName: string
+    relationship: string
+    mobile: string
+    email: string
+  }
+
+  // Authorized fetchers (up to 3)
+  fetchers: Array<{
+    name: string
+    relationship: string
+    mobile: string
+    idNumber: string
+  }>
+
+  // Emergency contact + medical
+  emergencyName: string
+  emergencyRelationship: string
+  emergencyMobile: string
+  emergencyAlt?: string
+  hospital: string
+  hospitalContact?: string
+  physician?: string
+  physicianContact?: string
+  allergies?: string
+  bloodType?: string
+  medications?: string
+  dosageSchedule?: string
+  medicalConditions?: string
+  treatingSpecialist?: string
+  behavioralTriggers?: string
+  copingStrategies?: string
+  dietaryRestrictions?: string
+  mobilityNeeds?: string
+
+  // 13 clauses (initials per clause)
+  initials: Record<string, string>
+
+  // Photo release: GRANT / DENY / null (treated as deny)
+  photoRelease: 'GRANT' | 'DENY' | null
+
+  // Date executed
+  executionDay: string   // "DD"
+  executionMonth: string // "Month"
+  executionYear: string  // "YY" (20YY)
+}
+
+export interface WaiverRecord {
+  id: string
+  studentEmail: string
+  studentFirstName: string
+  studentLastName: string
+  level: EnrollmentLevel
+  content: WaiverContent
+  parentSig: WaiverPersonName
+  secondaryParentSig?: WaiverPersonName
+  witnessSig?: WaiverPersonName & { teacherId?: string; teacherEmail?: string }
+  createdAt: string
+  updatedAt: string
+}
+
+export function getWaivers(): WaiverRecord[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(WAIVERS_KEY)
+    return raw ? (JSON.parse(raw) as WaiverRecord[]) : []
+  } catch { return [] }
+}
+
+function writeWaivers(records: WaiverRecord[]) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(WAIVERS_KEY, JSON.stringify(records))
+}
+
+export function saveWaiver(record: WaiverRecord) {
+  const all = getWaivers()
+  const idx = all.findIndex(w => w.id === record.id)
+  if (idx >= 0) all[idx] = record
+  else all.push(record)
+  writeWaivers(all)
+}
+
+export function findPendingWaivers(): WaiverRecord[] {
+  // "Pending" = parent signed but witness has not.
+  return getWaivers().filter(w => !w.witnessSig)
 }
 
 /** Attempt a sign-in. Throws on failure. */

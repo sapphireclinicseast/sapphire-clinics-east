@@ -2,12 +2,15 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { getAuth, getUsers, levelLabel, type StoredUser } from '@/lib/session'
+import { getAuth, getUsers, findPendingWaivers, saveWaiver, levelLabel, type StoredUser, type WaiverRecord } from '@/lib/session'
+import { downloadWaiverPdf } from '@/lib/waiver-pdf'
+import SignaturePad from '@/components/SignaturePad'
 
 export default function ProfilePage() {
   const router = useRouter()
   const [user, setUser] = useState<StoredUser | null>(null)
   const [ready, setReady] = useState(false)
+  const [pendingWaivers, setPendingWaivers] = useState<WaiverRecord[]>([])
 
   useEffect(() => {
     const auth = getAuth()
@@ -17,8 +20,32 @@ export default function ProfilePage() {
     const u = getUsers().find(x => x.id === auth.userId)
     if (!u) { router.replace('/sign-in'); return }
     setUser(u)
+    if (u.role === 'TEACHER') setPendingWaivers(findPendingWaivers())
     setReady(true)
   }, [router])
+
+  function refreshPending() { setPendingWaivers(findPendingWaivers()) }
+
+  function handleWitness(record: WaiverRecord, printedName: string, signatureDataUrl: string) {
+    if (!user) return
+    if (!printedName.trim()) { alert("Please type the witness's printed name."); return }
+    if (!signatureDataUrl) { alert('Please sign before submitting.'); return }
+    const now = new Date().toISOString()
+    const updated: WaiverRecord = {
+      ...record,
+      witnessSig: {
+        printedName,
+        signatureDataUrl,
+        signedAt: now,
+        teacherId: user.id,
+        teacherEmail: user.email,
+      },
+      updatedAt: now,
+    }
+    saveWaiver(updated)
+    refreshPending()
+    try { downloadWaiverPdf(updated) } catch (e) { console.warn('PDF download failed', e) }
+  }
 
   if (!ready || !user) return null
 
@@ -47,6 +74,32 @@ export default function ProfilePage() {
         </div>
       </div>
 
+      {!isStudent && (
+        <div className="card-static">
+          <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
+            <div>
+              <h2 className="text-[18px] leading-tight">Waivers awaiting witness</h2>
+              <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1">
+                Parents have signed these waivers. As the assigned SCEI SPED teacher, please counter-sign below — the PDF is regenerated and downloaded for the school&apos;s records.
+              </p>
+            </div>
+            <span className="badge badge-approved">{pendingWaivers.length} pending</span>
+          </div>
+
+          {pendingWaivers.length === 0 ? (
+            <p className="text-sm text-[color:var(--mid-gray)] mt-6 text-center py-8">
+              No waivers are currently awaiting a witness signature.
+            </p>
+          ) : (
+            <div className="space-y-4 mt-4">
+              {pendingWaivers.map(w => (
+                <WitnessCard key={w.id} record={w} onWitness={handleWitness} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {isStudent && (
         <div className="card-static">
           <h2 className="text-[18px] leading-tight mb-4">Learner profile</h2>
@@ -62,7 +115,9 @@ export default function ProfilePage() {
             {e.diagnosis && <Row label="Diagnosis" value={e.diagnosis} />}
             <Row label="Address" value={[e.houseStreet, e.barangay, e.cityProvinceCountry, e.zipCode].filter(Boolean).join(', ') || '—'} />
             <Row label="Father" value={nameOf(e.father)} />
+            {e.fatherOccupation && <Row label="Father's occupation" value={e.fatherOccupation} />}
             <Row label="Mother" value={nameOf(e.mother)} />
+            {e.motherOccupation && <Row label="Mother's occupation" value={e.motherOccupation} />}
             {e.guardianOfRecord === 'OTHER' && <Row label="Guardian" value={nameOf(e.guardian)} />}
             <Row label="Telephone" value={e.telephone ?? '—'} />
             <Row label="Cellphone" value={e.cellphone ?? '—'} />
@@ -123,4 +178,47 @@ function docTitle(key: string) {
     form_137_sf10: 'Form 137 / SF10',
   }
   return map[key] ?? key
+}
+
+function WitnessCard({ record, onWitness }: { record: WaiverRecord; onWitness: (r: WaiverRecord, printedName: string, sig: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [printedName, setPrintedName] = useState('')
+  const [sig, setSig] = useState('')
+
+  return (
+    <div className="rounded-2xl p-4 border" style={{ borderColor: 'var(--paper-3)', background: '#fff' }}>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <div className="font-semibold text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>
+            {record.studentFirstName} {record.studentLastName}
+          </div>
+          <div className="text-[12px] text-[color:var(--mid-gray)] mt-0.5">
+            {levelLabel(record.level)} · parent signed {new Date(record.parentSig.signedAt).toLocaleDateString()} ·{' '}
+            <span className="font-semibold">{record.parentSig.printedName}</span>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button type="button" className="btn-secondary text-xs" onClick={() => downloadWaiverPdf(record)}>Preview PDF</button>
+          {!open && <button type="button" className="btn-cta text-xs" onClick={() => setOpen(true)}>Sign as witness</button>}
+        </div>
+      </div>
+
+      {open && (
+        <div className="mt-4 pt-4 border-t" style={{ borderColor: 'var(--paper-3)' }}>
+          <label className="block mb-3">
+            <span className="label">Witness — printed name</span>
+            <input className="input" value={printedName} onChange={e => setPrintedName(e.target.value)} placeholder="Teacher full name" />
+          </label>
+          <div>
+            <span className="label">Witness signature</span>
+            <SignaturePad onChange={setSig} height={150} />
+          </div>
+          <div className="flex justify-end gap-2 mt-3">
+            <button type="button" className="btn-secondary text-xs" onClick={() => { setOpen(false); setPrintedName(''); setSig('') }}>Cancel</button>
+            <button type="button" className="btn-primary text-xs" onClick={() => onWitness(record, printedName, sig)}>Sign &amp; download PDF</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }

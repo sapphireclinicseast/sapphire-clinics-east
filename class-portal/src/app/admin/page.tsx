@@ -35,7 +35,9 @@ export default function AdminPage() {
     setReady(true)
     // Fire-and-forget — the picker just falls back to a "couldn't load" state
     // if marketing is offline.
-    listStaff()
+    // Only SPED teachers from the Staff Module are eligible to become
+    // class-portal teacher accounts — other departments don't teach here.
+    listStaff({ department: 'SPED' })
       .then(s => { setStaff(s); setStaffErr(null) })
       .catch(e => setStaffErr((e as Error).message))
       .finally(() => setStaffLoading(false))
@@ -183,7 +185,7 @@ export default function AdminPage() {
           <div>
             <h2 className="text-[18px] leading-tight">Add teacher from Staff Module</h2>
             <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1">
-              Picked from <span className="font-semibold">marketing.sapphireclinicseast.org</span>. Only staff already on payroll there can become teacher accounts.
+              Showing <span className="font-semibold">SPED teachers only</span> from <span className="font-semibold">marketing.sapphireclinicseast.org</span>. Other departments don&apos;t teach in the class program.
             </p>
           </div>
           {staffLoading && <span className="text-[12px] text-[color:var(--mid-gray)]">Loading staff…</span>}
@@ -220,32 +222,34 @@ export default function AdminPage() {
           </label>
         </div>
 
-        <div className="overflow-x-auto mt-4">
+        {/* Scrollable staff list — keeps admin page short while letting
+            the full SPED roster be browsed inline. */}
+        <div className="overflow-auto mt-4 rounded-xl border" style={{ maxHeight: 420, borderColor: 'var(--paper-3)' }}>
           <table className="w-full text-sm">
-            <thead>
+            <thead className="sticky top-0 z-10" style={{ background: 'var(--paper)' }}>
               <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
-                <th className="py-2 pr-3">Name</th>
-                <th className="py-2 pr-3">Job title</th>
-                <th className="py-2 pr-3">Branch</th>
-                <th className="py-2 pr-3">Email</th>
-                <th className="py-2 pr-3"></th>
+                <th className="py-2 px-3">Name</th>
+                <th className="py-2 px-3">Job title</th>
+                <th className="py-2 px-3">Branch</th>
+                <th className="py-2 px-3">Email</th>
+                <th className="py-2 px-3"></th>
               </tr>
             </thead>
             <tbody>
               {!staffLoading && filteredStaff.length === 0 && (
-                <tr><td colSpan={5} className="py-6 text-center text-[color:var(--mid-gray)]">
-                  {staff.length === 0 ? 'No staff returned from the Staff Module.' : 'No staff match this search.'}
+                <tr><td colSpan={5} className="py-6 px-3 text-center text-[color:var(--mid-gray)]">
+                  {staff.length === 0 ? 'No SPED teachers returned from the Staff Module.' : 'No SPED teachers match this search.'}
                 </td></tr>
               )}
               {filteredStaff.map(m => {
                 const has = teacherEmailSet.has(m.email.toLowerCase())
                 return (
-                  <tr key={m.id} className="border-b align-top" style={{ borderColor: 'var(--paper-3)' }}>
-                    <td className="py-2.5 pr-3 whitespace-nowrap">{m.firstName} {m.lastName}</td>
-                    <td className="py-2.5 pr-3">{m.jobTitle || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-2.5 pr-3 text-[12.5px]">{m.branch === 'SBEA' ? 'Sandbox East' : m.branch === 'SBGH' ? 'Sandbox Greenhills' : m.branch}</td>
-                    <td className="py-2.5 pr-3 text-[12.5px]">{m.email || <span className="text-[color:var(--mid-gray)]">no email on file</span>}</td>
-                    <td className="py-2.5 pr-3 text-right whitespace-nowrap">
+                  <tr key={m.id} className="border-b align-top hover:bg-[color:var(--paper-2)]" style={{ borderColor: 'var(--paper-3)' }}>
+                    <td className="py-2.5 px-3 whitespace-nowrap">{m.firstName} {m.lastName}</td>
+                    <td className="py-2.5 px-3">{m.jobTitle || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-2.5 px-3 text-[12.5px]">{m.branch === 'SBEA' ? 'Sandbox East' : m.branch === 'SBGH' ? 'Sandbox Greenhills' : m.branch}</td>
+                    <td className="py-2.5 px-3 text-[12.5px]">{m.email || <span className="text-[color:var(--mid-gray)]">no email on file</span>}</td>
+                    <td className="py-2.5 px-3 text-right whitespace-nowrap">
                       {has ? (
                         <span className="badge badge-approved">Account exists</span>
                       ) : (
