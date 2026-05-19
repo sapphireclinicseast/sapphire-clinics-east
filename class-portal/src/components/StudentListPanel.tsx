@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   getUsers, getWaivers, saveWaiver,
   teacherAssignedLevels,
@@ -26,6 +27,16 @@ export default function StudentListPanel({ viewer }: Props) {
   const [filter, setFilter] = useState('')
   const [witnessOpen, setWitnessOpen] = useState(false)
   const [waiver, setWaiver] = useState<WaiverRecord | null>(null)
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
+
+  // Lock body scroll while the modal is open so the page behind doesn't move.
+  useEffect(() => {
+    if (!selected) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [selected])
 
   function refresh() {
     let pool = getUsers().filter(u => u.role === 'STUDENT')
@@ -127,27 +138,54 @@ export default function StudentListPanel({ viewer }: Props) {
         </div>
       </div>
 
-      {/* Detail drawer */}
-      {selected && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm overflow-y-auto p-4 animate-fade-in" onClick={() => setSelected(null)}>
-          <div className="max-w-3xl mx-auto" onClick={e => e.stopPropagation()}>
-            <div className="mb-3 flex items-center justify-between">
-              <button className="btn-secondary text-xs" onClick={() => setSelected(null)}>← Back to list</button>
-              {viewer.role === 'TEACHER' && waiver && !waiver.witnessSig && (
-                <button className="btn-cta text-xs" onClick={() => setWitnessOpen(true)}>Sign as witness</button>
-              )}
-              {viewer.role === 'TEACHER' && waiver?.witnessSig && (
-                <span className="badge badge-paid">Waiver witness signed</span>
-              )}
+      {/* Detail popup — portaled to body so animate-fade-up ancestors don't trap fixed positioning */}
+      {selected && mounted && createPortal(
+        <div
+          className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex items-start sm:items-center justify-center p-3 sm:p-6 animate-fade-in"
+          onClick={() => setSelected(null)}
+        >
+          <div
+            className="bg-[color:var(--paper)] rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div
+              className="flex items-center justify-between gap-3 px-5 py-3 border-b sticky top-0 z-10"
+              style={{ background: 'var(--paper)', borderColor: 'var(--paper-3)' }}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <button className="btn-secondary text-xs whitespace-nowrap" onClick={() => setSelected(null)}>← Back to list</button>
+                <span className="text-[13px] text-[color:var(--mid-gray)] truncate hidden sm:inline">
+                  {[selected.firstName, selected.lastName].filter(Boolean).join(' ') || selected.email}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {viewer.role === 'TEACHER' && waiver && !waiver.witnessSig && (
+                  <button className="btn-cta text-xs whitespace-nowrap" onClick={() => setWitnessOpen(true)}>Sign as witness</button>
+                )}
+                {viewer.role === 'TEACHER' && waiver?.witnessSig && (
+                  <span className="badge badge-paid whitespace-nowrap">Waiver witness signed</span>
+                )}
+                <button
+                  type="button"
+                  aria-label="Close"
+                  onClick={() => setSelected(null)}
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-[color:var(--mid-gray)] hover:bg-[color:var(--paper-2)] hover:text-[color:var(--narra)] text-lg leading-none"
+                >
+                  ×
+                </button>
+              </div>
             </div>
 
-            <StudentDetail student={selected} viewerRole={viewer.role} />
+            <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-4">
+              <StudentDetail student={selected} viewerRole={viewer.role} />
 
-            {witnessOpen && waiver && (
-              <WitnessForm onCancel={() => setWitnessOpen(false)} onSign={handleWitness} defaultName={viewer.name} />
-            )}
+              {witnessOpen && waiver && (
+                <WitnessForm onCancel={() => setWitnessOpen(false)} onSign={handleWitness} defaultName={viewer.name} />
+              )}
+            </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   )
