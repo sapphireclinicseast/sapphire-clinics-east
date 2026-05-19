@@ -1,5 +1,9 @@
 // GET /api/decking/bookings — list patient-portal bookings for the front desk.
-// Filterable by branch + status.
+//
+// Post-2026-05-18 self-service flow: the front desk only sees PAID and
+// COMPLETED bookings. PENDING (= awaiting payment, patient-only state)
+// stays out of this view. The patient-portal handles its own pre-payment
+// UX; the Decking Module only acts on confirmed money.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
@@ -11,11 +15,17 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url)
   const branch = searchParams.get('branch') ?? undefined
-  const status = searchParams.get('status') ?? undefined
+  // status query param kept for backwards compat (callers can still ask for
+  // a specific status), but the default scope is now PAID + COMPLETED only.
+  const statusParam = searchParams.get('status') ?? undefined
 
   const where: Record<string, unknown> = {}
   if (branch) where.branch = branch
-  if (status) where.status = status
+  if (statusParam) {
+    where.status = statusParam
+  } else {
+    where.status = { in: ['PAID', 'COMPLETED'] }
+  }
 
   const bookings = await prisma.patientBooking.findMany({
     where,
@@ -30,36 +40,9 @@ export async function GET(req: NextRequest) {
         select: { id: true, status: true, checkoutUrl: true, amount: true, paidAt: true },
       },
     },
-    orderBy: [{ status: 'asc' }, { date: 'asc' }, { startTime: 'asc' }],
+    orderBy: [{ paidAt: 'desc' }, { date: 'asc' }, { startTime: 'asc' }],
     take: 500,
   })
 
-  // Enrich with staff lookup for alternate choices.
-  const altStaffIds = new Set<string>()
-  for (const b of bookings) {
-    const alts = (b.alternateChoices as Array<{ staffId?: string }> | null) ?? null
-    if (Array.isArray(alts)) alts.forEach((a) => a.staffId && altStaffIds.add(a.staffId))
-  }
-  const altStaff = altStaffIds.size
-    ? await prisma.staff.findMany({
-        where: { id: { in: Array.from(altStaffIds) } },
-        select: { id: true, firstName: true, lastName: true },
-      })
-    : []
-  const staffById = new Map(altStaff.map((s) => [s.id, s]))
-
-  const enriched = bookings.map((b) => ({
-    ...b,
-    alternateChoices: Array.isArray(b.alternateChoices)
-      ? (b.alternateChoices as Array<{ staffId: string; date: string; startTime: string; endTime: string }>).map((a) => {
-          const s = staffById.get(a.staffId)
-          return {
-            ...a,
-            initials: s ? `${s.firstName?.[0] ?? '?'}${s.lastName?.[0] ?? '?'}`.toUpperCase() : '??',
-          }
-        })
-      : null,
-  }))
-
-  return NextResponse.json({ bookings: enriched })
+  return NextResponse.json({ bookings })
 }
