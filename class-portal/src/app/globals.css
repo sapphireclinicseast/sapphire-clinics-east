@@ -17,6 +17,9 @@
   --sun-tint:  rgba(198, 152, 73, 0.14);
   --mid-gray: #6B6357;
 
+  /* Soft mint used as the lightest stop in the aurora gradient on /. */
+  --scei-mint: #b9d8c9;
+
   --font-display: var(--font-montserrat), 'Helvetica Neue', Arial, sans-serif;
   --font-heading: var(--font-montserrat), 'Helvetica Neue', Arial, sans-serif;
   --font-body:    var(--font-manrope),    'Helvetica Neue', Arial, sans-serif;
@@ -72,6 +75,13 @@ body {
 .animate-fade-in   { animation: fadeIn 0.3s ease-out forwards; }
 .animate-slide-down{ animation: slideDown 0.4s ease-out forwards; opacity: 0; }
 .animate-pulse-ring{ animation: pulseRing 1.8s ease-out infinite; }
+
+/* Aurora background (Aceternity-style) — slow drifting gradient. */
+@keyframes aurora {
+  from { background-position: 50% 50%, 50% 50%; }
+  to   { background-position: 350% 50%, 350% 50%; }
+}
+.animate-aurora { animation: aurora 60s linear infinite; }
 
 /* Hero (shader landing) animations */
 @keyframes fadeInDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
