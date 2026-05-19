@@ -39,7 +39,13 @@ export function RotatingWord({ words, intervalMs = 2500, className }: Props) {
   const widest = words.reduce((a, b) => (b.length > a.length ? b : a), '')
 
   return (
-    <span className="relative inline-block overflow-hidden align-baseline">
+    // line-height + padding-bottom keep room below the baseline so letters
+    // with descenders (g, y, p, q, j) aren't clipped by overflow-hidden when
+    // the spacer word happens to have no descenders.
+    <span
+      className="relative inline-block overflow-hidden align-baseline"
+      style={{ lineHeight: 1.15, paddingBottom: '0.18em' }}
+    >
       <span aria-hidden className="invisible whitespace-nowrap">{widest}</span>
       {words.map((w, i) => {
         const offset = i === index ? '0%' : i < index ? '-110%' : '110%'
