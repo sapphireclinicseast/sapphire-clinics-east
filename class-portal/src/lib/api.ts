@@ -13,7 +13,9 @@ export class InvalidTokenError extends Error {
   }
 }
 
-export type EnrollmentLevel = 'KINDER' | 'GRADE_1' | 'GRADE_2' | 'GRADE_3'
+// Re-exported from session.ts so there's a single source of truth for the
+// level enum (otherwise it's easy to extend one and not the other).
+export type { EnrollmentLevel } from './session'
 
 export type LearnerProfile = Omit<EnrollmentDraft, 'documents' | 'waiverSignedAt'>
 
