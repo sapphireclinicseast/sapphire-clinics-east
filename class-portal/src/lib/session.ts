@@ -134,6 +134,16 @@ export function levelLabel(l: EnrollmentLevel): string {
   }
 }
 
+/** Human-readable label for an LrnStatus enum value. */
+export function lrnStatusLabel(s: LrnStatus | undefined): string {
+  switch (s) {
+    case 'NO_LRN':    return 'No LRN'
+    case 'WITH_LRN':  return 'With LRN'
+    case 'RETURNING': return 'Returning (Balik-Aral)'
+    default:          return '—'
+  }
+}
+
 /** Whole-year age based on a YYYY-MM-DD date string. Returns '' when invalid. */
 export function ageFromDob(dob: string): string {
   if (!dob) return ''
