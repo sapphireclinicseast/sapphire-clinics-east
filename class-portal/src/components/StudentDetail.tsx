@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react'
 import {
   getFile, getPaymentsForStudent, getWaivers, getGradeForStudent,
+  updateUserEnrollment,
   levelLabel, type StoredUser, type PaymentRecord, type WaiverRecord, type GradeRecord,
+  type EnrollmentDraft,
 } from '@/lib/session'
 import { downloadWaiverPdf, generateWaiverPdf } from '@/lib/waiver-pdf'
 import { downloadEnrollmentPdf, generateEnrollmentPdf } from '@/lib/enrollment-pdf'
@@ -78,11 +80,19 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
       <div className="card-static">
         <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
           <h2 className="text-[18px] leading-tight">Learner profile</h2>
-          {viewerRole === 'ADMIN' && (
-            <button type="button" className="btn-secondary text-xs" onClick={() => setEditorOpen(true)}>
-              Edit enrollment
-            </button>
-          )}
+          <div className="flex gap-2">
+            {(viewerRole === 'ADMIN' || viewerRole === 'TEACHER') && (
+              <LrnUpdater
+                student={student}
+                onSaved={updated => { setStudent(updated); onChange?.() }}
+              />
+            )}
+            {viewerRole === 'ADMIN' && (
+              <button type="button" className="btn-secondary text-xs" onClick={() => setEditorOpen(true)}>
+                Edit enrollment
+              </button>
+            )}
+          </div>
         </div>
         <dl className="grid sm:grid-cols-2 gap-x-6 gap-y-2.5 text-sm">
           <Row label="School year" value={e.schoolYearFrom && e.schoolYearTo ? `${e.schoolYearFrom} to ${e.schoolYearTo}` : '—'} />
@@ -188,6 +198,94 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
 }
 
 /* ─────────── helpers ─────────── */
+
+/**
+ * Compact LRN updater for admin + teacher. Appears as a button next to
+ * "Edit enrollment"; expands to a small inline form when clicked. Use case:
+ * the parent enrolled with NO_LRN, then DepEd issues an LRN — staff updates
+ * the lrnStatus to WITH_LRN and types the 12-digit number here.
+ */
+function LrnUpdater({ student, onSaved }: { student: StoredUser; onSaved: (u: StoredUser) => void }) {
+  const e = student.enrollment ?? {}
+  const [open, setOpen] = useState(false)
+  const [status, setStatus] = useState<NonNullable<EnrollmentDraft['lrnStatus']>>(e.lrnStatus ?? 'NO_LRN')
+  const [lrn, setLrn] = useState(e.lrn ?? '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  function handleSave() {
+    setErr(null)
+    const trimmed = lrn.trim()
+    if (status === 'WITH_LRN' || status === 'RETURNING') {
+      if (!/^\d{12}$/.test(trimmed)) {
+        setErr('LRN must be 12 digits.')
+        return
+      }
+    }
+    setBusy(true)
+    try {
+      const updated = updateUserEnrollment(student.id, {
+        lrnStatus: status,
+        lrn: status === 'NO_LRN' ? '' : trimmed,
+      })
+      onSaved(updated)
+      setOpen(false)
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <button type="button" className="btn-secondary text-xs" onClick={() => setOpen(true)}>
+        Update LRN
+      </button>
+    )
+  }
+  return (
+    <div className="w-full rounded-xl p-3 border" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
+      <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--mid-gray)] font-semibold mb-2" style={{ fontFamily: 'var(--font-display)' }}>
+        Update LRN (after DepEd issuance)
+      </div>
+      {err && <div className="mb-2 px-3 py-2 rounded-lg bg-rose-50 border border-rose-100 text-xs text-rose-800">{err}</div>}
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="block">
+          <span className="label text-[11px]">LRN status</span>
+          <select
+            className="select"
+            value={status}
+            onChange={ev => setStatus(ev.target.value as NonNullable<EnrollmentDraft['lrnStatus']>)}
+            style={{ minWidth: 150 }}
+          >
+            <option value="NO_LRN">No LRN</option>
+            <option value="WITH_LRN">With LRN</option>
+            <option value="RETURNING">Returning (Balik-Aral)</option>
+          </select>
+        </label>
+        <label className="block">
+          <span className="label text-[11px]">LRN number (12 digits)</span>
+          <input
+            className="input"
+            value={lrn}
+            onChange={ev => setLrn(ev.target.value.replace(/[^\d]/g, '').slice(0, 12))}
+            placeholder="123456789012"
+            disabled={status === 'NO_LRN'}
+            inputMode="numeric"
+            style={{ minWidth: 180 }}
+          />
+        </label>
+        <div className="flex gap-1.5 ml-auto">
+          <button type="button" className="btn-secondary text-xs" onClick={() => setOpen(false)} disabled={busy}>Cancel</button>
+          <button type="button" className="btn-primary text-xs" onClick={handleSave} disabled={busy}>
+            {busy ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
