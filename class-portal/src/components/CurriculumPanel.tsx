@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   getCurriculum, saveCurriculum, deleteCurriculum, putFile, getFile, deleteFile,
   levelLabel, type CurriculumRecord, type EnrollmentLevel,
@@ -18,12 +18,26 @@ export default function CurriculumPanel({ viewer }: Props) {
   const [err, setErr] = useState<string | null>(null)
   const [pickedLevel, setPickedLevel] = useState<EnrollmentLevel>('KINDER')
   const [title, setTitle] = useState('')
+  const [search, setSearch] = useState('')
 
   const canUpload = viewer.role === 'ADMIN' || viewer.role === 'TEACHER'
+
   // Students only see their own level. Admin/Teacher see everything.
-  const filtered = viewer.role === 'STUDENT' && viewer.level
-    ? items.filter(c => c.level === viewer.level)
-    : items
+  // Then filter by search query (title, file name, uploader) and sort
+  // alphabetically by title so admins/teachers scan a stable order.
+  const filtered = useMemo(() => {
+    let pool = viewer.role === 'STUDENT' && viewer.level
+      ? items.filter(c => c.level === viewer.level)
+      : items
+    const q = search.trim().toLowerCase()
+    if (q) {
+      pool = pool.filter(c => {
+        const hay = `${c.title} ${c.fileName} ${c.uploadedBy} ${levelLabel(c.level)}`.toLowerCase()
+        return hay.includes(q)
+      })
+    }
+    return [...pool].sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }))
+  }, [items, viewer.role, viewer.level, search])
 
   function refresh() { setItems(getCurriculum()) }
   useEffect(refresh, [])
@@ -108,9 +122,22 @@ export default function CurriculumPanel({ viewer }: Props) {
       )}
 
       <div className="card-static">
-        <h2 className="text-[18px] leading-tight mb-3">{viewer.role === 'STUDENT' ? 'Your curriculum' : 'All curriculum templates'}</h2>
-        {filtered.length === 0 ? (
+        <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
+          <h2 className="text-[18px] leading-tight">{viewer.role === 'STUDENT' ? 'Your curriculum' : 'All curriculum templates'}</h2>
+          {viewer.role !== 'STUDENT' && (
+            <input
+              className="input"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search by title, file name, uploader, or grade"
+              style={{ width: 280 }}
+            />
+          )}
+        </div>
+        {items.length === 0 ? (
           <p className="text-sm text-[color:var(--mid-gray)] text-center py-8">No curriculum templates yet.</p>
+        ) : filtered.length === 0 ? (
+          <p className="text-sm text-[color:var(--mid-gray)] text-center py-8">No curriculum templates match this search.</p>
         ) : (
           <CurriculumGrouped
             items={filtered}

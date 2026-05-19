@@ -21,7 +21,7 @@ const PLANS: Array<{
   plan: PaymentPlan; title: string; tuition: number; misc: number; period: string; deadline: string;
 }> = [
   { plan: 'ANNUAL',   title: 'Annual',    tuition: TUITION_ANNUAL,   misc: MISC_ANNUAL,   period: 'Annual SY 2026–2027',     deadline: 'Every 5th of June (lump sum)' },
-  { plan: 'BIANNUAL', title: 'Bi-annual', tuition: TUITION_BIANNUAL, misc: MISC_BIANNUAL, period: 'First half SY 2026–2027', deadline: 'Every 5th of December' },
+  { plan: 'BIANNUAL', title: 'Bi-annual', tuition: TUITION_BIANNUAL, misc: MISC_BIANNUAL, period: 'First half SY 2026–2027', deadline: 'Every 5th of June and 5th of December' },
   { plan: 'MONTHLY',  title: 'Monthly',   tuition: TUITION_MONTHLY,  misc: MISC_MONTHLY,  period: thisMonthPeriod(),         deadline: 'Every 5th of the month' },
 ]
 
@@ -131,7 +131,7 @@ export default function PayPage() {
             </thead>
             <tbody>
               <Row item="Annual Tuition" amount={fmt(TUITION_ANNUAL)} deadline="Every 5th of June" />
-              <Row item="Bi-annual Payment" amount={fmt(TUITION_BIANNUAL) + ' / half'} deadline="Every 5th of December" />
+              <Row item="Bi-annual Payment" amount={fmt(TUITION_BIANNUAL) + ' / half'} deadline="Every 5th of June and 5th of December" />
               <Row item="Monthly Payment" amount={fmt(TUITION_MONTHLY) + ' / month'} deadline="Every 5th of the month" />
               <Row item="Miscellaneous (Annual)"    amount={fmt(MISC_ANNUAL)}     deadline="With annual payment" />
               <Row item="Miscellaneous (Bi-annual)" amount={fmt(MISC_BIANNUAL) + ' / half'} deadline="With bi-annual payment" />
