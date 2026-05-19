@@ -378,7 +378,7 @@ function seedFromDraft(d: Partial<import('@/lib/session').EnrollmentDraft>, leve
     studentGender: d.sex ?? '',
     gradeLevel: levelLabel(level),
     termOfEnrollment: d.schoolYearFrom && d.schoolYearTo ? `SY ${d.schoolYearFrom}–${d.schoolYearTo}` : '',
-    studentNationality: d.nationality ?? '',
+    studentNationality: '',
     studentReligion: d.religion ?? '',
     homeAddress,
     cityProvince: cityProv,
