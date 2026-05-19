@@ -25,7 +25,7 @@ export default function AdminPage() {
   const [staff, setStaff] = useState<StaffMember[]>([])
   const [staffLoading, setStaffLoading] = useState(true)
   const [staffErr, setStaffErr] = useState<string | null>(null)
-  const [staffBranchFilter, setStaffBranchFilter] = useState<'' | 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS'>('')
+  const [staffBranchFilter, setStaffBranchFilter] = useState<'' | 'SBEA' | 'SBGH'>('')
   const [staffSearch, setStaffSearch] = useState('')
 
   useEffect(() => {
@@ -214,8 +214,8 @@ export default function AdminPage() {
               style={{ minWidth: 220 }}
             >
               <option value="">All branches</option>
-              <option value="SANDBOX_EAST">Sandbox East</option>
-              <option value="SANDBOX_GREENHILLS">Sandbox Greenhills</option>
+              <option value="SBEA">Sandbox East</option>
+              <option value="SBGH">Sandbox Greenhills</option>
             </select>
           </label>
         </div>
@@ -243,7 +243,7 @@ export default function AdminPage() {
                   <tr key={m.id} className="border-b align-top" style={{ borderColor: 'var(--paper-3)' }}>
                     <td className="py-2.5 pr-3 whitespace-nowrap">{m.firstName} {m.lastName}</td>
                     <td className="py-2.5 pr-3">{m.jobTitle || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-2.5 pr-3 text-[12.5px]">{m.branch.replace('SANDBOX_', '')}</td>
+                    <td className="py-2.5 pr-3 text-[12.5px]">{m.branch === 'SBEA' ? 'Sandbox East' : m.branch === 'SBGH' ? 'Sandbox Greenhills' : m.branch}</td>
                     <td className="py-2.5 pr-3 text-[12.5px]">{m.email || <span className="text-[color:var(--mid-gray)]">no email on file</span>}</td>
                     <td className="py-2.5 pr-3 text-right whitespace-nowrap">
                       {has ? (
