@@ -19,6 +19,12 @@
       "runtimeExecutable": "bash",
       "runtimeArgs": ["-c", "cd verdana-store && npm run dev"],
       "port": 3002
+    },
+    {
+      "name": "class-portal",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd class-portal && npm run dev"],
+      "port": 3006
     }
   ]
 }
