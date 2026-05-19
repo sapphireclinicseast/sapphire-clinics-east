@@ -660,6 +660,13 @@ model PatientBooking {
   paidAt          DateTime?
   alternateChoices Json?        // up to 2 alternates the patient offered; {staffId,date,startTime,endTime}[]
   source          String        @default("PORTAL")
+  // Front-desk action flags (post-2026-05-18 self-service flow). When the
+  // patient pays, the booking lands as PAID and the front desk just runs
+  // these two follow-ups: add the patient to the recurring Decking grid
+  // for that therapist, and tick that the downpayment was logged in
+  // accounting-hub. Each button is one-shot — booleans disable after click.
+  addedToDeck         Boolean   @default(false)
+  accountingRecorded  Boolean   @default(false)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   payment         PatientPayment?

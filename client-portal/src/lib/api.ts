@@ -131,7 +131,14 @@ export function createBooking(payload: {
   notes?: string
   choices: SlotChoice[] // 1-3 choices
 }) {
-  return jsonFetch<{ booking: { id: string; status: BookingStatus } }>(`/bookings`, {
+  // New flow: backend creates the booking AND generates a PayMongo Link in
+  // one round-trip. Caller redirects to checkoutUrl to take payment.
+  // When the booked service has a ₱0 downpayment, checkoutUrl is null and
+  // the booking is auto-marked PAID.
+  return jsonFetch<{
+    booking: { id: string; status: BookingStatus }
+    checkoutUrl: string | null
+  }>(`/bookings`, {
     method: 'POST',
     body: JSON.stringify(payload),
   })

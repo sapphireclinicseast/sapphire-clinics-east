@@ -39,13 +39,20 @@ function BookConfirmInner() {
     if (picks.length === 0) { setErr('Please go back and pick at least one slot.'); return }
     setBusy(true); setErr(null)
     try {
-      await createBooking({
+      const res = await createBooking({
         token: session.token,
         branch, department,
         isTeletherapy: isTele,
         notes: notes.trim() || undefined,
         choices: picks,
       })
+      // New flow: backend already created the PayMongo Link. Bounce straight
+      // to checkout. For zero-downpayment services (Orthosis at SBEA) we
+      // skip checkout and route the patient to their confirmed bookings.
+      if (res.checkoutUrl) {
+        window.location.href = res.checkoutUrl
+        return
+      }
       router.push('/bookings?new=1')
     } catch (e) {
       if (e instanceof InvalidTokenError) {

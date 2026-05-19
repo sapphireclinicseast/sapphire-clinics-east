@@ -1,8 +1,15 @@
 'use client'
 
-// Self-contained Pending Patient Requests panel, rendered above the Decking
-// weekly grid. Pulls from /api/decking/bookings and exposes Approve, Reject,
-// Send-Email actions. Keeps integration with DeckingClient.tsx minimal.
+// Front-desk panel for patient-portal bookings.
+//
+// Post-2026-05-18 self-service flow: PENDING (= awaiting payment) and the
+// legacy APPROVED stage are no longer surfaced here. Only confirmed (PAID)
+// bookings show up, each with two follow-up actions:
+//   - Add to Staff Deck  → materializes a DeckingSlot for the booking's
+//                           recurring weekly cell.
+//   - Recorded DP in Accounting Hub → ledger marker so the row stops
+//                           nagging once the front-desk has logged the
+//                           downpayment in accounting-hub.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
@@ -19,6 +26,9 @@ interface BookingRow {
   notes: string | null
   rejectionReason: string | null
   downpayment: string | number | null
+  addedToDeck: boolean
+  accountingRecorded: boolean
+  paidAt: string | null
   patient: { id: string; firstName: string; lastName: string; email: string | null; phone: string | null }
   staff: { id: string; firstName: string; lastName: string; department: string; branch: string }
   payment: { status: string; amount: number | string; paidAt: string | null } | null
@@ -36,138 +46,123 @@ export default function PatientRequestsPanel({ branch }: Props) {
   const [expanded, setExpanded] = useState(true)
 
   const load = useCallback(async () => {
-    setLoading(true)
-    setErr(null)
+    setLoading(true); setErr(null)
     try {
       const r = await fetch(`/api/decking/bookings?branch=${branch}`)
       const data = await r.json()
       if (!r.ok) throw new Error(data.error || 'Failed to load')
       setBookings(data.bookings as BookingRow[])
-    } catch (e) {
-      setErr((e as Error).message)
-    } finally {
-      setLoading(false)
-    }
+    } catch (e) { setErr((e as Error).message) } finally { setLoading(false) }
   }, [branch])
 
   useEffect(() => { load() }, [load])
 
-  const pending = useMemo(() => bookings.filter((b) => b.status === 'PENDING'), [bookings])
-  const approved = useMemo(() => bookings.filter((b) => b.status === 'APPROVED'), [bookings])
+  // Show paid bookings first, then any COMPLETED archive.
   const paid = useMemo(() => bookings.filter((b) => b.status === 'PAID'), [bookings])
 
-  async function approve(id: string) {
-    if (!confirm('Approve this booking and send payment email?')) return
-    setBusy(id)
+  async function addToDeck(b: BookingRow) {
+    const who = `${b.patient.firstName} ${b.patient.lastName}`.trim()
+    const dateNice = new Date(b.date).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })
+    if (!confirm(`Add ${who} to ${b.staff.firstName?.[0]}${b.staff.lastName?.[0]}'s deck on ${dateNice} ${b.startTime}?`)) return
+    setBusy(b.id)
     try {
-      const r = await fetch(`/api/decking/bookings/${id}/approve`, { method: 'POST' })
-      const data = await r.json()
-      if (!r.ok) throw new Error(data.error || 'Approve failed')
+      const r = await fetch(`/api/decking/bookings/${b.id}/add-to-deck`, { method: 'POST' })
+      const data = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(data.error || 'Add to deck failed')
       await load()
-    } catch (e) {
-      alert('Error: ' + (e as Error).message)
-    } finally {
-      setBusy(null)
-    }
+    } catch (e) { alert('Error: ' + (e as Error).message) } finally { setBusy(null) }
   }
 
-  async function reject(id: string) {
-    const reason = prompt('Reason for rejection (will be shown to patient):') ?? ''
-    if (reason === null) return
-    setBusy(id)
+  async function markRecorded(b: BookingRow) {
+    setBusy(b.id)
     try {
-      const r = await fetch(`/api/decking/bookings/${id}/reject`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason }),
-      })
-      const data = await r.json()
-      if (!r.ok) throw new Error(data.error || 'Reject failed')
+      const r = await fetch(`/api/decking/bookings/${b.id}/recorded-in-accounting`, { method: 'POST' })
+      const data = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(data.error || 'Recording failed')
       await load()
-    } catch (e) {
-      alert('Error: ' + (e as Error).message)
-    } finally {
-      setBusy(null)
-    }
+    } catch (e) { alert('Error: ' + (e as Error).message) } finally { setBusy(null) }
   }
 
-  async function resend(id: string) {
-    setBusy(id)
+  async function del(b: BookingRow) {
+    const who = `${b.patient.firstName ?? ''} ${b.patient.lastName ?? ''}`.trim() || 'this request'
+    if (!confirm(`Delete ${who}'s booking (${b.date} ${b.startTime})? This cannot be undone.`)) return
+    setBusy(b.id)
     try {
-      const r = await fetch(`/api/decking/bookings/${id}/send-payment-email`, { method: 'POST' })
-      const data = await r.json()
-      if (!r.ok) throw new Error(data.error || 'Send failed')
-      alert('Payment email sent.')
-    } catch (e) {
-      alert('Error: ' + (e as Error).message)
-    } finally {
-      setBusy(null)
-    }
+      const r = await fetch(`/api/decking/bookings/${b.id}`, { method: 'DELETE' })
+      const data = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(data.error || 'Delete failed')
+      await load()
+    } catch (e) { alert('Error: ' + (e as Error).message) } finally { setBusy(null) }
   }
 
-  const sectionRows = (rows: BookingRow[], showActions: 'pending' | 'approved' | 'paid') => (
+  const rows = (
     <div className="space-y-2">
-      {rows.length === 0 && (
-        <div className="text-sm text-gray-500 italic px-2 py-1">None</div>
+      {paid.length === 0 && (
+        <div className="text-sm text-gray-500 italic px-2 py-1">No paid bookings yet.</div>
       )}
-      {rows.map((b) => (
-        <div
-          key={b.id}
-          className="flex items-center justify-between gap-4 bg-white border rounded-lg px-3 py-2 text-sm"
-        >
-          <div className="flex-1 min-w-0">
-            <div className="font-bold text-sm truncate" style={{ color: 'var(--charcoal)' }}>
-              {(b.patient.firstName || b.patient.lastName)
-                ? `${b.patient.firstName ?? ''} ${b.patient.lastName ?? ''}`.trim()
-                : <span className="text-rose-600">⚠ No name provided</span>}
-              <span className="text-gray-500 font-normal ml-1">· {b.department}</span>
-              {b.isTeletherapy && (
-                <span className="ml-2 text-xs bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded">tele</span>
-              )}
+      {paid.map((b) => {
+        const who = `${b.patient.firstName ?? ''} ${b.patient.lastName ?? ''}`.trim()
+        const initials = `${b.staff.firstName?.[0] ?? '?'}${b.staff.lastName?.[0] ?? '?'}`.toUpperCase()
+        const amount = b.payment?.amount ? `₱${Number(b.payment.amount).toLocaleString()}` : null
+        return (
+          <div key={b.id} className="bg-white border rounded-lg px-3 py-2 text-sm">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div className="flex-1 min-w-[240px]">
+                <div className="font-medium truncate">
+                  {who || <span className="text-rose-600">⚠ No name</span>}
+                  <span className="text-gray-500 font-normal"> · {b.department.replace(/_/g, ' ')}</span>
+                  {b.isTeletherapy && (
+                    <span className="ml-2 text-xs bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded">tele</span>
+                  )}
+                  <span className="ml-2 text-xs text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                    💰 Paid Downpayment{amount ? ` · ${amount}` : ''}
+                  </span>
+                </div>
+                <div className="text-xs text-gray-600 mt-0.5 flex flex-wrap gap-x-3">
+                  <span className="font-mono">{b.date} · {b.startTime}–{b.endTime} · with {initials}</span>
+                  {b.patient.email && <span>✉ {b.patient.email}</span>}
+                  {b.patient.phone && <span>☎ {b.patient.phone}</span>}
+                </div>
+                {b.notes && <div className="text-xs text-gray-500 mt-0.5 italic">&ldquo;{b.notes}&rdquo;</div>}
+              </div>
+              <div className="shrink-0 flex items-center gap-2 flex-wrap">
+                <button
+                  className={`px-3 py-1 rounded text-xs font-medium disabled:opacity-50 ${
+                    b.addedToDeck
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-default'
+                      : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                  }`}
+                  disabled={busy === b.id || b.addedToDeck}
+                  onClick={() => addToDeck(b)}
+                  title={b.addedToDeck ? 'Already added to this therapist\'s deck' : 'Materialize as a recurring slot in the Decking grid'}
+                >
+                  {b.addedToDeck ? '✓ Added to Staff Deck' : 'Add to Staff Deck'}
+                </button>
+                <button
+                  className={`px-3 py-1 rounded text-xs font-medium disabled:opacity-50 ${
+                    b.accountingRecorded
+                      ? 'bg-sky-50 text-sky-700 border border-sky-200 cursor-default'
+                      : 'bg-sky-600 text-white hover:bg-sky-700'
+                  }`}
+                  disabled={busy === b.id || b.accountingRecorded}
+                  onClick={() => markRecorded(b)}
+                  title={b.accountingRecorded ? 'Already recorded in accounting-hub' : 'Mark that the DP was logged in accounting-hub'}
+                >
+                  {b.accountingRecorded ? '✓ Recorded in Accounting Hub' : 'Recorded DP in Accounting Hub'}
+                </button>
+                <button
+                  className="px-3 py-1 rounded border border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-medium disabled:opacity-50"
+                  disabled={busy === b.id}
+                  onClick={() => del(b)}
+                  title="Permanently delete this booking (use only for clearly bad rows)"
+                >
+                  Delete
+                </button>
+              </div>
             </div>
-            <div className="text-xs text-gray-600 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
-              <span>{b.date} · {b.startTime}–{b.endTime}</span>
-              <span>w/ {b.staff.firstName} {b.staff.lastName}</span>
-              {b.patient.email && <span className="text-gray-500">✉ {b.patient.email}</span>}
-              {b.patient.phone && <span className="text-gray-500">☎ {b.patient.phone}</span>}
-            </div>
-            {b.notes && <div className="text-xs text-gray-500 mt-0.5 italic">&ldquo;{b.notes}&rdquo;</div>}
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {showActions === 'pending' && (
-              <>
-                <button
-                  className="px-3 py-1 rounded bg-emerald-600 text-white text-xs font-medium disabled:opacity-50"
-                  disabled={busy === b.id}
-                  onClick={() => approve(b.id)}
-                >Approve</button>
-                <button
-                  className="px-3 py-1 rounded bg-rose-500 text-white text-xs font-medium disabled:opacity-50"
-                  disabled={busy === b.id}
-                  onClick={() => reject(b.id)}
-                >Reject</button>
-              </>
-            )}
-            {showActions === 'approved' && (
-              <>
-                <span className="text-xs text-amber-700 bg-amber-100 px-2 py-0.5 rounded">
-                  Awaiting payment{b.downpayment ? ` · ₱${Number(b.downpayment).toLocaleString()}` : ''}
-                </span>
-                <button
-                  className="px-3 py-1 rounded border text-xs font-medium disabled:opacity-50"
-                  disabled={busy === b.id}
-                  onClick={() => resend(b.id)}
-                >Send Email</button>
-              </>
-            )}
-            {showActions === 'paid' && (
-              <span className="text-xs text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
-                💰 Paid Downpayment{b.payment?.amount ? ` · ₱${Number(b.payment.amount).toLocaleString()}` : ''}
-              </span>
-            )}
-          </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 
@@ -182,7 +177,7 @@ export default function PatientRequestsPanel({ branch }: Props) {
             Patient Appointment Requests
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            {pending.length} pending · {approved.length} awaiting payment · {paid.length} paid today
+            {paid.length} paid downpayment{paid.length === 1 ? '' : 's'}
           </p>
         </div>
         <span className="text-slate-400 text-xs">{expanded ? '▾' : '▸'}</span>
@@ -192,22 +187,11 @@ export default function PatientRequestsPanel({ branch }: Props) {
         <div className="mt-3 space-y-4">
           {err && <div className="text-rose-600 text-sm">{err}</div>}
           {loading && <div className="text-slate-500 text-sm">Loading…</div>}
-
           {!loading && (
-            <>
-              <div>
-                <div className="text-xs font-semibold text-slate-600 mb-1">Pending</div>
-                {sectionRows(pending, 'pending')}
-              </div>
-              <div>
-                <div className="text-xs font-semibold text-slate-600 mb-1">Approved — Awaiting Payment</div>
-                {sectionRows(approved, 'approved')}
-              </div>
-              <div>
-                <div className="text-xs font-semibold text-slate-600 mb-1">Paid Downpayment</div>
-                {sectionRows(paid, 'paid')}
-              </div>
-            </>
+            <div>
+              <div className="text-xs font-semibold text-slate-600 mb-1">Paid Downpayment</div>
+              {rows}
+            </div>
           )}
         </div>
       )}
