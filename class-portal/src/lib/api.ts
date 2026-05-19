@@ -64,9 +64,12 @@ export interface StaffMember {
  * same-origin booking-proxy. Used by the admin to seed teacher accounts —
  * "teachers" must already exist as Staff records upstream.
  */
-export async function listStaff(branch?: string): Promise<StaffMember[]> {
-  const qs = branch ? '?branch=' + encodeURIComponent(branch) : ''
-  const res = await fetch(`${API_BASE}/staff${qs}`)
+export async function listStaff(opts: { branch?: string; department?: string } = {}): Promise<StaffMember[]> {
+  const qs = new URLSearchParams()
+  if (opts.branch) qs.set('branch', opts.branch)
+  if (opts.department) qs.set('department', opts.department)
+  const suffix = qs.toString() ? '?' + qs.toString() : ''
+  const res = await fetch(`${API_BASE}/staff${suffix}`)
   if (!res.ok) throw new Error('Failed to load staff list (' + res.status + ')')
   const data = await res.json() as { staff: StaffMember[] }
   return data.staff

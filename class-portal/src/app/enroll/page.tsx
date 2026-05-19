@@ -45,7 +45,9 @@ export default function EnrollPage() {
   const [zipCode, setZipCode] = useState('')
 
   const [father, setFather] = useState<NameParts>({ lastName: '', firstName: '', middleName: '' })
+  const [fatherOccupation, setFatherOccupation] = useState('')
   const [mother, setMother] = useState<NameParts>({ lastName: '', firstName: '', middleName: '' })
+  const [motherOccupation, setMotherOccupation] = useState('')
   const [guardian, setGuardian] = useState<NameParts>({ lastName: '', firstName: '', middleName: '' })
   const [guardianOfRecord, setGuardianOfRecord] = useState<GuardianOfRecord>('OTHER')
 
@@ -94,7 +96,9 @@ export default function EnrollPage() {
       setCityProvinceCountry(d.cityProvinceCountry ?? '')
       setZipCode(d.zipCode ?? '')
       if (d.father) setFather(d.father)
+      setFatherOccupation(d.fatherOccupation ?? '')
       if (d.mother) setMother(d.mother)
+      setMotherOccupation(d.motherOccupation ?? '')
       if (d.guardian) setGuardian(d.guardian)
       setGuardianOfRecord(d.guardianOfRecord ?? 'OTHER')
       setTelephone(d.telephone ?? '')
@@ -171,6 +175,8 @@ export default function EnrollPage() {
         ...(diagnosis ? { diagnosis } : {}),
         houseStreet, barangay, cityProvinceCountry, zipCode,
         father, mother,
+        ...(fatherOccupation ? { fatherOccupation } : {}),
+        ...(motherOccupation ? { motherOccupation } : {}),
         guardian: guardianOfRecord === 'OTHER' ? guardian : undefined,
         guardianOfRecord,
         telephone, cellphone, email,
@@ -352,6 +358,9 @@ export default function EnrollPage() {
               checked={guardianOfRecord === 'FATHER'}
               onChecked={c => setGuardianOfRecord(c ? 'FATHER' : guardianOfRecord === 'FATHER' ? 'OTHER' : guardianOfRecord)}
             />
+            <Field label="Father's Occupation">
+              <UInput value={fatherOccupation} onValue={setFatherOccupation} placeholder="OPTIONAL" />
+            </Field>
             <PersonNameRow
               label="Mother's Maiden Name"
               required
@@ -361,6 +370,9 @@ export default function EnrollPage() {
               checked={guardianOfRecord === 'MOTHER'}
               onChecked={c => setGuardianOfRecord(c ? 'MOTHER' : guardianOfRecord === 'MOTHER' ? 'OTHER' : guardianOfRecord)}
             />
+            <Field label="Mother's Occupation">
+              <UInput value={motherOccupation} onValue={setMotherOccupation} placeholder="OPTIONAL" />
+            </Field>
             <PersonNameRow
               label="Guardian's Name"
               value={guardian}
