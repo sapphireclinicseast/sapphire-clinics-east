@@ -1,5 +1,12 @@
 // DepEd Annex 2 Enrollment Form PDF generator. Pulls data from the
 // EnrollmentDraft (the same data the parent filled on /enroll).
+//
+// Layout mirrors the DepEd Annex 2 template:
+//   - "Boxed" per-character cells for LRN, LAST/FIRST/MIDDLE NAME, DOB,
+//     SEX, AGE, ZIP CODE — one square per character/digit so the field
+//     enforces structure.
+//   - Multi-line wrapping text fields for long values (email, address,
+//     diagnosis, etc.) so nothing is silently truncated.
 
 import { jsPDF } from 'jspdf'
 import { ageFromDob, levelLabel, type EnrollmentDraft, type EnrollmentLevel, type StoredUser } from './session'
@@ -9,17 +16,18 @@ const PAGE_W = 210
 const PAGE_H = 297
 const CONTENT_W = PAGE_W - PAGE_MARGIN * 2
 
-const COLOR_NARRA: [number, number, number] = [27, 63, 56]
-const COLOR_MOSS:  [number, number, number] = [38, 85, 75]
-const COLOR_INK:   [number, number, number] = [26, 26, 26]
+const COLOR_NARRA: [number, number, number]  = [27, 63, 56]
+const COLOR_MOSS:  [number, number, number]  = [38, 85, 75]
+const COLOR_INK:   [number, number, number]  = [26, 26, 26]
 const COLOR_MIDGRAY: [number, number, number] = [107, 99, 87]
-const COLOR_PAPER2: [number, number, number] = [236, 230, 217]
+const COLOR_PAPER2: [number, number, number]  = [236, 230, 217]
+const COLOR_BORDER: [number, number, number]  = [200, 192, 173]
 
 type Cursor = { doc: jsPDF; y: number }
 
 function setColor(doc: jsPDF, c: [number, number, number]) { doc.setTextColor(c[0], c[1], c[2]) }
-function setFill(doc: jsPDF, c: [number, number, number]) { doc.setFillColor(c[0], c[1], c[2]) }
-function setDraw(doc: jsPDF, c: [number, number, number]) { doc.setDrawColor(c[0], c[1], c[2]) }
+function setFill(doc: jsPDF, c: [number, number, number])  { doc.setFillColor(c[0], c[1], c[2]) }
+function setDraw(doc: jsPDF, c: [number, number, number])  { doc.setDrawColor(c[0], c[1], c[2]) }
 
 function ensure(c: Cursor, needed: number) {
   if (c.y + needed > PAGE_H - PAGE_MARGIN) {
@@ -59,30 +67,154 @@ function sectionHeader(c: Cursor, title: string, annex?: string) {
   c.y += 8
 }
 
-function fieldRow(c: Cursor, rows: Array<[string, string | undefined, number]>) {
-  // rows: [label, value, widthFraction] - widths sum to 1.0
+/**
+ * Row with one square per character — matches the DepEd Annex 2 style.
+ * Pads `value` to `n` characters with spaces; truncates if too long. The
+ * label sits in its own band above the boxes so wide names still fit.
+ */
+function boxRow(c: Cursor, label: string, value: string, n: number, opts: { boxH?: number; labelW?: number } = {}) {
   const { doc } = c
-  ensure(c, 9)
-  const totalW = CONTENT_W
-  let x = PAGE_MARGIN
-  for (const [label, value, frac] of rows) {
-    const w = totalW * frac
-    setDraw(doc, [220, 211, 192])
-    doc.setLineWidth(0.3)
-    doc.rect(x, c.y, w, 8)
-    setColor(doc, COLOR_MIDGRAY)
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(6.5)
-    doc.text(label, x + 1.5, c.y + 2.2)
-    setColor(doc, COLOR_INK)
+  const labelW = opts.labelW ?? 0
+  const boxH = opts.boxH ?? 7
+  const boxW = (CONTENT_W - labelW) / n
+
+  ensure(c, boxH + 5)
+
+  let startX = PAGE_MARGIN
+  if (labelW > 0) {
+    // Inline label to the left
+    setColor(doc, COLOR_MOSS)
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(9.5)
-    const v = (value ?? '').trim() || ''
-    const trimmed = doc.splitTextToSize(v, w - 3) as string[]
-    if (trimmed[0]) doc.text(trimmed[0], x + 1.5, c.y + 6.3)
-    x += w
+    doc.setFontSize(7.5)
+    const lines = doc.splitTextToSize(label, labelW - 2) as string[]
+    lines.slice(0, 2).forEach((ln, i) => doc.text(ln, PAGE_MARGIN, c.y + 3 + i * 3))
+    startX = PAGE_MARGIN + labelW
+  } else {
+    // Label above the boxes
+    setColor(doc, COLOR_MOSS)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7)
+    doc.text(label.toUpperCase(), PAGE_MARGIN, c.y + 2.5)
+    c.y += 3.2
   }
-  c.y += 8
+
+  // Boxes
+  setDraw(doc, COLOR_BORDER)
+  doc.setLineWidth(0.3)
+  const chars = (value ?? '').toUpperCase().padEnd(n, ' ').slice(0, n).split('')
+  for (let i = 0; i < n; i++) {
+    const x = startX + i * boxW
+    doc.rect(x, c.y, boxW, boxH)
+    const ch = chars[i].trim()
+    if (ch) {
+      setColor(doc, COLOR_INK)
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(Math.min(boxH * 1.35, 11))
+      doc.text(ch, x + boxW / 2, c.y + boxH / 2 + 1.8, { align: 'center' })
+    }
+  }
+  c.y += boxH + 2.5
+}
+
+/**
+ * Row of separate fixed-width boxed groups (for DOB: MM/DD/YYYY).
+ * `groups` describes each segment's width in characters and the value to render.
+ */
+function boxGroupRow(c: Cursor, label: string, groups: Array<{ value: string; n: number }>, separators: string[]) {
+  const { doc } = c
+  const boxH = 7
+  // total chars + separator widths
+  const totalChars = groups.reduce((a, g) => a + g.n, 0)
+  const sepWidthMm = 3
+  const totalSepMm = sepWidthMm * separators.length
+  const remaining = CONTENT_W - totalSepMm
+  const boxW = Math.min(7.5, remaining / totalChars)
+
+  ensure(c, boxH + 6)
+  setColor(doc, COLOR_MOSS)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(7)
+  doc.text(label.toUpperCase(), PAGE_MARGIN, c.y + 2.5)
+  c.y += 3.2
+
+  let x = PAGE_MARGIN
+  setDraw(doc, COLOR_BORDER)
+  doc.setLineWidth(0.3)
+  groups.forEach((g, gi) => {
+    const chars = g.value.toUpperCase().padEnd(g.n, ' ').slice(0, g.n).split('')
+    for (let i = 0; i < g.n; i++) {
+      doc.rect(x, c.y, boxW, boxH)
+      const ch = chars[i].trim()
+      if (ch) {
+        setColor(doc, COLOR_INK)
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(10)
+        doc.text(ch, x + boxW / 2, c.y + boxH / 2 + 1.8, { align: 'center' })
+      }
+      x += boxW
+    }
+    // separator
+    if (separators[gi] !== undefined) {
+      setColor(doc, COLOR_MOSS)
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(12)
+      doc.text(separators[gi], x + sepWidthMm / 2, c.y + boxH / 2 + 1.8, { align: 'center' })
+      x += sepWidthMm
+    }
+  })
+  c.y += boxH + 2.5
+}
+
+/**
+ * Multi-line wrapping text field. Cell height grows to fit the value so
+ * email / address / diagnosis never get silently truncated.
+ */
+function wrapField(c: Cursor, label: string, value: string | undefined, opts: { w?: number; minLines?: number; xStart?: number } = {}) {
+  const { doc } = c
+  const w = opts.w ?? CONTENT_W
+  const xStart = opts.xStart ?? PAGE_MARGIN
+  const v = (value ?? '').trim()
+  const minLines = opts.minLines ?? 1
+
+  setColor(doc, COLOR_MOSS)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(7)
+  doc.text(label.toUpperCase(), xStart, c.y + 2.5)
+  c.y += 3.2
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(9.5)
+  setColor(doc, COLOR_INK)
+  const lines = (v ? doc.splitTextToSize(v, w - 4) : []) as string[]
+  const renderLines = Math.max(lines.length, minLines)
+  const lineH = 4.5
+  const padY = 2
+  const cellH = padY * 2 + renderLines * lineH
+
+  ensure(c, cellH + 3)
+  setDraw(doc, COLOR_BORDER)
+  doc.setLineWidth(0.3)
+  doc.rect(xStart, c.y, w, cellH)
+  lines.forEach((ln, i) => doc.text(ln, xStart + 2, c.y + padY + lineH * (i + 0.75)))
+  c.y += cellH + 2.5
+}
+
+/** Two wrap fields side-by-side, each taking half of the content width. */
+function wrapFieldPair(c: Cursor, left: { label: string; value?: string }, right: { label: string; value?: string }) {
+  const halfW = (CONTENT_W - 2) / 2
+
+  // Compute the taller of the two cells so they align bottoms.
+  const startY = c.y
+  // Render left
+  const yBeforeLeft = c.y
+  wrapField(c, left.label, left.value, { w: halfW, xStart: PAGE_MARGIN })
+  const yAfterLeft = c.y
+  // Reset to render right at the same start
+  c.y = yBeforeLeft
+  wrapField(c, right.label, right.value, { w: halfW, xStart: PAGE_MARGIN + halfW + 2 })
+  const yAfterRight = c.y
+  c.y = Math.max(yAfterLeft, yAfterRight)
+  void startY
 }
 
 function helperBodyText(c: Cursor, text: string, opts: { size?: number; italic?: boolean; bold?: boolean; color?: [number, number, number] } = {}) {
@@ -104,9 +236,9 @@ export function generateEnrollmentPdf(user: StoredUser, draft: Partial<Enrollmen
 
   const level: EnrollmentLevel = (draft.level ?? user.level ?? 'KINDER') as EnrollmentLevel
 
-  // Title
+  // ── Title ─────────────────────────────────────────────
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(13.5)
+  doc.setFontSize(13)
   setColor(doc, COLOR_NARRA)
   doc.text('SAPPHIRE CLINICS EAST × LIGHT BEARER CHRISTIAN ACADEMY', PAGE_W / 2, c.y + 6, { align: 'center' })
   doc.setFontSize(11)
@@ -128,89 +260,157 @@ export function generateEnrollmentPdf(user: StoredUser, draft: Partial<Enrollmen
   doc.text('Check the appropriate box only:', PAGE_MARGIN, c.y + 3.5)
   doc.text(`School Year: ${draft.schoolYearFrom ?? '____'} — ${draft.schoolYearTo ?? '____'}`, PAGE_W - PAGE_MARGIN, c.y + 3.5, { align: 'right' })
   c.y += 6
-  let x = PAGE_MARGIN
-  checkboxMark(doc, x, c.y, draft.lrnStatus === 'NO_LRN', 'No LRN'); x += 30
-  checkboxMark(doc, x, c.y, draft.lrnStatus === 'WITH_LRN', 'With LRN'); x += 30
-  checkboxMark(doc, x, c.y, draft.lrnStatus === 'RETURNING', 'Returning (Balik-Aral)')
-  c.y += 7
+  let cbX = PAGE_MARGIN
+  checkboxMark(doc, cbX, c.y, draft.lrnStatus === 'NO_LRN',    'No LRN'); cbX += 30
+  checkboxMark(doc, cbX, c.y, draft.lrnStatus === 'WITH_LRN',  'With LRN'); cbX += 30
+  checkboxMark(doc, cbX, c.y, draft.lrnStatus === 'RETURNING', 'Returning (Balik-Aral)')
+  c.y += 8
 
-  // 1. Student Information
+  // ── 1. Student Information ────────────────────────────
   sectionHeader(c, 'Student Information', 'ANNEX 2')
-  fieldRow(c, [
-    ['PSA Birth Certificate No.', draft.psaBirthCertNo, 0.5],
-    ['Learner Reference No. (LRN)', draft.lrn, 0.5],
-  ])
-  fieldRow(c, [
-    ['LAST NAME', draft.lastName, 0.34],
-    ['FIRST NAME', draft.firstName, 0.34],
-    ['MIDDLE NAME', draft.middleName, 0.32],
-  ])
-  fieldRow(c, [
-    ['EXTENSION NAME (Jr., III, …)', draft.extensionName, 0.34],
-    ['DATE OF BIRTH (MM/DD/YYYY)', draft.dob, 0.34],
-    ['SEX', draft.sex, 0.16],
-    ['AGE', draft.dob ? ageFromDob(draft.dob) : '', 0.16],
-  ])
-  fieldRow(c, [
-    ['IP / ICC Community?', draft.ipMember, 0.34],
-    ['If Yes, please specify', draft.ipCommunity, 0.66],
-  ])
-  fieldRow(c, [
-    ['MOTHER TONGUE', draft.motherTongue, 0.5],
-    ['RELIGION', draft.religion, 0.5],
-  ])
-  if (draft.diagnosis) {
-    fieldRow(c, [['DIAGNOSIS / CONDITIONS', draft.diagnosis, 1]])
+
+  // PSA Birth Cert No. (wider, can have dashes etc) — single text field
+  wrapFieldPair(
+    c,
+    { label: 'PSA Birth Certificate No.', value: draft.psaBirthCertNo },
+    { label: 'Religion', value: draft.religion },
+  )
+
+  // LRN: 12 per-character boxes
+  boxRow(c, 'Learner Reference No. (LRN)', draft.lrn ?? '', 12)
+
+  // LAST NAME: 22 boxes
+  boxRow(c, 'Last Name', draft.lastName ?? '', 22)
+  // FIRST NAME
+  boxRow(c, 'First Name', draft.firstName ?? '', 22)
+  // MIDDLE NAME
+  boxRow(c, 'Middle Name', draft.middleName ?? '', 22)
+  // EXTENSION NAME (free text, allow long like "Jr., III")
+  wrapField(c, 'Extension Name (e.g. Jr., III)', draft.extensionName)
+
+  // Date of Birth + Sex + Age — separate boxed groups
+  boxGroupRow(c, 'Date of Birth (Month / Day / Year)', [
+    { value: dobMonth(draft.dob), n: 2 },
+    { value: dobDay(draft.dob),   n: 2 },
+    { value: dobYear(draft.dob),  n: 4 },
+  ], ['/', '/'])
+
+  // Sex + Age side-by-side: render as two short labelled rows
+  {
+    const { doc: d } = c
+    ensure(c, 11)
+    // Sex
+    setColor(d, COLOR_MOSS); d.setFont('helvetica', 'bold'); d.setFontSize(7)
+    d.text('SEX', PAGE_MARGIN, c.y + 2.5)
+    // Age
+    d.text('AGE', PAGE_MARGIN + CONTENT_W / 2 + 4, c.y + 2.5)
+    c.y += 3.2
+    // Sex checkboxes
+    let sx = PAGE_MARGIN
+    checkboxMark(d, sx, c.y, draft.sex === 'MALE', 'Male'); sx += 22
+    checkboxMark(d, sx, c.y, draft.sex === 'FEMALE', 'Female')
+    // Age boxes (2 digits)
+    const ageStr = draft.dob ? ageFromDob(draft.dob) : ''
+    const ageX = PAGE_MARGIN + CONTENT_W / 2 + 4
+    const boxH = 7, boxW = 7
+    setDraw(d, COLOR_BORDER); d.setLineWidth(0.3)
+    for (let i = 0; i < 2; i++) {
+      d.rect(ageX + i * boxW, c.y - 1, boxW, boxH)
+      const ch = ageStr.padStart(2, ' ')[i]?.trim() ?? ''
+      if (ch) {
+        setColor(d, COLOR_INK); d.setFont('helvetica', 'bold'); d.setFontSize(10)
+        d.text(ch, ageX + i * boxW + boxW / 2, c.y + boxH / 2 + 0.7, { align: 'center' })
+      }
+    }
+    c.y += 9
   }
 
-  // 2. Address
+  // IP membership
+  {
+    const { doc: d } = c
+    ensure(c, 8)
+    setColor(d, COLOR_MOSS); d.setFont('helvetica', 'bold'); d.setFontSize(7.5)
+    d.text('Belonging to any Indigenous Peoples (IP) Community / Indigenous Cultural Community?', PAGE_MARGIN, c.y + 2.5)
+    c.y += 3.2
+    let x = PAGE_MARGIN
+    checkboxMark(d, x, c.y, draft.ipMember === 'YES', 'Yes'); x += 22
+    checkboxMark(d, x, c.y, draft.ipMember === 'NO',  'No');  x += 22
+    if (draft.ipMember === 'YES') {
+      d.setFont('helvetica', 'italic'); d.setFontSize(8); setColor(d, COLOR_MIDGRAY)
+      d.text('Specify:', x, c.y + 3); x += 14
+      setColor(d, COLOR_INK); d.setFont('helvetica', 'bold'); d.setFontSize(9.5)
+      d.text(doc.splitTextToSize(draft.ipCommunity ?? '', PAGE_W - PAGE_MARGIN - x)[0] ?? '', x, c.y + 3)
+    }
+    c.y += 6
+  }
+
+  // Mother tongue (wraps)
+  wrapField(c, 'Mother Tongue', draft.motherTongue)
+
+  // Diagnosis (wraps)
+  if (draft.diagnosis) wrapField(c, 'Diagnosis / Conditions', draft.diagnosis)
+
+  // ── 2. Address ────────────────────────────────────────
   sectionHeader(c, 'Address')
-  fieldRow(c, [
-    ['House Number and Street', draft.houseStreet, 0.5],
-    ['Barangay', draft.barangay, 0.3],
-    ['Zip Code', draft.zipCode, 0.2],
-  ])
-  fieldRow(c, [['City / Municipality / Province / Country', draft.cityProvinceCountry, 1]])
+  wrapField(c, 'House Number and Street', draft.houseStreet)
+  wrapFieldPair(
+    c,
+    { label: 'Barangay', value: draft.barangay },
+    { label: 'City / Municipality / Province / Country', value: draft.cityProvinceCountry },
+  )
+  // ZIP code — 4 per-character boxes, aligned to the left half
+  boxRow(c, 'Zip Code', (draft.zipCode ?? '').padStart(4, ' ').slice(0, 4), 4, { boxH: 7 })
 
-  // 3. Parent / Guardian
+  // ── 3. Parent / Guardian ──────────────────────────────
   sectionHeader(c, "Parent's / Guardian's Information")
-  fieldRow(c, [['Father\'s Name (Last, First, Middle)', nameOf(draft.father), 0.6], ['Occupation', draft.fatherOccupation, 0.4]])
-  fieldRow(c, [['Mother\'s Maiden Name (Last, First, Middle)', nameOf(draft.mother), 0.6], ['Occupation', draft.motherOccupation, 0.4]])
-  fieldRow(c, [['Guardian\'s Name (Last, First, Middle)', draft.guardianOfRecord === 'OTHER' ? nameOf(draft.guardian) : (draft.guardianOfRecord === 'FATHER' ? nameOf(draft.father) : nameOf(draft.mother)), 1]])
-  fieldRow(c, [
-    ['Telephone No.', draft.telephone, 0.34],
-    ['Cellphone No.', draft.cellphone, 0.34],
-    ['Email Address', draft.email, 0.32],
-  ])
+  wrapFieldPair(
+    c,
+    { label: "Father's Name (Last, First, Middle)", value: nameOf(draft.father) },
+    { label: "Father's Occupation", value: draft.fatherOccupation },
+  )
+  wrapFieldPair(
+    c,
+    { label: "Mother's Maiden Name (Last, First, Middle)", value: nameOf(draft.mother) },
+    { label: "Mother's Occupation", value: draft.motherOccupation },
+  )
+  wrapField(c, "Guardian's Name (Last, First, Middle)", draft.guardianOfRecord === 'OTHER' ? nameOf(draft.guardian) : (draft.guardianOfRecord === 'FATHER' ? nameOf(draft.father) : nameOf(draft.mother)))
+  wrapFieldPair(
+    c,
+    { label: 'Telephone No.', value: draft.telephone },
+    { label: 'Cellphone No.', value: draft.cellphone },
+  )
+  // Email gets its own full-width wrap row — emails are long and must show in full
+  wrapField(c, 'Email Address', draft.email)
 
-  // 4. Returning / Transferee
+  // ── 4. Returning / Transferee (conditional) ──────────
   if (draft.isReturningOrTransferee === 'YES') {
     sectionHeader(c, 'For Returning Learners (Balik-Aral) and Those Who Shall Transfer / Move In')
-    fieldRow(c, [
-      ['Last Grade Level Completed', draft.lastGradeCompleted, 0.5],
-      ['Last School Year Completed', draft.lastSchoolYearCompleted, 0.5],
-    ])
-    fieldRow(c, [
-      ['School Name', draft.previousSchoolName, 0.66],
-      ['School ID', draft.previousSchoolId, 0.34],
-    ])
-    fieldRow(c, [['School Address', draft.previousSchoolAddress, 1]])
+    wrapFieldPair(
+      c,
+      { label: 'Last Grade Level Completed', value: draft.lastGradeCompleted },
+      { label: 'Last School Year Completed', value: draft.lastSchoolYearCompleted },
+    )
+    wrapFieldPair(
+      c,
+      { label: 'School Name', value: draft.previousSchoolName },
+      { label: 'School ID', value: draft.previousSchoolId },
+    )
+    wrapField(c, 'School Address', draft.previousSchoolAddress)
   }
 
-  // 5. Grade level confirmation (this is a class-portal addition; not strictly Annex 2)
+  // ── 5. Class Program ──────────────────────────────────
   sectionHeader(c, 'Class Program Enrollment Level')
-  fieldRow(c, [['Enrolled Grade Level (SCEI × LBCA SPED Class Program)', levelLabel(level), 1]])
+  wrapField(c, 'Enrolled Grade Level (SCEI × LBCA SPED Class Program)', levelLabel(level))
 
-  // 6. Certification + signature
+  // ── 6. Certification + Signature ──────────────────────
   sectionHeader(c, 'Certification')
   helperBodyText(c, 'I hereby certify that the above information given are true and correct to the best of my knowledge and I allow the Department of Education to use my child\'s details to create and/or update his/her learner profile in the Learner Information System. The information herein shall be treated as confidential in compliance with the Data Privacy Act of 2012.')
   c.y += 2
 
-  // Signature block
   const sigBoxW = CONTENT_W * 0.6
   const dateBoxW = CONTENT_W - sigBoxW - 4
   ensure(c, 30)
-  setDraw(doc, COLOR_PAPER2)
+  setDraw(doc, COLOR_BORDER)
   doc.setLineWidth(0.4)
   doc.rect(PAGE_MARGIN, c.y, sigBoxW, 20)
   doc.rect(PAGE_MARGIN + sigBoxW + 4, c.y, dateBoxW, 20)
@@ -226,7 +426,7 @@ export function generateEnrollmentPdf(user: StoredUser, draft: Partial<Enrollmen
   doc.setFontSize(7.5)
   setColor(doc, COLOR_MIDGRAY)
   doc.setFont('helvetica', 'italic')
-  doc.text('Signature Over Printed Name of Parent/Guardian', PAGE_MARGIN + sigBoxW / 2, c.y + 24, { align: 'center' })
+  doc.text('Signature Over Printed Name of Parent / Guardian', PAGE_MARGIN + sigBoxW / 2, c.y + 24, { align: 'center' })
   doc.text('Date', PAGE_MARGIN + sigBoxW + 4 + dateBoxW / 2, c.y + 24, { align: 'center' })
   if (draft.certSignatureName) {
     doc.setFont('helvetica', 'bold')
@@ -260,4 +460,20 @@ export function downloadEnrollmentPdf(user: StoredUser, draft: Partial<Enrollmen
 function nameOf(n?: { lastName: string; firstName: string; middleName: string }) {
   if (!n) return ''
   return [n.lastName, n.firstName, n.middleName].filter(Boolean).join(', ')
+}
+
+function dobMonth(dob?: string): string {
+  if (!dob) return ''
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dob)
+  return m ? m[2] : ''
+}
+function dobDay(dob?: string): string {
+  if (!dob) return ''
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dob)
+  return m ? m[3] : ''
+}
+function dobYear(dob?: string): string {
+  if (!dob) return ''
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dob)
+  return m ? m[1] : ''
 }
