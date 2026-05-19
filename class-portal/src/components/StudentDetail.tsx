@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import {
   getFile, getPaymentsForStudent, getWaivers, getGradeForStudent,
   updateUserEnrollment,
-  levelLabel, type StoredUser, type PaymentRecord, type WaiverRecord, type GradeRecord,
+  levelLabel, lrnStatusLabel,
+  type StoredUser, type PaymentRecord, type WaiverRecord, type GradeRecord,
   type EnrollmentDraft,
 } from '@/lib/session'
 import { downloadWaiverPdf, generateWaiverPdf } from '@/lib/waiver-pdf'
@@ -96,7 +97,7 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
         </div>
         <dl className="grid sm:grid-cols-2 gap-x-6 gap-y-2.5 text-sm">
           <Row label="School year" value={e.schoolYearFrom && e.schoolYearTo ? `${e.schoolYearFrom} to ${e.schoolYearTo}` : '—'} />
-          <Row label="LRN status" value={e.lrnStatus ?? '—'} />
+          <Row label="LRN status" value={lrnStatusLabel(e.lrnStatus)} />
           {e.lrn && <Row label="LRN" value={e.lrn} />}
           <Row label="PSA Birth Cert. No." value={e.psaBirthCertNo ?? '—'} />
           <Row label="Date of birth" value={e.dob ?? '—'} />
