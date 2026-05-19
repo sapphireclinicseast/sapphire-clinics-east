@@ -8,6 +8,7 @@ import {
 import { downloadWaiverPdf, generateWaiverPdf } from '@/lib/waiver-pdf'
 import { downloadEnrollmentPdf, generateEnrollmentPdf } from '@/lib/enrollment-pdf'
 import HeadshotEditor from './HeadshotEditor'
+import EnrollmentEditor from './EnrollmentEditor'
 
 interface Props {
   student: StoredUser
@@ -24,10 +25,14 @@ interface Props {
  *   - the main admin on /admin > Students tab
  * Headshot is editable when viewerRole === 'STUDENT'.
  */
-export default function StudentDetail({ student, viewerRole }: Props) {
+export default function StudentDetail({ student: studentProp, viewerRole, onChange }: Props) {
+  const [student, setStudent] = useState<StoredUser>(studentProp)
   const [payments, setPayments] = useState<PaymentRecord[]>([])
   const [waiver, setWaiver] = useState<WaiverRecord | null>(null)
   const [grade, setGrade] = useState<GradeRecord | null>(null)
+  const [editorOpen, setEditorOpen] = useState(false)
+
+  useEffect(() => { setStudent(studentProp) }, [studentProp])
 
   useEffect(() => {
     setPayments(getPaymentsForStudent(student.id))
@@ -71,7 +76,14 @@ export default function StudentDetail({ student, viewerRole }: Props) {
 
       {/* Learner profile */}
       <div className="card-static">
-        <h2 className="text-[18px] leading-tight mb-4">Learner profile</h2>
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+          <h2 className="text-[18px] leading-tight">Learner profile</h2>
+          {viewerRole === 'ADMIN' && (
+            <button type="button" className="btn-secondary text-xs" onClick={() => setEditorOpen(true)}>
+              Edit enrollment
+            </button>
+          )}
+        </div>
         <dl className="grid sm:grid-cols-2 gap-x-6 gap-y-2.5 text-sm">
           <Row label="School year" value={e.schoolYearFrom && e.schoolYearTo ? `${e.schoolYearFrom} to ${e.schoolYearTo}` : '—'} />
           <Row label="LRN status" value={e.lrnStatus ?? '—'} />
@@ -162,6 +174,14 @@ export default function StudentDetail({ student, viewerRole }: Props) {
             </div>
           )}
         </div>
+      )}
+
+      {editorOpen && viewerRole === 'ADMIN' && (
+        <EnrollmentEditor
+          student={student}
+          onClose={() => setEditorOpen(false)}
+          onSaved={updated => { setStudent(updated); setEditorOpen(false); onChange?.() }}
+        />
       )}
     </div>
   )

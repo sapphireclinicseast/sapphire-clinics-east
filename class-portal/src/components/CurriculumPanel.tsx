@@ -112,27 +112,77 @@ export default function CurriculumPanel({ viewer }: Props) {
         {filtered.length === 0 ? (
           <p className="text-sm text-[color:var(--mid-gray)] text-center py-8">No curriculum templates yet.</p>
         ) : (
-          <ul className="space-y-2.5">
-            {filtered.map(c => (
-              <li key={c.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border" style={{ borderColor: 'var(--paper-3)', background: '#fff' }}>
-                <div className="min-w-0">
-                  <div className="font-semibold text-[color:var(--narra)] text-sm" style={{ fontFamily: 'var(--font-display)' }}>{c.title}</div>
-                  <div className="text-[12px] text-[color:var(--mid-gray)] truncate">
-                    {levelLabel(c.level)} · {c.fileName} · {(c.fileSize / 1024).toFixed(0)} KB · uploaded by {c.uploadedBy} on {new Date(c.uploadedAt).toLocaleDateString()}
-                  </div>
-                </div>
-                <div className="flex gap-2 shrink-0">
-                  <button className="btn-secondary text-xs" onClick={() => handleOpen(c)}>View</button>
-                  <button className="btn-primary text-xs" onClick={() => handleDownload(c)}>Download</button>
-                  {(viewer.role === 'ADMIN' || c.uploadedBy === viewer.email) && (
-                    <button className="text-xs px-2 py-1 rounded-md text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)]" onClick={() => handleDelete(c)}>Delete</button>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
+          <CurriculumGrouped
+            items={filtered}
+            viewer={viewer}
+            onOpen={handleOpen}
+            onDownload={handleDownload}
+            onDelete={handleDelete}
+            singleLevel={viewer.role === 'STUDENT'}
+          />
         )}
       </div>
+    </div>
+  )
+}
+
+/**
+ * Renders the curriculum list grouped per grade level so admins/teachers
+ * can scan compactly. Each level is a collapsible section; defaults to
+ * open. Empty levels are hidden.
+ */
+function CurriculumGrouped({ items, viewer, onOpen, onDownload, onDelete, singleLevel }: {
+  items: CurriculumRecord[]
+  viewer: { role: 'STUDENT' | 'TEACHER' | 'ADMIN'; email: string }
+  onOpen: (c: CurriculumRecord) => void
+  onDownload: (c: CurriculumRecord) => void
+  onDelete: (c: CurriculumRecord) => void
+  singleLevel: boolean
+}) {
+  // Group by level, preserving the ALL_LEVELS order
+  const byLevel: Record<EnrollmentLevel, CurriculumRecord[]> = {
+    KINDER: [], GRADE_1: [], GRADE_2: [], GRADE_3: [], GRADE_4: [], GRADE_5: [], GRADE_6: [],
+  }
+  for (const c of items) byLevel[c.level].push(c)
+
+  return (
+    <div className="space-y-2.5">
+      {ALL_LEVELS.map(lvl => {
+        const list = byLevel[lvl]
+        if (list.length === 0) return null
+        return (
+          <details key={lvl} open className="rounded-xl border" style={{ borderColor: 'var(--paper-3)' }}>
+            <summary className="flex items-center justify-between gap-3 px-4 py-2.5 cursor-pointer select-none rounded-xl" style={{ background: 'var(--paper-2)' }}>
+              <span className="font-semibold text-[color:var(--narra)] text-sm" style={{ fontFamily: 'var(--font-display)' }}>
+                {levelLabel(lvl)}
+              </span>
+              <span className="text-[11.5px] text-[color:var(--mid-gray)]">{list.length} document{list.length === 1 ? '' : 's'}</span>
+            </summary>
+            <ul className="divide-y" style={{ borderColor: 'var(--paper-3)' }}>
+              {list.map(c => (
+                <li key={c.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold text-[color:var(--narra)] truncate" style={{ fontFamily: 'var(--font-display)' }}>{c.title}</div>
+                    <div className="text-[11.5px] text-[color:var(--mid-gray)] truncate">
+                      {c.fileName} · {(c.fileSize / 1024).toFixed(0)} KB · uploaded by {c.uploadedBy} on {new Date(c.uploadedAt).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <div className="flex gap-1.5 shrink-0">
+                    <button className="btn-secondary text-xs" onClick={() => onOpen(c)}>View</button>
+                    <button className="btn-primary text-xs" onClick={() => onDownload(c)}>Download</button>
+                    {(viewer.role === 'ADMIN' || c.uploadedBy === viewer.email) && (
+                      <button className="text-xs px-2 py-1 rounded-md text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)]" onClick={() => onDelete(c)}>Delete</button>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )
+      })}
+      {singleLevel && Object.values(byLevel).flat().length === 0 && (
+        <p className="text-sm text-[color:var(--mid-gray)] text-center py-8">No curriculum for your level yet.</p>
+      )}
     </div>
   )
 }

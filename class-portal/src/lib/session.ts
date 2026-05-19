@@ -226,6 +226,21 @@ export function deleteUser(id: string) {
   writeUsers(getUsers().filter(u => u.id !== id))
 }
 
+/**
+ * Admin-only: patch a student's stored enrollment data (when the parent
+ * submitted incomplete or out-of-date information).
+ */
+export function updateUserEnrollment(id: string, patch: Partial<EnrollmentDraft>): StoredUser {
+  const users = getUsers()
+  const idx = users.findIndex(u => u.id === id)
+  if (idx < 0) throw new Error('User not found.')
+  const u = users[idx]
+  if (u.role !== 'STUDENT') throw new Error('Only student accounts have enrollment data.')
+  users[idx] = { ...u, enrollment: { ...(u.enrollment ?? {}), ...patch } }
+  writeUsers(users)
+  return users[idx]
+}
+
 export function getAuth(): AuthSession | null {
   if (typeof window === 'undefined') return null
   try {
