@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { lookupStudent, type EnrollmentLevel } from '@/lib/api'
 import { getSession, setSession, setDraft, clearDraft, levelLabel } from '@/lib/session'
-import Hero from '@/components/ui/animated-shader-hero'
+import { AuroraBackground } from '@/components/ui/aurora-background'
 
 type Tab = 'returning' | 'new'
 
@@ -72,19 +72,40 @@ function HomeInner() {
 
   return (
     <>
-      {/* Full-bleed animated shader hero. Negative-margin trick breaks out
-          of the parent <main>'s max-w-5xl + px-5 + py-8 so the hero spans
-          the entire viewport width. */}
+      {/* Full-bleed aurora background. Negative-margin trick breaks out
+          of the parent <main>'s max-w-5xl + px-5 + py-8 so it spans the
+          entire viewport width. */}
       <section className="relative left-1/2 right-1/2 -mx-[50vw] w-screen -mt-8">
-        <Hero
-          trustBadge={{ text: 'Kindergarten · Grade 1–3 · DepEd-accredited', icons: ['✨'] }}
-          headline={{ line1: 'Enroll your student', line2: 'in a graded class' }}
-          subtitle="Sapphire Clinics East offers Kindergarten through Grade 3 in a small, attentive setting — with a DepEd-recognised graded class and a Learner Reference Number for every student."
-          buttons={{
-            primary:   { text: 'Start enrollment', onClick: scrollToEnroll },
-            secondary: { text: 'About SCEI',       onClick: () => router.push('/about') },
-          }}
-        />
+        <AuroraBackground>
+          <div className="relative z-10 flex flex-col items-center justify-center text-center px-5 max-w-5xl mx-auto">
+            <div className="mb-7 animate-fade-in-down">
+              <div className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-white/60 backdrop-blur-md border border-[color:var(--paper-3)] text-[11.5px] uppercase tracking-[0.12em] text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>
+                <span aria-hidden>✨</span>
+                Kindergarten · Grade 1–3 · DepEd-accredited
+              </div>
+            </div>
+
+            <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold text-[color:var(--narra)] animate-fade-in-up animation-delay-200 leading-[1.02]" style={{ fontFamily: 'var(--font-display)' }}>
+              Enroll your student
+            </h1>
+            <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold bg-gradient-to-r from-[color:var(--moss)] via-[color:var(--sage)] to-[color:var(--narra)] bg-clip-text text-transparent animate-fade-in-up animation-delay-400 mt-1" style={{ fontFamily: 'var(--font-display)' }}>
+              in a graded class
+            </h1>
+
+            <p className="max-w-2xl mt-6 text-base md:text-lg lg:text-xl text-[color:var(--ink)]/80 leading-relaxed animate-fade-in-up animation-delay-600">
+              Sapphire Clinics East offers Kindergarten through Grade 3 in a small, attentive setting — with a DepEd-recognised graded class and a Learner Reference Number for every student.
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-3 mt-9 animate-fade-in-up animation-delay-800">
+              <button onClick={scrollToEnroll} className="btn-primary text-base px-7 py-3">
+                Start enrollment
+              </button>
+              <button onClick={() => router.push('/about')} className="btn-secondary text-base px-7 py-3">
+                About SCEI
+              </button>
+            </div>
+          </div>
+        </AuroraBackground>
       </section>
 
       <div id="enroll" className="grid md:grid-cols-5 gap-8 md:gap-10 items-start mt-12 scroll-mt-24">

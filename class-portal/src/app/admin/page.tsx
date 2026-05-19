@@ -6,6 +6,7 @@ import {
   getAuth, getUsers, addUser, updateUser, deleteUser,
   levelLabel, type StoredUser, type UserRole,
 } from '@/lib/session'
+import { listStaff, type StaffMember } from '@/lib/api'
 
 type Filter = 'ALL' | UserRole
 
@@ -19,11 +20,25 @@ export default function AdminPage() {
   const [info, setInfo] = useState<string | null>(null)
   const [editing, setEditing] = useState<StoredUser | null>(null)
 
+  // Staff Module pulled from marketing.sapphireclinicseast.org — only these
+  // names are eligible to become teacher accounts.
+  const [staff, setStaff] = useState<StaffMember[]>([])
+  const [staffLoading, setStaffLoading] = useState(true)
+  const [staffErr, setStaffErr] = useState<string | null>(null)
+  const [staffBranchFilter, setStaffBranchFilter] = useState<'' | 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS'>('')
+  const [staffSearch, setStaffSearch] = useState('')
+
   useEffect(() => {
     const auth = getAuth()
     if (!auth || auth.role !== 'ADMIN') { router.replace('/sign-in'); return }
     setUsers(getUsers())
     setReady(true)
+    // Fire-and-forget — the picker just falls back to a "couldn't load" state
+    // if marketing is offline.
+    listStaff()
+      .then(s => { setStaff(s); setStaffErr(null) })
+      .catch(e => setStaffErr((e as Error).message))
+      .finally(() => setStaffLoading(false))
   }, [router])
 
   const filtered = useMemo(() => {
@@ -33,21 +48,36 @@ export default function AdminPage() {
 
   function refresh() { setUsers(getUsers()) }
 
-  function handleAddTeacher(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
+  /** Existing teacher accounts keyed by email, lowercased, for picker badges. */
+  const teacherEmailSet = useMemo(
+    () => new Set(users.filter(u => u.role === 'TEACHER').map(u => u.email.toLowerCase())),
+    [users],
+  )
+
+  const filteredStaff = useMemo(() => {
+    const q = staffSearch.trim().toLowerCase()
+    return staff.filter(s => {
+      if (staffBranchFilter && s.branch !== staffBranchFilter) return false
+      if (!q) return true
+      const hay = `${s.firstName} ${s.lastName} ${s.email} ${s.jobTitle}`.toLowerCase()
+      return hay.includes(q)
+    })
+  }, [staff, staffSearch, staffBranchFilter])
+
+  function handleCreateFromStaff(member: StaffMember, password: string) {
     setErr(null); setInfo(null)
-    const f = new FormData(e.currentTarget)
+    if (!member.email) { setErr(`${member.firstName} ${member.lastName} has no email on file in the Staff Module.`); return }
+    if (password.length < 6) { setErr('Password must be at least 6 characters.'); return }
     try {
       addUser({
         role: 'TEACHER',
-        email: String(f.get('email') ?? '').trim(),
-        password: String(f.get('password') ?? ''),
-        firstName: String(f.get('firstName') ?? '').trim() || undefined,
-        lastName: String(f.get('lastName') ?? '').trim() || undefined,
+        email: member.email,
+        password,
+        firstName: member.firstName || undefined,
+        lastName: member.lastName || undefined,
       })
-      e.currentTarget.reset()
       refresh()
-      setInfo('Teacher account created.')
+      setInfo(`Teacher account created for ${member.firstName} ${member.lastName}.`)
     } catch (e) {
       setErr((e as Error).message)
     }
@@ -147,30 +177,87 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* Add teacher */}
+      {/* Add teacher — sourced from marketing's Staff Module */}
       <div className="card-static">
-        <h2 className="text-[18px] leading-tight mb-4">Add teacher</h2>
-        <form className="grid sm:grid-cols-2 gap-3" onSubmit={handleAddTeacher}>
-          <label className="block">
-            <span className="label">First name</span>
-            <input name="firstName" className="input" />
-          </label>
-          <label className="block">
-            <span className="label">Last name</span>
-            <input name="lastName" className="input" />
-          </label>
-          <label className="block">
-            <span className="label">Email</span>
-            <input required name="email" type="email" className="input" placeholder="teacher@example.com" />
-          </label>
-          <label className="block">
-            <span className="label">Password</span>
-            <input required name="password" className="input" minLength={6} placeholder="min 6 characters" />
-          </label>
-          <div className="sm:col-span-2">
-            <button type="submit" className="btn-primary">Create teacher account</button>
+        <div className="flex items-start justify-between gap-4 flex-wrap mb-1">
+          <div>
+            <h2 className="text-[18px] leading-tight">Add teacher from Staff Module</h2>
+            <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1">
+              Picked from <span className="font-semibold">marketing.sapphireclinicseast.org</span>. Only staff already on payroll there can become teacher accounts.
+            </p>
           </div>
-        </form>
+          {staffLoading && <span className="text-[12px] text-[color:var(--mid-gray)]">Loading staff…</span>}
+        </div>
+
+        {staffErr && (
+          <div className="mt-3 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">
+            Couldn&apos;t load Staff Module: {staffErr}
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-end gap-3 mt-4">
+          <label className="block flex-1 min-w-[220px]">
+            <span className="label">Search</span>
+            <input
+              className="input"
+              placeholder="Name, job title, or email"
+              value={staffSearch}
+              onChange={e => setStaffSearch(e.target.value)}
+            />
+          </label>
+          <label className="block">
+            <span className="label">Branch</span>
+            <select
+              className="select"
+              value={staffBranchFilter}
+              onChange={e => setStaffBranchFilter(e.target.value as typeof staffBranchFilter)}
+              style={{ minWidth: 220 }}
+            >
+              <option value="">All branches</option>
+              <option value="SANDBOX_EAST">Sandbox East</option>
+              <option value="SANDBOX_GREENHILLS">Sandbox Greenhills</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="overflow-x-auto mt-4">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
+                <th className="py-2 pr-3">Name</th>
+                <th className="py-2 pr-3">Job title</th>
+                <th className="py-2 pr-3">Branch</th>
+                <th className="py-2 pr-3">Email</th>
+                <th className="py-2 pr-3"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {!staffLoading && filteredStaff.length === 0 && (
+                <tr><td colSpan={5} className="py-6 text-center text-[color:var(--mid-gray)]">
+                  {staff.length === 0 ? 'No staff returned from the Staff Module.' : 'No staff match this search.'}
+                </td></tr>
+              )}
+              {filteredStaff.map(m => {
+                const has = teacherEmailSet.has(m.email.toLowerCase())
+                return (
+                  <tr key={m.id} className="border-b align-top" style={{ borderColor: 'var(--paper-3)' }}>
+                    <td className="py-2.5 pr-3 whitespace-nowrap">{m.firstName} {m.lastName}</td>
+                    <td className="py-2.5 pr-3">{m.jobTitle || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-2.5 pr-3 text-[12.5px]">{m.branch.replace('SANDBOX_', '')}</td>
+                    <td className="py-2.5 pr-3 text-[12.5px]">{m.email || <span className="text-[color:var(--mid-gray)]">no email on file</span>}</td>
+                    <td className="py-2.5 pr-3 text-right whitespace-nowrap">
+                      {has ? (
+                        <span className="badge badge-approved">Account exists</span>
+                      ) : (
+                        <CreateTeacherInlineForm onCreate={pw => handleCreateFromStaff(m, pw)} disabled={!m.email} />
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Edit modal */}
@@ -206,6 +293,52 @@ export default function AdminPage() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function CreateTeacherInlineForm({ onCreate, disabled }: { onCreate: (pw: string) => void; disabled?: boolean }) {
+  const [open, setOpen] = useState(false)
+  const [pw, setPw] = useState('')
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen(true)}
+        className="text-xs px-3 py-1.5 rounded-md text-[color:var(--narra)] hover:bg-[color:var(--paper-2)] border"
+        style={{ borderColor: 'var(--paper-3)' }}
+      >
+        Create account
+      </button>
+    )
+  }
+  return (
+    <div className="inline-flex items-center gap-1.5">
+      <input
+        autoFocus
+        type="text"
+        placeholder="password (min 6)"
+        className="input"
+        value={pw}
+        onChange={e => setPw(e.target.value)}
+        style={{ width: 180, padding: '6px 10px', fontSize: 12 }}
+      />
+      <button
+        type="button"
+        onClick={() => { onCreate(pw); setOpen(false); setPw('') }}
+        className="text-xs px-3 py-1.5 rounded-md bg-[color:var(--narra)] text-white"
+      >
+        Save
+      </button>
+      <button
+        type="button"
+        onClick={() => { setOpen(false); setPw('') }}
+        className="text-xs px-2 py-1.5 rounded-md text-[color:var(--mid-gray)] hover:text-[color:var(--narra)]"
+      >
+        Cancel
+      </button>
     </div>
   )
 }

@@ -47,6 +47,29 @@ export async function submitLearnerProfile(token: string, payload: LearnerProfil
   }
 }
 
+export interface StaffMember {
+  id: string
+  firstName: string
+  lastName: string
+  email: string
+  jobTitle: string
+  department: string
+  branch: string
+}
+
+/**
+ * Pulls the Staff Module list from marketing.sapphireclinicseast.org via the
+ * same-origin booking-proxy. Used by the admin to seed teacher accounts —
+ * "teachers" must already exist as Staff records upstream.
+ */
+export async function listStaff(branch?: string): Promise<StaffMember[]> {
+  const qs = branch ? '?branch=' + encodeURIComponent(branch) : ''
+  const res = await fetch(`${API_BASE}/staff${qs}`)
+  if (!res.ok) throw new Error('Failed to load staff list (' + res.status + ')')
+  const data = await res.json() as { staff: StaffMember[] }
+  return data.staff
+}
+
 export async function submitDocuments(token: string, payload: {
   documents: Record<string, { name: string; size: number }>
   waiverSignedAt?: string
