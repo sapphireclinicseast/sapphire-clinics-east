@@ -13,6 +13,8 @@ services:
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI}
+      - GOOGLE_REFRESH_TOKEN=${GOOGLE_REFRESH_TOKEN}
+      - GMAIL_FROM_EMAIL=${GMAIL_FROM_EMAIL:-Sapphire Clinics East <main@sapphireclinicseast.org>}
       - UPLOAD_DIR=/app/uploads
       - INTERNAL_API_KEY=${INTERNAL_API_KEY}
     volumes:
