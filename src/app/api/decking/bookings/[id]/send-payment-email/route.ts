@@ -40,6 +40,23 @@ export async function POST(
     meetLink: booking.meetLink,
   })
 
-  await sendTransactionalEmail({ to: booking.patient.email, subject, html })
+  // Wrap the actual send so a Resend / SMTP failure returns a clean JSON error
+  // instead of throwing — which would yield an empty response body and the
+  // generic 'Failed to execute json on Response: Unexpected end of JSON input'
+  // error in the UI. The original 401 from Resend (invalid API key) is the
+  // canonical example we hit on 2026-05-18.
+  try {
+    await sendTransactionalEmail({ to: booking.patient.email, subject, html })
+  } catch (err) {
+    const msg = (err as Error).message ?? 'Unknown email-send failure'
+    console.error('[decking send-payment-email] send failed:', msg)
+    // Heuristic: surface the user-friendly cause for the most common case
+    // (Resend rejecting the key) so the front-desk doesn't waste time
+    // guessing.
+    const userMsg = /401|403|API key|unauthorized/i.test(msg)
+      ? 'Email service rejected the API key. Have an admin update RESEND_API_KEY in the server environment.'
+      : 'Email service is unavailable right now. ' + msg
+    return NextResponse.json({ error: userMsg, raw: msg }, { status: 502 })
+  }
   return NextResponse.json({ sent: true })
 }
