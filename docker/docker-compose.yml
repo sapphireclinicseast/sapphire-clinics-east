@@ -112,6 +112,21 @@ services:
     ports:
       - "127.0.0.1:3005:3000"
 
+  class-portal:
+    build:
+      context: ../class-portal
+      dockerfile: Dockerfile
+    container_name: sapphire_class_portal
+    restart: always
+    depends_on:
+      app:
+        condition: service_started
+    environment:
+      MARKETING_URL: ${MARKETING_URL:-https://marketing.sapphireclinicseast.org}
+      NODE_ENV: production
+    ports:
+      - "127.0.0.1:3006:3000"
+
 volumes:
   postgres_data:
   redis_data:
