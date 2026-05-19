@@ -12,6 +12,8 @@ interface Props {
   student: StoredUser
   onClose: () => void
   onSaved: (updated: StoredUser) => void
+  /** Label shown above the title bar. Defaults to "Admin · edit enrollment". */
+  headerLabel?: string
 }
 
 const ALL_LEVELS: EnrollmentLevel[] = ['KINDER', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10']
@@ -21,7 +23,7 @@ const ALL_LEVELS: EnrollmentLevel[] = ['KINDER', 'GRADE_1', 'GRADE_2', 'GRADE_3'
  * the student's submitted enrollment data. The shape mirrors /enroll's
  * sections so values are interchangeable.
  */
-export default function EnrollmentEditor({ student, onClose, onSaved }: Props) {
+export default function EnrollmentEditor({ student, onClose, onSaved, headerLabel }: Props) {
   const [draft, setDraft] = useState<Partial<EnrollmentDraft>>(() => ({ ...(student.enrollment ?? {}), level: (student.enrollment?.level ?? student.level) as EnrollmentLevel }))
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -62,7 +64,7 @@ export default function EnrollmentEditor({ student, onClose, onSaved }: Props) {
       <div className="max-w-3xl mx-auto my-4 card-static" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
           <div>
-            <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>Admin · edit enrollment</div>
+            <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>{headerLabel ?? 'Admin · edit enrollment'}</div>
             <h2 className="text-[22px] leading-tight text-[color:var(--deep-teal)]">{student.firstName} {student.lastName}</h2>
             <p className="text-sm text-[color:var(--mid-gray)]">{student.email} · enrolled in {student.level ? levelLabel(student.level) : '—'}</p>
           </div>
