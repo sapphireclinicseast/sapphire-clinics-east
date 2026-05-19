@@ -4,10 +4,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   getAuth, getUsers,
-  getPaymentsForStudent, notificationsForStudent, notificationsForTeacher,
+  getPaymentsForStudent,
   getGradeForStudent,
   type StoredUser, type PaymentRecord, type GradeRecord,
-  type EnrollmentLevel, type NotificationRecord,
+  type EnrollmentLevel,
   levelLabel,
 } from '@/lib/session'
 import StudentDetail from '@/components/StudentDetail'
@@ -49,13 +49,11 @@ function StudentView({ user }: { user: StoredUser }) {
   const [tab, setTab] = useState<StudentTab>('PROFILE')
   const [payments, setPayments] = useState<PaymentRecord[]>([])
   const [grade, setGrade] = useState<GradeRecord | null>(null)
-  const [notifications, setNotifications] = useState<NotificationRecord[]>([])
 
   useEffect(() => {
     setPayments(getPaymentsForStudent(user.id))
     setGrade(getGradeForStudent(user.id))
-    if (user.level) setNotifications(notificationsForStudent(user.level as EnrollmentLevel))
-  }, [user.id, user.level])
+  }, [user.id])
 
   return (
     <div className="max-w-4xl mx-auto animate-fade-up space-y-6">
@@ -131,24 +129,13 @@ function StudentView({ user }: { user: StoredUser }) {
       )}
 
       {tab === 'NOTIFICATIONS' && (
-        <div className="card-static">
-          <h2 className="text-[18px] leading-tight mb-3">Announcements</h2>
-          {notifications.length === 0 ? (
-            <p className="text-sm text-[color:var(--mid-gray)] text-center py-8">No announcements for your level yet.</p>
-          ) : (
-            <ul className="space-y-3">
-              {notifications.map(n => (
-                <li key={n.id} className="rounded-xl p-4 border" style={{ borderColor: 'var(--paper-3)', background: '#fff' }}>
-                  <div className="font-semibold text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>{n.title}</div>
-                  <div className="text-[11.5px] text-[color:var(--mid-gray)] mt-0.5">
-                    {n.authorName} · {new Date(n.createdAt).toLocaleString()}
-                  </div>
-                  <p className="text-[13.5px] text-[color:var(--ink)] mt-2 whitespace-pre-wrap">{n.body}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <NotificationPanel viewer={{
+          role: 'STUDENT',
+          level: user.level as EnrollmentLevel | undefined,
+          email: user.email,
+          name: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email,
+          userId: user.id,
+        }} />
       )}
     </div>
   )
@@ -220,6 +207,5 @@ function Quarter({ label, value, highlight }: { label: string; value?: string; h
   )
 }
 
-// (Silenced) ensures levelLabel + notificationsForTeacher are referenced even though
-// only used in some imports paths above.
-void levelLabel; void notificationsForTeacher
+// (Silenced) ensures levelLabel is referenced even though it's only used in some import paths above.
+void levelLabel

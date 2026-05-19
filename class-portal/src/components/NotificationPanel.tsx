@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   getNotifications, notificationsForStudent, notificationsForTeacher,
   saveNotification, deleteNotification,
-  type NotificationRecord, type EnrollmentLevel, levelLabel,
+  getUsers, inferPaymentPlanFor, remindersForStudentOn,
+  type NotificationRecord, type EnrollmentLevel, type PaymentReminder, levelLabel,
 } from '@/lib/session'
 
 const ALL_LEVELS: EnrollmentLevel[] = ['KINDER', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10']
@@ -27,6 +28,29 @@ export default function NotificationPanel({ viewer }: Props) {
     else setItems(getNotifications())
   }
   useEffect(refresh, [viewer.role, viewer.level, viewer.email])
+
+  // Date-driven payment reminders. STUDENT sees only their own; ADMIN sees
+  // reminders for every enrolled student with an outstanding payment.
+  const reminders = useMemo<PaymentReminder[]>(() => {
+    if (viewer.role === 'STUDENT') {
+      if (!viewer.userId) return []
+      const plan = inferPaymentPlanFor(viewer.userId)
+      if (!plan) return []
+      return remindersForStudentOn(viewer.userId, viewer.email, viewer.name || viewer.email, plan)
+    }
+    if (viewer.role === 'ADMIN') {
+      const students = getUsers().filter(u => u.role === 'STUDENT')
+      const out: PaymentReminder[] = []
+      for (const s of students) {
+        const plan = inferPaymentPlanFor(s.id)
+        if (!plan) continue
+        const studentName = [s.firstName, s.lastName].filter(Boolean).join(' ') || s.email
+        out.push(...remindersForStudentOn(s.id, s.email, studentName, plan))
+      }
+      return out.sort((a, b) => new Date(b.windowOpensAt).getTime() - new Date(a.windowOpensAt).getTime())
+    }
+    return []
+  }, [viewer.role, viewer.userId, viewer.email, viewer.name])
 
   function handlePublish() {
     if (!title.trim()) { alert('Title is required.'); return }
@@ -104,6 +128,50 @@ export default function NotificationPanel({ viewer }: Props) {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {reminders.length > 0 && (
+        <div className="card-static">
+          <h2 className="text-[18px] leading-tight mb-1">Payment reminders</h2>
+          <p className="text-[12.5px] text-[color:var(--mid-gray)] mb-3">
+            {viewer.role === 'STUDENT'
+              ? 'Tuition due dates for your enrollment plan.'
+              : 'Outstanding payments across all enrolled students.'}
+          </p>
+          <ul className="space-y-3">
+            {reminders.map(r => (
+              <li
+                key={r.id}
+                className="rounded-xl p-4 border"
+                style={{
+                  borderColor: r.severity === 'WARNING' ? '#fda4af' : 'var(--paper-3)',
+                  background: r.severity === 'WARNING' ? '#fff1f2' : '#fffaf0',
+                }}
+              >
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>
+                      {viewer.role === 'ADMIN' && <span className="text-[color:var(--mid-gray)] font-normal mr-1">[{r.studentName}]</span>}
+                      {r.title}
+                    </div>
+                    <div className="text-[11.5px] text-[color:var(--mid-gray)] mt-0.5">
+                      <span className="uppercase tracking-[0.08em]">{r.plan}</span> plan · due {new Date(r.dueOn).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <span className={`badge ${r.severity === 'WARNING' ? 'badge-pending' : 'badge-approved'}`}>
+                    {r.severity === 'WARNING' ? 'Past due' : 'Reminder'}
+                  </span>
+                </div>
+                <p className="text-[13.5px] text-[color:var(--ink)] mt-3">{r.body}</p>
+                {viewer.role === 'STUDENT' && (
+                  <div className="mt-3">
+                    <a href="/pay" className="btn-cta text-xs">Pay via PayMongo →</a>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

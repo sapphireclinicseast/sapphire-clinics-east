@@ -446,6 +446,178 @@ export function studentHasActivePayment(studentId: string): boolean {
   return getPaymentsForStudent(studentId).some(p => p.status === 'PAID')
 }
 
+/**
+ * Headline payment status for a student, used in the admin/teacher
+ * student list and the student's own dashboard banner.
+ *   PAID    → at least one payment is in the PAID state
+ *   PENDING → all payments are PENDING (parent started checkout but didn't pay)
+ *   NONE    → no payment record at all (parent never opened the pay page)
+ */
+export function paymentStatusFor(studentId: string): 'PAID' | 'PENDING' | 'NONE' {
+  const list = getPaymentsForStudent(studentId)
+  if (list.length === 0) return 'NONE'
+  if (list.some(p => p.status === 'PAID')) return 'PAID'
+  return 'PENDING'
+}
+
+/** Most recent payment record (by createdAt) for a student, if any. */
+export function latestPaymentFor(studentId: string): PaymentRecord | undefined {
+  const list = getPaymentsForStudent(studentId)
+  if (list.length === 0) return undefined
+  return list.slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Automatic payment reminders — purely date-driven, no scheduler.
+   Computed on render against `today`, the student's chosen plan,
+   and existing PAID payments so paid families don't get pestered.
+   ───────────────────────────────────────────────────────────── */
+
+export interface PaymentReminder {
+  id: string
+  /** Synthetic so it doesn't collide with stored NotificationRecord IDs. */
+  studentId: string
+  studentEmail: string
+  studentName: string
+  plan: PaymentPlan
+  title: string
+  body: string
+  /** ISO date the deadline is calculated against. */
+  dueOn: string
+  /** Severity: 'INFO' (reminder in window) vs 'WARNING' (past due). */
+  severity: 'INFO' | 'WARNING'
+  /** When the reminder window opens (used by callers to sort). */
+  windowOpensAt: string
+}
+
+function monthName(monthIdx: number): string {
+  return ['January','February','March','April','May','June','July','August','September','October','November','December'][monthIdx]
+}
+
+function isoDate(y: number, m: number, d: number): string {
+  return new Date(Date.UTC(y, m, d)).toISOString().slice(0, 10)
+}
+
+/**
+ * Compute payment reminders that should be visible to a single student
+ * (and by extension their admin) for the given calendar date.
+ *
+ *   BIANNUAL → window opens one full month before each tranche deadline
+ *              (May 5 for the June 5 first half, Nov 5 for the Dec 5 second half).
+ *   MONTHLY  → window opens on the 30th of the previous month and runs
+ *              through the 5th-of-month deadline. (Feb fallback: last day.)
+ *
+ * Reminders are suppressed when a PAID payment already covers the period.
+ */
+export function remindersForStudentOn(
+  studentId: string,
+  studentEmail: string,
+  studentName: string,
+  plan: PaymentPlan,
+  today: Date = new Date(),
+): PaymentReminder[] {
+  const out: PaymentReminder[] = []
+  const y = today.getFullYear()
+  const m = today.getMonth()
+  const d = today.getDate()
+  const paid = getPaymentsForStudent(studentId).filter(p => p.status === 'PAID')
+
+  function emit(r: Omit<PaymentReminder, 'id' | 'studentId' | 'studentEmail' | 'studentName' | 'plan'>) {
+    out.push({
+      id: `rem_${studentId}_${plan}_${r.dueOn}`,
+      studentId, studentEmail, studentName, plan,
+      ...r,
+    })
+  }
+
+  if (plan === 'BIANNUAL') {
+    // First half: window May 5 – June 5 (school year starts in June)
+    // Second half: window Nov 5 – Dec 5
+    const tranches: Array<{ windowOpen: Date; dueDate: Date; label: string; period: string }> = [
+      { windowOpen: new Date(y, 4, 5),  dueDate: new Date(y, 5, 5),  label: '1st semester', period: `First half SY ${y}–${y + 1}` },
+      { windowOpen: new Date(y, 10, 5), dueDate: new Date(y, 11, 5), label: '2nd semester', period: `Second half SY ${y}–${y + 1}` },
+    ]
+    for (const t of tranches) {
+      const alreadyPaid = paid.some(p => p.period === t.period)
+      if (alreadyPaid) continue
+      const overdue = today > t.dueDate
+      if (today < t.windowOpen) continue // window not yet open
+      emit({
+        title: `Bi-annual tuition — ${t.label} due ${monthName(t.dueDate.getMonth())} 5`,
+        body: overdue
+          ? `Your bi-annual tuition for the ${t.period.toLowerCase()} was due ${monthName(t.dueDate.getMonth())} 5. Please complete payment via PayMongo on the /pay page.`
+          : `Your bi-annual tuition for the ${t.period.toLowerCase()} is due on ${monthName(t.dueDate.getMonth())} 5. Please complete payment via PayMongo on the /pay page.`,
+        dueOn: isoDate(t.dueDate.getFullYear(), t.dueDate.getMonth(), t.dueDate.getDate()),
+        severity: overdue ? 'WARNING' : 'INFO',
+        windowOpensAt: t.windowOpen.toISOString(),
+      })
+    }
+  }
+
+  if (plan === 'MONTHLY') {
+    // Window opens on the 30th of the previous month, closes on the 5th of the current month.
+    // After the 5th, the next month's reminder takes over (and shows the prior period as overdue
+    // until paid — but we keep it scoped to "current" period for simplicity).
+    const prevMonth = (m + 11) % 12
+    const prevMonthYear = m === 0 ? y - 1 : y
+    const prevMonthLastDay = new Date(prevMonthYear, prevMonth + 1, 0).getDate()
+    const windowOpenDay = Math.min(30, prevMonthLastDay)
+    const inWindow =
+      // After (or on) the 30th of last month
+      (today >= new Date(prevMonthYear, prevMonth, windowOpenDay)) &&
+      // And up to (and including) the 5th of this month
+      (today <= new Date(y, m, 5, 23, 59, 59))
+
+    if (inWindow) {
+      const period = `${monthName(m)} ${y}`
+      const alreadyPaid = paid.some(p => p.period === period)
+      if (!alreadyPaid) {
+        const overdue = today > new Date(y, m, 5, 23, 59, 59)
+        emit({
+          title: `Monthly tuition — ${period} due ${monthName(m)} 5`,
+          body: overdue
+            ? `Your monthly tuition for ${period} was due ${monthName(m)} 5. Please complete payment via PayMongo on the /pay page.`
+            : `Your monthly tuition for ${period} is due on ${monthName(m)} 5. Please complete payment via PayMongo on the /pay page.`,
+          dueOn: isoDate(y, m, 5),
+          severity: overdue ? 'WARNING' : 'INFO',
+          windowOpensAt: new Date(prevMonthYear, prevMonth, windowOpenDay).toISOString(),
+        })
+      }
+    }
+    // Also flag any *prior* unpaid month as overdue. Look back up to 3 months.
+    for (let back = 1; back <= 3; back++) {
+      const mm = (m + 12 - back) % 12
+      const yy = m - back < 0 ? y - 1 : y
+      const period = `${monthName(mm)} ${yy}`
+      const alreadyPaid = paid.some(p => p.period === period)
+      if (alreadyPaid) continue
+      // Only emit if today is past the 5th of that month
+      const due = new Date(yy, mm, 5, 23, 59, 59)
+      if (today <= due) continue
+      // And skip if no record at all + not in current window (avoid spamming for never-paid students far back)
+      emit({
+        title: `Monthly tuition — ${period} OVERDUE`,
+        body: `Monthly tuition for ${period} is past due (deadline was ${monthName(mm)} 5${yy !== y ? `, ${yy}` : ''}). Please complete payment via PayMongo as soon as possible.`,
+        dueOn: isoDate(yy, mm, 5),
+        severity: 'WARNING',
+        windowOpensAt: due.toISOString(),
+      })
+    }
+  }
+
+  return out
+}
+
+/**
+ * Pick the plan to show reminders for. If the student has any payment
+ * record (even PENDING), use that plan; otherwise return undefined so
+ * callers can decide whether to show a generic "no payment yet" reminder.
+ */
+export function inferPaymentPlanFor(studentId: string): PaymentPlan | undefined {
+  const latest = latestPaymentFor(studentId)
+  return latest?.plan
+}
+
 /* ─────────────────────────────────────────────────────────────────
    Notifications — admin + teacher create, students read
    ───────────────────────────────────────────────────────────── */
