@@ -413,45 +413,46 @@ export function generateWaiverPdf(record: WaiverRecord): jsPDF {
   bodyText(c, 'WITNESS MY HAND AND SEAL on the date and place first above written.')
   c.y += 5
 
-  // Notary signature block — centered horizontally on the page
+  // Notary signature block — right-aligned to the right margin, drawn at the
+  // current cursor. Doc/Page/Book/Series will then stack vertically on the left.
   ensureSpace(c, 14)
-  const sigLineW = 70
-  const sigCenterX = PAGE_W / 2
+  const sigLineW = 72
+  const sigRightX = PAGE_W - PAGE_MARGIN_X
+  const sigLeftX = sigRightX - sigLineW
   setDrawColor(doc, COLOR_INK)
   doc.setLineWidth(0.4)
-  doc.line(sigCenterX - sigLineW / 2, c.y + 1, sigCenterX + sigLineW / 2, c.y + 1)
+  doc.line(sigLeftX, c.y + 1, sigRightX, c.y + 1)
   c.y += 4
-  doc.setFont('helvetica', 'bold')
+  doc.setFont('helvetica', 'bolditalic')
   doc.setFontSize(9.5)
   setColor(doc, COLOR_NARRA)
-  doc.text('NOTARY PUBLIC', sigCenterX, c.y + 3, { align: 'center' })
+  doc.text('NOTARY PUBLIC', sigRightX, c.y + 3, { align: 'right' })
   c.y += 8
 
-  // Doc / Page / Book / Series — evenly-spaced columns with underlines
-  ensureSpace(c, 8)
+  // Doc / Page / Book / Series — vertically stacked on the left, each on its own line
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   setColor(doc, COLOR_INK)
-  const cols: Array<{ label: string; trailing?: string }> = [
-    { label: 'Doc. No.' },
-    { label: 'Page No.' },
-    { label: 'Book No.' },
+  const lineSpacing = 6
+  const stackRows: Array<{ label: string; trailing?: string }> = [
+    { label: 'Doc. No.',     trailing: ';' },
+    { label: 'Page No.',     trailing: ';' },
+    { label: 'Book No.',     trailing: ';' },
     { label: 'Series of 20', trailing: '.' },
   ]
-  const colW = CONTENT_W / cols.length
-  cols.forEach((col, i) => {
-    const x = PAGE_MARGIN_X + i * colW
-    doc.text(col.label, x, c.y + 3.5)
-    const labelWidth = doc.getTextWidth(col.label)
-    const lineStart = x + labelWidth + 1.5
-    const lineEnd = x + colW - (col.trailing ? 5 : 8)
+  const stackLineW = 30
+  stackRows.forEach(row => {
+    ensureSpace(c, lineSpacing + 2)
+    doc.text(row.label, PAGE_MARGIN_X, c.y + 3.5)
+    const labelWidth = doc.getTextWidth(row.label)
+    const lineStart = PAGE_MARGIN_X + labelWidth + 1.5
+    const lineEnd = lineStart + stackLineW
     setDrawColor(doc, COLOR_INK)
     doc.setLineWidth(0.3)
     doc.line(lineStart, c.y + 3.8, lineEnd, c.y + 3.8)
-    if (col.trailing) doc.text(col.trailing, lineEnd + 1, c.y + 3.5)
-    if (i < cols.length - 1) doc.text(';', lineEnd + 1.5, c.y + 3.5)
+    if (row.trailing) doc.text(row.trailing, lineEnd + 1, c.y + 3.5)
+    c.y += lineSpacing
   })
-  c.y += 6
 
   // Page footers
   const pageCount = doc.getNumberOfPages()
