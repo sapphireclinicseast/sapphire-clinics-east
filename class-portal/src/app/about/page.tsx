@@ -12,7 +12,7 @@ export default function AboutPage() {
               About SCEI Class
             </div>
             <h1 className="text-[40px] md:text-[44px] leading-[1.05] mb-4">
-              A small school<br/>with big care.
+              A small class<br/>with big care.
             </h1>
             <p className="text-white/85 text-[15px] leading-relaxed">
               We&apos;re an in-clinic school program designed around the way young learners thrive — close attention, predictable routines, and a graded class that meets the standards of the Department of Education.
@@ -25,13 +25,13 @@ export default function AboutPage() {
         <div className="card-static">
           <h2 className="text-[22px] leading-tight mb-3">What we offer</h2>
           <ul className="space-y-2.5 text-[14.5px] text-[color:var(--ink)]">
-            <li className="flex gap-3"><Dot/> Kindergarten and Grades 1–10 in graded classes.</li>
-            <li className="flex gap-3"><Dot/> DepEd-accredited curriculum — your child stays on track with the national program.</li>
-            <li className="flex gap-3"><Dot/> Every enrolled student is issued a Learner Reference Number (LRN).</li>
-            <li className="flex gap-3"><Dot/> Students are issued an official <span className="font-semibold">report card</span> each grading period.</li>
-            <li className="flex gap-3"><Dot/> Our graded classes are <span className="font-semibold">recognised</span> when your child transfers to another school — completed levels carry over.</li>
-            <li className="flex gap-3"><Dot/> Small class sizes for individualised attention.</li>
-            <li className="flex gap-3"><Dot/> Integrated with Sapphire Clinics East&apos;s allied health services when extra support is needed.</li>
+            <li className="flex gap-3"><Dot/><span>Kindergarten and Grades 1–10 in graded classes.</span></li>
+            <li className="flex gap-3"><Dot/><span>DepEd-accredited curriculum — your child stays on track with the national program.</span></li>
+            <li className="flex gap-3"><Dot/><span>Every enrolled student is issued a Learner Reference Number (LRN).</span></li>
+            <li className="flex gap-3"><Dot/><span>Students are issued an official <span className="font-semibold">report card</span> each grading period.</span></li>
+            <li className="flex gap-3"><Dot/><span>Our graded classes are <span className="font-semibold">recognised</span> when your child transfers to another school — completed levels carry over.</span></li>
+            <li className="flex gap-3"><Dot/><span>Small class sizes for individualised attention.</span></li>
+            <li className="flex gap-3"><Dot/><span>Integrated with Sapphire Clinics East&apos;s allied health services when extra support is needed.</span></li>
           </ul>
         </div>
 
