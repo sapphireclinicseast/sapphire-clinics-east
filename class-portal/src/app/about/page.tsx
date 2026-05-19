@@ -25,7 +25,7 @@ export default function AboutPage() {
         <div className="card-static">
           <h2 className="text-[22px] leading-tight mb-3">What we offer</h2>
           <ul className="space-y-2.5 text-[14.5px] text-[color:var(--ink)]">
-            <li className="flex gap-3"><Dot/> Kindergarten and Grades 1–3 in one graded class.</li>
+            <li className="flex gap-3"><Dot/> Kindergarten and Grades 1–10 in graded classes.</li>
             <li className="flex gap-3"><Dot/> DepEd-accredited curriculum — your child stays on track with the national program.</li>
             <li className="flex gap-3"><Dot/> Every enrolled student is issued a Learner Reference Number (LRN).</li>
             <li className="flex gap-3"><Dot/> Students are issued an official <span className="font-semibold">report card</span> each grading period.</li>

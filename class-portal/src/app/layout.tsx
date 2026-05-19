@@ -19,7 +19,7 @@ const manrope = Manrope({
 
 export const metadata: Metadata = {
   title: 'Sapphire Clinics East — Class Portal',
-  description: 'Enroll your student at Sapphire Clinics East (Kindergarten – Grade 3, DepEd-accredited)',
+  description: 'Enroll your child at Sapphire Clinics East (Kindergarten – Grade 10, DepEd-accredited)',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -6,7 +6,7 @@
 const DRAFT_KEY = 'scei_class_draft_v1'
 const SESSION_KEY = 'scei_class_session_v1'
 
-export type EnrollmentLevel = 'KINDER' | 'GRADE_1' | 'GRADE_2' | 'GRADE_3' | 'GRADE_4' | 'GRADE_5' | 'GRADE_6'
+export type EnrollmentLevel = 'KINDER' | 'GRADE_1' | 'GRADE_2' | 'GRADE_3' | 'GRADE_4' | 'GRADE_5' | 'GRADE_6' | 'GRADE_7' | 'GRADE_8' | 'GRADE_9' | 'GRADE_10'
 export type LrnStatus = 'NO_LRN' | 'WITH_LRN' | 'RETURNING'
 export type GuardianOfRecord = 'FATHER' | 'MOTHER' | 'OTHER'
 
@@ -120,13 +120,17 @@ export function clearSession() {
 
 export function levelLabel(l: EnrollmentLevel): string {
   switch (l) {
-    case 'KINDER': return 'Kindergarten'
-    case 'GRADE_1': return 'Grade 1'
-    case 'GRADE_2': return 'Grade 2'
-    case 'GRADE_3': return 'Grade 3'
-    case 'GRADE_4': return 'Grade 4'
-    case 'GRADE_5': return 'Grade 5'
-    case 'GRADE_6': return 'Grade 6'
+    case 'KINDER':   return 'Kindergarten'
+    case 'GRADE_1':  return 'Grade 1'
+    case 'GRADE_2':  return 'Grade 2'
+    case 'GRADE_3':  return 'Grade 3'
+    case 'GRADE_4':  return 'Grade 4'
+    case 'GRADE_5':  return 'Grade 5'
+    case 'GRADE_6':  return 'Grade 6'
+    case 'GRADE_7':  return 'Grade 7'
+    case 'GRADE_8':  return 'Grade 8'
+    case 'GRADE_9':  return 'Grade 9'
+    case 'GRADE_10': return 'Grade 10'
   }
 }
 
@@ -587,7 +591,10 @@ export function getAssignments(): LevelAssignments {
   } catch { return emptyAssignments() }
 }
 function emptyAssignments(): LevelAssignments {
-  return { KINDER: [], GRADE_1: [], GRADE_2: [], GRADE_3: [], GRADE_4: [], GRADE_5: [], GRADE_6: [] }
+  return {
+    KINDER:   [], GRADE_1:  [], GRADE_2:  [], GRADE_3:  [], GRADE_4:  [], GRADE_5:  [],
+    GRADE_6:  [], GRADE_7:  [], GRADE_8:  [], GRADE_9:  [], GRADE_10: [],
+  }
 }
 function writeAssignments(a: LevelAssignments) {
   if (typeof window === 'undefined') return

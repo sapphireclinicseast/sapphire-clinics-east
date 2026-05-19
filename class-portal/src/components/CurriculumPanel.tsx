@@ -6,7 +6,7 @@ import {
   levelLabel, type CurriculumRecord, type EnrollmentLevel,
 } from '@/lib/session'
 
-const ALL_LEVELS: EnrollmentLevel[] = ['KINDER', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6']
+const ALL_LEVELS: EnrollmentLevel[] = ['KINDER', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10']
 
 interface Props {
   viewer: { role: 'STUDENT' | 'TEACHER' | 'ADMIN'; level?: EnrollmentLevel; email: string }
@@ -141,7 +141,8 @@ function CurriculumGrouped({ items, viewer, onOpen, onDownload, onDelete, single
 }) {
   // Group by level, preserving the ALL_LEVELS order
   const byLevel: Record<EnrollmentLevel, CurriculumRecord[]> = {
-    KINDER: [], GRADE_1: [], GRADE_2: [], GRADE_3: [], GRADE_4: [], GRADE_5: [], GRADE_6: [],
+    KINDER:   [], GRADE_1:  [], GRADE_2:  [], GRADE_3:  [], GRADE_4:  [], GRADE_5:  [],
+    GRADE_6:  [], GRADE_7:  [], GRADE_8:  [], GRADE_9:  [], GRADE_10: [],
   }
   for (const c of items) byLevel[c.level].push(c)
 
