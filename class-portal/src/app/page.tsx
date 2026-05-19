@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useState } from 'react'
+import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { lookupStudent, type EnrollmentLevel } from '@/lib/api'
 import { getSession, setSession, setDraft, clearDraft, levelLabel } from '@/lib/session'
@@ -65,7 +66,21 @@ function HomeInner() {
   }
 
   return (
-    <div className="grid md:grid-cols-5 gap-8 md:gap-10 items-start">
+    <div className="space-y-8 md:space-y-10">
+      {/* Top hero photo */}
+      <section className="animate-fade-up rounded-3xl overflow-hidden shadow-[0_8px_28px_rgba(27,63,56,0.10)] ring-1 ring-[color:var(--paper-3)]">
+        <Image
+          src="/hero-family.png"
+          alt="An SCEI parent with four students seated together"
+          width={2816}
+          height={1536}
+          priority
+          sizes="(max-width: 1024px) 100vw, 1024px"
+          className="block w-full h-auto"
+        />
+      </section>
+
+      <div className="grid md:grid-cols-5 gap-8 md:gap-10 items-start">
       {/* Hero */}
       <section className="md:col-span-2 animate-fade-up md:sticky md:top-24">
         <div className="hero-gradient rounded-3xl p-8 md:p-9 relative">
@@ -184,6 +199,7 @@ function HomeInner() {
           )}
         </div>
       </section>
+      </div>
     </div>
   )
 }
