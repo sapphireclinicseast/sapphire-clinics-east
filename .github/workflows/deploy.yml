@@ -320,18 +320,18 @@ jobs:
               grep "^GOOGLE_CLIENT_SECRET" "$MENV" >> .env 2>/dev/null || true
               grep "^GOOGLE_REDIRECT_URI" "$MENV" >> .env 2>/dev/null || true
               echo "UPLOAD_DIR=./uploads" >> .env
-              echo "RESEND_API_KEY=re_CbH3Pirt_JqAd3RJ3TXwaFNmxckQ7GVwK" >> .env
+              echo "RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}" >> .env
               echo 'RESEND_FROM_EMAIL="SCEI Teletherapy <noreply@do-not-reply.sapphireclinicseast.org>"' >> .env
-              echo "TELETHERAPY_HR_API_KEY=scei-teletherapy-hr-2026" >> .env
+              echo "TELETHERAPY_HR_API_KEY=${{ secrets.TELETHERAPY_HR_API_KEY }}" >> .env
             else
               echo "DATABASE_URL=postgresql://sapphire:sapphire@localhost:5433/sapphire_marketing" > .env
               echo "NEXTAUTH_URL=https://teletherapy.sapphireclinicseast.org" >> .env
               echo "NEXTAUTH_SECRET=$(openssl rand -base64 32)" >> .env
               echo "AUTH_TRUST_HOST=true" >> .env
               echo "UPLOAD_DIR=./uploads" >> .env
-              echo "RESEND_API_KEY=re_CbH3Pirt_JqAd3RJ3TXwaFNmxckQ7GVwK" >> .env
+              echo "RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}" >> .env
               echo 'RESEND_FROM_EMAIL="SCEI Teletherapy <noreply@do-not-reply.sapphireclinicseast.org>"' >> .env
-              echo "TELETHERAPY_HR_API_KEY=scei-teletherapy-hr-2026" >> .env
+              echo "TELETHERAPY_HR_API_KEY=${{ secrets.TELETHERAPY_HR_API_KEY }}" >> .env
             fi
             echo "✅ .env created."
           fi

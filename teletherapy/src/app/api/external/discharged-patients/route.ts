@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
-// API key for HR Hub → Teletherapy Hub authentication
-const HR_API_KEY = process.env.TELETHERAPY_HR_API_KEY || 'scei-teletherapy-hr-2026'
+const HR_API_KEY = process.env.TELETHERAPY_HR_API_KEY
 
 export async function GET(req: NextRequest) {
   const apiKey = req.headers.get('x-api-key')
-  if (!apiKey || apiKey !== HR_API_KEY) {
+  if (!HR_API_KEY || !apiKey || apiKey !== HR_API_KEY) {
     return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
   }
 
