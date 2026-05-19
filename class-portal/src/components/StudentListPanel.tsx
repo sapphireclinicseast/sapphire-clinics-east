@@ -185,7 +185,16 @@ export default function StudentListPanel({ viewer }: Props) {
             </div>
 
             <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-4">
-              <StudentDetail student={selected} viewerRole={viewer.role} />
+              <StudentDetail
+                student={selected}
+                viewerRole={viewer.role}
+                onChange={() => {
+                  refresh()
+                  // Also re-pick the now-fresh student record so the popup shows the new data.
+                  const fresh = getUsers().find(u => u.id === selected.id)
+                  if (fresh) setSelected(fresh)
+                }}
+              />
 
               {witnessOpen && waiver && (
                 <WitnessForm onCancel={() => setWitnessOpen(false)} onSign={handleWitness} defaultName={viewer.name} />

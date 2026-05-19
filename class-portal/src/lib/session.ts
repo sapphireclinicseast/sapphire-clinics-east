@@ -240,9 +240,22 @@ export function updateUserEnrollment(id: string, patch: Partial<EnrollmentDraft>
   if (idx < 0) throw new Error('User not found.')
   const u = users[idx]
   if (u.role !== 'STUDENT') throw new Error('Only student accounts have enrollment data.')
-  users[idx] = { ...u, enrollment: { ...(u.enrollment ?? {}), ...patch } }
+  const mergedEnrollment = { ...(u.enrollment ?? {}), ...patch }
+  // Identity fields (firstName/lastName/email/level) exist at both the user
+  // and enrollment levels. When the admin corrects them via the enrollment
+  // editor, propagate to the top-level user record so lists, the identity
+  // card, and any payment/notification lookups stay in sync.
+  const next: StoredUser = {
+    ...u,
+    enrollment: mergedEnrollment,
+    firstName: patch.firstName ?? u.firstName,
+    lastName: patch.lastName ?? u.lastName,
+    email: patch.email ?? u.email,
+    level: (patch.level ?? u.level) as StoredUser['level'],
+  }
+  users[idx] = next
   writeUsers(users)
-  return users[idx]
+  return next
 }
 
 export function getAuth(): AuthSession | null {
