@@ -69,8 +69,8 @@ export interface EnrollmentDraft {
   certSignatureName?: string
   certSignedAt?: string
 
-  // Step 3 — documents
-  documents?: Record<string, { name: string; size: number }>
+  // Step 3 — documents (fileId points to the IndexedDB blob store)
+  documents?: Record<string, { name: string; size: number; type?: string; fileId?: string }>
   waiverSignedAt?: string
 }
 
@@ -376,6 +376,295 @@ export function saveWaiver(record: WaiverRecord) {
 export function findPendingWaivers(): WaiverRecord[] {
   // "Pending" = parent signed but witness has not.
   return getWaivers().filter(w => !w.witnessSig)
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Payments — record student payments after PayMongo checkout
+   ───────────────────────────────────────────────────────────── */
+
+const PAYMENTS_KEY = 'scei_class_payments_v1'
+
+export type PaymentPlan = 'ANNUAL' | 'BIANNUAL' | 'MONTHLY'
+export type PaymentStatus = 'PENDING' | 'PAID'
+
+export interface PaymentRecord {
+  id: string
+  studentId: string
+  studentEmail: string
+  plan: PaymentPlan
+  /** Tuition portion in PHP centavos. */
+  tuitionAmount: number
+  /** Miscellaneous portion in PHP centavos. */
+  miscAmount: number
+  /** Period covered, free text — e.g. "Annual SY 2026–2027", "Aug 2026", "Aug–Jan 2026". */
+  period: string
+  status: PaymentStatus
+  paymongoCheckoutId?: string
+  paymongoCheckoutUrl?: string
+  paidAt?: string
+  createdAt: string
+}
+
+export function getPayments(): PaymentRecord[] {
+  if (typeof window === 'undefined') return []
+  try { return JSON.parse(localStorage.getItem(PAYMENTS_KEY) ?? '[]') } catch { return [] }
+}
+function writePayments(p: PaymentRecord[]) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(PAYMENTS_KEY, JSON.stringify(p))
+}
+export function savePayment(p: PaymentRecord) {
+  const all = getPayments()
+  const idx = all.findIndex(x => x.id === p.id)
+  if (idx >= 0) all[idx] = p
+  else all.push(p)
+  writePayments(all)
+}
+export function getPaymentsForStudent(studentId: string): PaymentRecord[] {
+  return getPayments().filter(p => p.studentId === studentId)
+}
+export function studentHasActivePayment(studentId: string): boolean {
+  return getPaymentsForStudent(studentId).some(p => p.status === 'PAID')
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Notifications — admin + teacher create, students read
+   ───────────────────────────────────────────────────────────── */
+
+const NOTIFICATIONS_KEY = 'scei_class_notifications_v1'
+
+export type NotifAuthor = 'ADMIN' | 'TEACHER'
+
+export interface NotificationRecord {
+  id: string
+  title: string
+  body: string
+  authorRole: NotifAuthor
+  authorName: string
+  authorId?: string
+  /** Empty list = applies to all levels. */
+  levels: EnrollmentLevel[]
+  /** If true, teachers receive it as well. Admins always see all notifications. */
+  includeTeachers: boolean
+  createdAt: string
+}
+
+export function getNotifications(): NotificationRecord[] {
+  if (typeof window === 'undefined') return []
+  try { return JSON.parse(localStorage.getItem(NOTIFICATIONS_KEY) ?? '[]') } catch { return [] }
+}
+function writeNotifications(n: NotificationRecord[]) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(n))
+}
+export function saveNotification(n: NotificationRecord) {
+  const all = getNotifications()
+  const idx = all.findIndex(x => x.id === n.id)
+  if (idx >= 0) all[idx] = n
+  else all.unshift(n) // newest first
+  writeNotifications(all)
+}
+export function deleteNotification(id: string) {
+  writeNotifications(getNotifications().filter(n => n.id !== id))
+}
+
+/** Notifications visible to a student of `level`. */
+export function notificationsForStudent(level: EnrollmentLevel): NotificationRecord[] {
+  return getNotifications().filter(n => n.levels.length === 0 || n.levels.includes(level))
+}
+/** Notifications visible to a teacher (admin chose includeTeachers, OR teacher authored). */
+export function notificationsForTeacher(teacherEmail: string): NotificationRecord[] {
+  return getNotifications().filter(n => n.includeTeachers || n.authorRole === 'TEACHER' || n.authorName === teacherEmail)
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Grades — per-student quarterly averages + proof doc reference
+   ───────────────────────────────────────────────────────────── */
+
+const GRADES_KEY = 'scei_class_grades_v1'
+
+export interface GradeRecord {
+  studentId: string
+  q1?: string
+  q2?: string
+  q3?: string
+  q4?: string
+  yearAvg?: string
+  /** Reference to a file in the student-files IndexedDB store. */
+  proofFileId?: string
+  proofFileName?: string
+  proofFileType?: string
+  proofFileSize?: number
+  teacherEmail?: string
+  updatedAt: string
+}
+
+export function getGrades(): Record<string, GradeRecord> {
+  if (typeof window === 'undefined') return {}
+  try { return JSON.parse(localStorage.getItem(GRADES_KEY) ?? '{}') } catch { return {} }
+}
+function writeGrades(g: Record<string, GradeRecord>) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(GRADES_KEY, JSON.stringify(g))
+}
+export function getGradeForStudent(studentId: string): GradeRecord | null {
+  return getGrades()[studentId] ?? null
+}
+export function saveGrade(g: GradeRecord) {
+  const all = getGrades()
+  all[g.studentId] = { ...g, updatedAt: new Date().toISOString() }
+  writeGrades(all)
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Curriculum templates — uploaded per grade level
+   ───────────────────────────────────────────────────────────── */
+
+const CURRICULUM_KEY = 'scei_class_curriculum_v1'
+
+export interface CurriculumRecord {
+  id: string
+  level: EnrollmentLevel
+  title: string
+  fileId: string          // ref to large-file store
+  fileName: string
+  fileType: string
+  fileSize: number
+  uploadedBy: string      // "admin" or teacher email
+  uploadedAt: string
+}
+
+export function getCurriculum(): CurriculumRecord[] {
+  if (typeof window === 'undefined') return []
+  try { return JSON.parse(localStorage.getItem(CURRICULUM_KEY) ?? '[]') } catch { return [] }
+}
+function writeCurriculum(c: CurriculumRecord[]) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(CURRICULUM_KEY, JSON.stringify(c))
+}
+export function saveCurriculum(c: CurriculumRecord) {
+  const all = getCurriculum()
+  const idx = all.findIndex(x => x.id === c.id)
+  if (idx >= 0) all[idx] = c
+  else all.unshift(c)
+  writeCurriculum(all)
+}
+export function deleteCurriculum(id: string) {
+  writeCurriculum(getCurriculum().filter(c => c.id !== id))
+}
+export function curriculumForLevel(level: EnrollmentLevel): CurriculumRecord[] {
+  return getCurriculum().filter(c => c.level === level)
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Teacher ↔ grade-level assignments (admin-managed M:N)
+   ───────────────────────────────────────────────────────────── */
+
+const ASSIGNMENTS_KEY = 'scei_class_assignments_v1'
+
+export type LevelAssignments = Record<EnrollmentLevel, string[]> // teacherId[]
+
+export function getAssignments(): LevelAssignments {
+  if (typeof window === 'undefined') return emptyAssignments()
+  try {
+    const raw = JSON.parse(localStorage.getItem(ASSIGNMENTS_KEY) ?? 'null') as LevelAssignments | null
+    return { ...emptyAssignments(), ...(raw ?? {}) }
+  } catch { return emptyAssignments() }
+}
+function emptyAssignments(): LevelAssignments {
+  return { KINDER: [], GRADE_1: [], GRADE_2: [], GRADE_3: [], GRADE_4: [], GRADE_5: [], GRADE_6: [] }
+}
+function writeAssignments(a: LevelAssignments) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(a))
+}
+export function setAssignmentsForLevel(level: EnrollmentLevel, teacherIds: string[]) {
+  const a = getAssignments()
+  a[level] = Array.from(new Set(teacherIds))
+  writeAssignments(a)
+}
+export function teacherAssignedLevels(teacherId: string): EnrollmentLevel[] {
+  const a = getAssignments()
+  return (Object.keys(a) as EnrollmentLevel[]).filter(lvl => a[lvl].includes(teacherId))
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Student headshot + uploaded-file blobs (IndexedDB)
+   localStorage caps at ~5MB which is too small for real files.
+   IndexedDB holds the binary; the StoredUser keeps just references.
+   ───────────────────────────────────────────────────────────── */
+
+const HEADSHOT_KEY = 'scei_class_headshots_v1'   // small metadata only
+
+export interface HeadshotMeta {
+  studentId: string
+  dataUrl: string        // base64-encoded image — capped to ~500KB
+  uploadedAt: string
+}
+
+export function getHeadshots(): Record<string, HeadshotMeta> {
+  if (typeof window === 'undefined') return {}
+  try { return JSON.parse(localStorage.getItem(HEADSHOT_KEY) ?? '{}') } catch { return {} }
+}
+export function getHeadshotFor(studentId: string): HeadshotMeta | null {
+  return getHeadshots()[studentId] ?? null
+}
+export function saveHeadshot(meta: HeadshotMeta) {
+  if (typeof window === 'undefined') return
+  const all = getHeadshots()
+  all[meta.studentId] = meta
+  localStorage.setItem(HEADSHOT_KEY, JSON.stringify(all))
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Generic blob store (IndexedDB) for documents + curriculum
+   ───────────────────────────────────────────────────────────── */
+
+const DB_NAME = 'scei_class_files_v1'
+const DB_STORE = 'files'
+
+function openDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1)
+    req.onupgradeneeded = () => req.result.createObjectStore(DB_STORE)
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error)
+  })
+}
+
+export async function putFile(id: string, file: File): Promise<void> {
+  if (typeof window === 'undefined') return
+  const db = await openDb()
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(DB_STORE, 'readwrite')
+    tx.objectStore(DB_STORE).put(file, id)
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error)
+  })
+  db.close()
+}
+
+export async function getFile(id: string): Promise<Blob | null> {
+  if (typeof window === 'undefined') return null
+  const db = await openDb()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(DB_STORE, 'readonly')
+    const req = tx.objectStore(DB_STORE).get(id)
+    req.onsuccess = () => { db.close(); resolve((req.result as Blob | undefined) ?? null) }
+    req.onerror = () => { db.close(); reject(req.error) }
+  })
+}
+
+export async function deleteFile(id: string): Promise<void> {
+  if (typeof window === 'undefined') return
+  const db = await openDb()
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(DB_STORE, 'readwrite')
+    tx.objectStore(DB_STORE).delete(id)
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error)
+  })
+  db.close()
 }
 
 /** Attempt a sign-in. Throws on failure. */

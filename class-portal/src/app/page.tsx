@@ -95,7 +95,7 @@ function HomeInner() {
             <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold animate-fade-in-up animation-delay-400 mt-1 inline-flex items-baseline justify-center gap-2 flex-wrap" style={{ fontFamily: 'var(--font-display)' }}>
               <span className="text-[color:var(--moss)]">in a</span>
               <RotatingWord
-                words={['graded', 'special', 'dynamic', 'caring']}
+                words={['graded', 'special', 'caring']}
                 className="bg-gradient-to-r from-[color:var(--moss)] via-[color:var(--sage)] to-[color:var(--narra)] bg-clip-text text-transparent"
               />
               <span className="text-[color:var(--narra)]">class</span>

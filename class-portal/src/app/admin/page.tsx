@@ -7,12 +7,69 @@ import {
   levelLabel, type StoredUser, type UserRole,
 } from '@/lib/session'
 import { listStaff, type StaffMember } from '@/lib/api'
+import StudentListPanel from '@/components/StudentListPanel'
+import CurriculumPanel from '@/components/CurriculumPanel'
+import NotificationPanel from '@/components/NotificationPanel'
+import PaymentsPanel from '@/components/PaymentsPanel'
+import AssignmentsPanel from '@/components/AssignmentsPanel'
 
-type Filter = 'ALL' | UserRole
+type AdminTab = 'USERS' | 'STUDENTS' | 'CURRICULUM' | 'NOTIFICATIONS' | 'PAYMENTS' | 'ASSIGNMENTS'
 
 export default function AdminPage() {
   const router = useRouter()
   const [ready, setReady] = useState(false)
+  const [adminEmail, setAdminEmail] = useState('main@sapphireclinicseast.org')
+  const [tab, setTab] = useState<AdminTab>('USERS')
+
+  useEffect(() => {
+    const auth = getAuth()
+    if (!auth || auth.role !== 'ADMIN') { router.replace('/sign-in'); return }
+    setAdminEmail(auth.email)
+    setReady(true)
+  }, [router])
+
+  if (!ready) return null
+
+  return (
+    <div className="max-w-5xl mx-auto animate-fade-up space-y-6">
+      <div className="card-static">
+        <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>SCEI main admin</div>
+        <h1 className="text-[24px] leading-tight text-[color:var(--deep-teal)]">Admin dashboard</h1>
+        <p className="text-sm text-[color:var(--mid-gray)]">{adminEmail}</p>
+      </div>
+
+      <div className="flex gap-2 p-1 bg-[color:var(--pale-teal)] rounded-xl overflow-x-auto" style={{ fontFamily: 'var(--font-display)' }}>
+        {([
+          ['USERS', 'Users'],
+          ['STUDENTS', 'Students'],
+          ['CURRICULUM', 'Curriculum'],
+          ['NOTIFICATIONS', 'Notifications'],
+          ['PAYMENTS', 'Payments'],
+          ['ASSIGNMENTS', 'Assignments'],
+        ] as Array<[AdminTab, string]>).map(([k, label]) => (
+          <button
+            key={k}
+            onClick={() => setTab(k)}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-all ${tab === k ? 'bg-white text-[color:var(--deep-teal)] shadow-sm' : 'text-[color:var(--mid-gray)]'}`}
+          >{label}</button>
+        ))}
+      </div>
+
+      {tab === 'USERS'         && <UsersPanel />}
+      {tab === 'STUDENTS'      && <StudentListPanel viewer={{ role: 'ADMIN', email: adminEmail, name: 'Main admin' }} />}
+      {tab === 'CURRICULUM'    && <CurriculumPanel viewer={{ role: 'ADMIN', email: adminEmail }} />}
+      {tab === 'NOTIFICATIONS' && <NotificationPanel viewer={{ role: 'ADMIN', email: adminEmail, name: 'Main admin' }} />}
+      {tab === 'PAYMENTS'      && <PaymentsPanel />}
+      {tab === 'ASSIGNMENTS'   && <AssignmentsPanel />}
+    </div>
+  )
+}
+
+/* ─────────────────────── USERS PANEL ─────────────────────── */
+
+type Filter = 'ALL' | UserRole
+
+function UsersPanel() {
   const [users, setUsers] = useState<StoredUser[]>([])
   const [filter, setFilter] = useState<Filter>('ALL')
   const [showPasswords, setShowPasswords] = useState(false)
@@ -20,8 +77,6 @@ export default function AdminPage() {
   const [info, setInfo] = useState<string | null>(null)
   const [editing, setEditing] = useState<StoredUser | null>(null)
 
-  // Staff Module pulled from marketing.sapphireclinicseast.org — only these
-  // names are eligible to become teacher accounts.
   const [staff, setStaff] = useState<StaffMember[]>([])
   const [staffLoading, setStaffLoading] = useState(true)
   const [staffErr, setStaffErr] = useState<string | null>(null)
@@ -29,32 +84,17 @@ export default function AdminPage() {
   const [staffSearch, setStaffSearch] = useState('')
 
   useEffect(() => {
-    const auth = getAuth()
-    if (!auth || auth.role !== 'ADMIN') { router.replace('/sign-in'); return }
     setUsers(getUsers())
-    setReady(true)
-    // Fire-and-forget — the picker just falls back to a "couldn't load" state
-    // if marketing is offline.
-    // Only SPED teachers from the Staff Module are eligible to become
-    // class-portal teacher accounts — other departments don't teach here.
     listStaff({ department: 'SPED' })
       .then(s => { setStaff(s); setStaffErr(null) })
       .catch(e => setStaffErr((e as Error).message))
       .finally(() => setStaffLoading(false))
-  }, [router])
-
-  const filtered = useMemo(() => {
-    if (filter === 'ALL') return users
-    return users.filter(u => u.role === filter)
-  }, [users, filter])
+  }, [])
 
   function refresh() { setUsers(getUsers()) }
 
-  /** Existing teacher accounts keyed by email, lowercased, for picker badges. */
-  const teacherEmailSet = useMemo(
-    () => new Set(users.filter(u => u.role === 'TEACHER').map(u => u.email.toLowerCase())),
-    [users],
-  )
+  const filtered = useMemo(() => filter === 'ALL' ? users : users.filter(u => u.role === filter), [users, filter])
+  const teacherEmailSet = useMemo(() => new Set(users.filter(u => u.role === 'TEACHER').map(u => u.email.toLowerCase())), [users])
 
   const filteredStaff = useMemo(() => {
     const q = staffSearch.trim().toLowerCase()
@@ -72,17 +112,13 @@ export default function AdminPage() {
     if (password.length < 6) { setErr('Password must be at least 6 characters.'); return }
     try {
       addUser({
-        role: 'TEACHER',
-        email: member.email,
-        password,
+        role: 'TEACHER', email: member.email, password,
         firstName: member.firstName || undefined,
         lastName: member.lastName || undefined,
       })
       refresh()
       setInfo(`Teacher account created for ${member.firstName} ${member.lastName}.`)
-    } catch (e) {
-      setErr((e as Error).message)
-    }
+    } catch (e) { setErr((e as Error).message) }
   }
 
   function handleDelete(u: StoredUser) {
@@ -102,25 +138,16 @@ export default function AdminPage() {
         firstName: String(f.get('firstName') ?? '').trim() || undefined,
         lastName: String(f.get('lastName') ?? '').trim() || undefined,
       })
-      setEditing(null)
-      refresh()
-      setInfo('User updated.')
-    } catch (e) {
-      setErr((e as Error).message)
-    }
+      setEditing(null); refresh(); setInfo('User updated.')
+    } catch (e) { setErr((e as Error).message) }
   }
 
-  if (!ready) return null
-
   return (
-    <div className="max-w-5xl mx-auto animate-fade-up space-y-6">
+    <>
       <div className="card-static">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>
-              SCEI main admin
-            </div>
-            <h1 className="text-[28px] leading-tight text-[color:var(--deep-teal)]">Users</h1>
+            <h2 className="text-[18px] leading-tight">Users</h2>
             <p className="text-sm text-[color:var(--mid-gray)] mt-1">{users.length} total · {users.filter(u => u.role === 'STUDENT').length} students · {users.filter(u => u.role === 'TEACHER').length} teachers</p>
           </div>
           <label className="inline-flex items-center gap-2 text-sm text-[color:var(--ink)]">
@@ -134,41 +161,36 @@ export default function AdminPage() {
 
         <div className="flex gap-2 mt-5 p-1 bg-[color:var(--pale-teal)] rounded-xl w-fit" style={{ fontFamily: 'var(--font-display)' }}>
           {(['ALL', 'STUDENT', 'TEACHER'] as Filter[]).map(f => (
-            <button key={f}
-              onClick={() => setFilter(f)}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${filter === f ? 'bg-white text-[color:var(--deep-teal)] shadow-sm' : 'text-[color:var(--mid-gray)]'}`}
-            >{f === 'ALL' ? 'All' : f === 'STUDENT' ? 'Students' : 'Teachers'}</button>
+            <button key={f} onClick={() => setFilter(f)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${filter === f ? 'bg-white text-[color:var(--deep-teal)] shadow-sm' : 'text-[color:var(--mid-gray)]'}`}>
+              {f === 'ALL' ? 'All' : f === 'STUDENT' ? 'Students' : 'Teachers'}
+            </button>
           ))}
         </div>
 
-        <div className="overflow-x-auto mt-4">
+        <div className="overflow-auto mt-4 rounded-xl border" style={{ maxHeight: 360, borderColor: 'var(--paper-3)' }}>
           <table className="w-full text-sm">
-            <thead>
+            <thead className="sticky top-0 z-10" style={{ background: 'var(--paper)' }}>
               <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
-                <th className="py-2 pr-3">Role</th>
-                <th className="py-2 pr-3">Name</th>
-                <th className="py-2 pr-3">Email</th>
-                <th className="py-2 pr-3">Password</th>
-                <th className="py-2 pr-3">Level</th>
-                <th className="py-2 pr-3">Created</th>
-                <th className="py-2 pr-3"></th>
+                <th className="py-2 px-3">Role</th>
+                <th className="py-2 px-3">Name</th>
+                <th className="py-2 px-3">Email</th>
+                <th className="py-2 px-3">Password</th>
+                <th className="py-2 px-3">Level</th>
+                <th className="py-2 px-3">Created</th>
+                <th className="py-2 px-3"></th>
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 && (
-                <tr><td colSpan={7} className="py-6 text-center text-[color:var(--mid-gray)]">No users in this view.</td></tr>
-              )}
+              {filtered.length === 0 && <tr><td colSpan={7} className="py-6 px-3 text-center text-[color:var(--mid-gray)]">No users in this view.</td></tr>}
               {filtered.map(u => (
-                <tr key={u.id} className="border-b" style={{ borderColor: 'var(--paper-3)' }}>
-                  <td className="py-2.5 pr-3">
-                    <span className={`badge ${u.role === 'STUDENT' ? 'badge-approved' : 'badge-teletherapy'}`}>{u.role}</span>
-                  </td>
-                  <td className="py-2.5 pr-3">{[u.firstName, u.lastName].filter(Boolean).join(' ') || '—'}</td>
-                  <td className="py-2.5 pr-3">{u.email}</td>
-                  <td className="py-2.5 pr-3 font-mono text-[12.5px]">{showPasswords ? u.password : '•'.repeat(Math.min(u.password.length, 10))}</td>
-                  <td className="py-2.5 pr-3">{u.level ? levelLabel(u.level) : '—'}</td>
-                  <td className="py-2.5 pr-3 text-[color:var(--mid-gray)] text-xs">{new Date(u.createdAt).toLocaleDateString()}</td>
-                  <td className="py-2.5 pr-3 text-right whitespace-nowrap">
+                <tr key={u.id} className="border-b hover:bg-[color:var(--paper-2)]" style={{ borderColor: 'var(--paper-3)' }}>
+                  <td className="py-2.5 px-3"><span className={`badge ${u.role === 'STUDENT' ? 'badge-approved' : 'badge-teletherapy'}`}>{u.role}</span></td>
+                  <td className="py-2.5 px-3">{[u.firstName, u.lastName].filter(Boolean).join(' ') || '—'}</td>
+                  <td className="py-2.5 px-3">{u.email}</td>
+                  <td className="py-2.5 px-3 font-mono text-[12.5px]">{showPasswords ? u.password : '•'.repeat(Math.min(u.password.length, 10))}</td>
+                  <td className="py-2.5 px-3">{u.level ? levelLabel(u.level) : '—'}</td>
+                  <td className="py-2.5 px-3 text-[color:var(--mid-gray)] text-xs">{new Date(u.createdAt).toLocaleDateString()}</td>
+                  <td className="py-2.5 px-3 text-right whitespace-nowrap">
                     <button className="text-xs px-2 py-1 rounded-md text-[color:var(--narra)] hover:bg-[color:var(--paper-2)]" onClick={() => { setEditing(u); setErr(null); setInfo(null) }}>Edit</button>
                     <button className="text-xs px-2 py-1 rounded-md text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] ml-1" onClick={() => handleDelete(u)}>Delete</button>
                   </td>
@@ -179,42 +201,27 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* Add teacher — sourced from marketing's Staff Module */}
-      <div className="card-static">
+      <div className="card-static mt-6">
         <div className="flex items-start justify-between gap-4 flex-wrap mb-1">
           <div>
             <h2 className="text-[18px] leading-tight">Add teacher from Staff Module</h2>
             <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1">
-              Showing <span className="font-semibold">SPED teachers only</span> from <span className="font-semibold">marketing.sapphireclinicseast.org</span>. Other departments don&apos;t teach in the class program.
+              Showing <span className="font-semibold">SPED teachers only</span> from <span className="font-semibold">marketing.sapphireclinicseast.org</span>.
             </p>
           </div>
           {staffLoading && <span className="text-[12px] text-[color:var(--mid-gray)]">Loading staff…</span>}
         </div>
 
-        {staffErr && (
-          <div className="mt-3 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">
-            Couldn&apos;t load Staff Module: {staffErr}
-          </div>
-        )}
+        {staffErr && <div className="mt-3 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">Couldn&apos;t load Staff Module: {staffErr}</div>}
 
         <div className="flex flex-wrap items-end gap-3 mt-4">
           <label className="block flex-1 min-w-[220px]">
             <span className="label">Search</span>
-            <input
-              className="input"
-              placeholder="Name, job title, or email"
-              value={staffSearch}
-              onChange={e => setStaffSearch(e.target.value)}
-            />
+            <input className="input" placeholder="Name, job title, or email" value={staffSearch} onChange={e => setStaffSearch(e.target.value)} />
           </label>
           <label className="block">
             <span className="label">Branch</span>
-            <select
-              className="select"
-              value={staffBranchFilter}
-              onChange={e => setStaffBranchFilter(e.target.value as typeof staffBranchFilter)}
-              style={{ minWidth: 220 }}
-            >
+            <select className="select" value={staffBranchFilter} onChange={e => setStaffBranchFilter(e.target.value as typeof staffBranchFilter)} style={{ minWidth: 220 }}>
               <option value="">All branches</option>
               <option value="SBEA">Sandbox East</option>
               <option value="SBGH">Sandbox Greenhills</option>
@@ -222,8 +229,6 @@ export default function AdminPage() {
           </label>
         </div>
 
-        {/* Scrollable staff list — keeps admin page short while letting
-            the full SPED roster be browsed inline. */}
         <div className="overflow-auto mt-4 rounded-xl border" style={{ maxHeight: 420, borderColor: 'var(--paper-3)' }}>
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10" style={{ background: 'var(--paper)' }}>
@@ -244,17 +249,13 @@ export default function AdminPage() {
               {filteredStaff.map(m => {
                 const has = teacherEmailSet.has(m.email.toLowerCase())
                 return (
-                  <tr key={m.id} className="border-b align-top hover:bg-[color:var(--paper-2)]" style={{ borderColor: 'var(--paper-3)' }}>
+                  <tr key={m.id} className="border-b hover:bg-[color:var(--paper-2)]" style={{ borderColor: 'var(--paper-3)' }}>
                     <td className="py-2.5 px-3 whitespace-nowrap">{m.firstName} {m.lastName}</td>
                     <td className="py-2.5 px-3">{m.jobTitle || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
                     <td className="py-2.5 px-3 text-[12.5px]">{m.branch === 'SBEA' ? 'Sandbox East' : m.branch === 'SBGH' ? 'Sandbox Greenhills' : m.branch}</td>
                     <td className="py-2.5 px-3 text-[12.5px]">{m.email || <span className="text-[color:var(--mid-gray)]">no email on file</span>}</td>
                     <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                      {has ? (
-                        <span className="badge badge-approved">Account exists</span>
-                      ) : (
-                        <CreateTeacherInlineForm onCreate={pw => handleCreateFromStaff(m, pw)} disabled={!m.email} />
-                      )}
+                      {has ? <span className="badge badge-approved">Account exists</span> : <CreateTeacherInlineForm onCreate={pw => handleCreateFromStaff(m, pw)} disabled={!m.email} />}
                     </td>
                   </tr>
                 )
@@ -264,7 +265,6 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* Edit modal */}
       {editing && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setEditing(null)}>
           <div className="card-static w-full max-w-md" onClick={e => e.stopPropagation()}>
@@ -272,23 +272,11 @@ export default function AdminPage() {
             <p className="text-sm text-[color:var(--mid-gray)] mb-5">{editing.email}</p>
             <form className="space-y-3" onSubmit={handleSaveEdit}>
               <div className="grid grid-cols-2 gap-3">
-                <label className="block">
-                  <span className="label">First name</span>
-                  <input name="firstName" className="input" defaultValue={editing.firstName ?? ''} />
-                </label>
-                <label className="block">
-                  <span className="label">Last name</span>
-                  <input name="lastName" className="input" defaultValue={editing.lastName ?? ''} />
-                </label>
+                <label className="block"><span className="label">First name</span><input name="firstName" className="input" defaultValue={editing.firstName ?? ''} /></label>
+                <label className="block"><span className="label">Last name</span><input name="lastName" className="input" defaultValue={editing.lastName ?? ''} /></label>
               </div>
-              <label className="block">
-                <span className="label">Email</span>
-                <input required name="email" type="email" className="input" defaultValue={editing.email} />
-              </label>
-              <label className="block">
-                <span className="label">Password</span>
-                <input required name="password" className="input" minLength={6} defaultValue={editing.password} />
-              </label>
+              <label className="block"><span className="label">Email</span><input required name="email" type="email" className="input" defaultValue={editing.email} /></label>
+              <label className="block"><span className="label">Password</span><input required name="password" className="input" minLength={6} defaultValue={editing.password} /></label>
               <div className="flex items-center gap-2 pt-2">
                 <button type="button" className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
                 <button type="submit" className="btn-primary flex-1">Save changes</button>
@@ -297,52 +285,21 @@ export default function AdminPage() {
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }
 
 function CreateTeacherInlineForm({ onCreate, disabled }: { onCreate: (pw: string) => void; disabled?: boolean }) {
   const [open, setOpen] = useState(false)
   const [pw, setPw] = useState('')
-
-  if (!open) {
-    return (
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen(true)}
-        className="text-xs px-3 py-1.5 rounded-md text-[color:var(--narra)] hover:bg-[color:var(--paper-2)] border"
-        style={{ borderColor: 'var(--paper-3)' }}
-      >
-        Create account
-      </button>
-    )
-  }
+  if (!open) return (
+    <button type="button" disabled={disabled} onClick={() => setOpen(true)} className="text-xs px-3 py-1.5 rounded-md text-[color:var(--narra)] hover:bg-[color:var(--paper-2)] border" style={{ borderColor: 'var(--paper-3)' }}>Create account</button>
+  )
   return (
     <div className="inline-flex items-center gap-1.5">
-      <input
-        autoFocus
-        type="text"
-        placeholder="password (min 6)"
-        className="input"
-        value={pw}
-        onChange={e => setPw(e.target.value)}
-        style={{ width: 180, padding: '6px 10px', fontSize: 12 }}
-      />
-      <button
-        type="button"
-        onClick={() => { onCreate(pw); setOpen(false); setPw('') }}
-        className="text-xs px-3 py-1.5 rounded-md bg-[color:var(--narra)] text-white"
-      >
-        Save
-      </button>
-      <button
-        type="button"
-        onClick={() => { setOpen(false); setPw('') }}
-        className="text-xs px-2 py-1.5 rounded-md text-[color:var(--mid-gray)] hover:text-[color:var(--narra)]"
-      >
-        Cancel
-      </button>
+      <input autoFocus type="text" placeholder="password (min 6)" className="input" value={pw} onChange={e => setPw(e.target.value)} style={{ width: 180, padding: '6px 10px', fontSize: 12 }} />
+      <button type="button" onClick={() => { onCreate(pw); setOpen(false); setPw('') }} className="text-xs px-3 py-1.5 rounded-md bg-[color:var(--narra)] text-white">Save</button>
+      <button type="button" onClick={() => { setOpen(false); setPw('') }} className="text-xs px-2 py-1.5 rounded-md text-[color:var(--mid-gray)] hover:text-[color:var(--narra)]">Cancel</button>
     </div>
   )
 }

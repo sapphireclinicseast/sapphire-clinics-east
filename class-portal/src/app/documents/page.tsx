@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { submitDocuments } from '@/lib/api'
-import { getSession, getDraft, setDraft, levelLabel, type EnrollmentLevel } from '@/lib/session'
+import { getSession, getDraft, setDraft, putFile, levelLabel, type EnrollmentLevel } from '@/lib/session'
 
 interface DocRequirement {
   key: string
@@ -86,9 +86,12 @@ export default function DocumentsPage() {
       setBusy(false); return
     }
     try {
-      const documents: Record<string, { name: string; size: number }> = {}
+      const documents: Record<string, { name: string; size: number; type?: string; fileId?: string }> = {}
       for (const [k, f] of Object.entries(files)) {
-        if (f) documents[k] = { name: f.name, size: f.size }
+        if (!f) continue
+        const fileId = 'doc_' + Math.random().toString(36).slice(2, 12)
+        try { await putFile(fileId, f) } catch (e) { console.warn('IndexedDB put failed', e) }
+        documents[k] = { name: f.name, size: f.size, type: f.type, fileId }
       }
       await submitDocuments(token, { documents, waiverSignedAt })
       setDraft({ documents })

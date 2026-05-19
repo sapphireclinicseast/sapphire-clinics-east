@@ -127,6 +127,10 @@ services:
         condition: service_started
     environment:
       MARKETING_URL: ${MARKETING_URL:-https://marketing.sapphireclinicseast.org}
+      # Server-side PayMongo secret key for /api/pay/create-checkout.
+      # Pinned to the class-portal-specific key; falls back to the global
+      # PAYMONGO_SECRET_KEY if the class-specific one isn't set.
+      PAYMONGO_SECRET_KEY: ${PAYMONGO_CLASS_SECRET_KEY:-${PAYMONGO_SECRET_KEY}}
       NODE_ENV: production
     ports:
       - "127.0.0.1:3006:3000"

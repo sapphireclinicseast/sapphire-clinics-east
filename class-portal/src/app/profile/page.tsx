@@ -1,16 +1,32 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { getAuth, getUsers, findPendingWaivers, saveWaiver, levelLabel, type StoredUser, type WaiverRecord } from '@/lib/session'
-import { downloadWaiverPdf } from '@/lib/waiver-pdf'
-import SignaturePad from '@/components/SignaturePad'
+import {
+  getAuth, getUsers,
+  getPaymentsForStudent, notificationsForStudent, notificationsForTeacher,
+  getGradeForStudent,
+  type StoredUser, type PaymentRecord, type GradeRecord,
+  type EnrollmentLevel, type NotificationRecord,
+  levelLabel,
+} from '@/lib/session'
+import StudentDetail from '@/components/StudentDetail'
+import NotificationPanel from '@/components/NotificationPanel'
+import CurriculumPanel from '@/components/CurriculumPanel'
+import GradesPanel from '@/components/GradesPanel'
+import StudentListPanel from '@/components/StudentListPanel'
+
+type StudentTab = 'PROFILE' | 'PAYMENT' | 'GRADES' | 'NOTIFICATIONS'
+type TeacherTab = 'STUDENTS' | 'CURRICULUM' | 'GRADES' | 'NOTIFICATIONS'
+
+function fmt(cents: number) {
+  return '₱' + (cents / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
 
 export default function ProfilePage() {
   const router = useRouter()
   const [user, setUser] = useState<StoredUser | null>(null)
   const [ready, setReady] = useState(false)
-  const [pendingWaivers, setPendingWaivers] = useState<WaiverRecord[]>([])
 
   useEffect(() => {
     const auth = getAuth()
@@ -20,134 +36,117 @@ export default function ProfilePage() {
     const u = getUsers().find(x => x.id === auth.userId)
     if (!u) { router.replace('/sign-in'); return }
     setUser(u)
-    if (u.role === 'TEACHER') setPendingWaivers(findPendingWaivers())
     setReady(true)
   }, [router])
 
-  function refreshPending() { setPendingWaivers(findPendingWaivers()) }
-
-  function handleWitness(record: WaiverRecord, printedName: string, signatureDataUrl: string) {
-    if (!user) return
-    if (!printedName.trim()) { alert("Please type the witness's printed name."); return }
-    if (!signatureDataUrl) { alert('Please sign before submitting.'); return }
-    const now = new Date().toISOString()
-    const updated: WaiverRecord = {
-      ...record,
-      witnessSig: {
-        printedName,
-        signatureDataUrl,
-        signedAt: now,
-        teacherId: user.id,
-        teacherEmail: user.email,
-      },
-      updatedAt: now,
-    }
-    saveWaiver(updated)
-    refreshPending()
-    try { downloadWaiverPdf(updated) } catch (e) { console.warn('PDF download failed', e) }
-  }
-
   if (!ready || !user) return null
+  return user.role === 'STUDENT' ? <StudentView user={user} /> : <TeacherView user={user} />
+}
 
-  const isStudent = user.role === 'STUDENT'
-  const e = user.enrollment ?? {}
+/* ────────────────────── STUDENT VIEW ────────────────────── */
+
+function StudentView({ user }: { user: StoredUser }) {
+  const [tab, setTab] = useState<StudentTab>('PROFILE')
+  const [payments, setPayments] = useState<PaymentRecord[]>([])
+  const [grade, setGrade] = useState<GradeRecord | null>(null)
+  const [notifications, setNotifications] = useState<NotificationRecord[]>([])
+
+  useEffect(() => {
+    setPayments(getPaymentsForStudent(user.id))
+    setGrade(getGradeForStudent(user.id))
+    if (user.level) setNotifications(notificationsForStudent(user.level as EnrollmentLevel))
+  }, [user.id, user.level])
 
   return (
-    <div className="max-w-3xl mx-auto animate-fade-up space-y-6">
-      <div className="card-static">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>
-              {user.role === 'STUDENT' ? 'Student account' : 'Teacher account'}
-            </div>
-            <h1 className="text-[28px] leading-tight text-[color:var(--deep-teal)]">
-              {[user.firstName, user.lastName].filter(Boolean).join(' ') || user.email}
-            </h1>
-            <p className="text-sm text-[color:var(--mid-gray)] mt-1">{user.email}</p>
-            {isStudent && user.level && (
-              <p className="text-sm text-[color:var(--mid-gray)] mt-0.5">Enrolled in <span className="font-semibold text-[color:var(--narra)]">{levelLabel(user.level)}</span></p>
-            )}
-          </div>
-          {isStudent && (
-            <a href="/pay" className="btn-cta whitespace-nowrap">Pay tuition fee →</a>
-          )}
-        </div>
-      </div>
+    <div className="max-w-4xl mx-auto animate-fade-up space-y-6">
+      <TabBar tabs={[
+        { value: 'PROFILE',       label: 'Profile' },
+        { value: 'PAYMENT',       label: 'Payment' },
+        { value: 'GRADES',        label: 'Grades' },
+        { value: 'NOTIFICATIONS', label: 'Notifications' },
+      ]} active={tab} onChange={v => setTab(v as StudentTab)} />
 
-      {!isStudent && (
+      {tab === 'PROFILE' && <StudentDetail student={user} viewerRole="STUDENT" />}
+
+      {tab === 'PAYMENT' && (
         <div className="card-static">
-          <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
-            <div>
-              <h2 className="text-[18px] leading-tight">Waivers awaiting witness</h2>
-              <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1">
-                Parents have signed these waivers. As the assigned SCEI SPED teacher, please counter-sign below — the PDF is regenerated and downloaded for the school&apos;s records.
-              </p>
+          <h2 className="text-[18px] leading-tight mb-3">Payment status</h2>
+          {payments.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-sm text-[color:var(--mid-gray)] mb-4">No payment yet. Choose your plan and pay through PayMongo.</p>
+              <a href="/pay" className="btn-cta">Pay tuition fee →</a>
             </div>
-            <span className="badge badge-approved">{pendingWaivers.length} pending</span>
-          </div>
-
-          {pendingWaivers.length === 0 ? (
-            <p className="text-sm text-[color:var(--mid-gray)] mt-6 text-center py-8">
-              No waivers are currently awaiting a witness signature.
-            </p>
           ) : (
-            <div className="space-y-4 mt-4">
-              {pendingWaivers.map(w => (
-                <WitnessCard key={w.id} record={w} onWitness={handleWitness} />
-              ))}
+            <>
+              <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--paper-3)' }}>
+                <table className="w-full text-sm">
+                  <thead style={{ background: 'var(--paper-2)' }}>
+                    <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
+                      <th className="py-2 px-3">Date</th>
+                      <th className="py-2 px-3">Plan</th>
+                      <th className="py-2 px-3">Period</th>
+                      <th className="py-2 px-3 text-right">Total</th>
+                      <th className="py-2 px-3">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payments.map(p => (
+                      <tr key={p.id} className="border-b" style={{ borderColor: 'var(--paper-3)' }}>
+                        <td className="py-2.5 px-3 text-[12.5px]">{new Date(p.paidAt ?? p.createdAt).toLocaleDateString()}</td>
+                        <td className="py-2.5 px-3">{p.plan}</td>
+                        <td className="py-2.5 px-3 text-[12.5px]">{p.period}</td>
+                        <td className="py-2.5 px-3 text-right font-mono">{fmt(p.tuitionAmount + p.miscAmount)}</td>
+                        <td className="py-2.5 px-3"><span className={`badge ${p.status === 'PAID' ? 'badge-paid' : 'badge-pending'}`}>{p.status}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-4">
+                <a href="/pay" className="btn-secondary">Make another payment</a>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {tab === 'GRADES' && (
+        <div className="card-static">
+          <h2 className="text-[18px] leading-tight mb-3">Grades</h2>
+          {!grade ? (
+            <p className="text-sm text-[color:var(--mid-gray)] text-center py-8">No grades have been recorded yet by the teacher.</p>
+          ) : (
+            <div className="space-y-3">
+              <div className="grid grid-cols-5 gap-2 text-center">
+                <Quarter label="Q1" value={grade.q1} />
+                <Quarter label="Q2" value={grade.q2} />
+                <Quarter label="Q3" value={grade.q3} />
+                <Quarter label="Q4" value={grade.q4} />
+                <Quarter label="Year Avg" value={grade.yearAvg} highlight />
+              </div>
+              <p className="text-[11.5px] text-[color:var(--mid-gray)]">Updated {new Date(grade.updatedAt).toLocaleString()}.</p>
             </div>
           )}
         </div>
       )}
 
-      {isStudent && (
+      {tab === 'NOTIFICATIONS' && (
         <div className="card-static">
-          <h2 className="text-[18px] leading-tight mb-4">Learner profile</h2>
-          <dl className="grid sm:grid-cols-2 gap-x-6 gap-y-2.5 text-sm">
-            <Row label="School year" value={e.schoolYearFrom && e.schoolYearTo ? `${e.schoolYearFrom} to ${e.schoolYearTo}` : '—'} />
-            <Row label="LRN status" value={e.lrnStatus ?? '—'} />
-            {e.lrn && <Row label="LRN" value={e.lrn} />}
-            <Row label="PSA Birth Cert. No." value={e.psaBirthCertNo ?? '—'} />
-            <Row label="Date of birth" value={e.dob ?? '—'} />
-            <Row label="Sex" value={e.sex ?? '—'} />
-            <Row label="Mother tongue" value={e.motherTongue ?? '—'} />
-            <Row label="Religion" value={e.religion ?? '—'} />
-            {e.diagnosis && <Row label="Diagnosis" value={e.diagnosis} />}
-            <Row label="Address" value={[e.houseStreet, e.barangay, e.cityProvinceCountry, e.zipCode].filter(Boolean).join(', ') || '—'} />
-            <Row label="Father" value={nameOf(e.father)} />
-            {e.fatherOccupation && <Row label="Father's occupation" value={e.fatherOccupation} />}
-            <Row label="Mother" value={nameOf(e.mother)} />
-            {e.motherOccupation && <Row label="Mother's occupation" value={e.motherOccupation} />}
-            {e.guardianOfRecord === 'OTHER' && <Row label="Guardian" value={nameOf(e.guardian)} />}
-            <Row label="Telephone" value={e.telephone ?? '—'} />
-            <Row label="Cellphone" value={e.cellphone ?? '—'} />
-          </dl>
-
-          {e.isReturningOrTransferee === 'YES' && (
-            <>
-              <h3 className="text-[13.5px] font-bold uppercase tracking-[0.12em] text-[color:var(--bright-teal)] mt-6 mb-3" style={{ fontFamily: 'var(--font-display)' }}>Previous school</h3>
-              <dl className="grid sm:grid-cols-2 gap-x-6 gap-y-2.5 text-sm">
-                <Row label="Last grade completed" value={e.lastGradeCompleted ?? '—'} />
-                <Row label="Last school year" value={e.lastSchoolYearCompleted ?? '—'} />
-                <Row label="School name" value={e.previousSchoolName ?? '—'} />
-                {e.previousSchoolId && <Row label="School ID" value={e.previousSchoolId} />}
-                <Row label="School address" value={e.previousSchoolAddress ?? '—'} />
-              </dl>
-            </>
-          )}
-
-          {e.documents && Object.keys(e.documents).length > 0 && (
-            <>
-              <h3 className="text-[13.5px] font-bold uppercase tracking-[0.12em] text-[color:var(--bright-teal)] mt-6 mb-3" style={{ fontFamily: 'var(--font-display)' }}>Submitted documents</h3>
-              <ul className="space-y-1.5 text-sm text-[color:var(--ink)]">
-                {Object.entries(e.documents).map(([k, v]) => (
-                  <li key={k} className="flex items-center justify-between gap-3">
-                    <span>{docTitle(k)}</span>
-                    <span className="text-[color:var(--mid-gray)] text-xs">{v.name} · {(v.size / 1024).toFixed(0)} KB</span>
-                  </li>
-                ))}
-              </ul>
-            </>
+          <h2 className="text-[18px] leading-tight mb-3">Announcements</h2>
+          {notifications.length === 0 ? (
+            <p className="text-sm text-[color:var(--mid-gray)] text-center py-8">No announcements for your level yet.</p>
+          ) : (
+            <ul className="space-y-3">
+              {notifications.map(n => (
+                <li key={n.id} className="rounded-xl p-4 border" style={{ borderColor: 'var(--paper-3)', background: '#fff' }}>
+                  <div className="font-semibold text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>{n.title}</div>
+                  <div className="text-[11.5px] text-[color:var(--mid-gray)] mt-0.5">
+                    {n.authorName} · {new Date(n.createdAt).toLocaleString()}
+                  </div>
+                  <p className="text-[13.5px] text-[color:var(--ink)] mt-2 whitespace-pre-wrap">{n.body}</p>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       )}
@@ -155,70 +154,72 @@ export default function ProfilePage() {
   )
 }
 
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <>
-      <dt className="text-[color:var(--mid-gray)] uppercase tracking-[0.06em] text-[11.5px] font-semibold" style={{ fontFamily: 'var(--font-display)' }}>{label}</dt>
-      <dd className="text-[color:var(--ink)] mb-1">{value || '—'}</dd>
-    </>
-  )
-}
+/* ────────────────────── TEACHER VIEW ────────────────────── */
 
-function nameOf(n?: { lastName: string; firstName: string; middleName: string }) {
-  if (!n) return '—'
-  return [n.firstName, n.middleName, n.lastName].filter(Boolean).join(' ').trim() || '—'
-}
+function TeacherView({ user }: { user: StoredUser }) {
+  const [tab, setTab] = useState<TeacherTab>('STUDENTS')
 
-function docTitle(key: string) {
-  const map: Record<string, string> = {
-    psa_birth_cert: 'PSA Birth Certificate',
-    medical_reports: 'Medical / developmental / therapy reports',
-    report_card_sf9: 'Report Card / SF9 (Form 138)',
-    good_moral: 'Certificate of Good Moral Character',
-    form_137_sf10: 'Form 137 / SF10',
-  }
-  return map[key] ?? key
-}
-
-function WitnessCard({ record, onWitness }: { record: WaiverRecord; onWitness: (r: WaiverRecord, printedName: string, sig: string) => void }) {
-  const [open, setOpen] = useState(false)
-  const [printedName, setPrintedName] = useState('')
-  const [sig, setSig] = useState('')
+  const viewerName = useMemo(() => [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email, [user])
 
   return (
-    <div className="rounded-2xl p-4 border" style={{ borderColor: 'var(--paper-3)', background: '#fff' }}>
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <div className="font-semibold text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>
-            {record.studentFirstName} {record.studentLastName}
-          </div>
-          <div className="text-[12px] text-[color:var(--mid-gray)] mt-0.5">
-            {levelLabel(record.level)} · parent signed {new Date(record.parentSig.signedAt).toLocaleDateString()} ·{' '}
-            <span className="font-semibold">{record.parentSig.printedName}</span>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <button type="button" className="btn-secondary text-xs" onClick={() => downloadWaiverPdf(record)}>Preview PDF</button>
-          {!open && <button type="button" className="btn-cta text-xs" onClick={() => setOpen(true)}>Sign as witness</button>}
-        </div>
+    <div className="max-w-5xl mx-auto animate-fade-up space-y-6">
+      <div className="card-static">
+        <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>SCEI teacher account</div>
+        <h1 className="text-[24px] leading-tight text-[color:var(--deep-teal)]">{viewerName}</h1>
+        <p className="text-sm text-[color:var(--mid-gray)]">{user.email}</p>
       </div>
 
-      {open && (
-        <div className="mt-4 pt-4 border-t" style={{ borderColor: 'var(--paper-3)' }}>
-          <label className="block mb-3">
-            <span className="label">Witness — printed name</span>
-            <input className="input" value={printedName} onChange={e => setPrintedName(e.target.value)} placeholder="Teacher full name" />
-          </label>
-          <div>
-            <span className="label">Witness signature</span>
-            <SignaturePad onChange={setSig} height={150} />
-          </div>
-          <div className="flex justify-end gap-2 mt-3">
-            <button type="button" className="btn-secondary text-xs" onClick={() => { setOpen(false); setPrintedName(''); setSig('') }}>Cancel</button>
-            <button type="button" className="btn-primary text-xs" onClick={() => onWitness(record, printedName, sig)}>Sign &amp; download PDF</button>
-          </div>
-        </div>
+      <TabBar tabs={[
+        { value: 'STUDENTS',      label: 'Students' },
+        { value: 'CURRICULUM',    label: 'Curriculum' },
+        { value: 'GRADES',        label: 'Grades' },
+        { value: 'NOTIFICATIONS', label: 'Notifications' },
+      ]} active={tab} onChange={v => setTab(v as TeacherTab)} />
+
+      {tab === 'STUDENTS' && (
+        <StudentListPanel viewer={{ role: 'TEACHER', userId: user.id, email: user.email, name: viewerName }} />
+      )}
+
+      {tab === 'CURRICULUM' && (
+        <CurriculumPanel viewer={{ role: 'TEACHER', email: user.email }} />
+      )}
+
+      {tab === 'GRADES' && (
+        <GradesPanel viewer={{ role: 'TEACHER', userId: user.id }} />
+      )}
+
+      {tab === 'NOTIFICATIONS' && (
+        <NotificationPanel viewer={{ role: 'TEACHER', email: user.email, name: viewerName, userId: user.id }} />
       )}
     </div>
   )
 }
+
+/* ─────────── tab bar ─────────── */
+
+function TabBar({ tabs, active, onChange }: { tabs: Array<{ value: string; label: string }>; active: string; onChange: (v: string) => void }) {
+  return (
+    <div className="flex gap-2 p-1 bg-[color:var(--pale-teal)] rounded-xl overflow-x-auto" style={{ fontFamily: 'var(--font-display)' }}>
+      {tabs.map(t => (
+        <button
+          key={t.value}
+          onClick={() => onChange(t.value)}
+          className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-all ${active === t.value ? 'bg-white text-[color:var(--deep-teal)] shadow-sm' : 'text-[color:var(--mid-gray)] hover:text-[color:var(--teal)]'}`}
+        >{t.label}</button>
+      ))}
+    </div>
+  )
+}
+
+function Quarter({ label, value, highlight }: { label: string; value?: string; highlight?: boolean }) {
+  return (
+    <div className="rounded-xl p-3 border" style={{ borderColor: 'var(--paper-3)', background: highlight ? 'var(--sage-tint)' : 'var(--paper-2)' }}>
+      <div className="text-[10.5px] uppercase tracking-[0.12em] text-[color:var(--mid-gray)] font-semibold" style={{ fontFamily: 'var(--font-display)' }}>{label}</div>
+      <div className={`text-[22px] font-bold mt-1 ${highlight ? 'text-[color:var(--narra)]' : 'text-[color:var(--ink)]'}`} style={{ fontFamily: 'var(--font-display)' }}>{value ?? '—'}</div>
+    </div>
+  )
+}
+
+// (Silenced) ensures levelLabel + notificationsForTeacher are referenced even though
+// only used in some imports paths above.
+void levelLabel; void notificationsForTeacher
