@@ -242,6 +242,24 @@ export async function POST(
   if (!schedule.patient?.email) return NextResponse.json({ error: 'Patient has no email address' }, { status: 400 })
   // Allow resending — no longer block if already sent
 
+  // Resolve branch-specific CC from BranchCCEmail (same pattern as IE send-to-patient).
+  // Falls back through patient.branch → patient.branches[0] → staff.branch (with legacy
+  // SBEA/SBGH alias normalisation, since older Staff rows use those codes).
+  const STAFF_BRANCH_ALIAS: Record<string, string> = {
+    SBEA: 'SANDBOX_EAST',
+    SBGH: 'SANDBOX_GREENHILLS',
+  }
+  const rawBranch =
+    schedule.patient.branch ??
+    schedule.patient.branches?.[0] ??
+    (schedule.staff?.branch ? (STAFF_BRANCH_ALIAS[schedule.staff.branch] ?? schedule.staff.branch) : null)
+  let ccEmail: string | null = null
+  if (rawBranch) {
+    // @ts-ignore — branchCCEmail not in PrismaClient typings until generate
+    const ccRow = await prisma.branchCCEmail.findUnique({ where: { branch: rawBranch } })
+    ccEmail = ccRow?.email ?? null
+  }
+
   try {
     const patientName = `${schedule.patient.firstName} ${schedule.patient.lastName}`
     const therapistName = `${schedule.staff.firstName} ${schedule.staff.lastName}`
@@ -297,6 +315,7 @@ export async function POST(
 
     await sendEmail({
       to: schedule.patient.email,
+      cc: ccEmail ? [ccEmail] : undefined,
       subject: `Teletherapy Session Notes - ${sessionDate}`,
       html,
       attachments: emailAttachments,
