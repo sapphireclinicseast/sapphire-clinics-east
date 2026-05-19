@@ -67,45 +67,7 @@ function StudentView({ user }: { user: StoredUser }) {
       {tab === 'PROFILE' && <StudentDetail student={user} viewerRole="STUDENT" />}
 
       {tab === 'PAYMENT' && (
-        <div className="card-static">
-          <h2 className="text-[18px] leading-tight mb-3">Payment status</h2>
-          {payments.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-sm text-[color:var(--mid-gray)] mb-4">No payment yet. Choose your plan and pay through PayMongo.</p>
-              <a href="/pay" className="btn-cta">Pay tuition fee →</a>
-            </div>
-          ) : (
-            <>
-              <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--paper-3)' }}>
-                <table className="w-full text-sm">
-                  <thead style={{ background: 'var(--paper-2)' }}>
-                    <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
-                      <th className="py-2 px-3">Date</th>
-                      <th className="py-2 px-3">Plan</th>
-                      <th className="py-2 px-3">Period</th>
-                      <th className="py-2 px-3 text-right">Total</th>
-                      <th className="py-2 px-3">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {payments.map(p => (
-                      <tr key={p.id} className="border-b" style={{ borderColor: 'var(--paper-3)' }}>
-                        <td className="py-2.5 px-3 text-[12.5px]">{new Date(p.paidAt ?? p.createdAt).toLocaleDateString()}</td>
-                        <td className="py-2.5 px-3">{p.plan}</td>
-                        <td className="py-2.5 px-3 text-[12.5px]">{p.period}</td>
-                        <td className="py-2.5 px-3 text-right font-mono">{fmt(p.tuitionAmount + p.miscAmount)}</td>
-                        <td className="py-2.5 px-3"><span className={`badge ${p.status === 'PAID' ? 'badge-paid' : 'badge-pending'}`}>{p.status}</span></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="mt-4">
-                <a href="/pay" className="btn-secondary">Make another payment</a>
-              </div>
-            </>
-          )}
-        </div>
+        <PaymentTab payments={payments} />
       )}
 
       {tab === 'GRADES' && (
@@ -194,6 +156,81 @@ function TabBar({ tabs, active, onChange }: { tabs: Array<{ value: string; label
           className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-all ${active === t.value ? 'bg-white text-[color:var(--deep-teal)] shadow-sm' : 'text-[color:var(--mid-gray)] hover:text-[color:var(--teal)]'}`}
         >{t.label}</button>
       ))}
+    </div>
+  )
+}
+
+/**
+ * Student Payment tab. Branches on whether any payment record is in the
+ * PAID state — abandoned PENDING checkouts shouldn't make the student
+ * feel like they've paid. When nothing is paid, surface a prominent
+ * "you still need to pay tuition" card with a CTA into /pay.
+ */
+function PaymentTab({ payments }: { payments: PaymentRecord[] }) {
+  const hasPaid = payments.some(p => p.status === 'PAID')
+  const pending = payments.filter(p => p.status === 'PENDING')
+
+  if (!hasPaid) {
+    return (
+      <div className="card-static">
+        <h2 className="text-[18px] leading-tight mb-1">Tuition not yet paid</h2>
+        <p className="text-sm text-[color:var(--mid-gray)] mb-5">
+          {pending.length === 0
+            ? 'You have not started a tuition payment yet. Choose your plan and pay securely through PayMongo.'
+            : `You have ${pending.length} unfinished checkout${pending.length === 1 ? '' : 's'}. Tuition is still outstanding — please complete your payment via PayMongo.`}
+        </p>
+        <div className="rounded-xl p-5 border text-center" style={{ borderColor: '#fda4af', background: '#fff1f2' }}>
+          <p className="text-[15px] text-[color:var(--narra)] font-semibold mb-3" style={{ fontFamily: 'var(--font-display)' }}>
+            You still need to pay tuition.
+          </p>
+          <a href="/pay" className="btn-cta">Pay tuition fee via PayMongo →</a>
+        </div>
+        {pending.length > 0 && (
+          <details className="mt-4">
+            <summary className="text-[12.5px] text-[color:var(--mid-gray)] cursor-pointer select-none">Show unfinished checkout attempts ({pending.length})</summary>
+            <PaymentTable payments={pending} />
+          </details>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="card-static">
+      <h2 className="text-[18px] leading-tight mb-3">Payment history</h2>
+      <PaymentTable payments={payments} />
+      <div className="mt-4">
+        <a href="/pay" className="btn-secondary">Make another payment</a>
+      </div>
+    </div>
+  )
+}
+
+function PaymentTable({ payments }: { payments: PaymentRecord[] }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--paper-3)' }}>
+      <table className="w-full text-sm">
+        <thead style={{ background: 'var(--paper-2)' }}>
+          <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
+            <th className="py-2 px-3">Date</th>
+            <th className="py-2 px-3">Plan</th>
+            <th className="py-2 px-3">Period</th>
+            <th className="py-2 px-3 text-right">Total</th>
+            <th className="py-2 px-3">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {payments.map(p => (
+            <tr key={p.id} className="border-b" style={{ borderColor: 'var(--paper-3)' }}>
+              <td className="py-2.5 px-3 text-[12.5px]">{new Date(p.paidAt ?? p.createdAt).toLocaleDateString()}</td>
+              <td className="py-2.5 px-3">{p.plan}</td>
+              <td className="py-2.5 px-3 text-[12.5px]">{p.period}</td>
+              <td className="py-2.5 px-3 text-right font-mono">{fmt(p.tuitionAmount + p.miscAmount)}</td>
+              <td className="py-2.5 px-3"><span className={`badge ${p.status === 'PAID' ? 'badge-paid' : 'badge-pending'}`}>{p.status}</span></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
