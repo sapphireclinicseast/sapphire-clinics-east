@@ -51,6 +51,7 @@ export default function AccountSetupPage() {
         firstName: d.firstName,
         lastName: d.lastName,
         level: s.level,
+        branch: d.branch,
         enrollment: d,
       })
       // Sign the new student in immediately so subsequent API calls authenticate.

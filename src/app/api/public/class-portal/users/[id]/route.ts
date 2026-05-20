@@ -30,6 +30,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       firstName?: string | null
       lastName?: string | null
       level?: string | null
+      branch?: 'EAST' | 'GREENHILLS' | null
       enrollment?: Record<string, unknown> | null
     }
 
@@ -48,6 +49,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (body.firstName !== undefined) data.firstName = body.firstName
     if (body.lastName !== undefined) data.lastName = body.lastName
     if (body.level !== undefined) data.level = body.level
+    if (body.branch !== undefined) data.branch = body.branch
     if (body.enrollment !== undefined) data.enrollment = body.enrollment
 
     const updated = await prisma.classPortalUser.update({ where: { id }, data })
@@ -59,6 +61,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         firstName: updated.firstName,
         lastName: updated.lastName,
         level: updated.level,
+        branch: updated.branch,
         enrollment: updated.enrollment,
         createdAt: updated.createdAt.toISOString(),
         updatedAt: updated.updatedAt.toISOString(),

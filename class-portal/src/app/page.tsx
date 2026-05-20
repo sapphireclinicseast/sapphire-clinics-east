@@ -2,12 +2,17 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { lookupStudent, type EnrollmentLevel } from '@/lib/api'
-import { getSession, setSession, setDraft, clearDraft, levelLabel } from '@/lib/session'
+import { type EnrollmentLevel } from '@/lib/api'
+import { getSession, setSession, setDraft, clearDraft, levelLabel, type Branch, branchLabel } from '@/lib/session'
 import { AuroraBackground } from '@/components/ui/aurora-background'
 import { RotatingWord } from '@/components/ui/rotating-word'
 
-type Tab = 'returning' | 'new'
+type Tab = 'signin' | 'new'
+
+const BRANCHES: Array<{ value: Branch; title: string; sub: string }> = [
+  { value: 'EAST', title: 'East Branch', sub: 'Robinsons Metro East, Pasig' },
+  { value: 'GREENHILLS', title: 'Greenhills Branch', sub: 'GH Tower Offices, San Juan' },
+]
 
 const LEVELS: { value: EnrollmentLevel; title: string }[] = [
   { value: 'KINDER',  title: 'Kindergarten' },
@@ -34,10 +39,10 @@ export default function HomePage() {
 function HomeInner() {
   const router = useRouter()
   const sp = useSearchParams()
-  const [tab, setTab] = useState<Tab>('returning')
-  const [busy, setBusy] = useState(false)
+  const [tab, setTab] = useState<Tab>('new')
   const [err, setErr] = useState<string | null>(null)
   const [signedIn, setSignedIn] = useState<{ firstName: string; level: EnrollmentLevel } | null>(null)
+  const [branch, setBranch] = useState<Branch | null>(null)
   const [level, setLevel] = useState<EnrollmentLevel | null>(null)
   const expired = sp.get('expired') === '1'
 
@@ -46,23 +51,14 @@ function HomeInner() {
     if (s) setSignedIn({ firstName: s.firstName, level: s.level })
   }, [])
 
-  async function handleReturning(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    setBusy(true); setErr(null)
-    const f = new FormData(e.currentTarget)
-    try {
-      const res = await lookupStudent(String(f.get('email')), String(f.get('lastName')))
-      setSession(res); router.push('/enroll')
-    } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
-  }
-
   function handleNew(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setErr(null)
+    if (!branch) { setErr('Please choose a clinic branch.'); return }
     if (!level) { setErr('Please choose an enrollment level.'); return }
-    // Reset any previous draft, then seed with the chosen level so /enroll knows it.
+    // Reset any previous draft, then seed with the chosen branch + level so /enroll knows them.
     clearDraft()
-    setDraft({ level })
+    setDraft({ level, branch })
     // Lightweight placeholder session — student details get filled on /enroll.
     setSession({
       studentId: 'draft_' + Math.random().toString(36).slice(2, 10),
@@ -168,13 +164,13 @@ function HomeInner() {
 
           <div className="flex gap-2 mb-6 p-1 bg-[color:var(--pale-teal)] rounded-xl" style={{ fontFamily: 'var(--font-display)' }}>
             <button
-              onClick={() => { setTab('returning'); setErr(null) }}
-              className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${tab === 'returning' ? 'bg-white text-[color:var(--deep-teal)] shadow-sm' : 'text-[color:var(--mid-gray)] hover:text-[color:var(--teal)]'}`}
-            >Returning student</button>
-            <button
               onClick={() => { setTab('new'); setErr(null) }}
               className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${tab === 'new' ? 'bg-white text-[color:var(--deep-teal)] shadow-sm' : 'text-[color:var(--mid-gray)] hover:text-[color:var(--teal)]'}`}
             >New student</button>
+            <button
+              onClick={() => { setTab('signin'); setErr(null) }}
+              className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${tab === 'signin' ? 'bg-white text-[color:var(--deep-teal)] shadow-sm' : 'text-[color:var(--mid-gray)] hover:text-[color:var(--teal)]'}`}
+            >Sign In (for existing student)</button>
           </div>
 
           {expired && !err && (
@@ -188,48 +184,69 @@ function HomeInner() {
             </div>
           )}
 
-          {tab === 'returning' ? (
-            <form className="space-y-4" onSubmit={handleReturning} key="returning">
-              <label className="block">
-                <span className="label">Email</span>
-                <input required name="email" type="email" className="input" placeholder="parent@example.com" />
-              </label>
-              <label className="block">
-                <span className="label">Student last name</span>
-                <input required name="lastName" className="input" placeholder="Dela Cruz" />
-              </label>
-              <button type="submit" disabled={busy} className="btn-primary w-full mt-2">
-                {busy ? 'Looking up…' : 'Continue'}
-              </button>
+          {tab === 'signin' ? (
+            <div className="space-y-4" key="signin">
+              <p className="text-sm text-[color:var(--ink)] leading-relaxed">
+                Already enrolled? Sign in with your parent email and password to continue your child&apos;s profile, upload documents, pay tuition, or view announcements.
+              </p>
+              <a href="/sign-in" className="btn-primary w-full text-center inline-block">
+                Sign In
+              </a>
               <p className="text-xs text-[color:var(--mid-gray)] text-center pt-1">
-                Don&apos;t have a record yet?{' '}
+                Don&apos;t have an account yet?{' '}
                 <button type="button" className="text-[color:var(--teal)] font-semibold hover:underline" onClick={() => setTab('new')}>
                   Register as a new student
                 </button>
               </p>
-            </form>
+            </div>
           ) : (
-            <form className="space-y-4" onSubmit={handleNew} key="new">
-              <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
-                Enrollment level
-              </div>
-              <p className="text-sm text-[color:var(--mid-gray)] -mt-2">
-                Which level are you enrolling for?
-              </p>
-              <div className="grid grid-cols-2 gap-2.5">
-                {LEVELS.map(l => (
-                  <button
-                    key={l.value}
-                    type="button"
-                    onClick={() => setLevel(l.value)}
-                    className={`level-tile ${level === l.value ? 'level-tile-active' : ''}`}
-                  >
-                    <span className="level-tile-title">{l.title}</span>
-                  </button>
-                ))}
+            <form className="space-y-5" onSubmit={handleNew} key="new">
+              {/* Branch picker — required before level so we know which clinic to lodge the student under. */}
+              <div>
+                <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
+                  Clinic branch
+                </div>
+                <p className="text-sm text-[color:var(--mid-gray)] mt-0.5 mb-2.5">
+                  Which clinic branch will your child attend?
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {BRANCHES.map(b => (
+                    <button
+                      key={b.value}
+                      type="button"
+                      onClick={() => setBranch(b.value)}
+                      className={`level-tile ${branch === b.value ? 'level-tile-active' : ''}`}
+                    >
+                      <span className="level-tile-title">{b.title}</span>
+                      <span className="level-tile-sub">{b.sub}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <button type="submit" className="btn-primary w-full mt-2">
+              {/* Level picker — disabled until a branch is chosen so parents do the steps in order. */}
+              <div className={branch ? '' : 'opacity-50 pointer-events-none'}>
+                <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
+                  Enrollment level
+                </div>
+                <p className="text-sm text-[color:var(--mid-gray)] mt-0.5 mb-2.5">
+                  {branch ? `Which level are you enrolling for at ${branchLabel(branch)}?` : 'Pick a branch first.'}
+                </p>
+                <div className="grid grid-cols-2 gap-2.5">
+                  {LEVELS.map(l => (
+                    <button
+                      key={l.value}
+                      type="button"
+                      onClick={() => setLevel(l.value)}
+                      className={`level-tile ${level === l.value ? 'level-tile-active' : ''}`}
+                    >
+                      <span className="level-tile-title">{l.title}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button type="submit" className="btn-primary w-full mt-2" disabled={!branch || !level}>
                 Create profile &amp; continue
               </button>
               <p className="text-[11px] text-[color:var(--mid-gray)] text-center" style={{ fontFamily: 'var(--font-display)' }}>
