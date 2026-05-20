@@ -35,13 +35,24 @@ export default function ProfilePage() {
     if (!auth.userId) { router.replace('/sign-in'); return }
     let cancelled = false
     ;(async () => {
-      // Pull canonical user list from API. Teachers need this to see students
-      // they don't have in their local cache (the typical cross-device case).
+      // Pull the canonical user list from the API so the teacher dashboard
+      // sees students enrolled from other devices.
       const users = await hydrateUsers().catch(() => getUsers())
       if (cancelled) return
-      const u = users.find(x => x.id === auth.userId)
-      if (!u) { router.replace('/sign-in'); return }
-      setUser(u)
+      // Find the viewer's own record. The API scopes results so a TEACHER
+      // viewer only gets STUDENT rows back — their own row won't be in the
+      // list. Fall back to a synthetic StoredUser built from the auth token
+      // so the dashboard still renders.
+      const found = users.find(x => x.id === auth.userId)
+      const synthetic: StoredUser = {
+        id: auth.userId!,
+        role: (auth.role === 'TEACHER' ? 'TEACHER' : 'STUDENT'),
+        email: auth.email,
+        password: '',
+        firstName: auth.firstName,
+        createdAt: new Date().toISOString(),
+      }
+      setUser(found ?? synthetic)
       setReady(true)
     })()
     return () => { cancelled = true }
