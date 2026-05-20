@@ -505,6 +505,7 @@ const PAYMENTS_KEY = 'scei_class_payments_v1'
 
 export type PaymentPlan = 'ANNUAL' | 'BIANNUAL' | 'MONTHLY'
 export type PaymentStatus = 'PENDING' | 'PAID'
+export type PaymentMethod = 'PAYMONGO' | 'FRONT_DESK_CASH' | 'BANK_DEPOSIT'
 
 export interface PaymentRecord {
   id: string
@@ -518,8 +519,15 @@ export interface PaymentRecord {
   /** Period covered, free text — e.g. "Annual SY 2026–2027", "Aug 2026", "Aug–Jan 2026". */
   period: string
   status: PaymentStatus
+  /** How the parent chose to pay. Defaults to PAYMONGO for back-compat. */
+  method?: PaymentMethod
   paymongoCheckoutId?: string
   paymongoCheckoutUrl?: string
+  /** IndexedDB blob ref for the deposit slip / proof of payment (BANK_DEPOSIT). */
+  proofFileId?: string
+  proofFileName?: string
+  proofFileSize?: number
+  proofFileType?: string
   paidAt?: string
   createdAt: string
 }
