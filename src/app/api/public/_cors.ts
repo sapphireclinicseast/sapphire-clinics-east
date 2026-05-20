@@ -19,7 +19,9 @@ export function corsHeaders(origin: string | null): Record<string, string> {
     'Access-Control-Allow-Origin': allow,
     'Access-Control-Allow-Methods': 'GET,POST,PATCH,PUT,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Max-Age': '86400',
+    // Keep the preflight cache short so we don't have to wait for browsers
+    // to recheck after CORS policy changes.
+    'Access-Control-Max-Age': '300',
     Vary: 'Origin',
   }
 }
