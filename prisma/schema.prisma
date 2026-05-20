@@ -715,3 +715,53 @@ model SmsCampaign {
   @@index([status])
   @@index([createdAt])
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//   CLASS PORTAL — class.sapphireclinicseast.org (SCEI × LBCA SPED program)
+//   Sibling app; tables prefixed ClassPortal* to avoid collisions.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum ClassPortalRole {
+  STUDENT
+  TEACHER
+}
+
+enum ClassPortalLevel {
+  KINDER
+  GRADE_1
+  GRADE_2
+  GRADE_3
+  GRADE_4
+  GRADE_5
+  GRADE_6
+  GRADE_7
+  GRADE_8
+  GRADE_9
+  GRADE_10
+}
+
+enum ClassPortalLrnStatus {
+  NO_LRN
+  WITH_LRN
+  RETURNING
+}
+
+/// Class-portal users (teachers + students/parents). Admin is hardcoded
+/// in the app, NOT stored here. Passwords are bcrypt'd.
+model ClassPortalUser {
+  id           String           @id @default(cuid())
+  role         ClassPortalRole
+  email        String
+  passwordHash String
+  firstName    String?
+  lastName     String?
+  level        ClassPortalLevel?
+  /// Snapshot of the parent-submitted enrollment form (JSON). For STUDENT
+  /// rows only; null for TEACHER rows. Mirrors the EnrollmentDraft shape.
+  enrollment   Json?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@unique([role, email])
+  @@index([role])
+}

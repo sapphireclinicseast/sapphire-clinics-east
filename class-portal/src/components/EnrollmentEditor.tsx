@@ -44,10 +44,10 @@ export default function EnrollmentEditor({ student, onClose, onSaved, headerLabe
     }))
   }
 
-  function save() {
+  async function save() {
     setBusy(true); setErr(null); setInfo(null)
     try {
-      const updated = updateUserEnrollment(student.id, draft)
+      const updated = await updateUserEnrollment(student.id, draft)
       setInfo('Saved.')
       onSaved(updated)
     } catch (e) {

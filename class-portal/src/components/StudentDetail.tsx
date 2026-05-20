@@ -215,7 +215,7 @@ function LrnUpdater({ student, onSaved }: { student: StoredUser; onSaved: (u: St
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
-  function handleSave() {
+  async function handleSave() {
     setErr(null)
     const trimmed = lrn.trim()
     if (status === 'WITH_LRN' || status === 'RETURNING') {
@@ -226,7 +226,7 @@ function LrnUpdater({ student, onSaved }: { student: StoredUser; onSaved: (u: St
     }
     setBusy(true)
     try {
-      const updated = updateUserEnrollment(student.id, {
+      const updated = await updateUserEnrollment(student.id, {
         lrnStatus: status,
         lrn: status === 'NO_LRN' ? '' : trimmed,
       })
