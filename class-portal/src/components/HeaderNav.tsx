@@ -41,6 +41,7 @@ export default function HeaderNav() {
         <a href="/sign-in" className="px-3 py-2 rounded-lg text-[color:var(--narra)] hover:text-[color:var(--moss)] hover:bg-[color:var(--paper-2)] transition-colors">Sign In</a>
       ) : (
         <>
+          <a href="/calendar" className="px-3 py-2 rounded-lg text-[color:var(--narra)] hover:text-[color:var(--moss)] hover:bg-[color:var(--paper-2)] transition-colors">Calendar</a>
           <a href={dashboardHref} className="px-3 py-2 rounded-lg text-[color:var(--narra)] hover:text-[color:var(--moss)] hover:bg-[color:var(--paper-2)] transition-colors">
             {auth.role === 'ADMIN' ? 'Admin' : 'My Profile'}
           </a>
