@@ -99,12 +99,27 @@ export async function GET(
     canMutateAsActive = !!active
   }
 
+  // canSend is the LOOSER permission used for operational actions:
+  // "Send Email to Patient" (IE) and "Inform Front Desk" (PR). Now
+  // that outgoing email is signed by the clinic (main@), not the
+  // individual clinician, any consultant who has access to the
+  // patient can trigger these actions — they aren't editing the
+  // document, they're routing it. The access check above already
+  // returns 403 for users without patient access, so by the time
+  // we reach this code any non-admin caller is known-good. We still
+  // honour lockedAt so a frozen IE from a previous endorsement cycle
+  // isn't re-sent by a new owner. Admin bypasses everything.
+  //
+  // canEdit remains the STRICTER permission for destructive actions
+  // (re-upload, delete) — only the original uploader (currently
+  // active, not locked) can mutate the document itself.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const documentsWithPerms = documents.map((d: any) => ({
     ...d,
     canEdit:
       isAdmin ||
       (canMutateAsActive && d.uploadedById === session.user.id && !d.lockedAt),
+    canSend: isAdmin || !d.lockedAt,
   }))
 
   return NextResponse.json({ documents: documentsWithPerms })

@@ -28,32 +28,42 @@ export async function POST(
     )
   }
 
-  // Authorization: admin OR (the original uploader AND active owner
-  // AND the document is not locked). Same rule as DELETE so a
-  // non-uploader (e.g. Caitlynn looking at Eloisa's PR) can't flag
-  // somebody else's signed PR for billing.
+  // Authorization (relaxed for operational flagging):
+  //   admin → always
+  //   non-admin → must have access to the patient (active assignment
+  //     or scheduled session) AND the document must not be locked.
+  // Same rule the send-to-patient route uses. Previously this was
+  // uploader-only to prevent Caitlynn flagging Eloisa's signed PR;
+  // that gate matters less now because front-desk notification is
+  // a routing action (queue this PR for billing) rather than a
+  // claim of authorship. Uploader-only is still enforced on
+  // re-upload/delete in the DELETE handler.
   const isAdmin = session.user.role === 'ADMIN'
   if (!isAdmin) {
-    if (doc.uploadedById !== session.user.id) {
-      return NextResponse.json(
-        { error: 'Only the original uploader can flag this PR.' },
-        { status: 403 },
-      )
-    }
-    const active = await prisma.patientAssignment.findFirst({
-      where: { patientId, therapistAccountId: session.user.id, status: 'ACTIVE' },
-      select: { id: true },
-    })
-    if (!active) {
-      return NextResponse.json(
-        { error: 'You no longer have active access to this patient.' },
-        { status: 403 },
-      )
-    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if ((doc as any).lockedAt) {
       return NextResponse.json(
         { error: 'This document is locked and cannot be modified.' },
+        { status: 403 },
+      )
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const allowedStaffIds = (session.user as any).branches?.map((b: { staffId: string }) => b.staffId) ?? []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const staffPool = allowedStaffIds.length > 0 ? allowedStaffIds : [(session.user as any).staffId].filter(Boolean)
+    const hasSession = staffPool.length > 0
+      ? await prisma.schedule.findFirst({
+          where: { patientId, staffId: { in: staffPool } },
+          select: { id: true },
+        })
+      : null
+    const hasActive = await prisma.patientAssignment.findFirst({
+      where: { patientId, therapistAccountId: session.user.id, status: 'ACTIVE' },
+      select: { id: true },
+    })
+    if (!hasSession && !hasActive) {
+      return NextResponse.json(
+        { error: 'You do not have access to this patient.' },
         { status: 403 },
       )
     }

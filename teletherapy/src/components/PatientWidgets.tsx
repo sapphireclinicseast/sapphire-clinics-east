@@ -60,6 +60,12 @@ interface PatientDocument {
   // they're the active owner AND it isn't locked). Drives whether the
   // re-upload + delete buttons render at all for this row.
   canEdit?: boolean
+  // Looser permission for operational actions (Send IE / Inform FD).
+  // True for admin, or for any consultant with patient access when the
+  // document isn't locked. Outgoing email is signed by the clinic
+  // (main@), not the individual clinician, so non-uploaders can route
+  // the document without claiming authorship of its contents.
+  canSend?: boolean
 }
 
 interface Props {
@@ -429,11 +435,13 @@ function DocumentSection({
               </div>
 
               {/* IE: Send Email to patient. Gated per-document on
-                  canEdit (not section-level canManage) — sending an
-                  IE Eloisa prepared from Caitlynn's account would
-                  put Eloisa's signed document on the wire under
-                  Caitlynn's session, which the user wants prevented. */}
-              {isIE && doc.canEdit && (
+                  canSend (looser than canEdit) — outgoing email goes
+                  from the clinic inbox (main@), not the individual
+                  clinician, so any consultant with patient access
+                  can route the IE without claiming authorship. The
+                  document itself remains immutable to non-uploaders
+                  (see canEdit on re-upload / delete above). */}
+              {isIE && doc.canSend && (
                 <button
                   onClick={() => {
                     if (sentAt) setPendingResend({ doc, kind: 'IE' })
@@ -456,10 +464,10 @@ function DocumentSection({
                 </button>
               )}
 
-              {/* PR: Inform Front Desk. Same gating as Send IE —
-                  only the original uploader (active + unlocked) can
-                  flag their own PR for billing. */}
-              {isPR && doc.canEdit && (
+              {/* PR: Inform Front Desk. Same canSend gating as Send
+                  IE — any consultant with patient access can flag a
+                  PR for billing as long as the doc isn't locked. */}
+              {isPR && doc.canSend && (
                 <button
                   onClick={() => {
                     if (informedAt) setPendingResend({ doc, kind: 'PR' })

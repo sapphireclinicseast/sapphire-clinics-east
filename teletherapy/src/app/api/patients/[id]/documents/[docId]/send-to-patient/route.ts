@@ -41,31 +41,44 @@ export async function POST(
     )
   }
 
-  // Authorization: admin OR (the original uploader AND active owner
-  // AND the document is not locked). We don't want Caitlynn emailing
-  // out an IE that Eloisa prepared and signed.
+  // Authorization (relaxed for operational sends):
+  //   admin → always
+  //   non-admin → must have access to the patient (an active
+  //     assignment OR any scheduled session for the patient) AND
+  //     the document must not be locked.
+  // Previously this required the caller to be the ORIGINAL uploader;
+  // that gate made sense when emails were sent from the clinician's
+  // personal identity. Now that outgoing email goes from the clinic
+  // inbox (main@), any consultant who is involved with the patient
+  // can route the IE — they aren't claiming authorship of the report.
+  // Document content remains immutable (re-upload + delete are still
+  // uploader-only via the documents DELETE handler).
   const isAdmin = session.user.role === 'ADMIN'
   if (!isAdmin) {
-    if (doc.uploadedById !== session.user.id) {
-      return NextResponse.json(
-        { error: 'Only the original uploader can send this IE.' },
-        { status: 403 },
-      )
-    }
-    const active = await prisma.patientAssignment.findFirst({
-      where: { patientId, therapistAccountId: session.user.id, status: 'ACTIVE' },
-      select: { id: true },
-    })
-    if (!active) {
-      return NextResponse.json(
-        { error: 'You no longer have active access to this patient.' },
-        { status: 403 },
-      )
-    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if ((doc as any).lockedAt) {
       return NextResponse.json(
         { error: 'This document is locked and cannot be sent.' },
+        { status: 403 },
+      )
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const allowedStaffIds = (session.user as any).branches?.map((b: { staffId: string }) => b.staffId) ?? []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const staffPool = allowedStaffIds.length > 0 ? allowedStaffIds : [(session.user as any).staffId].filter(Boolean)
+    const hasSession = staffPool.length > 0
+      ? await prisma.schedule.findFirst({
+          where: { patientId, staffId: { in: staffPool } },
+          select: { id: true },
+        })
+      : null
+    const hasActive = await prisma.patientAssignment.findFirst({
+      where: { patientId, therapistAccountId: session.user.id, status: 'ACTIVE' },
+      select: { id: true },
+    })
+    if (!hasSession && !hasActive) {
+      return NextResponse.json(
+        { error: 'You do not have access to this patient.' },
         { status: 403 },
       )
     }
