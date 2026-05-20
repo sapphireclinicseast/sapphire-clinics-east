@@ -52,8 +52,12 @@ export default function AboutPage() {
                 >
                   {i + 1}
                 </span>
-                <div className="font-semibold text-[color:var(--narra)] text-[15px] leading-snug" style={{ fontFamily: 'var(--font-display)' }}>{step.title}</div>
-                <div className="text-[13.5px] text-[color:var(--ink)] mt-1 leading-relaxed">{step.body}</div>
+                <div className="font-semibold text-[color:var(--narra)] text-[15px] leading-snug" style={{ fontFamily: 'var(--font-display)' }}>
+                  {step.titleHighlight ? renderHighlighted(step.title, step.titleHighlight) : step.title}
+                </div>
+                <div className="text-[13.5px] text-[color:var(--ink)] mt-1 leading-relaxed">
+                  {step.highlight ? renderHighlighted(step.body, step.highlight) : step.body}
+                </div>
               </li>
             ))}
           </ol>
@@ -152,36 +156,65 @@ function Dot() {
   return <span className="mt-2 inline-block w-1.5 h-1.5 rounded-full bg-[color:var(--clay)] shrink-0" />
 }
 
-const ENROLLMENT_STEPS: Array<{ title: string; body: string }> = [
+const ENROLLMENT_STEPS: Array<{ title: string; titleHighlight?: string; body: string; highlight?: string }> = [
   {
     title: 'Schedule an initial evaluation',
+    titleHighlight: 'initial evaluation',
     body: 'Book a session with our front desk so the SPED teacher can assess your child and prepare an Individualized Education Program (IEP). New students only — existing clients with a clinic IEP can skip this step.',
   },
   {
     title: 'Register your child and choose an enrollment level (here in the website)',
+    titleHighlight: 'Register',
     body: 'Create a parent account and pick the grade level (Kindergarten or Grade 1 through Grade 10).',
   },
   {
     title: 'Fill out and sign the enrollment form on the website',
+    titleHighlight: 'Fill out and sign',
     body: 'Complete the DepEd Annex 2 learner profile, then add your signature inside the certification block.',
   },
   {
     title: 'Upload the required documents and sign the Parent/Guardian Waiver',
+    titleHighlight: 'Upload',
     body: 'See the document list below. The Parent/Guardian Waiver is mandatory and must be signed before we can confirm enrollment.',
   },
   {
     title: 'Pay the tuition fee',
-    body: 'Choose annual, bi-annual, or monthly plan and pay securely via PayMongo (card, GCash, Maya, or GrabPay).',
+    titleHighlight: 'Pay',
+    body: 'Choose annual, bi-annual, or monthly plan and pay securely via PayMongo (Credit card, GCash, Maya, or GrabPay).',
   },
   {
     title: 'Front desk confirms payment acceptance',
+    titleHighlight: 'confirms payment',
     body: "Our front desk team verifies the payment. You may also purchase books and the school uniform from the front desk. Please also submit HARD COPIES of your child's school records at this stage.",
   },
   {
     title: 'Enrolled — your child may start attending classes!',
+    titleHighlight: 'Enrolled',
     body: 'You will receive your Learner Reference Number (LRN), school ID, and class schedule. Welcome to SCEI SPED Class!',
   },
 ]
+
+/** Wrap the first occurrence of `phrase` in `text` with a brand-clay
+ *  highlight span. Case-insensitive match. */
+function renderHighlighted(text: string, phrase: string): React.ReactNode {
+  const i = text.toLowerCase().indexOf(phrase.toLowerCase())
+  if (i < 0) return text
+  const before = text.slice(0, i)
+  const match = text.slice(i, i + phrase.length)
+  const after = text.slice(i + phrase.length)
+  return (
+    <>
+      {before}
+      <span
+        className="font-bold px-1 rounded"
+        style={{ background: 'var(--gold-tint, #fef3c7)', color: 'var(--clay, #a85c3d)' }}
+      >
+        {match}
+      </span>
+      {after}
+    </>
+  )
+}
 
 const ENROLLMENT_DOCS: Array<{ title: string; mandatory?: boolean }> = [
   { title: 'PSA Birth Certificate (photocopy)' },
