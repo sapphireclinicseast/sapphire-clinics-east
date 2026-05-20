@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   getSession, getDraft, clearDraft, clearSession,
   addUser, signIn, levelLabel,
+  getFile, saveHeadshot,
 } from '@/lib/session'
 
 type Phase = 'password' | 'choose'
@@ -56,6 +57,12 @@ export default function AccountSetupPage() {
       })
       // Sign the new student in immediately so subsequent API calls authenticate.
       await signIn('STUDENT', user.email, password)
+      // If the parent uploaded a 1x1 child photo during enrollment, mirror
+      // it as the student's headshot so the profile shows a face immediately.
+      const photoFileId = d.documents?.child_photo_1x1?.fileId
+      if (photoFileId) {
+        await syncHeadshotFromPhoto(user.id, photoFileId)
+      }
       setPhase('choose')
     } catch (e) {
       setErr((e as Error).message)
@@ -152,4 +159,45 @@ function StepBar({ step }: { step: 1 | 2 | 3 | 4 }) {
       <span className={dot(4)} />
     </div>
   )
+}
+
+/**
+ * Read the 1x1 child photo blob, downsample to ≤500 px on the longer edge,
+ * and save the resulting dataUrl as the student's headshot. Falls back
+ * gracefully if the source is too large or canvas/Image isn't available.
+ */
+async function syncHeadshotFromPhoto(studentId: string, fileId: string): Promise<void> {
+  try {
+    const blob = await getFile(fileId)
+    if (!blob || !blob.type.startsWith('image/')) return
+    const dataUrl = await downscale(blob, 500, 0.85)
+    if (!dataUrl) return
+    saveHeadshot({ studentId, dataUrl, uploadedAt: new Date().toISOString() })
+  } catch (e) {
+    console.warn('headshot sync failed', e)
+  }
+}
+
+function downscale(blob: Blob, maxEdge: number, jpegQuality: number): Promise<string | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(blob)
+    const img = new Image()
+    img.onload = () => {
+      try {
+        const longer = Math.max(img.width, img.height)
+        const scale = longer > maxEdge ? maxEdge / longer : 1
+        const w = Math.round(img.width * scale)
+        const h = Math.round(img.height * scale)
+        const canvas = document.createElement('canvas')
+        canvas.width = w; canvas.height = h
+        const ctx = canvas.getContext('2d')
+        if (!ctx) { URL.revokeObjectURL(url); resolve(null); return }
+        ctx.drawImage(img, 0, 0, w, h)
+        resolve(canvas.toDataURL('image/jpeg', jpegQuality))
+      } catch { resolve(null) }
+      finally { URL.revokeObjectURL(url) }
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null) }
+    img.src = url
+  })
 }
