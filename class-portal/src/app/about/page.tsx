@@ -66,7 +66,7 @@ export default function AboutPage() {
         <div className="card-static">
           <h2 className="text-[22px] leading-tight mb-1">Documents to prepare</h2>
           <p className="text-[12.5px] text-[color:var(--mid-gray)] mb-5">
-            For <span className="font-semibold text-[color:var(--narra)]">Kindergarten</span>, only the PSA Birth Certificate is required. For <span className="font-semibold text-[color:var(--narra)]">Grades 1&ndash;10</span>, the full list below applies.
+            For <span className="font-semibold text-[color:var(--narra)]">Kindergarten</span>, only the PSA Birth Certificate is required. For <span className="font-semibold text-[color:var(--narra)]">Grades 1&ndash;10</span>, the full list below applies. Please have <span className="font-semibold text-[color:var(--narra)]">scanned copies</span> of these available for upload here in the website. Please also bring the <span className="font-semibold text-[color:var(--narra)]">hard copies</span> when going to the clinic.
           </p>
 
           <ul className="grid sm:grid-cols-2 gap-x-5 gap-y-3">
@@ -158,7 +158,7 @@ const ENROLLMENT_STEPS: Array<{ title: string; body: string }> = [
     body: 'Book a session with our front desk so the SPED teacher can assess your child and prepare an Individualized Education Program (IEP). New students only — existing clients with a clinic IEP can skip this step.',
   },
   {
-    title: 'Register your student and choose an enrollment level',
+    title: 'Register your child and choose an enrollment level (here in the website)',
     body: 'Create a parent account and pick the grade level (Kindergarten or Grade 1 through Grade 10).',
   },
   {
@@ -175,11 +175,11 @@ const ENROLLMENT_STEPS: Array<{ title: string; body: string }> = [
   },
   {
     title: 'Front desk confirms payment acceptance',
-    body: 'Our front desk team verifies the payment. You may also purchase books and the school uniform from the front desk at this stage.',
+    body: "Our front desk team verifies the payment. You may also purchase books and the school uniform from the front desk. Please also submit HARD COPIES of your child's school records at this stage.",
   },
   {
     title: 'Enrolled — your child may start attending classes!',
-    body: 'You will receive your Learner Reference Number (LRN) and class schedule. Welcome to SCEI × LBCA.',
+    body: 'You will receive your Learner Reference Number (LRN) and class schedule. Welcome to SCEI SPED Class!',
   },
 ]
 
