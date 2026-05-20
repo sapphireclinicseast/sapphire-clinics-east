@@ -179,7 +179,7 @@ const ENROLLMENT_STEPS: Array<{ title: string; body: string }> = [
   },
   {
     title: 'Enrolled — your child may start attending classes!',
-    body: 'You will receive your Learner Reference Number (LRN) and class schedule. Welcome to SCEI SPED Class!',
+    body: 'You will receive your Learner Reference Number (LRN), school ID, and class schedule. Welcome to SCEI SPED Class!',
   },
 ]
 
