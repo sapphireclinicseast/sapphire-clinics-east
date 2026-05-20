@@ -30,6 +30,7 @@ export async function GET(req: Request) {
         firstName: r.firstName,
         lastName: r.lastName,
         level: r.level,
+        branch: r.branch,
         enrollment: r.enrollment,
         createdAt: r.createdAt.toISOString(),
         updatedAt: r.updatedAt.toISOString(),
@@ -55,6 +56,7 @@ export async function POST(req: Request) {
       firstName?: string
       lastName?: string
       level?: string
+      branch?: 'EAST' | 'GREENHILLS' | null
       enrollment?: Record<string, unknown>
     }
     if (!body.role || !body.email || !body.password) {
@@ -85,6 +87,8 @@ export async function POST(req: Request) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         level: (body.level ?? null) as any,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        branch: (body.branch ?? null) as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         enrollment: (body.enrollment ?? null) as any,
       },
     })
@@ -96,6 +100,7 @@ export async function POST(req: Request) {
         firstName: created.firstName,
         lastName: created.lastName,
         level: created.level,
+        branch: created.branch,
         enrollment: created.enrollment,
         createdAt: created.createdAt.toISOString(),
         updatedAt: created.updatedAt.toISOString(),

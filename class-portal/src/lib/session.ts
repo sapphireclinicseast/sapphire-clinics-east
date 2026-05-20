@@ -19,6 +19,8 @@ export interface NameParts {
 export interface EnrollmentDraft {
   // Step 1 — picked on the home page
   level: EnrollmentLevel
+  /** Clinic branch picked on the home page before the level tile. */
+  branch?: 'EAST' | 'GREENHILLS'
 
   // Step 2 — DepEd-style learner profile (all uppercase on submit)
   schoolYearFrom?: string
@@ -172,6 +174,16 @@ const AUTH_KEY = 'scei_class_auth_v1'
 export type UserRole = 'STUDENT' | 'TEACHER'
 export type AuthRole = UserRole | 'ADMIN'
 
+/** Clinic branch the student is enrolled under. Teachers don't have one;
+ *  their branch coverage lives in the teacher-assignment table. */
+export type Branch = 'EAST' | 'GREENHILLS'
+
+export function branchLabel(b: Branch | undefined | null): string {
+  if (b === 'EAST') return 'East Branch'
+  if (b === 'GREENHILLS') return 'Greenhills Branch'
+  return '—'
+}
+
 export interface StoredUser {
   id: string
   role: UserRole
@@ -180,6 +192,7 @@ export interface StoredUser {
   firstName?: string
   lastName?: string
   level?: EnrollmentLevel
+  branch?: Branch
   createdAt: string
   /** Snapshot of the enrollment draft at signup (students only). */
   enrollment?: Partial<EnrollmentDraft>
@@ -220,6 +233,7 @@ interface ApiUser {
   firstName?: string | null
   lastName?: string | null
   level?: EnrollmentLevel | null
+  branch?: Branch | null
   enrollment?: Partial<EnrollmentDraft> | null
   createdAt: string
   updatedAt: string
@@ -234,6 +248,7 @@ function apiToStored(u: ApiUser, password = ''): StoredUser {
     firstName: u.firstName ?? undefined,
     lastName: u.lastName ?? undefined,
     level: (u.level ?? undefined) as EnrollmentLevel | undefined,
+    branch: (u.branch ?? undefined) as Branch | undefined,
     enrollment: u.enrollment ?? undefined,
     createdAt: u.createdAt,
   }
@@ -267,6 +282,7 @@ export async function addUser(u: Omit<StoredUser, 'id' | 'createdAt'>): Promise<
       firstName: u.firstName,
       lastName: u.lastName,
       level: u.level,
+      branch: u.branch,
       enrollment: u.enrollment,
     }),
   })
@@ -284,6 +300,7 @@ export async function updateUser(id: string, patch: Partial<Omit<StoredUser, 'id
       firstName: patch.firstName,
       lastName: patch.lastName,
       level: patch.level,
+      branch: patch.branch,
       enrollment: patch.enrollment,
     }),
   })
@@ -316,6 +333,7 @@ export async function updateUserEnrollment(id: string, patch: Partial<Enrollment
     lastName: patch.lastName ?? u.lastName,
     email: patch.email ?? u.email,
     level: patch.level ?? u.level,
+    branch: patch.branch ?? u.branch,
     enrollment: mergedEnrollment,
   }
   const { user } = await backendJson<{ user: ApiUser }>(`/api/public/class-portal/users/${id}`, {
@@ -830,38 +848,76 @@ export function curriculumForLevel(level: EnrollmentLevel): CurriculumRecord[] {
 }
 
 /* ─────────────────────────────────────────────────────────────────
-   Teacher ↔ grade-level assignments (admin-managed M:N)
+   Teacher ↔ (branch, grade-level) assignments — admin-managed.
+   Backed by the marketing API; localStorage holds a write-through cache
+   so existing sync helpers keep working.
    ───────────────────────────────────────────────────────────── */
 
-const ASSIGNMENTS_KEY = 'scei_class_assignments_v1'
+const ASSIGNMENTS_KEY = 'scei_class_assignments_v2'
 
-export type LevelAssignments = Record<EnrollmentLevel, string[]> // teacherId[]
+export interface TeacherAssignment {
+  teacherId: string
+  branch: Branch
+  level: EnrollmentLevel
+}
 
-export function getAssignments(): LevelAssignments {
-  if (typeof window === 'undefined') return emptyAssignments()
+export function getAssignments(): TeacherAssignment[] {
+  if (typeof window === 'undefined') return []
   try {
-    const raw = JSON.parse(localStorage.getItem(ASSIGNMENTS_KEY) ?? 'null') as LevelAssignments | null
-    return { ...emptyAssignments(), ...(raw ?? {}) }
-  } catch { return emptyAssignments() }
+    const raw = localStorage.getItem(ASSIGNMENTS_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed as TeacherAssignment[]
+  } catch { return [] }
 }
-function emptyAssignments(): LevelAssignments {
-  return {
-    KINDER:   [], GRADE_1:  [], GRADE_2:  [], GRADE_3:  [], GRADE_4:  [], GRADE_5:  [],
-    GRADE_6:  [], GRADE_7:  [], GRADE_8:  [], GRADE_9:  [], GRADE_10: [],
-  }
-}
-function writeAssignments(a: LevelAssignments) {
+
+function writeAssignments(a: TeacherAssignment[]) {
   if (typeof window === 'undefined') return
   localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(a))
 }
-export function setAssignmentsForLevel(level: EnrollmentLevel, teacherIds: string[]) {
-  const a = getAssignments()
-  a[level] = Array.from(new Set(teacherIds))
-  writeAssignments(a)
+
+/** Pull the full assignment list from the API into the local cache. */
+export async function hydrateAssignments(): Promise<TeacherAssignment[]> {
+  if (typeof window === 'undefined') return []
+  if (!getToken()) return getAssignments()
+  try {
+    const { assignments } = await backendJson<{ assignments: TeacherAssignment[] }>('/api/public/class-portal/assignments')
+    writeAssignments(assignments)
+    return assignments
+  } catch { return getAssignments() }
 }
+
+/** Admin only: replace the full assignment set on the server + cache. */
+export async function saveAssignments(next: TeacherAssignment[]): Promise<TeacherAssignment[]> {
+  const { assignments } = await backendJson<{ assignments: TeacherAssignment[] }>('/api/public/class-portal/assignments', {
+    method: 'PUT',
+    body: JSON.stringify({ assignments: next }),
+  })
+  writeAssignments(assignments)
+  return assignments
+}
+
+/** True if the teacher is assigned to (branch, level). */
+export function teacherHandles(teacherId: string, branch: Branch, level: EnrollmentLevel): boolean {
+  return getAssignments().some(a => a.teacherId === teacherId && a.branch === branch && a.level === level)
+}
+
+/** All (branch, level) pairs the teacher is assigned to. */
+export function teacherAssignedPairs(teacherId: string): Array<{ branch: Branch; level: EnrollmentLevel }> {
+  return getAssignments()
+    .filter(a => a.teacherId === teacherId)
+    .map(a => ({ branch: a.branch, level: a.level }))
+}
+
+/** All unique grade levels the teacher covers, across branches. Kept for back-compat. */
 export function teacherAssignedLevels(teacherId: string): EnrollmentLevel[] {
-  const a = getAssignments()
-  return (Object.keys(a) as EnrollmentLevel[]).filter(lvl => a[lvl].includes(teacherId))
+  return Array.from(new Set(teacherAssignedPairs(teacherId).map(p => p.level)))
+}
+
+/** All unique branches the teacher covers. */
+export function teacherAssignedBranches(teacherId: string): Branch[] {
+  return Array.from(new Set(teacherAssignedPairs(teacherId).map(p => p.branch)))
 }
 
 /* ─────────────────────────────────────────────────────────────────

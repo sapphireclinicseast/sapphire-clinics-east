@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react'
 import {
   getUsers, getGrades, saveGrade, putFile, getFile, deleteFile,
-  teacherAssignedLevels,
-  levelLabel, type GradeRecord, type StoredUser, type EnrollmentLevel,
+  teacherAssignedPairs,
+  levelLabel, type GradeRecord, type StoredUser, type EnrollmentLevel, type Branch,
 } from '@/lib/session'
 
 interface Props {
@@ -27,10 +27,15 @@ export default function GradesPanel({ viewer }: Props) {
   function refresh() {
     let pool = getUsers().filter(u => u.role === 'STUDENT')
     if (viewer.role === 'TEACHER' && viewer.userId) {
-      const allowed = new Set(teacherAssignedLevels(viewer.userId))
+      const pairs = teacherAssignedPairs(viewer.userId)
       // Teachers without explicit assignments still see every student so the
-      // page isn't empty before the admin assigns levels.
-      if (allowed.size > 0) pool = pool.filter(u => u.level && allowed.has(u.level as EnrollmentLevel))
+      // page isn't empty before the admin assigns branches + levels.
+      if (pairs.length > 0) {
+        const allowed = new Set(pairs.map(p => `${p.branch}|${p.level}`))
+        pool = pool.filter(u =>
+          !!u.level && !!u.branch && allowed.has(`${u.branch as Branch}|${u.level as EnrollmentLevel}`),
+        )
+      }
     }
     setStudents(pool)
     setGrades(getGrades())

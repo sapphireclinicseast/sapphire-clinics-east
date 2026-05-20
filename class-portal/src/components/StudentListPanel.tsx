@@ -4,10 +4,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   getUsers, getWaivers, saveWaiver,
-  teacherAssignedLevels,
+  teacherAssignedPairs,
   paymentStatusFor,
   levelLabel,
-  type StoredUser, type EnrollmentLevel, type WaiverRecord,
+  type StoredUser, type EnrollmentLevel, type Branch, type WaiverRecord,
 } from '@/lib/session'
 import { downloadWaiverPdf } from '@/lib/waiver-pdf'
 import StudentDetail from './StudentDetail'
@@ -42,8 +42,13 @@ export default function StudentListPanel({ viewer }: Props) {
   function refresh() {
     let pool = getUsers().filter(u => u.role === 'STUDENT')
     if (viewer.role === 'TEACHER' && viewer.userId) {
-      const allowed = new Set(teacherAssignedLevels(viewer.userId))
-      if (allowed.size > 0) pool = pool.filter(u => u.level && allowed.has(u.level as EnrollmentLevel))
+      const pairs = teacherAssignedPairs(viewer.userId)
+      if (pairs.length > 0) {
+        const allowed = new Set(pairs.map(p => `${p.branch}|${p.level}`))
+        pool = pool.filter(u =>
+          !!u.level && !!u.branch && allowed.has(`${u.branch as Branch}|${u.level as EnrollmentLevel}`),
+        )
+      }
     }
     setStudents(pool)
   }

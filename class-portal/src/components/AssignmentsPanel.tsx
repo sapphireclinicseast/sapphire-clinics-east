@@ -2,27 +2,52 @@
 
 import { useEffect, useState } from 'react'
 import {
-  getUsers, getAssignments, setAssignmentsForLevel,
-  levelLabel, type StoredUser, type EnrollmentLevel,
+  getUsers, hydrateUsers,
+  getAssignments, hydrateAssignments, saveAssignments,
+  levelLabel, branchLabel,
+  type StoredUser, type EnrollmentLevel, type Branch, type TeacherAssignment,
 } from '@/lib/session'
 
 const ALL_LEVELS: EnrollmentLevel[] = ['KINDER', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10']
+const ALL_BRANCHES: Branch[] = ['EAST', 'GREENHILLS']
+
+function levelShort(l: EnrollmentLevel): string {
+  return l === 'KINDER' ? 'K' : l.replace('GRADE_', 'G')
+}
 
 export default function AssignmentsPanel() {
   const [teachers, setTeachers] = useState<StoredUser[]>([])
-  const [assigns, setAssigns] = useState(getAssignments())
+  const [assignments, setAssignments] = useState<TeacherAssignment[]>(getAssignments())
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
 
-  function refresh() {
-    setTeachers(getUsers().filter(u => u.role === 'TEACHER'))
-    setAssigns(getAssignments())
+  useEffect(() => {
+    hydrateUsers().then(us => setTeachers(us.filter(u => u.role === 'TEACHER'))).catch(() => { /* fall back to cached */ })
+    hydrateAssignments().then(setAssignments).catch(() => { /* fall back to cached */ })
+  }, [])
+
+  function isOn(teacherId: string, branch: Branch, level: EnrollmentLevel): boolean {
+    return assignments.some(a => a.teacherId === teacherId && a.branch === branch && a.level === level)
   }
-  useEffect(refresh, [])
 
-  function toggle(level: EnrollmentLevel, teacherId: string) {
-    const cur = assigns[level] ?? []
-    const next = cur.includes(teacherId) ? cur.filter(x => x !== teacherId) : [...cur, teacherId]
-    setAssignmentsForLevel(level, next)
-    refresh()
+  async function toggle(teacherId: string, branch: Branch, level: EnrollmentLevel) {
+    setErr(null)
+    const exists = isOn(teacherId, branch, level)
+    const next: TeacherAssignment[] = exists
+      ? assignments.filter(a => !(a.teacherId === teacherId && a.branch === branch && a.level === level))
+      : [...assignments, { teacherId, branch, level }]
+    setAssignments(next) // optimistic
+    setBusy(true)
+    try {
+      const fresh = await saveAssignments(next)
+      setAssignments(fresh)
+    } catch (e) {
+      setErr((e as Error).message)
+      // revert by re-hydrating
+      hydrateAssignments().then(setAssignments)
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -31,10 +56,12 @@ export default function AssignmentsPanel() {
         <div>
           <h2 className="text-[18px] leading-tight">Teacher assignments</h2>
           <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1">
-            Tick the grade levels each teacher handles. A grade can have multiple teachers; a teacher can handle multiple grades.
+            Tick the grade levels each teacher handles, per branch. Teachers only see students enrolled in the branches and grades they&apos;re assigned to.
           </p>
         </div>
       </div>
+
+      {err && <div className="mb-3 px-3 py-2 rounded-lg bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
 
       {teachers.length === 0 ? (
         <p className="text-sm text-[color:var(--mid-gray)] text-center py-8">No teacher accounts yet. Create one from the Users tab first.</p>
@@ -44,30 +71,36 @@ export default function AssignmentsPanel() {
             <thead style={{ background: 'var(--paper-2)' }}>
               <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
                 <th className="py-2 px-3">Teacher</th>
-                {ALL_LEVELS.map(l => <th key={l} className="py-2 px-2 text-center">{l === 'KINDER' ? 'K' : l.replace('GRADE_', 'G')}</th>)}
+                <th className="py-2 px-3">Branch</th>
+                {ALL_LEVELS.map(l => <th key={l} className="py-2 px-2 text-center" title={levelLabel(l)}>{levelShort(l)}</th>)}
               </tr>
             </thead>
             <tbody>
-              {teachers.map(t => (
-                <tr key={t.id} className="border-b" style={{ borderColor: 'var(--paper-3)' }}>
-                  <td className="py-2.5 px-3">
-                    <div className="font-semibold text-[color:var(--narra)]">{[t.firstName, t.lastName].filter(Boolean).join(' ') || t.email}</div>
-                    <div className="text-[11.5px] text-[color:var(--mid-gray)]">{t.email}</div>
-                  </td>
-                  {ALL_LEVELS.map(l => {
-                    const on = (assigns[l] ?? []).includes(t.id)
-                    return (
+              {teachers.flatMap(t => (
+                ALL_BRANCHES.map((b, bi) => (
+                  <tr key={`${t.id}-${b}`} className="border-b" style={{ borderColor: 'var(--paper-3)' }}>
+                    {bi === 0 && (
+                      <td rowSpan={ALL_BRANCHES.length} className="py-2.5 px-3 align-top">
+                        <div className="font-semibold text-[color:var(--narra)]">{[t.firstName, t.lastName].filter(Boolean).join(' ') || t.email}</div>
+                        <div className="text-[11.5px] text-[color:var(--mid-gray)]">{t.email}</div>
+                      </td>
+                    )}
+                    <td className="py-2.5 px-3 text-[12.5px] font-semibold" style={{ color: b === 'EAST' ? 'var(--narra)' : 'var(--moss)' }}>
+                      {branchLabel(b)}
+                    </td>
+                    {ALL_LEVELS.map(l => (
                       <td key={l} className="py-2.5 px-2 text-center">
                         <input
                           type="checkbox"
-                          checked={on}
-                          onChange={() => toggle(l, t.id)}
-                          aria-label={`${t.email} ${levelLabel(l)}`}
+                          checked={isOn(t.id, b, l)}
+                          disabled={busy}
+                          onChange={() => toggle(t.id, b, l)}
+                          aria-label={`${t.email} ${branchLabel(b)} ${levelLabel(l)}`}
                         />
                       </td>
-                    )
-                  })}
-                </tr>
+                    ))}
+                  </tr>
+                ))
               ))}
             </tbody>
           </table>

@@ -756,6 +756,9 @@ model ClassPortalUser {
   firstName    String?
   lastName     String?
   level        ClassPortalLevel?
+  /// Clinic branch this student is enrolled under. Null for teachers
+  /// (their branch coverage lives in ClassPortalTeacherAssignment).
+  branch       ClassPortalBranch?
   /// Snapshot of the parent-submitted enrollment form (JSON). For STUDENT
   /// rows only; null for TEACHER rows. Mirrors the EnrollmentDraft shape.
   enrollment   Json?
@@ -764,6 +767,7 @@ model ClassPortalUser {
 
   @@unique([role, email])
   @@index([role])
+  @@index([branch])
 }
 
 enum ClassPortalEventType {
@@ -799,4 +803,23 @@ model ClassPortalCalendarPdf {
   data        Bytes
   uploadedBy  String
   uploadedAt  DateTime @default(now())
+}
+
+enum ClassPortalBranch {
+  EAST
+  GREENHILLS
+}
+
+/// One row per (teacher, branch, grade level) pair. Lets a teacher serve
+/// multiple branches with different grade-level loads in each.
+model ClassPortalTeacherAssignment {
+  id        String            @id @default(cuid())
+  teacherId String
+  branch    ClassPortalBranch
+  level     ClassPortalLevel
+  createdAt DateTime          @default(now())
+
+  @@unique([teacherId, branch, level])
+  @@index([branch])
+  @@index([teacherId])
 }
