@@ -185,6 +185,7 @@ const ENROLLMENT_STEPS: Array<{ title: string; body: string }> = [
 
 const ENROLLMENT_DOCS: Array<{ title: string; mandatory?: boolean }> = [
   { title: 'PSA Birth Certificate (photocopy)' },
+  { title: '1x1 photo of your child (for student ID)' },
   { title: 'Form 137 / SF10 or previous school records' },
   { title: 'Latest Report Card / SF9' },
   { title: 'Certificate of Good Moral Character' },
