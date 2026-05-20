@@ -36,7 +36,9 @@ export default function HeaderNav() {
 
   return (
     <nav className="flex gap-1 text-sm items-center" style={{ fontFamily: 'var(--font-display)' }}>
-      <a href="/about" className="px-3 py-2 rounded-lg text-[color:var(--narra)] hover:text-[color:var(--moss)] hover:bg-[color:var(--paper-2)] transition-colors">About Program</a>
+      <a href="/" className="px-3 py-2 rounded-lg text-[color:var(--narra)] hover:text-[color:var(--moss)] hover:bg-[color:var(--paper-2)] transition-colors">Home</a>
+      <a href="/#enroll" className="px-3 py-2 rounded-lg text-[color:var(--narra)] hover:text-[color:var(--moss)] hover:bg-[color:var(--paper-2)] transition-colors">Enroll</a>
+      <a href="/about" className="px-3 py-2 rounded-lg text-[color:var(--narra)] hover:text-[color:var(--moss)] hover:bg-[color:var(--paper-2)] transition-colors">About SPED Class</a>
       {!mounted || !auth ? (
         <a href="/sign-in" className="px-3 py-2 rounded-lg text-[color:var(--narra)] hover:text-[color:var(--moss)] hover:bg-[color:var(--paper-2)] transition-colors">Sign In</a>
       ) : (

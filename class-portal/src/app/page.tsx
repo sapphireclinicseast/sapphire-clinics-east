@@ -3,7 +3,11 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { type EnrollmentLevel } from '@/lib/api'
-import { getSession, setSession, setDraft, clearDraft, levelLabel, type Branch, branchLabel } from '@/lib/session'
+import {
+  getSession, setSession, setDraft, clearDraft, levelLabel,
+  getLevelStatus, hydrateLevelStatus,
+  type Branch, branchLabel, type LevelStatus,
+} from '@/lib/session'
 import { AuroraBackground } from '@/components/ui/aurora-background'
 import { RotatingWord } from '@/components/ui/rotating-word'
 
@@ -44,18 +48,28 @@ function HomeInner() {
   const [signedIn, setSignedIn] = useState<{ firstName: string; level: EnrollmentLevel } | null>(null)
   const [branch, setBranch] = useState<Branch | null>(null)
   const [level, setLevel] = useState<EnrollmentLevel | null>(null)
+  const [levelStatus, setLevelStatus] = useState<LevelStatus[]>(getLevelStatus())
   const expired = sp.get('expired') === '1'
 
   useEffect(() => {
     const s = getSession()
     if (s) setSignedIn({ firstName: s.firstName, level: s.level })
+    // Pull the latest enabled/disabled state in the background. Anonymous
+    // visitors will fall back to the cached copy until they sign in once.
+    hydrateLevelStatus().then(setLevelStatus).catch(() => { /* ignore */ })
   }, [])
+
+  function isEnabled(l: EnrollmentLevel): boolean {
+    const row = levelStatus.find(r => r.level === l)
+    return !row || row.enabled
+  }
 
   function handleNew(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setErr(null)
     if (!branch) { setErr('Please choose a clinic branch.'); return }
     if (!level) { setErr('Please choose an enrollment level.'); return }
+    if (!isEnabled(level)) { setErr(`${levelLabel(level)} is closed for new enrollment. Please pick another level.`); return }
     // Reset any previous draft, then seed with the chosen branch + level so /enroll knows them.
     clearDraft()
     setDraft({ level, branch })
@@ -110,7 +124,7 @@ function HomeInner() {
                 Start enrollment
               </button>
               <button onClick={() => router.push('/about')} className="btn-secondary text-base px-7 py-3">
-                About SCEI
+                About SPED Class
               </button>
             </div>
           </div>
@@ -233,16 +247,23 @@ function HomeInner() {
                   {branch ? `Which level are you enrolling for at ${branchLabel(branch)}?` : 'Pick a branch first.'}
                 </p>
                 <div className="grid grid-cols-2 gap-2.5">
-                  {LEVELS.map(l => (
-                    <button
-                      key={l.value}
-                      type="button"
-                      onClick={() => setLevel(l.value)}
-                      className={`level-tile ${level === l.value ? 'level-tile-active' : ''}`}
-                    >
-                      <span className="level-tile-title">{l.title}</span>
-                    </button>
-                  ))}
+                  {LEVELS.map(l => {
+                    const enabled = isEnabled(l.value)
+                    return (
+                      <button
+                        key={l.value}
+                        type="button"
+                        onClick={() => enabled && setLevel(l.value)}
+                        disabled={!enabled}
+                        title={enabled ? '' : `${l.title} is closed for new enrollment`}
+                        className={`level-tile ${level === l.value && enabled ? 'level-tile-active' : ''} ${enabled ? '' : 'cursor-not-allowed'}`}
+                        style={enabled ? undefined : { opacity: 0.5, filter: 'grayscale(0.5)' }}
+                      >
+                        <span className="level-tile-title">{l.title}</span>
+                        {!enabled && <span className="level-tile-sub text-rose-700">Closed</span>}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
 

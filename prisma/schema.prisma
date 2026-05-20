@@ -823,3 +823,14 @@ model ClassPortalTeacherAssignment {
   @@index([branch])
   @@index([teacherId])
 }
+
+/// Per-grade-level enablement, admin-controlled. A missing row means the
+/// level defaults to enabled — so the app works out-of-the-box without
+/// admins explicitly turning on every level. Disabling a level only
+/// affects NEW enrollments; existing students stay on the level.
+model ClassPortalLevelStatus {
+  level     ClassPortalLevel @id
+  enabled   Boolean          @default(true)
+  updatedAt DateTime         @updatedAt
+  updatedBy String?
+}

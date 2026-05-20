@@ -921,6 +921,72 @@ export function teacherAssignedBranches(teacherId: string): Branch[] {
 }
 
 /* ─────────────────────────────────────────────────────────────────
+   Per-grade-level enabled flag — admin can turn off any level so new
+   enrollees can no longer pick it. Cached in localStorage so the
+   landing/enroll tiles can render the disabled state synchronously.
+   ───────────────────────────────────────────────────────────── */
+
+const LEVEL_STATUS_KEY = 'scei_class_level_status_v1'
+
+export interface LevelStatus {
+  level: EnrollmentLevel
+  enabled: boolean
+  updatedAt: string | null
+  updatedBy: string | null
+}
+
+const ALL_LEVELS_ARR: EnrollmentLevel[] = ['KINDER', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10']
+
+function defaultLevelStatus(): LevelStatus[] {
+  return ALL_LEVELS_ARR.map(level => ({ level, enabled: true, updatedAt: null, updatedBy: null }))
+}
+
+export function getLevelStatus(): LevelStatus[] {
+  if (typeof window === 'undefined') return defaultLevelStatus()
+  try {
+    const raw = localStorage.getItem(LEVEL_STATUS_KEY)
+    if (!raw) return defaultLevelStatus()
+    const parsed = JSON.parse(raw) as LevelStatus[]
+    if (!Array.isArray(parsed) || parsed.length === 0) return defaultLevelStatus()
+    return parsed
+  } catch { return defaultLevelStatus() }
+}
+
+function writeLevelStatus(rows: LevelStatus[]) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(LEVEL_STATUS_KEY, JSON.stringify(rows))
+}
+
+/** Pull the canonical status list from the API. Falls back to cache on error.
+ *  Unauthenticated callers (landing page before sign-in) also fall back to
+ *  cache — the cache is populated on every authenticated page load. */
+export async function hydrateLevelStatus(): Promise<LevelStatus[]> {
+  if (typeof window === 'undefined') return defaultLevelStatus()
+  if (!getToken()) return getLevelStatus()
+  try {
+    const { levels } = await backendJson<{ levels: LevelStatus[] }>('/api/public/class-portal/levels')
+    writeLevelStatus(levels)
+    return levels
+  } catch { return getLevelStatus() }
+}
+
+/** Admin only: PUT the full status set to the API + cache. */
+export async function saveLevelStatus(next: LevelStatus[]): Promise<LevelStatus[]> {
+  const { levels } = await backendJson<{ levels: LevelStatus[] }>('/api/public/class-portal/levels', {
+    method: 'PUT',
+    body: JSON.stringify({ levels: next.map(l => ({ level: l.level, enabled: l.enabled })) }),
+  })
+  writeLevelStatus(levels)
+  return levels
+}
+
+/** Convenience: returns true when the level is enabled (or unset → defaults to enabled). */
+export function isLevelEnabled(level: EnrollmentLevel): boolean {
+  const row = getLevelStatus().find(r => r.level === level)
+  return !row || row.enabled
+}
+
+/* ─────────────────────────────────────────────────────────────────
    Student headshot + uploaded-file blobs (IndexedDB)
    localStorage caps at ~5MB which is too small for real files.
    IndexedDB holds the binary; the StoredUser keeps just references.
