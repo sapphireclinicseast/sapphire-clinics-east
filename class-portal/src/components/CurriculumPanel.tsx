@@ -3,21 +3,33 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   getCurriculum, saveCurriculum, deleteCurriculum, putFile, getFile, deleteFile,
-  levelLabel, type CurriculumRecord, type EnrollmentLevel,
+  levelLabel, type CurriculumRecord, type CurriculumFile, type EnrollmentLevel,
 } from '@/lib/session'
 
 const ALL_LEVELS: EnrollmentLevel[] = ['KINDER', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10']
+
+const PDF_ACCEPT = '.pdf,application/pdf'
+const DOC_ACCEPT = '.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
 interface Props {
   viewer: { role: 'STUDENT' | 'TEACHER' | 'ADMIN'; level?: EnrollmentLevel; email: string }
 }
 
+/**
+ * Curriculum templates list + upload. Each curriculum entry can carry a
+ * PDF version AND a Word (.doc / .docx) version of the same document.
+ * Either or both can be uploaded — at least one is required to save.
+ * Legacy single-file records (uploaded before the split) still render
+ * with their existing download button via the back-compat fileId field.
+ */
 export default function CurriculumPanel({ viewer }: Props) {
   const [items, setItems] = useState<CurriculumRecord[]>([])
   const [uploading, setUploading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [pickedLevel, setPickedLevel] = useState<EnrollmentLevel>('KINDER')
   const [title, setTitle] = useState('')
+  const [pdfFile, setPdfFile] = useState<File | null>(null)
+  const [docFile, setDocFile] = useState<File | null>(null)
   const [search, setSearch] = useState('')
 
   const canUpload = viewer.role === 'ADMIN' || viewer.role === 'TEACHER'
@@ -32,7 +44,7 @@ export default function CurriculumPanel({ viewer }: Props) {
     const q = search.trim().toLowerCase()
     if (q) {
       pool = pool.filter(c => {
-        const hay = `${c.title} ${c.fileName} ${c.uploadedBy} ${levelLabel(c.level)}`.toLowerCase()
+        const hay = `${c.title} ${c.pdf?.fileName ?? ''} ${c.doc?.fileName ?? ''} ${c.fileName ?? ''} ${c.uploadedBy} ${levelLabel(c.level)}`.toLowerCase()
         return hay.includes(q)
       })
     }
@@ -42,57 +54,64 @@ export default function CurriculumPanel({ viewer }: Props) {
   function refresh() { setItems(getCurriculum()) }
   useEffect(refresh, [])
 
-  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0]
-    if (!f) return
+  async function handleSave() {
     setErr(null)
-    if (!title.trim()) { setErr('Please add a title first.'); return }
+    if (!title.trim()) { setErr('Please add a title.'); return }
+    if (!pdfFile && !docFile) { setErr('Please attach a PDF and/or Word version.'); return }
     setUploading(true)
     try {
-      const fileId = 'curr_' + Math.random().toString(36).slice(2, 12)
-      await putFile(fileId, f)
-      saveCurriculum({
-        id: 'curri_' + Math.random().toString(36).slice(2, 10),
+      const id = 'curri_' + Math.random().toString(36).slice(2, 10)
+      const record: CurriculumRecord = {
+        id,
         level: pickedLevel,
         title: title.trim(),
-        fileId,
-        fileName: f.name,
-        fileType: f.type,
-        fileSize: f.size,
         uploadedBy: viewer.email,
         uploadedAt: new Date().toISOString(),
-      })
-      setTitle('')
+      }
+      if (pdfFile) {
+        const fileId = 'curr_pdf_' + Math.random().toString(36).slice(2, 12)
+        await putFile(fileId, pdfFile)
+        record.pdf = { fileId, fileName: pdfFile.name, fileType: pdfFile.type, fileSize: pdfFile.size }
+      }
+      if (docFile) {
+        const fileId = 'curr_doc_' + Math.random().toString(36).slice(2, 12)
+        await putFile(fileId, docFile)
+        record.doc = { fileId, fileName: docFile.name, fileType: docFile.type, fileSize: docFile.size }
+      }
+      saveCurriculum(record)
+      setTitle(''); setPdfFile(null); setDocFile(null)
       refresh()
     } catch (e) {
       setErr((e as Error).message)
     } finally {
       setUploading(false)
-      e.target.value = ''
     }
   }
 
   async function handleDelete(c: CurriculumRecord) {
     if (!confirm(`Delete curriculum "${c.title}"?`)) return
-    try { await deleteFile(c.fileId) } catch { /* ignore */ }
+    if (c.pdf?.fileId) { try { await deleteFile(c.pdf.fileId) } catch { /* ignore */ } }
+    if (c.doc?.fileId) { try { await deleteFile(c.doc.fileId) } catch { /* ignore */ } }
+    if (c.fileId)      { try { await deleteFile(c.fileId)     } catch { /* ignore */ } }
     deleteCurriculum(c.id)
     refresh()
   }
 
-  async function handleOpen(c: CurriculumRecord) {
-    const blob = await getFile(c.fileId)
+  async function openFileBlob(fileId: string, fileName: string) {
+    const blob = await getFile(fileId)
     if (!blob) { alert('File not found in this browser.'); return }
     const url = URL.createObjectURL(blob)
     window.open(url, '_blank', 'noopener')
     setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    void fileName
   }
 
-  async function handleDownload(c: CurriculumRecord) {
-    const blob = await getFile(c.fileId)
+  async function downloadFileBlob(fileId: string, fileName: string) {
+    const blob = await getFile(fileId)
     if (!blob) { alert('File not found in this browser.'); return }
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = url; a.download = c.fileName; document.body.appendChild(a); a.click(); a.remove()
+    a.href = url; a.download = fileName; document.body.appendChild(a); a.click(); a.remove()
     setTimeout(() => URL.revokeObjectURL(url), 5_000)
   }
 
@@ -100,7 +119,10 @@ export default function CurriculumPanel({ viewer }: Props) {
     <div className="space-y-4">
       {canUpload && (
         <div className="card-static">
-          <h2 className="text-[18px] leading-tight mb-3">Upload curriculum template</h2>
+          <h2 className="text-[18px] leading-tight mb-1">Upload curriculum template</h2>
+          <p className="text-[12.5px] text-[color:var(--mid-gray)] mb-4">
+            Attach a PDF version, a Word (.doc / .docx) version, or both. They&apos;ll be linked together under one curriculum entry.
+          </p>
           {err && <div className="mb-3 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
           <div className="grid sm:grid-cols-2 gap-3">
             <label className="block">
@@ -114,10 +136,25 @@ export default function CurriculumPanel({ viewer }: Props) {
               </select>
             </label>
           </div>
-          <label className="btn-secondary cursor-pointer inline-flex items-center gap-2 mt-3" style={{ width: 'auto' }}>
-            {uploading ? 'Uploading…' : 'Choose file'}
-            <input type="file" className="sr-only" onChange={onFile} accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,image/*" />
-          </label>
+
+          <div className="grid sm:grid-cols-2 gap-3 mt-3">
+            <FileSlot
+              label="PDF version"
+              accept={PDF_ACCEPT}
+              file={pdfFile}
+              onPick={setPdfFile}
+            />
+            <FileSlot
+              label="Word version (.doc / .docx)"
+              accept={DOC_ACCEPT}
+              file={docFile}
+              onPick={setDocFile}
+            />
+          </div>
+
+          <button type="button" className="btn-primary text-xs mt-4" onClick={handleSave} disabled={uploading || (!pdfFile && !docFile) || !title.trim()}>
+            {uploading ? 'Uploading…' : 'Save curriculum'}
+          </button>
         </div>
       )}
 
@@ -142,11 +179,44 @@ export default function CurriculumPanel({ viewer }: Props) {
           <CurriculumGrouped
             items={filtered}
             viewer={viewer}
-            onOpen={handleOpen}
-            onDownload={handleDownload}
+            onOpen={openFileBlob}
+            onDownload={downloadFileBlob}
             onDelete={handleDelete}
             singleLevel={viewer.role === 'STUDENT'}
           />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function FileSlot({ label, accept, file, onPick }: { label: string; accept: string; file: File | null; onPick: (f: File | null) => void }) {
+  function pick(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0] ?? null
+    e.target.value = ''
+    onPick(f)
+  }
+  return (
+    <div
+      className="rounded-xl p-3 border flex items-start justify-between gap-3"
+      style={{
+        borderColor: file ? 'var(--sage)' : 'var(--paper-3)',
+        background: file ? 'var(--sage-tint)' : 'var(--paper-2)',
+      }}
+    >
+      <div className="min-w-0">
+        <div className="text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] font-semibold mb-1" style={{ fontFamily: 'var(--font-display)' }}>{label}</div>
+        <div className="text-[13px] text-[color:var(--ink)] truncate">
+          {file ? `${file.name} · ${(file.size / 1024).toFixed(0)} KB` : 'No file selected.'}
+        </div>
+      </div>
+      <div className="flex gap-1.5 shrink-0">
+        <label className="btn-secondary text-xs cursor-pointer" style={{ width: 'auto' }}>
+          {file ? 'Change' : 'Choose'}
+          <input type="file" className="sr-only" accept={accept} onChange={pick} />
+        </label>
+        {file && (
+          <button type="button" className="text-xs px-2 py-1 rounded-md text-[color:var(--mid-gray)] hover:text-[color:var(--clay)]" onClick={() => onPick(null)}>Remove</button>
         )}
       </div>
     </div>
@@ -161,8 +231,8 @@ export default function CurriculumPanel({ viewer }: Props) {
 function CurriculumGrouped({ items, viewer, onOpen, onDownload, onDelete, singleLevel }: {
   items: CurriculumRecord[]
   viewer: { role: 'STUDENT' | 'TEACHER' | 'ADMIN'; email: string }
-  onOpen: (c: CurriculumRecord) => void
-  onDownload: (c: CurriculumRecord) => void
+  onOpen: (fileId: string, fileName: string) => void
+  onDownload: (fileId: string, fileName: string) => void
   onDelete: (c: CurriculumRecord) => void
   singleLevel: boolean
 }) {
@@ -172,6 +242,20 @@ function CurriculumGrouped({ items, viewer, onOpen, onDownload, onDelete, single
     GRADE_6:  [], GRADE_7:  [], GRADE_8:  [], GRADE_9:  [], GRADE_10: [],
   }
   for (const c of items) byLevel[c.level].push(c)
+
+  function metaLine(c: CurriculumRecord): string {
+    const sizes: string[] = []
+    if (c.pdf) sizes.push(`PDF ${(c.pdf.fileSize / 1024).toFixed(0)} KB`)
+    if (c.doc) sizes.push(`Word ${(c.doc.fileSize / 1024).toFixed(0)} KB`)
+    if (!c.pdf && !c.doc && c.fileSize) sizes.push(`${(c.fileSize / 1024).toFixed(0)} KB`)
+    return `${sizes.join(' · ')}${sizes.length ? ' · ' : ''}uploaded by ${c.uploadedBy} on ${new Date(c.uploadedAt).toLocaleDateString()}`
+  }
+
+  function legacy(c: CurriculumRecord): CurriculumFile | null {
+    if (c.pdf || c.doc) return null
+    if (!c.fileId || !c.fileName) return null
+    return { fileId: c.fileId, fileName: c.fileName, fileType: c.fileType ?? '', fileSize: c.fileSize ?? 0 }
+  }
 
   return (
     <div className="space-y-2.5">
@@ -187,23 +271,31 @@ function CurriculumGrouped({ items, viewer, onOpen, onDownload, onDelete, single
               <span className="text-[11.5px] text-[color:var(--mid-gray)]">{list.length} document{list.length === 1 ? '' : 's'}</span>
             </summary>
             <ul className="divide-y" style={{ borderColor: 'var(--paper-3)' }}>
-              {list.map(c => (
-                <li key={c.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-                  <div className="min-w-0 flex-1">
-                    <div className="font-semibold text-[color:var(--narra)] truncate" style={{ fontFamily: 'var(--font-display)' }}>{c.title}</div>
-                    <div className="text-[11.5px] text-[color:var(--mid-gray)] truncate">
-                      {c.fileName} · {(c.fileSize / 1024).toFixed(0)} KB · uploaded by {c.uploadedBy} on {new Date(c.uploadedAt).toLocaleDateString()}
+              {list.map(c => {
+                const legacyFile = legacy(c)
+                return (
+                  <li key={c.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-[color:var(--narra)] truncate" style={{ fontFamily: 'var(--font-display)' }}>{c.title}</div>
+                      <div className="text-[11.5px] text-[color:var(--mid-gray)] truncate">{metaLine(c)}</div>
                     </div>
-                  </div>
-                  <div className="flex gap-1.5 shrink-0">
-                    <button className="btn-secondary text-xs" onClick={() => onOpen(c)}>View</button>
-                    <button className="btn-primary text-xs" onClick={() => onDownload(c)}>Download</button>
-                    {(viewer.role === 'ADMIN' || c.uploadedBy === viewer.email) && (
-                      <button className="text-xs px-2 py-1 rounded-md text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)]" onClick={() => onDelete(c)}>Delete</button>
-                    )}
-                  </div>
-                </li>
-              ))}
+                    <div className="flex flex-wrap gap-1.5 shrink-0 justify-end">
+                      {c.pdf && (
+                        <FileButtons label="PDF" file={c.pdf} onOpen={onOpen} onDownload={onDownload} />
+                      )}
+                      {c.doc && (
+                        <FileButtons label="Word" file={c.doc} onOpen={onOpen} onDownload={onDownload} />
+                      )}
+                      {legacyFile && (
+                        <FileButtons label="File" file={legacyFile} onOpen={onOpen} onDownload={onDownload} />
+                      )}
+                      {(viewer.role === 'ADMIN' || c.uploadedBy === viewer.email) && (
+                        <button className="text-xs px-2 py-1 rounded-md text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)]" onClick={() => onDelete(c)}>Delete</button>
+                      )}
+                    </div>
+                  </li>
+                )
+              })}
             </ul>
           </details>
         )
@@ -211,6 +303,16 @@ function CurriculumGrouped({ items, viewer, onOpen, onDownload, onDelete, single
       {singleLevel && Object.values(byLevel).flat().length === 0 && (
         <p className="text-sm text-[color:var(--mid-gray)] text-center py-8">No curriculum for your level yet.</p>
       )}
+    </div>
+  )
+}
+
+function FileButtons({ label, file, onOpen, onDownload }: { label: string; file: CurriculumFile; onOpen: (id: string, name: string) => void; onDownload: (id: string, name: string) => void }) {
+  return (
+    <div className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5" style={{ borderColor: 'var(--paper-3)', background: '#fff' }}>
+      <span className="text-[10.5px] uppercase tracking-[0.08em] font-bold text-[color:var(--mid-gray)] mr-1" style={{ fontFamily: 'var(--font-display)' }}>{label}</span>
+      <button className="btn-secondary text-xs" onClick={() => onOpen(file.fileId, file.fileName)}>View</button>
+      <button className="btn-primary text-xs" onClick={() => onDownload(file.fileId, file.fileName)}>Download</button>
     </div>
   )
 }
