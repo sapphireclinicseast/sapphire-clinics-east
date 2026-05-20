@@ -1,10 +1,19 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { getPayments, getUsers, levelLabel, type PaymentRecord, type StoredUser } from '@/lib/session'
+import { getPayments, getUsers, getFile, levelLabel, type PaymentRecord, type PaymentMethod, type StoredUser } from '@/lib/session'
 
 function fmt(cents: number) {
   return '₱' + (cents / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function methodLabel(m: PaymentMethod | undefined): string {
+  switch (m) {
+    case 'PAYMONGO':        return 'PayMongo'
+    case 'FRONT_DESK_CASH': return 'Front desk (cash)'
+    case 'BANK_DEPOSIT':    return 'Bank deposit'
+    default:                return '—'
+  }
 }
 
 /**
@@ -13,12 +22,14 @@ function fmt(cents: number) {
  * a student has actually paid. For students with at least one PAID
  * record, the latest PAID payment's details are shown. For students
  * who have never completed a payment, a single PENDING row is shown
- * regardless of how many times they started checkout.
+ * (preferring a bank-deposit attempt with a proof file attached, so the
+ * admin can verify the transfer slip before marking the row PAID).
  */
 type RollupRow = {
   student: StoredUser
-  /** The actual PAID record (latest by paidAt) if any, otherwise null. */
-  paid: PaymentRecord | null
+  /** Representative payment record for the row (latest PAID if any,
+   *  otherwise latest PENDING with a proof file, otherwise latest PENDING). */
+  payment: PaymentRecord | null
   status: 'PAID' | 'PENDING'
 }
 
@@ -39,13 +50,27 @@ export default function PaymentsPanel() {
             new Date(b.paidAt ?? b.createdAt).getTime() - new Date(a.paidAt ?? a.createdAt).getTime(),
           )[0]
         : null
-      return { student: s, paid: latestPaid, status: latestPaid ? 'PAID' : 'PENDING' }
+      // For pending-only students prefer a record that has a proof file
+      // (bank deposit) so admins can verify it; otherwise the latest pending.
+      const pendingByRecency = list
+        .filter(p => p.status === 'PENDING')
+        .slice()
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      const latestPendingWithProof = pendingByRecency.find(p => p.proofFileId)
+      const latestPending = latestPendingWithProof ?? pendingByRecency[0] ?? null
+      const representative = latestPaid ?? latestPending
+      return {
+        student: s,
+        payment: representative,
+        status: latestPaid ? 'PAID' : 'PENDING',
+      }
     })
     // Order: PAID by paidAt desc, then PENDING by student name asc.
     out.sort((a, b) => {
       if (a.status !== b.status) return a.status === 'PAID' ? -1 : 1
       if (a.status === 'PAID' && b.status === 'PAID') {
-        return new Date(b.paid!.paidAt ?? b.paid!.createdAt).getTime() - new Date(a.paid!.paidAt ?? a.paid!.createdAt).getTime()
+        return new Date(b.payment!.paidAt ?? b.payment!.createdAt).getTime() -
+               new Date(a.payment!.paidAt ?? a.payment!.createdAt).getTime()
       }
       const an = `${a.student.firstName ?? ''} ${a.student.lastName ?? ''}`.trim().toLowerCase()
       const bn = `${b.student.firstName ?? ''} ${b.student.lastName ?? ''}`.trim().toLowerCase()
@@ -58,7 +83,10 @@ export default function PaymentsPanel() {
     () => filter === 'ALL' ? rows : rows.filter(r => r.status === filter),
     [rows, filter],
   )
-  const totalCollected = rows.reduce((acc, r) => acc + (r.paid ? r.paid.tuitionAmount + r.paid.miscAmount : 0), 0)
+  const totalCollected = rows.reduce(
+    (acc, r) => acc + (r.status === 'PAID' && r.payment ? r.payment.tuitionAmount + r.payment.miscAmount : 0),
+    0,
+  )
   const pendingCount = rows.filter(r => r.status === 'PENDING').length
   const paidCount = rows.filter(r => r.status === 'PAID').length
 
@@ -88,18 +116,20 @@ export default function PaymentsPanel() {
               <th className="py-2 px-3">Level</th>
               <th className="py-2 px-3">Plan</th>
               <th className="py-2 px-3">Period</th>
-              <th className="py-2 px-3">Paid on</th>
+              <th className="py-2 px-3">Date</th>
               <th className="py-2 px-3 text-right">Tuition</th>
               <th className="py-2 px-3 text-right">Misc</th>
               <th className="py-2 px-3 text-right">Total</th>
+              <th className="py-2 px-3">Method</th>
               <th className="py-2 px-3">Status</th>
+              <th className="py-2 px-3">Proof</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={9} className="py-6 px-3 text-center text-[color:var(--mid-gray)]">No payment records.</td></tr>
+              <tr><td colSpan={11} className="py-6 px-3 text-center text-[color:var(--mid-gray)]">No payment records.</td></tr>
             )}
-            {filtered.map(({ student: s, paid: p, status }) => (
+            {filtered.map(({ student: s, payment: p, status }) => (
               <tr key={s.id} className="border-b" style={{ borderColor: 'var(--paper-3)' }}>
                 <td className="py-2.5 px-3">
                   <div className="font-semibold text-[color:var(--narra)]">{`${s.firstName ?? ''} ${s.lastName ?? ''}`.trim() || s.email}</div>
@@ -112,12 +142,36 @@ export default function PaymentsPanel() {
                 <td className="py-2.5 px-3 text-right font-mono text-[12.5px]">{p ? fmt(p.tuitionAmount) : '—'}</td>
                 <td className="py-2.5 px-3 text-right font-mono text-[12.5px]">{p?.miscAmount ? fmt(p.miscAmount) : '—'}</td>
                 <td className="py-2.5 px-3 text-right font-mono font-bold">{p ? fmt(p.tuitionAmount + p.miscAmount) : '—'}</td>
+                <td className="py-2.5 px-3 text-[12.5px]">{methodLabel(p?.method)}</td>
                 <td className="py-2.5 px-3"><span className={`badge ${status === 'PAID' ? 'badge-paid' : 'badge-pending'}`}>{status}</span></td>
+                <td className="py-2.5 px-3"><AdminProofCell payment={p} /></td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
     </div>
+  )
+}
+
+/** Bank-deposit proof file cell. Shows a View button that opens the
+ *  stored blob in a new tab. Returns "—" when the representative row
+ *  for the student has no proof attached. */
+function AdminProofCell({ payment }: { payment: PaymentRecord | null }) {
+  async function open() {
+    if (!payment?.proofFileId) return
+    const blob = await getFile(payment.proofFileId)
+    if (!blob) { alert('Proof file not found in this browser.'); return }
+    const url = URL.createObjectURL(blob)
+    window.open(url, '_blank', 'noopener')
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }
+  if (!payment?.proofFileId) {
+    return <span className="text-[11.5px] text-[color:var(--mid-gray)]">—</span>
+  }
+  return (
+    <button type="button" className="btn-secondary text-xs" onClick={open} title={payment.proofFileName ?? 'Proof of payment'}>
+      View proof
+    </button>
   )
 }

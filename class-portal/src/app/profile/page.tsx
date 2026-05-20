@@ -6,8 +6,9 @@ import {
   getAuth, getUsers, hydrateUsers,
   getPaymentsForStudent,
   getGradeForStudent,
+  getFile,
   type StoredUser, type PaymentRecord, type GradeRecord,
-  type EnrollmentLevel,
+  type EnrollmentLevel, type PaymentMethod,
   levelLabel,
 } from '@/lib/session'
 import StudentDetail from '@/components/StudentDetail'
@@ -235,7 +236,9 @@ function PaymentTable({ payments }: { payments: PaymentRecord[] }) {
             <th className="py-2 px-3">Plan</th>
             <th className="py-2 px-3">Period</th>
             <th className="py-2 px-3 text-right">Total</th>
+            <th className="py-2 px-3">Method</th>
             <th className="py-2 px-3">Status</th>
+            <th className="py-2 px-3">Proof</th>
           </tr>
         </thead>
         <tbody>
@@ -245,12 +248,44 @@ function PaymentTable({ payments }: { payments: PaymentRecord[] }) {
               <td className="py-2.5 px-3">{p.plan}</td>
               <td className="py-2.5 px-3 text-[12.5px]">{p.period}</td>
               <td className="py-2.5 px-3 text-right font-mono">{fmt(p.tuitionAmount + p.miscAmount)}</td>
+              <td className="py-2.5 px-3 text-[12.5px]">{paymentMethodLabel(p.method)}</td>
               <td className="py-2.5 px-3"><span className={`badge ${p.status === 'PAID' ? 'badge-paid' : 'badge-pending'}`}>{p.status}</span></td>
+              <td className="py-2.5 px-3"><ProofCell payment={p} /></td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
+  )
+}
+
+function paymentMethodLabel(m: PaymentMethod | undefined): string {
+  switch (m) {
+    case 'PAYMONGO':        return 'PayMongo'
+    case 'FRONT_DESK_CASH': return 'Front desk (cash)'
+    case 'BANK_DEPOSIT':    return 'Bank deposit'
+    default:                return '—'
+  }
+}
+
+/** Bank-deposit proof file cell. Shows a View button that opens the
+ *  stored blob in a new tab, or "—" when the row has no proof. */
+function ProofCell({ payment }: { payment: PaymentRecord }) {
+  async function open() {
+    if (!payment.proofFileId) return
+    const blob = await getFile(payment.proofFileId)
+    if (!blob) { alert('Proof file not found in this browser.'); return }
+    const url = URL.createObjectURL(blob)
+    window.open(url, '_blank', 'noopener')
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }
+  if (!payment.proofFileId) {
+    return <span className="text-[11.5px] text-[color:var(--mid-gray)]">—</span>
+  }
+  return (
+    <button type="button" className="btn-secondary text-xs" onClick={open} title={payment.proofFileName ?? 'Proof of payment'}>
+      View proof
+    </button>
   )
 }
 
