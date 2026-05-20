@@ -88,6 +88,7 @@ services:
       PAYMONGO_WEBHOOK_SECRET: ${PAYMONGO_WEBHOOK_SECRET}
       PATIENT_PORTAL_SECRET: ${PATIENT_PORTAL_SECRET}
       CLIENT_PORTAL_URL: ${CLIENT_PORTAL_URL:-https://client.sapphireclinicseast.org}
+      CLASS_PORTAL_JWT_SECRET: ${CLASS_PORTAL_JWT_SECRET}
     extra_hosts:
       - "host.docker.internal:172.18.0.1"
     volumes:

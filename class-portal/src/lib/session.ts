@@ -157,11 +157,14 @@ export function ageFromDob(dob: string): string {
 }
 
 /* ─────────────────────────────────────────────────────────────────
-   Users + auth (MVP — localStorage backed)
-   Backend integration: replace getUsers/addUser/etc. with real
-   /api/public/students/* and /api/public/teachers/* once they
-   exist, and store only an HMAC-signed session token here.
+   Users + auth — backed by marketing.sapphireclinicseast.org API
+   (Postgres). LocalStorage is a write-through cache for sync UI code.
+   Sign-in mints a JWT (stored via backend.setToken). On app mount,
+   hydrateUsers() pulls the latest list from the API and updates the
+   cache so all existing sync helpers stay correct.
    ───────────────────────────────────────────────────────────── */
+
+import { backendJson, setToken, clearToken, getToken } from './backend'
 
 const USERS_KEY = 'scei_class_users_v1'
 const AUTH_KEY = 'scei_class_auth_v1'
@@ -210,62 +213,118 @@ export function findUser(role: UserRole, email: string): StoredUser | undefined 
   return getUsers().find(u => u.role === role && u.email.toLowerCase() === e)
 }
 
-export function addUser(u: Omit<StoredUser, 'id' | 'createdAt'>): StoredUser {
-  const existing = findUser(u.role, u.email)
-  if (existing) throw new Error('A user with this email already exists for this role.')
-  const newUser: StoredUser = {
-    ...u,
-    id: 'usr_' + Math.random().toString(36).slice(2, 10),
-    createdAt: new Date().toISOString(),
-  }
-  writeUsers([...getUsers(), newUser])
-  return newUser
+interface ApiUser {
+  id: string
+  role: UserRole
+  email: string
+  firstName?: string | null
+  lastName?: string | null
+  level?: EnrollmentLevel | null
+  enrollment?: Partial<EnrollmentDraft> | null
+  createdAt: string
+  updatedAt: string
 }
 
-export function updateUser(id: string, patch: Partial<Omit<StoredUser, 'id' | 'createdAt' | 'role'>>) {
-  const users = getUsers()
-  const idx = users.findIndex(u => u.id === id)
-  if (idx < 0) throw new Error('User not found.')
-  // Disallow email collisions within the same role
-  if (patch.email) {
-    const collision = users.find(u => u.id !== id && u.role === users[idx].role && u.email.toLowerCase() === patch.email!.toLowerCase())
-    if (collision) throw new Error('Another user with this email already exists in this role.')
+function apiToStored(u: ApiUser, password = ''): StoredUser {
+  return {
+    id: u.id,
+    role: u.role,
+    email: u.email,
+    password, // never sent back from API; password resets go through PATCH
+    firstName: u.firstName ?? undefined,
+    lastName: u.lastName ?? undefined,
+    level: (u.level ?? undefined) as EnrollmentLevel | undefined,
+    enrollment: u.enrollment ?? undefined,
+    createdAt: u.createdAt,
   }
-  users[idx] = { ...users[idx], ...patch }
-  writeUsers(users)
-  return users[idx]
 }
 
-export function deleteUser(id: string) {
+/** Pull the canonical user list from the API into the local cache. */
+export async function hydrateUsers(): Promise<StoredUser[]> {
+  if (typeof window === 'undefined') return []
+  if (!getToken()) return getUsers()
+  try {
+    const { users } = await backendJson<{ users: ApiUser[] }>('/api/public/class-portal/users')
+    const existing = getUsers()
+    const merged: StoredUser[] = users.map(u => {
+      const prev = existing.find(e => e.id === u.id)
+      return apiToStored(u, prev?.password ?? '')
+    })
+    writeUsers(merged)
+    return merged
+  } catch {
+    return getUsers()
+  }
+}
+
+export async function addUser(u: Omit<StoredUser, 'id' | 'createdAt'>): Promise<StoredUser> {
+  const { user } = await backendJson<{ user: ApiUser }>('/api/public/class-portal/users', {
+    method: 'POST',
+    body: JSON.stringify({
+      role: u.role,
+      email: u.email.trim().toLowerCase(),
+      password: u.password,
+      firstName: u.firstName,
+      lastName: u.lastName,
+      level: u.level,
+      enrollment: u.enrollment,
+    }),
+  })
+  const stored = apiToStored(user, u.password)
+  writeUsers([...getUsers().filter(x => x.id !== stored.id), stored])
+  return stored
+}
+
+export async function updateUser(id: string, patch: Partial<Omit<StoredUser, 'id' | 'createdAt' | 'role'>>): Promise<StoredUser> {
+  const { user } = await backendJson<{ user: ApiUser }>(`/api/public/class-portal/users/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      email: patch.email,
+      password: patch.password,
+      firstName: patch.firstName,
+      lastName: patch.lastName,
+      level: patch.level,
+      enrollment: patch.enrollment,
+    }),
+  })
+  const prev = getUsers().find(u => u.id === id)
+  const stored = apiToStored(user, patch.password ?? prev?.password ?? '')
+  writeUsers(getUsers().map(u => (u.id === id ? stored : u)))
+  return stored
+}
+
+export async function deleteUser(id: string): Promise<void> {
+  await backendJson(`/api/public/class-portal/users/${id}`, { method: 'DELETE' })
   writeUsers(getUsers().filter(u => u.id !== id))
 }
 
 /**
- * Admin-only: patch a student's stored enrollment data (when the parent
- * submitted incomplete or out-of-date information).
+ * Patch a student's enrollment. Admin can call for any student; students
+ * can only call for their own record (enforced server-side).
  */
-export function updateUserEnrollment(id: string, patch: Partial<EnrollmentDraft>): StoredUser {
+export async function updateUserEnrollment(id: string, patch: Partial<EnrollmentDraft>): Promise<StoredUser> {
   const users = getUsers()
-  const idx = users.findIndex(u => u.id === id)
-  if (idx < 0) throw new Error('User not found.')
-  const u = users[idx]
+  const u = users.find(x => x.id === id)
+  if (!u) throw new Error('User not found.')
   if (u.role !== 'STUDENT') throw new Error('Only student accounts have enrollment data.')
   const mergedEnrollment = { ...(u.enrollment ?? {}), ...patch }
   // Identity fields (firstName/lastName/email/level) exist at both the user
-  // and enrollment levels. When the admin corrects them via the enrollment
-  // editor, propagate to the top-level user record so lists, the identity
-  // card, and any payment/notification lookups stay in sync.
-  const next: StoredUser = {
-    ...u,
-    enrollment: mergedEnrollment,
+  // and enrollment levels — propagate any corrections to the top-level user
+  // record so lists, identity card, payment/notification lookups stay in sync.
+  const apiPatch = {
     firstName: patch.firstName ?? u.firstName,
     lastName: patch.lastName ?? u.lastName,
     email: patch.email ?? u.email,
-    level: (patch.level ?? u.level) as StoredUser['level'],
+    level: patch.level ?? u.level,
+    enrollment: mergedEnrollment,
   }
-  users[idx] = next
-  writeUsers(users)
-  return next
+  const { user } = await backendJson<{ user: ApiUser }>(`/api/public/class-portal/users/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(apiPatch),
+  })
+  const stored = apiToStored(user, u.password)
+  writeUsers(getUsers().map(x => (x.id === id ? stored : x)))
+  return stored
 }
 
 export function getAuth(): AuthSession | null {
@@ -884,21 +943,32 @@ export async function deleteFile(id: string): Promise<void> {
   db.close()
 }
 
-/** Attempt a sign-in. Throws on failure. */
-export function signIn(role: AuthRole, email: string, password: string): AuthSession {
-  if (role === 'ADMIN') {
-    if (email.trim().toLowerCase() !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
-      throw new Error('Invalid admin credentials.')
-    }
-    const session: AuthSession = { role: 'ADMIN', email: ADMIN_EMAIL }
-    setAuth(session)
-    return session
+/** Attempt a sign-in against the marketing API. Throws on failure. */
+export async function signIn(role: AuthRole, email: string, password: string): Promise<AuthSession> {
+  const res = await backendJson<{
+    token: string
+    user: { id?: string; role: AuthRole; email: string; firstName?: string | null }
+  }>('/api/public/class-portal/auth/sign-in', {
+    method: 'POST',
+    body: JSON.stringify({ role, email: email.trim().toLowerCase(), password }),
+  })
+  setToken(res.token)
+  const session: AuthSession = {
+    role: res.user.role,
+    email: res.user.email,
+    userId: res.user.id,
+    firstName: res.user.firstName ?? undefined,
   }
-  const user = findUser(role, email)
-  if (!user || user.password !== password) {
-    throw new Error('Email and password do not match a ' + role.toLowerCase() + ' account.')
-  }
-  const session: AuthSession = { role, email: user.email, userId: user.id, firstName: user.firstName }
   setAuth(session)
+  // Hydrate the local user cache so subsequent sync getUsers() calls have data.
+  if (typeof window !== 'undefined') {
+    try { await hydrateUsers() } catch { /* ignore */ }
+  }
   return session
+}
+
+/** Clear sign-in state. */
+export function signOut() {
+  clearToken()
+  clearAuth()
 }

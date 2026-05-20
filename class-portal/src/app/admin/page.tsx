@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  getAuth, getUsers, addUser, updateUser, deleteUser,
+  getAuth, getUsers, hydrateUsers, addUser, updateUser, deleteUser,
   levelLabel, type StoredUser, type UserRole,
 } from '@/lib/session'
 import { listStaff, type StaffMember } from '@/lib/api'
@@ -85,13 +85,19 @@ function UsersPanel() {
 
   useEffect(() => {
     setUsers(getUsers())
+    // Pull fresh user list from the API on mount so admin sees teachers/students
+    // created from other devices.
+    hydrateUsers().then(setUsers).catch(() => { /* fall back to cached */ })
     listStaff({ department: 'SPED' })
       .then(s => { setStaff(s); setStaffErr(null) })
       .catch(e => setStaffErr((e as Error).message))
       .finally(() => setStaffLoading(false))
   }, [])
 
-  function refresh() { setUsers(getUsers()) }
+  async function refresh() {
+    try { setUsers(await hydrateUsers()) }
+    catch { setUsers(getUsers()) }
+  }
 
   const filtered = useMemo(() => filter === 'ALL' ? users : users.filter(u => u.role === filter), [users, filter])
   const teacherEmailSet = useMemo(() => new Set(users.filter(u => u.role === 'TEACHER').map(u => u.email.toLowerCase())), [users])
@@ -106,12 +112,12 @@ function UsersPanel() {
     })
   }, [staff, staffSearch, staffBranchFilter])
 
-  function handleCreateFromStaff(member: StaffMember, password: string) {
+  async function handleCreateFromStaff(member: StaffMember, password: string) {
     setErr(null); setInfo(null)
     if (!member.email) { setErr(`${member.firstName} ${member.lastName} has no email on file in the Staff Module.`); return }
     if (password.length < 6) { setErr('Password must be at least 6 characters.'); return }
     try {
-      addUser({
+      await addUser({
         role: 'TEACHER', email: member.email, password,
         firstName: member.firstName || undefined,
         lastName: member.lastName || undefined,
@@ -121,18 +127,19 @@ function UsersPanel() {
     } catch (e) { setErr((e as Error).message) }
   }
 
-  function handleDelete(u: StoredUser) {
+  async function handleDelete(u: StoredUser) {
     if (!confirm(`Delete ${u.role.toLowerCase()} ${u.email}? This cannot be undone.`)) return
-    deleteUser(u.id); refresh()
+    try { await deleteUser(u.id); refresh() }
+    catch (e) { setErr((e as Error).message) }
   }
 
-  function handleSaveEdit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSaveEdit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!editing) return
     setErr(null); setInfo(null)
     const f = new FormData(e.currentTarget)
     try {
-      updateUser(editing.id, {
+      await updateUser(editing.id, {
         email: String(f.get('email') ?? '').trim(),
         password: String(f.get('password') ?? ''),
         firstName: String(f.get('firstName') ?? '').trim() || undefined,

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   getSession, getDraft, clearDraft, clearSession,
-  addUser, setAuth, levelLabel,
+  addUser, signIn, levelLabel,
 } from '@/lib/session'
 
 type Phase = 'password' | 'choose'
@@ -44,7 +44,7 @@ export default function AccountSetupPage() {
       const s = getSession()
       const d = getDraft()
       if (!s || !d) { setErr('Session lost. Please restart enrollment.'); setBusy(false); return }
-      const user = addUser({
+      const user = await addUser({
         role: 'STUDENT',
         email: d.email!,
         password,
@@ -53,7 +53,8 @@ export default function AccountSetupPage() {
         level: s.level,
         enrollment: d,
       })
-      setAuth({ role: 'STUDENT', email: user.email, userId: user.id, firstName: user.firstName })
+      // Sign the new student in immediately so subsequent API calls authenticate.
+      await signIn('STUDENT', user.email, password)
       setPhase('choose')
     } catch (e) {
       setErr((e as Error).message)

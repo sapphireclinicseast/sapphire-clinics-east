@@ -16,7 +16,7 @@ export default function SignInPage() {
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!role) return
     setBusy(true); setErr(null)
@@ -24,7 +24,7 @@ export default function SignInPage() {
     const email = String(f.get('email') ?? '').trim()
     const password = String(f.get('password') ?? '')
     try {
-      const session = signIn(role, email, password)
+      const session = await signIn(role, email, password)
       router.push(session.role === 'ADMIN' ? '/admin' : '/profile')
     } catch (e) {
       setErr((e as Error).message)

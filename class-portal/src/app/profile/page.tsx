@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  getAuth, getUsers,
+  getAuth, getUsers, hydrateUsers,
   getPaymentsForStudent,
   getGradeForStudent,
   type StoredUser, type PaymentRecord, type GradeRecord,
@@ -33,10 +33,18 @@ export default function ProfilePage() {
     if (!auth) { router.replace('/sign-in'); return }
     if (auth.role === 'ADMIN') { router.replace('/admin'); return }
     if (!auth.userId) { router.replace('/sign-in'); return }
-    const u = getUsers().find(x => x.id === auth.userId)
-    if (!u) { router.replace('/sign-in'); return }
-    setUser(u)
-    setReady(true)
+    let cancelled = false
+    ;(async () => {
+      // Pull canonical user list from API. Teachers need this to see students
+      // they don't have in their local cache (the typical cross-device case).
+      const users = await hydrateUsers().catch(() => getUsers())
+      if (cancelled) return
+      const u = users.find(x => x.id === auth.userId)
+      if (!u) { router.replace('/sign-in'); return }
+      setUser(u)
+      setReady(true)
+    })()
+    return () => { cancelled = true }
   }, [router])
 
   if (!ready || !user) return null
