@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import {
-  getFile, getPaymentsForStudent, getWaivers, getGradeForStudent,
-  updateUserEnrollment,
+  getFile, putFile, deleteFile,
+  getPaymentsForStudent, getWaivers, getGradeForStudent,
+  updateUserEnrollment, saveHeadshot,
   levelLabel, lrnStatusLabel,
   type StoredUser, type PaymentRecord, type WaiverRecord, type GradeRecord,
   type EnrollmentDraft,
@@ -129,13 +130,47 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
         )}
       </div>
 
-      {/* Submitted documents — viewable + downloadable */}
+      {/* Submitted documents — viewable + downloadable; the student can also
+          re-upload any row (e.g. the original was blurry or the wrong file). */}
       {e.documents && Object.keys(e.documents).length > 0 && (
         <div className="card-static">
-          <h2 className="text-[18px] leading-tight mb-3">Submitted documents</h2>
+          <h2 className="text-[18px] leading-tight mb-1">Submitted documents</h2>
+          {viewerRole === 'STUDENT' && (
+            <p className="text-[12.5px] text-[color:var(--mid-gray)] mb-3">
+              Need to replace a file? Click <span className="font-semibold">Re-upload</span> on the row.
+            </p>
+          )}
           <div className="space-y-2.5">
             {Object.entries(e.documents).map(([k, v]) => (
-              <DocumentRow key={k} docKey={k} title={docTitle(k)} fileName={v.name} size={v.size} fileId={v.fileId} mime={v.type} />
+              <DocumentRow
+                key={k}
+                docKey={k}
+                title={docTitle(k)}
+                fileName={v.name}
+                size={v.size}
+                fileId={v.fileId}
+                mime={v.type}
+                canReplace={viewerRole === 'STUDENT'}
+                onReplace={async (file) => {
+                  // Upload new blob, swap the IndexedDB entry, update the
+                  // enrollment.documents metadata via the API. The 1x1 child
+                  // photo also refreshes the headshot.
+                  const newFileId = 'doc_' + Math.random().toString(36).slice(2, 12)
+                  await putFile(newFileId, file)
+                  if (v.fileId) { try { await deleteFile(v.fileId) } catch { /* ignore */ } }
+                  const nextDocs = { ...(student.enrollment?.documents ?? {}) }
+                  nextDocs[k] = { name: file.name, size: file.size, type: file.type, fileId: newFileId }
+                  const updated = await updateUserEnrollment(student.id, { documents: nextDocs })
+                  setStudent(updated)
+                  onChange?.()
+                  if (k === 'child_photo_1x1') {
+                    const dataUrl = await downscaleToDataUrl(file, 500, 0.85)
+                    if (dataUrl) saveHeadshot({ studentId: student.id, dataUrl, uploadedAt: new Date().toISOString() })
+                    // Force the HeadshotEditor to refresh its src.
+                    setStudent(prev => ({ ...prev }))
+                  }
+                }}
+              />
             ))}
           </div>
         </div>
@@ -313,6 +348,7 @@ function nameOf(n?: { lastName: string; firstName: string; middleName: string })
 function docTitle(key: string): string {
   const map: Record<string, string> = {
     psa_birth_cert: 'PSA Birth Certificate',
+    child_photo_1x1: 'Child’s 1x1 Photo (for student ID)',
     medical_reports: 'Medical / developmental / therapy reports',
     report_card_sf9: 'Report Card / SF9 (Form 138)',
     good_moral: 'Certificate of Good Moral Character',
@@ -342,24 +378,82 @@ async function previewPdf(doc: import('jspdf').jsPDF) {
   setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
-function DocumentRow({ docKey, title, fileName, size, fileId, mime }: { docKey: string; title: string; fileName: string; size: number; fileId?: string; mime?: string }) {
+function DocumentRow({
+  docKey, title, fileName, size, fileId, mime, canReplace, onReplace,
+}: {
+  docKey: string
+  title: string
+  fileName: string
+  size: number
+  fileId?: string
+  mime?: string
+  canReplace?: boolean
+  onReplace?: (file: File) => void | Promise<void>
+}) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const isPhoto = docKey === 'child_photo_1x1'
+  const accept = isPhoto ? 'image/*' : '.pdf,image/*'
+  async function handlePick(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f || !onReplace) return
+    if (f.size > 30 * 1024 * 1024) { setErr('File is larger than 30 MB.'); return }
+    setErr(null); setBusy(true)
+    try { await onReplace(f) } catch (e) { setErr((e as Error).message) }
+    finally { setBusy(false) }
+  }
   return (
     <div className="flex items-center justify-between gap-3 p-3 rounded-xl border" style={{ borderColor: 'var(--paper-3)', background: '#fff' }}>
       <div className="min-w-0">
         <div className="font-semibold text-[color:var(--narra)] text-sm" style={{ fontFamily: 'var(--font-display)' }}>{title}</div>
         <div className="text-[12px] text-[color:var(--mid-gray)] truncate">{fileName} · {(size / 1024).toFixed(0)} KB</div>
+        {err && <div className="text-[11.5px] text-rose-700 mt-1">{err}</div>}
       </div>
-      {fileId ? (
-        <div className="flex gap-2 shrink-0">
-          <button type="button" className="btn-secondary text-xs" onClick={() => openFile(fileId, fileName, mime)}>View</button>
-          <button type="button" className="btn-primary text-xs" onClick={() => downloadFile(fileId, fileName, mime)}>Download</button>
-        </div>
-      ) : (
-        <span className="badge badge-pending shrink-0" title="File content not stored in this browser">Metadata only</span>
-      )}
+      <div className="flex gap-2 shrink-0">
+        {fileId ? (
+          <>
+            <button type="button" className="btn-secondary text-xs" onClick={() => openFile(fileId, fileName, mime)}>View</button>
+            <button type="button" className="btn-primary text-xs" onClick={() => downloadFile(fileId, fileName, mime)}>Download</button>
+          </>
+        ) : (
+          <span className="badge badge-pending" title="File content not stored in this browser">Metadata only</span>
+        )}
+        {canReplace && (
+          <label className="btn-secondary text-xs cursor-pointer inline-flex items-center" style={{ width: 'auto' }}>
+            {busy ? 'Uploading…' : 'Re-upload'}
+            <input type="file" className="sr-only" accept={accept} onChange={handlePick} disabled={busy} />
+          </label>
+        )}
+      </div>
       <span aria-hidden className="sr-only">{docKey}</span>
     </div>
   )
+}
+
+/** Same downscale routine the account-setup page uses for the headshot sync. */
+function downscaleToDataUrl(file: Blob, maxEdge: number, jpegQuality: number): Promise<string | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      try {
+        const longer = Math.max(img.width, img.height)
+        const scale = longer > maxEdge ? maxEdge / longer : 1
+        const w = Math.round(img.width * scale)
+        const h = Math.round(img.height * scale)
+        const canvas = document.createElement('canvas')
+        canvas.width = w; canvas.height = h
+        const ctx = canvas.getContext('2d')
+        if (!ctx) { URL.revokeObjectURL(url); resolve(null); return }
+        ctx.drawImage(img, 0, 0, w, h)
+        resolve(canvas.toDataURL('image/jpeg', jpegQuality))
+      } catch { resolve(null) }
+      finally { URL.revokeObjectURL(url) }
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null) }
+    img.src = url
+  })
 }
 
 function DownloadButton({ fileId, label }: { fileId: string; label: string }) {

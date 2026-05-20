@@ -10,15 +10,26 @@ interface DocRequirement {
   title: string
   sub: string
   optional?: boolean
+  /** When set, only files matching this MIME prefix are accepted. */
+  imageOnly?: boolean
+}
+
+const CHILD_PHOTO_DOC: DocRequirement = {
+  key: 'child_photo_1x1',
+  title: 'Child’s 1x1 Photo (for student ID)',
+  sub: 'Front-facing headshot, plain background, JPG or PNG. This will be used as the student’s profile photo.',
+  imageOnly: true,
 }
 
 const KINDER_DOCS: DocRequirement[] = [
   { key: 'psa_birth_cert',   title: 'PSA Birth Certificate (photocopy)', sub: 'Clear scan or photo of the PSA-issued certificate.' },
+  CHILD_PHOTO_DOC,
   { key: 'medical_reports',  title: 'Medical / developmental / therapy reports', sub: 'If relevant — helps the school plan support.', optional: true },
 ]
 
 const GRADED_DOCS: DocRequirement[] = [
   { key: 'psa_birth_cert',     title: 'PSA Birth Certificate (photocopy)', sub: 'Clear scan or photo of the PSA-issued certificate.' },
+  CHILD_PHOTO_DOC,
   { key: 'report_card_sf9',    title: 'Latest Report Card / SF9 (Form 138)', sub: 'Most recent grading period.' },
   { key: 'good_moral',         title: 'Certificate of Good Moral Character', sub: 'From the previous school.' },
   { key: 'form_137_sf10',      title: 'Form 137 / SF10 or previous school records', sub: 'Permanent record from the prior school.' },
@@ -177,7 +188,7 @@ function DocRow({ doc, file, onFile }: { doc: DocRequirement; file: File | null;
       <input
         type="file"
         className="hidden"
-        accept=".pdf,image/*"
+        accept={doc.imageOnly ? 'image/*' : '.pdf,image/*'}
         onChange={e => onFile(e.target.files?.[0] ?? null)}
       />
     </label>
