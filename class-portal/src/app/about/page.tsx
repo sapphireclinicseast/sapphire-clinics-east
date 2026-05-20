@@ -36,16 +36,64 @@ export default function AboutPage() {
         </div>
 
         <div className="card-static">
-          <h2 className="text-[22px] leading-tight mb-3">How enrollment works</h2>
-          <ol className="space-y-2.5 text-[14.5px] text-[color:var(--ink)] list-decimal pl-5">
-            <li>Register your student and choose an enrollment level.</li>
-            <li>Provide the PSA Birth Certificate number.</li>
-            <li>Upload the required documents and sign the Parent/Guardian Waiver.</li>
-            <li>Our admissions team reviews and confirms next steps.</li>
+          <h2 className="text-[22px] leading-tight mb-1">How enrollment works</h2>
+          <p className="text-[12.5px] text-[color:var(--mid-gray)] mb-5">A 7-step process from initial evaluation to your child&apos;s first day in class.</p>
+
+          <ol className="relative space-y-4">
+            {ENROLLMENT_STEPS.map((step, i) => (
+              <li key={i} className="relative pl-12">
+                {i < ENROLLMENT_STEPS.length - 1 && (
+                  <span aria-hidden className="absolute left-[15px] top-9 bottom-[-1rem] w-[2px]" style={{ background: 'var(--paper-3)' }} />
+                )}
+                <span
+                  aria-hidden
+                  className="absolute left-0 top-1 w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0"
+                  style={{ background: 'var(--narra)', color: '#fff', fontFamily: 'var(--font-display)' }}
+                >
+                  {i + 1}
+                </span>
+                <div className="font-semibold text-[color:var(--narra)] text-[15px] leading-snug" style={{ fontFamily: 'var(--font-display)' }}>{step.title}</div>
+                <div className="text-[13.5px] text-[color:var(--ink)] mt-1 leading-relaxed">{step.body}</div>
+              </li>
+            ))}
           </ol>
-          <div className="mt-5">
+
+          <div className="mt-7">
             <a href="/" className="btn-primary">Start enrollment →</a>
           </div>
+        </div>
+
+        <div className="card-static">
+          <h2 className="text-[22px] leading-tight mb-1">Documents to prepare</h2>
+          <p className="text-[12.5px] text-[color:var(--mid-gray)] mb-5">
+            For <span className="font-semibold text-[color:var(--narra)]">Kindergarten</span>, only the PSA Birth Certificate is required. For <span className="font-semibold text-[color:var(--narra)]">Grades 1&ndash;10</span>, the full list below applies.
+          </p>
+
+          <ul className="grid sm:grid-cols-2 gap-x-5 gap-y-3">
+            {ENROLLMENT_DOCS.map((doc, i) => {
+              const num = i + 1
+              const isMandatory = !!doc.mandatory
+              return (
+                <li key={i} className="flex items-start gap-3">
+                  <span
+                    aria-hidden
+                    className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-[12px] shrink-0"
+                    style={{
+                      background: isMandatory ? 'var(--clay)' : 'var(--sage)',
+                      color: '#fff',
+                      fontFamily: 'var(--font-display)',
+                    }}
+                  >
+                    {num}
+                  </span>
+                  <span className={`text-[13.5px] leading-snug ${isMandatory ? 'font-semibold text-[color:var(--clay)]' : 'text-[color:var(--ink)]'}`}>
+                    {doc.title}
+                    {isMandatory && <span className="ml-1 text-[11px] uppercase tracking-[0.08em]">&larr; Mandatory</span>}
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
         </div>
 
         <div className="card-static">
@@ -103,3 +151,44 @@ function BranchCard({ name, address, email, phones }: { name: string; address: s
 function Dot() {
   return <span className="mt-2 inline-block w-1.5 h-1.5 rounded-full bg-[color:var(--clay)] shrink-0" />
 }
+
+const ENROLLMENT_STEPS: Array<{ title: string; body: string }> = [
+  {
+    title: 'Schedule an initial evaluation',
+    body: 'Book a session with our front desk so the SPED teacher can assess your child and prepare an Individualized Education Program (IEP). New students only — existing clients with a clinic IEP can skip this step.',
+  },
+  {
+    title: 'Register your student and choose an enrollment level',
+    body: 'Create a parent account and pick the grade level (Kindergarten or Grade 1 through Grade 10).',
+  },
+  {
+    title: 'Fill out and sign the enrollment form on the website',
+    body: 'Complete the DepEd Annex 2 learner profile, then add your signature inside the certification block.',
+  },
+  {
+    title: 'Upload the required documents and sign the Parent/Guardian Waiver',
+    body: 'See the document list below. The Parent/Guardian Waiver is mandatory and must be signed before we can confirm enrollment.',
+  },
+  {
+    title: 'Pay the tuition fee',
+    body: 'Choose annual, bi-annual, or monthly plan and pay securely via PayMongo (card, GCash, Maya, or GrabPay).',
+  },
+  {
+    title: 'Front desk confirms payment acceptance',
+    body: 'Our front desk team verifies the payment. You may also purchase books and the school uniform from the front desk at this stage.',
+  },
+  {
+    title: 'Enrolled — your child may start attending classes!',
+    body: 'You will receive your Learner Reference Number (LRN) and class schedule. Welcome to SCEI × LBCA.',
+  },
+]
+
+const ENROLLMENT_DOCS: Array<{ title: string; mandatory?: boolean }> = [
+  { title: 'PSA Birth Certificate (photocopy)' },
+  { title: 'Form 137 / SF10 or previous school records' },
+  { title: 'Latest Report Card / SF9' },
+  { title: 'Certificate of Good Moral Character' },
+  { title: 'Completed enrollment form (LBCA digital form)' },
+  { title: 'Medical / developmental / therapy reports (if relevant)' },
+  { title: 'Signed Parent/Guardian Waiver', mandatory: true },
+]
