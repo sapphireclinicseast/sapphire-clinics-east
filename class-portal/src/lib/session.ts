@@ -821,16 +821,30 @@ export function saveGrade(g: GradeRecord) {
 
 const CURRICULUM_KEY = 'scei_class_curriculum_v1'
 
+/** One file attached to a curriculum entry — either the PDF or the editable Word version. */
+export interface CurriculumFile {
+  fileId: string          // ref to large-file (IndexedDB) store
+  fileName: string
+  fileType: string
+  fileSize: number
+}
+
 export interface CurriculumRecord {
   id: string
   level: EnrollmentLevel
   title: string
-  fileId: string          // ref to large-file store
-  fileName: string
-  fileType: string
-  fileSize: number
+  /** Optional PDF version. */
+  pdf?: CurriculumFile
+  /** Optional Word (.doc / .docx) version of the same document. */
+  doc?: CurriculumFile
   uploadedBy: string      // "admin" or teacher email
   uploadedAt: string
+  /** Legacy single-file fields — read-only back-compat for records uploaded
+   *  before the PDF/DOC split. Surfaced in the list as a single download. */
+  fileId?: string
+  fileName?: string
+  fileType?: string
+  fileSize?: number
 }
 
 export function getCurriculum(): CurriculumRecord[] {
