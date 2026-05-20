@@ -765,3 +765,38 @@ model ClassPortalUser {
   @@unique([role, email])
   @@index([role])
 }
+
+enum ClassPortalEventType {
+  CLASS_CANCELLED
+  HOLIDAY
+  FIELD_TRIP
+  IEP_REVIEW
+  EVENT
+}
+
+/// One row per calendar event. Spans a single date or a date range
+/// (date..endDate inclusive) for multi-day items like field trips.
+model ClassPortalCalendarEvent {
+  id          String                @id @default(cuid())
+  date        DateTime              @db.Date
+  endDate     DateTime?             @db.Date
+  title       String
+  description String?
+  type        ClassPortalEventType  @default(EVENT)
+  createdBy   String
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@index([date])
+}
+
+/// At most one row is "current" at a time — uploads replace the previous
+/// PDF so admins always show the latest official calendar.
+model ClassPortalCalendarPdf {
+  id          String   @id @default(cuid())
+  fileName    String
+  mimeType    String   @default("application/pdf")
+  data        Bytes
+  uploadedBy  String
+  uploadedAt  DateTime @default(now())
+}
