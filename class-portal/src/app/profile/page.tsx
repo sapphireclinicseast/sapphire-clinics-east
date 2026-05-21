@@ -209,7 +209,7 @@ function PaymentTab({ payments }: { payments: PaymentRecord[] }) {
           <p className="text-[15px] text-[color:var(--narra)] font-semibold mb-3" style={{ fontFamily: 'var(--font-display)' }}>
             You still need to pay tuition.
           </p>
-          <a href="/pay" className="btn-cta">Pay tuition fee via PayMongo →</a>
+          <a href="/pay" className="btn-cta">Pay tuition fee →</a>
         </div>
         {pending.length > 0 && (
           <details className="mt-4">

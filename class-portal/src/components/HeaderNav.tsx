@@ -33,7 +33,7 @@ export default function HeaderNav() {
   }
 
   const dashboardHref =
-    auth?.role === 'ADMIN' ? '/admin'
+    auth?.role === 'ADMIN' || auth?.role === 'BRANCH_ADMIN' ? '/admin'
     : auth?.role === 'FRONTDESK' ? '/frontdesk'
     : '/profile'
 
@@ -53,7 +53,10 @@ export default function HeaderNav() {
         <>
           <a href="/calendar" className={linkCls}>Calendar</a>
           <a href={dashboardHref} className={linkCls}>
-            {auth.role === 'ADMIN' ? 'Admin' : auth.role === 'FRONTDESK' ? 'Front desk' : 'My Profile'}
+            {auth.role === 'ADMIN' ? 'Admin'
+             : auth.role === 'BRANCH_ADMIN' ? 'Branch admin'
+             : auth.role === 'FRONTDESK' ? 'Front desk'
+             : 'My Profile'}
           </a>
           <button onClick={handleSignOut} className="px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] transition-colors font-semibold whitespace-nowrap">
             Sign Out
