@@ -46,6 +46,13 @@ function wrap(doc: jsPDF, text: string, x: number, y: number, w: number, lineH =
   return y
 }
 
+/**
+ * Standard vertical step between blank rows. Large enough that the small
+ * italic field caption (drawn at y + 5.4 below the underline) does NOT
+ * collide with the next row's text baseline.
+ */
+const ROW_STEP = 10.5
+
 /** Inline blank with caption label underneath. Returns the right edge. */
 function inlineBlank(doc: jsPDF, x: number, y: number, w: number, value: string, caption: string): number {
   // The value sits on the underline, the caption is the small italic label below.
@@ -58,13 +65,31 @@ function inlineBlank(doc: jsPDF, x: number, y: number, w: number, value: string,
     const lines = doc.splitTextToSize(value, w - 1) as string[]
     doc.text(lines[0] ?? '', x + 0.8, y)
   }
-  // Caption
-  doc.setFontSize(7.5)
-  doc.setFont('helvetica', 'italic')
-  muted(doc)
-  doc.text(caption, x + w / 2, y + 5.4, { align: 'center' })
-  reset(doc)
+  // Caption (only render when there's no value, OR small italic helper text
+  // sitting under the field — keeps a filled-in form clean and avoids the
+  // caption colliding with the next row's content).
+  if (!value) {
+    doc.setFontSize(7.5)
+    doc.setFont('helvetica', 'italic')
+    muted(doc)
+    doc.text(caption, x + w / 2, y + 5.4, { align: 'center' })
+    reset(doc)
+  }
   return x + w
+}
+
+/** "21" → "21st", "22" → "22nd", etc. Used for the attested-day line. */
+function ordinal(nRaw: string | number): string {
+  const n = Number(nRaw)
+  if (!Number.isFinite(n)) return String(nRaw)
+  const v = n % 100
+  if (v >= 11 && v <= 13) return n + 'th'
+  switch (n % 10) {
+    case 1: return n + 'st'
+    case 2: return n + 'nd'
+    case 3: return n + 'rd'
+    default: return n + 'th'
+  }
 }
 
 export function generateAffidavitPdf(input: AffidavitInput): jsPDF {
@@ -95,14 +120,14 @@ export function generateAffidavitPdf(input: AffidavitInput): jsPDF {
   doc.text('I,', MARGIN, y)
   inlineBlank(doc, MARGIN + 5, y, 110, input.parentName, 'Name of Parent/Guardian')
   doc.text('of legal age, a resident of', MARGIN + 117, y)
-  y += 8
+  y += ROW_STEP
 
   inlineBlank(doc, MARGIN, y, CONTENT_W, input.parentAddress, 'Address')
-  y += 8
+  y += ROW_STEP
 
   doc.text('and the parent/guardian of', MARGIN, y)
   inlineBlank(doc, MARGIN + 56, y, CONTENT_W - 56, input.learnerName, 'Name of Learner')
-  y += 8
+  y += ROW_STEP
 
   y = wrap(doc, 'hereby signs this document freely and with full understanding of its contents.', MARGIN, y, CONTENT_W)
   y += 4
@@ -117,23 +142,23 @@ export function generateAffidavitPdf(input: AffidavitInput): jsPDF {
   doc.text('I choose to enroll my child at', MARGIN + 10, y)
   inlineBlank(doc, MARGIN + 64, y, CONTENT_W - 64 - 1.5, input.schoolName ?? 'Light Bearer Christian Academy', 'Name of School')
   doc.text('.', PAGE_W - MARGIN - 1.5, y)
-  y += 8
+  y += ROW_STEP
 
   // 2. Previously enrolled at <prev school> and passed grade level of <grade>
   doc.text('2.', MARGIN + 4, y)
   doc.text('I certify that my child was previously enrolled at', MARGIN + 10, y)
   inlineBlank(doc, MARGIN + 96, y, CONTENT_W - 96, input.previousSchoolName, 'Name of Previous School')
-  y += 8
+  y += ROW_STEP
   doc.text('and passed the grade level of', MARGIN + 10, y)
   inlineBlank(doc, MARGIN + 64, y, 40, input.previousGradeLevel, 'Grade level')
   doc.text('.', MARGIN + 104.5, y)
-  y += 8
+  y += ROW_STEP
 
   // 3. Due to <reason>, cannot submit transfer credentials
   doc.text('3.', MARGIN + 4, y)
   doc.text('Due to', MARGIN + 10, y)
   inlineBlank(doc, MARGIN + 22, y, CONTENT_W - 22, input.reason, 'Reason')
-  y += 6
+  y += ROW_STEP - 2
   y = wrap(doc, 'I cannot submit the transfer credentials of my child to this school.', MARGIN + 10, y, CONTENT_W - 10)
   y += 2
 
@@ -160,7 +185,7 @@ export function generateAffidavitPdf(input: AffidavitInput): jsPDF {
   doc.text('Submit the transfer credentials of my child on or before', MARGIN + 10, y)
   inlineBlank(doc, MARGIN + 105, y, CONTENT_W - 105, input.submitCredentialsBy ?? 'August 15, 2026', 'Deadline')
   doc.text('.', PAGE_W - MARGIN - 1.5, y)
-  y += 8
+  y += ROW_STEP
 
   const moreUndertakings = [
     'I agree that the official record from this school shall only be released until the submission of school credentials from the previous school.',
@@ -195,28 +220,35 @@ export function generateAffidavitPdf(input: AffidavitInput): jsPDF {
 
   // ── Attested this day of month at city ────────────────────────
   doc.text('Attested this', MARGIN, y)
-  inlineBlank(doc, MARGIN + 24, y, 18, input.attestedDay, 'day')
+  inlineBlank(doc, MARGIN + 24, y, 18, input.attestedDay ? ordinal(input.attestedDay) : '', 'day')
   doc.text('day of', MARGIN + 44, y)
   inlineBlank(doc, MARGIN + 56, y, 50, input.attestedMonth, 'month')
   doc.text('at', MARGIN + 108, y)
   inlineBlank(doc, MARGIN + 113, y, CONTENT_W - 113 - 1.5, input.attestedCity, 'city')
   doc.text('.', PAGE_W - MARGIN - 1.5, y)
-  y += 16
+  y += 18
 
   // ── Signature block ────────────────────────────────────────────
-  const sigLineW = 90
+  const sigLineW = 100
   const sigCenterX = PAGE_W / 2
   if (input.signatureDataUrl) {
     try {
-      doc.addImage(input.signatureDataUrl, 'PNG', sigCenterX - sigLineW / 2 + 4, y - 14, sigLineW - 8, 14, undefined, 'FAST')
+      // Signature image sits ABOVE the line.
+      doc.addImage(input.signatureDataUrl, 'PNG', sigCenterX - sigLineW / 2 + 4, y - 16, sigLineW - 8, 14, undefined, 'FAST')
     } catch { /* ignore */ }
   }
   doc.setLineWidth(0.4)
   doc.line(sigCenterX - sigLineW / 2, y, sigCenterX + sigLineW / 2, y)
+  // Printed name BELOW the line — the parent's typed name, then the
+  // small italic caption beneath that.
+  if (input.parentName) {
+    inkRgb(doc); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5)
+    doc.text(input.parentName, sigCenterX, y + 5, { align: 'center' })
+  }
   doc.setFontSize(8); doc.setFont('helvetica', 'italic'); muted(doc)
-  doc.text('Signature Over Printed Name of Parent/Guardian', sigCenterX, y + 4, { align: 'center' })
+  doc.text('Signature Over Printed Name of Parent/Guardian', sigCenterX, y + 9.5, { align: 'center' })
   reset(doc)
-  y += 14
+  y += 18
 
   // ── Gov't ID block (optional) ─────────────────────────────────
   doc.setFontSize(9.5)

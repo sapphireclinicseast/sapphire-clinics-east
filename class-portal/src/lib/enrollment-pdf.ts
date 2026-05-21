@@ -27,8 +27,10 @@ const WRAP_GAP = 1.2
 const SEC_HEADER_BAND = 4.6
 const SEC_HEADER_GAP = 5.8
 
-const COLOR_NARRA: [number, number, number]  = [27, 63, 56]
-const COLOR_MOSS:  [number, number, number]  = [38, 85, 75]
+// Aura Academy palette — lighter, friendlier teal that pairs with the
+// rainbow logo. Matches the live --narra / --moss CSS tokens.
+const COLOR_NARRA: [number, number, number]  = [61, 107, 98]
+const COLOR_MOSS:  [number, number, number]  = [84, 125, 114]
 const COLOR_INK:   [number, number, number]  = [26, 26, 26]
 const COLOR_MIDGRAY: [number, number, number] = [107, 99, 87]
 const COLOR_PAPER2: [number, number, number]  = [236, 230, 217]
@@ -244,14 +246,19 @@ export function generateEnrollmentPdf(user: StoredUser, draft: Partial<Enrollmen
 
   // ── Title (compact, 1-band header) ────────────────────
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(10.5)
+  doc.setFontSize(11)
   setColor(doc, COLOR_NARRA)
-  doc.text('SAPPHIRE CLINICS EAST × LIGHT BEARER CHRISTIAN ACADEMY', PAGE_W / 2, c.y + 4, { align: 'center' })
+  doc.text('AURA ACADEMY FOR LEARNING', PAGE_W / 2, c.y + 4, { align: 'center' })
+  doc.setFont('helvetica', 'italic')
+  doc.setFontSize(8)
+  setColor(doc, COLOR_MOSS)
+  doc.text('(operated by Sapphire Clinics East × Light Bearer Christian Academy)', PAGE_W / 2, c.y + 8, { align: 'center' })
+  doc.setFont('helvetica', 'bold')
   doc.setFontSize(8.5)
   setColor(doc, COLOR_MOSS)
   const syLabel = draft.schoolYearFrom && draft.schoolYearTo ? `${draft.schoolYearFrom}–${draft.schoolYearTo}` : '_______'
-  doc.text(`ENROLLMENT FORM — School Year ${syLabel}   ·   DepEd Annex 2`, PAGE_W / 2, c.y + 8.2, { align: 'center' })
-  c.y += 10
+  doc.text(`ENROLLMENT FORM — School Year ${syLabel}   ·   DepEd Annex 2`, PAGE_W / 2, c.y + 12.5, { align: 'center' })
+  c.y += 14.5
   setDraw(doc, COLOR_PAPER2); doc.setLineWidth(0.3)
   doc.line(PAGE_MARGIN, c.y, PAGE_W - PAGE_MARGIN, c.y)
   c.y += 2

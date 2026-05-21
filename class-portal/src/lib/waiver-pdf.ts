@@ -18,9 +18,9 @@ const PAGE_W = 210 // A4 mm
 const PAGE_H = 297
 const CONTENT_W = PAGE_W - PAGE_MARGIN_X * 2
 
-// ── Brand palette in hex strings (jsPDF accepts r,g,b numbers) ────
-const COLOR_NARRA: [number, number, number] = [27, 63, 56]
-const COLOR_MOSS:  [number, number, number] = [38, 85, 75]
+// ── Brand palette — Aura Academy (lighter than the original SCEI teal). ──
+const COLOR_NARRA: [number, number, number] = [61, 107, 98]
+const COLOR_MOSS:  [number, number, number] = [84, 125, 114]
 const COLOR_INK:   [number, number, number] = [26, 26, 26]
 const COLOR_MIDGRAY: [number, number, number] = [107, 99, 87]
 const COLOR_PAPER2: [number, number, number] = [236, 230, 217]
@@ -67,19 +67,16 @@ function drawHeading(c: Cursor) {
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(15)
   setColor(doc, COLOR_NARRA)
-  doc.text('SAPPHIRE CLINICS EAST, INC.', PAGE_W / 2, c.y + 6, { align: 'center' })
-  doc.setFontSize(10)
+  doc.text('AURA ACADEMY FOR LEARNING', PAGE_W / 2, c.y + 6, { align: 'center' })
+  doc.setFont('helvetica', 'italic')
+  doc.setFontSize(9.5)
   setColor(doc, COLOR_MOSS)
-  doc.text('in partnership with LIGHT BEARER CHRISTIAN ACADEMY (LBCA)', PAGE_W / 2, c.y + 11.5, { align: 'center' })
+  doc.text('operated by Sapphire Clinics East, Inc. × Light Bearer Christian Academy', PAGE_W / 2, c.y + 11.5, { align: 'center' })
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(12)
   setColor(doc, COLOR_NARRA)
   doc.text('PARENT/GUARDIAN WAIVER, ACKNOWLEDGMENT, AND CONSENT FORM', PAGE_W / 2, c.y + 18, { align: 'center' })
-  doc.setFont('helvetica', 'italic')
-  doc.setFontSize(9.5)
-  setColor(doc, COLOR_MIDGRAY)
-  doc.text('(SCEI × LBCA SPED School Program)', PAGE_W / 2, c.y + 23, { align: 'center' })
-  c.y += 27
+  c.y += 22
   // thin divider
   setDrawColor(doc, COLOR_PAPER2)
   doc.setLineWidth(0.4)

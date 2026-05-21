@@ -180,7 +180,7 @@ const ENROLLMENT_STEPS: Array<{ title: string; titleHighlight?: string; body: st
   {
     title: 'Pay the tuition fee',
     titleHighlight: 'Pay',
-    body: 'Choose annual, bi-annual, or monthly plan and pay securely via PayMongo (Credit card, GCash, Maya, or GrabPay).',
+    body: 'Choose annual, bi-annual, or monthly plan and pay through any of three options: securely via PayMongo (Credit card, GCash, Maya, or GrabPay), in cash at the front desk, or by direct bank deposit with proof of payment uploaded.',
   },
   {
     title: 'Front desk confirms payment acceptance',
