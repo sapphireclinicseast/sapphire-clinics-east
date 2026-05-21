@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   getAuth, getUsers, getPaymentsForStudent, savePayment, putFile,
-  levelLabel, getFeeFor, hydrateFees,
+  levelLabel, getFeeFor, hydrateFees, hydrateFrontDeskPayments,
   type PaymentPlan, type PaymentMethod, type PaymentRecord, type StoredUser, type FeeSchedule,
 } from '@/lib/session'
 import { backendJson } from '@/lib/backend'
@@ -76,6 +76,9 @@ export default function PayPage() {
     setFee(getFeeFor(u.branch))
     // Stream the freshest schedule from the API so admin edits on another device flow through.
     hydrateFees().then(() => setFee(getFeeFor(u.branch))).catch(() => { /* ignore */ })
+    // Pull the marketing-hub view so any cashier-converted payment shows up
+    // here as PAID without the parent having to manually refresh.
+    hydrateFrontDeskPayments().then(() => setHistory(getPaymentsForStudent(u.id))).catch(() => { /* ignore */ })
   }, [router])
 
   const plans = useMemo(() => fee ? plansFor(fee) : [], [fee])

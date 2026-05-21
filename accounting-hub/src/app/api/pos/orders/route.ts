@@ -385,6 +385,32 @@ export async function POST(req: Request) {
       },
     })
 
+    // Class-portal tuition queue items use a queueItemId prefixed `clsp_<classPortalPaymentId>`.
+    // When the cashier converts one to an order, callback the marketing hub
+    // so the class-portal student's payment record flips PENDING → PAID on
+    // next hydrate. Fire-and-forget — a failed webhook must not block the
+    // order from being saved (the front desk's books are the source of truth).
+    if (typeof queueItemId === 'string' && queueItemId.startsWith('clsp_')) {
+      const classPortalPaymentId = queueItemId.slice('clsp_'.length)
+      const marketingUrl = process.env.MARKETING_HUB_URL || 'https://marketing.sapphireclinicseast.org'
+      const apiKey = process.env.EXTERNAL_API_KEY || ''
+      if (apiKey && classPortalPaymentId) {
+        void fetch(`${marketingUrl}/api/internal/class-portal/frontdesk-payments/${encodeURIComponent(classPortalPaymentId)}`, {
+          method: 'PATCH',
+          headers: {
+            'authorization': `Bearer ${apiKey}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            status: 'CONVERTED',
+            notes: `Order ${order.orderNumber ?? order.id} by ${session.user.name ?? session.user.id}`,
+          }),
+        }).catch(err => {
+          console.warn('[orders.POST] class-portal callback failed:', err)
+        })
+      }
+    }
+
     return NextResponse.json(order, { status: 201 })
   } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
