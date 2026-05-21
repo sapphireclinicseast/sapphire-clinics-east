@@ -724,6 +724,8 @@ model SmsCampaign {
 enum ClassPortalRole {
   STUDENT
   TEACHER
+  FRONTDESK
+  BRANCH_ADMIN
 }
 
 enum ClassPortalLevel {

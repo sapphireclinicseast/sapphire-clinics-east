@@ -171,17 +171,26 @@ import { backendJson, setToken, clearToken, getToken } from './backend'
 const USERS_KEY = 'scei_class_users_v1'
 const AUTH_KEY = 'scei_class_auth_v1'
 
-export type UserRole = 'STUDENT' | 'TEACHER'
-export type AuthRole = UserRole | 'ADMIN' | 'FRONTDESK'
+export type UserRole = 'STUDENT' | 'TEACHER' | 'FRONTDESK' | 'BRANCH_ADMIN'
+export type AuthRole = UserRole | 'ADMIN'
 
-/** Clinic branch the student is enrolled under. Teachers don't have one;
- *  their branch coverage lives in the teacher-assignment table. */
+/** Clinic branch a record is scoped to. */
 export type Branch = 'EAST' | 'GREENHILLS'
 
 export function branchLabel(b: Branch | undefined | null): string {
   if (b === 'EAST') return 'East Branch'
   if (b === 'GREENHILLS') return 'Greenhills Branch'
   return '—'
+}
+
+export function roleLabel(r: UserRole | 'ADMIN'): string {
+  switch (r) {
+    case 'ADMIN':        return 'Main admin'
+    case 'BRANCH_ADMIN': return 'Branch admin'
+    case 'FRONTDESK':    return 'Front desk'
+    case 'TEACHER':      return 'Teacher'
+    case 'STUDENT':      return 'Student'
+  }
 }
 
 export interface StoredUser {
@@ -203,6 +212,8 @@ export interface AuthSession {
   email: string
   userId?: string
   firstName?: string
+  /** Branch the staff account is scoped to (FRONTDESK + BRANCH_ADMIN). */
+  branch?: Branch
 }
 
 export const ADMIN_EMAIL = 'main@sapphireclinicseast.org'
@@ -261,9 +272,10 @@ export async function hydrateUsers(): Promise<StoredUser[]> {
   try {
     const { users } = await backendJson<{ users: ApiUser[] }>('/api/public/class-portal/users')
     const existing = getUsers()
+    const localPws = readLocalPwMap()
     const merged: StoredUser[] = users.map(u => {
       const prev = existing.find(e => e.id === u.id)
-      return apiToStored(u, prev?.password ?? '')
+      return apiToStored(u, prev?.password ?? localPws[u.id] ?? '')
     })
     writeUsers(merged)
     return merged
@@ -288,6 +300,9 @@ export async function addUser(u: Omit<StoredUser, 'id' | 'createdAt'>): Promise<
   })
   const stored = apiToStored(user, u.password)
   writeUsers([...getUsers().filter(x => x.id !== stored.id), stored])
+  if (u.password) {
+    try { setLocalPassword(stored.id, u.password) } catch { /* ignore */ }
+  }
   return stored
 }
 
@@ -307,12 +322,16 @@ export async function updateUser(id: string, patch: Partial<Omit<StoredUser, 'id
   const prev = getUsers().find(u => u.id === id)
   const stored = apiToStored(user, patch.password ?? prev?.password ?? '')
   writeUsers(getUsers().map(u => (u.id === id ? stored : u)))
+  if (patch.password) {
+    try { setLocalPassword(id, patch.password) } catch { /* ignore */ }
+  }
   return stored
 }
 
 export async function deleteUser(id: string): Promise<void> {
   await backendJson(`/api/public/class-portal/users/${id}`, { method: 'DELETE' })
   writeUsers(getUsers().filter(u => u.id !== id))
+  try { deleteLocalPassword(id) } catch { /* ignore */ }
 }
 
 /**
@@ -1127,7 +1146,7 @@ export async function deleteFile(id: string): Promise<void> {
 export async function signIn(role: AuthRole, email: string, password: string): Promise<AuthSession> {
   const res = await backendJson<{
     token: string
-    user: { id?: string; role: AuthRole; email: string; firstName?: string | null }
+    user: { id?: string; role: AuthRole; email: string; firstName?: string | null; branch?: Branch | null }
   }>('/api/public/class-portal/auth/sign-in', {
     method: 'POST',
     body: JSON.stringify({ role, email: email.trim().toLowerCase(), password }),
@@ -1138,6 +1157,7 @@ export async function signIn(role: AuthRole, email: string, password: string): P
     email: res.user.email,
     userId: res.user.id,
     firstName: res.user.firstName ?? undefined,
+    branch: res.user.branch ?? undefined,
   }
   setAuth(session)
   // Hydrate the local user cache so subsequent sync getUsers() calls have data.
@@ -1145,6 +1165,51 @@ export async function signIn(role: AuthRole, email: string, password: string): P
     try { await hydrateUsers() } catch { /* ignore */ }
   }
   return session
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Local password cache — bcrypt hashes are one-way, so the API can
+   never return an existing password. To support the admin "see what
+   I just set" workflow, we keep a per-device localStorage map of
+   plaintexts for accounts the admin created or reset on this device.
+   ───────────────────────────────────────────────────────────── */
+
+const LOCAL_PWS_KEY = 'scei_class_local_pws_v1'
+
+function readLocalPwMap(): Record<string, string> {
+  if (typeof window === 'undefined') return {}
+  try {
+    const raw = localStorage.getItem(LOCAL_PWS_KEY)
+    return raw ? (JSON.parse(raw) as Record<string, string>) : {}
+  } catch { return {} }
+}
+function writeLocalPwMap(map: Record<string, string>) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(LOCAL_PWS_KEY, JSON.stringify(map))
+}
+export function getLocalPassword(userId: string): string | null {
+  return readLocalPwMap()[userId] ?? null
+}
+export function setLocalPassword(userId: string, password: string) {
+  const map = readLocalPwMap()
+  map[userId] = password
+  writeLocalPwMap(map)
+}
+export function deleteLocalPassword(userId: string) {
+  const map = readLocalPwMap()
+  delete map[userId]
+  writeLocalPwMap(map)
+}
+
+/** Generate a short alphanumeric password for admin-initiated resets. */
+export function generatePassword(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
+  let out = ''
+  const len = 10
+  const bytes = new Uint8Array(len)
+  crypto.getRandomValues(bytes)
+  for (let i = 0; i < len; i++) out += chars[bytes[i] % chars.length]
+  return out
 }
 
 /** Clear sign-in state. */

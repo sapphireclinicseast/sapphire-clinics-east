@@ -34,12 +34,26 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       enrollment?: Record<string, unknown> | null
     }
 
-    // STUDENT may only update their own row; TEACHER cannot edit users; ADMIN unrestricted.
-    if (auth.role === 'TEACHER') {
-      return withCors(NextResponse.json({ error: 'Teachers cannot edit user accounts.' }, { status: 403 }), origin)
+    // STUDENT may only update their own row; TEACHER / FRONTDESK cannot edit
+    // users; BRANCH_ADMIN can edit anything in their branch; ADMIN unrestricted.
+    if (auth.role === 'TEACHER' || auth.role === 'FRONTDESK') {
+      return withCors(NextResponse.json({ error: 'This role cannot edit user accounts.' }, { status: 403 }), origin)
     }
     if (auth.role === 'STUDENT' && auth.userId !== id) {
       return withCors(NextResponse.json({ error: 'You can only edit your own record.' }, { status: 403 }), origin)
+    }
+    if (auth.role === 'BRANCH_ADMIN') {
+      const target = await prisma.classPortalUser.findUnique({ where: { id } })
+      if (!target) {
+        return withCors(NextResponse.json({ error: 'User not found.' }, { status: 404 }), origin)
+      }
+      if (target.role === 'BRANCH_ADMIN' && target.id !== auth.userId) {
+        return withCors(NextResponse.json({ error: 'Branch admins cannot edit other branch admins.' }, { status: 403 }), origin)
+      }
+      // Branch admins may only touch users in their branch (or unscoped teachers).
+      if (target.branch && auth.branch && target.branch !== auth.branch) {
+        return withCors(NextResponse.json({ error: 'Out of branch scope.' }, { status: 403 }), origin)
+      }
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -50,7 +50,7 @@ export async function POST(req: Request) {
   const origin = req.headers.get('origin')
   try {
     const body = await req.json() as {
-      role: 'STUDENT' | 'TEACHER'
+      role: 'STUDENT' | 'TEACHER' | 'FRONTDESK' | 'BRANCH_ADMIN'
       email: string
       password: string
       firstName?: string
@@ -62,24 +62,37 @@ export async function POST(req: Request) {
     if (!body.role || !body.email || !body.password) {
       return withCors(NextResponse.json({ error: 'role, email, and password are required.' }, { status: 400 }), origin)
     }
-    if (body.role !== 'TEACHER' && body.role !== 'STUDENT') {
-      return withCors(NextResponse.json({ error: 'role must be TEACHER or STUDENT.' }, { status: 400 }), origin)
+    const validRoles: Array<typeof body.role> = ['STUDENT', 'TEACHER', 'FRONTDESK', 'BRANCH_ADMIN']
+    if (!validRoles.includes(body.role)) {
+      return withCors(NextResponse.json({ error: 'Invalid role.' }, { status: 400 }), origin)
     }
     // STUDENT registration is public (parent enrolling their child via /enroll).
-    // TEACHER creation requires admin authentication.
-    if (body.role === 'TEACHER') {
-      await requireAuth(req, ['ADMIN'])
+    // Staff roles require auth:
+    //   ADMIN         → can mint any staff role
+    //   BRANCH_ADMIN  → can mint TEACHER + FRONTDESK only (no more branch admins)
+    //   anyone else   → forbidden
+    if (body.role !== 'STUDENT') {
+      const auth = await requireAuth(req, ['ADMIN', 'BRANCH_ADMIN'])
+      if (auth.role === 'BRANCH_ADMIN' && body.role === 'BRANCH_ADMIN') {
+        return withCors(NextResponse.json({ error: 'Branch admins cannot create other branch admins.' }, { status: 403 }), origin)
+      }
+      // Branch admins may only create staff for their own branch.
+      if (auth.role === 'BRANCH_ADMIN' && body.role !== 'TEACHER' && body.branch && body.branch !== auth.branch) {
+        return withCors(NextResponse.json({ error: 'Branch admins can only create staff for their own branch.' }, { status: 403 }), origin)
+      }
     }
     const email = body.email.trim().toLowerCase()
     const existing = await prisma.classPortalUser.findUnique({
-      where: { role_email: { role: body.role, email } },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      where: { role_email: { role: body.role as any, email } },
     })
     if (existing) {
       return withCors(NextResponse.json({ error: 'A user with this email already exists for this role.' }, { status: 409 }), origin)
     }
     const created = await prisma.classPortalUser.create({
       data: {
-        role: body.role,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        role: body.role as any,
         email,
         passwordHash: await hashPassword(body.password),
         firstName: body.firstName ?? null,

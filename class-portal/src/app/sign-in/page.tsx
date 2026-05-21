@@ -5,10 +5,11 @@ import { useRouter } from 'next/navigation'
 import { signIn, type AuthRole } from '@/lib/session'
 
 const ROLES: { value: AuthRole; title: string; sub: string }[] = [
-  { value: 'TEACHER',   title: 'As Teacher',   sub: 'School staff sign-in' },
-  { value: 'STUDENT',   title: 'As Student',   sub: 'Parent / Guardian sign-in' },
-  { value: 'FRONTDESK', title: 'As Front desk', sub: 'Clinic front-desk staff' },
-  { value: 'ADMIN',     title: 'As Admin',     sub: 'SCEI administrators' },
+  { value: 'TEACHER',      title: 'As Teacher',      sub: 'School staff sign-in' },
+  { value: 'STUDENT',      title: 'As Student',      sub: 'Parent / Guardian sign-in' },
+  { value: 'FRONTDESK',    title: 'As Front desk',   sub: 'Clinic front-desk staff' },
+  { value: 'BRANCH_ADMIN', title: 'As Branch admin', sub: 'Per-branch administrators' },
+  { value: 'ADMIN',        title: 'As Main admin',   sub: 'SCEI administrators' },
 ]
 
 export default function SignInPage() {
@@ -27,7 +28,7 @@ export default function SignInPage() {
     try {
       const session = await signIn(role, email, password)
       router.push(
-        session.role === 'ADMIN' ? '/admin'
+        session.role === 'ADMIN' || session.role === 'BRANCH_ADMIN' ? '/admin'
         : session.role === 'FRONTDESK' ? '/frontdesk'
         : '/profile',
       )

@@ -31,7 +31,8 @@ export async function POST(req: Request) {
   if (!role || !email || !password) {
     return withCors(NextResponse.json({ error: 'role, email, and password are required.' }, { status: 400 }), origin)
   }
-  if (role !== 'ADMIN' && role !== 'TEACHER' && role !== 'STUDENT' && role !== 'FRONTDESK') {
+  const allowedRoles = ['ADMIN', 'TEACHER', 'STUDENT', 'FRONTDESK', 'BRANCH_ADMIN'] as const
+  if (!allowedRoles.includes(role as typeof allowedRoles[number])) {
     return withCors(NextResponse.json({ error: 'Invalid role.' }, { status: 400 }), origin)
   }
 
@@ -47,31 +48,53 @@ export async function POST(req: Request) {
     }), origin)
   }
 
-  // Frontdesk: virtual user, hardcoded creds.
+  // Frontdesk: try DB-backed branch-specific account first; fall back to
+  // the hardcoded shared-frontdesk credentials so the legacy login keeps
+  // working for sites that haven't yet provisioned per-branch staff.
   if (role === 'FRONTDESK') {
-    if (!isFrontdeskCredentials(email, password)) {
-      return withCors(NextResponse.json({ error: 'Invalid front desk credentials.' }, { status: 401 }), origin)
+    const dbUser = await prisma.classPortalUser.findUnique({
+      where: { role_email: { role: 'FRONTDESK', email: email.trim().toLowerCase() } },
+    })
+    if (dbUser && await comparePassword(password, dbUser.passwordHash)) {
+      const token = await signToken({
+        role: 'FRONTDESK', userId: dbUser.id, email: dbUser.email,
+        firstName: dbUser.firstName ?? undefined,
+        branch: (dbUser.branch as 'EAST' | 'GREENHILLS' | null) ?? undefined,
+      })
+      return withCors(NextResponse.json({
+        token,
+        user: {
+          id: dbUser.id, role: 'FRONTDESK' as ClassPortalRole, email: dbUser.email,
+          firstName: dbUser.firstName, lastName: dbUser.lastName, branch: dbUser.branch,
+        },
+      }), origin)
     }
-    const token = await signToken({ role: 'FRONTDESK', email: CLASS_PORTAL_FRONTDESK_EMAIL })
-    return withCors(NextResponse.json({
-      token,
-      user: { role: 'FRONTDESK' as ClassPortalRole, email: CLASS_PORTAL_FRONTDESK_EMAIL },
-    }), origin)
+    if (isFrontdeskCredentials(email, password)) {
+      const token = await signToken({ role: 'FRONTDESK', email: CLASS_PORTAL_FRONTDESK_EMAIL })
+      return withCors(NextResponse.json({
+        token,
+        user: { role: 'FRONTDESK' as ClassPortalRole, email: CLASS_PORTAL_FRONTDESK_EMAIL },
+      }), origin)
+    }
+    return withCors(NextResponse.json({ error: 'Invalid front desk credentials.' }, { status: 401 }), origin)
   }
 
-  // Teacher / Student: DB lookup + bcrypt verify.
-  const dbRole = role === 'TEACHER' ? 'TEACHER' : 'STUDENT'
+  // Branch admin + teacher + student: DB lookup + bcrypt verify.
+  const dbRole = (role === 'TEACHER' ? 'TEACHER' : role === 'STUDENT' ? 'STUDENT' : 'BRANCH_ADMIN') as
+    'TEACHER' | 'STUDENT' | 'BRANCH_ADMIN'
   const user = await prisma.classPortalUser.findUnique({
-    where: { role_email: { role: dbRole, email: email.trim().toLowerCase() } },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    where: { role_email: { role: dbRole as any, email: email.trim().toLowerCase() } },
   })
   if (!user || !(await comparePassword(password, user.passwordHash))) {
-    return withCors(NextResponse.json({ error: 'Email and password do not match a ' + role.toLowerCase() + ' account.' }, { status: 401 }), origin)
+    return withCors(NextResponse.json({ error: 'Email and password do not match a ' + role.toLowerCase().replace('_', ' ') + ' account.' }, { status: 401 }), origin)
   }
   const token = await signToken({
-    role: dbRole,
+    role: dbRole as ClassPortalRole,
     userId: user.id,
     email: user.email,
     firstName: user.firstName ?? undefined,
+    branch: (user.branch as 'EAST' | 'GREENHILLS' | null) ?? undefined,
   })
   return withCors(NextResponse.json({
     token,

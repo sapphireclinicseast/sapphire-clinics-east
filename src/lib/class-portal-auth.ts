@@ -43,13 +43,15 @@ async function hmacSha256(key: Uint8Array, msg: string): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.sign('HMAC', cryptoKey, new TextEncoder().encode(msg)))
 }
 
-export type ClassPortalRole = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'FRONTDESK'
+export type ClassPortalRole = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'FRONTDESK' | 'BRANCH_ADMIN'
 
 export interface ClassPortalToken {
   role: ClassPortalRole
-  userId?: string // omitted for ADMIN
+  userId?: string // omitted for hardcoded admin/frontdesk
   email: string
   firstName?: string
+  /** Branch scope for staff accounts (frontdesk + branch admin). */
+  branch?: 'EAST' | 'GREENHILLS'
   iat: number
   exp: number
 }
