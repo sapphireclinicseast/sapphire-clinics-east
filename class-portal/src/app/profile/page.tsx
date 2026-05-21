@@ -253,7 +253,7 @@ function PaymentTable({ payments }: { payments: PaymentRecord[] }) {
               <td className="py-2.5 px-3 text-[12.5px]">{new Date(p.paidAt ?? p.createdAt).toLocaleDateString()}</td>
               <td className="py-2.5 px-3">{p.plan}</td>
               <td className="py-2.5 px-3 text-[12.5px]">{p.period}</td>
-              <td className="py-2.5 px-3 text-right font-mono">{fmt(p.tuitionAmount + p.miscAmount)}</td>
+              <td className="py-2.5 px-3 text-right tabular-nums">{fmt(p.tuitionAmount + p.miscAmount)}</td>
               <td className="py-2.5 px-3 text-[12.5px]">{paymentMethodLabel(p.method)}</td>
               <td className="py-2.5 px-3"><span className={`badge ${p.status === 'PAID' ? 'badge-paid' : 'badge-pending'}`}>{p.status}</span></td>
               <td className="py-2.5 px-3"><ProofCell payment={p} /></td>

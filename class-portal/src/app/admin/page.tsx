@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import {
   getAuth, getUsers, hydrateUsers, addUser, updateUser, deleteUser,
   levelLabel, branchLabel, roleLabel, generatePassword,
-  type StoredUser, type UserRole, type Branch,
+  getFees, hydrateFees, saveFees, DEFAULT_FEE_VALUES,
+  type StoredUser, type UserRole, type Branch, type FeeSchedule, type FeeExtraItem,
 } from '@/lib/session'
 import { listStaff, type StaffMember } from '@/lib/api'
 import StudentListPanel from '@/components/StudentListPanel'
@@ -16,7 +17,7 @@ import AssignmentsPanel from '@/components/AssignmentsPanel'
 import ClassesPanel from '@/components/ClassesPanel'
 import TemplatesPanel from '@/components/TemplatesPanel'
 
-type AdminTab = 'USERS' | 'STUDENTS' | 'CLASSES' | 'CURRICULUM' | 'TEMPLATES' | 'NOTIFICATIONS' | 'PAYMENTS' | 'ASSIGNMENTS'
+type AdminTab = 'USERS' | 'STUDENTS' | 'CLASSES' | 'CURRICULUM' | 'TEMPLATES' | 'NOTIFICATIONS' | 'PAYMENTS' | 'FEES' | 'ASSIGNMENTS'
 
 export default function AdminPage() {
   const router = useRouter()
@@ -59,6 +60,7 @@ export default function AdminPage() {
           ['TEMPLATES', 'Templates'],
           ['NOTIFICATIONS', 'Notifications'],
           ['PAYMENTS', 'Payments'],
+          ['FEES', 'Fees'],
           ['ASSIGNMENTS', 'Assignments'],
         ] as Array<[AdminTab, string]>).map(([k, label]) => (
           <button
@@ -76,6 +78,7 @@ export default function AdminPage() {
       {tab === 'TEMPLATES'     && <TemplatesPanel viewer={{ role: 'ADMIN', email: adminEmail }} />}
       {tab === 'NOTIFICATIONS' && <NotificationPanel viewer={{ role: 'ADMIN', email: adminEmail, name: isMainAdmin ? 'Main admin' : 'Branch admin' }} />}
       {tab === 'PAYMENTS'      && <PaymentsGrouped canSendReminders senderEmail={adminEmail} senderName={isMainAdmin ? 'Main admin' : 'Branch admin'} senderRole="ADMIN" />}
+      {tab === 'FEES'          && <FeesPanel viewerRole={adminRole} viewerBranch={adminBranch} />}
       {tab === 'ASSIGNMENTS'   && <AssignmentsPanel />}
     </div>
   )
@@ -506,5 +509,162 @@ function CreateTeacherInlineForm({ onCreate, disabled }: { onCreate: (pw: string
       <button type="button" onClick={() => { onCreate(pw); setOpen(false); setPw('') }} className="text-xs px-3 py-1.5 rounded-md bg-[color:var(--narra)] text-white">Save</button>
       <button type="button" onClick={() => { setOpen(false); setPw('') }} className="text-xs px-2 py-1.5 rounded-md text-[color:var(--mid-gray)] hover:text-[color:var(--narra)]">Cancel</button>
     </div>
+  )
+}
+
+/* ─────────────────────── FEES PANEL ─────────────────────── */
+
+const BRANCH_ORDER: Branch[] = ['EAST', 'GREENHILLS']
+
+function pesoToCentavos(s: string): number {
+  const n = Number(String(s).replace(/[^\d.]/g, ''))
+  if (!Number.isFinite(n) || n < 0) return 0
+  return Math.round(n * 100)
+}
+function centavosToPeso(c: number): string {
+  return (c / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function FeesPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANCH_ADMIN'; viewerBranch?: Branch }) {
+  const [fees, setFees] = useState<FeeSchedule[]>([])
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
+
+  useEffect(() => {
+    setFees(getFees())
+    hydrateFees().then(rows => { setFees(rows); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [])
+
+  // Branch admin only sees + edits their own branch row.
+  const visibleBranches = useMemo<Branch[]>(() => {
+    if (viewerRole === 'BRANCH_ADMIN' && viewerBranch) return [viewerBranch]
+    return BRANCH_ORDER
+  }, [viewerRole, viewerBranch])
+
+  function patch(branch: Branch, next: Partial<FeeSchedule>) {
+    setFees(curr => curr.map(f => f.branch === branch ? { ...f, ...next } : f))
+  }
+  function patchExtra(branch: Branch, idx: number, next: Partial<FeeExtraItem>) {
+    setFees(curr => curr.map(f => {
+      if (f.branch !== branch) return f
+      const extras = f.extraItems.slice()
+      extras[idx] = { ...extras[idx], ...next }
+      return { ...f, extraItems: extras }
+    }))
+  }
+  function addExtra(branch: Branch) {
+    setFees(curr => curr.map(f => f.branch === branch ? { ...f, extraItems: [...f.extraItems, { label: '', amountCentavos: 0 }] } : f))
+  }
+  function removeExtra(branch: Branch, idx: number) {
+    setFees(curr => curr.map(f => f.branch === branch ? { ...f, extraItems: f.extraItems.filter((_, i) => i !== idx) } : f))
+  }
+
+  async function handleSave() {
+    setErr(null); setInfo(null)
+    try {
+      const toSave = fees.filter(f => visibleBranches.includes(f.branch))
+      const saved = await saveFees(toSave)
+      setFees(saved)
+      setInfo('Fees saved. Students will see the new prices on the pay portal.')
+    } catch (e) { setErr((e as Error).message) }
+  }
+
+  if (loading && fees.length === 0) return <div className="card-static">Loading fees…</div>
+
+  return (
+    <div className="card-static space-y-6">
+      <div>
+        <h2 className="text-[18px] leading-tight">Tuition + fees</h2>
+        <p className="text-sm text-[color:var(--mid-gray)] mt-1">
+          Set per-branch tuition (annual / bi-annual / monthly), miscellaneous fees, and any extra line items (uniforms, books, etc.). What you save here is what every student under that branch sees on the Pay portal.
+        </p>
+        <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-1" style={{ fontFamily: 'var(--font-display)' }}>
+          Defaults when a branch has not been set: tuition ₱{centavosToPeso(DEFAULT_FEE_VALUES.tuitionAnnualCentavos)} annual · ₱{centavosToPeso(DEFAULT_FEE_VALUES.tuitionBiannualCentavos)} bi-annual · ₱{centavosToPeso(DEFAULT_FEE_VALUES.tuitionMonthlyCentavos)} monthly.
+        </p>
+      </div>
+
+      {err  && <div className="px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
+      {info && <div className="px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-100 text-sm text-emerald-800">{info}</div>}
+
+      {visibleBranches.map(b => {
+        const f = fees.find(x => x.branch === b)
+        if (!f) return null
+        return (
+          <div key={b} className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
+            <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+              <h3 className="text-[16px] leading-tight" style={{ fontFamily: 'var(--font-display)' }}>{branchLabel(b)}</h3>
+              {f.updatedAt && (
+                <span className="text-[11.5px] text-[color:var(--mid-gray)]">Last updated {new Date(f.updatedAt).toLocaleString()} {f.updatedBy ? `by ${f.updatedBy}` : ''}</span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <PesoInput label="Tuition — Annual"    centavos={f.tuitionAnnualCentavos}    onChange={c => patch(b, { tuitionAnnualCentavos: c })} />
+              <PesoInput label="Tuition — Bi-annual" centavos={f.tuitionBiannualCentavos}  onChange={c => patch(b, { tuitionBiannualCentavos: c })} />
+              <PesoInput label="Tuition — Monthly"   centavos={f.tuitionMonthlyCentavos}   onChange={c => patch(b, { tuitionMonthlyCentavos: c })} />
+              <div />
+              <PesoInput label="Misc — Annual"       centavos={f.miscAnnualCentavos}       onChange={c => patch(b, { miscAnnualCentavos: c })} />
+              <PesoInput label="Misc — Bi-annual"    centavos={f.miscBiannualCentavos}     onChange={c => patch(b, { miscBiannualCentavos: c })} />
+              <PesoInput label="Misc — Monthly"      centavos={f.miscMonthlyCentavos}      onChange={c => patch(b, { miscMonthlyCentavos: c })} />
+            </div>
+
+            <div className="mt-5">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <h4 className="text-sm font-semibold" style={{ fontFamily: 'var(--font-display)' }}>Other line items</h4>
+                  <p className="text-[11.5px] text-[color:var(--mid-gray)]">Uniforms, books, supplies — anything else parents should see itemized on the Pay portal.</p>
+                </div>
+                <button type="button" onClick={() => addExtra(b)} className="text-xs px-3 py-1.5 rounded-md text-[color:var(--narra)] hover:bg-[color:var(--paper)] border" style={{ borderColor: 'var(--paper-3)' }}>+ Add item</button>
+              </div>
+
+              {f.extraItems.length === 0 && (
+                <div className="text-[12.5px] text-[color:var(--mid-gray)] italic py-2">No extra items yet.</div>
+              )}
+
+              {f.extraItems.map((x, idx) => (
+                <div key={idx} className="grid grid-cols-1 sm:grid-cols-[1fr_140px_1fr_auto] gap-2 mb-2 items-end">
+                  <label className="block">
+                    <span className="label">Label</span>
+                    <input className="input" placeholder="e.g. Uniform set" value={x.label} onChange={e => patchExtra(b, idx, { label: e.target.value })} />
+                  </label>
+                  <label className="block">
+                    <span className="label">Amount (₱)</span>
+                    <input className="input text-right" inputMode="decimal" placeholder="0.00" value={centavosToPeso(x.amountCentavos)} onChange={e => patchExtra(b, idx, { amountCentavos: pesoToCentavos(e.target.value) })} />
+                  </label>
+                  <label className="block">
+                    <span className="label">Notes (optional)</span>
+                    <input className="input" placeholder="e.g. payable at front desk" value={x.notes ?? ''} onChange={e => patchExtra(b, idx, { notes: e.target.value })} />
+                  </label>
+                  <button type="button" onClick={() => removeExtra(b, idx)} className="text-xs px-3 py-2 rounded-md text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)]">Remove</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+
+      <div className="flex gap-2 justify-end">
+        <button type="button" onClick={handleSave} className="btn-primary">Save fees</button>
+      </div>
+    </div>
+  )
+}
+
+function PesoInput({ label, centavos, onChange }: { label: string; centavos: number; onChange: (c: number) => void }) {
+  return (
+    <label className="block">
+      <span className="label">{label}</span>
+      <div className="relative">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[color:var(--mid-gray)] pointer-events-none">₱</span>
+        <input
+          className="input text-right pl-7"
+          inputMode="decimal"
+          value={centavosToPeso(centavos)}
+          onChange={e => onChange(pesoToCentavos(e.target.value))}
+        />
+      </div>
+    </label>
   )
 }

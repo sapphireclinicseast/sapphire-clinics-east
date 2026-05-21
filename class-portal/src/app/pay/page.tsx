@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   getAuth, getUsers, getPaymentsForStudent, savePayment, putFile,
-  levelLabel,
-  type PaymentPlan, type PaymentMethod, type PaymentRecord, type StoredUser,
+  levelLabel, getFeeFor, hydrateFees,
+  type PaymentPlan, type PaymentMethod, type PaymentRecord, type StoredUser, type FeeSchedule,
 } from '@/lib/session'
 
 const BANK_DETAILS = {
@@ -28,22 +28,17 @@ const BANK_DETAILS = {
 const PROOF_MAX_BYTES = 10 * 1024 * 1024 // 10 MB
 const PROOF_ACCEPT = '.pdf,.png,.jpg,.jpeg,.doc,.docx,application/pdf,image/png,image/jpeg,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
-// Centavos (PHP × 100). Each plan now carries its own pro-rated
-// miscellaneous slice (full year of misc = ₱5,000).
-const TUITION_ANNUAL   = 80_000_00
-const TUITION_BIANNUAL = 45_000_00
-const TUITION_MONTHLY  =  9_500_00
-const MISC_ANNUAL      =  5_000_00
-const MISC_BIANNUAL    =  2_500_00
-const MISC_MONTHLY     =    500_00
-
-const PLANS: Array<{
+interface PlanRow {
   plan: PaymentPlan; title: string; tuition: number; misc: number; period: string; deadline: string;
-}> = [
-  { plan: 'ANNUAL',   title: 'Annual',    tuition: TUITION_ANNUAL,   misc: MISC_ANNUAL,   period: 'Annual SY 2026–2027',     deadline: 'Every 5th of June (lump sum)' },
-  { plan: 'BIANNUAL', title: 'Bi-annual', tuition: TUITION_BIANNUAL, misc: MISC_BIANNUAL, period: 'First half SY 2026–2027', deadline: 'Every 5th of June and 5th of December' },
-  { plan: 'MONTHLY',  title: 'Monthly',   tuition: TUITION_MONTHLY,  misc: MISC_MONTHLY,  period: thisMonthPeriod(),         deadline: 'Every 5th of the month' },
-]
+}
+
+function plansFor(fee: FeeSchedule): PlanRow[] {
+  return [
+    { plan: 'ANNUAL',   title: 'Annual',    tuition: fee.tuitionAnnualCentavos,   misc: fee.miscAnnualCentavos,   period: 'Annual SY 2026–2027',     deadline: 'Every 5th of June (lump sum)' },
+    { plan: 'BIANNUAL', title: 'Bi-annual', tuition: fee.tuitionBiannualCentavos, misc: fee.miscBiannualCentavos, period: 'First half SY 2026–2027', deadline: 'Every 5th of June and 5th of December' },
+    { plan: 'MONTHLY',  title: 'Monthly',   tuition: fee.tuitionMonthlyCentavos,  misc: fee.miscMonthlyCentavos,  period: thisMonthPeriod(),         deadline: 'Every 5th of the month' },
+  ]
+}
 
 function thisMonthPeriod(): string {
   const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
@@ -66,6 +61,8 @@ export default function PayPage() {
   const [history, setHistory] = useState<PaymentRecord[]>([])
   const [confirmation, setConfirmation] = useState<string | null>(null)
 
+  const [fee, setFee] = useState<FeeSchedule | null>(null)
+
   useEffect(() => {
     const auth = getAuth()
     if (!auth) { router.replace('/sign-in'); return }
@@ -75,9 +72,13 @@ export default function PayPage() {
     if (!u) { router.replace('/sign-in'); return }
     setUser(u)
     setHistory(getPaymentsForStudent(u.id))
+    setFee(getFeeFor(u.branch))
+    // Stream the freshest schedule from the API so admin edits on another device flow through.
+    hydrateFees().then(() => setFee(getFeeFor(u.branch))).catch(() => { /* ignore */ })
   }, [router])
 
-  const plan = useMemo(() => PLANS.find(p => p.plan === selected)!, [selected])
+  const plans = useMemo(() => fee ? plansFor(fee) : [], [fee])
+  const plan = useMemo(() => plans.find(p => p.plan === selected) ?? plans[0], [plans, selected])
 
   /** Build the up-front PENDING record common to every method. */
   function buildPending(paymentId: string): PaymentRecord {
@@ -183,7 +184,7 @@ export default function PayPage() {
     setErr(null); setProofFile(f)
   }
 
-  if (!user) return null
+  if (!user || !plan) return null
 
   const total = plan.tuition + plan.misc
   const studentBranch = user.branch ?? 'EAST'
@@ -211,14 +212,21 @@ export default function PayPage() {
               </tr>
             </thead>
             <tbody>
-              <Row item="Annual Tuition" amount={fmt(TUITION_ANNUAL)} deadline="Every 5th of June" />
-              <Row item="Bi-annual Payment" amount={fmt(TUITION_BIANNUAL) + ' / half'} deadline="Every 5th of June and 5th of December" />
-              <Row item="Monthly Payment" amount={fmt(TUITION_MONTHLY) + ' / month'} deadline="Every 5th of the month" />
-              <Row item="Miscellaneous (Annual)"    amount={fmt(MISC_ANNUAL)}     deadline="With annual payment" />
-              <Row item="Miscellaneous (Bi-annual)" amount={fmt(MISC_BIANNUAL) + ' / half'} deadline="With bi-annual payment" />
-              <Row item="Miscellaneous (Monthly)"   amount={fmt(MISC_MONTHLY) + ' / month'} deadline="With monthly payment" />
-              <Row item="Books" amount="May ask with front desk" deadline="—" />
-              <Row item="Uniform" amount="May ask with front desk" deadline="—" />
+              <Row item="Annual Tuition"               amount={fmt(fee?.tuitionAnnualCentavos   ?? 0)}            deadline="Every 5th of June" />
+              <Row item="Bi-annual Payment"            amount={fmt(fee?.tuitionBiannualCentavos ?? 0) + ' / half'}  deadline="Every 5th of June and 5th of December" />
+              <Row item="Monthly Payment"              amount={fmt(fee?.tuitionMonthlyCentavos  ?? 0) + ' / month'} deadline="Every 5th of the month" />
+              <Row item="Miscellaneous (Annual)"       amount={fmt(fee?.miscAnnualCentavos      ?? 0)}              deadline="With annual payment" />
+              <Row item="Miscellaneous (Bi-annual)"    amount={fmt(fee?.miscBiannualCentavos    ?? 0) + ' / half'}  deadline="With bi-annual payment" />
+              <Row item="Miscellaneous (Monthly)"      amount={fmt(fee?.miscMonthlyCentavos     ?? 0) + ' / month'} deadline="With monthly payment" />
+              {(fee?.extraItems ?? []).map((x, i) => (
+                <Row key={`extra-${i}`} item={x.label} amount={fmt(x.amountCentavos)} deadline={x.notes ?? '—'} />
+              ))}
+              {(!fee?.extraItems || fee.extraItems.length === 0) && (
+                <>
+                  <Row item="Books"   amount="May ask with front desk" deadline="—" />
+                  <Row item="Uniform" amount="May ask with front desk" deadline="—" />
+                </>
+              )}
             </tbody>
           </table>
         </div>
@@ -256,7 +264,7 @@ export default function PayPage() {
       <div className="card-static">
         <h2 className="text-[18px] leading-tight mb-3">Choose your payment plan</h2>
         <div className="grid sm:grid-cols-3 gap-2.5">
-          {PLANS.map(p => (
+          {plans.map(p => (
             <button
               key={p.plan}
               type="button"
@@ -279,13 +287,13 @@ export default function PayPage() {
           <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--mid-gray)] font-semibold mb-2" style={{ fontFamily: 'var(--font-display)' }}>Checkout summary</div>
           <dl className="grid grid-cols-2 text-sm gap-y-1">
             <dt className="text-[color:var(--mid-gray)]">{plan.title} tuition</dt>
-            <dd className="text-right font-mono">{fmt(plan.tuition)}</dd>
+            <dd className="text-right tabular-nums">{fmt(plan.tuition)}</dd>
             {plan.misc > 0 && <>
               <dt className="text-[color:var(--mid-gray)]">Miscellaneous</dt>
-              <dd className="text-right font-mono">{fmt(plan.misc)}</dd>
+              <dd className="text-right tabular-nums">{fmt(plan.misc)}</dd>
             </>}
             <dt className="text-[color:var(--narra)] font-bold pt-2 border-t mt-1" style={{ borderColor: 'var(--paper-3)' }}>Total to pay</dt>
-            <dd className="text-right font-mono font-bold pt-2 border-t mt-1 text-[color:var(--narra)]" style={{ borderColor: 'var(--paper-3)' }}>{fmt(total)}</dd>
+            <dd className="text-right tabular-nums font-bold pt-2 border-t mt-1 text-[color:var(--narra)]" style={{ borderColor: 'var(--paper-3)' }}>{fmt(total)}</dd>
           </dl>
           <div className="text-[11.5px] text-[color:var(--mid-gray)] mt-3" style={{ fontFamily: 'var(--font-display)' }}>
             Period covered: <span className="font-semibold text-[color:var(--ink)]">{plan.period}</span> · Deadline: <span className="font-semibold text-[color:var(--ink)]">{plan.deadline}</span>
@@ -402,7 +410,7 @@ export default function PayPage() {
                     <td className="py-2.5 px-3 text-[12.5px]">{new Date(p.paidAt ?? p.createdAt).toLocaleDateString()}</td>
                     <td className="py-2.5 px-3">{p.plan}</td>
                     <td className="py-2.5 px-3 text-[12.5px]">{p.period}</td>
-                    <td className="py-2.5 px-3 text-right font-mono">{fmt(p.tuitionAmount + p.miscAmount)}</td>
+                    <td className="py-2.5 px-3 text-right tabular-nums">{fmt(p.tuitionAmount + p.miscAmount)}</td>
                     <td className="py-2.5 px-3"><span className={`badge ${p.status === 'PAID' ? 'badge-paid' : 'badge-pending'}`}>{p.status}</span></td>
                   </tr>
                 ))}
@@ -428,7 +436,7 @@ function Row({ item, amount, deadline }: { item: string; amount: string; deadlin
   return (
     <tr className="border-b" style={{ borderColor: 'var(--paper-3)' }}>
       <td className="py-2.5 px-3 font-semibold text-[color:var(--narra)]">{item}</td>
-      <td className="py-2.5 px-3 text-right font-mono">{amount}</td>
+      <td className="py-2.5 px-3 text-right tabular-nums">{amount}</td>
       <td className="py-2.5 px-3 text-[12.5px] text-[color:var(--mid-gray)]">{deadline}</td>
     </tr>
   )
