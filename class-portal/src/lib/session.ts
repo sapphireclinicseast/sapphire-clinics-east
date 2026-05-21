@@ -77,7 +77,27 @@ export interface EnrollmentDraft {
   // Step 3 — documents (fileId points to the IndexedDB blob store)
   documents?: Record<string, { name: string; size: number; type?: string; fileId?: string }>
   waiverSignedAt?: string
+
+  // Admission-tracking columns — edited by front desk + the partner school
+  // via /admission. Stored in the enrollment blob so no schema migration.
+  lisStatus?: LisStatus
+  remittanceStatus?: RemittanceStatus
 }
+
+export type LisStatus = 'WAITING_FOR_ENROLLMENT' | 'PENDING_ENROLLMENT' | 'PENDING_TRANSFER' | 'ENROLLED'
+export type RemittanceStatus = 'PENDING' | 'PAID'
+
+export const LIS_STATUS_OPTIONS: Array<{ value: LisStatus; label: string }> = [
+  { value: 'WAITING_FOR_ENROLLMENT', label: 'WAITING FOR ENROLLMENT' },
+  { value: 'PENDING_ENROLLMENT',     label: 'PENDING ENROLLMENT' },
+  { value: 'PENDING_TRANSFER',       label: 'PENDING TRANSFER' },
+  { value: 'ENROLLED',               label: 'ENROLLED' },
+]
+
+export const REMITTANCE_OPTIONS: Array<{ value: RemittanceStatus; label: string }> = [
+  { value: 'PENDING', label: 'PENDING' },
+  { value: 'PAID',    label: 'PAID' },
+]
 
 export interface ClassSession {
   studentId: string
