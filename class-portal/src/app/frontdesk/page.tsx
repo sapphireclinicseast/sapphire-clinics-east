@@ -6,6 +6,7 @@ import { getAuth } from '@/lib/session'
 import StudentListPanel from '@/components/StudentListPanel'
 import PaymentsGrouped from '@/components/PaymentsGrouped'
 import PaidStudentsSpreadsheet from '@/components/PaidStudentsSpreadsheet'
+import CalendarPage from '@/app/calendar/page'
 
 type FrontdeskTab = 'STUDENTS' | 'CALENDAR' | 'PAYMENTS' | 'SPREADSHEET'
 
@@ -62,12 +63,10 @@ export default function FrontdeskPage() {
       )}
 
       {tab === 'CALENDAR' && (
-        // Embed the Calendar page in a same-origin iframe. Front desk has
-        // the same auth scope as Admin for read access (they can also
-        // edit events given the existing role gates in /calendar).
-        <div className="card-static p-0 overflow-hidden">
-          <iframe src="/calendar" title="Academic calendar" className="w-full" style={{ height: '85vh', border: 0 }} />
-        </div>
+        // Render the Calendar page directly as a component instead of an
+        // iframe — the iframe also pulled in the root layout's header +
+        // footer, causing the duplicate brand block the front desk saw.
+        <CalendarPage />
       )}
 
       {tab === 'PAYMENTS' && (
