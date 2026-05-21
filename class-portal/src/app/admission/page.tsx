@@ -221,58 +221,58 @@ export default function AdmissionPage() {
         </div>
 
         <div className="card-static p-0 overflow-hidden">
-          <div className="overflow-auto" style={{ maxHeight: '70vh' }}>
-            <table className="text-[12.5px] w-full">
+          <div className="overflow-auto" style={{ maxHeight: '75vh' }}>
+            <table className="text-[11px] w-full" style={{ borderCollapse: 'collapse' }}>
               <thead className="sticky top-0 z-10" style={{ background: 'var(--paper-2)' }}>
-                <tr className="text-left uppercase tracking-[0.08em] text-[11px] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
-                  <th className="py-2 px-3 font-semibold whitespace-nowrap" style={{ minWidth: 200 }}>Full name</th>
-                  <th className="py-2 px-3 font-semibold whitespace-nowrap" style={{ minWidth: 110 }}>Grade level</th>
-                  <th className="py-2 px-3 font-semibold whitespace-nowrap" style={{ minWidth: 130 }}>LRN status</th>
-                  <th className="py-2 px-3 font-semibold whitespace-nowrap" style={{ minWidth: 130 }}>LRN</th>
-                  <th className="py-2 px-3 font-semibold whitespace-nowrap" style={{ minWidth: 130 }}>Cellphone</th>
-                  <th className="py-2 px-3 font-semibold whitespace-nowrap" style={{ minWidth: 200 }}>Diagnosis</th>
-                  <th className="py-2 px-3 font-semibold whitespace-nowrap" style={{ minWidth: 220 }}>LIS status</th>
-                  <th className="py-2 px-3 font-semibold whitespace-nowrap" style={{ minWidth: 140 }}>Remittance</th>
-                  <th className="py-2 px-3 font-semibold whitespace-nowrap" style={{ minWidth: 280 }}>Comments / Remarks</th>
+                <tr className="text-left uppercase tracking-[0.06em] text-[10px] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 140 }}>Full name</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 80 }}>Grade level</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 80 }}>LRN status</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 100 }}>LRN</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 100 }}>Cellphone</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 140 }}>Diagnosis</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 160 }}>LIS status</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 90 }}>Remittance</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 200 }}>Comments / Remarks</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={9} className="py-12 text-center text-[color:var(--mid-gray)]">No students in this branch yet.</td></tr>
+                  <tr><td colSpan={9} className="py-10 text-center text-[color:var(--mid-gray)]">No students in this branch yet.</td></tr>
                 )}
                 {filtered.map(s => (
                   <tr key={s.id} className="border-b hover:bg-[color:var(--paper-2)]" style={{ borderColor: 'var(--paper-3)' }}>
-                    <td className="py-2 px-3 whitespace-nowrap">{[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}</td>
-                    <td className="py-2 px-3">{s.level ? levelLabel(s.level) : <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-2 px-3">{s.lrnStatus === 'NO_LRN' ? 'NO LRN' : s.lrnStatus === 'WITH_LRN' ? 'WITH LRN' : s.lrnStatus === 'RETURNING' ? 'RETURNING' : <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-2 px-3">{s.lrn || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-2 px-3">{s.cellphone || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-2 px-3 text-[12px]">{s.diagnosis || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-2 px-3">
+                    <td className="py-1 px-1.5 whitespace-nowrap">{[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}</td>
+                    <td className="py-1 px-1.5 whitespace-nowrap">{s.level ? levelLabel(s.level) : <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5 whitespace-nowrap">{s.lrnStatus === 'NO_LRN' ? 'NO LRN' : s.lrnStatus === 'WITH_LRN' ? 'WITH LRN' : s.lrnStatus === 'RETURNING' ? 'RETURNING' : <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5 whitespace-nowrap">{s.lrn || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5 whitespace-nowrap">{s.cellphone || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5">{s.diagnosis || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5">
                       <select
                         value={s.lisStatus ?? ''}
                         onChange={e => patchField(s.id, { lisStatus: (e.target.value || null) as LisStatus | null })}
-                        className="w-full bg-transparent text-[12.5px] outline-none border-b border-transparent focus:border-[color:var(--narra)] py-0.5"
+                        className="w-full bg-transparent text-[11px] outline-none border-b border-transparent focus:border-[color:var(--narra)] py-0"
                       >
                         <option value="">—</option>
                         {LIS_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
                     </td>
-                    <td className="py-2 px-3">
+                    <td className="py-1 px-1.5">
                       <select
                         value={s.remittanceStatus ?? ''}
                         onChange={e => patchField(s.id, { remittanceStatus: (e.target.value || null) as RemittanceStatus | null })}
-                        className="w-full bg-transparent text-[12.5px] outline-none border-b border-transparent focus:border-[color:var(--narra)] py-0.5"
+                        className="w-full bg-transparent text-[11px] outline-none border-b border-transparent focus:border-[color:var(--narra)] py-0"
                       >
                         <option value="">—</option>
                         {REMITTANCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
                     </td>
-                    <td className="py-2 px-3">
+                    <td className="py-1 px-1.5">
                       <input
                         defaultValue={s.admissionComments ?? ''}
                         placeholder="Add comment…"
-                        className="w-full bg-transparent text-[12.5px] outline-none border-b border-transparent focus:border-[color:var(--narra)] py-0.5"
+                        className="w-full bg-transparent text-[11px] outline-none border-b border-transparent focus:border-[color:var(--narra)] py-0"
                         onBlur={e => {
                           const nv = e.target.value
                           if (nv !== (s.admissionComments ?? '')) patchField(s.id, { admissionComments: nv || null })

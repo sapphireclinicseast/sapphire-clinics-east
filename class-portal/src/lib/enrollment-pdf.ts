@@ -24,13 +24,14 @@ const PAGE_W = 210
 const PAGE_H = 297
 const CONTENT_W = PAGE_W - PAGE_MARGIN * 2
 
-// Tight spacing — the whole government form fits one A4 page so we need
-// to match that density.
-const NAME_BOX_H = 5.4
-const SMALL_BOX_H = 4.6
-const SEC_BAND_H = 4.6
-const SEC_BAND_GAP = 5.4
-const LINE_H = 4.4
+// Spacing tuned so the contents fill the A4 page rather than cramming at
+// the top and leaving white space below.
+const NAME_BOX_H = 6.2
+const SMALL_BOX_H = 5.4
+const SEC_BAND_H = 5
+const SEC_BAND_GAP = 6.4
+const LINE_H = 5.4
+const ROW_GAP = 1.2
 
 // Government-form palette: black ink, mid grey labels, light grey bands.
 const C_INK:    [number, number, number] = [10, 10, 10]
@@ -120,33 +121,83 @@ function inlineBoxRow(
 }
 
 /**
- * Wide boxed row with the label ABOVE the boxes — used for LAST/FIRST/
- * MIDDLE NAME where the 20-cell row spans nearly the full page width.
+ * Inline label + underline (label LEFT, underline RIGHT). Used for fields
+ * like EXTENSION NAME, Telephone No., Cellphone No., Grade Level, Track —
+ * which have the label-to-the-left + line-extending-to-the-right pattern
+ * from the source form.
  */
-function nameBoxRow(c: Cursor, label: string, value: string, n: number, opts: { xStart?: number; widthW?: number; boxH?: number } = {}) {
+function inlineUnderline(
+  c: Cursor,
+  label: string,
+  value: string | undefined,
+  opts: { xStart?: number; widthW?: number; labelW?: number } = {},
+) {
+  const { doc } = c
+  const xStart = opts.xStart ?? PAGE_MARGIN
+  const widthW = opts.widthW ?? CONTENT_W
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
+  const labelW = opts.labelW ?? (doc.getTextWidth(label) + 3)
+
+  ensure(c, LINE_H + 1)
+  setColor(doc, C_INK)
+  doc.text(label, xStart, c.y + LINE_H - 2)
+
+  const lineY = c.y + LINE_H - 1
+  setDraw(doc, C_BORDER); doc.setLineWidth(0.3)
+  doc.line(xStart + labelW, lineY, xStart + widthW, lineY)
+  if (value) {
+    setColor(doc, C_INK); doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
+    const safe = (doc.splitTextToSize(value, widthW - labelW - 1) as string[])[0] ?? value
+    doc.text(safe, xStart + labelW + 0.5, c.y + LINE_H - 2.3)
+  }
+  c.y += LINE_H + ROW_GAP
+}
+
+/** Two inline-underline fields side-by-side. */
+function inlineUnderlinePair(
+  c: Cursor,
+  left: { label: string; value?: string; labelW?: number },
+  right: { label: string; value?: string; labelW?: number },
+) {
+  const halfW = (CONTENT_W - 6) / 2
+  const yStart = c.y
+  inlineUnderline(c, left.label, left.value, { xStart: PAGE_MARGIN, widthW: halfW, labelW: left.labelW })
+  const y1 = c.y
+  c.y = yStart
+  inlineUnderline(c, right.label, right.value, { xStart: PAGE_MARGIN + halfW + 6, widthW: halfW, labelW: right.labelW })
+  c.y = Math.max(y1, c.y)
+}
+
+/**
+ * Wide boxed row — label sits to the LEFT of the row of boxes on the same
+ * line. Used for LAST / FIRST / MIDDLE NAME. The label takes ~30mm so the
+ * boxes still span ~160mm with ~20 cells.
+ */
+function nameBoxRow(c: Cursor, label: string, value: string, n: number, opts: { xStart?: number; widthW?: number; labelW?: number; boxH?: number } = {}) {
   const { doc } = c
   const xStart = opts.xStart ?? PAGE_MARGIN
   const widthW = opts.widthW ?? CONTENT_W
   const boxH = opts.boxH ?? NAME_BOX_H
-  const boxW = widthW / n
+  const labelW = opts.labelW ?? 30
+  const boxesW = widthW - labelW
+  const boxW = boxesW / n
 
-  ensure(c, boxH + 4)
+  ensure(c, boxH + ROW_GAP)
   setColor(doc, C_INK); doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
-  doc.text(label, xStart, c.y + 2.4)
-  c.y += 3
+  doc.text(label, xStart, c.y + boxH - 1.6)
 
   setDraw(doc, C_BORDER); doc.setLineWidth(0.25)
   const chars = (value ?? '').toUpperCase().padEnd(n, ' ').slice(0, n).split('')
   for (let i = 0; i < n; i++) {
-    const x = xStart + i * boxW
+    const x = xStart + labelW + i * boxW
     doc.rect(x, c.y, boxW, boxH)
     const ch = chars[i].trim()
     if (ch) {
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(9)
-      doc.text(ch, x + boxW / 2, c.y + boxH / 2 + 1.4, { align: 'center' })
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5)
+      doc.text(ch, x + boxW / 2, c.y + boxH / 2 + 1.6, { align: 'center' })
     }
   }
-  c.y += boxH + 1.2
+  c.y += boxH + ROW_GAP
 }
 
 /** MM/DD/YYYY style row with separators between groups. */
@@ -314,18 +365,18 @@ export function generateEnrollmentPdf(user: StoredUser, draft: Partial<Enrollmen
   // ═════════════════════════════════════════════════════════════
   sectionHeader(c, 'Student Information')
 
-  underlineField(c, 'PSA Birth Certificate No.', draft.psaBirthCertNo, { labelAbove: false })
-  c.y += 0.8
+  inlineUnderline(c, 'PSA Birth Certificate No.', draft.psaBirthCertNo)
+  c.y += 1.4
 
   inlineBoxRow(c, 'Learner Reference No. (LRN)', draft.lrn ?? '', 12, { labelW: 56, charBoxW: 6 })
-  c.y += 0.8
+  c.y += 1.4
 
   nameBoxRow(c, 'LAST NAME',   draft.lastName   ?? '', 20)
   nameBoxRow(c, 'FIRST NAME',  draft.firstName  ?? '', 20)
   nameBoxRow(c, 'MIDDLE NAME', draft.middleName ?? '', 20)
 
-  underlineField(c, 'EXTENSION NAME e.g. Jr., III (if applicable)', draft.extensionName, { labelAbove: false })
-  c.y += 0.8
+  inlineUnderline(c, 'EXTENSION NAME e.g. Jr., III (if applicable)', draft.extensionName)
+  c.y += 1.4
 
   // DOB | SEX | AGE row
   {
@@ -433,9 +484,9 @@ export function generateEnrollmentPdf(user: StoredUser, draft: Partial<Enrollmen
     { label: "Mother's Maiden Name (Last Name, First Name, Middle Name)", value: nameOf(draft.mother) },
   )
   underlineField(c, "Guardian's Name (Last Name, First Name, Middle Name)", nameOf(draft.guardian))
-  underlinePair(c,
-    { label: 'Telephone No.', value: draft.telephone },
-    { label: 'Cellphone No.', value: draft.cellphone },
+  inlineUnderlinePair(c,
+    { label: 'Telephone No.', value: draft.telephone, labelW: 26 },
+    { label: 'Cellphone No.', value: draft.cellphone, labelW: 26 },
   )
 
   // ═════════════════════════════════════════════════════════════
@@ -494,19 +545,19 @@ export function generateEnrollmentPdf(user: StoredUser, draft: Partial<Enrollmen
   )
 
   // ── Certification ────────────────────────────────────────────
-  ensure(c, 24)
-  c.y += 1
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); setColor(doc, C_INK)
-  // Paraphrased certification — same legal intent as the source's Data
-  // Privacy Act notice.
-  const cert = 'I certify that the information provided above is true and correct to the best of my knowledge, and I authorize the Department of Education to use my child’s details for creating or updating his/her learner profile in the Learner Information System. All information shall be treated as confidential under the Data Privacy Act of 2012 (R.A. 10173).'
+  ensure(c, 26)
+  c.y += 2
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); setColor(doc, C_INK)
+  // The school's preferred certification wording — matches the Data
+  // Privacy Act notice their LIS submission expects.
+  const cert = 'I hereby certify that the above information given are true and correct to the best of my knowledge and I allow the Department of Education to use my child’s details to create and/or update his/her learner profile in the Learner Information System. The information herein shall be treated as confidential in compliance with the Data Privacy Act of 2012.'
   const certLines = doc.splitTextToSize(cert, CONTENT_W - 8) as string[]
   for (const ln of certLines) {
-    ensure(c, 3.6)
+    ensure(c, 3.8)
     doc.text(ln, PAGE_MARGIN + 4, c.y + 2.8, { align: 'left' })
-    c.y += 3.4
+    c.y += 3.6
   }
-  c.y += 2
+  c.y += 3
 
   // Signature / Date row
   {
@@ -535,15 +586,27 @@ export function generateEnrollmentPdf(user: StoredUser, draft: Partial<Enrollmen
   }
 
   // ═════════════════════════════════════════════════════════════
-  // FOR USE OF DEPED PERSONNEL ONLY
+  // FOR USE OF DEPED PERSONNEL ONLY (dashed separator, plain label)
   // ═════════════════════════════════════════════════════════════
-  sectionHeader(c, 'For use of DepEd Personnel Only. To be filled up by the Class Adviser.')
+  c.y += 3
+  ensure(c, 14)
+  // Dashed line above the label
+  setDraw(doc, C_BORDER); doc.setLineWidth(0.25)
+  doc.setLineDashPattern([1, 1.4], 0)
+  doc.line(PAGE_MARGIN, c.y, PAGE_W - PAGE_MARGIN, c.y)
+  doc.setLineDashPattern([], 0)
+  c.y += 3
+  setColor(doc, C_INK); doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5)
+  doc.text('For use of DepEd Personnel Only. To be filled up by the Class Adviser.', PAGE_W / 2, c.y + 2, { align: 'center' })
+  c.y += 6
+
   boxGroupInline(c, 'DATE OF FIRST ATTENDANCE (Month/Day/Year)', [
     { value: '', n: 2 }, { value: '', n: 2 }, { value: '', n: 4 },
   ], ['/', '/'], { xStart: PAGE_MARGIN, labelW: 78, boxW: 4.4 })
-  underlinePair(c,
-    { label: 'Grade Level',     value: levelLabel(level) },
-    { label: 'Track (for SHS)', value: undefined },
+  c.y += 1
+  inlineUnderlinePair(c,
+    { label: 'Grade Level',     value: levelLabel(level), labelW: 24 },
+    { label: 'Track (for SHS)', value: undefined,         labelW: 30 },
   )
 
   // PS-ODIR/SFRT bottom-right
