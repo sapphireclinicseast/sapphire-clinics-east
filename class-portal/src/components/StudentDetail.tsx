@@ -131,8 +131,10 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
       </div>
 
       {/* Submitted documents — viewable + downloadable; the student can also
-          re-upload any row (e.g. the original was blurry or the wrong file). */}
-      {e.documents && Object.keys(e.documents).length > 0 && (
+          re-upload any row (e.g. the original was blurry or the wrong file).
+          Admin + teacher can upload school-endorsed records (Form 137 / SF10)
+          and re-upload any row on behalf of the student. */}
+      {(e.documents && Object.keys(e.documents).length > 0) || viewerRole === 'ADMIN' || viewerRole === 'TEACHER' ? (
         <div className="card-static">
           <h2 className="text-[18px] leading-tight mb-1">Submitted documents</h2>
           {viewerRole === 'STUDENT' && (
@@ -140,8 +142,13 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
               Need to replace a file? Click <span className="font-semibold">Re-upload</span> on the row.
             </p>
           )}
+          {(viewerRole === 'ADMIN' || viewerRole === 'TEACHER') && (
+            <p className="text-[12.5px] text-[color:var(--mid-gray)] mb-3">
+              Re-upload any row, or upload school-endorsed records like Form 137 / SF10 from the picker below.
+            </p>
+          )}
           <div className="space-y-2.5">
-            {Object.entries(e.documents).map(([k, v]) => (
+            {Object.entries(e.documents ?? {}).map(([k, v]) => (
               <DocumentRow
                 key={k}
                 docKey={k}
@@ -150,7 +157,7 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
                 size={v.size}
                 fileId={v.fileId}
                 mime={v.type}
-                canReplace={viewerRole === 'STUDENT'}
+                canReplace={viewerRole === 'STUDENT' || viewerRole === 'ADMIN' || viewerRole === 'TEACHER'}
                 onReplace={async (file) => {
                   // Upload new blob, swap the IndexedDB entry, update the
                   // enrollment.documents metadata via the API. The 1x1 child
@@ -173,8 +180,23 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
               />
             ))}
           </div>
+
+          {(viewerRole === 'ADMIN' || viewerRole === 'TEACHER') && (
+            <StaffDocUploader
+              existing={e.documents ?? {}}
+              onUpload={async (key, file) => {
+                const fileId = 'doc_' + Math.random().toString(36).slice(2, 12)
+                await putFile(fileId, file)
+                const nextDocs = { ...(student.enrollment?.documents ?? {}) }
+                nextDocs[key] = { name: file.name, size: file.size, type: file.type, fileId }
+                const updated = await updateUserEnrollment(student.id, { documents: nextDocs })
+                setStudent(updated)
+                onChange?.()
+              }}
+            />
+          )}
         </div>
-      )}
+      ) : null}
 
       {/* Generated PDFs */}
       <div className="card-static">
@@ -345,6 +367,76 @@ function nameOf(n?: { lastName: string; firstName: string; middleName: string })
   if (!n) return '—'
   return [n.firstName, n.middleName, n.lastName].filter(Boolean).join(' ').trim() || '—'
 }
+/**
+ * Compact uploader for admin/teacher to add missing document rows to a
+ * student — typically Form 137 / SF10 endorsed directly by the previous
+ * school. Picker only lists doc keys that aren't already on the student.
+ */
+function StaffDocUploader({
+  existing, onUpload,
+}: {
+  existing: Record<string, { name: string; size: number; type?: string; fileId?: string }>
+  onUpload: (key: string, file: File) => Promise<void>
+}) {
+  const STAFF_DOC_OPTIONS: Array<{ key: string; title: string; hint: string }> = [
+    { key: 'form_137_sf10',  title: 'Form 137 / SF10',                   hint: 'School-endorsed permanent record from the prior school.' },
+    { key: 'report_card_sf9', title: 'Report Card / SF9',                 hint: 'If parent did not upload it during enrollment.' },
+    { key: 'good_moral',     title: 'Certificate of Good Moral Character', hint: 'If parent did not upload it during enrollment.' },
+    { key: 'psa_birth_cert', title: 'PSA Birth Certificate',              hint: 'If parent did not upload it during enrollment.' },
+    { key: 'medical_reports', title: 'Medical / therapy reports',          hint: 'If new reports come in after enrollment.' },
+  ]
+  // Default to the first slot the student doesn't yet have; falls back to Form 137.
+  const firstMissing = STAFF_DOC_OPTIONS.find(o => !existing[o.key])?.key ?? 'form_137_sf10'
+  const [selectedKey, setSelectedKey] = useState<string>(firstMissing)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const opt = STAFF_DOC_OPTIONS.find(o => o.key === selectedKey) ?? STAFF_DOC_OPTIONS[0]
+  const alreadyOnFile = !!existing[selectedKey]
+
+  async function handlePick(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    if (f.size > 30 * 1024 * 1024) { setErr('File is larger than 30 MB.'); return }
+    setErr(null); setBusy(true)
+    try { await onUpload(selectedKey, f) }
+    catch (e) { setErr((e as Error).message) }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <div
+      className="mt-3 rounded-xl p-3 border"
+      style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}
+    >
+      <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--mid-gray)] font-semibold mb-2" style={{ fontFamily: 'var(--font-display)' }}>
+        Upload on the student&apos;s behalf
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <select
+          className="select"
+          value={selectedKey}
+          onChange={ev => setSelectedKey(ev.target.value)}
+          style={{ minWidth: 240 }}
+        >
+          {STAFF_DOC_OPTIONS.map(o => (
+            <option key={o.key} value={o.key}>
+              {o.title}{existing[o.key] ? ' (already on file)' : ''}
+            </option>
+          ))}
+        </select>
+        <label className={`btn-primary text-xs cursor-pointer ${busy ? 'opacity-60' : ''}`} style={{ width: 'auto' }}>
+          {busy ? 'Uploading…' : alreadyOnFile ? 'Replace file' : 'Upload file'}
+          <input type="file" className="sr-only" accept=".pdf,image/*,.doc,.docx" onChange={handlePick} disabled={busy} />
+        </label>
+      </div>
+      <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-2">{opt.hint}</p>
+      {err && <div className="mt-2 text-[12px] text-rose-700">{err}</div>}
+    </div>
+  )
+}
+
 function docTitle(key: string): string {
   const map: Record<string, string> = {
     psa_birth_cert: 'PSA Birth Certificate',

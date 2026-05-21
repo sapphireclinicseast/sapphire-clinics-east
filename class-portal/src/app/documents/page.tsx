@@ -27,12 +27,14 @@ const KINDER_DOCS: DocRequirement[] = [
   { key: 'medical_reports',  title: 'Medical / developmental / therapy reports', sub: 'If relevant — helps the school plan support.', optional: true },
 ]
 
+// Form 137 / SF10 is intentionally NOT collected from parents here — that
+// record is endorsed by the previous school directly to Aura Academy, so
+// the admin/teacher uploads it onto the student profile after enrollment.
 const GRADED_DOCS: DocRequirement[] = [
   { key: 'psa_birth_cert',     title: 'PSA Birth Certificate (photocopy)', sub: 'Clear scan or photo of the PSA-issued certificate.' },
   CHILD_PHOTO_DOC,
   { key: 'report_card_sf9',    title: 'Latest Report Card / SF9 (Form 138)', sub: 'Most recent grading period.' },
   { key: 'good_moral',         title: 'Certificate of Good Moral Character', sub: 'From the previous school.' },
-  { key: 'form_137_sf10',      title: 'Form 137 / SF10 or previous school records', sub: 'Permanent record from the prior school.' },
 ]
 
 export default function DocumentsPage() {
