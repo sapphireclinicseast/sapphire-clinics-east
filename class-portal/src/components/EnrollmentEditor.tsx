@@ -127,6 +127,8 @@ export default function EnrollmentEditor({ student, onClose, onSaved, headerLabe
             <Grid2>
               <Field label="Mother tongue"><Upper value={draft.motherTongue ?? ''} onChange={v => patch('motherTongue', v)} /></Field>
               <Field label="Religion"><Upper value={draft.religion ?? ''} onChange={v => patch('religion', v)} /></Field>
+              <Field label="Nationality"><Upper value={draft.nationality ?? ''} onChange={v => patch('nationality', v)} /></Field>
+              <Field label="PWD ID Number (optional)"><Upper value={draft.pwdIdNumber ?? ''} onChange={v => patch('pwdIdNumber', v)} /></Field>
             </Grid2>
             <Field label="Diagnosis (if applicable)"><Upper value={draft.diagnosis ?? ''} onChange={v => patch('diagnosis', v)} /></Field>
           </Section>

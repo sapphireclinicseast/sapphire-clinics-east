@@ -37,7 +37,9 @@ export default function EnrollPage() {
 
   const [motherTongue, setMotherTongue] = useState('')
   const [religion, setReligion] = useState('')
+  const [nationality, setNationality] = useState('FILIPINO')
   const [diagnosis, setDiagnosis] = useState('')
+  const [pwdIdNumber, setPwdIdNumber] = useState('')
 
   const [houseStreet, setHouseStreet] = useState('')
   const [barangay, setBarangay] = useState('')
@@ -90,7 +92,9 @@ export default function EnrollPage() {
       setIpCommunity(d.ipCommunity ?? '')
       setMotherTongue(d.motherTongue ?? '')
       setReligion(d.religion ?? '')
+      setNationality(d.nationality ?? 'FILIPINO')
       setDiagnosis(d.diagnosis ?? '')
+      setPwdIdNumber(d.pwdIdNumber ?? '')
       setHouseStreet(d.houseStreet ?? '')
       setBarangay(d.barangay ?? '')
       setCityProvinceCountry(d.cityProvinceCountry ?? '')
@@ -173,7 +177,9 @@ export default function EnrollPage() {
         ipMember: ipMember as 'YES' | 'NO',
         ipCommunity: ipMember === 'YES' ? ipCommunity : undefined,
         motherTongue, religion,
+        ...(nationality.trim() ? { nationality: nationality.trim() } : {}),
         ...(diagnosis ? { diagnosis } : {}),
+        ...(pwdIdNumber.trim() ? { pwdIdNumber: pwdIdNumber.trim() } : {}),
         houseStreet, barangay, cityProvinceCountry, zipCode,
         father, mother,
         ...(fatherOccupation ? { fatherOccupation } : {}),
@@ -323,6 +329,12 @@ export default function EnrollPage() {
               </Field>
               <Field label="Religion" required>
                 <UInput required value={religion} onValue={setReligion} />
+              </Field>
+              <Field label="Nationality">
+                <UInput value={nationality} onValue={setNationality} placeholder="FILIPINO" />
+              </Field>
+              <Field label="PWD ID Number (if applicable)">
+                <UInput value={pwdIdNumber} onValue={setPwdIdNumber} placeholder="OPTIONAL" />
               </Field>
             </div>
             <Field label="Diagnosis (if applicable)">

@@ -33,10 +33,18 @@ const PARENT_VALID_ID_DOC: DocRequirement = {
   sub: 'For the main signatory and contact person on the enrollment. PDF or photo.',
 }
 
+const PWD_ID_DOC: DocRequirement = {
+  key: 'pwd_id',
+  title: 'PWD ID (if applicable)',
+  sub: 'Photo or scan of the child’s PWD ID, if any. Helps with discount eligibility on tuition + clinical services.',
+  optional: true,
+}
+
 const KINDER_DOCS: DocRequirement[] = [
   { key: 'psa_birth_cert',   title: 'PSA Birth Certificate (photocopy)', sub: 'Clear scan or photo of the PSA-issued certificate.' },
   CHILD_PHOTO_DOC,
   PARENT_VALID_ID_DOC,
+  PWD_ID_DOC,
   { key: 'medical_reports',  title: 'Medical / developmental / therapy reports', sub: 'If relevant — helps the school plan support.', optional: true },
 ]
 
@@ -46,6 +54,7 @@ const GRADED_DOCS: DocRequirement[] = [
   { key: 'psa_birth_cert',     title: 'PSA Birth Certificate (photocopy)', sub: 'Clear scan or photo of the PSA-issued certificate.' },
   CHILD_PHOTO_DOC,
   PARENT_VALID_ID_DOC,
+  PWD_ID_DOC,
   { key: 'report_card_sf9',    title: 'Latest Report Card / SF9 (Form 138)', sub: 'Most recent grading period.', notAvailableOption: true },
   { key: 'good_moral',         title: 'Certificate of Good Moral Character', sub: 'From the previous school.', notAvailableOption: true },
 ]

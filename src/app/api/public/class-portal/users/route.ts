@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, hashPassword } from '@/lib/class-portal-auth'
+import { syncStudentToPatientCrm } from '@/lib/class-portal-patient-sync'
 import { withCors, corsHeaders } from '../../_cors'
 
 export async function OPTIONS(req: Request) {
@@ -105,6 +106,24 @@ export async function POST(req: Request) {
         enrollment: (body.enrollment ?? null) as any,
       },
     })
+
+    // Mirror new students into the marketing Patient CRM so the clinic
+    // staff (queue, schedules, dashboards) sees them immediately. Failure
+    // here is logged but does not block the class-portal account.
+    if (created.role === 'STUDENT') {
+      try {
+        await syncStudentToPatientCrm({
+          email: created.email,
+          firstName: created.firstName,
+          lastName: created.lastName,
+          branch: created.branch as 'EAST' | 'GREENHILLS' | null,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          enrollment: (created.enrollment as any) ?? null,
+        })
+      } catch (e) {
+        console.warn('[users.POST] Patient CRM sync failed (non-fatal):', e)
+      }
+    }
     return withCors(NextResponse.json({
       user: {
         id: created.id,
