@@ -1,20 +1,20 @@
 // DepEd Basic Education Enrollment Form (Annex 2, DepEd Order 3, s.2018)
-// — generated to mirror the official government layout so the school can
-// submit it as the required DepEd document.
+// generator. Lays out the form so the school can submit it as the
+// government-required document.
 //
-// Layout decisions:
-//   • Monochrome black-on-white (no Aura branding on this one form,
-//     since it functions as the government template for submission).
-//   • Section bands with light-grey fill + bold uppercase titles.
-//   • Boxed-per-character cells where the source has them (LRN, names,
-//     DOB, zip code, PSA cert no.) — one square per digit/letter so the
-//     printed copy matches the form's structure.
-//   • "ANNEX 2 / Deped Order 3, 2018" tag in the upper right.
-//   • "For use of DepEd Personnel Only" block at the bottom.
-//
-// Extra fields our enrollment captures (nationality, PWD ID, diagnosis)
-// sit in semantically appropriate rows of the same section bands without
-// disturbing the overall layout.
+// Layout notes (modelled from the page-1 reference):
+//   • Monochrome black-on-white with light-grey section bands.
+//   • Labels sit to the LEFT of boxed rows like LRN, DOB, Zip Code —
+//     not above them. The label-above style is reserved for the wide
+//     name rows (LAST/FIRST/MIDDLE NAME) where the row of boxes spans
+//     nearly the full page.
+//   • Short text fields use an underline beneath the label (PSA Birth
+//     Cert No., House Street, City, Father's Name, …) rather than a
+//     bordered rectangle.
+//   • The two "For Returning Learners" and "For Learners in Senior High
+//     School" bands always render, even if blank, so the layout always
+//     matches the government form. The Class Adviser block at the
+//     bottom is also always present.
 
 import { jsPDF } from 'jspdf'
 import { ageFromDob, levelLabel, type EnrollmentDraft, type EnrollmentLevel, type StoredUser } from './session'
@@ -24,23 +24,20 @@ const PAGE_W = 210
 const PAGE_H = 297
 const CONTENT_W = PAGE_W - PAGE_MARGIN * 2
 
-// Compact spacing — tuned so the whole layout fits on one A4 page.
-const BOX_H = 5
-const BOX_LABEL_PAD = 2.4
-const BOX_GAP = 1
-const WRAP_LINE_H = 3.6
-const WRAP_PAD_Y = 1.1
-const WRAP_LABEL_PAD = 2.4
-const WRAP_GAP = 1
-const SEC_HEADER_BAND = 4.4
-const SEC_HEADER_GAP = 5.4
+// Tight spacing — the whole government form fits one A4 page so we need
+// to match that density.
+const NAME_BOX_H = 5.4
+const SMALL_BOX_H = 4.6
+const SEC_BAND_H = 4.6
+const SEC_BAND_GAP = 5.4
+const LINE_H = 4.4
 
-// Government-form palette — black ink, mid grey labels, light grey bands.
-const COLOR_INK:    [number, number, number] = [10, 10, 10]
-const COLOR_LABEL:  [number, number, number] = [70, 70, 70]
-const COLOR_BORDER: [number, number, number] = [120, 120, 120]
-const COLOR_BAND:   [number, number, number] = [220, 220, 220]
-const COLOR_MUTED:  [number, number, number] = [110, 110, 110]
+// Government-form palette: black ink, mid grey labels, light grey bands.
+const C_INK:    [number, number, number] = [10, 10, 10]
+const C_LABEL:  [number, number, number] = [60, 60, 60]
+const C_BORDER: [number, number, number] = [120, 120, 120]
+const C_BAND:   [number, number, number] = [219, 226, 240]   // pale blue-grey for section bands
+const C_MUTED:  [number, number, number] = [110, 110, 110]
 
 type Cursor = { doc: jsPDF; y: number }
 
@@ -55,184 +52,201 @@ function ensure(c: Cursor, needed: number) {
   }
 }
 
-/** A small checkbox + inline label. Returns x advanced past the label. */
-function checkbox(doc: jsPDF, x: number, y: number, checked: boolean, label: string, labelGap = 1.2): number {
-  setDraw(doc, COLOR_BORDER)
-  doc.setLineWidth(0.3)
-  doc.rect(x, y, 3, 3)
+/* ─────────────────── primitives ─────────────────── */
+
+/** Checkbox + inline label. Returns the x advanced past the label. */
+function checkbox(doc: jsPDF, x: number, y: number, checked: boolean, label: string, gap = 1.2): number {
+  setDraw(doc, C_BORDER); doc.setLineWidth(0.3)
+  doc.rect(x, y, 2.8, 2.8)
   if (checked) {
-    setColor(doc, COLOR_INK)
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(8)
-    doc.text('X', x + 0.6, y + 2.4)
+    setColor(doc, C_INK); doc.setFont('helvetica', 'bold'); doc.setFontSize(8)
+    doc.text('X', x + 0.55, y + 2.3)
   }
-  setColor(doc, COLOR_INK)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7.5)
-  doc.text(label, x + 3 + labelGap, y + 2.4)
-  const labelW = doc.getTextWidth(label)
-  return x + 3 + labelGap + labelW
+  setColor(doc, C_INK); doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5)
+  doc.text(label, x + 2.8 + gap, y + 2.3)
+  return x + 2.8 + gap + doc.getTextWidth(label)
 }
 
+/** Pale-blue section band with centered bold title. */
 function sectionHeader(c: Cursor, title: string) {
-  ensure(c, SEC_HEADER_GAP + 1)
+  ensure(c, SEC_BAND_GAP + 1)
   const { doc } = c
-  setFill(doc, COLOR_BAND)
-  setDraw(doc, COLOR_BORDER)
+  setFill(doc, C_BAND); setDraw(doc, C_BORDER)
   doc.setLineWidth(0.25)
-  doc.rect(PAGE_MARGIN, c.y, CONTENT_W, SEC_HEADER_BAND, 'FD')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8)
-  setColor(doc, COLOR_INK)
-  doc.text(title.toUpperCase(), PAGE_W / 2, c.y + SEC_HEADER_BAND - 1.2, { align: 'center' })
-  c.y += SEC_HEADER_GAP
+  doc.rect(PAGE_MARGIN, c.y, CONTENT_W, SEC_BAND_H, 'FD')
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9)
+  setColor(doc, C_INK)
+  doc.text(title.toUpperCase(), PAGE_W / 2, c.y + SEC_BAND_H - 1.2, { align: 'center' })
+  c.y += SEC_BAND_GAP
 }
 
-/** Row with one square per character. Pads `value` to `n` chars with spaces. */
-function boxRow(c: Cursor, label: string, value: string, n: number, opts: { boxH?: number; labelW?: number; widthW?: number; xStart?: number } = {}) {
+/** Inline boxed row: "LABEL: [_][_][_]…" all on one line. */
+function inlineBoxRow(
+  c: Cursor,
+  label: string,
+  value: string,
+  n: number,
+  opts: { xStart?: number; widthW?: number; labelW?: number; boxH?: number; charBoxW?: number } = {},
+) {
   const { doc } = c
-  const labelW = opts.labelW ?? 0
-  const boxH = opts.boxH ?? BOX_H
-  const baseX = opts.xStart ?? PAGE_MARGIN
+  const xStart = opts.xStart ?? PAGE_MARGIN
   const widthW = opts.widthW ?? CONTENT_W
-  const boxW = (widthW - labelW) / n
+  const boxH = opts.boxH ?? SMALL_BOX_H
+  // measure the label width if not provided
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
+  const labelW = opts.labelW ?? (doc.getTextWidth(label) + 2)
+  const boxesW = opts.charBoxW ? Math.min(opts.charBoxW * n, widthW - labelW) : (widthW - labelW)
+  const boxW = boxesW / n
 
-  ensure(c, boxH + BOX_LABEL_PAD + 2)
+  ensure(c, boxH + 2)
 
-  let startX = baseX
-  if (labelW > 0) {
-    setColor(doc, COLOR_LABEL)
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(6.5)
-    const lines = doc.splitTextToSize(label, labelW - 1) as string[]
-    lines.slice(0, 2).forEach((ln, i) => doc.text(ln, baseX, c.y + 2.6 + i * 2.6))
-    startX = baseX + labelW
-  } else {
-    setColor(doc, COLOR_LABEL)
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(6.5)
-    doc.text(label.toUpperCase(), baseX, c.y + 2)
-    c.y += BOX_LABEL_PAD
-  }
+  setColor(doc, C_INK)
+  doc.text(label, xStart, c.y + boxH - 1.3)
 
-  setDraw(doc, COLOR_BORDER)
-  doc.setLineWidth(0.25)
+  setDraw(doc, C_BORDER); doc.setLineWidth(0.25)
   const chars = (value ?? '').toUpperCase().padEnd(n, ' ').slice(0, n).split('')
-  const valueFont = Math.min(boxH * 1.35, 9)
+  const startX = xStart + labelW
   for (let i = 0; i < n; i++) {
     const x = startX + i * boxW
     doc.rect(x, c.y, boxW, boxH)
     const ch = chars[i].trim()
     if (ch) {
-      setColor(doc, COLOR_INK)
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(valueFont)
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(Math.min(boxH * 1.4, 9))
+      doc.text(ch, x + boxW / 2, c.y + boxH / 2 + 1.4, { align: 'center' })
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
+    }
+  }
+  c.y += boxH + 1.6
+}
+
+/**
+ * Wide boxed row with the label ABOVE the boxes — used for LAST/FIRST/
+ * MIDDLE NAME where the 20-cell row spans nearly the full page width.
+ */
+function nameBoxRow(c: Cursor, label: string, value: string, n: number, opts: { xStart?: number; widthW?: number; boxH?: number } = {}) {
+  const { doc } = c
+  const xStart = opts.xStart ?? PAGE_MARGIN
+  const widthW = opts.widthW ?? CONTENT_W
+  const boxH = opts.boxH ?? NAME_BOX_H
+  const boxW = widthW / n
+
+  ensure(c, boxH + 4)
+  setColor(doc, C_INK); doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
+  doc.text(label, xStart, c.y + 2.4)
+  c.y += 3
+
+  setDraw(doc, C_BORDER); doc.setLineWidth(0.25)
+  const chars = (value ?? '').toUpperCase().padEnd(n, ' ').slice(0, n).split('')
+  for (let i = 0; i < n; i++) {
+    const x = xStart + i * boxW
+    doc.rect(x, c.y, boxW, boxH)
+    const ch = chars[i].trim()
+    if (ch) {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9)
       doc.text(ch, x + boxW / 2, c.y + boxH / 2 + 1.4, { align: 'center' })
     }
   }
-  c.y += boxH + BOX_GAP
+  c.y += boxH + 1.2
 }
 
-/** Row of separate fixed-width boxed groups (DOB: MM/DD/YYYY). */
-function boxGroupRow(c: Cursor, label: string, groups: Array<{ value: string; n: number }>, separators: string[], opts: { xStart?: number; widthW?: number; boxH?: number; sepWidth?: number } = {}) {
+/** MM/DD/YYYY style row with separators between groups. */
+function boxGroupInline(
+  c: Cursor,
+  label: string,
+  groups: Array<{ value: string; n: number }>,
+  separators: string[],
+  opts: { xStart?: number; labelW?: number; boxH?: number; boxW?: number; sepW?: number } = {},
+) {
   const { doc } = c
-  const boxH = opts.boxH ?? BOX_H
-  const baseX = opts.xStart ?? PAGE_MARGIN
-  const widthW = opts.widthW ?? CONTENT_W
-  const sepWidthMm = opts.sepWidth ?? 2.4
-  const totalSepMm = sepWidthMm * separators.length
-  const totalChars = groups.reduce((a, g) => a + g.n, 0)
-  const remaining = widthW - totalSepMm
-  const boxW = Math.min(6.2, remaining / totalChars)
+  const xStart = opts.xStart ?? PAGE_MARGIN
+  const boxH = opts.boxH ?? SMALL_BOX_H
+  const boxW = opts.boxW ?? 4.2
+  const sepW = opts.sepW ?? 2.4
 
-  ensure(c, boxH + BOX_LABEL_PAD + 2)
-  setColor(doc, COLOR_LABEL)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(6.5)
-  doc.text(label.toUpperCase(), baseX, c.y + 2)
-  c.y += BOX_LABEL_PAD
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
+  const labelW = opts.labelW ?? (doc.getTextWidth(label) + 2)
 
-  let x = baseX
-  setDraw(doc, COLOR_BORDER)
-  doc.setLineWidth(0.25)
+  ensure(c, boxH + 2)
+
+  setColor(doc, C_INK)
+  doc.text(label, xStart, c.y + boxH - 1.3)
+
+  setDraw(doc, C_BORDER); doc.setLineWidth(0.25)
+  let x = xStart + labelW
   groups.forEach((g, gi) => {
     const chars = g.value.toUpperCase().padEnd(g.n, ' ').slice(0, g.n).split('')
     for (let i = 0; i < g.n; i++) {
       doc.rect(x, c.y, boxW, boxH)
       const ch = chars[i].trim()
       if (ch) {
-        setColor(doc, COLOR_INK)
-        doc.setFont('helvetica', 'bold')
-        doc.setFontSize(8.5)
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(9)
         doc.text(ch, x + boxW / 2, c.y + boxH / 2 + 1.4, { align: 'center' })
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
       }
       x += boxW
     }
     if (separators[gi] !== undefined) {
-      setColor(doc, COLOR_LABEL)
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(10)
-      doc.text(separators[gi], x + sepWidthMm / 2, c.y + boxH / 2 + 1.6, { align: 'center' })
-      x += sepWidthMm
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10)
+      doc.text(separators[gi], x + sepW / 2, c.y + boxH / 2 + 1.6, { align: 'center' })
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
+      x += sepW
     }
   })
-  c.y += boxH + BOX_GAP
+  // Return the right edge so callers can place follow-on widgets inline.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(c as any)._lastX = x
+  c.y += boxH + 1.6
 }
 
-/** Multi-line wrapping text field that grows to fit its value. */
-function wrapField(c: Cursor, label: string, value: string | undefined, opts: { w?: number; minLines?: number; xStart?: number } = {}) {
+/**
+ * Underline-style field: label small at top-left, horizontal line beneath
+ * with the value sitting just above the line. Used for short text fields
+ * (Religion, House/Street, Father's Name, …).
+ */
+function underlineField(
+  c: Cursor,
+  label: string,
+  value: string | undefined,
+  opts: { xStart?: number; w?: number; labelAbove?: boolean } = {},
+) {
   const { doc } = c
-  const w = opts.w ?? CONTENT_W
   const xStart = opts.xStart ?? PAGE_MARGIN
-  const v = (value ?? '').trim()
-  const minLines = opts.minLines ?? 1
+  const w = opts.w ?? CONTENT_W
+  const labelAbove = opts.labelAbove ?? true
 
-  setColor(doc, COLOR_LABEL)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(6.5)
-  doc.text(label.toUpperCase(), xStart, c.y + 2)
-  c.y += WRAP_LABEL_PAD
-
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8.5)
-  setColor(doc, COLOR_INK)
-  const lines = (v ? doc.splitTextToSize(v, w - 3) : []) as string[]
-  const renderLines = Math.max(lines.length, minLines)
-  const cellH = WRAP_PAD_Y * 2 + renderLines * WRAP_LINE_H
-
-  ensure(c, cellH + 2)
-  setDraw(doc, COLOR_BORDER)
-  doc.setLineWidth(0.25)
-  doc.rect(xStart, c.y, w, cellH)
-  lines.forEach((ln, i) => doc.text(ln, xStart + 1.6, c.y + WRAP_PAD_Y + WRAP_LINE_H * (i + 0.78)))
-  c.y += cellH + WRAP_GAP
+  ensure(c, labelAbove ? LINE_H + 2.6 : LINE_H)
+  setColor(doc, C_LABEL); doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5)
+  if (labelAbove) {
+    doc.text(label, xStart, c.y + 2.2)
+    c.y += 2.8
+  } else {
+    doc.text(label, xStart, c.y + 2.4)
+  }
+  // Underline
+  const lineY = c.y + 2.6
+  setDraw(doc, C_BORDER); doc.setLineWidth(0.3)
+  doc.line(xStart, lineY, xStart + w, lineY)
+  // Value text sitting just above the underline
+  if (value) {
+    setColor(doc, C_INK); doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
+    const safe = (doc.splitTextToSize(value, w - 1) as string[])[0] ?? value
+    doc.text(safe, xStart + 0.5, c.y + 1.7)
+  }
+  c.y += LINE_H
 }
 
-function wrapFieldPair(c: Cursor, left: { label: string; value?: string }, right: { label: string; value?: string }) {
-  const halfW = (CONTENT_W - 2) / 2
+/** Two underline fields side-by-side. */
+function underlinePair(c: Cursor, left: { label: string; value?: string }, right: { label: string; value?: string }) {
+  const halfW = (CONTENT_W - 3) / 2
   const yStart = c.y
-  wrapField(c, left.label, left.value, { w: halfW, xStart: PAGE_MARGIN })
-  const yAfterLeft = c.y
+  underlineField(c, left.label, left.value, { xStart: PAGE_MARGIN, w: halfW })
+  const y1 = c.y
   c.y = yStart
-  wrapField(c, right.label, right.value, { w: halfW, xStart: PAGE_MARGIN + halfW + 2 })
-  const yAfterRight = c.y
-  c.y = Math.max(yAfterLeft, yAfterRight)
+  underlineField(c, right.label, right.value, { xStart: PAGE_MARGIN + halfW + 3, w: halfW })
+  c.y = Math.max(y1, c.y)
 }
 
-function wrapFieldTriple(c: Cursor, a: { label: string; value?: string; flex?: number }, b: { label: string; value?: string; flex?: number }, d: { label: string; value?: string; flex?: number }) {
-  const gap = 2
-  const fa = a.flex ?? 1, fb = b.flex ?? 1, fd = d.flex ?? 1
-  const totalFlex = fa + fb + fd
-  const slotW = (CONTENT_W - gap * 2) / totalFlex
-  const wA = slotW * fa, wB = slotW * fb, wD = slotW * fd
-  const yStart = c.y
-  wrapField(c, a.label, a.value, { w: wA, xStart: PAGE_MARGIN })
-  const y1 = c.y; c.y = yStart
-  wrapField(c, b.label, b.value, { w: wB, xStart: PAGE_MARGIN + wA + gap })
-  const y2 = c.y; c.y = yStart
-  wrapField(c, d.label, d.value, { w: wD, xStart: PAGE_MARGIN + wA + gap + wB + gap })
-  c.y = Math.max(y1, y2, c.y)
-}
+/* ─────────────────── main generator ─────────────────── */
 
 export function generateEnrollmentPdf(user: StoredUser, draft: Partial<EnrollmentDraft>): jsPDF {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
@@ -240,260 +254,309 @@ export function generateEnrollmentPdf(user: StoredUser, draft: Partial<Enrollmen
 
   const level: EnrollmentLevel = (draft.level ?? user.level ?? 'KINDER') as EnrollmentLevel
 
-  // ── ANNEX 2 / DepEd Order tag (upper-right) ────────────────────
-  const tagW = 32, tagH = 8
+  // ── Top-right Annex 2 tag ────────────────────────────────────
+  const tagW = 30, tagH = 6
   const tagX = PAGE_W - PAGE_MARGIN - tagW
-  setDraw(doc, COLOR_BORDER)
-  doc.setLineWidth(0.4)
+  setDraw(doc, C_BORDER); doc.setLineWidth(0.4)
   doc.rect(tagX, PAGE_MARGIN, tagW, tagH)
-  setColor(doc, COLOR_INK)
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(10)
-  doc.text('ANNEX 2', tagX + tagW / 2, PAGE_MARGIN + 5.5, { align: 'center' })
-  doc.setFont('helvetica', 'italic')
-  doc.setFontSize(7)
-  setColor(doc, COLOR_MUTED)
-  doc.text('Deped Order 3, 2018', tagX + tagW / 2, PAGE_MARGIN + tagH + 2.6, { align: 'center' })
+  setColor(doc, C_INK); doc.setFont('helvetica', 'bold'); doc.setFontSize(10)
+  doc.text('ANNEX 2', tagX + tagW / 2, PAGE_MARGIN + 4.2, { align: 'center' })
+  setColor(doc, C_MUTED); doc.setFont('helvetica', 'bolditalic'); doc.setFontSize(8)
+  doc.text('Deped Order 3, 2018', tagX + tagW / 2, PAGE_MARGIN + tagH + 3.2, { align: 'center' })
 
-  // ── Title block ────────────────────────────────────────────────
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(13)
-  setColor(doc, COLOR_INK)
+  // ── Title block (centered) ───────────────────────────────────
+  setColor(doc, C_INK); doc.setFont('helvetica', 'bold'); doc.setFontSize(13)
   doc.text('BASIC EDUCATION ENROLLMENT FORM', PAGE_W / 2, PAGE_MARGIN + 5, { align: 'center' })
-  doc.setFont('helvetica', 'italic')
-  doc.setFontSize(8.5)
-  setColor(doc, COLOR_MUTED)
-  doc.text('THIS FORM IS NOT FOR SALE.', PAGE_W / 2, PAGE_MARGIN + 10, { align: 'center' })
-  c.y = PAGE_MARGIN + 14
+  setColor(doc, C_MUTED); doc.setFont('helvetica', 'italic'); doc.setFontSize(8)
+  doc.text('THIS FORM IS NOT FOR SALE.', PAGE_W / 2, PAGE_MARGIN + 9, { align: 'center' })
+  setColor(doc, C_MUTED); doc.setFont('helvetica', 'italic'); doc.setFontSize(7.5)
+  doc.text('Check the appropriate box only:', PAGE_W / 2, PAGE_MARGIN + 13, { align: 'center' })
+  c.y = PAGE_MARGIN + 15
 
-  // ── School year + LRN status row ───────────────────────────────
-  doc.setFont('helvetica', 'italic')
-  doc.setFontSize(7.5)
-  setColor(doc, COLOR_MUTED)
-  doc.text('Check the appropriate box only:', PAGE_W - PAGE_MARGIN - 65, c.y - 0.5)
-
-  setColor(doc, COLOR_INK)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8)
+  // ── School Year row + LRN status checkboxes ──────────────────
+  ensure(c, 6)
+  setColor(doc, C_INK); doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
   doc.text('School Year:', PAGE_MARGIN, c.y + 3)
-  // Two boxed year cells with a dash separator
-  boxGroupRow(c, '', [
-    { value: draft.schoolYearFrom ?? '', n: 4 },
-    { value: draft.schoolYearTo ?? '',   n: 4 },
-  ], ['-'], { xStart: PAGE_MARGIN + 22, widthW: 56, boxH: 4.6 })
-  c.y -= (4.6 + BOX_GAP) // we'll continue this row with checkboxes inline
-  let cbX = PAGE_MARGIN + 84
-  const cbY = c.y - 0.4
-  cbX = checkbox(doc, cbX, cbY, draft.lrnStatus === 'NO_LRN',    'No LRN'); cbX += 4
-  cbX = checkbox(doc, cbX, cbY, draft.lrnStatus === 'WITH_LRN',  'With LRN'); cbX += 4
-  checkbox(doc, cbX, cbY, draft.lrnStatus === 'RETURNING',       'Returning (Balik-Aral)')
-  c.y += 6
+  let x = PAGE_MARGIN + 20
+  const yrBoxW = 3.4, yrBoxH = 4.4
+  setDraw(doc, C_BORDER); doc.setLineWidth(0.25)
+  const fromYr = (draft.schoolYearFrom ?? '').padEnd(4, ' ').slice(0, 4)
+  for (let i = 0; i < 4; i++) {
+    doc.rect(x + i * yrBoxW, c.y, yrBoxW, yrBoxH)
+    const ch = fromYr[i].trim()
+    if (ch) {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5)
+      doc.text(ch, x + i * yrBoxW + yrBoxW / 2, c.y + yrBoxH / 2 + 1.3, { align: 'center' })
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
+    }
+  }
+  x += 4 * yrBoxW + 1.5
+  doc.text('-', x, c.y + 3); x += 2.5
+  const toYr = (draft.schoolYearTo ?? '').padEnd(4, ' ').slice(0, 4)
+  for (let i = 0; i < 4; i++) {
+    doc.rect(x + i * yrBoxW, c.y, yrBoxW, yrBoxH)
+    const ch = toYr[i].trim()
+    if (ch) {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5)
+      doc.text(ch, x + i * yrBoxW + yrBoxW / 2, c.y + yrBoxH / 2 + 1.3, { align: 'center' })
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
+    }
+  }
+  x += 4 * yrBoxW + 6
+  let cbX = x
+  cbX = checkbox(doc, cbX, c.y + 0.6, draft.lrnStatus === 'NO_LRN',    'No LRN'); cbX += 6
+  cbX = checkbox(doc, cbX, c.y + 0.6, draft.lrnStatus === 'WITH_LRN',  'With LRN'); cbX += 6
+  checkbox(doc, cbX, c.y + 0.6, draft.lrnStatus === 'RETURNING',       'Returning (Balik-Aral)')
+  c.y += 7
 
-  // ── STUDENT INFORMATION ────────────────────────────────────────
+  // ═════════════════════════════════════════════════════════════
+  // STUDENT INFORMATION
+  // ═════════════════════════════════════════════════════════════
   sectionHeader(c, 'Student Information')
 
-  wrapFieldPair(
-    c,
-    { label: 'PSA Birth Certificate No.', value: draft.psaBirthCertNo },
-    { label: 'Religion', value: draft.religion },
-  )
-  boxRow(c, 'Learner Reference No. (LRN)', draft.lrn ?? '', 12)
-  boxRow(c, 'Last Name', draft.lastName ?? '', 22)
-  boxRow(c, 'First Name', draft.firstName ?? '', 22)
-  boxRow(c, 'Middle Name', draft.middleName ?? '', 22)
-  wrapField(c, 'Extension Name e.g. Jr., III (if applicable)', draft.extensionName)
+  underlineField(c, 'PSA Birth Certificate No.', draft.psaBirthCertNo, { labelAbove: false })
+  c.y += 0.8
+
+  inlineBoxRow(c, 'Learner Reference No. (LRN)', draft.lrn ?? '', 12, { labelW: 56, charBoxW: 6 })
+  c.y += 0.8
+
+  nameBoxRow(c, 'LAST NAME',   draft.lastName   ?? '', 20)
+  nameBoxRow(c, 'FIRST NAME',  draft.firstName  ?? '', 20)
+  nameBoxRow(c, 'MIDDLE NAME', draft.middleName ?? '', 20)
+
+  underlineField(c, 'EXTENSION NAME e.g. Jr., III (if applicable)', draft.extensionName, { labelAbove: false })
+  c.y += 0.8
 
   // DOB | SEX | AGE row
   {
-    const dobW = 64
-    const sexW = 36
-    const ageW = 22
-    const extW = CONTENT_W - dobW - sexW - ageW - 6
+    ensure(c, SMALL_BOX_H + 3)
     const yStart = c.y
-
-    boxGroupRow(c, 'Date of Birth (Month/Day/Year)', [
+    boxGroupInline(c, 'DATE OF BIRTH (Month/Day/Year)', [
       { value: dobMonth(draft.dob), n: 2 },
       { value: dobDay(draft.dob),   n: 2 },
       { value: dobYear(draft.dob),  n: 4 },
-    ], ['/', '/'], { xStart: PAGE_MARGIN, widthW: dobW })
-    const yAfterDob = c.y
+    ], ['/', '/'], { xStart: PAGE_MARGIN, labelW: 56, boxW: 4.4 })
+    const y1 = c.y
 
-    // Sex
+    // Sex on the right of the DOB boxes
     c.y = yStart
-    const sexX = PAGE_MARGIN + dobW + 2
-    setColor(doc, COLOR_LABEL); doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5)
-    doc.text('SEX', sexX, c.y + 2)
-    c.y += BOX_LABEL_PAD
-    let sxX = sexX
-    sxX = checkbox(doc, sxX, c.y, draft.sex === 'MALE',   'Male'); sxX += 4
-    checkbox(doc, sxX, c.y, draft.sex === 'FEMALE', 'Female')
-    const yAfterSex = c.y + BOX_H + BOX_GAP
+    let sxX = PAGE_MARGIN + 56 + 4 * 4.4 + 2 + 4 * 4.4 + 2 + 4 * 4.4 + 6
+    // Simpler — place at fixed x:
+    sxX = PAGE_W - PAGE_MARGIN - 80
+    setColor(doc, C_INK); doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
+    doc.text('SEX', sxX, c.y + SMALL_BOX_H - 1.3)
+    let chX = sxX + 9
+    chX = checkbox(doc, chX, c.y + 0.6, draft.sex === 'MALE',   'MALE'); chX += 4
+    chX = checkbox(doc, chX, c.y + 0.6, draft.sex === 'FEMALE', 'FEMALE')
 
-    // Age
-    c.y = yStart
-    const ageX = sexX + sexW + 2
-    boxRow(c, 'Age', draft.dob ? ageFromDob(draft.dob).padStart(2, ' ') : '', 2, { xStart: ageX, widthW: ageW })
-    const yAfterAge = c.y
-
-    // Nationality (extra field, fills the remaining slot)
-    c.y = yStart
-    const natX = ageX + ageW + 2
-    wrapField(c, 'Nationality', draft.nationality, { xStart: natX, w: extW })
-    const yAfterNat = c.y
-
-    c.y = Math.max(yAfterDob, yAfterSex, yAfterAge, yAfterNat)
+    // Age on the far right
+    const ageX = PAGE_W - PAGE_MARGIN - 20
+    doc.text('AGE', ageX, c.y + SMALL_BOX_H - 1.3)
+    setDraw(doc, C_BORDER); doc.setLineWidth(0.3)
+    doc.line(ageX + 6, c.y + SMALL_BOX_H - 0.8, ageX + 19, c.y + SMALL_BOX_H - 0.8)
+    if (draft.dob) {
+      const a = ageFromDob(draft.dob)
+      if (a) {
+        setColor(doc, C_INK); doc.setFont('helvetica', 'bold'); doc.setFontSize(9)
+        doc.text(a, ageX + 12, c.y + SMALL_BOX_H - 1.6)
+      }
+    }
+    c.y = Math.max(y1, c.y + SMALL_BOX_H + 1.6)
   }
 
   // IP membership row
   {
-    ensure(c, 6)
-    setColor(doc, COLOR_INK); doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5)
-    doc.text('Belonging to any Indigenous Peoples (IP) Community / Indigenous Cultural Community?', PAGE_MARGIN, c.y + 2.4)
-    let x = PAGE_MARGIN + 102
-    x = checkbox(doc, x, c.y, draft.ipMember === 'NO',  'No');  x += 4
-    x = checkbox(doc, x, c.y, draft.ipMember === 'YES', 'Yes'); x += 4
-    if (draft.ipMember === 'YES') {
-      doc.setFont('helvetica', 'italic'); doc.setFontSize(7); setColor(doc, COLOR_MUTED)
-      doc.text('If Yes, please specify:', x, c.y + 2.4); x += 28
-      setColor(doc, COLOR_INK); doc.setFont('helvetica', 'bold'); doc.setFontSize(8)
-      doc.text((doc.splitTextToSize(draft.ipCommunity ?? '', PAGE_W - PAGE_MARGIN - x)[0] as string) ?? '', x, c.y + 2.4)
+    ensure(c, 5)
+    setColor(doc, C_INK); doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5)
+    const ipLabel = 'Belonging to any Indigenous Peoples (IP) Community / Indigenous Cultural Community?'
+    doc.text(ipLabel, PAGE_MARGIN, c.y + 2.6)
+    let xc = PAGE_MARGIN + doc.getTextWidth(ipLabel) + 4
+    xc = checkbox(doc, xc, c.y + 0.4, draft.ipMember === 'NO',  'No');  xc += 4
+    xc = checkbox(doc, xc, c.y + 0.4, draft.ipMember === 'YES', 'Yes'); xc += 6
+    doc.setFont('helvetica', 'italic'); doc.setFontSize(7); setColor(doc, C_MUTED)
+    doc.text('If Yes, please specify:', xc, c.y + 2.6); xc += doc.getTextWidth('If Yes, please specify:') + 2
+    setDraw(doc, C_BORDER); doc.setLineWidth(0.3)
+    doc.line(xc, c.y + 3, PAGE_W - PAGE_MARGIN, c.y + 3)
+    if (draft.ipMember === 'YES' && draft.ipCommunity) {
+      setColor(doc, C_INK); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5)
+      doc.text(draft.ipCommunity.slice(0, 40), xc + 0.5, c.y + 2.4)
     }
     c.y += 5
   }
 
-  // Mother tongue + (extras) Diagnosis + PWD ID row
-  if (draft.diagnosis || draft.pwdIdNumber) {
-    wrapFieldTriple(
-      c,
-      { label: 'Mother Tongue', value: draft.motherTongue, flex: 1 },
-      { label: 'Diagnosis (if applicable)', value: draft.diagnosis, flex: 2 },
-      { label: 'PWD ID Number (if applicable)', value: draft.pwdIdNumber, flex: 1 },
-    )
-  } else {
-    wrapField(c, 'Mother Tongue', draft.motherTongue)
-  }
-
-  // ── ADDRESS ────────────────────────────────────────────────────
-  sectionHeader(c, 'Address')
-  wrapField(c, 'House Number and Street', draft.houseStreet)
-  wrapField(c, 'Barangay', draft.barangay)
-  {
-    const zipW = 40
-    const cityW = CONTENT_W - zipW - 2
-    const yStart = c.y
-    wrapField(c, 'City / Municipality / Province / Country', draft.cityProvinceCountry, { w: cityW, xStart: PAGE_MARGIN })
-    const yAfterCity = c.y
-    c.y = yStart
-    boxRow(c, 'Zip Code', (draft.zipCode ?? '').padStart(4, ' ').slice(0, 4), 4, { xStart: PAGE_MARGIN + cityW + 2, widthW: zipW })
-    c.y = Math.max(yAfterCity, c.y)
-  }
-
-  // ── PARENT'S / GUARDIAN'S INFORMATION ──────────────────────────
-  sectionHeader(c, "Parent's / Guardian's Information")
-  wrapField(c, "Father's Name (Last Name, First Name, Middle Name)", nameOf(draft.father))
-  wrapField(c, "Mother's Maiden Name (Last Name, First Name, Middle Name)", nameOf(draft.mother))
-  wrapField(c, "Guardian's Name (Last Name, First Name, Middle Name)", nameOf(draft.guardian))
-  wrapFieldTriple(
-    c,
-    { label: 'Telephone No.', value: draft.telephone, flex: 1 },
-    { label: 'Cellphone No.', value: draft.cellphone, flex: 1 },
-    { label: 'Email', value: draft.email, flex: 2 },
+  // Mother Tongue | Religion
+  underlinePair(c,
+    { label: 'Mother Tongue', value: draft.motherTongue },
+    { label: 'Religion:',     value: draft.religion },
   )
 
-  // ── For Returning Learners / Transferees ───────────────────────
-  if (draft.isReturningOrTransferee === 'YES') {
-    sectionHeader(c, 'For Returning Learners (Balik-Aral) and Those Who Shall Transfer / Move In')
-    wrapFieldPair(
-      c,
-      { label: 'Last Grade Level Completed', value: draft.lastGradeCompleted },
-      { label: 'Last School Year Completed', value: draft.lastSchoolYearCompleted },
-    )
-    wrapFieldTriple(
-      c,
-      { label: 'School Name', value: draft.previousSchoolName, flex: 2 },
-      { label: 'School ID', value: draft.previousSchoolId, flex: 1 },
-      { label: 'School Address', value: draft.previousSchoolAddress, flex: 3 },
-    )
+  // ═════════════════════════════════════════════════════════════
+  // ADDRESS
+  // ═════════════════════════════════════════════════════════════
+  sectionHeader(c, 'Address')
+  underlineField(c, 'House Number and Street', draft.houseStreet)
+  underlineField(c, 'Barangay', draft.barangay)
+  // City/Municipality/Province/Country + Zip Code (4 boxes) on one row
+  {
+    const zipBoxW = 4.6
+    const zipW = 4 * zipBoxW + 12
+    const cityW = CONTENT_W - zipW - 3
+    const yStart = c.y
+    underlineField(c, 'City/Municipality/Province/Country', draft.cityProvinceCountry, { xStart: PAGE_MARGIN, w: cityW })
+    const yAfterCity = c.y
+    c.y = yStart
+    // Zip Code label + 4 boxes inline
+    setColor(doc, C_LABEL); doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5)
+    const zipLabelX = PAGE_MARGIN + cityW + 3
+    doc.text('Zip Code', zipLabelX, c.y + 2.2)
+    c.y += 2.8
+    setDraw(doc, C_BORDER); doc.setLineWidth(0.25)
+    const zip = (draft.zipCode ?? '').padEnd(4, ' ').slice(0, 4)
+    for (let i = 0; i < 4; i++) {
+      const bx = zipLabelX + 11 + i * zipBoxW
+      doc.rect(bx, c.y - 1.4, zipBoxW, SMALL_BOX_H)
+      const ch = zip[i].trim()
+      if (ch) {
+        setColor(doc, C_INK); doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5)
+        doc.text(ch, bx + zipBoxW / 2, c.y + SMALL_BOX_H / 2 - 0.1, { align: 'center' })
+      }
+    }
+    c.y = Math.max(yAfterCity, c.y + LINE_H - 2)
   }
 
-  // ── Certification block ────────────────────────────────────────
-  ensure(c, 28)
+  // ═════════════════════════════════════════════════════════════
+  // PARENT'S / GUARDIAN'S INFORMATION
+  // ═════════════════════════════════════════════════════════════
+  sectionHeader(c, "Parent's / Guardian's Information")
+  underlinePair(c,
+    { label: "Father's Name (Last Name, First Name, Middle Name)", value: nameOf(draft.father) },
+    { label: "Mother's Maiden Name (Last Name, First Name, Middle Name)", value: nameOf(draft.mother) },
+  )
+  underlineField(c, "Guardian's Name (Last Name, First Name, Middle Name)", nameOf(draft.guardian))
+  underlinePair(c,
+    { label: 'Telephone No.', value: draft.telephone },
+    { label: 'Cellphone No.', value: draft.cellphone },
+  )
+
+  // ═════════════════════════════════════════════════════════════
+  // FOR RETURNING LEARNERS (BALIK-ARAL) — always shown
+  // ═════════════════════════════════════════════════════════════
+  sectionHeader(c, 'For Returning Learners (Balik-Aral) and Those Who Shall Transfer / Move In')
+  underlinePair(c,
+    { label: 'Last Grade Level Completed',  value: draft.lastGradeCompleted },
+    { label: 'Last School Year Completed',  value: draft.lastSchoolYearCompleted },
+  )
+  // School Name + School ID (6 boxes) on one row
+  {
+    const idBoxW = 4.6
+    const idTotalW = 6 * idBoxW + 16
+    const nameW = CONTENT_W - idTotalW - 3
+    const yStart = c.y
+    underlineField(c, 'School Name', draft.previousSchoolName, { xStart: PAGE_MARGIN, w: nameW })
+    const y1 = c.y
+    c.y = yStart
+    setColor(doc, C_LABEL); doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5)
+    const idLabelX = PAGE_MARGIN + nameW + 3
+    doc.text('School ID', idLabelX, c.y + 2.2)
+    c.y += 2.8
+    setDraw(doc, C_BORDER); doc.setLineWidth(0.25)
+    const sid = (draft.previousSchoolId ?? '').padEnd(6, ' ').slice(0, 6)
+    for (let i = 0; i < 6; i++) {
+      const bx = idLabelX + 13 + i * idBoxW
+      doc.rect(bx, c.y - 1.4, idBoxW, SMALL_BOX_H)
+      const ch = sid[i].trim()
+      if (ch) {
+        setColor(doc, C_INK); doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5)
+        doc.text(ch, bx + idBoxW / 2, c.y + SMALL_BOX_H / 2 - 0.1, { align: 'center' })
+      }
+    }
+    c.y = Math.max(y1, c.y + LINE_H - 2)
+  }
+  underlineField(c, 'School Address', draft.previousSchoolAddress)
+
+  // ═════════════════════════════════════════════════════════════
+  // FOR LEARNERS IN SENIOR HIGH SCHOOL — always shown
+  // ═════════════════════════════════════════════════════════════
+  sectionHeader(c, 'For Learners in Senior High School')
+  // Semester checkboxes
+  {
+    ensure(c, 5)
+    setColor(doc, C_INK); doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
+    doc.text('Semester', PAGE_MARGIN, c.y + 2.6)
+    let xc = PAGE_MARGIN + 22
+    xc = checkbox(doc, xc, c.y + 0.4, false, '1st Sem');           xc += 6
+    checkbox(doc, xc, c.y + 0.4, false, '2nd Sem')
+    c.y += 5
+  }
+  underlinePair(c,
+    { label: 'Track', value: undefined },
+    { label: 'Strand (if any)', value: undefined },
+  )
+
+  // ── Certification ────────────────────────────────────────────
+  ensure(c, 24)
   c.y += 1
-  doc.setFont('helvetica', 'italic')
-  doc.setFontSize(7.5)
-  setColor(doc, COLOR_INK)
-  // Paraphrased certification text — same intent as the source's Data
-  // Privacy Act notice but written in our own words.
-  const cert = 'I certify that the information provided above is true and correct to the best of my knowledge, and I authorize the Department of Education to use my child’s details for the Learner Information System. All information will be handled confidentially in line with the Data Privacy Act of 2012 (R.A. 10173).'
-  const certLines = doc.splitTextToSize(cert, CONTENT_W) as string[]
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); setColor(doc, C_INK)
+  // Paraphrased certification — same legal intent as the source's Data
+  // Privacy Act notice.
+  const cert = 'I certify that the information provided above is true and correct to the best of my knowledge, and I authorize the Department of Education to use my child’s details for creating or updating his/her learner profile in the Learner Information System. All information shall be treated as confidential under the Data Privacy Act of 2012 (R.A. 10173).'
+  const certLines = doc.splitTextToSize(cert, CONTENT_W - 8) as string[]
   for (const ln of certLines) {
-    ensure(c, 3.4)
-    doc.text(ln, PAGE_MARGIN, c.y + 2.6)
-    c.y += 3.2
+    ensure(c, 3.6)
+    doc.text(ln, PAGE_MARGIN + 4, c.y + 2.8, { align: 'left' })
+    c.y += 3.4
   }
   c.y += 2
 
-  // Signature + Date block
-  const sigBoxW = CONTENT_W * 0.62
-  const dateBoxW = CONTENT_W - sigBoxW - 3
-  const sigH = 14
-  ensure(c, sigH + 8)
-  setDraw(doc, COLOR_BORDER)
-  doc.setLineWidth(0.3)
-  doc.rect(PAGE_MARGIN, c.y, sigBoxW, sigH)
-  doc.rect(PAGE_MARGIN + sigBoxW + 3, c.y, dateBoxW, sigH)
-  if (draft.certSignatureDataUrl) {
-    try { doc.addImage(draft.certSignatureDataUrl, 'PNG', PAGE_MARGIN + 1.5, c.y + 1.5, sigBoxW - 3, sigH - 3, undefined, 'FAST') } catch { /* ignore */ }
-  }
-  if (draft.certSignedAt) {
-    doc.setFontSize(9)
-    setColor(doc, COLOR_INK)
-    doc.setFont('helvetica', 'normal')
-    doc.text(new Date(draft.certSignedAt).toLocaleDateString(), PAGE_MARGIN + sigBoxW + 3 + dateBoxW / 2, c.y + sigH / 2 + 1.5, { align: 'center' })
-  }
-  if (draft.certSignatureName) {
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(8.5)
-    setColor(doc, COLOR_INK)
-    doc.text(draft.certSignatureName, PAGE_MARGIN + sigBoxW / 2, c.y + sigH - 2, { align: 'center' })
-  }
-  doc.setFontSize(6.5)
-  setColor(doc, COLOR_MUTED)
-  doc.setFont('helvetica', 'italic')
-  doc.text('Signature Over Printed Name of Parent / Guardian', PAGE_MARGIN + sigBoxW / 2, c.y + sigH + 3, { align: 'center' })
-  doc.text('Date', PAGE_MARGIN + sigBoxW + 3 + dateBoxW / 2, c.y + sigH + 3, { align: 'center' })
-  c.y += sigH + 6
-
-  // ── For use of DepEd Personnel Only ────────────────────────────
-  ensure(c, 22)
-  sectionHeader(c, 'For use of DepEd Personnel Only — to be filled up by the Class Adviser')
+  // Signature / Date row
   {
-    const dobBoxW = 64
-    const gradeW = (CONTENT_W - dobBoxW - 4) / 2
-    const yStart = c.y
-    boxGroupRow(c, 'Date of First Attendance (Month/Day/Year)', [
-      { value: '', n: 2 }, { value: '', n: 2 }, { value: '', n: 4 },
-    ], ['/', '/'], { xStart: PAGE_MARGIN, widthW: dobBoxW })
-    const y1 = c.y; c.y = yStart
-    wrapField(c, 'Grade Level', levelLabel(level), { xStart: PAGE_MARGIN + dobBoxW + 2, w: gradeW, minLines: 1 })
-    const y2 = c.y; c.y = yStart
-    wrapField(c, 'Track (for SHS)', '', { xStart: PAGE_MARGIN + dobBoxW + 2 + gradeW + 2, w: gradeW, minLines: 1 })
-    c.y = Math.max(y1, y2, c.y)
+    const sigW = CONTENT_W * 0.62
+    const dateW = CONTENT_W - sigW - 6
+    setDraw(doc, C_BORDER); doc.setLineWidth(0.3)
+    doc.line(PAGE_MARGIN, c.y + 5, PAGE_MARGIN + sigW, c.y + 5)
+    doc.line(PAGE_MARGIN + sigW + 6, c.y + 5, PAGE_MARGIN + sigW + 6 + dateW, c.y + 5)
+    if (draft.certSignatureDataUrl) {
+      try {
+        doc.addImage(draft.certSignatureDataUrl, 'PNG', PAGE_MARGIN + 4, c.y - 4, sigW - 8, 9, undefined, 'FAST')
+      } catch { /* ignore */ }
+    }
+    if (draft.certSignatureName) {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5)
+      doc.text(draft.certSignatureName, PAGE_MARGIN + sigW / 2, c.y + 4.6, { align: 'center' })
+    }
+    if (draft.certSignedAt) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
+      doc.text(new Date(draft.certSignedAt).toLocaleDateString(), PAGE_MARGIN + sigW + 6 + dateW / 2, c.y + 4.6, { align: 'center' })
+    }
+    setColor(doc, C_MUTED); doc.setFont('helvetica', 'italic'); doc.setFontSize(7)
+    doc.text('Signature Over Printed Name of Parent/Guardian', PAGE_MARGIN + sigW / 2, c.y + 8.4, { align: 'center' })
+    doc.text('Date', PAGE_MARGIN + sigW + 6 + dateW / 2, c.y + 8.4, { align: 'center' })
+    c.y += 12
   }
 
-  // PS-ODIR/SFRT footer marker bottom-right
-  doc.setFont('helvetica', 'bolditalic')
-  doc.setFontSize(8)
-  setColor(doc, COLOR_INK)
+  // ═════════════════════════════════════════════════════════════
+  // FOR USE OF DEPED PERSONNEL ONLY
+  // ═════════════════════════════════════════════════════════════
+  sectionHeader(c, 'For use of DepEd Personnel Only. To be filled up by the Class Adviser.')
+  boxGroupInline(c, 'DATE OF FIRST ATTENDANCE (Month/Day/Year)', [
+    { value: '', n: 2 }, { value: '', n: 2 }, { value: '', n: 4 },
+  ], ['/', '/'], { xStart: PAGE_MARGIN, labelW: 78, boxW: 4.4 })
+  underlinePair(c,
+    { label: 'Grade Level',     value: levelLabel(level) },
+    { label: 'Track (for SHS)', value: undefined },
+  )
+
+  // PS-ODIR/SFRT bottom-right
+  doc.setFont('helvetica', 'bolditalic'); doc.setFontSize(8)
+  setColor(doc, C_INK)
   doc.text('PS-ODIR/SFRT', PAGE_W - PAGE_MARGIN, PAGE_H - 6, { align: 'right' })
 
-  // Filename header on every page (bottom-left)
+  // Per-page footer (left)
   const pages = doc.getNumberOfPages()
   for (let p = 1; p <= pages; p++) {
     doc.setPage(p)
-    doc.setFontSize(6.5)
-    setColor(doc, COLOR_MUTED)
-    doc.setFont('helvetica', 'normal')
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5)
+    setColor(doc, C_MUTED)
     const studentLabel = [draft.firstName, draft.lastName].filter(Boolean).join(' ') || user.email
     doc.text(`${studentLabel} · ${levelLabel(level)} · Page ${p} of ${pages}`, PAGE_MARGIN, PAGE_H - 6)
   }
@@ -511,19 +574,6 @@ function nameOf(n?: { lastName: string; firstName: string; middleName: string })
   if (!n) return ''
   return [n.lastName, n.firstName, n.middleName].filter(Boolean).join(', ')
 }
-
-function dobMonth(dob?: string): string {
-  if (!dob) return ''
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dob)
-  return m ? m[2] : ''
-}
-function dobDay(dob?: string): string {
-  if (!dob) return ''
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dob)
-  return m ? m[3] : ''
-}
-function dobYear(dob?: string): string {
-  if (!dob) return ''
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dob)
-  return m ? m[1] : ''
-}
+function dobMonth(dob?: string) { return dob && /^\d{4}-\d{2}-\d{2}$/.test(dob) ? dob.slice(5, 7) : '' }
+function dobDay(dob?: string)   { return dob && /^\d{4}-\d{2}-\d{2}$/.test(dob) ? dob.slice(8, 10) : '' }
+function dobYear(dob?: string)  { return dob && /^\d{4}-\d{2}-\d{2}$/.test(dob) ? dob.slice(0, 4) : '' }
