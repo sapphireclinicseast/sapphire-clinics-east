@@ -49,5 +49,52 @@ export async function GET(req: NextRequest) {
       : '—',
   }))
 
-  return NextResponse.json({ date: dateStr, branch, items })
+  // ── Class portal "Pay at front desk" notifications ─────────────
+  // Parents on /pay → cash → "Notify front desk" land in ClassPortalFrontDeskPayment.
+  // Surface PENDING rows for the matching branch as virtual queue items so the
+  // existing accounting hub Cashier ("Services > Cashier") picks them up
+  // without any accounting-hub code changes.
+  //
+  //   SBEA branch in schedules == EAST in ClassPortalBranch
+  //   SBGH branch in schedules == GREENHILLS
+  //
+  // Class portal payments don't have an appointment date — we show every
+  // PENDING tuition row regardless of the date filter so the cashier can
+  // settle it whenever the parent shows up.
+  const classBranch = branch === 'SBEA' ? 'EAST' : branch === 'SBGH' ? 'GREENHILLS' : null
+  let tuitionItems: typeof items = []
+  if (classBranch) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pending = await (prisma.classPortalFrontDeskPayment as any).findMany({
+        where: { branch: classBranch, status: 'PENDING' },
+        orderBy: { createdAt: 'asc' },
+      })
+      const peso = (cents: number) => (cents / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tuitionItems = pending.map((p: any) => {
+        const total = (p.tuitionCentavos ?? 0) + (p.miscCentavos ?? 0)
+        return {
+          // Prefix the id so the accounting hub can recognize tuition-from-class-portal
+          // items if it ever wants to wire a callback to mark them CONVERTED.
+          id:          `clsp_${p.classPortalPaymentId}`,
+          startTime:   '',
+          endTime:     '',
+          sessionType: `Tuition (${p.plan}) ₱${peso(total)} — ${p.period}`,
+          status:      'CONFIRMED',
+          department:  'CLASS_PORTAL',
+          branch,
+          clinician:   '— (class portal)',
+          patientId:   null,
+          patientName: p.studentName,
+        }
+      })
+    } catch (e) {
+      // Don't take down the whole queue if the class-portal table is missing
+      // (e.g. before the migration ran on a particular environment).
+      console.warn('[queue/external] class-portal tuition payments unavailable:', e)
+    }
+  }
+
+  return NextResponse.json({ date: dateStr, branch, items: [...tuitionItems, ...items] })
 }

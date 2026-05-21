@@ -837,6 +837,35 @@ model ClassPortalLevelStatus {
   updatedBy String?
 }
 
+/// Pending front-desk cash payment notifications from the class portal.
+/// When a parent on /pay picks "Pay at front desk" + "Notify front desk",
+/// the class portal POSTs a row here; the accounting hub's POS Cashier
+/// picks them up via the existing /api/queue/external endpoint (they're
+/// surfaced as virtual queue items so the cashier can "Convert to Order"
+/// without any accounting hub code changes).
+model ClassPortalFrontDeskPayment {
+  id                   String            @id @default(cuid())
+  /// Dedupe key: the class portal generates this and won't re-post if it
+  /// already exists. Lets the parent retry the "Notify front desk" button
+  /// without spawning duplicate cashier items.
+  classPortalPaymentId String            @unique
+  studentId            String
+  studentEmail         String
+  studentName          String
+  branch               ClassPortalBranch
+  plan                 String
+  tuitionCentavos      Int
+  miscCentavos         Int               @default(0)
+  period               String
+  status               String            @default("PENDING") // PENDING | CONVERTED | VOIDED
+  notes                String?
+  createdAt            DateTime          @default(now())
+  convertedAt          DateTime?
+
+  @@index([branch, status])
+  @@index([createdAt])
+}
+
 /// Admin-editable fee schedule. One row per branch — the pay portal picks
 /// the row matching the student's enrollment branch (fallback: hardcoded
 /// defaults when no row exists yet). `extraItems` holds free-form line
