@@ -116,7 +116,7 @@ function HomeInner() {
             </h1>
 
             <p className="max-w-2xl mt-6 text-base md:text-lg lg:text-xl text-[color:var(--ink)]/80 leading-relaxed animate-fade-in-up animation-delay-600">
-              Sapphire Clinics East offers Kindergarten through Grade 10 in a small, attentive setting — with a DepEd-recognised graded class and a Learner Reference Number for every child.
+              Aura Academy for Learning offers Kindergarten through Grade 10 in a small, attentive setting — with a DepEd-recognised graded class and a Learner Reference Number for every child.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-3 mt-9 animate-fade-in-up animation-delay-800">
