@@ -1,24 +1,34 @@
 @import "tailwindcss";
 
 :root {
-  --narra:  #1B3F38;
-  --moss:   #26554B;
-  --sage:   #4A8073;
-  --clay:   #A85C3D;
-  --sun:    #C69849;
+  /* Aura Academy for Learning palette — sampled from the rainbow logo:
+   *   - narra: deep teal matching the wordmark text
+   *   - moss:  medium teal (interpolates narra → slate)
+   *   - sage:  sage green from the middle rainbow band
+   *   - slate: dusty blue-grey from the innermost rainbow band
+   *   - clay:  warm tan from the outer rainbow band
+   *   - sun:   lighter warm tan accent
+   */
+  --narra:  #3D6B62;
+  --moss:   #547D72;
+  --sage:   #8AA76A;
+  --slate:  #7B939B;
+  --clay:   #B8896A;
+  --sun:    #D4A87A;
   --paper:  #F5F0E8;
   --ink:    #1A1A1A;
 
   --paper-2:  #ECE6D9;
   --paper-3:  #DCD3C0;
-  --sage-tint: rgba(74, 128, 115, 0.10);
-  --moss-tint: rgba(38, 85, 75, 0.08);
-  --clay-tint: rgba(168, 92, 61, 0.10);
-  --sun-tint:  rgba(198, 152, 73, 0.14);
+  --sage-tint:  rgba(138, 167, 106, 0.12);
+  --moss-tint:  rgba(84, 125, 114, 0.10);
+  --slate-tint: rgba(123, 147, 155, 0.12);
+  --clay-tint:  rgba(184, 137, 106, 0.14);
+  --sun-tint:   rgba(212, 168, 122, 0.14);
   --mid-gray: #6B6357;
 
   /* Soft mint used as the lightest stop in the aurora gradient on /. */
-  --scei-mint: #b9d8c9;
+  --scei-mint: #CBDAB5;
 
   --font-display: var(--font-montserrat), 'Helvetica Neue', Arial, sans-serif;
   --font-heading: var(--font-montserrat), 'Helvetica Neue', Arial, sans-serif;

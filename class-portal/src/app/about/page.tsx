@@ -1,5 +1,5 @@
 export const metadata = {
-  title: 'About — Sapphire Clinics East Class Portal',
+  title: 'About — Aura Academy for Learning',
 }
 
 export default function AboutPage() {
