@@ -405,6 +405,7 @@ function StaffDocUploader({
     { key: 'good_moral',     title: 'Certificate of Good Moral Character', hint: 'If parent did not upload it during enrollment.' },
     { key: 'psa_birth_cert', title: 'PSA Birth Certificate',              hint: 'If parent did not upload it during enrollment.' },
     { key: 'parent_valid_id', title: 'Parent/Guardian Valid ID',          hint: 'For the main signatory and contact person.' },
+    { key: 'pwd_id',         title: 'PWD ID',                              hint: 'If the child has a PWD ID — helps with discount eligibility.' },
     { key: 'affidavit_undertaking', title: 'DepEd Affidavit of Undertaking', hint: 'Signed Annex 3 if collected on paper.' },
     { key: 'medical_reports', title: 'Medical / therapy reports',          hint: 'If new reports come in after enrollment.' },
   ]
@@ -465,6 +466,7 @@ function docTitle(key: string): string {
     psa_birth_cert: 'PSA Birth Certificate',
     child_photo_1x1: 'Child’s 1x1 Photo (for student ID)',
     parent_valid_id: 'Parent/Guardian Valid ID',
+    pwd_id: 'PWD ID',
     medical_reports: 'Medical / developmental / therapy reports',
     report_card_sf9: 'Report Card / SF9 (Form 138)',
     good_moral: 'Certificate of Good Moral Character',

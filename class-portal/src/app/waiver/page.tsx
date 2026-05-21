@@ -377,10 +377,12 @@ function seedFromDraft(d: Partial<import('@/lib/session').EnrollmentDraft>, leve
     studentFullName: studentFull,
     studentDob: d.dob ?? '',
     studentAge,
-    studentGender: d.sex ?? '',
+    // Title-case 'Male' / 'Female' to match the Gender select options below.
+    studentGender: d.sex === 'MALE' ? 'Male' : d.sex === 'FEMALE' ? 'Female' : '',
     gradeLevel: levelLabel(level),
     termOfEnrollment: d.schoolYearFrom && d.schoolYearTo ? `SY ${d.schoolYearFrom}–${d.schoolYearTo}` : '',
-    studentNationality: '',
+    // Carried over from the enrollment form — parent doesn't re-enter.
+    studentNationality: d.nationality ?? '',
     studentReligion: d.religion ?? '',
     homeAddress,
     cityProvince: cityProv,

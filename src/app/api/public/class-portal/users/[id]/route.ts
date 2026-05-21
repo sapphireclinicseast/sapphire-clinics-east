@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, hashPassword } from '@/lib/class-portal-auth'
+import { syncStudentToPatientCrm } from '@/lib/class-portal-patient-sync'
 import { withCors, corsHeaders } from '../../../_cors'
 
 export async function OPTIONS(req: Request) {
@@ -67,6 +68,25 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (body.enrollment !== undefined) data.enrollment = body.enrollment
 
     const updated = await prisma.classPortalUser.update({ where: { id }, data })
+
+    // Keep the marketing Patient CRM in sync — same identity (matched by
+    // email), updated fields propagate so the CRM always reflects the
+    // latest enrollment data without staff having to re-enter anything.
+    if (updated.role === 'STUDENT') {
+      try {
+        await syncStudentToPatientCrm({
+          email: updated.email,
+          firstName: updated.firstName,
+          lastName: updated.lastName,
+          branch: updated.branch as 'EAST' | 'GREENHILLS' | null,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          enrollment: (updated.enrollment as any) ?? null,
+        })
+      } catch (e) {
+        console.warn('[users.PATCH] Patient CRM sync failed (non-fatal):', e)
+      }
+    }
+
     return withCors(NextResponse.json({
       user: {
         id: updated.id,

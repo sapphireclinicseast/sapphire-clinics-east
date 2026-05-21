@@ -42,7 +42,10 @@ export interface EnrollmentDraft {
 
   motherTongue?: string
   religion?: string
+  nationality?: string
   diagnosis?: string
+  /** PWD ID number — optional, for discount eligibility. */
+  pwdIdNumber?: string
 
   houseStreet?: string
   barangay?: string
