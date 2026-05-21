@@ -224,6 +224,34 @@ export default function PayPage() {
         </div>
       </div>
 
+      {/* Tuition obligation policy — kept prominent so parents see the
+          full-year + clearance rules before they pick a plan. */}
+      <div
+        className="rounded-2xl p-4 border-2"
+        style={{ borderColor: '#fda4af', background: '#fff1f2' }}
+      >
+        <div className="flex items-start gap-3">
+          <span aria-hidden className="text-[20px] leading-none mt-0.5">⚠️</span>
+          <div>
+            <div className="font-bold text-[color:var(--narra)] text-[14px] mb-1" style={{ fontFamily: 'var(--font-display)' }}>
+              Tuition obligation — please read before paying
+            </div>
+            <ul className="text-[13px] text-[color:var(--ink)] leading-relaxed space-y-1.5 list-disc pl-5">
+              <li>
+                If you decide to stop your child from attending,{' '}
+                <span className="font-bold">you are still obligated to pay tuition for the full school year</span>{' '}
+                regardless of when, or for what reason, attendance stops.
+              </li>
+              <li>
+                If you choose an installment plan (bi-annual or monthly), the{' '}
+                <span className="font-bold">outstanding balance of tuition must be settled in full</span>{' '}
+                before the school issues clearance, Form 137 / SF10, transfer credentials, or any other academic record.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
       {/* Plan picker + checkout summary */}
       <div className="card-static">
         <h2 className="text-[18px] leading-tight mb-3">Choose your payment plan</h2>

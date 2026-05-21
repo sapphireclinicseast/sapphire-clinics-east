@@ -128,7 +128,8 @@ export default function EnrollPage() {
       if (!schoolYearFrom || !schoolYearTo) missing.push('School year')
       if (!lrnStatus) missing.push('LRN status')
       if (lrnStatus === 'WITH_LRN' && !lrn.trim()) missing.push('LRN')
-      if (!psaBirthCertNo.trim()) missing.push('PSA Birth Certificate No.')
+      // PSA Birth Certificate No. is optional — parents can fill it in
+      // later from their profile if they don't have the document on hand.
       if (!lastName.trim()) missing.push('Last Name')
       if (!firstName.trim()) missing.push('First Name')
       if (!middleName.trim()) missing.push('Middle Name')
@@ -260,8 +261,8 @@ export default function EnrollPage() {
               </Field>
             )}
 
-            <Field label="PSA Birth Certificate No." required>
-              <UInput required value={psaBirthCertNo} onValue={setPsaBirthCertNo} placeholder="e.g. 2017-1234567" />
+            <Field label="PSA Birth Certificate No.">
+              <UInput value={psaBirthCertNo} onValue={setPsaBirthCertNo} placeholder="e.g. 2017-1234567 (optional)" />
             </Field>
           </Section>
 
