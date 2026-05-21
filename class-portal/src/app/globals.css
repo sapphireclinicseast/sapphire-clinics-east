@@ -342,14 +342,18 @@ body {
 
 .doc-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 14px;
-  padding: 14px 16px;
+  gap: 12px;
+  padding: 12px 14px;
   border-radius: 14px;
   border: 1.5px dashed var(--paper-3);
   background: #fff;
   transition: border-color 0.2s, background 0.2s;
+  flex-wrap: wrap;
+}
+@media (min-width: 640px) {
+  .doc-row { align-items: center; padding: 14px 16px; flex-wrap: nowrap; }
 }
 .doc-row:has(input[type="file"]:not([data-empty="true"])) {
   border-style: solid;
