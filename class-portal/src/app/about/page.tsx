@@ -9,7 +9,7 @@ export default function AboutPage() {
         <div className="hero-gradient rounded-3xl p-8 md:p-9 relative">
           <div className="relative z-10">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 backdrop-blur-sm text-[11px] uppercase tracking-[0.12em] mb-5" style={{ fontFamily: 'var(--font-display)' }}>
-              About SCEI Class
+              About Aura Academy
             </div>
             <h1 className="text-[40px] md:text-[44px] leading-[1.05] mb-4">
               A small class<br/>with big care.
@@ -190,7 +190,7 @@ const ENROLLMENT_STEPS: Array<{ title: string; titleHighlight?: string; body: st
   {
     title: 'Enrolled — your child may start attending classes!',
     titleHighlight: 'Enrolled',
-    body: 'You will receive your Learner Reference Number (LRN), school ID, and class schedule. Welcome to SCEI SPED Class!',
+    body: 'You will receive your Learner Reference Number (LRN), school ID, welcome kit, and class schedule. Welcome to Aura Academy for Learning!',
   },
 ]
 
