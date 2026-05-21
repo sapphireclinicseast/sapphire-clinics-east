@@ -8,6 +8,7 @@ import {
   type StoredUser, type EnrollmentDraft, type Branch, type EnrollmentLevel,
   type LisStatus, type RemittanceStatus,
 } from '@/lib/session'
+import { exportToPdf, exportToXlsx, type ExportCol } from '@/lib/admission-export'
 
 type Col = {
   key: keyof EnrollmentDraft | 'fullName' | 'level' | 'branch'
@@ -40,6 +41,7 @@ const COLS: Col[] = [
   { key: 'telephone',           label: 'Telephone',           width: 130 },
   { key: 'cellphone',           label: 'Cellphone',           width: 130 },
   { key: 'email',               label: 'Email',               width: 220 },
+  { key: 'admissionComments',   label: 'Comments / Remarks',  width: 280 },
 ]
 
 interface Props {
@@ -128,6 +130,17 @@ export default function PaidStudentsSpreadsheet({ canEdit = false }: Props) {
     return raw
   }
 
+  /** Build the export column list from the visible COLS, using the same
+   *  `cellDisplay` mapping so the exported file shows "WITH LRN" and the
+   *  full LIS-status labels rather than the underlying enum codes. */
+  function exportCols(): ExportCol<StoredUser>[] {
+    return COLS.map(c => ({
+      header: c.label,
+      width: c.width,
+      value: (s: StoredUser) => cellDisplay(s, c),
+    }))
+  }
+
   return (
     // Break out of the parent layout's max-w-5xl so the spreadsheet uses
     // the full viewport width — fewer columns get clipped on a laptop,
@@ -149,13 +162,40 @@ export default function PaidStudentsSpreadsheet({ canEdit = false }: Props) {
             One row per student who has a PAID payment record. {canEdit ? 'Click any cell to edit; changes save automatically.' : 'Read-only view.'}
           </p>
         </div>
-        <input
-          className="input"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search by name, email, or LRN"
-          style={{ width: 280 }}
-        />
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            className="input"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search by name, email, or LRN"
+            style={{ width: 240 }}
+          />
+          <button
+            type="button"
+            onClick={() => exportToXlsx(rows, exportCols(), 'enrollment-register')}
+            className="btn-secondary text-xs"
+            title="Download the visible rows as an Excel file"
+          >
+            Excel
+          </button>
+          <button
+            type="button"
+            onClick={() => exportToPdf(rows, exportCols(), 'enrollment-register', 'Paid students — enrollment register')}
+            className="btn-secondary text-xs"
+            title="Download the visible rows as a PDF"
+          >
+            PDF
+          </button>
+          <a
+            href="/admission"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-primary text-xs"
+            title="Open the partner-school admission tracker in a new tab"
+          >
+            Partner-school view →
+          </a>
+        </div>
       </div>
 
       <div className="overflow-auto rounded-xl border mx-3 sm:mx-5" style={{ borderColor: 'var(--paper-3)', maxHeight: 560 }}>

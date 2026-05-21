@@ -63,6 +63,7 @@ export async function GET(req: Request) {
         diagnosis: (e.diagnosis as string) ?? null,
         lisStatus: (e.lisStatus as string) ?? null,
         remittanceStatus: (e.remittanceStatus as string) ?? null,
+        admissionComments: (e.admissionComments as string) ?? null,
         createdAt: r.createdAt.toISOString(),
       }
     })
@@ -78,7 +79,7 @@ export async function PATCH(req: Request) {
   if (!checkCode(req)) {
     return withCors(NextResponse.json({ error: 'Invalid access code.' }, { status: 401 }), origin)
   }
-  let body: { studentId?: string; lisStatus?: string | null; remittanceStatus?: string | null }
+  let body: { studentId?: string; lisStatus?: string | null; remittanceStatus?: string | null; admissionComments?: string | null }
   try { body = await req.json() } catch {
     return withCors(NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 }), origin)
   }
@@ -86,7 +87,7 @@ export async function PATCH(req: Request) {
     return withCors(NextResponse.json({ error: 'studentId required' }, { status: 400 }), origin)
   }
 
-  // Whitelist the two admission columns; anything else is silently dropped.
+  // Whitelist the admission columns; anything else is silently dropped.
   const patch: Record<string, string | null> = {}
   if (body.lisStatus === null || (typeof body.lisStatus === 'string' && (LIS_VALUES as readonly string[]).includes(body.lisStatus))) {
     patch.lisStatus = body.lisStatus
@@ -97,6 +98,15 @@ export async function PATCH(req: Request) {
     patch.remittanceStatus = body.remittanceStatus
   } else if (body.remittanceStatus !== undefined) {
     return withCors(NextResponse.json({ error: 'Invalid remittanceStatus' }, { status: 400 }), origin)
+  }
+  if (body.admissionComments !== undefined) {
+    if (body.admissionComments === null) {
+      patch.admissionComments = null
+    } else if (typeof body.admissionComments === 'string') {
+      patch.admissionComments = body.admissionComments.slice(0, 2000)
+    } else {
+      return withCors(NextResponse.json({ error: 'Invalid admissionComments' }, { status: 400 }), origin)
+    }
   }
   if (Object.keys(patch).length === 0) {
     return withCors(NextResponse.json({ error: 'No editable fields supplied' }, { status: 400 }), origin)
@@ -119,6 +129,7 @@ export async function PATCH(req: Request) {
         id: updated.id,
         lisStatus: (e.lisStatus as string) ?? null,
         remittanceStatus: (e.remittanceStatus as string) ?? null,
+        admissionComments: (e.admissionComments as string) ?? null,
       },
     }), origin)
   } catch (e) {
