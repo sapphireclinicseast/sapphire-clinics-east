@@ -84,8 +84,10 @@ export default function DocumentsPage() {
     e.preventDefault()
     setBusy(true); setErr(null)
     const draft = getDraft()
-    if (!draft?.psaBirthCertNo || !draft?.certSignatureDataUrl) {
-      setErr('Missing learner profile details. Please go back and complete the profile.')
+    // PSA Birth Cert No. is optional now (parents can fill later) — only
+    // the signed certification block is required at this gate.
+    if (!draft?.certSignatureDataUrl) {
+      setErr('Missing learner profile signature. Please go back and complete the profile.')
       setBusy(false); return
     }
     // Required docs (everything except docs flagged optional)
