@@ -383,6 +383,8 @@ function StaffDocUploader({
     { key: 'report_card_sf9', title: 'Report Card / SF9',                 hint: 'If parent did not upload it during enrollment.' },
     { key: 'good_moral',     title: 'Certificate of Good Moral Character', hint: 'If parent did not upload it during enrollment.' },
     { key: 'psa_birth_cert', title: 'PSA Birth Certificate',              hint: 'If parent did not upload it during enrollment.' },
+    { key: 'parent_valid_id', title: 'Parent/Guardian Valid ID',          hint: 'For the main signatory and contact person.' },
+    { key: 'affidavit_undertaking', title: 'DepEd Affidavit of Undertaking', hint: 'Signed Annex 3 if collected on paper.' },
     { key: 'medical_reports', title: 'Medical / therapy reports',          hint: 'If new reports come in after enrollment.' },
   ]
   // Default to the first slot the student doesn't yet have; falls back to Form 137.
@@ -441,10 +443,12 @@ function docTitle(key: string): string {
   const map: Record<string, string> = {
     psa_birth_cert: 'PSA Birth Certificate',
     child_photo_1x1: 'Child’s 1x1 Photo (for student ID)',
+    parent_valid_id: 'Parent/Guardian Valid ID',
     medical_reports: 'Medical / developmental / therapy reports',
     report_card_sf9: 'Report Card / SF9 (Form 138)',
     good_moral: 'Certificate of Good Moral Character',
     form_137_sf10: 'Form 137 / SF10',
+    affidavit_undertaking: 'DepEd Affidavit of Undertaking (Annex 3)',
   }
   return map[key] ?? key
 }
