@@ -113,67 +113,69 @@ export default function BookStep1Page() {
           </div>
         </div>
 
-        <div>
-          <div className="label">Service</div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-            {services.map((s, i) => {
-              const Icon = SERVICE_ICONS[s] ?? IconSparkle
-              const online = isEnabled(s)
-              const active = service === s
-              const showMdTag = MD_SUBSPECIALTIES.has(s)
-              return (
-                <button
-                  key={s}
-                  onClick={() => setService(s)}
-                  className={`text-left group rounded-2xl border-[1.5px] p-3.5 transition-all animate-fade-up stagger-${Math.min(i+1, 7)} relative ${
-                    active
-                      ? online
-                        ? 'bg-[color:var(--narra)] border-transparent text-white shadow-[0_8px_20px_rgba(27,63,56,0.25)]'
-                        : 'bg-[color:var(--paper-2)] border-[color:var(--paper-3)] text-[color:var(--narra)]'
-                      : online
-                        ? 'bg-white border-[color:var(--paper-3)] hover:border-[color:var(--sage)] hover:shadow-[0_4px_14px_rgba(27,63,56,0.08)]'
-                        : 'bg-[color:var(--paper-2)]/60 border-dashed border-[color:var(--paper-3)] hover:bg-[color:var(--paper-2)]'
-                  }`}
-                  style={{ fontFamily: 'var(--font-display)' }}
-                >
-                  <div className="flex items-start justify-between mb-1.5">
-                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
-                      active
-                        ? online ? 'bg-white/15 text-white' : 'bg-white/60 text-[color:var(--moss)]'
-                        : online ? 'bg-[color:var(--paper-2)] text-[color:var(--narra)]' : 'bg-white/60 text-[color:var(--mid-gray)]'
-                    }`}>
-                      <Icon />
+        {/* Two columns: enabled services on the left, "contact clinic" on
+            the right. Previously every service was rendered into one grid
+            and the visual mix of online/offline tiles was confusing.
+            On phones the columns stack. */}
+        {(() => {
+          const enabledList = services.filter((s) => isEnabled(s))
+          const disabledList = services.filter((s) => !isEnabled(s))
+          return (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <section>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="label !mb-0">Book Online</div>
+                  <span className="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-[color:var(--moss)]">
+                    {enabledList.length} available
+                  </span>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {enabledList.length === 0 && (
+                    <div className="text-xs italic text-[color:var(--mid-gray)] px-1 py-2">
+                      No services bookable online for this branch yet.
                     </div>
-                    <div className="flex flex-col items-end gap-1">
-                      {showMdTag && (
-                        <span className={`text-[9px] font-bold uppercase tracking-[0.08em] px-1.5 py-0.5 rounded ${
-                          active && online
-                            ? 'bg-white/20 text-white'
-                            : 'bg-[color:var(--paper-3)] text-[color:var(--mid-gray)]'
-                        }`}>
-                          Medical Doctor
-                        </span>
-                      )}
-                      {!online && (
-                        <span className={`text-[9px] font-bold uppercase tracking-[0.08em] px-1.5 py-0.5 rounded bg-[color:var(--clay-tint)] text-[color:var(--clay)]`}>
-                          Contact clinic
-                        </span>
-                      )}
+                  )}
+                  {enabledList.map((s, i) => (
+                    <ServiceTile
+                      key={s}
+                      s={s}
+                      i={i}
+                      online
+                      active={service === s}
+                      onClick={() => setService(s)}
+                    />
+                  ))}
+                </div>
+              </section>
+
+              <section>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="label !mb-0">Contact the Clinic</div>
+                  <span className="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-[color:var(--clay)]">
+                    {disabledList.length} services
+                  </span>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {disabledList.length === 0 && (
+                    <div className="text-xs italic text-[color:var(--mid-gray)] px-1 py-2">
+                      All services at this branch are bookable online.
                     </div>
-                  </div>
-                  <div className={`text-[13.5px] font-semibold leading-tight ${active && online ? 'text-white' : 'text-[color:var(--narra)]'}`}>
-                    {SERVICE_LABELS[s] ?? s}
-                  </div>
-                  <div className={`text-[11px] mt-0.5 ${active && online ? 'text-white/70' : 'text-[color:var(--mid-gray)]'}`}>
-                    {/* Show the department code as a tag, with underscores
-                        rendered as spaces (e.g. DEVELOPMENTAL PEDIATRICIAN). */}
-                    {s.replace(/_/g, ' ')}
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        </div>
+                  )}
+                  {disabledList.map((s, i) => (
+                    <ServiceTile
+                      key={s}
+                      s={s}
+                      i={i}
+                      online={false}
+                      active={service === s}
+                      onClick={() => setService(s)}
+                    />
+                  ))}
+                </div>
+              </section>
+            </div>
+          )
+        })()}
 
         {/* Contact panel for disabled services */}
         {service && !selectedIsEnabled && (
@@ -260,6 +262,75 @@ function ContactRow({ icon, label, value, href, external }: { icon: React.ReactN
         <span className="block text-[13px] font-semibold text-[color:var(--narra)] truncate">{value}</span>
       </span>
     </a>
+  )
+}
+
+// Single service tile — used in both the "Book Online" and "Contact Clinic"
+// columns on /book. The visual treatment changes based on the `online` flag
+// (solid white card vs dashed paper-tinted card) and the selected state.
+function ServiceTile({
+  s, i, online, active, onClick,
+}: {
+  s: string
+  i: number
+  online: boolean
+  active: boolean
+  onClick: () => void
+}) {
+  const Icon = SERVICE_ICONS[s] ?? IconSparkle
+  const showMdTag = MD_SUBSPECIALTIES.has(s)
+  return (
+    <button
+      onClick={onClick}
+      className={`text-left group rounded-2xl border-[1.5px] p-3.5 transition-all animate-fade-up stagger-${Math.min(i + 1, 7)} relative ${
+        active
+          ? online
+            ? 'bg-[color:var(--narra)] border-transparent text-white shadow-[0_8px_20px_rgba(27,63,56,0.25)]'
+            : 'bg-[color:var(--paper-2)] border-[color:var(--paper-3)] text-[color:var(--narra)]'
+          : online
+            ? 'bg-white border-[color:var(--paper-3)] hover:border-[color:var(--sage)] hover:shadow-[0_4px_14px_rgba(27,63,56,0.08)]'
+            : 'bg-[color:var(--paper-2)]/60 border-dashed border-[color:var(--paper-3)] hover:bg-[color:var(--paper-2)]'
+      }`}
+      style={{ fontFamily: 'var(--font-display)' }}
+    >
+      <div className="flex items-start justify-between mb-1.5">
+        <div
+          className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+            active
+              ? online ? 'bg-white/15 text-white' : 'bg-white/60 text-[color:var(--moss)]'
+              : online ? 'bg-[color:var(--paper-2)] text-[color:var(--narra)]' : 'bg-white/60 text-[color:var(--mid-gray)]'
+          }`}
+        >
+          <Icon />
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          {showMdTag && (
+            <span
+              className={`text-[9px] font-bold uppercase tracking-[0.08em] px-1.5 py-0.5 rounded ${
+                active && online
+                  ? 'bg-white/20 text-white'
+                  : 'bg-[color:var(--paper-3)] text-[color:var(--mid-gray)]'
+              }`}
+            >
+              Medical Doctor
+            </span>
+          )}
+          {!online && (
+            <span className="text-[9px] font-bold uppercase tracking-[0.08em] px-1.5 py-0.5 rounded bg-[color:var(--clay-tint)] text-[color:var(--clay)]">
+              Contact clinic
+            </span>
+          )}
+        </div>
+      </div>
+      <div className={`text-[13.5px] font-semibold leading-tight ${active && online ? 'text-white' : 'text-[color:var(--narra)]'}`}>
+        {SERVICE_LABELS[s] ?? s}
+      </div>
+      <div className={`text-[11px] mt-0.5 ${active && online ? 'text-white/70' : 'text-[color:var(--mid-gray)]'}`}>
+        {/* Department code with underscores → spaces (e.g.
+            DEVELOPMENTAL PEDIATRICIAN). */}
+        {s.replace(/_/g, ' ')}
+      </div>
+    </button>
   )
 }
 
