@@ -14,11 +14,12 @@ import {
 import StudentDetail from '@/components/StudentDetail'
 import NotificationPanel from '@/components/NotificationPanel'
 import CurriculumPanel from '@/components/CurriculumPanel'
+import TemplatesPanel from '@/components/TemplatesPanel'
 import GradesPanel from '@/components/GradesPanel'
 import StudentListPanel from '@/components/StudentListPanel'
 
 type StudentTab = 'PROFILE' | 'PAYMENT' | 'GRADES' | 'NOTIFICATIONS'
-type TeacherTab = 'STUDENTS' | 'CURRICULUM' | 'GRADES' | 'NOTIFICATIONS'
+type TeacherTab = 'STUDENTS' | 'CURRICULUM' | 'TEMPLATES' | 'GRADES' | 'NOTIFICATIONS'
 
 function fmt(cents: number) {
   return '₱' + (cents / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -141,6 +142,7 @@ function TeacherView({ user }: { user: StoredUser }) {
       <TabBar tabs={[
         { value: 'STUDENTS',      label: 'Students' },
         { value: 'CURRICULUM',    label: 'Curriculum' },
+        { value: 'TEMPLATES',     label: 'Templates' },
         { value: 'GRADES',        label: 'Grades' },
         { value: 'NOTIFICATIONS', label: 'Notifications' },
       ]} active={tab} onChange={v => setTab(v as TeacherTab)} />
@@ -151,6 +153,10 @@ function TeacherView({ user }: { user: StoredUser }) {
 
       {tab === 'CURRICULUM' && (
         <CurriculumPanel viewer={{ role: 'TEACHER', email: user.email }} />
+      )}
+
+      {tab === 'TEMPLATES' && (
+        <TemplatesPanel viewer={{ role: 'TEACHER', email: user.email }} />
       )}
 
       {tab === 'GRADES' && (

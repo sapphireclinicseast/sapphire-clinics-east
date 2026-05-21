@@ -8,7 +8,9 @@ import {
   signToken,
   comparePassword,
   isAdminCredentials,
+  isFrontdeskCredentials,
   CLASS_PORTAL_ADMIN_EMAIL,
+  CLASS_PORTAL_FRONTDESK_EMAIL,
   type ClassPortalRole,
 } from '@/lib/class-portal-auth'
 import { withCors, corsHeaders } from '../../../_cors'
@@ -29,7 +31,7 @@ export async function POST(req: Request) {
   if (!role || !email || !password) {
     return withCors(NextResponse.json({ error: 'role, email, and password are required.' }, { status: 400 }), origin)
   }
-  if (role !== 'ADMIN' && role !== 'TEACHER' && role !== 'STUDENT') {
+  if (role !== 'ADMIN' && role !== 'TEACHER' && role !== 'STUDENT' && role !== 'FRONTDESK') {
     return withCors(NextResponse.json({ error: 'Invalid role.' }, { status: 400 }), origin)
   }
 
@@ -42,6 +44,18 @@ export async function POST(req: Request) {
     return withCors(NextResponse.json({
       token,
       user: { role: 'ADMIN' as ClassPortalRole, email: CLASS_PORTAL_ADMIN_EMAIL },
+    }), origin)
+  }
+
+  // Frontdesk: virtual user, hardcoded creds.
+  if (role === 'FRONTDESK') {
+    if (!isFrontdeskCredentials(email, password)) {
+      return withCors(NextResponse.json({ error: 'Invalid front desk credentials.' }, { status: 401 }), origin)
+    }
+    const token = await signToken({ role: 'FRONTDESK', email: CLASS_PORTAL_FRONTDESK_EMAIL })
+    return withCors(NextResponse.json({
+      token,
+      user: { role: 'FRONTDESK' as ClassPortalRole, email: CLASS_PORTAL_FRONTDESK_EMAIL },
     }), origin)
   }
 

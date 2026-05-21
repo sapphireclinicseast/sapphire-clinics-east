@@ -10,11 +10,12 @@ import { listStaff, type StaffMember } from '@/lib/api'
 import StudentListPanel from '@/components/StudentListPanel'
 import CurriculumPanel from '@/components/CurriculumPanel'
 import NotificationPanel from '@/components/NotificationPanel'
-import PaymentsPanel from '@/components/PaymentsPanel'
+import PaymentsGrouped from '@/components/PaymentsGrouped'
 import AssignmentsPanel from '@/components/AssignmentsPanel'
 import ClassesPanel from '@/components/ClassesPanel'
+import TemplatesPanel from '@/components/TemplatesPanel'
 
-type AdminTab = 'USERS' | 'STUDENTS' | 'CLASSES' | 'CURRICULUM' | 'NOTIFICATIONS' | 'PAYMENTS' | 'ASSIGNMENTS'
+type AdminTab = 'USERS' | 'STUDENTS' | 'CLASSES' | 'CURRICULUM' | 'TEMPLATES' | 'NOTIFICATIONS' | 'PAYMENTS' | 'ASSIGNMENTS'
 
 export default function AdminPage() {
   const router = useRouter()
@@ -45,6 +46,7 @@ export default function AdminPage() {
           ['STUDENTS', 'Students'],
           ['CLASSES', 'Classes'],
           ['CURRICULUM', 'Curriculum'],
+          ['TEMPLATES', 'Templates'],
           ['NOTIFICATIONS', 'Notifications'],
           ['PAYMENTS', 'Payments'],
           ['ASSIGNMENTS', 'Assignments'],
@@ -61,8 +63,9 @@ export default function AdminPage() {
       {tab === 'STUDENTS'      && <StudentListPanel viewer={{ role: 'ADMIN', email: adminEmail, name: 'Main admin' }} />}
       {tab === 'CLASSES'       && <ClassesPanel />}
       {tab === 'CURRICULUM'    && <CurriculumPanel viewer={{ role: 'ADMIN', email: adminEmail }} />}
+      {tab === 'TEMPLATES'     && <TemplatesPanel viewer={{ role: 'ADMIN', email: adminEmail }} />}
       {tab === 'NOTIFICATIONS' && <NotificationPanel viewer={{ role: 'ADMIN', email: adminEmail, name: 'Main admin' }} />}
-      {tab === 'PAYMENTS'      && <PaymentsPanel />}
+      {tab === 'PAYMENTS'      && <PaymentsGrouped canSendReminders senderEmail={adminEmail} senderName="Main admin" senderRole="ADMIN" />}
       {tab === 'ASSIGNMENTS'   && <AssignmentsPanel />}
     </div>
   )
