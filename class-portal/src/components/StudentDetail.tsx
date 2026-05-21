@@ -11,6 +11,7 @@ import {
 } from '@/lib/session'
 import { downloadWaiverPdf, generateWaiverPdf } from '@/lib/waiver-pdf'
 import { downloadEnrollmentPdf, generateEnrollmentPdf } from '@/lib/enrollment-pdf'
+import { generateAffidavitPdf, type AffidavitInput } from '@/lib/affidavit-pdf'
 import HeadshotEditor from './HeadshotEditor'
 import EnrollmentEditor from './EnrollmentEditor'
 
@@ -226,6 +227,18 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
               <div className="font-semibold text-[color:var(--narra)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>Parent / Guardian Waiver</div>
               <div className="text-[12.5px] text-[color:var(--mid-gray)]">Not yet signed.</div>
             </div>
+          )}
+          {viewerRole === 'ADMIN' && (
+            <GeneratedFormCard
+              title="Affidavit of Undertaking (Annex 3) — admin preview"
+              description="Rebuilds the DepEd affidavit from the latest template using whatever data is on this record. Fields not captured here (parent govt ID, reason, signature) render blank. The signed copy in Documents is the official one — this preview is just to validate layout changes."
+              onDownload={() => {
+                const doc = generateAffidavitPdf(enrollmentToAffidavitInput(student))
+                doc.save(`affidavit-${(student.lastName ?? 'student').toLowerCase()}.pdf`)
+              }}
+              onPreview={() => previewPdf(generateAffidavitPdf(enrollmentToAffidavitInput(student)))}
+              onRegenerate={() => regenerateAndOpen(() => generateAffidavitPdf(enrollmentToAffidavitInput(student)))}
+            />
           )}
         </div>
       </div>
@@ -480,6 +493,57 @@ async function previewPdf(doc: import('jspdf').jsPDF) {
   window.open(url, '_blank', 'noopener')
   // Revoke after a delay so the new tab can load it first.
   setTimeout(() => URL.revokeObjectURL(url), 60_000)
+}
+
+/**
+ * Build an AffidavitInput from a student record for the admin layout-preview
+ * button. Most fields are derivable from the enrollment draft. The few that
+ * only live in the /documents composer (parent govt ID, reason for missing
+ * credentials, signature image) come back blank — the PDF generator already
+ * handles empty strings cleanly, so the layout still renders correctly.
+ */
+function enrollmentToAffidavitInput(student: StoredUser): AffidavitInput {
+  const e = student.enrollment ?? {}
+  const fullName = (n?: { lastName?: string; firstName?: string; middleName?: string }): string => {
+    if (!n) return ''
+    return [n.lastName, n.firstName, n.middleName].filter(Boolean).join(', ').trim()
+  }
+  const learner = [
+    e.firstName ?? student.firstName ?? '',
+    e.middleName ?? '',
+    e.lastName ?? student.lastName ?? '',
+    e.extensionName ?? '',
+  ].map(s => s.trim()).filter(Boolean).join(' ')
+
+  // Primary parent name → father / mother / guardian per guardianOfRecord.
+  let parentName = ''
+  switch (e.guardianOfRecord) {
+    case 'FATHER': parentName = fullName(e.father)   || fullName(e.mother) || fullName(e.guardian); break
+    case 'MOTHER': parentName = fullName(e.mother)   || fullName(e.father) || fullName(e.guardian); break
+    case 'OTHER':  parentName = fullName(e.guardian) || fullName(e.father) || fullName(e.mother);   break
+    default:       parentName = fullName(e.father)   || fullName(e.mother) || fullName(e.guardian); break
+  }
+
+  const parentAddress = [e.houseStreet, e.barangay, e.cityProvinceCountry, e.zipCode]
+    .filter(Boolean).join(', ')
+
+  const today = new Date()
+  const monthName = today.toLocaleString('en-US', { month: 'long' })
+  // Affidavits are typically attested at the school branch's city.
+  const attestedCity = student.branch === 'GREENHILLS' ? 'San Juan City' : 'Antipolo City'
+
+  return {
+    parentName,
+    parentAddress,
+    learnerName: learner,
+    previousSchoolName: e.previousSchoolName ?? '',
+    previousGradeLevel: e.lastGradeCompleted ?? '',
+    reason: '',
+    attestedDay: String(today.getDate()),
+    attestedMonth: monthName,
+    attestedCity,
+    signatureDataUrl: e.certSignatureDataUrl,
+  }
 }
 
 /**
