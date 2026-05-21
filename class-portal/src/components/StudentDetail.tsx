@@ -159,6 +159,9 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
                 fileId={v.fileId}
                 mime={v.type}
                 canReplace={viewerRole === 'STUDENT' || viewerRole === 'ADMIN' || viewerRole === 'TEACHER'}
+                onRegenerate={k === 'affidavit_undertaking'
+                  ? () => regenerateAndOpen(() => generateAffidavitPdf(enrollmentToAffidavitInput(student)))
+                  : undefined}
                 onReplace={async (file) => {
                   // Upload new blob, swap the IndexedDB entry, update the
                   // enrollment.documents metadata via the API. The 1x1 child
@@ -573,7 +576,7 @@ async function regenerateAndOpen(build: () => import('jspdf').jsPDF) {
 }
 
 function DocumentRow({
-  docKey, title, fileName, size, fileId, mime, canReplace, onReplace,
+  docKey, title, fileName, size, fileId, mime, canReplace, onReplace, onRegenerate,
 }: {
   docKey: string
   title: string
@@ -583,6 +586,10 @@ function DocumentRow({
   mime?: string
   canReplace?: boolean
   onReplace?: (file: File) => void | Promise<void>
+  /** When provided, shows a Regenerate button that rebuilds the PDF from the
+   *  latest template + the student's current enrollment data and opens it in
+   *  a new tab. Does not overwrite the stored blob. */
+  onRegenerate?: () => void
 }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -612,6 +619,9 @@ function DocumentRow({
           </>
         ) : (
           <span className="badge badge-pending" title="File content not stored in this browser">Metadata only</span>
+        )}
+        {onRegenerate && (
+          <button type="button" className="btn-secondary text-xs" onClick={onRegenerate} title="Rebuild from the latest template + current data — opens a fresh copy in a new tab (does not overwrite the stored file)">↻ Regenerate</button>
         )}
         {canReplace && (
           <label className="btn-secondary text-xs cursor-pointer inline-flex items-center" style={{ width: 'auto' }}>
