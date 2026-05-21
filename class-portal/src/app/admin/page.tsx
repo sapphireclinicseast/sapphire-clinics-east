@@ -192,14 +192,22 @@ function UsersPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANC
     setErr(null); setInfo(null)
     if (!member.email) { setErr(`${member.firstName} ${member.lastName} has no email on file in the Staff Module.`); return }
     if (password.length < 6) { setErr('Password must be at least 6 characters.'); return }
+    // Staff Module uses SBEA / SBGH; the class portal stores EAST / GREENHILLS.
+    // Map across so the teacher's branch follows them into the user record
+    // — otherwise the Users tab shows a blank branch even though the Staff
+    // Module clearly knows which clinic they belong to.
+    const branch: Branch | undefined = member.branch === 'SBEA' ? 'EAST'
+      : member.branch === 'SBGH' ? 'GREENHILLS'
+      : undefined
     try {
       const created = await addUser({
         role: 'TEACHER', email: member.email, password,
         firstName: member.firstName || undefined,
         lastName: member.lastName || undefined,
+        branch,
       })
       refresh()
-      setInfo(`Teacher account created for ${created.firstName ?? member.firstName} ${created.lastName ?? member.lastName}. Password: ${password}`)
+      setInfo(`Teacher account created for ${created.firstName ?? member.firstName} ${created.lastName ?? member.lastName} (${branchLabel(branch)}). Password: ${password}`)
     } catch (e) { setErr((e as Error).message) }
   }
 
@@ -437,16 +445,14 @@ function UsersPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANC
                 <label className="block"><span className="label">Last name</span><input name="lastName" className="input" defaultValue={editing.lastName ?? ''} /></label>
               </div>
               <label className="block"><span className="label">Email</span><input required name="email" type="email" className="input" defaultValue={editing.email} /></label>
-              {(editing.role === 'FRONTDESK' || editing.role === 'BRANCH_ADMIN' || editing.role === 'STUDENT') && (
-                <label className="block">
-                  <span className="label">Branch</span>
-                  <select name="branch" className="select" defaultValue={editing.branch ?? ''}>
-                    <option value="">—</option>
-                    <option value="EAST">East Branch</option>
-                    <option value="GREENHILLS">Greenhills Branch</option>
-                  </select>
-                </label>
-              )}
+              <label className="block">
+                <span className="label">Branch</span>
+                <select name="branch" className="select" defaultValue={editing.branch ?? ''}>
+                  <option value="">—</option>
+                  <option value="EAST">East Branch</option>
+                  <option value="GREENHILLS">Greenhills Branch</option>
+                </select>
+              </label>
               <label className="block">
                 <span className="label">New password <span className="text-[color:var(--mid-gray)]">(leave blank to keep current)</span></span>
                 <input name="password" className="input font-mono" minLength={6} placeholder="Leave blank to keep current" />
