@@ -1064,6 +1064,110 @@ export function isLevelEnabled(level: EnrollmentLevel): boolean {
 }
 
 /* ─────────────────────────────────────────────────────────────────
+   Fee schedule — admin-editable, one row per branch. Persists to the
+   marketing API; localStorage holds a write-through cache so the pay
+   page can render its summary synchronously while the freshest values
+   stream in over the wire.
+   ───────────────────────────────────────────────────────────── */
+
+const FEES_KEY = 'scei_class_fees_v1'
+
+export interface FeeExtraItem {
+  label: string
+  amountCentavos: number
+  notes?: string
+}
+
+export interface FeeSchedule {
+  branch: Branch
+  tuitionAnnualCentavos: number
+  tuitionBiannualCentavos: number
+  tuitionMonthlyCentavos: number
+  miscAnnualCentavos: number
+  miscBiannualCentavos: number
+  miscMonthlyCentavos: number
+  extraItems: FeeExtraItem[]
+  updatedAt: string | null
+  updatedBy: string | null
+}
+
+const ALL_BRANCHES_ARR: Branch[] = ['EAST', 'GREENHILLS']
+
+/** Fall-back values used when no row exists yet so the pay page is never
+ *  empty. These match the historical hardcoded constants. Centavos = PHP × 100. */
+export const DEFAULT_FEE_VALUES = {
+  tuitionAnnualCentavos:   80_000_00,
+  tuitionBiannualCentavos: 45_000_00,
+  tuitionMonthlyCentavos:   9_500_00,
+  miscAnnualCentavos:       5_000_00,
+  miscBiannualCentavos:     2_500_00,
+  miscMonthlyCentavos:         500_00,
+}
+
+function defaultFeeForBranch(branch: Branch): FeeSchedule {
+  return {
+    branch,
+    ...DEFAULT_FEE_VALUES,
+    extraItems: [],
+    updatedAt: null,
+    updatedBy: null,
+  }
+}
+
+function defaultFees(): FeeSchedule[] {
+  return ALL_BRANCHES_ARR.map(defaultFeeForBranch)
+}
+
+export function getFees(): FeeSchedule[] {
+  if (typeof window === 'undefined') return defaultFees()
+  try {
+    const raw = localStorage.getItem(FEES_KEY)
+    if (!raw) return defaultFees()
+    const parsed = JSON.parse(raw) as FeeSchedule[]
+    if (!Array.isArray(parsed) || parsed.length === 0) return defaultFees()
+    // Ensure every branch has a row, even if the cache is partial.
+    return ALL_BRANCHES_ARR.map(b => parsed.find(p => p.branch === b) ?? defaultFeeForBranch(b))
+  } catch { return defaultFees() }
+}
+
+function writeFees(rows: FeeSchedule[]) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(FEES_KEY, JSON.stringify(rows))
+}
+
+/** Pull the canonical fee list from the API. Falls back to cache on error.
+ *  Unauthenticated callers fall back to cache — the cache is populated on
+ *  every authenticated page load. */
+export async function hydrateFees(): Promise<FeeSchedule[]> {
+  if (typeof window === 'undefined') return defaultFees()
+  if (!getToken()) return getFees()
+  try {
+    const { fees } = await backendJson<{ fees: FeeSchedule[] }>('/api/public/class-portal/fees')
+    const merged = ALL_BRANCHES_ARR.map(b => fees.find(f => f.branch === b) ?? defaultFeeForBranch(b))
+    writeFees(merged)
+    return merged
+  } catch { return getFees() }
+}
+
+/** Admin only: PUT one or more branch schedules to the API + cache. */
+export async function saveFees(next: FeeSchedule[]): Promise<FeeSchedule[]> {
+  const { fees } = await backendJson<{ fees: FeeSchedule[] }>('/api/public/class-portal/fees', {
+    method: 'PUT',
+    body: JSON.stringify({ fees: next }),
+  })
+  const merged = ALL_BRANCHES_ARR.map(b => fees.find(f => f.branch === b) ?? defaultFeeForBranch(b))
+  writeFees(merged)
+  return merged
+}
+
+/** Lookup the schedule for a specific branch. Returns the default if a
+ *  branch row hasn't been set yet so the pay page is never empty. */
+export function getFeeFor(branch: Branch | undefined | null): FeeSchedule {
+  if (!branch) return defaultFeeForBranch('EAST')
+  return getFees().find(f => f.branch === branch) ?? defaultFeeForBranch(branch)
+}
+
+/* ─────────────────────────────────────────────────────────────────
    Student headshot + uploaded-file blobs (IndexedDB)
    localStorage caps at ~5MB which is too small for real files.
    IndexedDB holds the binary; the StoredUser keeps just references.

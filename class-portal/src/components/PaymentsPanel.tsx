@@ -139,9 +139,9 @@ export default function PaymentsPanel() {
                 <td className="py-2.5 px-3 text-[12.5px]">{p?.plan ?? '—'}</td>
                 <td className="py-2.5 px-3 text-[12.5px]">{p?.period ?? '—'}</td>
                 <td className="py-2.5 px-3 text-[12.5px]">{p ? new Date(p.paidAt ?? p.createdAt).toLocaleDateString() : '—'}</td>
-                <td className="py-2.5 px-3 text-right font-mono text-[12.5px]">{p ? fmt(p.tuitionAmount) : '—'}</td>
-                <td className="py-2.5 px-3 text-right font-mono text-[12.5px]">{p?.miscAmount ? fmt(p.miscAmount) : '—'}</td>
-                <td className="py-2.5 px-3 text-right font-mono font-bold">{p ? fmt(p.tuitionAmount + p.miscAmount) : '—'}</td>
+                <td className="py-2.5 px-3 text-right tabular-nums text-[12.5px]">{p ? fmt(p.tuitionAmount) : '—'}</td>
+                <td className="py-2.5 px-3 text-right tabular-nums text-[12.5px]">{p?.miscAmount ? fmt(p.miscAmount) : '—'}</td>
+                <td className="py-2.5 px-3 text-right tabular-nums font-bold">{p ? fmt(p.tuitionAmount + p.miscAmount) : '—'}</td>
                 <td className="py-2.5 px-3 text-[12.5px]">{methodLabel(p?.method)}</td>
                 <td className="py-2.5 px-3"><span className={`badge ${status === 'PAID' ? 'badge-paid' : 'badge-pending'}`}>{status}</span></td>
                 <td className="py-2.5 px-3"><AdminProofCell payment={p} /></td>

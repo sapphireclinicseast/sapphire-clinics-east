@@ -836,3 +836,21 @@ model ClassPortalLevelStatus {
   updatedAt DateTime         @updatedAt
   updatedBy String?
 }
+
+/// Admin-editable fee schedule. One row per branch — the pay portal picks
+/// the row matching the student's enrollment branch (fallback: hardcoded
+/// defaults when no row exists yet). `extraItems` holds free-form line
+/// items (uniforms, books, etc.) the admin wants surfaced on the pay page.
+model ClassPortalFeeSchedule {
+  branch                  ClassPortalBranch @id
+  tuitionAnnualCentavos   Int      @default(0)
+  tuitionBiannualCentavos Int      @default(0)
+  tuitionMonthlyCentavos  Int      @default(0)
+  miscAnnualCentavos      Int      @default(0)
+  miscBiannualCentavos    Int      @default(0)
+  miscMonthlyCentavos     Int      @default(0)
+  /// JSON: Array<{ label: string; amountCentavos: number; notes?: string }>
+  extraItems              Json     @default("[]")
+  updatedAt               DateTime @updatedAt
+  updatedBy               String?
+}

@@ -214,7 +214,7 @@ export default function PaymentsGrouped({
                         {r.deadline ? r.deadline.toLocaleDateString() : '—'}
                         {overdue && <span className="ml-1 text-[10.5px] uppercase tracking-[0.08em]">overdue</span>}
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono">{r.payment ? fmt(r.payment.tuitionAmount + r.payment.miscAmount) : '—'}</td>
+                      <td className="py-2.5 px-3 text-right tabular-nums">{r.payment ? fmt(r.payment.tuitionAmount + r.payment.miscAmount) : '—'}</td>
                       <td className="py-2.5 px-3 text-[12.5px]">{methodLabel(r.payment?.method)}</td>
                       <td className="py-2.5 px-3"><ProofBtn payment={r.payment} /></td>
                       {canSendReminders && (

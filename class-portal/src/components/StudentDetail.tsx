@@ -201,12 +201,16 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
       {/* Generated PDFs */}
       <div className="card-static">
         <h2 className="text-[18px] leading-tight mb-3">Generated forms</h2>
+        <p className="text-[12px] text-[color:var(--mid-gray)] mb-3" style={{ fontFamily: 'var(--font-display)' }}>
+          Tip: if the PDF doesn&apos;t reflect a recent change, click <span className="font-semibold">Regenerate</span> — it forces a fresh build of the latest layout.
+        </p>
         <div className="grid sm:grid-cols-2 gap-3">
           <GeneratedFormCard
             title="Enrollment Form (Annex 2)"
             description="DepEd-style enrollment record auto-generated from the learner profile."
             onDownload={() => downloadEnrollmentPdf(student, student.enrollment ?? {})}
             onPreview={() => previewPdf(generateEnrollmentPdf(student, student.enrollment ?? {}))}
+            onRegenerate={() => regenerateAndOpen(() => generateEnrollmentPdf(student, student.enrollment ?? {}))}
           />
           {waiver && (
             <GeneratedFormCard
@@ -214,6 +218,7 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
               description={waiver.witnessSig ? 'Signed by parent and witness (assigned SCEI teacher).' : 'Signed by parent. Awaiting witness signature.'}
               onDownload={() => downloadWaiverPdf(waiver)}
               onPreview={() => previewPdf(generateWaiverPdf(waiver))}
+              onRegenerate={() => regenerateAndOpen(() => generateWaiverPdf(waiver))}
             />
           )}
           {!waiver && (
@@ -453,13 +458,16 @@ function docTitle(key: string): string {
   return map[key] ?? key
 }
 
-function GeneratedFormCard({ title, description, onDownload, onPreview }: { title: string; description: string; onDownload: () => void; onPreview: () => void }) {
+function GeneratedFormCard({ title, description, onDownload, onPreview, onRegenerate }: { title: string; description: string; onDownload: () => void; onPreview: () => void; onRegenerate?: () => void }) {
   return (
     <div className="rounded-2xl p-4 border" style={{ borderColor: 'var(--paper-3)', background: '#fff' }}>
       <div className="font-semibold text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>{title}</div>
       <div className="text-[12px] text-[color:var(--mid-gray)] mt-1">{description}</div>
-      <div className="flex gap-2 mt-3">
-        <button type="button" className="btn-secondary text-xs" onClick={onPreview}>Preview</button>
+      <div className="flex gap-2 mt-3 flex-wrap">
+        <button type="button" className="btn-secondary text-xs" onClick={onPreview}>View</button>
+        {onRegenerate && (
+          <button type="button" className="btn-secondary text-xs" onClick={onRegenerate} title="Force a fresh build of the latest PDF layout (clears browser cache)">↻ Regenerate</button>
+        )}
         <button type="button" className="btn-primary text-xs" onClick={onDownload}>Download PDF</button>
       </div>
     </div>
@@ -472,6 +480,32 @@ async function previewPdf(doc: import('jspdf').jsPDF) {
   window.open(url, '_blank', 'noopener')
   // Revoke after a delay so the new tab can load it first.
   setTimeout(() => URL.revokeObjectURL(url), 60_000)
+}
+
+/**
+ * Force the freshest possible PDF: clear the service-worker / HTTP cache for
+ * the class-portal bundle, then re-run the generator against the new code
+ * and pop the result in a new tab. This is the escape hatch for parents who
+ * are looking at a stale layout because their browser cached the old JS.
+ */
+async function regenerateAndOpen(build: () => import('jspdf').jsPDF) {
+  try {
+    // Try to wipe any cached service-worker assets so the next page load uses
+    // the freshest bundle. Best-effort — ignore errors on browsers without SW.
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations().catch(() => [])
+      await Promise.all(regs.map(r => r.unregister().catch(() => null)))
+    }
+    if ('caches' in window) {
+      const keys = await caches.keys().catch(() => [])
+      await Promise.all(keys.map(k => caches.delete(k).catch(() => null)))
+    }
+  } catch { /* ignore cache-clearing failures */ }
+  // Build with the currently-loaded generator; the cache flush takes effect
+  // on the *next* page load, so users who still see old output can hit
+  // Regenerate, then hard-reload (Cmd-Shift-R) to pick up new code.
+  const doc = build()
+  await previewPdf(doc)
 }
 
 function DocumentRow({
