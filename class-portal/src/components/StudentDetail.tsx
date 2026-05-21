@@ -159,9 +159,6 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
                 fileId={v.fileId}
                 mime={v.type}
                 canReplace={viewerRole === 'STUDENT' || viewerRole === 'ADMIN' || viewerRole === 'TEACHER'}
-                onRegenerate={k === 'affidavit_undertaking'
-                  ? () => regenerateAndOpen(() => generateAffidavitPdf(enrollmentToAffidavitInput(student)))
-                  : undefined}
                 onReplace={async (file) => {
                   // Upload new blob, swap the IndexedDB entry, update the
                   // enrollment.documents metadata via the API. The 1x1 child
@@ -206,23 +203,21 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
       <div className="card-static">
         <h2 className="text-[18px] leading-tight mb-3">Generated forms</h2>
         <p className="text-[12px] text-[color:var(--mid-gray)] mb-3" style={{ fontFamily: 'var(--font-display)' }}>
-          Tip: if the PDF doesn&apos;t reflect a recent change, click <span className="font-semibold">Regenerate</span> — it forces a fresh build of the latest layout.
+          Each <span className="font-semibold">View</span> opens a freshly rebuilt PDF using the latest template — no stale cached copies.
         </p>
         <div className="grid sm:grid-cols-2 gap-3">
           <GeneratedFormCard
             title="Enrollment Form (Annex 2)"
             description="DepEd-style enrollment record auto-generated from the learner profile."
             onDownload={() => downloadEnrollmentPdf(student, student.enrollment ?? {})}
-            onPreview={() => previewPdf(generateEnrollmentPdf(student, student.enrollment ?? {}))}
-            onRegenerate={() => regenerateAndOpen(() => generateEnrollmentPdf(student, student.enrollment ?? {}))}
+            onPreview={() => regenerateAndOpen(() => generateEnrollmentPdf(student, student.enrollment ?? {}))}
           />
           {waiver && (
             <GeneratedFormCard
               title="Parent / Guardian Waiver"
               description={waiver.witnessSig ? 'Signed by parent and witness (assigned SCEI teacher).' : 'Signed by parent. Awaiting witness signature.'}
               onDownload={() => downloadWaiverPdf(waiver)}
-              onPreview={() => previewPdf(generateWaiverPdf(waiver))}
-              onRegenerate={() => regenerateAndOpen(() => generateWaiverPdf(waiver))}
+              onPreview={() => regenerateAndOpen(() => generateWaiverPdf(waiver))}
             />
           )}
           {!waiver && (
@@ -239,8 +234,7 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
                 const doc = generateAffidavitPdf(enrollmentToAffidavitInput(student))
                 doc.save(`affidavit-${(student.lastName ?? 'student').toLowerCase()}.pdf`)
               }}
-              onPreview={() => previewPdf(generateAffidavitPdf(enrollmentToAffidavitInput(student)))}
-              onRegenerate={() => regenerateAndOpen(() => generateAffidavitPdf(enrollmentToAffidavitInput(student)))}
+              onPreview={() => regenerateAndOpen(() => generateAffidavitPdf(enrollmentToAffidavitInput(student)))}
             />
           )}
         </div>
@@ -476,16 +470,13 @@ function docTitle(key: string): string {
   return map[key] ?? key
 }
 
-function GeneratedFormCard({ title, description, onDownload, onPreview, onRegenerate }: { title: string; description: string; onDownload: () => void; onPreview: () => void; onRegenerate?: () => void }) {
+function GeneratedFormCard({ title, description, onDownload, onPreview }: { title: string; description: string; onDownload: () => void; onPreview: () => void }) {
   return (
     <div className="rounded-2xl p-4 border" style={{ borderColor: 'var(--paper-3)', background: '#fff' }}>
       <div className="font-semibold text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>{title}</div>
       <div className="text-[12px] text-[color:var(--mid-gray)] mt-1">{description}</div>
       <div className="flex gap-2 mt-3 flex-wrap">
-        <button type="button" className="btn-secondary text-xs" onClick={onPreview}>View</button>
-        {onRegenerate && (
-          <button type="button" className="btn-secondary text-xs" onClick={onRegenerate} title="Force a fresh build of the latest PDF layout (clears browser cache)">↻ Regenerate</button>
-        )}
+        <button type="button" className="btn-secondary text-xs" onClick={onPreview} title="Open a freshly rebuilt PDF in a new tab">View</button>
         <button type="button" className="btn-primary text-xs" onClick={onDownload}>Download PDF</button>
       </div>
     </div>
@@ -578,7 +569,7 @@ async function regenerateAndOpen(build: () => import('jspdf').jsPDF) {
 }
 
 function DocumentRow({
-  docKey, title, fileName, size, fileId, mime, canReplace, onReplace, onRegenerate,
+  docKey, title, fileName, size, fileId, mime, canReplace, onReplace,
 }: {
   docKey: string
   title: string
@@ -588,10 +579,6 @@ function DocumentRow({
   mime?: string
   canReplace?: boolean
   onReplace?: (file: File) => void | Promise<void>
-  /** When provided, shows a Regenerate button that rebuilds the PDF from the
-   *  latest template + the student's current enrollment data and opens it in
-   *  a new tab. Does not overwrite the stored blob. */
-  onRegenerate?: () => void
 }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -621,9 +608,6 @@ function DocumentRow({
           </>
         ) : (
           <span className="badge badge-pending" title="File content not stored in this browser">Metadata only</span>
-        )}
-        {onRegenerate && (
-          <button type="button" className="btn-secondary text-xs" onClick={onRegenerate} title="Rebuild from the latest template + current data — opens a fresh copy in a new tab (does not overwrite the stored file)">↻ Regenerate</button>
         )}
         {canReplace && (
           <label className="btn-secondary text-xs cursor-pointer inline-flex items-center" style={{ width: 'auto' }}>
