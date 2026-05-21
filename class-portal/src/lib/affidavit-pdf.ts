@@ -49,9 +49,11 @@ function wrap(doc: jsPDF, text: string, x: number, y: number, w: number, lineH =
 /**
  * Standard vertical step between blank rows. Large enough that the small
  * italic field caption (drawn at y + 5.4 below the underline) does NOT
- * collide with the next row's text baseline.
+ * collide with the next row's text baseline — but tight enough that the
+ * whole affidavit, signature block, and Gov't ID block fit on one A4
+ * page even when wrapped lines push the layout down.
  */
-const ROW_STEP = 10.5
+const ROW_STEP = 9
 
 /** Inline blank with caption label underneath. Returns the right edge. */
 function inlineBlank(doc: jsPDF, x: number, y: number, w: number, value: string, caption: string): number {
@@ -226,7 +228,7 @@ export function generateAffidavitPdf(input: AffidavitInput): jsPDF {
   doc.text('at', MARGIN + 108, y)
   inlineBlank(doc, MARGIN + 113, y, CONTENT_W - 113 - 1.5, input.attestedCity, 'city')
   doc.text('.', PAGE_W - MARGIN - 1.5, y)
-  y += 18
+  y += 14
 
   // ── Signature block ────────────────────────────────────────────
   const sigLineW = 100
@@ -234,7 +236,7 @@ export function generateAffidavitPdf(input: AffidavitInput): jsPDF {
   if (input.signatureDataUrl) {
     try {
       // Signature image sits ABOVE the line.
-      doc.addImage(input.signatureDataUrl, 'PNG', sigCenterX - sigLineW / 2 + 4, y - 16, sigLineW - 8, 14, undefined, 'FAST')
+      doc.addImage(input.signatureDataUrl, 'PNG', sigCenterX - sigLineW / 2 + 4, y - 13, sigLineW - 8, 11, undefined, 'FAST')
     } catch { /* ignore */ }
   }
   doc.setLineWidth(0.4)
@@ -248,9 +250,18 @@ export function generateAffidavitPdf(input: AffidavitInput): jsPDF {
   doc.setFontSize(8); doc.setFont('helvetica', 'italic'); muted(doc)
   doc.text('Signature Over Printed Name of Parent/Guardian', sigCenterX, y + 9.5, { align: 'center' })
   reset(doc)
-  y += 18
+  y += 14
 
-  // ── Gov't ID block (optional) ─────────────────────────────────
+  // ── Gov't ID block ─────────────────────────────────────────────
+  // Safety: if vertical position would put any of the three lines below
+  // the page footer, push the block to a fresh page. The Gov't ID is
+  // what notaries verify — losing it off the bottom of the page is the
+  // bug we just shipped a fix for.
+  const govtBlockHeight = 6 * 3 + 4 // three rows + footer breathing room
+  if (y + govtBlockHeight > PAGE_H - MARGIN - 4) {
+    doc.addPage()
+    y = MARGIN
+  }
   doc.setFontSize(9.5)
   doc.text('Gov’t ID Presented:', MARGIN, y)
   inlineBlank(doc, MARGIN + 35, y, 60, input.govtIdType ?? '', 'ID type')
