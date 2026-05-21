@@ -6,6 +6,8 @@ import bcrypt from 'bcryptjs'
 
 const ADMIN_EMAIL = 'main@sapphireclinicseast.org'
 const ADMIN_PASSWORD = 'SCEI'
+const FRONTDESK_EMAIL = 'frontdesk@sapphireclinicseast.org'
+const FRONTDESK_PASSWORD = 'FRONTDESK'
 const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30 // 30 days
 
 function secret(): Uint8Array {
@@ -41,7 +43,7 @@ async function hmacSha256(key: Uint8Array, msg: string): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.sign('HMAC', cryptoKey, new TextEncoder().encode(msg)))
 }
 
-export type ClassPortalRole = 'ADMIN' | 'TEACHER' | 'STUDENT'
+export type ClassPortalRole = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'FRONTDESK'
 
 export interface ClassPortalToken {
   role: ClassPortalRole
@@ -93,7 +95,12 @@ export function isAdminCredentials(email: string, password: string): boolean {
   return email.trim().toLowerCase() === ADMIN_EMAIL && password === ADMIN_PASSWORD
 }
 
+export function isFrontdeskCredentials(email: string, password: string): boolean {
+  return email.trim().toLowerCase() === FRONTDESK_EMAIL && password === FRONTDESK_PASSWORD
+}
+
 export const CLASS_PORTAL_ADMIN_EMAIL = ADMIN_EMAIL
+export const CLASS_PORTAL_FRONTDESK_EMAIL = FRONTDESK_EMAIL
 
 /** Read the bearer token from the Authorization header. */
 export function bearerToken(req: Request): string | null {

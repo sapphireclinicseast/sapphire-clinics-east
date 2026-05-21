@@ -32,7 +32,10 @@ export default function HeaderNav() {
     router.push('/')
   }
 
-  const dashboardHref = auth?.role === 'ADMIN' ? '/admin' : '/profile'
+  const dashboardHref =
+    auth?.role === 'ADMIN' ? '/admin'
+    : auth?.role === 'FRONTDESK' ? '/frontdesk'
+    : '/profile'
 
   return (
     <nav className="flex gap-1 text-sm items-center" style={{ fontFamily: 'var(--font-display)' }}>
@@ -45,7 +48,7 @@ export default function HeaderNav() {
         <>
           <a href="/calendar" className="px-3 py-2 rounded-lg text-[color:var(--narra)] hover:text-[color:var(--moss)] hover:bg-[color:var(--paper-2)] transition-colors">Calendar</a>
           <a href={dashboardHref} className="px-3 py-2 rounded-lg text-[color:var(--narra)] hover:text-[color:var(--moss)] hover:bg-[color:var(--paper-2)] transition-colors">
-            {auth.role === 'ADMIN' ? 'Admin' : 'My Profile'}
+            {auth.role === 'ADMIN' ? 'Admin' : auth.role === 'FRONTDESK' ? 'Front desk' : 'My Profile'}
           </a>
           <button onClick={handleSignOut} className="px-3 py-2 rounded-lg text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] transition-colors font-semibold">
             Sign Out

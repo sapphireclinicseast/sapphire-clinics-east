@@ -172,7 +172,7 @@ const USERS_KEY = 'scei_class_users_v1'
 const AUTH_KEY = 'scei_class_auth_v1'
 
 export type UserRole = 'STUDENT' | 'TEACHER'
-export type AuthRole = UserRole | 'ADMIN'
+export type AuthRole = UserRole | 'ADMIN' | 'FRONTDESK'
 
 /** Clinic branch the student is enrolled under. Teachers don't have one;
  *  their branch coverage lives in the teacher-assignment table. */
@@ -867,6 +867,42 @@ export function deleteCurriculum(id: string) {
 }
 export function curriculumForLevel(level: EnrollmentLevel): CurriculumRecord[] {
   return getCurriculum().filter(c => c.level === level)
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Templates — free-form files that admin/teacher can drop in (lesson
+   plan template, sample IEP, etc.). Each row carries an optional PDF
+   and optional Word version of the same document.
+   ───────────────────────────────────────────────────────────── */
+
+const TEMPLATES_KEY = 'scei_class_templates_v1'
+
+export interface TemplateRecord {
+  id: string
+  title: string
+  pdf?: CurriculumFile
+  doc?: CurriculumFile
+  uploadedBy: string
+  uploadedAt: string
+}
+
+export function getTemplates(): TemplateRecord[] {
+  if (typeof window === 'undefined') return []
+  try { return JSON.parse(localStorage.getItem(TEMPLATES_KEY) ?? '[]') } catch { return [] }
+}
+function writeTemplates(rows: TemplateRecord[]) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(TEMPLATES_KEY, JSON.stringify(rows))
+}
+export function saveTemplate(t: TemplateRecord) {
+  const all = getTemplates()
+  const idx = all.findIndex(x => x.id === t.id)
+  if (idx >= 0) all[idx] = t
+  else all.unshift(t)
+  writeTemplates(all)
+}
+export function deleteTemplate(id: string) {
+  writeTemplates(getTemplates().filter(t => t.id !== id))
 }
 
 /* ─────────────────────────────────────────────────────────────────
