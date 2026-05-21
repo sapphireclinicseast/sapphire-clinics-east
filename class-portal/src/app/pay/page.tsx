@@ -366,7 +366,7 @@ export default function PayPage() {
                 <dt className="text-[color:var(--mid-gray)]">Account name</dt>
                 <dd className="text-[color:var(--ink)]">{bank.accountName}</dd>
                 <dt className="text-[color:var(--mid-gray)]">Account number</dt>
-                <dd className="font-mono font-bold text-[color:var(--narra)] tracking-wider">{bank.accountNumber}</dd>
+                <dd className="font-bold text-[color:var(--narra)] tabular-nums tracking-wider">{bank.accountNumber}</dd>
               </dl>
               <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-3" style={{ fontFamily: 'var(--font-display)' }}>
                 Deposit / transfer <span className="font-semibold text-[color:var(--ink)]">{fmt(total)}</span> to the account above, then upload your deposit slip or transfer receipt below.
