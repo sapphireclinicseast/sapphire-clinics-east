@@ -50,10 +50,11 @@ function wrap(doc: jsPDF, text: string, x: number, y: number, w: number, lineH =
  * Standard vertical step between blank rows. Large enough that the small
  * italic field caption (drawn at y + 5.4 below the underline) does NOT
  * collide with the next row's text baseline — but tight enough that the
- * whole affidavit, signature block, and Gov't ID block fit on one A4
- * page even when wrapped lines push the layout down.
+ * whole affidavit (header + 4 circumstance items + 4 undertakings +
+ * 4 acknowledgements + hold-harmless + attested + signature + Gov't ID)
+ * fits on one A4 page.
  */
-const ROW_STEP = 9
+const ROW_STEP = 8
 
 /** Inline blank with caption label underneath. Returns the right edge. */
 function inlineBlank(doc: jsPDF, x: number, y: number, w: number, value: string, caption: string): number {
@@ -112,7 +113,7 @@ export function generateAffidavitPdf(input: AffidavitInput): jsPDF {
   doc.setFont('helvetica', 'bold'); doc.setFontSize(13)
   doc.text('AFFIDAVIT OF UNDERTAKING', PAGE_W / 2, y + 6, { align: 'center' })
   reset(doc)
-  y += 18
+  y += 14
 
   // ── Header sentence with parent name + address ─────────────────
   // Two-line layout matching the source form:
@@ -132,12 +133,12 @@ export function generateAffidavitPdf(input: AffidavitInput): jsPDF {
   y += ROW_STEP
 
   y = wrap(doc, 'hereby signs this document freely and with full understanding of its contents.', MARGIN, y, CONTENT_W)
-  y += 4
+  y += 3
 
   // ── Present circumstances ─────────────────────────────────────
   doc.setFont('helvetica', 'normal')
   doc.text('The present circumstances are:', MARGIN, y)
-  y += 7
+  y += 6
 
   // 1. Choose to enroll at <school>
   doc.text('1.', MARGIN + 4, y)
@@ -167,11 +168,11 @@ export function generateAffidavitPdf(input: AffidavitInput): jsPDF {
   // 4.
   doc.text('4.', MARGIN + 4, y)
   y = wrap(doc, 'I understand that my child shall be temporarily enrolled because I have not submitted the required credentials.', MARGIN + 10, y, CONTENT_W - 10)
-  y += 4
+  y += 3
 
   // ── Undertakings ──────────────────────────────────────────────
   doc.text('With these circumstances, I undertake to:', MARGIN, y)
-  y += 7
+  y += 6
 
   const undertakings = [
     'Do what is legally permissible for the release of the credentials of my child from the previous school.',
@@ -198,11 +199,11 @@ export function generateAffidavitPdf(input: AffidavitInput): jsPDF {
     y = wrap(doc, moreUndertakings[i], MARGIN + 10, y, CONTENT_W - 10)
     y += 1
   }
-  y += 3
+  y += 2
 
   // ── Without the transfer credentials, fully understand ─────────
   doc.text('Without the transfer credentials of my child I fully understand that:', MARGIN, y)
-  y += 7
+  y += 6
   const understand = [
     'My child is only temporarily enrolled.',
     'My child cannot be officially promoted to a higher grade level.',
@@ -214,11 +215,11 @@ export function generateAffidavitPdf(input: AffidavitInput): jsPDF {
     y = wrap(doc, understand[i], MARGIN + 10, y, CONTENT_W - 10)
     y += 1
   }
-  y += 3
+  y += 2
 
   // ── Hold-harmless paragraph ───────────────────────────────────
   y = wrap(doc, 'With all the foregoing, I shall hold free from any liability, whether civil, criminal or administrative, DepEd Personnel who are involved in the acceptance and enrollment of my child, and the enforcement of any law or rule and the obligations provided in this document.', MARGIN, y, CONTENT_W)
-  y += 6
+  y += 4
 
   // ── Attested this day of month at city ────────────────────────
   doc.text('Attested this', MARGIN, y)
@@ -228,7 +229,7 @@ export function generateAffidavitPdf(input: AffidavitInput): jsPDF {
   doc.text('at', MARGIN + 108, y)
   inlineBlank(doc, MARGIN + 113, y, CONTENT_W - 113 - 1.5, input.attestedCity, 'city')
   doc.text('.', PAGE_W - MARGIN - 1.5, y)
-  y += 14
+  y += 11
 
   // ── Signature block ────────────────────────────────────────────
   const sigLineW = 100
@@ -236,7 +237,7 @@ export function generateAffidavitPdf(input: AffidavitInput): jsPDF {
   if (input.signatureDataUrl) {
     try {
       // Signature image sits ABOVE the line.
-      doc.addImage(input.signatureDataUrl, 'PNG', sigCenterX - sigLineW / 2 + 4, y - 13, sigLineW - 8, 11, undefined, 'FAST')
+      doc.addImage(input.signatureDataUrl, 'PNG', sigCenterX - sigLineW / 2 + 4, y - 10, sigLineW - 8, 9, undefined, 'FAST')
     } catch { /* ignore */ }
   }
   doc.setLineWidth(0.4)
@@ -245,23 +246,17 @@ export function generateAffidavitPdf(input: AffidavitInput): jsPDF {
   // small italic caption beneath that.
   if (input.parentName) {
     inkRgb(doc); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5)
-    doc.text(input.parentName, sigCenterX, y + 5, { align: 'center' })
+    doc.text(input.parentName, sigCenterX, y + 4.5, { align: 'center' })
   }
   doc.setFontSize(8); doc.setFont('helvetica', 'italic'); muted(doc)
-  doc.text('Signature Over Printed Name of Parent/Guardian', sigCenterX, y + 9.5, { align: 'center' })
+  doc.text('Signature Over Printed Name of Parent/Guardian', sigCenterX, y + 8.5, { align: 'center' })
   reset(doc)
-  y += 14
+  y += 11
 
   // ── Gov't ID block ─────────────────────────────────────────────
-  // Safety: if vertical position would put any of the three lines below
-  // the page footer, push the block to a fresh page. The Gov't ID is
-  // what notaries verify — losing it off the bottom of the page is the
-  // bug we just shipped a fix for.
-  const govtBlockHeight = 6 * 3 + 4 // three rows + footer breathing room
-  if (y + govtBlockHeight > PAGE_H - MARGIN - 4) {
-    doc.addPage()
-    y = MARGIN
-  }
+  // Always rendered on the same page. Spacing above has been tuned so
+  // the three rows fit above the bottom margin even when wrapped lines
+  // push the layout down slightly.
   doc.setFontSize(9.5)
   doc.text('Gov’t ID Presented:', MARGIN, y)
   inlineBlank(doc, MARGIN + 35, y, 60, input.govtIdType ?? '', 'ID type')
