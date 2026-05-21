@@ -7,6 +7,7 @@ import {
   levelLabel, getFeeFor, hydrateFees,
   type PaymentPlan, type PaymentMethod, type PaymentRecord, type StoredUser, type FeeSchedule,
 } from '@/lib/session'
+import { backendJson } from '@/lib/backend'
 
 const BANK_DETAILS = {
   EAST: {
@@ -143,6 +144,31 @@ export default function PayPage() {
       const paymentId = 'pmt_' + Math.random().toString(36).slice(2, 12)
       const record = buildPending(paymentId)
       savePayment(record); pushHistory(record)
+      // Post the notification to the marketing hub so it surfaces in the
+      // accounting hub's POS Cashier (Services > Cashier). Without this
+      // step the local record sits in localStorage and the front desk
+      // never sees it.
+      const studentName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email
+      try {
+        await backendJson('/api/public/class-portal/frontdesk-payments', {
+          method: 'POST',
+          body: JSON.stringify({
+            classPortalPaymentId: paymentId,
+            studentId: user.id,
+            studentEmail: user.email,
+            studentName,
+            branch: user.branch ?? 'EAST',
+            plan: plan.plan,
+            tuitionCentavos: plan.tuition,
+            miscCentavos: plan.misc,
+            period: plan.period,
+          }),
+        })
+      } catch (postErr) {
+        // Roll back the confirmation so the parent retries — otherwise
+        // they'd walk in expecting the clinic to be ready.
+        throw new Error('Could not reach the front desk system. Please try again — ' + (postErr as Error).message)
+      }
       setConfirmation('Payment notification sent to front desk for verification. Please proceed to the clinic with your payment.')
     } catch (e) {
       setErr((e as Error).message)
