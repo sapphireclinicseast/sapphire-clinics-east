@@ -71,9 +71,26 @@ export async function GET(req: NextRequest) {
         orderBy: { createdAt: 'asc' },
       })
       const peso = (cents: number) => (cents / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+      // Pre-resolve a Patient.id for each pending row by matching on email
+      // (the same dedupe key the class-portal sync uses). With patientId
+      // populated, the cashier's "Convert to Order" pre-fills patient
+      // details from the CRM record instead of treating the tuition item
+      // as a walk-in. Group lookups by unique email to avoid N+1.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const emails = Array.from(new Set(pending.map((p: any) => (p.studentEmail || '').toLowerCase()).filter(Boolean)))
+      const patients = emails.length
+        ? await prisma.patient.findMany({
+            where: { email: { in: emails as string[] } },
+            select: { id: true, email: true },
+          })
+        : []
+      const patientIdByEmail = new Map(patients.map(p => [(p.email ?? '').toLowerCase(), p.id]))
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       tuitionItems = pending.map((p: any) => {
         const total = (p.tuitionCentavos ?? 0) + (p.miscCentavos ?? 0)
+        const email = (p.studentEmail ?? '').toLowerCase()
         return {
           // Prefix the id so the accounting hub can recognize tuition-from-class-portal
           // items if it ever wants to wire a callback to mark them CONVERTED.
@@ -85,7 +102,7 @@ export async function GET(req: NextRequest) {
           department:  'CLASS_PORTAL',
           branch,
           clinician:   '— (class portal)',
-          patientId:   null,
+          patientId:   patientIdByEmail.get(email) ?? null,
           patientName: p.studentName,
         }
       })
