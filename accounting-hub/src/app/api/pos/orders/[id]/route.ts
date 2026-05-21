@@ -232,6 +232,36 @@ export async function PUT(
         },
       })
 
+      // Class-portal callback: orders converted from a class-portal tuition
+      // queue item carry queueItemId="clsp_<classPortalPaymentId>". When the
+      // cashier voids one, the corresponding student-portal payment should
+      // flip back to PENDING (and the queue item should re-appear in the
+      // cashier so it can be re-converted). Mirror reopen the same way.
+      if (typeof updated.queueItemId === 'string' && updated.queueItemId.startsWith('clsp_')) {
+        const classPortalPaymentId = updated.queueItemId.slice('clsp_'.length)
+        const marketingUrl = process.env.MARKETING_HUB_URL || 'https://marketing.sapphireclinicseast.org'
+        const apiKey = process.env.EXTERNAL_API_KEY || ''
+        if (apiKey && classPortalPaymentId) {
+          // Voiding sends the row back to PENDING (re-appears in queue).
+          // Reopen we treat the same as a void from the class-portal point
+          // of view: the order's no longer authoritative, so the student
+          // should see PENDING again until the cashier re-completes.
+          void fetch(`${marketingUrl}/api/internal/class-portal/frontdesk-payments/${encodeURIComponent(classPortalPaymentId)}`, {
+            method: 'PATCH',
+            headers: {
+              'authorization': `Bearer ${apiKey}`,
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify({
+              status: 'PENDING',
+              notes: `Order ${existing.orderNumber ?? id} ${body.action} by ${session.user.name ?? session.user.id}${body.reason ? ': ' + body.reason : ''}`,
+            }),
+          }).catch(err => {
+            console.warn('[orders.PUT void/reopen] class-portal callback failed:', err)
+          })
+        }
+      }
+
       return NextResponse.json(updated)
     }
 

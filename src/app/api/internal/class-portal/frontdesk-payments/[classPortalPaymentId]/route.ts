@@ -22,10 +22,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ cl
   }
 
   const body = await req.json().catch(() => ({})) as {
-    status?: 'CONVERTED' | 'VOIDED'
+    status?: 'PENDING' | 'CONVERTED' | 'VOIDED'
     notes?: string
   }
-  const status = body.status === 'VOIDED' ? 'VOIDED' : 'CONVERTED'
+  // PENDING is used by the accounting hub when an order is voided/reopened —
+  // the cashier item should re-appear in the queue and the student portal
+  // should flip back from PAID to PENDING.
+  const status: 'PENDING' | 'CONVERTED' | 'VOIDED' =
+    body.status === 'VOIDED'  ? 'VOIDED'
+    : body.status === 'PENDING' ? 'PENDING'
+    : 'CONVERTED'
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -33,6 +39,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ cl
       where: { classPortalPaymentId },
       data: {
         status,
+        // Only CONVERTED carries a real timestamp; VOIDED and PENDING clear it.
         convertedAt: status === 'CONVERTED' ? new Date() : null,
         notes: body.notes ?? undefined,
       },

@@ -603,6 +603,15 @@ export async function hydrateFrontDeskPayments(): Promise<PaymentRecord[]> {
         mutated = true
         return { ...rec, status: 'PAID' as const, paidAt: remote.convertedAt ?? new Date().toISOString() }
       }
+      // If the accounting hub voids/reopens the order, the remote row goes
+      // back to PENDING (or VOIDED). Reflect that on the student portal:
+      // PAID flips to PENDING and the paidAt timestamp is cleared.
+      if ((remote.status === 'PENDING' || remote.status === 'VOIDED') && rec.status === 'PAID') {
+        mutated = true
+        const { paidAt: _drop, ...rest } = rec
+        void _drop
+        return { ...rest, status: 'PENDING' as const }
+      }
       return rec
     })
     if (mutated) writePayments(next)
