@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   getAuth, getUsers, hydrateUsers,
-  getPaymentsForStudent,
+  getPaymentsForStudent, hydrateFrontDeskPayments,
   getGradeForStudent,
   getFile,
   type StoredUser, type PaymentRecord, type GradeRecord,
@@ -74,6 +74,9 @@ function StudentView({ user }: { user: StoredUser }) {
   useEffect(() => {
     setPayments(getPaymentsForStudent(user.id))
     setGrade(getGradeForStudent(user.id))
+    // Reflect any cashier-converted tuition payments as PAID without
+    // requiring the parent to refresh manually.
+    hydrateFrontDeskPayments().then(() => setPayments(getPaymentsForStudent(user.id))).catch(() => { /* ignore */ })
   }, [user.id])
 
   return (

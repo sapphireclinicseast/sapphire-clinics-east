@@ -574,6 +574,40 @@ export function studentHasActivePayment(studentId: string): boolean {
 }
 
 /**
+ * Pull the marketing-hub view of class-portal front-desk payments. Any row
+ * the accounting hub cashier has marked CONVERTED flips the matching local
+ * PaymentRecord from PENDING to PAID so the student sees the new status
+ * without having to manually refresh.
+ */
+export async function hydrateFrontDeskPayments(): Promise<PaymentRecord[]> {
+  if (typeof window === 'undefined') return getPayments()
+  if (!getToken()) return getPayments()
+  try {
+    const { payments } = await backendJson<{
+      payments: Array<{
+        classPortalPaymentId: string
+        status: 'PENDING' | 'CONVERTED' | 'VOIDED'
+        convertedAt: string | null
+      }>
+    }>('/api/public/class-portal/frontdesk-payments')
+    const byId = new Map(payments.map(p => [p.classPortalPaymentId, p]))
+    const local = getPayments()
+    let mutated = false
+    const next = local.map(rec => {
+      const remote = byId.get(rec.id)
+      if (!remote) return rec
+      if (remote.status === 'CONVERTED' && rec.status !== 'PAID') {
+        mutated = true
+        return { ...rec, status: 'PAID' as const, paidAt: remote.convertedAt ?? new Date().toISOString() }
+      }
+      return rec
+    })
+    if (mutated) writePayments(next)
+    return next
+  } catch { return getPayments() }
+}
+
+/**
  * Headline payment status for a student, used in the admin/teacher
  * student list and the student's own dashboard banner.
  *   PAID    → at least one payment is in the PAID state
