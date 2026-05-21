@@ -237,6 +237,11 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
               onPreview={() => regenerateAndOpen(() => generateAffidavitPdf(enrollmentToAffidavitInput(student)))}
             />
           )}
+          <SchoolIdCard
+            student={student}
+            viewerRole={viewerRole}
+            onUpdated={(updated) => { setStudent(updated); onChange?.() }}
+          />
         </div>
       </div>
 
@@ -466,8 +471,77 @@ function docTitle(key: string): string {
     good_moral: 'Certificate of Good Moral Character',
     form_137_sf10: 'Form 137 / SF10',
     affidavit_undertaking: 'DepEd Affidavit of Undertaking (Annex 3)',
+    school_id: 'School ID',
   }
   return map[key] ?? key
+}
+
+/**
+ * School ID card — appears in Generated forms. Branch admin / main admin
+ * uploads the ID (image or PDF); student + teacher viewers can only View
+ * or Download. The file is stored alongside other enrollment documents
+ * in the IndexedDB blob store, keyed under `enrollment.documents.school_id`.
+ */
+function SchoolIdCard({ student, viewerRole, onUpdated }: {
+  student: StoredUser
+  viewerRole: 'STUDENT' | 'TEACHER' | 'ADMIN'
+  onUpdated: (updated: StoredUser) => void
+}) {
+  const idDoc = student.enrollment?.documents?.school_id
+  const canEdit = viewerRole === 'ADMIN'
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    if (f.size > 10 * 1024 * 1024) { setErr('School ID is larger than 10 MB.'); return }
+    setErr(null); setBusy(true)
+    try {
+      const newFileId = 'doc_' + Math.random().toString(36).slice(2, 12)
+      await putFile(newFileId, f)
+      if (idDoc?.fileId) { try { await deleteFile(idDoc.fileId) } catch { /* ignore */ } }
+      const nextDocs = { ...(student.enrollment?.documents ?? {}) }
+      nextDocs.school_id = { name: f.name, size: f.size, type: f.type, fileId: newFileId }
+      const updated = await updateUserEnrollment(student.id, { documents: nextDocs })
+      onUpdated(updated)
+    } catch (ex) { setErr((ex as Error).message) }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <div className="rounded-2xl p-4 border" style={{ borderColor: 'var(--paper-3)', background: '#fff' }}>
+      <div className="font-semibold text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>School ID</div>
+      <div className="text-[12px] text-[color:var(--mid-gray)] mt-1">
+        {idDoc?.fileId
+          ? `${idDoc.name} · ${(idDoc.size / 1024).toFixed(0)} KB`
+          : (canEdit ? 'Upload the student’s printed school ID (image or PDF).' : 'Not yet issued by the school.')}
+      </div>
+      {err && <div className="text-[11.5px] text-rose-700 mt-1">{err}</div>}
+      <div className="flex gap-2 mt-3 flex-wrap">
+        {idDoc?.fileId ? (
+          <>
+            <button type="button" className="btn-secondary text-xs" onClick={() => openFile(idDoc.fileId!, idDoc.name, idDoc.type)}>View</button>
+            <button type="button" className="btn-primary text-xs" onClick={() => downloadFile(idDoc.fileId!, idDoc.name, idDoc.type)}>Download</button>
+            {canEdit && (
+              <label className="btn-secondary text-xs cursor-pointer inline-flex items-center" style={{ width: 'auto' }}>
+                {busy ? 'Uploading…' : 'Replace'}
+                <input type="file" className="sr-only" accept=".pdf,image/*" onChange={handleUpload} disabled={busy} />
+              </label>
+            )}
+          </>
+        ) : canEdit ? (
+          <label className="btn-primary text-xs cursor-pointer inline-flex items-center" style={{ width: 'auto' }}>
+            {busy ? 'Uploading…' : 'Upload School ID'}
+            <input type="file" className="sr-only" accept=".pdf,image/*" onChange={handleUpload} disabled={busy} />
+          </label>
+        ) : (
+          <span className="badge badge-pending">Pending</span>
+        )}
+      </div>
+    </div>
+  )
 }
 
 function GeneratedFormCard({ title, description, onDownload, onPreview }: { title: string; description: string; onDownload: () => void; onPreview: () => void }) {
