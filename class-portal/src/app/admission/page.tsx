@@ -12,6 +12,7 @@ import {
   levelLabel, LIS_STATUS_OPTIONS, REMITTANCE_OPTIONS,
   type LisStatus, type RemittanceStatus, type EnrollmentLevel,
 } from '@/lib/session'
+import { exportToPdf, exportToXlsx, type ExportCol } from '@/lib/admission-export'
 
 const ACCESS_CODE_KEY = 'scei_admission_code_v1'
 
@@ -28,6 +29,7 @@ interface AdmissionStudent {
   diagnosis: string | null
   lisStatus: LisStatus | null
   remittanceStatus: RemittanceStatus | null
+  admissionComments: string | null
   createdAt: string
 }
 
@@ -95,7 +97,7 @@ export default function AdmissionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code])
 
-  async function patchField(studentId: string, patch: Partial<Pick<AdmissionStudent, 'lisStatus' | 'remittanceStatus'>>) {
+  async function patchField(studentId: string, patch: Partial<Pick<AdmissionStudent, 'lisStatus' | 'remittanceStatus' | 'admissionComments'>>) {
     if (!code) return
     // Optimistic update so the dropdown feels instant.
     setStudents(prev => prev.map(s => s.id === studentId ? { ...s, ...patch } : s))
@@ -122,6 +124,23 @@ export default function AdmissionPage() {
     if (!q) return pool
     return pool.filter(s => `${s.firstName ?? ''} ${s.lastName ?? ''} ${s.email} ${s.lrn ?? ''}`.toLowerCase().includes(q))
   }, [students, tab, search])
+
+  // Map an AdmissionStudent to the export columns. Reuses the same display
+  // formatting the table uses so XLSX + PDF read identically to the screen.
+  const lisLabel  = (v: LisStatus | null)        => v ? (LIS_STATUS_OPTIONS.find(o => o.value === v)?.label ?? v) : ''
+  const remitLabel = (v: RemittanceStatus | null) => v ? (REMITTANCE_OPTIONS.find(o => o.value === v)?.label ?? v) : ''
+  const lrnLbl    = (v: string | null) => v === 'NO_LRN' ? 'NO LRN' : v === 'WITH_LRN' ? 'WITH LRN' : v === 'RETURNING' ? 'RETURNING (BALIK-ARAL)' : ''
+  const exportCols: ExportCol<AdmissionStudent>[] = [
+    { header: 'Full name',      width: 200, value: s => [s.firstName, s.lastName].filter(Boolean).join(' ') || s.email },
+    { header: 'Grade level',    width: 110, value: s => s.level ? levelLabel(s.level) : '' },
+    { header: 'LRN status',     width: 130, value: s => lrnLbl(s.lrnStatus) },
+    { header: 'LRN',            width: 130, value: s => s.lrn ?? '' },
+    { header: 'Cellphone',      width: 130, value: s => s.cellphone ?? '' },
+    { header: 'Diagnosis',      width: 200, value: s => s.diagnosis ?? '' },
+    { header: 'LIS status',     width: 220, value: s => lisLabel(s.lisStatus) },
+    { header: 'Remittance',     width: 140, value: s => remitLabel(s.remittanceStatus) },
+    { header: 'Comments / Remarks', width: 280, value: s => s.admissionComments ?? '' },
+  ]
 
   function signOut() {
     localStorage.removeItem(ACCESS_CODE_KEY)
@@ -180,7 +199,9 @@ export default function AdmissionPage() {
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <input className="input" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, email, LRN" style={{ width: 260 }} />
-              <button onClick={() => void refresh()} className="btn-secondary" disabled={loading}>{loading ? '…' : 'Refresh'}</button>
+              <button onClick={() => void refresh()} className="btn-secondary text-xs" disabled={loading}>{loading ? '…' : 'Refresh'}</button>
+              <button onClick={() => exportToXlsx(filtered, exportCols, `admission-${tab.toLowerCase()}`)} className="btn-secondary text-xs">Excel</button>
+              <button onClick={() => exportToPdf(filtered, exportCols, `admission-${tab.toLowerCase()}`, `Admission tracker — ${tab === 'EAST' ? 'East Branch' : 'Greenhills Branch'}`)} className="btn-secondary text-xs">PDF</button>
               <button onClick={signOut} className="text-xs text-[color:var(--mid-gray)] hover:text-[color:var(--clay)] px-2 py-1">Sign out</button>
             </div>
           </div>
@@ -212,11 +233,12 @@ export default function AdmissionPage() {
                   <th className="py-2 px-3 font-semibold whitespace-nowrap" style={{ minWidth: 200 }}>Diagnosis</th>
                   <th className="py-2 px-3 font-semibold whitespace-nowrap" style={{ minWidth: 220 }}>LIS status</th>
                   <th className="py-2 px-3 font-semibold whitespace-nowrap" style={{ minWidth: 140 }}>Remittance</th>
+                  <th className="py-2 px-3 font-semibold whitespace-nowrap" style={{ minWidth: 280 }}>Comments / Remarks</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={8} className="py-12 text-center text-[color:var(--mid-gray)]">No students in this branch yet.</td></tr>
+                  <tr><td colSpan={9} className="py-12 text-center text-[color:var(--mid-gray)]">No students in this branch yet.</td></tr>
                 )}
                 {filtered.map(s => (
                   <tr key={s.id} className="border-b hover:bg-[color:var(--paper-2)]" style={{ borderColor: 'var(--paper-3)' }}>
@@ -245,6 +267,17 @@ export default function AdmissionPage() {
                         <option value="">—</option>
                         {REMITTANCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
+                    </td>
+                    <td className="py-2 px-3">
+                      <input
+                        defaultValue={s.admissionComments ?? ''}
+                        placeholder="Add comment…"
+                        className="w-full bg-transparent text-[12.5px] outline-none border-b border-transparent focus:border-[color:var(--narra)] py-0.5"
+                        onBlur={e => {
+                          const nv = e.target.value
+                          if (nv !== (s.admissionComments ?? '')) patchField(s.id, { admissionComments: nv || null })
+                        }}
+                      />
                     </td>
                   </tr>
                 ))}

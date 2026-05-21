@@ -82,6 +82,9 @@ export interface EnrollmentDraft {
   // via /admission. Stored in the enrollment blob so no schema migration.
   lisStatus?: LisStatus
   remittanceStatus?: RemittanceStatus
+  /** Free-text notes from the front desk or partner school. Shown as the
+   *  last column on the enrollment register; not displayed elsewhere. */
+  admissionComments?: string
 }
 
 export type LisStatus = 'WAITING_FOR_ENROLLMENT' | 'PENDING_ENROLLMENT' | 'PENDING_TRANSFER' | 'ENROLLED'
