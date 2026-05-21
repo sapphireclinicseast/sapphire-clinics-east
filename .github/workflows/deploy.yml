@@ -277,6 +277,68 @@ jobs:
             echo ""
             echo "✅ Marketing Hub rebuilt & restarted (HTTP $HTTP_CODE)."
 
+      # ── 6c. Rebuild & restart the Class Portal Next.js container ─────
+      # The class-portal source lives in /opt/sapphire/class-portal (not in
+      # the rsync target). Without this step, edits under class-portal/ in
+      # PRs against main never reach class.sapphireclinicseast.org. We pull
+      # main, stash any VPS-local hot-fixes (e.g. src/app/api/upload/route.ts
+      # — the team intentionally keeps a local version), then rebuild.
+      - name: Rebuild & Restart Class Portal
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 30m
+          script: |
+            set +e
+            CLASS_REPO="/opt/sapphire"
+            ENV_FILE="/opt/sapphire/docker/.env.production"
+
+            if [ ! -d "$CLASS_REPO/class-portal" ]; then
+              echo "⚠ Class portal source not found at $CLASS_REPO/class-portal — skipping."
+              exit 0
+            fi
+
+            cd "$CLASS_REPO"
+            echo "→ Stashing any VPS-local edits before pull..."
+            git stash push -u -m "auto-deploy-$(date +%Y%m%d-%H%M%S)" 2>&1 | tail -3 || true
+
+            echo "→ Pulling latest main into $CLASS_REPO..."
+            git fetch origin main 2>&1 | tail -3
+            git reset --hard origin/main 2>&1 | tail -3
+
+            echo "→ Restoring stashed local edits (if any)..."
+            git stash pop 2>&1 | tail -3 || echo "   (no stash to pop or non-fatal conflict — VPS-local hot-fixes preserved in stash)"
+
+            echo "→ Currently running class-portal container:"
+            docker ps --filter "name=sapphire_class_portal" --format "  {{.Names}}  image={{.Image}}  status={{.Status}}" || true
+
+            echo "→ Rebuilding class-portal image..."
+            docker compose -f /opt/sapphire/docker/docker-compose.yml --env-file "$ENV_FILE" build --pull class-portal 2>&1 | tail -5
+            BUILD_RC=$?
+            if [ "$BUILD_RC" != "0" ]; then
+              echo "❌ class-portal build failed (exit $BUILD_RC) — leaving previous container untouched."
+              exit 1
+            fi
+
+            echo "→ Recreating sapphire_class_portal container..."
+            docker compose -f /opt/sapphire/docker/docker-compose.yml --env-file "$ENV_FILE" up -d --force-recreate --no-deps class-portal 2>&1 | tail -5
+
+            echo "→ Waiting 15s for class-portal to stabilize..."
+            sleep 15
+
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3006/ 2>&1 || echo "000")
+            echo "   HTTP $HTTP_CODE"
+            if [ "$HTTP_CODE" = "000" ]; then
+              echo "❌ Class portal did not come up on port 3006"
+              docker logs sapphire_class_portal --tail 30 2>&1 || true
+              exit 1
+            fi
+
+            echo "✅ Class Portal rebuilt & restarted (HTTP $HTTP_CODE)."
+
       # ── 6. Install survey API deps & start/restart ─────────────────
       - name: Setup & Restart Survey API
         run: |

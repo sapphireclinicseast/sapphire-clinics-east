@@ -31,7 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <a href="/" className="flex items-center gap-2 sm:gap-2.5 leading-tight group min-w-0">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="/aura-academy-logo.png"
+                src="/aura-academy-mark.png"
                 alt="Aura Academy for Learning"
                 className="h-8 sm:h-10 w-auto object-contain shrink-0"
               />
