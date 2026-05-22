@@ -1091,18 +1091,127 @@ function writeCurriculum(c: CurriculumRecord[]) {
   if (typeof window === 'undefined') return
   localStorage.setItem(CURRICULUM_KEY, JSON.stringify(c))
 }
-export function saveCurriculum(c: CurriculumRecord) {
-  const all = getCurriculum()
-  const idx = all.findIndex(x => x.id === c.id)
-  if (idx >= 0) all[idx] = c
-  else all.unshift(c)
-  writeCurriculum(all)
-}
-export function deleteCurriculum(id: string) {
-  writeCurriculum(getCurriculum().filter(c => c.id !== id))
-}
 export function curriculumForLevel(level: EnrollmentLevel): CurriculumRecord[] {
   return getCurriculum().filter(c => c.level === level)
+}
+
+/**
+ * Fetch every curriculum entry from the server (any device sees the same
+ * list — fixes the prior localStorage-only state where teachers couldn't
+ * see admin uploads). Falls back to the local cache if the network call
+ * fails so we don't blank out the panel on transient errors.
+ */
+export async function hydrateCurriculumFromServer(): Promise<CurriculumRecord[]> {
+  if (typeof window === 'undefined') return getCurriculum()
+  if (!getToken()) return getCurriculum()
+  try {
+    const { items } = await backendJson<{
+      items: Array<{
+        id: string; level: string; title: string
+        pdf: { fileName: string; fileType: string; fileSize: number } | null
+        doc: { fileName: string; fileType: string; fileSize: number } | null
+        xls: { fileName: string; fileType: string; fileSize: number } | null
+        uploadedBy: string; uploadedAt: string
+      }>
+    }>('/api/public/class-portal/curriculum')
+    const rows: CurriculumRecord[] = items.map(r => {
+      const rec: CurriculumRecord = {
+        id: r.id,
+        level: r.level as EnrollmentLevel,
+        title: r.title,
+        uploadedBy: r.uploadedBy,
+        uploadedAt: r.uploadedAt,
+      }
+      // fileId encodes "<id>:<variant>" — the panel passes it through to
+      // openServerCurriculumFile() which fetches the bytes from the API.
+      if (r.pdf) rec.pdf = { fileId: `${r.id}:pdf`, fileName: r.pdf.fileName, fileType: r.pdf.fileType, fileSize: r.pdf.fileSize }
+      if (r.doc) rec.doc = { fileId: `${r.id}:doc`, fileName: r.doc.fileName, fileType: r.doc.fileType, fileSize: r.doc.fileSize }
+      if (r.xls) rec.xls = { fileId: `${r.id}:xls`, fileName: r.xls.fileName, fileType: r.xls.fileType, fileSize: r.xls.fileSize }
+      return rec
+    })
+    writeCurriculum(rows)
+    return rows
+  } catch (e) {
+    console.warn('[hydrateCurriculumFromServer]', e)
+    return getCurriculum()
+  }
+}
+
+/**
+ * Upsert a curriculum entry on the server. Caller passes raw File objects;
+ * we package them as multipart and stream them up. Returns true on success.
+ */
+export async function uploadCurriculum(
+  args: { id: string; level: EnrollmentLevel; title: string; pdf?: File; doc?: File; xls?: File },
+): Promise<boolean> {
+  if (typeof window === 'undefined') return false
+  if (!getToken()) return false
+  try {
+    const fd = new FormData()
+    fd.append('id', args.id)
+    fd.append('level', args.level)
+    fd.append('title', args.title)
+    if (args.pdf) fd.append('pdfFile', args.pdf)
+    if (args.doc) fd.append('docFile', args.doc)
+    if (args.xls) fd.append('xlsFile', args.xls)
+    const tok = getToken()
+    const res = await fetch(backendOrigin() + '/api/public/class-portal/curriculum', {
+      method: 'POST',
+      body: fd,
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      console.warn('[uploadCurriculum] failed:', res.status, j)
+      return false
+    }
+    return true
+  } catch (e) {
+    console.warn('[uploadCurriculum] error:', e)
+    return false
+  }
+}
+
+/** Delete a curriculum row on the server. Returns true on success. */
+export async function deleteCurriculumServer(id: string): Promise<boolean> {
+  if (typeof window === 'undefined') return false
+  if (!getToken()) return false
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/curriculum/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) return false
+    writeCurriculum(getCurriculum().filter(c => c.id !== id))
+    return true
+  } catch (e) {
+    console.warn('[deleteCurriculumServer] error:', e)
+    return false
+  }
+}
+
+/**
+ * Fetch the bytes for a curriculum variant. fileId is the
+ * "<curriculumId>:<variant>" handle that hydrateCurriculumFromServer
+ * encodes; we split it back here.
+ */
+export async function fetchCurriculumFileBlob(fileId: string): Promise<Blob | null> {
+  if (typeof window === 'undefined') return null
+  if (!getToken()) return null
+  const [id, variant] = fileId.split(':')
+  if (!id || (variant !== 'pdf' && variant !== 'doc' && variant !== 'xls')) return null
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/curriculum/${encodeURIComponent(id)}/file/${variant}`, {
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) return null
+    return await res.blob()
+  } catch (e) {
+    console.warn('[fetchCurriculumFileBlob] error:', e)
+    return null
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────────
@@ -1130,15 +1239,102 @@ function writeTemplates(rows: TemplateRecord[]) {
   if (typeof window === 'undefined') return
   localStorage.setItem(TEMPLATES_KEY, JSON.stringify(rows))
 }
-export function saveTemplate(t: TemplateRecord) {
-  const all = getTemplates()
-  const idx = all.findIndex(x => x.id === t.id)
-  if (idx >= 0) all[idx] = t
-  else all.unshift(t)
-  writeTemplates(all)
+
+/** Fetch the template library from the server. Mirrors curriculum hydration. */
+export async function hydrateTemplatesFromServer(): Promise<TemplateRecord[]> {
+  if (typeof window === 'undefined') return getTemplates()
+  if (!getToken()) return getTemplates()
+  try {
+    const { items } = await backendJson<{
+      items: Array<{
+        id: string; title: string
+        pdf: { fileName: string; fileType: string; fileSize: number } | null
+        doc: { fileName: string; fileType: string; fileSize: number } | null
+        uploadedBy: string; uploadedAt: string
+      }>
+    }>('/api/public/class-portal/templates')
+    const rows: TemplateRecord[] = items.map(r => {
+      const rec: TemplateRecord = {
+        id: r.id,
+        title: r.title,
+        uploadedBy: r.uploadedBy,
+        uploadedAt: r.uploadedAt,
+      }
+      if (r.pdf) rec.pdf = { fileId: `${r.id}:pdf`, fileName: r.pdf.fileName, fileType: r.pdf.fileType, fileSize: r.pdf.fileSize }
+      if (r.doc) rec.doc = { fileId: `${r.id}:doc`, fileName: r.doc.fileName, fileType: r.doc.fileType, fileSize: r.doc.fileSize }
+      return rec
+    })
+    writeTemplates(rows)
+    return rows
+  } catch (e) {
+    console.warn('[hydrateTemplatesFromServer]', e)
+    return getTemplates()
+  }
 }
-export function deleteTemplate(id: string) {
-  writeTemplates(getTemplates().filter(t => t.id !== id))
+
+export async function uploadTemplate(
+  args: { id: string; title: string; pdf?: File; doc?: File },
+): Promise<boolean> {
+  if (typeof window === 'undefined') return false
+  if (!getToken()) return false
+  try {
+    const fd = new FormData()
+    fd.append('id', args.id)
+    fd.append('title', args.title)
+    if (args.pdf) fd.append('pdfFile', args.pdf)
+    if (args.doc) fd.append('docFile', args.doc)
+    const tok = getToken()
+    const res = await fetch(backendOrigin() + '/api/public/class-portal/templates', {
+      method: 'POST',
+      body: fd,
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      console.warn('[uploadTemplate] failed:', res.status, j)
+      return false
+    }
+    return true
+  } catch (e) {
+    console.warn('[uploadTemplate] error:', e)
+    return false
+  }
+}
+
+export async function deleteTemplateServer(id: string): Promise<boolean> {
+  if (typeof window === 'undefined') return false
+  if (!getToken()) return false
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/templates/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) return false
+    writeTemplates(getTemplates().filter(t => t.id !== id))
+    return true
+  } catch (e) {
+    console.warn('[deleteTemplateServer] error:', e)
+    return false
+  }
+}
+
+export async function fetchTemplateFileBlob(fileId: string): Promise<Blob | null> {
+  if (typeof window === 'undefined') return null
+  if (!getToken()) return null
+  const [id, variant] = fileId.split(':')
+  if (!id || (variant !== 'pdf' && variant !== 'doc')) return null
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/templates/${encodeURIComponent(id)}/file/${variant}`, {
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) return null
+    return await res.blob()
+  } catch (e) {
+    console.warn('[fetchTemplateFileBlob] error:', e)
+    return null
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────────

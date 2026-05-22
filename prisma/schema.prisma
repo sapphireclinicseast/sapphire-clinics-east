@@ -923,6 +923,51 @@ model ClassPortalFrontDeskPayment {
   @@index([createdAt])
 }
 
+/// Shared curriculum library — per-grade. Stored on the server so admins,
+/// teachers, front desk, and students see the same set regardless of which
+/// device the file was uploaded from. Each record can carry up to three
+/// variant blobs (PDF, Word, Excel) under one title.
+model ClassPortalCurriculum {
+  id          String   @id
+  level       String
+  title       String
+  pdfFileName String?
+  pdfFileType String?
+  pdfFileSize Int?
+  pdfFileData Bytes?
+  docFileName String?
+  docFileType String?
+  docFileSize Int?
+  docFileData Bytes?
+  xlsFileName String?
+  xlsFileType String?
+  xlsFileSize Int?
+  xlsFileData Bytes?
+  uploadedBy  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([level])
+}
+
+/// Shared free-form template library (lesson plan templates, IEP forms,
+/// parent forms, etc.). Same shape as curriculum but without a grade level.
+model ClassPortalTemplate {
+  id          String   @id
+  title       String
+  pdfFileName String?
+  pdfFileType String?
+  pdfFileSize Int?
+  pdfFileData Bytes?
+  docFileName String?
+  docFileType String?
+  docFileSize Int?
+  docFileData Bytes?
+  uploadedBy  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 /// Admin-editable fee schedule. One row per branch — the pay portal picks
 /// the row matching the student's enrollment branch (fallback: hardcoded
 /// defaults when no row exists yet). `extraItems` holds free-form line
