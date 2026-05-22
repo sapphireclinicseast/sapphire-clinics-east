@@ -4,10 +4,8 @@ import { useEffect, useState } from 'react'
 import {
   updateUserEnrollment,
   ageFromDob, levelLabel,
-  LSEN_CLASSIFICATION_GROUPS,
   type EnrollmentDraft, type StoredUser,
   type EnrollmentLevel, type LrnStatus, type GuardianOfRecord, type NameParts,
-  type LsenClassification,
 } from '@/lib/session'
 
 interface Props {
@@ -133,22 +131,6 @@ export default function EnrollmentEditor({ student, onClose, onSaved, headerLabe
               <Field label="PWD ID Number (optional)"><Upper value={draft.pwdIdNumber ?? ''} onChange={v => patch('pwdIdNumber', v)} /></Field>
             </Grid2>
             <Field label="Diagnosis (if applicable)"><Upper value={draft.diagnosis ?? ''} onChange={v => patch('diagnosis', v)} /></Field>
-            <Field label="LSEN classification (Learners Information System)">
-              <select
-                className="select"
-                value={draft.lsenClassification ?? ''}
-                onChange={e => patch('lsenClassification', (e.target.value || undefined) as LsenClassification | undefined)}
-              >
-                <option value="">— Select if the learner falls under LSEN —</option>
-                {LSEN_CLASSIFICATION_GROUPS.map(g => (
-                  <optgroup key={g.group} label={g.group}>
-                    {g.options.map(o => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </Field>
           </Section>
 
           <Section title="Address">

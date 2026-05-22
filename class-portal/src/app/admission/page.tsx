@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { backendOrigin } from '@/lib/backend'
 import {
   levelLabel, LIS_STATUS_OPTIONS, REMITTANCE_OPTIONS, lsenClassificationLabel,
+  LSEN_CLASSIFICATION_GROUPS,
   type LisStatus, type RemittanceStatus, type EnrollmentLevel, type EnrollmentDraft, type StoredUser,
   type LsenClassification,
 } from '@/lib/session'
@@ -141,7 +142,7 @@ export default function AdmissionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code])
 
-  async function patchField(studentId: string, patch: Partial<Pick<AdmissionStudent, 'lisStatus' | 'remittanceStatus' | 'admissionComments'>>) {
+  async function patchField(studentId: string, patch: Partial<Pick<AdmissionStudent, 'lisStatus' | 'remittanceStatus' | 'admissionComments' | 'lsenClassification'>>) {
     if (!code) return
     // Optimistic update so the dropdown feels instant.
     setStudents(prev => prev.map(s => s.id === studentId ? { ...s, ...patch } : s))
@@ -422,7 +423,23 @@ export default function AdmissionPage() {
                     <td className="py-1 px-1.5 whitespace-nowrap">{s.religion || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
                     <td className="py-1 px-1.5 whitespace-nowrap">{s.nationality || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
                     <td className="py-1 px-1.5">{s.diagnosis || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5">{lsenClassificationLabel(s.lsenClassification) || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5">
+                      <select
+                        value={s.lsenClassification ?? ''}
+                        onChange={e => patchField(s.id, { lsenClassification: (e.target.value || null) as LsenClassification | null })}
+                        className="w-full bg-transparent text-[11px] outline-none border-b border-transparent focus:border-[color:var(--narra)] py-0"
+                        title="Set by the teacher, front desk, or admin once the school has assessed the learner."
+                      >
+                        <option value="">—</option>
+                        {LSEN_CLASSIFICATION_GROUPS.map(g => (
+                          <optgroup key={g.group} label={g.group}>
+                            {g.options.map(o => (
+                              <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                    </td>
                     <td className="py-1 px-1.5 whitespace-nowrap">{s.pwdIdNumber || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
                     <td className="py-1 px-1.5">{s.houseStreet || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
                     <td className="py-1 px-1.5">{s.barangay || <span className="text-[color:var(--mid-gray)]">—</span>}</td>

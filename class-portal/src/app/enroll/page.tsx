@@ -5,8 +5,7 @@ import { useRouter } from 'next/navigation'
 import { submitLearnerProfile } from '@/lib/api'
 import {
   getSession, setSession, getDraft, setDraft, levelLabel, ageFromDob,
-  LSEN_CLASSIFICATION_GROUPS,
-  type LrnStatus, type GuardianOfRecord, type NameParts, type LsenClassification,
+  type LrnStatus, type GuardianOfRecord, type NameParts,
 } from '@/lib/session'
 import SignaturePad from '@/components/SignaturePad'
 
@@ -41,7 +40,6 @@ export default function EnrollPage() {
   const [nationality, setNationality] = useState('FILIPINO')
   const [diagnosis, setDiagnosis] = useState('')
   const [pwdIdNumber, setPwdIdNumber] = useState('')
-  const [lsenClassification, setLsenClassification] = useState<LsenClassification | ''>('')
 
   const [houseStreet, setHouseStreet] = useState('')
   const [barangay, setBarangay] = useState('')
@@ -97,7 +95,6 @@ export default function EnrollPage() {
       setNationality(d.nationality ?? 'FILIPINO')
       setDiagnosis(d.diagnosis ?? '')
       setPwdIdNumber(d.pwdIdNumber ?? '')
-      setLsenClassification(d.lsenClassification ?? '')
       setHouseStreet(d.houseStreet ?? '')
       setBarangay(d.barangay ?? '')
       setCityProvinceCountry(d.cityProvinceCountry ?? '')
@@ -183,7 +180,6 @@ export default function EnrollPage() {
         ...(nationality.trim() ? { nationality: nationality.trim() } : {}),
         ...(diagnosis ? { diagnosis } : {}),
         ...(pwdIdNumber.trim() ? { pwdIdNumber: pwdIdNumber.trim() } : {}),
-        ...(lsenClassification ? { lsenClassification } : {}),
         houseStreet, barangay, cityProvinceCountry, zipCode,
         father, mother,
         ...(fatherOccupation ? { fatherOccupation } : {}),
@@ -343,22 +339,6 @@ export default function EnrollPage() {
             </div>
             <Field label="Diagnosis (if applicable)">
               <UInput value={diagnosis} onValue={setDiagnosis} placeholder="OPTIONAL" />
-            </Field>
-            <Field label="LSEN classification (Learners Information System)">
-              <select
-                className="select"
-                value={lsenClassification}
-                onChange={e => setLsenClassification((e.target.value || '') as LsenClassification | '')}
-              >
-                <option value="">— Select if the learner falls under LSEN —</option>
-                {LSEN_CLASSIFICATION_GROUPS.map(g => (
-                  <optgroup key={g.group} label={g.group}>
-                    {g.options.map(o => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
             </Field>
           </Section>
 

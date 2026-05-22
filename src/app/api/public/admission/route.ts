@@ -17,6 +17,15 @@ const ACCESS_CODE = process.env.ADMISSION_ACCESS_CODE || 'scei'
 
 const LIS_VALUES = ['WAITING_FOR_ENROLLMENT', 'PENDING_ENROLLMENT', 'PENDING_TRANSFER', 'ENROLLED'] as const
 const REMIT_VALUES = ['PENDING', 'PAID'] as const
+const LSEN_VALUES = [
+  'A_VISUAL_IMPAIRMENT', 'A_HEARING_IMPAIRMENT', 'A_LEARNING_DISABILITY',
+  'A_INTELLECTUAL_DISABILITY', 'A_AUTISM_SPECTRUM_DISORDER', 'A_EMOTIONAL_BEHAVIORAL_DISORDER',
+  'A_ORTHOPEDIC_PHYSICAL_HANDICAP', 'A_SPEECH_LANGUAGE_DISORDER', 'A_CEREBRAL_PALSY',
+  'A_SPECIAL_HEALTH_CHRONIC_DISEASE', 'A_MULTIPLE_DISABILITIES',
+  'B_DIFFICULTY_SEEING', 'B_DIFFICULTY_HEARING', 'B_DIFFICULTY_BASIC_LEARNING',
+  'B_DIFFICULTY_REMEMBERING_CONCENTRATING', 'B_DIFFICULTY_APPLYING_ADAPTIVE_SKILLS',
+  'B_DIFFICULTY_INTERPERSONAL_BEHAVIOR', 'B_DIFFICULTY_MOBILITY', 'B_DIFFICULTY_COMMUNICATING',
+] as const
 
 function checkCode(req: Request): boolean {
   const url = new URL(req.url)
@@ -148,7 +157,7 @@ export async function PATCH(req: Request) {
   if (!checkCode(req)) {
     return withCors(NextResponse.json({ error: 'Invalid access code.' }, { status: 401 }), origin)
   }
-  let body: { studentId?: string; lisStatus?: string | null; remittanceStatus?: string | null; admissionComments?: string | null }
+  let body: { studentId?: string; lisStatus?: string | null; remittanceStatus?: string | null; admissionComments?: string | null; lsenClassification?: string | null }
   try { body = await req.json() } catch {
     return withCors(NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 }), origin)
   }
@@ -177,6 +186,11 @@ export async function PATCH(req: Request) {
       return withCors(NextResponse.json({ error: 'Invalid admissionComments' }, { status: 400 }), origin)
     }
   }
+  if (body.lsenClassification === null || (typeof body.lsenClassification === 'string' && (LSEN_VALUES as readonly string[]).includes(body.lsenClassification))) {
+    patch.lsenClassification = body.lsenClassification
+  } else if (body.lsenClassification !== undefined) {
+    return withCors(NextResponse.json({ error: 'Invalid lsenClassification' }, { status: 400 }), origin)
+  }
   if (Object.keys(patch).length === 0) {
     return withCors(NextResponse.json({ error: 'No editable fields supplied' }, { status: 400 }), origin)
   }
@@ -199,6 +213,7 @@ export async function PATCH(req: Request) {
         lisStatus: (e.lisStatus as string) ?? null,
         remittanceStatus: (e.remittanceStatus as string) ?? null,
         admissionComments: (e.admissionComments as string) ?? null,
+        lsenClassification: (e.lsenClassification as string) ?? null,
       },
     }), origin)
   } catch (e) {

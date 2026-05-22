@@ -6,8 +6,9 @@ import {
   getPaymentsForStudent, getWaivers, getGradeForStudent,
   updateUserEnrollment, saveHeadshot,
   levelLabel, lrnStatusLabel, lsenClassificationLabel,
+  LSEN_CLASSIFICATION_GROUPS,
   type StoredUser, type PaymentRecord, type WaiverRecord, type GradeRecord,
-  type EnrollmentDraft,
+  type EnrollmentDraft, type LsenClassification,
 } from '@/lib/session'
 import { downloadWaiverPdf, generateWaiverPdf } from '@/lib/waiver-pdf'
 import { downloadEnrollmentPdf, generateEnrollmentPdf } from '@/lib/enrollment-pdf'
@@ -86,6 +87,12 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
           <div className="flex gap-2">
             {(viewerRole === 'ADMIN' || viewerRole === 'TEACHER') && (
               <LrnUpdater
+                student={student}
+                onSaved={updated => { setStudent(updated); onChange?.() }}
+              />
+            )}
+            {(viewerRole === 'ADMIN' || viewerRole === 'TEACHER') && (
+              <LsenUpdater
                 student={student}
                 onSaved={updated => { setStudent(updated); onChange?.() }}
               />
@@ -366,6 +373,78 @@ function LrnUpdater({ student, onSaved }: { student: StoredUser; onSaved: (u: St
             inputMode="numeric"
             style={{ minWidth: 180 }}
           />
+        </label>
+        <div className="flex gap-1.5 ml-auto">
+          <button type="button" className="btn-secondary text-xs" onClick={() => setOpen(false)} disabled={busy}>Cancel</button>
+          <button type="button" className="btn-primary text-xs" onClick={handleSave} disabled={busy}>
+            {busy ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Compact LSEN classification updater for admin + teacher. Mirrors the
+ * LrnUpdater pattern: a single button that expands inline to a grouped
+ * dropdown sourced from the DepEd LIS rubric, then writes back to the
+ * student's enrollment record. Parents never touch this — it's a staff-
+ * level classification assigned after the school assesses the learner.
+ */
+function LsenUpdater({ student, onSaved }: { student: StoredUser; onSaved: (u: StoredUser) => void }) {
+  const e = student.enrollment ?? {}
+  const [open, setOpen] = useState(false)
+  const [value, setValue] = useState<LsenClassification | ''>(e.lsenClassification ?? '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  async function handleSave() {
+    setErr(null)
+    setBusy(true)
+    try {
+      const updated = await updateUserEnrollment(student.id, {
+        lsenClassification: value || undefined,
+      })
+      onSaved(updated)
+      setOpen(false)
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <button type="button" className="btn-secondary text-xs" onClick={() => setOpen(true)}>
+        {e.lsenClassification ? 'Update LSEN classification' : 'Set LSEN classification'}
+      </button>
+    )
+  }
+  return (
+    <div className="w-full rounded-xl p-3 border" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
+      <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--mid-gray)] font-semibold mb-2" style={{ fontFamily: 'var(--font-display)' }}>
+        LSEN classification (Learners Information System)
+      </div>
+      {err && <div className="mb-2 px-3 py-2 rounded-lg bg-rose-50 border border-rose-100 text-xs text-rose-800">{err}</div>}
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="block flex-1" style={{ minWidth: 260 }}>
+          <span className="label text-[11px]">Classification</span>
+          <select
+            className="select"
+            value={value}
+            onChange={ev => setValue((ev.target.value || '') as LsenClassification | '')}
+          >
+            <option value="">— Not classified —</option>
+            {LSEN_CLASSIFICATION_GROUPS.map(g => (
+              <optgroup key={g.group} label={g.group}>
+                {g.options.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
         </label>
         <div className="flex gap-1.5 ml-auto">
           <button type="button" className="btn-secondary text-xs" onClick={() => setOpen(false)} disabled={busy}>Cancel</button>
