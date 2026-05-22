@@ -814,10 +814,17 @@ export async function confirmFrontDeskPayment(classPortalPaymentId: string): Pro
 }
 
 /**
- * Pull the marketing-hub view of class-portal front-desk payments. Any row
- * the accounting hub cashier has marked CONVERTED flips the matching local
- * PaymentRecord from PENDING to PAID so the student sees the new status
- * without having to manually refresh.
+ * Pull the marketing-hub view of class-portal front-desk payments and
+ * reconcile this device's local PaymentRecord cache against the server's
+ * truth. Two-way:
+ *
+ *   - If a local row exists, its status is flipped to match the server
+ *     (CONVERTED → PAID, PENDING/VOIDED → PENDING).
+ *   - If a local row does NOT exist for a server row, materialize one.
+ *     Without this, an admin / teacher / branch admin viewing the student
+ *     list would see "Pending" or "No payment" for any student who paid
+ *     on a different device — because their local cache was empty even
+ *     though the server clearly has a CONVERTED record.
  */
 export async function hydrateFrontDeskPayments(): Promise<PaymentRecord[]> {
   if (typeof window === 'undefined') return getPayments()
@@ -826,31 +833,59 @@ export async function hydrateFrontDeskPayments(): Promise<PaymentRecord[]> {
     const { payments } = await backendJson<{
       payments: Array<{
         classPortalPaymentId: string
+        studentId: string
+        studentEmail: string
+        plan: string
+        tuitionCentavos: number
+        miscCentavos: number
+        period: string
+        method: 'FRONT_DESK_CASH' | 'BANK_DEPOSIT' | null
         status: 'PENDING' | 'CONVERTED' | 'VOIDED'
+        createdAt: string
         convertedAt: string | null
       }>
     }>('/api/public/class-portal/frontdesk-payments')
-    const byId = new Map(payments.map(p => [p.classPortalPaymentId, p]))
     const local = getPayments()
+    const localById = new Map(local.map(r => [r.id, r]))
+    const next: PaymentRecord[] = local.slice()
     let mutated = false
-    const next = local.map(rec => {
-      const remote = byId.get(rec.id)
-      if (!remote) return rec
-      if (remote.status === 'CONVERTED' && rec.status !== 'PAID') {
-        mutated = true
-        return { ...rec, status: 'PAID' as const, paidAt: remote.convertedAt ?? new Date().toISOString() }
+
+    for (const remote of payments) {
+      const existing = localById.get(remote.classPortalPaymentId)
+      const targetStatus: PaymentStatus = remote.status === 'CONVERTED' ? 'PAID' : 'PENDING'
+      if (existing) {
+        // Update status if it drifted from the server's view.
+        const idx = next.findIndex(r => r.id === existing.id)
+        if (existing.status !== targetStatus) {
+          mutated = true
+          if (targetStatus === 'PAID') {
+            next[idx] = { ...existing, status: 'PAID', paidAt: remote.convertedAt ?? new Date().toISOString() }
+          } else {
+            const { paidAt: _drop, ...rest } = existing
+            void _drop
+            next[idx] = { ...rest, status: 'PENDING' }
+          }
+        }
+        continue
       }
-      // If the accounting hub voids/reopens the order, the remote row goes
-      // back to PENDING (or VOIDED). Reflect that on the student portal:
-      // PAID flips to PENDING and the paidAt timestamp is cleared.
-      if ((remote.status === 'PENDING' || remote.status === 'VOIDED') && rec.status === 'PAID') {
-        mutated = true
-        const { paidAt: _drop, ...rest } = rec
-        void _drop
-        return { ...rest, status: 'PENDING' as const }
-      }
-      return rec
-    })
+      // No local row for this server-side payment — materialize one so
+      // local readers (PaymentsGrouped, PaidStudentsSpreadsheet,
+      // paymentStatusFor, etc.) see the correct PAID status.
+      mutated = true
+      next.push({
+        id: remote.classPortalPaymentId,
+        studentId: remote.studentId,
+        studentEmail: remote.studentEmail,
+        plan: (remote.plan as PaymentPlan) ?? 'MONTHLY',
+        tuitionAmount: remote.tuitionCentavos,
+        miscAmount: remote.miscCentavos,
+        period: remote.period,
+        status: targetStatus,
+        method: remote.method ?? undefined,
+        paidAt: remote.status === 'CONVERTED' ? (remote.convertedAt ?? new Date().toISOString()) : undefined,
+        createdAt: remote.createdAt,
+      })
+    }
     if (mutated) writePayments(next)
     return next
   } catch { return getPayments() }
