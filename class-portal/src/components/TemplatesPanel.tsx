@@ -210,11 +210,33 @@ function FileSlot({ label, accept, file, onPick }: { label: string; accept: stri
 }
 
 function FileChip({ label, file, onOpen, onDownload }: { label: string; file: CurriculumFile; onOpen: (id: string) => void; onDownload: (id: string, name: string) => void }) {
+  // Compact chip — format tag + icon-only View (↗) and Download (↓)
+  // buttons. Tooltips carry the full word for accessibility.
   return (
-    <div className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5" style={{ borderColor: 'var(--paper-3)', background: '#fff' }}>
-      <span className="text-[10.5px] uppercase tracking-[0.08em] font-bold text-[color:var(--mid-gray)] mr-1" style={{ fontFamily: 'var(--font-display)' }}>{label}</span>
-      <button className="btn-secondary text-xs" onClick={() => onOpen(file.fileId)}>View</button>
-      <button className="btn-primary text-xs" onClick={() => onDownload(file.fileId, file.fileName)}>Download</button>
+    <div
+      className="inline-flex items-stretch overflow-hidden rounded-md border text-[11px]"
+      style={{ borderColor: 'var(--paper-3)', background: '#fff' }}
+    >
+      <span
+        className="px-1.5 flex items-center font-bold text-[10px] uppercase tracking-[0.06em] text-[color:var(--mid-gray)]"
+        style={{ fontFamily: 'var(--font-display)' }}
+      >{label}</span>
+      <button
+        type="button"
+        title="View in a new tab"
+        aria-label={`View ${label}`}
+        className="px-1.5 border-l hover:bg-[color:var(--paper-2)] text-[color:var(--narra)]"
+        style={{ borderColor: 'var(--paper-3)' }}
+        onClick={() => onOpen(file.fileId)}
+      >↗</button>
+      <button
+        type="button"
+        title="Download"
+        aria-label={`Download ${label}`}
+        className="px-1.5 border-l text-white font-semibold"
+        style={{ borderColor: 'var(--paper-3)', background: 'var(--narra)' }}
+        onClick={() => onDownload(file.fileId, file.fileName)}
+      >↓</button>
     </div>
   )
 }
