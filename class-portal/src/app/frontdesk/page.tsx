@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getAuth } from '@/lib/session'
 import StudentListPanel from '@/components/StudentListPanel'
-import PaymentsGrouped from '@/components/PaymentsGrouped'
 import FrontDeskPaymentConfirmations from '@/components/FrontDeskPaymentConfirmations'
 import PaidStudentsSpreadsheet from '@/components/PaidStudentsSpreadsheet'
 import CurriculumPanel from '@/components/CurriculumPanel'
@@ -75,10 +74,14 @@ export default function FrontdeskPage() {
       )}
 
       {tab === 'PAYMENTS' && (
-        <div className="space-y-6">
-          <FrontDeskPaymentConfirmations />
-          <PaymentsGrouped canSendReminders senderEmail={email} senderName="Front desk" senderRole="ADMIN" />
-        </div>
+        // FrontDeskPaymentConfirmations is the single source of truth for
+        // the front desk: server-driven Pending + Confirmed Payments
+        // sections that reflect what the front desk has actually
+        // confirmed. The older PaymentsGrouped view (read from local
+        // PaymentRecord) was showing stale "still pending" rows because
+        // the local cache didn't have visibility into other devices'
+        // PayMongo / front-desk confirmations.
+        <FrontDeskPaymentConfirmations />
       )}
 
       {tab === 'SPREADSHEET' && (
