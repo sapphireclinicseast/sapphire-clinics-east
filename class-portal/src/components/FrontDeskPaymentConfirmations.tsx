@@ -30,7 +30,6 @@ export default function FrontDeskPaymentConfirmations() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
-  const [showHistory, setShowHistory] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -52,7 +51,8 @@ export default function FrontDeskPaymentConfirmations() {
       setBusy(null)
       return
     }
-    // Optimistically flip in-place so the row jumps to history immediately.
+    // Optimistically flip in-place so the row jumps to the Confirmed
+    // Payments section immediately.
     setRows(prev => prev.map(r =>
       r.classPortalPaymentId === row.classPortalPaymentId
         ? { ...r, status: 'CONVERTED', convertedAt: new Date().toISOString() }
@@ -62,117 +62,135 @@ export default function FrontDeskPaymentConfirmations() {
   }
 
   const pending = rows.filter(r => r.status === 'PENDING')
-  const history = rows.filter(r => r.status !== 'PENDING')
+  // CONVERTED only — voided rows are noise here. Sort newest-first.
+  const confirmed = rows
+    .filter(r => r.status === 'CONVERTED')
+    .sort((a, b) => new Date(b.convertedAt ?? b.createdAt).getTime() - new Date(a.convertedAt ?? a.createdAt).getTime())
 
   return (
-    <div className="card-static">
-      <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
-        <div>
-          <h2 className="text-[18px] leading-tight">Tuition confirmations</h2>
-          <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1">
-            Cash + bank-deposit payments waiting for front-desk confirmation. PayMongo payments are auto-confirmed when the parent completes checkout and don&apos;t appear here.
-          </p>
+    <div className="space-y-4">
+      {/* ─────────────  PENDING CONFIRMATIONS  ───────────── */}
+      <div className="card-static">
+        <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
+          <div>
+            <h2 className="text-[18px] leading-tight">Pending confirmations</h2>
+            <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1">
+              Cash + bank-deposit payments waiting for the front desk to verify and confirm. Click <span className="font-semibold">Confirm payment</span> once the cash is collected or the bank deposit is reconciled — the row immediately moves to <span className="font-semibold">Confirmed Payments</span> below and the student&apos;s portal flips to PAID on next refresh.
+            </p>
+            <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-1.5 italic" style={{ fontFamily: 'var(--font-display)' }}>
+              PayMongo payments are auto-confirmed when the parent finishes checkout — they don&apos;t appear here.
+            </p>
+          </div>
+          <button onClick={() => void load()} className="btn-secondary text-xs" disabled={loading}>
+            {loading ? '…' : 'Refresh'}
+          </button>
         </div>
-        <button onClick={() => void load()} className="btn-secondary text-xs" disabled={loading}>
-          {loading ? '…' : 'Refresh'}
-        </button>
+
+        {err && <div className="mb-3 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
+
+        {loading ? (
+          <p className="text-sm text-[color:var(--mid-gray)] text-center py-6">Loading…</p>
+        ) : pending.length === 0 ? (
+          <p className="text-sm text-[color:var(--mid-gray)] text-center py-6">No payments waiting for confirmation. 🎉</p>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--paper-3)' }}>
+            <table className="w-full text-sm">
+              <thead style={{ background: 'var(--paper-2)' }}>
+                <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
+                  <th className="py-2 px-3">Student</th>
+                  <th className="py-2 px-3">Plan</th>
+                  <th className="py-2 px-3">Period</th>
+                  <th className="py-2 px-3">Method</th>
+                  <th className="py-2 px-3">Branch</th>
+                  <th className="py-2 px-3 text-right">Amount</th>
+                  <th className="py-2 px-3">Submitted</th>
+                  <th className="py-2 px-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pending.map(r => (
+                  <tr key={r.id} className="border-b" style={{ borderColor: 'var(--paper-3)' }}>
+                    <td className="py-2.5 px-3">
+                      <div className="font-semibold text-[color:var(--narra)]">{r.studentName}</div>
+                      <div className="text-[11px] text-[color:var(--mid-gray)]">{r.studentEmail}</div>
+                    </td>
+                    <td className="py-2.5 px-3 text-[12.5px]">{planLabel(r.plan)}</td>
+                    <td className="py-2.5 px-3 text-[12.5px]">{r.period}</td>
+                    <td className="py-2.5 px-3 text-[12.5px]">{methodLabel(r.method)}</td>
+                    <td className="py-2.5 px-3 text-[12.5px]">{r.branch}</td>
+                    <td className="py-2.5 px-3 text-right tabular-nums">{fmt(r.tuitionCentavos + r.miscCentavos)}</td>
+                    <td className="py-2.5 px-3 text-[12.5px]">{new Date(r.createdAt).toLocaleString()}</td>
+                    <td className="py-2.5 px-3 text-right">
+                      <button
+                        type="button"
+                        className="btn-primary text-xs"
+                        onClick={() => void handleConfirm(r)}
+                        disabled={busy === r.classPortalPaymentId}
+                      >
+                        {busy === r.classPortalPaymentId ? 'Confirming…' : 'Confirm payment'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {err && <div className="mb-3 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
-
-      {loading ? (
-        <p className="text-sm text-[color:var(--mid-gray)] text-center py-6">Loading…</p>
-      ) : pending.length === 0 ? (
-        <p className="text-sm text-[color:var(--mid-gray)] text-center py-6">No tuition payments waiting for confirmation. 🎉</p>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--paper-3)' }}>
-          <table className="w-full text-sm">
-            <thead style={{ background: 'var(--paper-2)' }}>
-              <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
-                <th className="py-2 px-3">Student</th>
-                <th className="py-2 px-3">Plan</th>
-                <th className="py-2 px-3">Period</th>
-                <th className="py-2 px-3">Method</th>
-                <th className="py-2 px-3">Branch</th>
-                <th className="py-2 px-3 text-right">Amount</th>
-                <th className="py-2 px-3">Submitted</th>
-                <th className="py-2 px-3 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pending.map(r => (
-                <tr key={r.id} className="border-b" style={{ borderColor: 'var(--paper-3)' }}>
-                  <td className="py-2.5 px-3">
-                    <div className="font-semibold text-[color:var(--narra)]">{r.studentName}</div>
-                    <div className="text-[11px] text-[color:var(--mid-gray)]">{r.studentEmail}</div>
-                  </td>
-                  <td className="py-2.5 px-3 text-[12.5px]">{planLabel(r.plan)}</td>
-                  <td className="py-2.5 px-3 text-[12.5px]">{r.period}</td>
-                  <td className="py-2.5 px-3 text-[12.5px]">{methodLabel(r.method)}</td>
-                  <td className="py-2.5 px-3 text-[12.5px]">{r.branch}</td>
-                  <td className="py-2.5 px-3 text-right tabular-nums">{fmt(r.tuitionCentavos + r.miscCentavos)}</td>
-                  <td className="py-2.5 px-3 text-[12.5px]">{new Date(r.createdAt).toLocaleString()}</td>
-                  <td className="py-2.5 px-3 text-right">
-                    <button
-                      type="button"
-                      className="btn-primary text-xs"
-                      onClick={() => void handleConfirm(r)}
-                      disabled={busy === r.classPortalPaymentId}
-                    >
-                      {busy === r.classPortalPaymentId ? 'Confirming…' : 'Confirm payment'}
-                    </button>
-                  </td>
+      {/* ─────────────  CONFIRMED PAYMENTS  ───────────── */}
+      <div className="card-static">
+        <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
+          <div>
+            <h2 className="text-[18px] leading-tight">Confirmed Payments</h2>
+            <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1">
+              Cash + bank-deposit payments the front desk has already confirmed. Newest first.
+            </p>
+          </div>
+          <div className="text-[12.5px] text-[color:var(--mid-gray)] font-semibold">
+            {confirmed.length} total
+          </div>
+        </div>
+        {loading ? (
+          <p className="text-sm text-[color:var(--mid-gray)] text-center py-6">Loading…</p>
+        ) : confirmed.length === 0 ? (
+          <p className="text-sm text-[color:var(--mid-gray)] text-center py-6">No confirmed payments yet.</p>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--paper-3)' }}>
+            <table className="w-full text-sm">
+              <thead style={{ background: 'var(--paper-2)' }}>
+                <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
+                  <th className="py-2 px-3">Student</th>
+                  <th className="py-2 px-3">Plan</th>
+                  <th className="py-2 px-3">Period</th>
+                  <th className="py-2 px-3">Method</th>
+                  <th className="py-2 px-3">Branch</th>
+                  <th className="py-2 px-3 text-right">Amount</th>
+                  <th className="py-2 px-3">Confirmed at</th>
+                  <th className="py-2 px-3">Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {history.length > 0 && (
-        <div className="mt-5">
-          <button
-            type="button"
-            className="text-xs text-[color:var(--mid-gray)] hover:text-[color:var(--narra)]"
-            onClick={() => setShowHistory(v => !v)}
-          >
-            {showHistory ? 'Hide history' : `Show ${history.length} confirmed / voided payment${history.length === 1 ? '' : 's'}`}
-          </button>
-          {showHistory && (
-            <div className="mt-3 overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--paper-3)' }}>
-              <table className="w-full text-sm">
-                <thead style={{ background: 'var(--paper-2)' }}>
-                  <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
-                    <th className="py-2 px-3">Student</th>
-                    <th className="py-2 px-3">Plan</th>
-                    <th className="py-2 px-3">Period</th>
-                    <th className="py-2 px-3">Method</th>
-                    <th className="py-2 px-3">Status</th>
-                    <th className="py-2 px-3 text-right">Amount</th>
-                    <th className="py-2 px-3">Confirmed at</th>
+              </thead>
+              <tbody>
+                {confirmed.map(r => (
+                  <tr key={r.id} className="border-b" style={{ borderColor: 'var(--paper-3)' }}>
+                    <td className="py-2.5 px-3">
+                      <div className="font-semibold text-[color:var(--narra)]">{r.studentName}</div>
+                      <div className="text-[11px] text-[color:var(--mid-gray)]">{r.studentEmail}</div>
+                    </td>
+                    <td className="py-2.5 px-3 text-[12.5px]">{planLabel(r.plan)}</td>
+                    <td className="py-2.5 px-3 text-[12.5px]">{r.period}</td>
+                    <td className="py-2.5 px-3 text-[12.5px]">{methodLabel(r.method)}</td>
+                    <td className="py-2.5 px-3 text-[12.5px]">{r.branch}</td>
+                    <td className="py-2.5 px-3 text-right tabular-nums">{fmt(r.tuitionCentavos + r.miscCentavos)}</td>
+                    <td className="py-2.5 px-3 text-[12.5px]">{r.convertedAt ? new Date(r.convertedAt).toLocaleString() : '—'}</td>
+                    <td className="py-2.5 px-3"><span className="badge badge-paid">Paid</span></td>
                   </tr>
-                </thead>
-                <tbody>
-                  {history.map(r => (
-                    <tr key={r.id} className="border-b" style={{ borderColor: 'var(--paper-3)' }}>
-                      <td className="py-2.5 px-3">
-                        <div className="font-semibold text-[color:var(--narra)]">{r.studentName}</div>
-                        <div className="text-[11px] text-[color:var(--mid-gray)]">{r.studentEmail}</div>
-                      </td>
-                      <td className="py-2.5 px-3 text-[12.5px]">{planLabel(r.plan)}</td>
-                      <td className="py-2.5 px-3 text-[12.5px]">{r.period}</td>
-                      <td className="py-2.5 px-3 text-[12.5px]">{methodLabel(r.method)}</td>
-                      <td className="py-2.5 px-3"><span className={`badge ${r.status === 'CONVERTED' ? 'badge-paid' : 'badge-pending'}`}>{r.status === 'CONVERTED' ? 'Paid' : r.status}</span></td>
-                      <td className="py-2.5 px-3 text-right tabular-nums">{fmt(r.tuitionCentavos + r.miscCentavos)}</td>
-                      <td className="py-2.5 px-3 text-[12.5px]">{r.convertedAt ? new Date(r.convertedAt).toLocaleString() : '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
