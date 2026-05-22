@@ -74,7 +74,7 @@ export default function AdminPage() {
       </div>
 
       {tab === 'USERS'         && <UsersPanel viewerRole={adminRole} viewerBranch={adminBranch} />}
-      {tab === 'STUDENTS'      && <StudentListPanel viewer={{ role: 'ADMIN', email: adminEmail, name: isMainAdmin ? 'Main admin' : 'Branch admin' }} />}
+      {tab === 'STUDENTS'      && <StudentListPanel viewer={{ role: 'ADMIN', email: adminEmail, name: isMainAdmin ? 'Main admin' : 'Branch admin' }} viewerBranch={isMainAdmin ? undefined : adminBranch} />}
       {tab === 'CLASSES'       && <ClassesPanel />}
       {tab === 'CURRICULUM'    && <CurriculumPanel viewer={{ role: 'ADMIN', email: adminEmail }} />}
       {tab === 'TEMPLATES'     && <TemplatesPanel viewer={{ role: 'ADMIN', email: adminEmail }} />}
@@ -86,7 +86,7 @@ export default function AdminPage() {
         </div>
       )}
       {tab === 'FEES'          && <FeesPanel viewerRole={adminRole} viewerBranch={adminBranch} />}
-      {tab === 'ASSIGNMENTS'   && <AssignmentsPanel />}
+      {tab === 'ASSIGNMENTS'   && <AssignmentsPanel viewerBranch={isMainAdmin ? undefined : adminBranch} />}
     </div>
   )
 }

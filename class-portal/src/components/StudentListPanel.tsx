@@ -15,6 +15,9 @@ import SignaturePad from './SignaturePad'
 
 interface Props {
   viewer: { role: 'TEACHER' | 'ADMIN'; userId?: string; email: string; name?: string }
+  /** Optional branch scope. When set (BRANCH_ADMIN viewer), the student
+   *  list is filtered to only that branch's students. */
+  viewerBranch?: Branch
 }
 
 /**
@@ -22,7 +25,7 @@ interface Props {
  * lets the viewer click into a detail drawer. Teachers can also sign waivers
  * as witness directly from the drawer; regenerating the PDF afterwards.
  */
-export default function StudentListPanel({ viewer }: Props) {
+export default function StudentListPanel({ viewer, viewerBranch }: Props) {
   const [students, setStudents] = useState<StoredUser[]>([])
   const [selected, setSelected] = useState<StoredUser | null>(null)
   const [filter, setFilter] = useState('')
@@ -50,9 +53,13 @@ export default function StudentListPanel({ viewer }: Props) {
         )
       }
     }
+    // Branch admin scope — only show students enrolled in this branch.
+    if (viewerBranch) {
+      pool = pool.filter(u => u.branch === viewerBranch)
+    }
     setStudents(pool)
   }
-  useEffect(refresh, [viewer.role, viewer.userId])
+  useEffect(refresh, [viewer.role, viewer.userId, viewerBranch])
 
   // When a student is selected, find their waiver.
   useEffect(() => {

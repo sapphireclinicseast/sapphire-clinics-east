@@ -19,6 +19,7 @@ const BRANCHES: Array<{ value: Branch; title: string; sub: string }> = [
 ]
 
 const LEVELS: { value: EnrollmentLevel; title: string }[] = [
+  { value: 'NURSERY', title: 'Nursery' },
   { value: 'KINDER',  title: 'Kindergarten' },
   { value: 'GRADE_1', title: 'Grade 1' },
   { value: 'GRADE_2', title: 'Grade 2' },

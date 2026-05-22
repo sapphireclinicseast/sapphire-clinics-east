@@ -8,18 +8,30 @@ import {
   type StoredUser, type EnrollmentLevel, type Branch, type TeacherAssignment,
 } from '@/lib/session'
 
-const ALL_LEVELS: EnrollmentLevel[] = ['KINDER', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10']
+const ALL_LEVELS: EnrollmentLevel[] = ['NURSERY', 'KINDER', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10']
 const ALL_BRANCHES: Branch[] = ['EAST', 'GREENHILLS']
 
 function levelShort(l: EnrollmentLevel): string {
-  return l === 'KINDER' ? 'K' : l.replace('GRADE_', 'G')
+  if (l === 'NURSERY') return 'N'
+  if (l === 'KINDER') return 'K'
+  return l.replace('GRADE_', 'G')
 }
 
-export default function AssignmentsPanel() {
+interface Props {
+  /** When set (BRANCH_ADMIN viewer), assignments are hidden / locked for
+   *  the other branch — the table renders a single Branch row per
+   *  teacher and excludes assignments to the other branch from the data. */
+  viewerBranch?: Branch
+}
+
+export default function AssignmentsPanel({ viewerBranch }: Props = {}) {
   const [teachers, setTeachers] = useState<StoredUser[]>([])
   const [assignments, setAssignments] = useState<TeacherAssignment[]>(getAssignments())
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+
+  // Branch admins only see assignments + branches inside their own scope.
+  const visibleBranches: Branch[] = viewerBranch ? [viewerBranch] : ALL_BRANCHES
 
   useEffect(() => {
     hydrateUsers().then(us => setTeachers(us.filter(u => u.role === 'TEACHER'))).catch(() => { /* fall back to cached */ })
@@ -77,10 +89,10 @@ export default function AssignmentsPanel() {
             </thead>
             <tbody>
               {teachers.flatMap(t => (
-                ALL_BRANCHES.map((b, bi) => (
+                visibleBranches.map((b, bi) => (
                   <tr key={`${t.id}-${b}`} className="border-b" style={{ borderColor: 'var(--paper-3)' }}>
                     {bi === 0 && (
-                      <td rowSpan={ALL_BRANCHES.length} className="py-2.5 px-3 align-top">
+                      <td rowSpan={visibleBranches.length} className="py-2.5 px-3 align-top">
                         <div className="font-semibold text-[color:var(--narra)]">{[t.firstName, t.lastName].filter(Boolean).join(' ') || t.email}</div>
                         <div className="text-[11.5px] text-[color:var(--mid-gray)]">{t.email}</div>
                       </td>
@@ -93,9 +105,12 @@ export default function AssignmentsPanel() {
                         <input
                           type="checkbox"
                           checked={isOn(t.id, b, l)}
-                          disabled={busy}
+                          // Branch admins see assignments read-only — only
+                          // main admin can edit (enforced server-side too).
+                          disabled={busy || !!viewerBranch}
                           onChange={() => toggle(t.id, b, l)}
                           aria-label={`${t.email} ${branchLabel(b)} ${levelLabel(l)}`}
+                          title={viewerBranch ? 'Only the main admin can edit teacher assignments.' : undefined}
                         />
                       </td>
                     ))}

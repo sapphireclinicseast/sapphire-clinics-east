@@ -729,6 +729,7 @@ enum ClassPortalRole {
 }
 
 enum ClassPortalLevel {
+  NURSERY
   KINDER
   GRADE_1
   GRADE_2
