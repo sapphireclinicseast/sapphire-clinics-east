@@ -294,8 +294,8 @@ function ClassEditor({ existing, students, defaultBranch, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm overflow-y-auto p-4 animate-fade-in" onClick={onClose}>
-      <div className="max-w-2xl mx-auto my-4 card-static" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm overflow-y-auto p-2 sm:p-4 animate-fade-in" onClick={onClose}>
+      <div className="max-w-6xl mx-auto my-2 sm:my-4 card-static min-h-[calc(100vh-1rem)] sm:min-h-[calc(100vh-2rem)]" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
           <div>
             <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
