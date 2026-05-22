@@ -445,6 +445,49 @@ export async function deleteUser(id: string): Promise<void> {
 }
 
 /**
+ * Mint an impersonation session for the given user. Saves the resulting
+ * token to per-tab sessionStorage so subsequent backendJson() calls go
+ * through as the target user; the admin's own session is preserved in
+ * localStorage. Closing the tab ends the impersonation automatically.
+ */
+export async function startImpersonation(userId: string, reason?: string): Promise<{ targetEmail: string }> {
+  const { token, logId, user } = await backendJson<{
+    token: string
+    logId: string
+    user: { id: string; role: string; email: string; firstName: string | null; lastName: string | null; branch: string | null }
+  }>('/api/public/class-portal/impersonate', {
+    method: 'POST',
+    body: JSON.stringify({ userId, reason }),
+  })
+  const { setImpersonationToken } = await import('./backend')
+  setImpersonationToken(token, {
+    logId,
+    targetEmail: user.email,
+    targetRole: user.role,
+    targetFirstName: user.firstName,
+    targetLastName: user.lastName,
+    startedAt: new Date().toISOString(),
+  })
+  return { targetEmail: user.email }
+}
+
+/**
+ * Close the active impersonation session — clears the per-tab token and
+ * stamps endedAt on the server-side audit row.
+ */
+export async function endImpersonation(): Promise<void> {
+  const { clearImpersonationToken, getImpersonationMeta } = await import('./backend')
+  const meta = getImpersonationMeta()
+  try {
+    await backendJson('/api/public/class-portal/impersonate', {
+      method: 'PATCH',
+      body: JSON.stringify({ logId: meta?.logId }),
+    })
+  } catch { /* best-effort — the local clear below still ends the session */ }
+  clearImpersonationToken()
+}
+
+/**
  * Ask the marketing-hub to mint a one-shot password-reset link and email
  * it to the user. Plaintext passwords never pass through this flow — the
  * recipient sets their own new password via /reset?token=…

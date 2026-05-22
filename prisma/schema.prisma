@@ -946,6 +946,25 @@ model ClassPortalPasswordReset {
   @@index([expiresAt])
 }
 
+/// Audit log for admin impersonation events ("View as user"). One row per
+/// session minted. The endedAt column is best-effort — the admin doesn't
+/// always click "Return to admin", but the per-tab sessionStorage scope
+/// keeps the practical blast radius small.
+model ClassPortalImpersonationLog {
+  id           String   @id @default(cuid())
+  adminEmail   String
+  targetUserId String
+  targetEmail  String
+  targetRole   String
+  startedAt    DateTime @default(now())
+  endedAt      DateTime?
+  reason       String?
+
+  @@index([adminEmail])
+  @@index([targetUserId])
+  @@index([startedAt])
+}
+
 /// Shared curriculum library — per-grade. Stored on the server so admins,
 /// teachers, front desk, and students see the same set regardless of which
 /// device the file was uploaded from. Each record can carry up to three
