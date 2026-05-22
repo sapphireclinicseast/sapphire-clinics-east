@@ -101,6 +101,7 @@ export async function GET(req: Request) {
         nationality: (e.nationality as string) ?? null,
         diagnosis: (e.diagnosis as string) ?? null,
         pwdIdNumber: (e.pwdIdNumber as string) ?? null,
+        lsenClassification: (e.lsenClassification as string) ?? null,
         houseStreet: (e.houseStreet as string) ?? null,
         barangay: (e.barangay as string) ?? null,
         cityProvinceCountry: (e.cityProvinceCountry as string) ?? null,

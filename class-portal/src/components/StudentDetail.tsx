@@ -5,7 +5,7 @@ import {
   getFile, putFile, deleteFile, uploadDocumentBlob,
   getPaymentsForStudent, getWaivers, getGradeForStudent,
   updateUserEnrollment, saveHeadshot,
-  levelLabel, lrnStatusLabel,
+  levelLabel, lrnStatusLabel, lsenClassificationLabel,
   type StoredUser, type PaymentRecord, type WaiverRecord, type GradeRecord,
   type EnrollmentDraft,
 } from '@/lib/session'
@@ -107,6 +107,7 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
           <Row label="Mother tongue" value={e.motherTongue ?? '—'} />
           <Row label="Religion" value={e.religion ?? '—'} />
           {e.diagnosis && <Row label="Diagnosis" value={e.diagnosis} />}
+          {e.lsenClassification && <Row label="LSEN classification" value={lsenClassificationLabel(e.lsenClassification)} />}
           <Row label="Address" value={[e.houseStreet, e.barangay, e.cityProvinceCountry, e.zipCode].filter(Boolean).join(', ') || '—'} />
           <Row label="Father" value={nameOf(e.father)} />
           {e.fatherOccupation && <Row label="Father's occupation" value={e.fatherOccupation} />}

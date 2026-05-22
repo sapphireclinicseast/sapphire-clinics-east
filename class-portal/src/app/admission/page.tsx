@@ -9,8 +9,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { backendOrigin } from '@/lib/backend'
 import {
-  levelLabel, LIS_STATUS_OPTIONS, REMITTANCE_OPTIONS,
+  levelLabel, LIS_STATUS_OPTIONS, REMITTANCE_OPTIONS, lsenClassificationLabel,
   type LisStatus, type RemittanceStatus, type EnrollmentLevel, type EnrollmentDraft, type StoredUser,
+  type LsenClassification,
 } from '@/lib/session'
 import { generateEnrollmentPdf } from '@/lib/enrollment-pdf'
 import { exportToPdf, exportToXlsx, type ExportCol } from '@/lib/admission-export'
@@ -47,6 +48,7 @@ interface AdmissionStudent {
   nationality: string | null
   diagnosis: string | null
   pwdIdNumber: string | null
+  lsenClassification: LsenClassification | null
   houseStreet: string | null
   barangay: string | null
   cityProvinceCountry: string | null
@@ -190,6 +192,7 @@ export default function AdmissionPage() {
     { header: 'Religion',          width: 100, value: s => s.religion ?? '' },
     { header: 'Nationality',       width: 100, value: s => s.nationality ?? '' },
     { header: 'Diagnosis',         width: 140, value: s => s.diagnosis ?? '' },
+    { header: 'LSEN classification', width: 220, value: s => lsenClassificationLabel(s.lsenClassification) },
     { header: 'PWD ID No.',        width: 100, value: s => s.pwdIdNumber ?? '' },
     { header: 'House / Street',    width: 160, value: s => s.houseStreet ?? '' },
     { header: 'Barangay',          width: 100, value: s => s.barangay ?? '' },
@@ -365,6 +368,7 @@ export default function AdmissionPage() {
                   <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 90 }}>Religion</th>
                   <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 90 }}>Nationality</th>
                   <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 140 }}>Diagnosis</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 220 }}>LSEN classification</th>
                   <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 100 }}>PWD ID No.</th>
                   <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 150 }}>House / Street</th>
                   <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 100 }}>Barangay</th>
@@ -398,7 +402,7 @@ export default function AdmissionPage() {
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={45} className="py-10 text-center text-[color:var(--mid-gray)]">No students in this branch yet.</td></tr>
+                  <tr><td colSpan={46} className="py-10 text-center text-[color:var(--mid-gray)]">No students in this branch yet.</td></tr>
                 )}
                 {filtered.map(s => (
                   <tr key={s.id} className="border-b hover:bg-[color:var(--paper-2)]" style={{ borderColor: 'var(--paper-3)' }}>
@@ -418,6 +422,7 @@ export default function AdmissionPage() {
                     <td className="py-1 px-1.5 whitespace-nowrap">{s.religion || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
                     <td className="py-1 px-1.5 whitespace-nowrap">{s.nationality || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
                     <td className="py-1 px-1.5">{s.diagnosis || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5">{lsenClassificationLabel(s.lsenClassification) || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
                     <td className="py-1 px-1.5 whitespace-nowrap">{s.pwdIdNumber || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
                     <td className="py-1 px-1.5">{s.houseStreet || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
                     <td className="py-1 px-1.5">{s.barangay || <span className="text-[color:var(--mid-gray)]">—</span>}</td>

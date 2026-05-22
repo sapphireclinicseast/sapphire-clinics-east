@@ -59,6 +59,7 @@ const GRADED_DOCS: DocRequirement[] = [
   PWD_ID_DOC,
   { key: 'report_card_sf9',    title: 'Latest Report Card / SF9 (Form 138)', sub: 'Most recent grading period.', notAvailableOption: true },
   { key: 'good_moral',         title: 'Certificate of Good Moral Character', sub: 'From the previous school.', notAvailableOption: true },
+  { key: 'medical_reports',    title: 'Medical / developmental / therapy reports', sub: 'If relevant — helps the school plan support.', optional: true },
 ]
 
 const AFFIDAVIT_KEYS = ['report_card_sf9', 'good_moral'] as const

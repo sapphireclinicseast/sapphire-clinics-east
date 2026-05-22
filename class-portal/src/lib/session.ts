@@ -46,6 +46,10 @@ export interface EnrollmentDraft {
   diagnosis?: string
   /** PWD ID number — optional, for discount eligibility. */
   pwdIdNumber?: string
+  /** LSEN classification per DepEd Learners Information System.
+   *  Group A = formal diagnosis from a licensed medical specialist.
+   *  Group B = manifestations of disability per ICF (no formal diagnosis). */
+  lsenClassification?: LsenClassification
 
   houseStreet?: string
   barangay?: string
@@ -89,6 +93,77 @@ export interface EnrollmentDraft {
 
 export type LisStatus = 'WAITING_FOR_ENROLLMENT' | 'PENDING_ENROLLMENT' | 'PENDING_TRANSFER' | 'ENROLLED'
 export type RemittanceStatus = 'PENDING' | 'PAID'
+
+/**
+ * LSEN classification per the DepEd Learners Information System (LIS).
+ * Group A — formal diagnosis from a licensed medical specialist.
+ * Group B — no diagnosis on file but manifestations of disability per the
+ *           International Classification of Functioning (ICF).
+ */
+export type LsenClassification =
+  | 'A_VISUAL_IMPAIRMENT'
+  | 'A_HEARING_IMPAIRMENT'
+  | 'A_LEARNING_DISABILITY'
+  | 'A_INTELLECTUAL_DISABILITY'
+  | 'A_AUTISM_SPECTRUM_DISORDER'
+  | 'A_EMOTIONAL_BEHAVIORAL_DISORDER'
+  | 'A_ORTHOPEDIC_PHYSICAL_HANDICAP'
+  | 'A_SPEECH_LANGUAGE_DISORDER'
+  | 'A_CEREBRAL_PALSY'
+  | 'A_SPECIAL_HEALTH_CHRONIC_DISEASE'
+  | 'A_MULTIPLE_DISABILITIES'
+  | 'B_DIFFICULTY_SEEING'
+  | 'B_DIFFICULTY_HEARING'
+  | 'B_DIFFICULTY_BASIC_LEARNING'
+  | 'B_DIFFICULTY_REMEMBERING_CONCENTRATING'
+  | 'B_DIFFICULTY_APPLYING_ADAPTIVE_SKILLS'
+  | 'B_DIFFICULTY_INTERPERSONAL_BEHAVIOR'
+  | 'B_DIFFICULTY_MOBILITY'
+  | 'B_DIFFICULTY_COMMUNICATING'
+
+export const LSEN_CLASSIFICATION_GROUPS: Array<{
+  group: string
+  options: Array<{ value: LsenClassification; label: string }>
+}> = [
+  {
+    group: 'A. With diagnosis from a licensed medical specialist',
+    options: [
+      { value: 'A_VISUAL_IMPAIRMENT',              label: 'A. Visual Impairment' },
+      { value: 'A_HEARING_IMPAIRMENT',             label: 'B. Hearing Impairment' },
+      { value: 'A_LEARNING_DISABILITY',            label: 'C. Learning Disability' },
+      { value: 'A_INTELLECTUAL_DISABILITY',        label: 'D. Intellectual Disability' },
+      { value: 'A_AUTISM_SPECTRUM_DISORDER',       label: 'E. Autism Spectrum Disorder' },
+      { value: 'A_EMOTIONAL_BEHAVIORAL_DISORDER',  label: 'F. Emotional-Behavioral Disorder' },
+      { value: 'A_ORTHOPEDIC_PHYSICAL_HANDICAP',   label: 'G. Orthopedic / Physical Handicap' },
+      { value: 'A_SPEECH_LANGUAGE_DISORDER',       label: 'H. Speech / Language Disorder' },
+      { value: 'A_CEREBRAL_PALSY',                 label: 'I. Cerebral Palsy' },
+      { value: 'A_SPECIAL_HEALTH_CHRONIC_DISEASE', label: 'J. Special Health Problem / Chronic Disease' },
+      { value: 'A_MULTIPLE_DISABILITIES',          label: 'K. Multiple Disabilities' },
+    ],
+  },
+  {
+    group: 'B. No medical diagnosis, with manifestations (ICF)',
+    options: [
+      { value: 'B_DIFFICULTY_SEEING',                   label: '1. Difficulty in Seeing' },
+      { value: 'B_DIFFICULTY_HEARING',                  label: '2. Difficulty in Hearing' },
+      { value: 'B_DIFFICULTY_BASIC_LEARNING',           label: '3. Difficulty in Basic Learning and Applying Knowledge' },
+      { value: 'B_DIFFICULTY_REMEMBERING_CONCENTRATING', label: '4. Difficulty in Remembering, Concentrating, Paying Attention and Understanding' },
+      { value: 'B_DIFFICULTY_APPLYING_ADAPTIVE_SKILLS', label: '5. Difficulty in Applying Adaptive Skills' },
+      { value: 'B_DIFFICULTY_INTERPERSONAL_BEHAVIOR',   label: '6. Difficulty in Displaying Interpersonal Behavior' },
+      { value: 'B_DIFFICULTY_MOBILITY',                 label: '7. Difficulty in Mobility (Walking, Climbing and Grasping)' },
+      { value: 'B_DIFFICULTY_COMMUNICATING',            label: '8. Difficulty in Communicating' },
+    ],
+  },
+]
+
+export function lsenClassificationLabel(value: LsenClassification | null | undefined): string {
+  if (!value) return ''
+  for (const g of LSEN_CLASSIFICATION_GROUPS) {
+    const hit = g.options.find(o => o.value === value)
+    if (hit) return hit.label
+  }
+  return value
+}
 
 export const LIS_STATUS_OPTIONS: Array<{ value: LisStatus; label: string }> = [
   { value: 'WAITING_FOR_ENROLLMENT', label: 'WAITING FOR ENROLLMENT' },
