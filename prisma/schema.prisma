@@ -1133,6 +1133,38 @@ model ClassPortalProjectProof {
   @@index([projectId])
 }
 
+/// Phase 4: an Activity on a class — school events, field trips, IEP
+/// reviews, holidays, anything that's not a graded lesson or project.
+/// Date range (fromDate / toDate) and a gallery of photos uploaded by
+/// the teacher.
+model ClassPortalActivity {
+  id          String   @id @default(cuid())
+  classId     String
+  name        String
+  /// Free-form classification (e.g. "School Event", "Field Trip",
+  /// "IEP Review", "Holiday"). UI offers suggestions but accepts any.
+  type        String?
+  description String?
+  fromDate    DateTime?
+  toDate      DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([classId])
+}
+
+model ClassPortalActivityPhoto {
+  id         String   @id @default(cuid())
+  activityId String
+  fileName   String
+  fileType   String
+  fileSize   Int
+  fileData   Bytes
+  createdAt  DateTime @default(now())
+
+  @@index([activityId])
+}
+
 /// Shared curriculum library — per-grade. Stored on the server so admins,
 /// teachers, front desk, and students see the same set regardless of which
 /// device the file was uploaded from. Each record can carry up to three

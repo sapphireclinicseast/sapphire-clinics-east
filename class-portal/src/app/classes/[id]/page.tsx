@@ -13,10 +13,13 @@ import {
   uploadTestProof, fetchTestProofBlob,
   listProjects, createProject, updateProject, deleteProject,
   uploadProjectProof, fetchProjectProofBlob,
+  listActivities, createActivity, updateActivity, deleteActivity,
+  uploadActivityPhoto, deleteActivityPhoto, fetchActivityPhotoBlob,
+  ACTIVITY_TYPE_SUGGESTIONS,
   levelLabel, branchLabel, CLASS_DAY_OPTIONS,
   type AuthSession, type StoredUser,
   type ClassRecord, type LessonRecord, type LessonAttachmentMeta, type LessonOutputMeta,
-  type AttendanceStatus, type LessonTestRecord, type ProjectRecord,
+  type AttendanceStatus, type LessonTestRecord, type ProjectRecord, type ActivityRecord, type ActivityPhotoMeta,
 } from '@/lib/session'
 import { backendJson } from '@/lib/backend'
 
@@ -173,6 +176,11 @@ export default function ClassDetailPage() {
         canEdit={canEdit}
         isStudent={isStudent}
         viewerId={auth.userId}
+      />
+
+      <ActivitiesSection
+        classId={klass.id}
+        canEdit={canEdit}
       />
 
       {editingLesson && (
@@ -984,6 +992,307 @@ function ProjectEditor({ classId, roster, existing, onClose, onSaved, viewerIsSt
           <div className="flex gap-2 justify-end mt-4 pt-3 border-t" style={{ borderColor: 'var(--paper-3)' }}>
             <button className="btn-secondary text-xs" onClick={onClose} disabled={busy}>Cancel</button>
             <button className="btn-primary text-xs" onClick={save} disabled={busy}>{busy ? 'Saving…' : (existing ? 'Save changes' : 'Create project')}</button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ────────────────────────  ACTIVITIES  ──────────────────────── */
+
+function ActivitiesSection({ classId, canEdit }: {
+  classId: string
+  canEdit: boolean
+}) {
+  const [activities, setActivities] = useState<ActivityRecord[]>([])
+  const [busy, setBusy] = useState(false)
+  const [editing, setEditing] = useState<ActivityRecord | 'new' | null>(null)
+
+  async function load() {
+    setBusy(true)
+    try { setActivities(await listActivities(classId)) } finally { setBusy(false) }
+  }
+  useEffect(() => { void load() }, [classId])
+
+  return (
+    <div className="card-static">
+      <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
+        <div>
+          <h2 className="text-[18px] leading-tight">Activities</h2>
+          <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1">
+            School events, field trips, IEP reviews, holidays — anything that&apos;s not a graded lesson. Upload a photo gallery so students and parents can see what happened.
+          </p>
+        </div>
+        {canEdit && (
+          <button className="btn-primary text-xs" onClick={() => setEditing('new')}>+ Add Activity</button>
+        )}
+      </div>
+
+      {busy && activities.length === 0 ? (
+        <p className="text-sm text-[color:var(--mid-gray)] py-3">Loading…</p>
+      ) : activities.length === 0 ? (
+        <p className="text-sm text-[color:var(--mid-gray)] py-3">No activities yet.</p>
+      ) : (
+        <ul className="space-y-3">
+          {activities.map(a => (
+            <ActivityCard
+              key={a.id}
+              activity={a}
+              canEdit={canEdit}
+              onEdit={() => setEditing(a)}
+              onDelete={async () => {
+                if (!confirm(`Delete "${a.name}"?`)) return
+                const ok = await deleteActivity(a.id)
+                if (ok) await load()
+              }}
+            />
+          ))}
+        </ul>
+      )}
+
+      {editing && (
+        <ActivityEditor
+          classId={classId}
+          existing={editing === 'new' ? null : editing}
+          canEdit={canEdit}
+          onClose={() => setEditing(null)}
+          onSaved={async () => { setEditing(null); await load() }}
+        />
+      )}
+    </div>
+  )
+}
+
+function ActivityCard({ activity, canEdit, onEdit, onDelete }: {
+  activity: ActivityRecord
+  canEdit: boolean
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  const dateLine = (() => {
+    if (!activity.fromDate && !activity.toDate) return null
+    const from = activity.fromDate ? new Date(activity.fromDate).toLocaleDateString() : null
+    const to = activity.toDate ? new Date(activity.toDate).toLocaleDateString() : null
+    if (from && to && from === to) return from
+    if (from && to) return `${from} – ${to}`
+    return from ?? to
+  })()
+  return (
+    <li className="rounded-xl border p-3" style={{ borderColor: 'var(--paper-3)' }}>
+      <div className="flex items-start justify-between gap-2 flex-wrap">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="font-semibold text-[color:var(--narra)]">{activity.name}</h3>
+            {activity.type && (
+              <span className="text-[10.5px] uppercase tracking-[0.08em] px-2 py-0.5 rounded-full bg-[color:var(--paper-2)] text-[color:var(--mid-gray)] font-semibold" style={{ fontFamily: 'var(--font-display)' }}>
+                {activity.type}
+              </span>
+            )}
+          </div>
+          <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-0.5">
+            {dateLine ?? 'No date set'} · {activity.photos.length} photo{activity.photos.length === 1 ? '' : 's'}
+          </p>
+          {activity.description && (
+            <p className="text-[13px] mt-1 whitespace-pre-line">{activity.description}</p>
+          )}
+        </div>
+        <div className="flex gap-1.5 shrink-0">
+          <button className="btn-secondary text-xs" onClick={onEdit}>{canEdit ? 'Edit' : 'View'}</button>
+          {canEdit && (
+            <button className="text-[10.5px] px-2 py-0.5 rounded text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)]" onClick={onDelete}>Delete</button>
+          )}
+        </div>
+      </div>
+      {activity.photos.length > 0 && (
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 mt-3">
+          {activity.photos.slice(0, 6).map(p => (
+            <ActivityPhotoThumb key={p.id} activityId={activity.id} photo={p} />
+          ))}
+          {activity.photos.length > 6 && (
+            <button
+              type="button"
+              className="aspect-square rounded-lg bg-[color:var(--paper-2)] text-[color:var(--mid-gray)] text-xs font-semibold hover:bg-[color:var(--paper-3)]"
+              onClick={onEdit}
+              style={{ fontFamily: 'var(--font-display)' }}
+            >+{activity.photos.length - 6} more</button>
+          )}
+        </div>
+      )}
+    </li>
+  )
+}
+
+function ActivityPhotoThumb({ activityId, photo }: { activityId: string; photo: ActivityPhotoMeta }) {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let objectUrl: string | null = null
+    let cancelled = false
+    ;(async () => {
+      const blob = await fetchActivityPhotoBlob(activityId, photo.id)
+      if (cancelled || !blob) return
+      objectUrl = URL.createObjectURL(blob)
+      setUrl(objectUrl)
+    })()
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [activityId, photo.id])
+  function openFull() {
+    if (url) window.open(url, '_blank', 'noopener')
+  }
+  return (
+    <button
+      type="button"
+      onClick={openFull}
+      className="aspect-square rounded-lg overflow-hidden bg-[color:var(--paper-2)] hover:opacity-90"
+      title={photo.fileName}
+    >
+      {url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt={photo.fileName} className="w-full h-full object-cover" />
+      ) : (
+        <div className="w-full h-full" />
+      )}
+    </button>
+  )
+}
+
+function ActivityEditor({ classId, existing, canEdit, onClose, onSaved }: {
+  classId: string
+  existing: ActivityRecord | null
+  canEdit: boolean
+  onClose: () => void
+  onSaved: () => void | Promise<void>
+}) {
+  const [name, setName] = useState(existing?.name ?? '')
+  const [type, setType] = useState(existing?.type ?? '')
+  const [description, setDescription] = useState(existing?.description ?? '')
+  const [fromDate, setFromDate] = useState(existing?.fromDate ? existing.fromDate.slice(0, 10) : '')
+  const [toDate, setToDate] = useState(existing?.toDate ? existing.toDate.slice(0, 10) : '')
+  const [photos, setPhotos] = useState<ActivityPhotoMeta[]>(existing?.photos ?? [])
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [activityId, setActivityId] = useState<string | null>(existing?.id ?? null)
+
+  async function save() {
+    setErr(null)
+    if (!name.trim()) { setErr('Activity name is required.'); return }
+    setBusy(true)
+    try {
+      const payload = {
+        name: name.trim(),
+        type: type.trim() || null,
+        description: description.trim() || null,
+        fromDate: fromDate ? new Date(fromDate + 'T00:00:00').toISOString() : null,
+        toDate: toDate ? new Date(toDate + 'T00:00:00').toISOString() : null,
+      }
+      const saved = existing
+        ? await updateActivity(existing.id, payload)
+        : await createActivity(classId, payload)
+      if (!saved) { setErr('Could not save.'); return }
+      setActivityId(saved.id)
+      await onSaved()
+    } catch (e) { setErr((e as Error).message) }
+    finally { setBusy(false) }
+  }
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files
+    e.target.value = ''
+    if (!files || !activityId) return
+    for (const f of Array.from(files)) {
+      const meta = await uploadActivityPhoto(activityId, f)
+      if (meta) setPhotos(prev => [...prev, meta])
+    }
+  }
+  async function handleDeletePhoto(p: ActivityPhotoMeta) {
+    if (!activityId) return
+    if (!confirm(`Delete this photo?`)) return
+    const ok = await deleteActivityPhoto(activityId, p.id)
+    if (ok) setPhotos(prev => prev.filter(x => x.id !== p.id))
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm overflow-y-auto p-2 sm:p-4" onClick={onClose}>
+      <div className="max-w-6xl mx-auto my-2 sm:my-4 card-static min-h-[calc(100vh-1rem)] sm:min-h-[calc(100vh-2rem)]" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div>
+            <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
+              {existing ? 'Edit activity' : 'Add activity'}
+            </div>
+            <h2 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">{name || 'New activity'}</h2>
+          </div>
+          <button className="btn-secondary text-xs" onClick={onClose}>Close</button>
+        </div>
+
+        {err && <div className="mb-3 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
+
+        <Section title="Details">
+          <div className="grid sm:grid-cols-2 gap-3">
+            <label className="block">
+              <span className="label">Name</span>
+              <input className="input" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Manila Ocean Park field trip" disabled={!canEdit} />
+            </label>
+            <label className="block">
+              <span className="label">Type</span>
+              <input className="input" value={type ?? ''} onChange={e => setType(e.target.value)} list="activity-type-suggestions" placeholder="School Event" disabled={!canEdit} />
+              <datalist id="activity-type-suggestions">
+                {ACTIVITY_TYPE_SUGGESTIONS.map(s => <option key={s} value={s} />)}
+              </datalist>
+            </label>
+          </div>
+          <div className="grid sm:grid-cols-2 gap-3 mt-3">
+            <label className="block">
+              <span className="label">From</span>
+              <input type="date" className="input" value={fromDate} onChange={e => setFromDate(e.target.value)} disabled={!canEdit} />
+            </label>
+            <label className="block">
+              <span className="label">To</span>
+              <input type="date" className="input" value={toDate} onChange={e => setToDate(e.target.value)} disabled={!canEdit} />
+            </label>
+          </div>
+          <label className="block mt-3">
+            <span className="label">Description</span>
+            <textarea className="input" rows={4} value={description ?? ''} onChange={e => setDescription(e.target.value)} disabled={!canEdit} />
+          </label>
+        </Section>
+
+        {activityId && (
+          <Section title="Photo gallery">
+            {canEdit && (
+              <label className="btn-secondary text-xs cursor-pointer inline-flex items-center" style={{ width: 'auto' }}>
+                + Add photos
+                <input type="file" className="sr-only" accept="image/*" multiple onChange={handleUpload} />
+              </label>
+            )}
+            {photos.length === 0 ? (
+              <p className="text-sm text-[color:var(--mid-gray)] py-3">No photos yet.</p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 mt-3">
+                {photos.map(p => (
+                  <div key={p.id} className="relative group">
+                    <ActivityPhotoThumb activityId={activityId} photo={p} />
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeletePhoto(p)}
+                        className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Delete photo"
+                      >×</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Section>
+        )}
+
+        {canEdit && (
+          <div className="flex gap-2 justify-end mt-4 pt-3 border-t" style={{ borderColor: 'var(--paper-3)' }}>
+            <button className="btn-secondary text-xs" onClick={onClose} disabled={busy}>Cancel</button>
+            <button className="btn-primary text-xs" onClick={save} disabled={busy}>{busy ? 'Saving…' : (existing ? 'Save changes' : 'Create activity')}</button>
           </div>
         )}
       </div>

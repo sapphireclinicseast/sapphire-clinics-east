@@ -1618,6 +1618,130 @@ export async function fetchProjectProofBlob(projectId: string, studentId: string
 }
 
 /* ─────────────────────────────────────────────────────────────────
+   Activities (Phase 4) — school events / field trips / IEP reviews,
+   with a photo gallery uploaded by the teacher.
+   ───────────────────────────────────────────────────────────── */
+
+export interface ActivityPhotoMeta {
+  id: string
+  fileName: string
+  fileType: string
+  fileSize: number
+  createdAt: string
+}
+
+export interface ActivityRecord {
+  id: string
+  classId: string
+  name: string
+  type: string | null
+  description: string | null
+  fromDate: string | null
+  toDate: string | null
+  photos: ActivityPhotoMeta[]
+  createdAt: string
+  updatedAt: string
+}
+
+export const ACTIVITY_TYPE_SUGGESTIONS = [
+  'School Event',
+  'Field Trip',
+  'IEP Review',
+  'Parent-Teacher Conference',
+  'Holiday',
+  'Class Cancelled',
+  'Other',
+]
+
+export async function listActivities(classId: string): Promise<ActivityRecord[]> {
+  try {
+    const { activities } = await backendJson<{ activities: ActivityRecord[] }>(`/api/public/class-portal/classes/${encodeURIComponent(classId)}/activities`)
+    return activities
+  } catch { return [] }
+}
+
+export async function createActivity(classId: string, args: {
+  name: string
+  type?: string | null
+  description?: string | null
+  fromDate?: string | null
+  toDate?: string | null
+}): Promise<ActivityRecord | null> {
+  try {
+    const { activity } = await backendJson<{ activity: ActivityRecord }>(`/api/public/class-portal/classes/${encodeURIComponent(classId)}/activities`, {
+      method: 'POST',
+      body: JSON.stringify(args),
+    })
+    return activity
+  } catch { return null }
+}
+
+export async function updateActivity(activityId: string, patch: Partial<{
+  name: string
+  type: string | null
+  description: string | null
+  fromDate: string | null
+  toDate: string | null
+}>): Promise<ActivityRecord | null> {
+  try {
+    const { activity } = await backendJson<{ activity: ActivityRecord }>(`/api/public/class-portal/activities/${encodeURIComponent(activityId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    })
+    return activity
+  } catch { return null }
+}
+
+export async function deleteActivity(activityId: string): Promise<boolean> {
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/activities/${encodeURIComponent(activityId)}`, {
+      method: 'DELETE',
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    return res.ok
+  } catch { return false }
+}
+
+export async function uploadActivityPhoto(activityId: string, file: File): Promise<ActivityPhotoMeta | null> {
+  if (!getToken()) return null
+  try {
+    const fd = new FormData(); fd.append('file', file)
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/activities/${encodeURIComponent(activityId)}/photos`, {
+      method: 'POST', body: fd,
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) return null
+    const j = await res.json() as { photo: ActivityPhotoMeta }
+    return j.photo
+  } catch { return null }
+}
+
+export async function deleteActivityPhoto(activityId: string, photoId: string): Promise<boolean> {
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/activities/${encodeURIComponent(activityId)}/photos/${encodeURIComponent(photoId)}`, {
+      method: 'DELETE',
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    return res.ok
+  } catch { return false }
+}
+
+export async function fetchActivityPhotoBlob(activityId: string, photoId: string): Promise<Blob | null> {
+  if (!getToken()) return null
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/activities/${encodeURIComponent(activityId)}/photos/${encodeURIComponent(photoId)}`, {
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) return null
+    return await res.blob()
+  } catch { return null }
+}
+
+/* ─────────────────────────────────────────────────────────────────
    Curriculum templates — uploaded per grade level
    ───────────────────────────────────────────────────────────── */
 
