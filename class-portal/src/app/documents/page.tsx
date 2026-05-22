@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { submitDocuments } from '@/lib/api'
 import { getSession, getDraft, setDraft, putFile, levelLabel, type EnrollmentLevel } from '@/lib/session'
+import { backendOrigin, backendJson } from '@/lib/backend'
 import { generateAffidavitPdf, type AffidavitInput } from '@/lib/affidavit-pdf'
 import SignaturePad from '@/components/SignaturePad'
 
@@ -92,6 +93,8 @@ export default function DocumentsPage() {
   })
   // Branch is loaded from draft on mount; controls the affidavit city.
   const [branch, setBranch] = useState<'EAST' | 'GREENHILLS' | null>(null)
+  // QR-from-phone upload modal state.
+  const [qrTarget, setQrTarget] = useState<{ docKey: string; title: string } | null>(null)
 
   useEffect(() => {
     const s = getSession()
@@ -278,6 +281,7 @@ export default function DocumentsPage() {
               naMarked={!!naMarks[d.key]}
               onFile={f => onFile(d.key, f)}
               onToggleNa={on => toggleNa(d.key, on)}
+              onQrUpload={(docKey, title) => setQrTarget({ docKey, title })}
             />
           ))}
 
@@ -313,16 +317,26 @@ export default function DocumentsPage() {
           </div>
         </form>
       </div>
+
+      {qrTarget && (
+        <QRUploadModal
+          docKey={qrTarget.docKey}
+          title={qrTarget.title}
+          onClose={() => setQrTarget(null)}
+          onFile={f => { onFile(qrTarget.docKey, f); setQrTarget(null) }}
+        />
+      )}
     </div>
   )
 }
 
-function DocRow({ doc, file, naMarked, onFile, onToggleNa }: {
+function DocRow({ doc, file, naMarked, onFile, onToggleNa, onQrUpload }: {
   doc: DocRequirement
   file: File | null
   naMarked: boolean
   onFile: (f: File | null) => void
   onToggleNa: (on: boolean) => void
+  onQrUpload: (docKey: string, title: string) => void
 }) {
   const fileSelected = !!file
   const greenBorder = fileSelected || naMarked
@@ -369,9 +383,10 @@ function DocRow({ doc, file, naMarked, onFile, onToggleNa }: {
         <button
           type="button"
           className="btn-secondary text-xs"
-          style={{ minWidth: 84, opacity: 0.85 }}
-          disabled
-          title="Coming soon — scan to upload from your phone"
+          style={{ minWidth: 84 }}
+          disabled={naMarked}
+          onClick={() => onQrUpload(doc.key, doc.title)}
+          title="Scan a QR with your phone to capture the file there"
         >
           QR upload
         </button>
@@ -522,4 +537,141 @@ function validateAffidavit(a: {
   if (!a.reason.trim()) return 'Affidavit: please state why credentials cannot be submitted yet.'
   if (!a.signatureDataUrl) return 'Affidavit: please sign before submitting.'
   return null
+}
+
+/**
+ * QR-from-phone upload modal. On mount: requests a one-time upload token
+ * from the marketing API, encodes the resulting /upload/<token> URL into
+ * a QR code (data URL), and polls the same token's status every 2s. Once
+ * the phone uploads a file, the desktop pulls the blob, hands it to the
+ * parent via `onFile`, and deletes the token.
+ */
+function QRUploadModal({ docKey, title, onClose, onFile }: {
+  docKey: string
+  title: string
+  onClose: () => void
+  onFile: (f: File) => void
+}) {
+  const [token, setToken] = useState<string | null>(null)
+  const [uploadUrl, setUploadUrl] = useState<string | null>(null)
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const [status, setStatus] = useState<'CREATING' | 'WAITING' | 'INGESTING' | 'DONE'>('CREATING')
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const session = getSession()
+        const draft = getDraft()
+        const { token: tk } = await backendJson<{ token: string }>('/api/public/class-portal/upload-tokens', {
+          method: 'POST',
+          body: JSON.stringify({
+            docKey,
+            studentId: session?.studentId ?? 'pending',
+            studentEmail: draft?.email ?? 'pending',
+          }),
+        })
+        if (cancelled) return
+        // Build the upload URL pointing at the class-portal subdomain so
+        // the QR opens this same site on the phone. In dev we just point
+        // to the current origin.
+        const portalOrigin = window.location.origin
+        const url = `${portalOrigin}/upload/${encodeURIComponent(tk)}`
+        const qr = (await import('qrcode')).default
+        const data = await qr.toDataURL(url, { margin: 1, width: 256, color: { dark: '#3D6B62', light: '#FFFFFF' } })
+        if (cancelled) return
+        setToken(tk)
+        setUploadUrl(url)
+        setQrDataUrl(data)
+        setStatus('WAITING')
+      } catch (e) {
+        if (!cancelled) setErr((e as Error).message)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [docKey])
+
+  // Poll for upload completion.
+  useEffect(() => {
+    if (!token || status !== 'WAITING') return
+    let cancelled = false
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${backendOrigin()}/api/public/class-portal/upload-tokens/${encodeURIComponent(token)}`, { cache: 'no-store' })
+        if (!res.ok) return
+        const d = await res.json() as { uploadedAt: string | null; fileName: string | null; fileType: string | null }
+        if (!d.uploadedAt) return
+        if (cancelled) return
+        clearInterval(interval)
+        setStatus('INGESTING')
+        // Pull the blob, wrap it as a File, and hand off to the parent.
+        const blobRes = await fetch(`${backendOrigin()}/api/public/class-portal/upload-tokens/${encodeURIComponent(token)}/file`, { cache: 'no-store' })
+        if (!blobRes.ok) throw new Error(`Could not fetch uploaded file (${blobRes.status}).`)
+        const blob = await blobRes.blob()
+        const f = new File([blob], d.fileName ?? `${docKey}.jpg`, { type: d.fileType ?? blob.type ?? 'application/octet-stream' })
+        // Clean up the token on the server.
+        void fetch(`${backendOrigin()}/api/public/class-portal/upload-tokens/${encodeURIComponent(token)}`, { method: 'DELETE' }).catch(() => null)
+        if (cancelled) return
+        setStatus('DONE')
+        onFile(f)
+      } catch (e) {
+        if (!cancelled) setErr((e as Error).message)
+      }
+    }, 2000)
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [token, status, docKey, onFile])
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
+      <div className="card-static w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 mb-2">
+          <div>
+            <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>QR upload</div>
+            <h2 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">{title}</h2>
+          </div>
+          <button type="button" onClick={onClose} className="text-[color:var(--mid-gray)] hover:text-[color:var(--clay)] text-lg leading-none">×</button>
+        </div>
+
+        {err && (
+          <div className="px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800 mb-3">{err}</div>
+        )}
+
+        {status === 'CREATING' && (
+          <p className="text-sm text-[color:var(--mid-gray)] py-6 text-center">Generating QR code…</p>
+        )}
+
+        {status === 'WAITING' && qrDataUrl && (
+          <>
+            <p className="text-sm text-[color:var(--mid-gray)] mb-3">
+              On your phone, open the camera and point it at this QR code. Take a photo or pick a file — it&apos;ll appear here automatically.
+            </p>
+            <div className="flex justify-center my-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={qrDataUrl} alt="QR code" width={256} height={256} className="rounded-xl border" style={{ borderColor: 'var(--paper-3)' }} />
+            </div>
+            {uploadUrl && (
+              <p className="text-[11.5px] text-[color:var(--mid-gray)] text-center break-all" style={{ fontFamily: 'var(--font-display)' }}>
+                Or open this on your phone:<br />
+                <span className="text-[color:var(--narra)] font-semibold">{uploadUrl}</span>
+              </p>
+            )}
+            <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-3 text-center" style={{ fontFamily: 'var(--font-display)' }}>
+              Waiting for upload… The link expires in 30 minutes.
+            </p>
+          </>
+        )}
+
+        {status === 'INGESTING' && (
+          <p className="text-sm text-[color:var(--mid-gray)] py-6 text-center">Receiving file from your phone…</p>
+        )}
+
+        {status === 'DONE' && (
+          <p className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 mb-3">
+            ✓ Got it. Closing…
+          </p>
+        )}
+      </div>
+    </div>
+  )
 }

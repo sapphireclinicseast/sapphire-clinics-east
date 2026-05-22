@@ -837,6 +837,32 @@ model ClassPortalLevelStatus {
   updatedBy String?
 }
 
+/// QR-from-phone upload handoff. Desktop /documents creates a row + shows
+/// a QR code that encodes /upload/<token>. The parent scans it on their
+/// phone, picks/takes a photo, the phone POSTs the file body here. The
+/// desktop polls this row's `uploadedAt`; once non-null, it pulls the
+/// file blob, stores it in IndexedDB at the right doc slot, and deletes
+/// this row. Tokens expire after 30 min.
+model ClassPortalUploadToken {
+  token        String    @id
+  studentId    String
+  studentEmail String
+  /// Which document slot the upload targets (e.g. "psa_birth_cert",
+  /// "parent_valid_id", "pwd_id"). Used by the desktop to know where to
+  /// drop the blob once it pulls it back.
+  docKey       String
+  expiresAt    DateTime
+  fileName     String?
+  fileType     String?
+  fileSize     Int?
+  fileData     Bytes?
+  uploadedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([expiresAt])
+  @@index([studentId])
+}
+
 /// Pending front-desk cash payment notifications from the class portal.
 /// When a parent on /pay picks "Pay at front desk" + "Notify front desk",
 /// the class portal POSTs a row here; the accounting hub's POS Cashier
