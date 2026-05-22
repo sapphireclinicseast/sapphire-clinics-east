@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { submitDocuments } from '@/lib/api'
 import { getSession, getDraft, setDraft, putFile, levelLabel, type EnrollmentLevel } from '@/lib/session'
@@ -558,6 +558,11 @@ function QRUploadModal({ docKey, title, onClose, onFile }: {
   const [err, setErr] = useState<string | null>(null)
   const [status, setStatus] = useState<'CREATING' | 'WAITING' | 'INGESTING' | 'DONE'>('CREATING')
 
+  // Keep onFile in a ref so the polling effect doesn't re-run (and tear
+  // itself down) every time the parent recreates the callback.
+  const onFileRef = useRef(onFile)
+  useEffect(() => { onFileRef.current = onFile }, [onFile])
+
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -592,35 +597,45 @@ function QRUploadModal({ docKey, title, onClose, onFile }: {
     return () => { cancelled = true }
   }, [docKey])
 
-  // Poll for upload completion.
+  // Poll for upload completion. NOTE: `status` is intentionally NOT in
+  // the deps — when we call setStatus('INGESTING') mid-fetch, React
+  // re-runs the effect, fires the cleanup (cancelled=true), and the
+  // in-flight blob fetch then bails on the next `cancelled` check.
+  // Symptom: modal stuck at "Receiving file from your phone…". By
+  // depending on `token` only, the effect runs exactly once per token
+  // and the status changes don't tear it down.
   useEffect(() => {
-    if (!token || status !== 'WAITING') return
+    if (!token) return
     let cancelled = false
+    let pollDone = false
     const interval = setInterval(async () => {
+      if (pollDone || cancelled) return
       try {
         const res = await fetch(`${backendOrigin()}/api/public/class-portal/upload-tokens/${encodeURIComponent(token)}`, { cache: 'no-store' })
-        if (!res.ok) return
+        if (!res.ok || cancelled) return
         const d = await res.json() as { uploadedAt: string | null; fileName: string | null; fileType: string | null }
-        if (!d.uploadedAt) return
-        if (cancelled) return
+        if (!d.uploadedAt || cancelled) return
+        // Lock the poll loop so the next tick can't double-fetch while
+        // we're mid-ingest.
+        pollDone = true
         clearInterval(interval)
         setStatus('INGESTING')
-        // Pull the blob, wrap it as a File, and hand off to the parent.
         const blobRes = await fetch(`${backendOrigin()}/api/public/class-portal/upload-tokens/${encodeURIComponent(token)}/file`, { cache: 'no-store' })
-        if (!blobRes.ok) throw new Error(`Could not fetch uploaded file (${blobRes.status}).`)
+        if (cancelled) return
+        if (!blobRes.ok) throw new Error(`Could not fetch uploaded file (HTTP ${blobRes.status}).`)
         const blob = await blobRes.blob()
         const f = new File([blob], d.fileName ?? `${docKey}.jpg`, { type: d.fileType ?? blob.type ?? 'application/octet-stream' })
-        // Clean up the token on the server.
+        // Best-effort cleanup; doesn't block the parent handoff.
         void fetch(`${backendOrigin()}/api/public/class-portal/upload-tokens/${encodeURIComponent(token)}`, { method: 'DELETE' }).catch(() => null)
         if (cancelled) return
         setStatus('DONE')
-        onFile(f)
+        onFileRef.current(f)
       } catch (e) {
         if (!cancelled) setErr((e as Error).message)
       }
     }, 2000)
     return () => { cancelled = true; clearInterval(interval) }
-  }, [token, status, docKey, onFile])
+  }, [token, docKey])
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
@@ -662,8 +677,13 @@ function QRUploadModal({ docKey, title, onClose, onFile }: {
           </>
         )}
 
-        {status === 'INGESTING' && (
+        {status === 'INGESTING' && !err && (
           <p className="text-sm text-[color:var(--mid-gray)] py-6 text-center">Receiving file from your phone…</p>
+        )}
+        {status === 'INGESTING' && err && (
+          <p className="text-sm text-[color:var(--clay)] py-6 text-center">
+            Couldn&apos;t pull the file from the server. Try uploading again.
+          </p>
         )}
 
         {status === 'DONE' && (
