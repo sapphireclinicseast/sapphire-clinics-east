@@ -6,7 +6,7 @@
 const DRAFT_KEY = 'scei_class_draft_v1'
 const SESSION_KEY = 'scei_class_session_v1'
 
-export type EnrollmentLevel = 'KINDER' | 'GRADE_1' | 'GRADE_2' | 'GRADE_3' | 'GRADE_4' | 'GRADE_5' | 'GRADE_6' | 'GRADE_7' | 'GRADE_8' | 'GRADE_9' | 'GRADE_10'
+export type EnrollmentLevel = 'NURSERY' | 'KINDER' | 'GRADE_1' | 'GRADE_2' | 'GRADE_3' | 'GRADE_4' | 'GRADE_5' | 'GRADE_6' | 'GRADE_7' | 'GRADE_8' | 'GRADE_9' | 'GRADE_10'
 export type LrnStatus = 'NO_LRN' | 'WITH_LRN' | 'RETURNING'
 export type GuardianOfRecord = 'FATHER' | 'MOTHER' | 'OTHER'
 
@@ -223,6 +223,7 @@ export function clearSession() {
 
 export function levelLabel(l: EnrollmentLevel): string {
   switch (l) {
+    case 'NURSERY':  return 'Nursery'
     case 'KINDER':   return 'Kindergarten'
     case 'GRADE_1':  return 'Grade 1'
     case 'GRADE_2':  return 'Grade 2'
@@ -1574,7 +1575,7 @@ export interface LevelStatus {
   updatedBy: string | null
 }
 
-const ALL_LEVELS_ARR: EnrollmentLevel[] = ['KINDER', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10']
+const ALL_LEVELS_ARR: EnrollmentLevel[] = ['NURSERY', 'KINDER', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10']
 
 function defaultLevelStatus(): LevelStatus[] {
   return ALL_LEVELS_ARR.map(level => ({ level, enabled: true, updatedAt: null, updatedBy: null }))

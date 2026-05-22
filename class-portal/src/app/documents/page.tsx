@@ -139,7 +139,9 @@ export default function DocumentsPage() {
 
   const docs = useMemo<DocRequirement[]>(() => {
     if (!level) return []
-    return level === 'KINDER' ? KINDER_DOCS : GRADED_DOCS
+    // Nursery + Kinder share the same document requirements (no prior
+    // report card / good moral yet); Grade 1+ uses the expanded list.
+    return (level === 'KINDER' || level === 'NURSERY') ? KINDER_DOCS : GRADED_DOCS
   }, [level])
 
   /** True if any "notAvailable"-eligible doc is currently ticked as N/A. */
@@ -270,7 +272,7 @@ export default function DocumentsPage() {
   }
 
   function openWaiver() {
-    const url = level === 'KINDER' ? '/waiver?level=KINDER' : `/waiver?level=${level}`
+    const url = `/waiver?level=${level}`
     window.open(url, 'scei_waiver', 'width=720,height=860,resizable=yes,scrollbars=yes')
   }
 

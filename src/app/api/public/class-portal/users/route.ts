@@ -15,9 +15,23 @@ export async function GET(req: Request) {
   const origin = req.headers.get('origin')
   try {
     const auth = await requireAuth(req)
-    let where: { role?: 'STUDENT' | 'TEACHER'; id?: string } = {}
-    if (auth.role === 'TEACHER') where = { role: 'STUDENT' }
-    if (auth.role === 'STUDENT') where = { id: auth.userId }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const where: any = {}
+    if (auth.role === 'TEACHER') where.role = 'STUDENT'
+    if (auth.role === 'STUDENT') where.id = auth.userId
+    // Branch admins are scoped to their own branch. Teachers without a
+    // branch (unscoped) stay visible because their assignments table
+    // covers cross-branch coverage; rows tagged to the other branch are
+    // hidden.
+    if (auth.role === 'BRANCH_ADMIN' && auth.branch) {
+      where.OR = [
+        { branch: auth.branch },
+        // Teachers + frontdesk + branch_admin rows might have null branch
+        // for the teacher case — include them so the branch admin can see
+        // unscoped teachers. Student rows always have a branch.
+        { AND: [{ branch: null }, { role: { in: ['TEACHER'] } }] },
+      ]
+    }
     const rows = await prisma.classPortalUser.findMany({
       where,
       orderBy: [{ createdAt: 'desc' }],
