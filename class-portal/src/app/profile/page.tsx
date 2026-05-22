@@ -34,7 +34,12 @@ export default function ProfilePage() {
   useEffect(() => {
     const auth = getAuth()
     if (!auth) { router.replace('/sign-in'); return }
-    if (auth.role === 'ADMIN') { router.replace('/admin'); return }
+    // Send admin / branch admin / front-desk users to their proper
+    // dashboards instead of falling through to TeacherView (which is
+    // why a branch admin landed here and saw "SCEI teacher account"
+    // at the top of the screen).
+    if (auth.role === 'ADMIN' || auth.role === 'BRANCH_ADMIN') { router.replace('/admin'); return }
+    if (auth.role === 'FRONTDESK') { router.replace('/frontdesk'); return }
     if (!auth.userId) { router.replace('/sign-in'); return }
     let cancelled = false
     ;(async () => {
@@ -142,10 +147,18 @@ function TeacherView({ user }: { user: StoredUser }) {
 
   const viewerName = useMemo(() => [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email, [user])
 
+  // Safety net: label by actual role so a non-teacher who lands here
+  // (e.g. via a stale link before the role-aware redirect kicks in)
+  // doesn't see the wrong account-type chip.
+  const roleLabel =
+    user.role === 'BRANCH_ADMIN' ? 'SCEI branch admin account'
+    : user.role === 'FRONTDESK'   ? 'SCEI front desk account'
+    : 'SCEI teacher account'
+
   return (
     <div className="max-w-5xl mx-auto animate-fade-up space-y-6">
       <div className="card-static">
-        <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>SCEI teacher account</div>
+        <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>{roleLabel}</div>
         <h1 className="text-[24px] leading-tight text-[color:var(--deep-teal)]">{viewerName}</h1>
         <p className="text-sm text-[color:var(--mid-gray)]">{user.email}</p>
       </div>
