@@ -33,6 +33,8 @@ export async function GET(req: Request) {
         level: r.level,
         branch: r.branch,
         enrollment: r.enrollment,
+        passwordSetAt: r.passwordSetAt ? r.passwordSetAt.toISOString() : null,
+        passwordSetBy: r.passwordSetBy ?? null,
         createdAt: r.createdAt.toISOString(),
         updatedAt: r.updatedAt.toISOString(),
       })),
@@ -90,6 +92,16 @@ export async function POST(req: Request) {
     if (existing) {
       return withCors(NextResponse.json({ error: 'A user with this email already exists for this role.' }, { status: 409 }), origin)
     }
+    // Record who set the password initially. For self-signup students this is
+    // the parent's own email; for staff-minted accounts it's the admin who
+    // created them. Used by the admin user list to show "Last reset by …".
+    let passwordSetByEmail: string = email
+    if (body.role !== 'STUDENT') {
+      try {
+        const adminAuth = await requireAuth(req, ['ADMIN', 'BRANCH_ADMIN'])
+        passwordSetByEmail = adminAuth.email
+      } catch { /* leave as the target email — staff role auth-checked above */ }
+    }
     const created = await prisma.classPortalUser.create({
       data: {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -104,6 +116,8 @@ export async function POST(req: Request) {
         branch: (body.branch ?? null) as any,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         enrollment: (body.enrollment ?? null) as any,
+        passwordSetAt: new Date(),
+        passwordSetBy: passwordSetByEmail,
       },
     })
 
@@ -134,6 +148,8 @@ export async function POST(req: Request) {
         level: created.level,
         branch: created.branch,
         enrollment: created.enrollment,
+        passwordSetAt: created.passwordSetAt ? created.passwordSetAt.toISOString() : null,
+        passwordSetBy: created.passwordSetBy ?? null,
         createdAt: created.createdAt.toISOString(),
         updatedAt: created.updatedAt.toISOString(),
       },

@@ -60,7 +60,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = { updatedAt: new Date() }
     if (body.email !== undefined) data.email = String(body.email).trim().toLowerCase()
-    if (body.password !== undefined && body.password) data.passwordHash = await hashPassword(body.password)
+    if (body.password !== undefined && body.password) {
+      data.passwordHash = await hashPassword(body.password)
+      // Audit who set the password and when — plaintext is NOT stored.
+      data.passwordSetAt = new Date()
+      data.passwordSetBy = auth.email
+    }
     if (body.firstName !== undefined) data.firstName = body.firstName
     if (body.lastName !== undefined) data.lastName = body.lastName
     if (body.level !== undefined) data.level = body.level
@@ -97,6 +102,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         level: updated.level,
         branch: updated.branch,
         enrollment: updated.enrollment,
+        passwordSetAt: updated.passwordSetAt ? updated.passwordSetAt.toISOString() : null,
+        passwordSetBy: updated.passwordSetBy ?? null,
         createdAt: updated.createdAt.toISOString(),
         updatedAt: updated.updatedAt.toISOString(),
       },
