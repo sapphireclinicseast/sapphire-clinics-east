@@ -82,15 +82,24 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
     if (new Date(row.expiresAt).getTime() < Date.now()) {
       return withCors(NextResponse.json({ error: 'Token expired.' }, { status: 410 }), origin)
     }
+    // Normalize to a Uint8Array with an explicit Content-Length so the
+    // browser stops reading at the known size. Returning a raw Node Buffer
+    // through NextResponse was getting wrapped as a ReadableStream with
+    // chunked transfer encoding — the body bytes arrive but the stream
+    // never signals "done", so blobRes.blob() in the QR-upload modal
+    // hangs forever. Forcing a fixed-length response fixes the hang.
+    const bytes = row.fileData instanceof Buffer
+      ? new Uint8Array(row.fileData.buffer, row.fileData.byteOffset, row.fileData.byteLength)
+      : new Uint8Array(row.fileData as ArrayBuffer)
     const cors = corsHeaders(origin)
     const headers = new Headers({
       'content-type': row.fileType ?? 'application/octet-stream',
       'content-disposition': `attachment; filename="${(row.fileName ?? 'upload').replace(/["\\]/g, '_')}"`,
+      'content-length': String(bytes.byteLength),
       'cache-control': 'no-store',
       ...cors,
     })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return new NextResponse(row.fileData as any, { status: 200, headers })
+    return new NextResponse(bytes, { status: 200, headers })
   } catch (e) {
     console.error('[upload-tokens/file.GET]', e)
     return withCors(NextResponse.json({ error: 'Server error.' }, { status: 500 }), origin)
