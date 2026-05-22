@@ -591,27 +591,44 @@ export function generateEnrollmentPdf(user: StoredUser, draft: Partial<Enrollmen
 
   // ═════════════════════════════════════════════════════════════
   // FOR USE OF DEPED PERSONNEL ONLY (dashed separator, plain label)
+  // Compact rendering: smaller font + tighter padding so the form
+  // lands on a single page.
   // ═════════════════════════════════════════════════════════════
-  c.y += 3
-  ensure(c, 14)
-  // Dashed line above the label
+  c.y += 1.5
+  ensure(c, 11)
   setDraw(doc, C_BORDER); doc.setLineWidth(0.25)
   doc.setLineDashPattern([1, 1.4], 0)
   doc.line(PAGE_MARGIN, c.y, PAGE_W - PAGE_MARGIN, c.y)
   doc.setLineDashPattern([], 0)
-  c.y += 3
-  setColor(doc, C_INK); doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5)
+  c.y += 1.6
+  setColor(doc, C_INK); doc.setFont('helvetica', 'bold'); doc.setFontSize(7)
   doc.text('For use of DepEd Personnel Only. To be filled up by the Class Adviser.', PAGE_W / 2, c.y + 2, { align: 'center' })
-  c.y += 6
+  c.y += 4
 
   boxGroupInline(c, 'DATE OF FIRST ATTENDANCE (Month/Day/Year)', [
     { value: '', n: 2 }, { value: '', n: 2 }, { value: '', n: 4 },
-  ], ['/', '/'], { xStart: PAGE_MARGIN, labelW: 78, boxW: 4.4 })
-  c.y += 1
-  inlineUnderlinePair(c,
-    { label: 'Grade Level',     value: levelLabel(level), labelW: 24 },
-    { label: 'Track (for SHS)', value: undefined,         labelW: 30 },
-  )
+  ], ['/', '/'], { xStart: PAGE_MARGIN, labelW: 64, boxW: 3.6, boxH: 4 })
+  // Compact Grade Level + Track row, rendered inline to bypass LINE_H height
+  {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7)
+    const halfW = (CONTENT_W - 6) / 2
+    const rowH = 4
+    ensure(c, rowH + 1)
+    setColor(doc, C_INK)
+    doc.text('Grade Level', PAGE_MARGIN, c.y + rowH - 1)
+    setDraw(doc, C_BORDER); doc.setLineWidth(0.3)
+    doc.line(PAGE_MARGIN + 18, c.y + rowH, PAGE_MARGIN + halfW, c.y + rowH)
+    const lvl = levelLabel(level)
+    if (lvl) {
+      setColor(doc, C_INK); doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
+      doc.text(lvl, PAGE_MARGIN + 18.5, c.y + rowH - 1.2)
+      doc.setFontSize(7)
+    }
+    doc.text('Track (for SHS)', PAGE_MARGIN + halfW + 6, c.y + rowH - 1)
+    setDraw(doc, C_BORDER); doc.setLineWidth(0.3)
+    doc.line(PAGE_MARGIN + halfW + 6 + 24, c.y + rowH, PAGE_MARGIN + halfW + 6 + halfW, c.y + rowH)
+    c.y += rowH + 0.6
+  }
 
   // PS-ODIR/SFRT bottom-right
   doc.setFont('helvetica', 'bolditalic'); doc.setFontSize(8)

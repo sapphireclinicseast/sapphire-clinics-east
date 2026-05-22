@@ -165,6 +165,7 @@ export default function PayPage() {
             tuitionCentavos: plan.tuition,
             miscCentavos: plan.misc,
             period: plan.period,
+            method: 'FRONT_DESK_CASH',
           }),
         })
       } catch (postErr) {
@@ -196,6 +197,32 @@ export default function PayPage() {
         proofFileType: proofFile.type,
       }
       savePayment(record); pushHistory(record)
+      // Post to the marketing-hub queue so the front desk sees the
+      // deposit waiting for confirmation. The proof slip stays in the
+      // parent's IndexedDB; the front desk verifies against the bank's
+      // own records and confirms via /frontdesk → Payments.
+      const studentName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email
+      try {
+        await backendJson('/api/public/class-portal/frontdesk-payments', {
+          method: 'POST',
+          body: JSON.stringify({
+            classPortalPaymentId: paymentId,
+            studentId: user.id,
+            studentEmail: user.email,
+            studentName,
+            branch: user.branch ?? 'EAST',
+            plan: plan.plan,
+            tuitionCentavos: plan.tuition,
+            miscCentavos: plan.misc,
+            period: plan.period,
+            method: 'BANK_DEPOSIT',
+          }),
+        })
+      } catch (postErr) {
+        console.warn('[bank-deposit] frontdesk queue post failed:', postErr)
+        // Don't fail the parent's submission — the local record is saved
+        // and they can re-notify the front desk if needed.
+      }
       setProofFile(null)
       setConfirmation('Payment notification sent to front desk for verification. They will confirm once the bank transfer is reconciled.')
     } catch (e) {

@@ -5,10 +5,13 @@ import { useRouter } from 'next/navigation'
 import { getAuth } from '@/lib/session'
 import StudentListPanel from '@/components/StudentListPanel'
 import PaymentsGrouped from '@/components/PaymentsGrouped'
+import FrontDeskPaymentConfirmations from '@/components/FrontDeskPaymentConfirmations'
 import PaidStudentsSpreadsheet from '@/components/PaidStudentsSpreadsheet'
+import CurriculumPanel from '@/components/CurriculumPanel'
+import TemplatesPanel from '@/components/TemplatesPanel'
 import CalendarPage from '@/app/calendar/page'
 
-type FrontdeskTab = 'STUDENTS' | 'CALENDAR' | 'PAYMENTS' | 'SPREADSHEET'
+type FrontdeskTab = 'STUDENTS' | 'CALENDAR' | 'PAYMENTS' | 'SPREADSHEET' | 'CURRICULUM' | 'TEMPLATES'
 
 export default function FrontdeskPage() {
   const router = useRouter()
@@ -46,6 +49,8 @@ export default function FrontdeskPage() {
           ['CALENDAR',    'Calendar'],
           ['PAYMENTS',    'Payments'],
           ['SPREADSHEET', 'Enrollment register'],
+          ['CURRICULUM',  'Curriculum'],
+          ['TEMPLATES',   'Templates'],
         ] as Array<[FrontdeskTab, string]>).map(([k, label]) => (
           <button
             key={k}
@@ -70,11 +75,28 @@ export default function FrontdeskPage() {
       )}
 
       {tab === 'PAYMENTS' && (
-        <PaymentsGrouped canSendReminders senderEmail={email} senderName="Front desk" senderRole="ADMIN" />
+        <div className="space-y-6">
+          <FrontDeskPaymentConfirmations />
+          <PaymentsGrouped canSendReminders senderEmail={email} senderName="Front desk" senderRole="ADMIN" />
+        </div>
       )}
 
       {tab === 'SPREADSHEET' && (
         <PaidStudentsSpreadsheet canEdit />
+      )}
+
+      {tab === 'CURRICULUM' && (
+        // Curriculum library — per-grade curriculum docs the admin/teacher
+        // upload. Front desk needs read access to share with parents and
+        // upload access for clerical attachments.
+        <CurriculumPanel viewer={{ role: 'ADMIN', email }} />
+      )}
+
+      {tab === 'TEMPLATES' && (
+        // Free-form template library (lesson plan templates, IEP forms,
+        // parent forms, etc.). Front desk needs the same upload + download
+        // access as teachers and admins.
+        <TemplatesPanel viewer={{ role: 'ADMIN', email }} />
       )}
     </div>
   )

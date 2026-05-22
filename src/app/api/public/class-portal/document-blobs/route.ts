@@ -1,3 +1,9 @@
+// GET  /api/public/class-portal/document-blobs?studentId=...
+//   Lists docKey metadata (no file bytes) for the given student. Used by
+//   the class-portal client to detect which docs are missing on the server
+//   and silently re-sync the parent's local IndexedDB copies — recovers
+//   from the legacy state where server-blob sync wasn't yet shipped.
+//
 // POST /api/public/class-portal/document-blobs
 //
 // Permanent server-side storage for parent-uploaded enrollment documents.
@@ -13,7 +19,7 @@
 // Auth: class-portal JWT. Students can only upload for themselves; admin
 // + branch admin can upload for any student.
 
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/class-portal-auth'
 import { withCors, corsHeaders } from '../../_cors'
@@ -22,6 +28,44 @@ const MAX_BYTES = 15 * 1024 * 1024 // 15MB cap
 
 export async function OPTIONS(req: Request) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(req.headers.get('origin')) })
+}
+
+export async function GET(req: NextRequest) {
+  const origin = req.headers.get('origin')
+  try {
+    const auth = await requireAuth(req)
+    const url = new URL(req.url)
+    const studentId = (url.searchParams.get('studentId') ?? '').trim()
+    if (!studentId) {
+      return withCors(NextResponse.json({ error: 'studentId is required.' }, { status: 400 }), origin)
+    }
+    if (auth.role === 'STUDENT' && auth.userId !== studentId) {
+      return withCors(NextResponse.json({ error: 'Students can only list their own documents.' }, { status: 403 }), origin)
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows = await (prisma.classPortalDocumentBlob as any).findMany({
+      where: { studentId },
+      select: { docKey: true, fileName: true, fileSize: true, fileType: true, updatedAt: true },
+    })
+    return withCors(NextResponse.json({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      blobs: rows.map((r: any) => ({
+        docKey: r.docKey,
+        fileName: r.fileName,
+        fileSize: r.fileSize,
+        fileType: r.fileType,
+        updatedAt: r.updatedAt instanceof Date ? r.updatedAt.toISOString() : String(r.updatedAt),
+      })),
+    }), origin)
+  } catch (e) {
+    if (e instanceof Response) {
+      const headers = new Headers(e.headers)
+      for (const [k, v] of Object.entries(corsHeaders(origin))) headers.set(k, v)
+      return new NextResponse(e.body, { status: e.status, headers })
+    }
+    console.error('[document-blobs.GET list]', e)
+    return withCors(NextResponse.json({ error: 'Server error.' }, { status: 500 }), origin)
+  }
 }
 
 export async function POST(req: Request) {

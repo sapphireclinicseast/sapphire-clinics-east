@@ -46,6 +46,10 @@ export interface EnrollmentDraft {
   diagnosis?: string
   /** PWD ID number — optional, for discount eligibility. */
   pwdIdNumber?: string
+  /** LSEN classification per DepEd Learners Information System.
+   *  Group A = formal diagnosis from a licensed medical specialist.
+   *  Group B = manifestations of disability per ICF (no formal diagnosis). */
+  lsenClassification?: LsenClassification
 
   houseStreet?: string
   barangay?: string
@@ -89,6 +93,77 @@ export interface EnrollmentDraft {
 
 export type LisStatus = 'WAITING_FOR_ENROLLMENT' | 'PENDING_ENROLLMENT' | 'PENDING_TRANSFER' | 'ENROLLED'
 export type RemittanceStatus = 'PENDING' | 'PAID'
+
+/**
+ * LSEN classification per the DepEd Learners Information System (LIS).
+ * Group A — formal diagnosis from a licensed medical specialist.
+ * Group B — no diagnosis on file but manifestations of disability per the
+ *           International Classification of Functioning (ICF).
+ */
+export type LsenClassification =
+  | 'A_VISUAL_IMPAIRMENT'
+  | 'A_HEARING_IMPAIRMENT'
+  | 'A_LEARNING_DISABILITY'
+  | 'A_INTELLECTUAL_DISABILITY'
+  | 'A_AUTISM_SPECTRUM_DISORDER'
+  | 'A_EMOTIONAL_BEHAVIORAL_DISORDER'
+  | 'A_ORTHOPEDIC_PHYSICAL_HANDICAP'
+  | 'A_SPEECH_LANGUAGE_DISORDER'
+  | 'A_CEREBRAL_PALSY'
+  | 'A_SPECIAL_HEALTH_CHRONIC_DISEASE'
+  | 'A_MULTIPLE_DISABILITIES'
+  | 'B_DIFFICULTY_SEEING'
+  | 'B_DIFFICULTY_HEARING'
+  | 'B_DIFFICULTY_BASIC_LEARNING'
+  | 'B_DIFFICULTY_REMEMBERING_CONCENTRATING'
+  | 'B_DIFFICULTY_APPLYING_ADAPTIVE_SKILLS'
+  | 'B_DIFFICULTY_INTERPERSONAL_BEHAVIOR'
+  | 'B_DIFFICULTY_MOBILITY'
+  | 'B_DIFFICULTY_COMMUNICATING'
+
+export const LSEN_CLASSIFICATION_GROUPS: Array<{
+  group: string
+  options: Array<{ value: LsenClassification; label: string }>
+}> = [
+  {
+    group: 'A. With diagnosis from a licensed medical specialist',
+    options: [
+      { value: 'A_VISUAL_IMPAIRMENT',              label: 'A. Visual Impairment' },
+      { value: 'A_HEARING_IMPAIRMENT',             label: 'B. Hearing Impairment' },
+      { value: 'A_LEARNING_DISABILITY',            label: 'C. Learning Disability' },
+      { value: 'A_INTELLECTUAL_DISABILITY',        label: 'D. Intellectual Disability' },
+      { value: 'A_AUTISM_SPECTRUM_DISORDER',       label: 'E. Autism Spectrum Disorder' },
+      { value: 'A_EMOTIONAL_BEHAVIORAL_DISORDER',  label: 'F. Emotional-Behavioral Disorder' },
+      { value: 'A_ORTHOPEDIC_PHYSICAL_HANDICAP',   label: 'G. Orthopedic / Physical Handicap' },
+      { value: 'A_SPEECH_LANGUAGE_DISORDER',       label: 'H. Speech / Language Disorder' },
+      { value: 'A_CEREBRAL_PALSY',                 label: 'I. Cerebral Palsy' },
+      { value: 'A_SPECIAL_HEALTH_CHRONIC_DISEASE', label: 'J. Special Health Problem / Chronic Disease' },
+      { value: 'A_MULTIPLE_DISABILITIES',          label: 'K. Multiple Disabilities' },
+    ],
+  },
+  {
+    group: 'B. No medical diagnosis, with manifestations (ICF)',
+    options: [
+      { value: 'B_DIFFICULTY_SEEING',                   label: '1. Difficulty in Seeing' },
+      { value: 'B_DIFFICULTY_HEARING',                  label: '2. Difficulty in Hearing' },
+      { value: 'B_DIFFICULTY_BASIC_LEARNING',           label: '3. Difficulty in Basic Learning and Applying Knowledge' },
+      { value: 'B_DIFFICULTY_REMEMBERING_CONCENTRATING', label: '4. Difficulty in Remembering, Concentrating, Paying Attention and Understanding' },
+      { value: 'B_DIFFICULTY_APPLYING_ADAPTIVE_SKILLS', label: '5. Difficulty in Applying Adaptive Skills' },
+      { value: 'B_DIFFICULTY_INTERPERSONAL_BEHAVIOR',   label: '6. Difficulty in Displaying Interpersonal Behavior' },
+      { value: 'B_DIFFICULTY_MOBILITY',                 label: '7. Difficulty in Mobility (Walking, Climbing and Grasping)' },
+      { value: 'B_DIFFICULTY_COMMUNICATING',            label: '8. Difficulty in Communicating' },
+    ],
+  },
+]
+
+export function lsenClassificationLabel(value: LsenClassification | null | undefined): string {
+  if (!value) return ''
+  for (const g of LSEN_CLASSIFICATION_GROUPS) {
+    const hit = g.options.find(o => o.value === value)
+    if (hit) return hit.label
+  }
+  return value
+}
 
 export const LIS_STATUS_OPTIONS: Array<{ value: LisStatus; label: string }> = [
   { value: 'WAITING_FOR_ENROLLMENT', label: 'WAITING FOR ENROLLMENT' },
@@ -599,6 +674,70 @@ export function studentHasActivePayment(studentId: string): boolean {
   return getPaymentsForStudent(studentId).some(p => p.status === 'PAID')
 }
 
+export interface FrontDeskPaymentRow {
+  id: string
+  classPortalPaymentId: string
+  studentId: string
+  studentEmail: string
+  studentName: string
+  branch: 'EAST' | 'GREENHILLS'
+  plan: PaymentPlan
+  tuitionCentavos: number
+  miscCentavos: number
+  period: string
+  method: 'FRONT_DESK_CASH' | 'BANK_DEPOSIT' | null
+  status: 'PENDING' | 'CONVERTED' | 'VOIDED'
+  createdAt: string
+  convertedAt: string | null
+}
+
+/**
+ * Server-side view of every front-desk-bound tuition payment the logged-in
+ * staffer can see (scoped to their branch for FRONTDESK + BRANCH_ADMIN;
+ * unscoped for ADMIN). Used by the /frontdesk Payments tab so confirmers
+ * see payments submitted from any device — not just their own browser.
+ */
+export async function getFrontDeskPaymentsServer(): Promise<FrontDeskPaymentRow[]> {
+  if (typeof window === 'undefined') return []
+  if (!getToken()) return []
+  try {
+    const { payments } = await backendJson<{ payments: FrontDeskPaymentRow[] }>('/api/public/class-portal/frontdesk-payments')
+    return payments
+  } catch (e) {
+    console.warn('[getFrontDeskPaymentsServer] failed:', e)
+    return []
+  }
+}
+
+/**
+ * Flip a queued front-desk payment from PENDING → CONVERTED. Triggers the
+ * student's local PaymentRecord to hydrate to PAID on next refresh.
+ * Returns true on success.
+ */
+export async function confirmFrontDeskPayment(classPortalPaymentId: string): Promise<boolean> {
+  if (typeof window === 'undefined') return false
+  if (!getToken()) return false
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/frontdesk-payments/${encodeURIComponent(classPortalPaymentId)}`, {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+        ...(tok ? { authorization: `Bearer ${tok}` } : {}),
+      },
+      body: JSON.stringify({ status: 'CONVERTED' }),
+    })
+    if (!res.ok) {
+      console.warn('[confirmFrontDeskPayment] failed:', res.status)
+      return false
+    }
+    return true
+  } catch (e) {
+    console.warn('[confirmFrontDeskPayment] error:', e)
+    return false
+  }
+}
+
 /**
  * Pull the marketing-hub view of class-portal front-desk payments. Any row
  * the accounting hub cashier has marked CONVERTED flips the matching local
@@ -781,19 +920,24 @@ export function remindersForStudentOn(
       }
     }
     // Also flag any *prior* unpaid month as overdue. Look back up to 3 months.
+    // Only fire when an actual PaymentRecord exists for that period — otherwise
+    // a brand-new enrollee (not yet billed for prior months) would see false
+    // OVERDUE notices for months before they joined.
+    const allRecords = getPaymentsForStudent(studentId)
     for (let back = 1; back <= 3; back++) {
       const mm = (m + 12 - back) % 12
       const yy = m - back < 0 ? y - 1 : y
       const period = `${monthName(mm)} ${yy}`
+      const hasRecord = allRecords.some(p => p.period === period)
+      if (!hasRecord) continue
       const alreadyPaid = paid.some(p => p.period === period)
       if (alreadyPaid) continue
       // Only emit if today is past the 5th of that month
       const due = new Date(yy, mm, 5, 23, 59, 59)
       if (today <= due) continue
-      // And skip if no record at all + not in current window (avoid spamming for never-paid students far back)
       emit({
         title: `Monthly tuition — ${period} OVERDUE`,
-        body: `Monthly tuition for ${period} is past due (deadline was ${monthName(mm)} 5${yy !== y ? `, ${yy}` : ''}). Please complete payment via PayMongo as soon as possible.`,
+        body: `Monthly tuition for ${period} is past due (deadline was ${monthName(mm)} 5${yy !== y ? `, ${yy}` : ''}). Please complete payment as soon as possible.`,
         dueOn: isoDate(yy, mm, 5),
         severity: 'WARNING',
         windowOpensAt: due.toISOString(),
@@ -947,18 +1091,127 @@ function writeCurriculum(c: CurriculumRecord[]) {
   if (typeof window === 'undefined') return
   localStorage.setItem(CURRICULUM_KEY, JSON.stringify(c))
 }
-export function saveCurriculum(c: CurriculumRecord) {
-  const all = getCurriculum()
-  const idx = all.findIndex(x => x.id === c.id)
-  if (idx >= 0) all[idx] = c
-  else all.unshift(c)
-  writeCurriculum(all)
-}
-export function deleteCurriculum(id: string) {
-  writeCurriculum(getCurriculum().filter(c => c.id !== id))
-}
 export function curriculumForLevel(level: EnrollmentLevel): CurriculumRecord[] {
   return getCurriculum().filter(c => c.level === level)
+}
+
+/**
+ * Fetch every curriculum entry from the server (any device sees the same
+ * list — fixes the prior localStorage-only state where teachers couldn't
+ * see admin uploads). Falls back to the local cache if the network call
+ * fails so we don't blank out the panel on transient errors.
+ */
+export async function hydrateCurriculumFromServer(): Promise<CurriculumRecord[]> {
+  if (typeof window === 'undefined') return getCurriculum()
+  if (!getToken()) return getCurriculum()
+  try {
+    const { items } = await backendJson<{
+      items: Array<{
+        id: string; level: string; title: string
+        pdf: { fileName: string; fileType: string; fileSize: number } | null
+        doc: { fileName: string; fileType: string; fileSize: number } | null
+        xls: { fileName: string; fileType: string; fileSize: number } | null
+        uploadedBy: string; uploadedAt: string
+      }>
+    }>('/api/public/class-portal/curriculum')
+    const rows: CurriculumRecord[] = items.map(r => {
+      const rec: CurriculumRecord = {
+        id: r.id,
+        level: r.level as EnrollmentLevel,
+        title: r.title,
+        uploadedBy: r.uploadedBy,
+        uploadedAt: r.uploadedAt,
+      }
+      // fileId encodes "<id>:<variant>" — the panel passes it through to
+      // openServerCurriculumFile() which fetches the bytes from the API.
+      if (r.pdf) rec.pdf = { fileId: `${r.id}:pdf`, fileName: r.pdf.fileName, fileType: r.pdf.fileType, fileSize: r.pdf.fileSize }
+      if (r.doc) rec.doc = { fileId: `${r.id}:doc`, fileName: r.doc.fileName, fileType: r.doc.fileType, fileSize: r.doc.fileSize }
+      if (r.xls) rec.xls = { fileId: `${r.id}:xls`, fileName: r.xls.fileName, fileType: r.xls.fileType, fileSize: r.xls.fileSize }
+      return rec
+    })
+    writeCurriculum(rows)
+    return rows
+  } catch (e) {
+    console.warn('[hydrateCurriculumFromServer]', e)
+    return getCurriculum()
+  }
+}
+
+/**
+ * Upsert a curriculum entry on the server. Caller passes raw File objects;
+ * we package them as multipart and stream them up. Returns true on success.
+ */
+export async function uploadCurriculum(
+  args: { id: string; level: EnrollmentLevel; title: string; pdf?: File; doc?: File; xls?: File },
+): Promise<boolean> {
+  if (typeof window === 'undefined') return false
+  if (!getToken()) return false
+  try {
+    const fd = new FormData()
+    fd.append('id', args.id)
+    fd.append('level', args.level)
+    fd.append('title', args.title)
+    if (args.pdf) fd.append('pdfFile', args.pdf)
+    if (args.doc) fd.append('docFile', args.doc)
+    if (args.xls) fd.append('xlsFile', args.xls)
+    const tok = getToken()
+    const res = await fetch(backendOrigin() + '/api/public/class-portal/curriculum', {
+      method: 'POST',
+      body: fd,
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      console.warn('[uploadCurriculum] failed:', res.status, j)
+      return false
+    }
+    return true
+  } catch (e) {
+    console.warn('[uploadCurriculum] error:', e)
+    return false
+  }
+}
+
+/** Delete a curriculum row on the server. Returns true on success. */
+export async function deleteCurriculumServer(id: string): Promise<boolean> {
+  if (typeof window === 'undefined') return false
+  if (!getToken()) return false
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/curriculum/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) return false
+    writeCurriculum(getCurriculum().filter(c => c.id !== id))
+    return true
+  } catch (e) {
+    console.warn('[deleteCurriculumServer] error:', e)
+    return false
+  }
+}
+
+/**
+ * Fetch the bytes for a curriculum variant. fileId is the
+ * "<curriculumId>:<variant>" handle that hydrateCurriculumFromServer
+ * encodes; we split it back here.
+ */
+export async function fetchCurriculumFileBlob(fileId: string): Promise<Blob | null> {
+  if (typeof window === 'undefined') return null
+  if (!getToken()) return null
+  const [id, variant] = fileId.split(':')
+  if (!id || (variant !== 'pdf' && variant !== 'doc' && variant !== 'xls')) return null
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/curriculum/${encodeURIComponent(id)}/file/${variant}`, {
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) return null
+    return await res.blob()
+  } catch (e) {
+    console.warn('[fetchCurriculumFileBlob] error:', e)
+    return null
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────────
@@ -986,15 +1239,102 @@ function writeTemplates(rows: TemplateRecord[]) {
   if (typeof window === 'undefined') return
   localStorage.setItem(TEMPLATES_KEY, JSON.stringify(rows))
 }
-export function saveTemplate(t: TemplateRecord) {
-  const all = getTemplates()
-  const idx = all.findIndex(x => x.id === t.id)
-  if (idx >= 0) all[idx] = t
-  else all.unshift(t)
-  writeTemplates(all)
+
+/** Fetch the template library from the server. Mirrors curriculum hydration. */
+export async function hydrateTemplatesFromServer(): Promise<TemplateRecord[]> {
+  if (typeof window === 'undefined') return getTemplates()
+  if (!getToken()) return getTemplates()
+  try {
+    const { items } = await backendJson<{
+      items: Array<{
+        id: string; title: string
+        pdf: { fileName: string; fileType: string; fileSize: number } | null
+        doc: { fileName: string; fileType: string; fileSize: number } | null
+        uploadedBy: string; uploadedAt: string
+      }>
+    }>('/api/public/class-portal/templates')
+    const rows: TemplateRecord[] = items.map(r => {
+      const rec: TemplateRecord = {
+        id: r.id,
+        title: r.title,
+        uploadedBy: r.uploadedBy,
+        uploadedAt: r.uploadedAt,
+      }
+      if (r.pdf) rec.pdf = { fileId: `${r.id}:pdf`, fileName: r.pdf.fileName, fileType: r.pdf.fileType, fileSize: r.pdf.fileSize }
+      if (r.doc) rec.doc = { fileId: `${r.id}:doc`, fileName: r.doc.fileName, fileType: r.doc.fileType, fileSize: r.doc.fileSize }
+      return rec
+    })
+    writeTemplates(rows)
+    return rows
+  } catch (e) {
+    console.warn('[hydrateTemplatesFromServer]', e)
+    return getTemplates()
+  }
 }
-export function deleteTemplate(id: string) {
-  writeTemplates(getTemplates().filter(t => t.id !== id))
+
+export async function uploadTemplate(
+  args: { id: string; title: string; pdf?: File; doc?: File },
+): Promise<boolean> {
+  if (typeof window === 'undefined') return false
+  if (!getToken()) return false
+  try {
+    const fd = new FormData()
+    fd.append('id', args.id)
+    fd.append('title', args.title)
+    if (args.pdf) fd.append('pdfFile', args.pdf)
+    if (args.doc) fd.append('docFile', args.doc)
+    const tok = getToken()
+    const res = await fetch(backendOrigin() + '/api/public/class-portal/templates', {
+      method: 'POST',
+      body: fd,
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      console.warn('[uploadTemplate] failed:', res.status, j)
+      return false
+    }
+    return true
+  } catch (e) {
+    console.warn('[uploadTemplate] error:', e)
+    return false
+  }
+}
+
+export async function deleteTemplateServer(id: string): Promise<boolean> {
+  if (typeof window === 'undefined') return false
+  if (!getToken()) return false
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/templates/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) return false
+    writeTemplates(getTemplates().filter(t => t.id !== id))
+    return true
+  } catch (e) {
+    console.warn('[deleteTemplateServer] error:', e)
+    return false
+  }
+}
+
+export async function fetchTemplateFileBlob(fileId: string): Promise<Blob | null> {
+  if (typeof window === 'undefined') return null
+  if (!getToken()) return null
+  const [id, variant] = fileId.split(':')
+  if (!id || (variant !== 'pdf' && variant !== 'doc')) return null
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/templates/${encodeURIComponent(id)}/file/${variant}`, {
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) return null
+    return await res.blob()
+  } catch (e) {
+    console.warn('[fetchTemplateFileBlob] error:', e)
+    return null
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────────
@@ -1337,6 +1677,64 @@ export async function uploadDocumentBlob(studentId: string, docKey: string, file
     console.warn('[uploadDocumentBlob] error:', e)
     return false
   }
+}
+
+/**
+ * List the docKeys the server already has for a student. Returns null on
+ * any error (e.g. legacy build where the GET endpoint isn't deployed yet),
+ * so callers can fall back to "do nothing" instead of triggering a re-sync
+ * storm against an unreachable backend.
+ */
+async function listServerDocBlobKeys(studentId: string): Promise<Set<string> | null> {
+  if (typeof window === 'undefined') return null
+  if (!getToken()) return null
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/document-blobs?studentId=${encodeURIComponent(studentId)}`, {
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) return null
+    const j = await res.json() as { blobs?: Array<{ docKey: string }> }
+    return new Set((j.blobs ?? []).map(b => b.docKey))
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Catch-up resync: for every doc in `enrollment.documents` that the parent
+ * has in their local IndexedDB, push it to the server blob store if the
+ * server doesn't already have a copy. This recovers students whose docs
+ * were uploaded before the server-blob feature shipped — without forcing
+ * them to re-upload anything by hand.
+ *
+ * Safe to call repeatedly; it's a no-op once every key is in sync.
+ * Best-effort: silently swallows individual file errors and returns the
+ * count of successfully synced docs.
+ */
+export async function syncLocalDocsToServer(
+  studentId: string,
+  documents: Record<string, { name: string; size: number; type?: string; fileId?: string }> | undefined,
+): Promise<number> {
+  if (typeof window === 'undefined' || !documents) return 0
+  if (!getToken()) return 0
+  const serverKeys = await listServerDocBlobKeys(studentId)
+  if (serverKeys === null) return 0
+  let synced = 0
+  for (const [docKey, meta] of Object.entries(documents)) {
+    if (!meta.fileId) continue
+    if (serverKeys.has(docKey)) continue
+    try {
+      const blob = await getFile(meta.fileId)
+      if (!blob) continue
+      const file = new File([blob], meta.name, { type: meta.type ?? blob.type ?? 'application/octet-stream' })
+      const ok = await uploadDocumentBlob(studentId, docKey, file)
+      if (ok) synced += 1
+    } catch (e) {
+      console.warn('[syncLocalDocsToServer] skipped', docKey, e)
+    }
+  }
+  return synced
 }
 
 export async function deleteFile(id: string): Promise<void> {

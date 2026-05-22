@@ -7,6 +7,7 @@ import {
   getPaymentsForStudent, hydrateFrontDeskPayments,
   getGradeForStudent,
   getFile,
+  syncLocalDocsToServer,
   type StoredUser, type PaymentRecord, type GradeRecord,
   type EnrollmentLevel, type PaymentMethod,
   levelLabel,
@@ -56,6 +57,13 @@ export default function ProfilePage() {
       }
       setUser(found ?? synthetic)
       setReady(true)
+      // Catch-up resync: students who enrolled before the server-blob sync
+      // shipped still have their docs in IndexedDB only. Push any missing
+      // ones up so the partner-school /admission tracker can see them.
+      const me = found ?? synthetic
+      if (me.role === 'STUDENT' && me.enrollment?.documents) {
+        void syncLocalDocsToServer(me.id, me.enrollment.documents)
+      }
     })()
     return () => { cancelled = true }
   }, [router])

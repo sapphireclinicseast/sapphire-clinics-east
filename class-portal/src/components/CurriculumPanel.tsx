@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import {
-  getCurriculum, saveCurriculum, deleteCurriculum, putFile, getFile, deleteFile,
+  getCurriculum,
+  hydrateCurriculumFromServer, uploadCurriculum, deleteCurriculumServer, fetchCurriculumFileBlob,
   levelLabel, type CurriculumRecord, type CurriculumFile, type EnrollmentLevel,
 } from '@/lib/session'
 
@@ -53,8 +54,14 @@ export default function CurriculumPanel({ viewer }: Props) {
     return [...pool].sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }))
   }, [items, viewer.role, viewer.level, search])
 
-  function refresh() { setItems(getCurriculum()) }
-  useEffect(refresh, [])
+  async function refresh() {
+    // Start with whatever localStorage cached so the panel renders instantly,
+    // then await the authoritative server list and update.
+    setItems(getCurriculum())
+    const fresh = await hydrateCurriculumFromServer()
+    setItems(fresh)
+  }
+  useEffect(() => { void refresh() }, [])
 
   async function handleSave() {
     setErr(null)
@@ -63,31 +70,20 @@ export default function CurriculumPanel({ viewer }: Props) {
     setUploading(true)
     try {
       const id = 'curri_' + Math.random().toString(36).slice(2, 10)
-      const record: CurriculumRecord = {
+      const ok = await uploadCurriculum({
         id,
         level: pickedLevel,
         title: title.trim(),
-        uploadedBy: viewer.email,
-        uploadedAt: new Date().toISOString(),
+        pdf: pdfFile ?? undefined,
+        doc: docFile ?? undefined,
+        xls: xlsFile ?? undefined,
+      })
+      if (!ok) {
+        setErr('Could not upload — please retry.')
+        return
       }
-      if (pdfFile) {
-        const fileId = 'curr_pdf_' + Math.random().toString(36).slice(2, 12)
-        await putFile(fileId, pdfFile)
-        record.pdf = { fileId, fileName: pdfFile.name, fileType: pdfFile.type, fileSize: pdfFile.size }
-      }
-      if (docFile) {
-        const fileId = 'curr_doc_' + Math.random().toString(36).slice(2, 12)
-        await putFile(fileId, docFile)
-        record.doc = { fileId, fileName: docFile.name, fileType: docFile.type, fileSize: docFile.size }
-      }
-      if (xlsFile) {
-        const fileId = 'curr_xls_' + Math.random().toString(36).slice(2, 12)
-        await putFile(fileId, xlsFile)
-        record.xls = { fileId, fileName: xlsFile.name, fileType: xlsFile.type, fileSize: xlsFile.size }
-      }
-      saveCurriculum(record)
       setTitle(''); setPdfFile(null); setDocFile(null); setXlsFile(null)
-      refresh()
+      await refresh()
     } catch (e) {
       setErr((e as Error).message)
     } finally {
@@ -97,17 +93,17 @@ export default function CurriculumPanel({ viewer }: Props) {
 
   async function handleDelete(c: CurriculumRecord) {
     if (!confirm(`Delete curriculum "${c.title}"?`)) return
-    if (c.pdf?.fileId) { try { await deleteFile(c.pdf.fileId) } catch { /* ignore */ } }
-    if (c.doc?.fileId) { try { await deleteFile(c.doc.fileId) } catch { /* ignore */ } }
-    if (c.xls?.fileId) { try { await deleteFile(c.xls.fileId) } catch { /* ignore */ } }
-    if (c.fileId)      { try { await deleteFile(c.fileId)     } catch { /* ignore */ } }
-    deleteCurriculum(c.id)
-    refresh()
+    const ok = await deleteCurriculumServer(c.id)
+    if (!ok) {
+      setErr('Could not delete — please retry.')
+      return
+    }
+    await refresh()
   }
 
   async function openFileBlob(fileId: string, fileName: string) {
-    const blob = await getFile(fileId)
-    if (!blob) { alert('File not found in this browser.'); return }
+    const blob = await fetchCurriculumFileBlob(fileId)
+    if (!blob) { alert('File not available.'); return }
     const url = URL.createObjectURL(blob)
     window.open(url, '_blank', 'noopener')
     setTimeout(() => URL.revokeObjectURL(url), 60_000)
@@ -115,8 +111,8 @@ export default function CurriculumPanel({ viewer }: Props) {
   }
 
   async function downloadFileBlob(fileId: string, fileName: string) {
-    const blob = await getFile(fileId)
-    if (!blob) { alert('File not found in this browser.'); return }
+    const blob = await fetchCurriculumFileBlob(fileId)
+    if (!blob) { alert('File not available.'); return }
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url; a.download = fileName; document.body.appendChild(a); a.click(); a.remove()

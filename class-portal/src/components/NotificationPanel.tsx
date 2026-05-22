@@ -166,7 +166,7 @@ export default function NotificationPanel({ viewer }: Props) {
                 <p className="text-[13.5px] text-[color:var(--ink)] mt-3">{r.body}</p>
                 {viewer.role === 'STUDENT' && (
                   <div className="mt-3">
-                    <a href="/pay" className="btn-cta text-xs">Pay via PayMongo →</a>
+                    <a href="/pay" className="btn-cta text-xs">Pay tuition fee →</a>
                   </div>
                 )}
               </li>

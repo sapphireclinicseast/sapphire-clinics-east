@@ -13,6 +13,7 @@ import StudentListPanel from '@/components/StudentListPanel'
 import CurriculumPanel from '@/components/CurriculumPanel'
 import NotificationPanel from '@/components/NotificationPanel'
 import PaymentsGrouped from '@/components/PaymentsGrouped'
+import FrontDeskPaymentConfirmations from '@/components/FrontDeskPaymentConfirmations'
 import AssignmentsPanel from '@/components/AssignmentsPanel'
 import ClassesPanel from '@/components/ClassesPanel'
 import TemplatesPanel from '@/components/TemplatesPanel'
@@ -77,7 +78,12 @@ export default function AdminPage() {
       {tab === 'CURRICULUM'    && <CurriculumPanel viewer={{ role: 'ADMIN', email: adminEmail }} />}
       {tab === 'TEMPLATES'     && <TemplatesPanel viewer={{ role: 'ADMIN', email: adminEmail }} />}
       {tab === 'NOTIFICATIONS' && <NotificationPanel viewer={{ role: 'ADMIN', email: adminEmail, name: isMainAdmin ? 'Main admin' : 'Branch admin' }} />}
-      {tab === 'PAYMENTS'      && <PaymentsGrouped canSendReminders senderEmail={adminEmail} senderName={isMainAdmin ? 'Main admin' : 'Branch admin'} senderRole="ADMIN" />}
+      {tab === 'PAYMENTS'      && (
+        <div className="space-y-6">
+          <FrontDeskPaymentConfirmations />
+          <PaymentsGrouped canSendReminders senderEmail={adminEmail} senderName={isMainAdmin ? 'Main admin' : 'Branch admin'} senderRole="ADMIN" />
+        </div>
+      )}
       {tab === 'FEES'          && <FeesPanel viewerRole={adminRole} viewerBranch={adminBranch} />}
       {tab === 'ASSIGNMENTS'   && <AssignmentsPanel />}
     </div>

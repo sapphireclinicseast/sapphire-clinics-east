@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import {
-  getTemplates, saveTemplate, deleteTemplate, putFile, getFile, deleteFile,
+  getTemplates,
+  hydrateTemplatesFromServer, uploadTemplate, deleteTemplateServer, fetchTemplateFileBlob,
   type TemplateRecord, type CurriculumFile,
 } from '@/lib/session'
 
@@ -28,8 +29,12 @@ export default function TemplatesPanel({ viewer }: Props) {
   const [err, setErr] = useState<string | null>(null)
   const [search, setSearch] = useState('')
 
-  function refresh() { setItems(getTemplates()) }
-  useEffect(refresh, [])
+  async function refresh() {
+    setItems(getTemplates())
+    const fresh = await hydrateTemplatesFromServer()
+    setItems(fresh)
+  }
+  useEffect(() => { void refresh() }, [])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -49,25 +54,19 @@ export default function TemplatesPanel({ viewer }: Props) {
     if (!pdfFile && !docFile) { setErr('Please attach a PDF and/or Word version.'); return }
     setBusy(true)
     try {
-      const record: TemplateRecord = {
-        id: 'tpl_' + Math.random().toString(36).slice(2, 10),
+      const id = 'tpl_' + Math.random().toString(36).slice(2, 10)
+      const ok = await uploadTemplate({
+        id,
         title: title.trim(),
-        uploadedBy: viewer.email,
-        uploadedAt: new Date().toISOString(),
+        pdf: pdfFile ?? undefined,
+        doc: docFile ?? undefined,
+      })
+      if (!ok) {
+        setErr('Could not upload — please retry.')
+        return
       }
-      if (pdfFile) {
-        const fileId = 'tpl_pdf_' + Math.random().toString(36).slice(2, 12)
-        await putFile(fileId, pdfFile)
-        record.pdf = { fileId, fileName: pdfFile.name, fileType: pdfFile.type, fileSize: pdfFile.size }
-      }
-      if (docFile) {
-        const fileId = 'tpl_doc_' + Math.random().toString(36).slice(2, 12)
-        await putFile(fileId, docFile)
-        record.doc = { fileId, fileName: docFile.name, fileType: docFile.type, fileSize: docFile.size }
-      }
-      saveTemplate(record)
       setTitle(''); setPdfFile(null); setDocFile(null)
-      refresh()
+      await refresh()
     } catch (e) {
       setErr((e as Error).message)
     } finally {
@@ -77,22 +76,24 @@ export default function TemplatesPanel({ viewer }: Props) {
 
   async function handleDelete(t: TemplateRecord) {
     if (!confirm(`Delete template "${t.title}"?`)) return
-    if (t.pdf?.fileId) { try { await deleteFile(t.pdf.fileId) } catch { /* ignore */ } }
-    if (t.doc?.fileId) { try { await deleteFile(t.doc.fileId) } catch { /* ignore */ } }
-    deleteTemplate(t.id)
-    refresh()
+    const ok = await deleteTemplateServer(t.id)
+    if (!ok) {
+      setErr('Could not delete — please retry.')
+      return
+    }
+    await refresh()
   }
 
   async function openBlob(fileId: string) {
-    const blob = await getFile(fileId)
-    if (!blob) { alert('File not found in this browser.'); return }
+    const blob = await fetchTemplateFileBlob(fileId)
+    if (!blob) { alert('File not available.'); return }
     const url = URL.createObjectURL(blob)
     window.open(url, '_blank', 'noopener')
     setTimeout(() => URL.revokeObjectURL(url), 60_000)
   }
   async function downloadBlob(fileId: string, fileName: string) {
-    const blob = await getFile(fileId)
-    if (!blob) { alert('File not found in this browser.'); return }
+    const blob = await fetchTemplateFileBlob(fileId)
+    if (!blob) { alert('File not available.'); return }
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url; a.download = fileName; document.body.appendChild(a); a.click(); a.remove()
