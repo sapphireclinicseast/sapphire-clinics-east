@@ -52,6 +52,13 @@ export interface ClassPortalToken {
   firstName?: string
   /** Branch scope for staff accounts (frontdesk + branch admin). */
   branch?: 'EAST' | 'GREENHILLS'
+  /** Set when an admin minted this token via "View as". Carries the
+   *  admin's email so server-side handlers can flag or refuse sensitive
+   *  actions during impersonation, and so audit code paths know who is
+   *  actually behind the request. */
+  impersonatedBy?: string
+  /** ID of the ClassPortalImpersonationLog row that opened this session. */
+  impersonationLogId?: string
   iat: number
   exp: number
 }

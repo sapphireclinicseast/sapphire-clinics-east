@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   getAuth, getUsers, hydrateUsers, addUser, updateUser, deleteUser,
-  sendPasswordResetLink,
+  sendPasswordResetLink, startImpersonation,
   levelLabel, branchLabel, roleLabel, generatePassword,
   getFees, hydrateFees, saveFees, DEFAULT_FEE_VALUES,
   type StoredUser, type UserRole, type Branch, type FeeSchedule, type FeeExtraItem,
@@ -243,6 +243,22 @@ function UsersPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANC
     } catch (e) { setErr((e as Error).message) }
   }
 
+  async function handleViewAs(u: StoredUser) {
+    setErr(null); setInfo(null)
+    if (u.role === 'BRANCH_ADMIN') {
+      setErr('Branch admins cannot be impersonated.')
+      return
+    }
+    if (!confirm(`Open ${u.email}'s portal as them?\n\nA red banner across the top will let you return to your admin session. This is logged for audit.`)) return
+    try {
+      await startImpersonation(u.id)
+      // Hard navigate so every effect re-runs against the new token.
+      window.location.assign(u.role === 'STUDENT' || u.role === 'TEACHER' ? '/profile' : '/frontdesk')
+    } catch (e) {
+      setErr((e as Error).message)
+    }
+  }
+
   async function handleSendResetLink(u: StoredUser) {
     setErr(null); setInfo(null)
     if (!confirm(`Email ${u.email} a one-shot password-reset link?\n\nThey'll set their own new password — you won't see it.`)) return
@@ -356,6 +372,13 @@ function UsersPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANC
                   <td className="py-2.5 px-3 text-[color:var(--mid-gray)] text-xs">{new Date(u.createdAt).toLocaleDateString()}</td>
                   <td className="py-2.5 px-3 text-right whitespace-nowrap">
                     <button className="text-xs px-2 py-1 rounded-md text-[color:var(--narra)] hover:bg-[color:var(--paper-2)]" onClick={() => { setEditing(u); setErr(null); setInfo(null) }}>Edit</button>
+                    {u.role !== 'BRANCH_ADMIN' && (
+                      <button
+                        className="text-xs px-2 py-1 rounded-md text-[color:var(--deep-teal)] hover:bg-[color:var(--paper-2)] ml-1"
+                        title="Open this user's portal as them. A persistent banner lets you return to your admin session; the session is audit-logged."
+                        onClick={() => handleViewAs(u)}
+                      >View as</button>
+                    )}
                     <button
                       className="text-xs px-2 py-1 rounded-md text-[color:var(--moss)] hover:bg-[color:var(--paper-2)] ml-1"
                       title="Email a one-shot reset link — the user picks their own new password."

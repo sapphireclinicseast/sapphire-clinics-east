@@ -3,6 +3,11 @@
 // sent as Bearer on each request.
 
 const TOKEN_KEY = 'scei_class_token_v1'
+// Per-tab impersonation token. Lives in sessionStorage so the admin's main
+// localStorage session is preserved; closing the tab automatically ends
+// the impersonation without needing a server round-trip.
+const IMPERSONATION_TOKEN_KEY = 'scei_class_impersonation_token_v1'
+const IMPERSONATION_META_KEY = 'scei_class_impersonation_meta_v1'
 
 /**
  * Resolve the marketing app's origin. In prod the class-portal is served
@@ -20,7 +25,9 @@ export function backendOrigin(): string {
 
 export function getToken(): string | null {
   if (typeof window === 'undefined') return null
-  return localStorage.getItem(TOKEN_KEY)
+  // Impersonation token wins so the admin's actions during a "View as"
+  // session hit the API as the target user, not the admin.
+  return sessionStorage.getItem(IMPERSONATION_TOKEN_KEY) ?? localStorage.getItem(TOKEN_KEY)
 }
 export function setToken(t: string) {
   if (typeof window === 'undefined') return
@@ -29,6 +36,41 @@ export function setToken(t: string) {
 export function clearToken() {
   if (typeof window === 'undefined') return
   localStorage.removeItem(TOKEN_KEY)
+}
+
+export interface ImpersonationMeta {
+  logId: string
+  targetEmail: string
+  targetRole: string
+  targetFirstName?: string | null
+  targetLastName?: string | null
+  startedAt: string
+}
+
+/** Save an impersonation token + meta to per-tab storage. */
+export function setImpersonationToken(token: string, meta: ImpersonationMeta) {
+  if (typeof window === 'undefined') return
+  sessionStorage.setItem(IMPERSONATION_TOKEN_KEY, token)
+  sessionStorage.setItem(IMPERSONATION_META_KEY, JSON.stringify(meta))
+}
+
+export function getImpersonationMeta(): ImpersonationMeta | null {
+  if (typeof window === 'undefined') return null
+  const raw = sessionStorage.getItem(IMPERSONATION_META_KEY)
+  if (!raw) return null
+  try { return JSON.parse(raw) as ImpersonationMeta } catch { return null }
+}
+
+/** Clear the impersonation token (admin clicked "Return to admin"). */
+export function clearImpersonationToken() {
+  if (typeof window === 'undefined') return
+  sessionStorage.removeItem(IMPERSONATION_TOKEN_KEY)
+  sessionStorage.removeItem(IMPERSONATION_META_KEY)
+}
+
+export function isImpersonating(): boolean {
+  if (typeof window === 'undefined') return false
+  return !!sessionStorage.getItem(IMPERSONATION_TOKEN_KEY)
 }
 
 export async function backendFetch(path: string, init: RequestInit = {}): Promise<Response> {
