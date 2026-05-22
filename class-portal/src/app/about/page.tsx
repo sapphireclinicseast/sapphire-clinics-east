@@ -17,6 +17,19 @@ export default function AboutPage() {
             <p className="text-white/85 text-[15px] leading-relaxed">
               We&apos;re an in-clinic school program designed around the way young learners thrive — close attention, predictable routines, and a graded class that meets the standards of the Department of Education.
             </p>
+
+            <div className="mt-6 pt-5 border-t border-white/15 flex items-start gap-4">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/npc-seal.png"
+                alt="National Privacy Commission — Registered DPO / DPS"
+                className="w-[88px] h-auto shrink-0"
+                style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.15))' }}
+              />
+              <p className="text-white/80 text-[12.5px] leading-relaxed">
+                Registered with the <span className="font-semibold text-white">National Privacy Commission</span> and compliant with the <span className="font-semibold text-white">Data Privacy Act of 2012</span>.
+              </p>
+            </div>
           </div>
         </div>
       </section>
@@ -73,7 +86,7 @@ export default function AboutPage() {
             For <span className="font-semibold text-[color:var(--narra)]">Kindergarten</span>, only the PSA Birth Certificate is required. For <span className="font-semibold text-[color:var(--narra)]">Grades 1&ndash;10</span>, the full list below applies. Please have <span className="font-semibold text-[color:var(--narra)]">scanned copies</span> of these available for upload here in the website. Please also bring the <span className="font-semibold text-[color:var(--narra)]">hard copies</span> when going to the clinic.
           </p>
 
-          <ul className="grid sm:grid-cols-2 gap-x-5 gap-y-3">
+          <ul className="flex flex-col gap-2.5 max-w-2xl">
             {ENROLLMENT_DOCS.map((doc, i) => {
               const num = i + 1
               const isMandatory = !!doc.mandatory
