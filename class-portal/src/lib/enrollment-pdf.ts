@@ -265,11 +265,15 @@ function underlineField(
   const w = opts.w ?? CONTENT_W
   const labelAbove = opts.labelAbove ?? true
 
-  ensure(c, labelAbove ? LINE_H + 2.6 : LINE_H)
+  ensure(c, labelAbove ? LINE_H + 5 : LINE_H)
   setColor(doc, C_LABEL); doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5)
   if (labelAbove) {
+    // Label sits at the top of the cell. We push c.y down further than
+    // before so the 9pt value text (drawn just above the underline)
+    // doesn't bleed up into the label baseline. ~5mm of vertical space
+    // gives a clean separation between label and value.
     doc.text(label, xStart, c.y + 2.2)
-    c.y += 2.8
+    c.y += 5
   } else {
     doc.text(label, xStart, c.y + 2.4)
   }
