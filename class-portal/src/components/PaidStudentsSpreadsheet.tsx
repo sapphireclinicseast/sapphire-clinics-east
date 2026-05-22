@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   getUsers, hydrateUsers, getPayments, updateUserEnrollment,
+  getFrontDeskPaymentsServer,
   levelLabel, branchLabel, lrnStatusLabel,
   LIS_STATUS_OPTIONS, REMITTANCE_OPTIONS,
   type StoredUser, type EnrollmentDraft, type Branch, type EnrollmentLevel,
@@ -60,9 +61,39 @@ export default function PaidStudentsSpreadsheet({ canEdit = false }: Props) {
   const [search, setSearch] = useState('')
 
   useEffect(() => {
-    hydrateUsers().then(us => setStudents(us.filter(u => u.role === 'STUDENT'))).catch(() => setStudents(getUsers().filter(u => u.role === 'STUDENT')))
-    const ids = new Set(getPayments().filter(p => p.status === 'PAID').map(p => p.studentId))
-    setPaidIds(ids)
+    let cancelled = false
+    ;(async () => {
+      // Students from the marketing-hub canonical list.
+      try {
+        const us = await hydrateUsers()
+        if (!cancelled) setStudents(us.filter(u => u.role === 'STUDENT'))
+      } catch {
+        if (!cancelled) setStudents(getUsers().filter(u => u.role === 'STUDENT'))
+      }
+      // Paid student IDs from BOTH:
+      //   1. Local PaymentRecord with status=PAID (PayMongo + any local
+      //      records the front desk's own browser has seen). This catches
+      //      PayMongo payments that finalize on the parent's device and
+      //      then sync through hydrateFrontDeskPayments.
+      //   2. Server-side ClassPortalFrontDeskPayment with status=CONVERTED
+      //      (cash + bank-deposit payments the front desk has confirmed,
+      //      regardless of which device made the local record). This is
+      //      the authoritative path for cross-device confirmations —
+      //      without it, students like AURORA BREA JARA whose payment
+      //      lives only on the server appeared as missing from the
+      //      paid spreadsheet.
+      const localIds = new Set(
+        getPayments().filter(p => p.status === 'PAID').map(p => p.studentId),
+      )
+      try {
+        const serverRows = await getFrontDeskPaymentsServer()
+        for (const r of serverRows) {
+          if (r.status === 'CONVERTED') localIds.add(r.studentId)
+        }
+      } catch { /* ignore — local-only set is still valid */ }
+      if (!cancelled) setPaidIds(localIds)
+    })()
+    return () => { cancelled = true }
   }, [])
 
   const rows = useMemo(() => {
