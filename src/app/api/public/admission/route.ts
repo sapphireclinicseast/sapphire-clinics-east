@@ -47,9 +47,37 @@ export async function GET(req: Request) {
       where,
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
     })
+
+    // Pull document-blob keys for every student in one query so the
+    // /admission table can render an up/down indicator per slot.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const blobs = await (prisma.classPortalDocumentBlob as any).findMany({
+      where: { studentId: { in: rows.map((r: { id: string }) => r.id) } },
+      select: { studentId: true, docKey: true, fileName: true, fileSize: true, fileType: true, updatedAt: true },
+    }).catch(() => [] as Array<{ studentId: string; docKey: string; fileName: string; fileSize: number; fileType: string; updatedAt: Date }>)
+    const blobsByStudent = new Map<string, Array<{ docKey: string; fileName: string; fileSize: number; fileType: string; updatedAt: string }>>()
+    for (const b of blobs) {
+      const list = blobsByStudent.get(b.studentId) ?? []
+      list.push({
+        docKey: b.docKey,
+        fileName: b.fileName,
+        fileSize: b.fileSize,
+        fileType: b.fileType,
+        updatedAt: b.updatedAt instanceof Date ? b.updatedAt.toISOString() : String(b.updatedAt),
+      })
+      blobsByStudent.set(b.studentId, list)
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const students = rows.map((r: any) => {
       const e = (r.enrollment ?? {}) as Record<string, unknown>
+      const father = (e.father ?? {}) as Record<string, string>
+      const mother = (e.mother ?? {}) as Record<string, string>
+      const guardian = (e.guardian ?? {}) as Record<string, string>
+      const fatherName = [father.lastName, father.firstName, father.middleName].filter(Boolean).join(', ')
+      const motherName = [mother.lastName, mother.firstName, mother.middleName].filter(Boolean).join(', ')
+      const guardianName = [guardian.lastName, guardian.firstName, guardian.middleName].filter(Boolean).join(', ')
+
       return {
         id: r.id,
         firstName: r.firstName,
@@ -57,13 +85,53 @@ export async function GET(req: Request) {
         email: r.email,
         branch: r.branch,
         level: r.level,
+        // Full enrollment surface for the partner-school view:
+        schoolYear: e.schoolYearFrom && e.schoolYearTo ? `${e.schoolYearFrom}–${e.schoolYearTo}` : null,
         lrnStatus: (e.lrnStatus as string) ?? null,
         lrn: (e.lrn as string) ?? null,
-        cellphone: (e.cellphone as string) ?? null,
+        psaBirthCertNo: (e.psaBirthCertNo as string) ?? null,
+        middleName: (e.middleName as string) ?? null,
+        extensionName: (e.extensionName as string) ?? null,
+        dob: (e.dob as string) ?? null,
+        sex: (e.sex as string) ?? null,
+        ipMember: (e.ipMember as string) ?? null,
+        ipCommunity: (e.ipCommunity as string) ?? null,
+        motherTongue: (e.motherTongue as string) ?? null,
+        religion: (e.religion as string) ?? null,
+        nationality: (e.nationality as string) ?? null,
         diagnosis: (e.diagnosis as string) ?? null,
+        pwdIdNumber: (e.pwdIdNumber as string) ?? null,
+        houseStreet: (e.houseStreet as string) ?? null,
+        barangay: (e.barangay as string) ?? null,
+        cityProvinceCountry: (e.cityProvinceCountry as string) ?? null,
+        zipCode: (e.zipCode as string) ?? null,
+        fatherName,
+        fatherOccupation: (e.fatherOccupation as string) ?? null,
+        motherName,
+        motherOccupation: (e.motherOccupation as string) ?? null,
+        guardianName,
+        guardianOfRecord: (e.guardianOfRecord as string) ?? null,
+        telephone: (e.telephone as string) ?? null,
+        cellphone: (e.cellphone as string) ?? null,
+        isReturningOrTransferee: (e.isReturningOrTransferee as string) ?? null,
+        lastGradeCompleted: (e.lastGradeCompleted as string) ?? null,
+        lastSchoolYearCompleted: (e.lastSchoolYearCompleted as string) ?? null,
+        previousSchoolName: (e.previousSchoolName as string) ?? null,
+        previousSchoolId: (e.previousSchoolId as string) ?? null,
+        previousSchoolAddress: (e.previousSchoolAddress as string) ?? null,
+        // Tracker columns:
         lisStatus: (e.lisStatus as string) ?? null,
         remittanceStatus: (e.remittanceStatus as string) ?? null,
         admissionComments: (e.admissionComments as string) ?? null,
+        // Whole enrollment blob for client-side PDF rebuild:
+        enrollment: e,
+        // Server-side document blobs available for download.
+        documentBlobs: blobsByStudent.get(r.id) ?? [],
+        // Local-only docs metadata (whether the parent uploaded into
+        // IndexedDB; useful as a fallback indicator).
+        documentsMeta: (e.documents ?? {}) as Record<string, { name: string; size: number; type?: string; fileId?: string }>,
+        // Waiver signed timestamp
+        waiverSignedAt: (e.waiverSignedAt as string) ?? null,
         createdAt: r.createdAt.toISOString(),
       }
     })

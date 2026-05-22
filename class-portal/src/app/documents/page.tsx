@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { submitDocuments } from '@/lib/api'
-import { getSession, getDraft, setDraft, putFile, levelLabel, type EnrollmentLevel } from '@/lib/session'
+import { getSession, getDraft, setDraft, putFile, uploadDocumentBlob, levelLabel, type EnrollmentLevel } from '@/lib/session'
 import { backendOrigin, backendJson } from '@/lib/backend'
 import { generateAffidavitPdf, type AffidavitInput } from '@/lib/affidavit-pdf'
 import SignaturePad from '@/components/SignaturePad'
@@ -189,11 +189,18 @@ export default function DocumentsPage() {
       if (fail) { setErr(fail); setBusy(false); return }
     }
     try {
+      const session = getSession()
       const documents: Record<string, { name: string; size: number; type?: string; fileId?: string }> = {}
       for (const [k, f] of Object.entries(files)) {
         if (!f) continue
         const fileId = 'doc_' + Math.random().toString(36).slice(2, 12)
         try { await putFile(fileId, f) } catch (e) { console.warn('IndexedDB put failed', e) }
+        // Also persist to the marketing-app blob store so the partner-school
+        // /admission view can download it. Best-effort — IndexedDB stays the
+        // source of truth for the parent's own UI.
+        if (session?.studentId) {
+          try { await uploadDocumentBlob(session.studentId, k, f) } catch (e) { console.warn('Server blob put failed', e) }
+        }
         documents[k] = { name: f.name, size: f.size, type: f.type, fileId }
       }
 
@@ -223,6 +230,9 @@ export default function DocumentsPage() {
         const fileId = 'doc_' + Math.random().toString(36).slice(2, 12)
         const file = new File([blob], 'deped-affidavit-of-undertaking.pdf', { type: 'application/pdf' })
         try { await putFile(fileId, file) } catch (e) { console.warn('IndexedDB put failed', e) }
+        if (session?.studentId) {
+          try { await uploadDocumentBlob(session.studentId, 'affidavit_undertaking', file) } catch (e) { console.warn('Server blob put failed', e) }
+        }
         documents['affidavit_undertaking'] = {
           name: file.name, size: file.size, type: file.type, fileId,
         }

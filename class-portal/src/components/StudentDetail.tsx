@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import {
-  getFile, putFile, deleteFile,
+  getFile, putFile, deleteFile, uploadDocumentBlob,
   getPaymentsForStudent, getWaivers, getGradeForStudent,
   updateUserEnrollment, saveHeadshot,
   levelLabel, lrnStatusLabel,
@@ -166,6 +166,8 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
                   const newFileId = 'doc_' + Math.random().toString(36).slice(2, 12)
                   await putFile(newFileId, file)
                   if (v.fileId) { try { await deleteFile(v.fileId) } catch { /* ignore */ } }
+                  // Also push to the server blob store so /admission can pull it.
+                  try { await uploadDocumentBlob(student.id, k, file) } catch { /* ignore */ }
                   const nextDocs = { ...(student.enrollment?.documents ?? {}) }
                   nextDocs[k] = { name: file.name, size: file.size, type: file.type, fileId: newFileId }
                   const updated = await updateUserEnrollment(student.id, { documents: nextDocs })
@@ -188,6 +190,7 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
               onUpload={async (key, file) => {
                 const fileId = 'doc_' + Math.random().toString(36).slice(2, 12)
                 await putFile(fileId, file)
+                try { await uploadDocumentBlob(student.id, key, file) } catch { /* ignore */ }
                 const nextDocs = { ...(student.enrollment?.documents ?? {}) }
                 nextDocs[key] = { name: file.name, size: file.size, type: file.type, fileId }
                 const updated = await updateUserEnrollment(student.id, { documents: nextDocs })
@@ -502,6 +505,7 @@ function SchoolIdCard({ student, viewerRole, onUpdated }: {
       const newFileId = 'doc_' + Math.random().toString(36).slice(2, 12)
       await putFile(newFileId, f)
       if (idDoc?.fileId) { try { await deleteFile(idDoc.fileId) } catch { /* ignore */ } }
+      try { await uploadDocumentBlob(student.id, 'school_id', f) } catch { /* ignore */ }
       const nextDocs = { ...(student.enrollment?.documents ?? {}) }
       nextDocs.school_id = { name: f.name, size: f.size, type: f.type, fileId: newFileId }
       const updated = await updateUserEnrollment(student.id, { documents: nextDocs })

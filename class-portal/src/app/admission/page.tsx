@@ -10,11 +10,20 @@ import { useEffect, useMemo, useState } from 'react'
 import { backendOrigin } from '@/lib/backend'
 import {
   levelLabel, LIS_STATUS_OPTIONS, REMITTANCE_OPTIONS,
-  type LisStatus, type RemittanceStatus, type EnrollmentLevel,
+  type LisStatus, type RemittanceStatus, type EnrollmentLevel, type EnrollmentDraft, type StoredUser,
 } from '@/lib/session'
+import { generateEnrollmentPdf } from '@/lib/enrollment-pdf'
 import { exportToPdf, exportToXlsx, type ExportCol } from '@/lib/admission-export'
 
 const ACCESS_CODE_KEY = 'scei_admission_code_v1'
+
+interface DocumentBlob {
+  docKey: string
+  fileName: string
+  fileSize: number
+  fileType: string
+  updatedAt: string
+}
 
 interface AdmissionStudent {
   id: string
@@ -23,13 +32,46 @@ interface AdmissionStudent {
   email: string
   branch: 'EAST' | 'GREENHILLS' | null
   level: EnrollmentLevel | null
+  schoolYear: string | null
   lrnStatus: string | null
   lrn: string | null
-  cellphone: string | null
+  psaBirthCertNo: string | null
+  middleName: string | null
+  extensionName: string | null
+  dob: string | null
+  sex: string | null
+  ipMember: string | null
+  ipCommunity: string | null
+  motherTongue: string | null
+  religion: string | null
+  nationality: string | null
   diagnosis: string | null
+  pwdIdNumber: string | null
+  houseStreet: string | null
+  barangay: string | null
+  cityProvinceCountry: string | null
+  zipCode: string | null
+  fatherName: string | null
+  fatherOccupation: string | null
+  motherName: string | null
+  motherOccupation: string | null
+  guardianName: string | null
+  guardianOfRecord: string | null
+  telephone: string | null
+  cellphone: string | null
+  isReturningOrTransferee: string | null
+  lastGradeCompleted: string | null
+  lastSchoolYearCompleted: string | null
+  previousSchoolName: string | null
+  previousSchoolId: string | null
+  previousSchoolAddress: string | null
   lisStatus: LisStatus | null
   remittanceStatus: RemittanceStatus | null
   admissionComments: string | null
+  enrollment: EnrollmentDraft
+  documentBlobs: DocumentBlob[]
+  documentsMeta: Record<string, { name: string; size: number; type?: string; fileId?: string }>
+  waiverSignedAt: string | null
   createdAt: string
 }
 
@@ -131,16 +173,92 @@ export default function AdmissionPage() {
   const remitLabel = (v: RemittanceStatus | null) => v ? (REMITTANCE_OPTIONS.find(o => o.value === v)?.label ?? v) : ''
   const lrnLbl    = (v: string | null) => v === 'NO_LRN' ? 'NO LRN' : v === 'WITH_LRN' ? 'WITH LRN' : v === 'RETURNING' ? 'RETURNING (BALIK-ARAL)' : ''
   const exportCols: ExportCol<AdmissionStudent>[] = [
-    { header: 'Full name',      width: 200, value: s => [s.firstName, s.lastName].filter(Boolean).join(' ') || s.email },
-    { header: 'Grade level',    width: 110, value: s => s.level ? levelLabel(s.level) : '' },
-    { header: 'LRN status',     width: 130, value: s => lrnLbl(s.lrnStatus) },
-    { header: 'LRN',            width: 130, value: s => s.lrn ?? '' },
-    { header: 'Cellphone',      width: 130, value: s => s.cellphone ?? '' },
-    { header: 'Diagnosis',      width: 200, value: s => s.diagnosis ?? '' },
-    { header: 'LIS status',     width: 220, value: s => lisLabel(s.lisStatus) },
-    { header: 'Remittance',     width: 140, value: s => remitLabel(s.remittanceStatus) },
-    { header: 'Comments / Remarks', width: 280, value: s => s.admissionComments ?? '' },
+    { header: 'Full name',         width: 180, value: s => [s.firstName, s.lastName].filter(Boolean).join(' ') || s.email },
+    { header: 'Grade level',       width: 100, value: s => s.level ? levelLabel(s.level) : '' },
+    { header: 'School Year',       width: 100, value: s => s.schoolYear ?? '' },
+    { header: 'Branch',            width: 110, value: s => s.branch ?? '' },
+    { header: 'LRN status',        width: 120, value: s => lrnLbl(s.lrnStatus) },
+    { header: 'LRN',               width: 120, value: s => s.lrn ?? '' },
+    { header: 'PSA Birth Cert No.', width: 140, value: s => s.psaBirthCertNo ?? '' },
+    { header: 'Middle name',       width: 110, value: s => s.middleName ?? '' },
+    { header: 'Extension name',    width: 90,  value: s => s.extensionName ?? '' },
+    { header: 'Date of birth',     width: 100, value: s => s.dob ?? '' },
+    { header: 'Sex',               width: 70,  value: s => s.sex ?? '' },
+    { header: 'IP member',         width: 80,  value: s => s.ipMember ?? '' },
+    { header: 'IP community',      width: 120, value: s => s.ipCommunity ?? '' },
+    { header: 'Mother tongue',     width: 100, value: s => s.motherTongue ?? '' },
+    { header: 'Religion',          width: 100, value: s => s.religion ?? '' },
+    { header: 'Nationality',       width: 100, value: s => s.nationality ?? '' },
+    { header: 'Diagnosis',         width: 140, value: s => s.diagnosis ?? '' },
+    { header: 'PWD ID No.',        width: 100, value: s => s.pwdIdNumber ?? '' },
+    { header: 'House / Street',    width: 160, value: s => s.houseStreet ?? '' },
+    { header: 'Barangay',          width: 100, value: s => s.barangay ?? '' },
+    { header: 'City / Province',   width: 160, value: s => s.cityProvinceCountry ?? '' },
+    { header: 'Zip',               width: 60,  value: s => s.zipCode ?? '' },
+    { header: "Father's Name",     width: 160, value: s => s.fatherName ?? '' },
+    { header: "Father's occupation", width: 130, value: s => s.fatherOccupation ?? '' },
+    { header: "Mother's Maiden Name", width: 160, value: s => s.motherName ?? '' },
+    { header: "Mother's occupation", width: 130, value: s => s.motherOccupation ?? '' },
+    { header: "Guardian's Name",   width: 160, value: s => s.guardianName ?? '' },
+    { header: 'Telephone',         width: 110, value: s => s.telephone ?? '' },
+    { header: 'Cellphone',         width: 110, value: s => s.cellphone ?? '' },
+    { header: 'Email',             width: 180, value: s => s.email ?? '' },
+    { header: 'Returning/Transferee', width: 100, value: s => s.isReturningOrTransferee ?? '' },
+    { header: 'Last Grade Completed', width: 120, value: s => s.lastGradeCompleted ?? '' },
+    { header: 'Last SY Completed', width: 120, value: s => s.lastSchoolYearCompleted ?? '' },
+    { header: 'Previous School',   width: 160, value: s => s.previousSchoolName ?? '' },
+    { header: 'Prev School ID',    width: 100, value: s => s.previousSchoolId ?? '' },
+    { header: 'Prev School Address', width: 180, value: s => s.previousSchoolAddress ?? '' },
+    { header: 'LIS status',        width: 160, value: s => lisLabel(s.lisStatus) },
+    { header: 'Remittance',        width: 90,  value: s => remitLabel(s.remittanceStatus) },
+    { header: 'Comments / Remarks', width: 200, value: s => s.admissionComments ?? '' },
   ]
+
+  // Server-side blob presence checker.
+  const hasBlob = (s: AdmissionStudent, docKey: string) => s.documentBlobs.some(b => b.docKey === docKey)
+
+  /** Open a document blob via the code-gated admission endpoint. */
+  function openDocBlob(s: AdmissionStudent, docKey: string, inline = false) {
+    if (!code) return
+    const url = `${backendOrigin()}/api/public/admission/document?code=${encodeURIComponent(code)}&studentId=${encodeURIComponent(s.id)}&docKey=${encodeURIComponent(docKey)}${inline ? '&inline=1' : ''}`
+    window.open(url, '_blank', 'noopener')
+  }
+
+  /** Build + open the Enrollment Form (Annex 2) PDF from the API data. */
+  function openEnrollmentForm(s: AdmissionStudent) {
+    const fakeUser: StoredUser = {
+      id: s.id,
+      role: 'STUDENT',
+      email: s.email,
+      password: '',
+      firstName: s.firstName ?? undefined,
+      lastName: s.lastName ?? undefined,
+      level: s.level ?? undefined,
+      branch: s.branch ?? undefined,
+      createdAt: s.createdAt,
+    }
+    const doc = generateEnrollmentPdf(fakeUser, s.enrollment ?? {})
+    const blob = doc.output('blob')
+    const url = URL.createObjectURL(blob)
+    window.open(url, '_blank', 'noopener')
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }
+  function downloadEnrollmentForm(s: AdmissionStudent) {
+    const fakeUser: StoredUser = {
+      id: s.id,
+      role: 'STUDENT',
+      email: s.email,
+      password: '',
+      firstName: s.firstName ?? undefined,
+      lastName: s.lastName ?? undefined,
+      level: s.level ?? undefined,
+      branch: s.branch ?? undefined,
+      createdAt: s.createdAt,
+    }
+    const doc = generateEnrollmentPdf(fakeUser, s.enrollment ?? {})
+    const safe = `${s.lastName ?? ''}-${s.firstName ?? ''}-enrollment-form`.toLowerCase().replace(/[^a-z0-9-]+/g, '-')
+    doc.save(`${safe}.pdf`)
+  }
 
   function signOut() {
     localStorage.removeItem(ACCESS_CODE_KEY)
@@ -225,29 +343,93 @@ export default function AdmissionPage() {
             <table className="text-[11px] w-full" style={{ borderCollapse: 'collapse' }}>
               <thead className="sticky top-0 z-10" style={{ background: 'var(--paper-2)' }}>
                 <tr className="text-left uppercase tracking-[0.06em] text-[10px] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 140 }}>Full name</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 80 }}>Grade level</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap sticky left-0 z-20" style={{ minWidth: 160, background: 'var(--paper-2)' }}>Full name</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 100 }}>Grade level</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 90 }}>School Year</th>
                   <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 80 }}>LRN status</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 100 }}>LRN</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 100 }}>Cellphone</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 110 }}>LRN</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 130 }}>PSA Birth Cert No.</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 90 }}>Middle name</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 80 }}>Extension</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 90 }}>Date of birth</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 60 }}>Sex</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 60 }}>IP</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 110 }}>IP community</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 100 }}>Mother tongue</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 90 }}>Religion</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 90 }}>Nationality</th>
                   <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 140 }}>Diagnosis</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 100 }}>PWD ID No.</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 150 }}>House / Street</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 100 }}>Barangay</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 160 }}>City / Province</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 60 }}>Zip</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 160 }}>Father&apos;s Name</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 130 }}>Father&apos;s occupation</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 160 }}>Mother&apos;s Maiden Name</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 130 }}>Mother&apos;s occupation</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 160 }}>Guardian&apos;s Name</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 100 }}>Telephone</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 110 }}>Cellphone</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 180 }}>Email</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 100 }}>Returning/Transferee</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 100 }}>Last Grade</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 100 }}>Last SY</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 150 }}>Previous School</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 100 }}>Prev School ID</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 170 }}>Prev School Address</th>
                   <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 160 }}>LIS status</th>
                   <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 90 }}>Remittance</th>
                   <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 200 }}>Comments / Remarks</th>
+                  {/* Document download columns — server-side blobs */}
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap text-center" style={{ minWidth: 130, background: '#fef3c7' }}>Enrollment Form</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap text-center" style={{ minWidth: 110, background: '#fef3c7' }}>Parent Waiver</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap text-center" style={{ minWidth: 110, background: '#fef3c7' }}>DepEd Affidavit</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap text-center" style={{ minWidth: 110, background: '#fef3c7' }}>Report Card / SF9</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap text-center" style={{ minWidth: 110, background: '#fef3c7' }}>PSA Birth Cert</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={9} className="py-10 text-center text-[color:var(--mid-gray)]">No students in this branch yet.</td></tr>
+                  <tr><td colSpan={44} className="py-10 text-center text-[color:var(--mid-gray)]">No students in this branch yet.</td></tr>
                 )}
                 {filtered.map(s => (
                   <tr key={s.id} className="border-b hover:bg-[color:var(--paper-2)]" style={{ borderColor: 'var(--paper-3)' }}>
-                    <td className="py-1 px-1.5 whitespace-nowrap">{[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}</td>
+                    <td className="py-1 px-1.5 whitespace-nowrap font-medium sticky left-0 bg-white z-10 group-hover:bg-[color:var(--paper-2)]" style={{ background: '#fff' }}>{[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}</td>
                     <td className="py-1 px-1.5 whitespace-nowrap">{s.level ? levelLabel(s.level) : <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5 whitespace-nowrap">{s.schoolYear || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
                     <td className="py-1 px-1.5 whitespace-nowrap">{s.lrnStatus === 'NO_LRN' ? 'NO LRN' : s.lrnStatus === 'WITH_LRN' ? 'WITH LRN' : s.lrnStatus === 'RETURNING' ? 'RETURNING' : <span className="text-[color:var(--mid-gray)]">—</span>}</td>
                     <td className="py-1 px-1.5 whitespace-nowrap">{s.lrn || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5 whitespace-nowrap">{s.cellphone || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5 whitespace-nowrap">{s.psaBirthCertNo || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5 whitespace-nowrap">{s.middleName || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5 whitespace-nowrap">{s.extensionName || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5 whitespace-nowrap">{s.dob || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5 whitespace-nowrap">{s.sex || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5 whitespace-nowrap">{s.ipMember || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5">{s.ipCommunity || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5 whitespace-nowrap">{s.motherTongue || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5 whitespace-nowrap">{s.religion || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5 whitespace-nowrap">{s.nationality || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
                     <td className="py-1 px-1.5">{s.diagnosis || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5 whitespace-nowrap">{s.pwdIdNumber || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5">{s.houseStreet || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5">{s.barangay || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5">{s.cityProvinceCountry || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5 whitespace-nowrap">{s.zipCode || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5">{s.fatherName || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5">{s.fatherOccupation || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5">{s.motherName || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5">{s.motherOccupation || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5">{s.guardianName || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5 whitespace-nowrap">{s.telephone || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5 whitespace-nowrap">{s.cellphone || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5">{s.email || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5 whitespace-nowrap">{s.isReturningOrTransferee || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5 whitespace-nowrap">{s.lastGradeCompleted || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5 whitespace-nowrap">{s.lastSchoolYearCompleted || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5">{s.previousSchoolName || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5">{s.previousSchoolId || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5">{s.previousSchoolAddress || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
                     <td className="py-1 px-1.5">
                       <select
                         value={s.lisStatus ?? ''}
@@ -279,6 +461,44 @@ export default function AdmissionPage() {
                         }}
                       />
                     </td>
+
+                    {/* Enrollment Form — always available, rebuilt client-side from API data */}
+                    <td className="py-1 px-1.5 whitespace-nowrap text-center" style={{ background: '#fffbe6' }}>
+                      <button
+                        type="button"
+                        onClick={() => openEnrollmentForm(s)}
+                        className="text-[10.5px] px-1.5 py-0.5 rounded text-[color:var(--narra)] hover:bg-[color:var(--paper-2)] border"
+                        style={{ borderColor: 'var(--paper-3)' }}
+                        title="Open Enrollment Form in a new tab"
+                      >View</button>
+                      <button
+                        type="button"
+                        onClick={() => downloadEnrollmentForm(s)}
+                        className="ml-1 text-[10.5px] px-1.5 py-0.5 rounded text-white"
+                        style={{ background: 'var(--narra)' }}
+                        title="Download Enrollment Form PDF"
+                      >↓</button>
+                    </td>
+
+                    {/* Parent Waiver — server blob (if uploaded by parent) */}
+                    <td className="py-1 px-1.5 whitespace-nowrap text-center" style={{ background: '#fffbe6' }}>
+                      <DocCell present={hasBlob(s, 'parent_waiver')} onView={() => openDocBlob(s, 'parent_waiver', true)} onDownload={() => openDocBlob(s, 'parent_waiver', false)} hint={s.waiverSignedAt ? `Signed ${new Date(s.waiverSignedAt).toLocaleDateString()}` : undefined} />
+                    </td>
+
+                    {/* DepEd Affidavit of Undertaking — only if filled */}
+                    <td className="py-1 px-1.5 whitespace-nowrap text-center" style={{ background: '#fffbe6' }}>
+                      <DocCell present={hasBlob(s, 'affidavit_undertaking')} onView={() => openDocBlob(s, 'affidavit_undertaking', true)} onDownload={() => openDocBlob(s, 'affidavit_undertaking', false)} />
+                    </td>
+
+                    {/* Latest Report Card / SF9 */}
+                    <td className="py-1 px-1.5 whitespace-nowrap text-center" style={{ background: '#fffbe6' }}>
+                      <DocCell present={hasBlob(s, 'report_card_sf9')} onView={() => openDocBlob(s, 'report_card_sf9', true)} onDownload={() => openDocBlob(s, 'report_card_sf9', false)} />
+                    </td>
+
+                    {/* PSA Birth Certificate */}
+                    <td className="py-1 px-1.5 whitespace-nowrap text-center" style={{ background: '#fffbe6' }}>
+                      <DocCell present={hasBlob(s, 'psa_birth_cert')} onView={() => openDocBlob(s, 'psa_birth_cert', true)} onDownload={() => openDocBlob(s, 'psa_birth_cert', false)} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -287,9 +507,46 @@ export default function AdmissionPage() {
         </div>
 
         <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-3 text-center" style={{ fontFamily: 'var(--font-display)' }}>
-          Edits save automatically · Refresh to pull the latest from the front desk
+          Edits save automatically · Refresh to pull the latest from the front desk · Documents with a — were not uploaded by the parent
         </p>
       </div>
     </div>
+  )
+}
+
+/** Inline document-cell renderer for the /admission table. Shows View +
+ *  Download mini-buttons when the server has the blob; otherwise shows a
+ *  faint dash. The `hint` slot lets callers expose meta like "Signed
+ *  YYYY-MM-DD" when the document existed but wasn't synced to the server. */
+function DocCell({ present, onView, onDownload, hint }: {
+  present: boolean
+  onView: () => void
+  onDownload: () => void
+  hint?: string
+}) {
+  if (!present) {
+    return (
+      <span className="text-[color:var(--mid-gray)] text-[10.5px]" title={hint ?? 'Not uploaded'}>
+        {hint ? '⌛' : '—'}
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex gap-1">
+      <button
+        type="button"
+        onClick={onView}
+        className="text-[10.5px] px-1.5 py-0.5 rounded text-[color:var(--narra)] hover:bg-[color:var(--paper-2)] border"
+        style={{ borderColor: 'var(--paper-3)' }}
+        title="View in a new tab"
+      >View</button>
+      <button
+        type="button"
+        onClick={onDownload}
+        className="text-[10.5px] px-1.5 py-0.5 rounded text-white"
+        style={{ background: 'var(--narra)' }}
+        title="Download"
+      >↓</button>
+    </span>
   )
 }
