@@ -10,10 +10,14 @@ import {
   listLessons, createLesson, updateLesson, deleteLesson, fetchLessonDetail,
   uploadLessonAttachment, deleteLessonAttachment, fetchLessonAttachmentBlob,
   uploadLessonOutput, fetchLessonOutputBlob,
+  listLessonTests, createLessonTest, updateLessonTest, deleteLessonTest,
+  uploadTestProof, fetchTestProofBlob,
+  listProjects, createProject, updateProject, deleteProject,
+  uploadProjectProof, fetchProjectProofBlob,
   levelLabel, branchLabel, CLASS_DAY_OPTIONS,
   type AuthSession, type StoredUser,
   type ClassRecord, type LessonRecord, type LessonAttachmentMeta, type LessonOutputMeta,
-  type AttendanceStatus,
+  type AttendanceStatus, type LessonTestRecord, type ProjectRecord,
 } from '@/lib/session'
 import { backendJson } from '@/lib/backend'
 
@@ -163,6 +167,14 @@ export default function ClassDetailPage() {
           </ul>
         )}
       </div>
+
+      <ProjectsSection
+        classId={klass.id}
+        roster={roster}
+        canEdit={canEdit}
+        isStudent={isStudent}
+        viewerId={auth.userId}
+      />
 
       {editingLesson && (
         <LessonEditor
@@ -483,6 +495,10 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
           </Section>
         )}
 
+        {lessonId && (
+          <TestsSection lessonId={lessonId} roster={roster} canEdit={editable} viewerRole={isStudent ? 'STUDENT' : 'STAFF'} attendance={attendance} />
+        )}
+
         {editable && (
           <div className="flex gap-2 justify-end mt-4 pt-3 border-t" style={{ borderColor: 'var(--paper-3)' }}>
             <button className="btn-secondary text-xs" onClick={onClose} disabled={busy}>Cancel</button>
@@ -536,6 +552,440 @@ function OutputRow({ student, output, onUpload, onView, editable, requireMakeup 
             {output ? 'Replace' : 'Upload'}
             <input type="file" className="sr-only" accept="image/*,.pdf" onChange={pick} />
           </label>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ────────────────────────  TESTS  ──────────────────────── */
+
+function TestsSection({ lessonId, roster, canEdit, viewerRole, attendance }: {
+  lessonId: string
+  roster: StoredUser[]
+  canEdit: boolean
+  viewerRole: 'STUDENT' | 'STAFF'
+  attendance: Record<string, AttendanceStatus>
+}) {
+  const [tests, setTests] = useState<LessonTestRecord[]>([])
+  const [busy, setBusy] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [newTitle, setNewTitle] = useState('')
+  const [newPoints, setNewPoints] = useState('')
+
+  async function load() {
+    setBusy(true)
+    try { setTests(await listLessonTests(lessonId)) } finally { setBusy(false) }
+  }
+  useEffect(() => { void load() }, [lessonId])
+
+  async function add() {
+    if (!newTitle.trim() || !newPoints.trim()) return
+    const t = await createLessonTest(lessonId, { title: newTitle.trim(), totalPoints: Number(newPoints) })
+    if (t) { setTests(prev => [...prev, t]); setNewTitle(''); setNewPoints(''); setAdding(false) }
+  }
+
+  return (
+    <Section title="Tests / Exams">
+      {canEdit && !adding && (
+        <button className="btn-secondary text-xs" onClick={() => setAdding(true)}>+ Add test / exam</button>
+      )}
+      {adding && (
+        <div className="rounded-xl border p-3 mt-2 space-y-2" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
+          <div className="grid sm:grid-cols-[1fr_120px] gap-2">
+            <input className="input" placeholder="Test / exam title" value={newTitle} onChange={e => setNewTitle(e.target.value)} />
+            <input className="input" type="number" placeholder="Total pts" value={newPoints} onChange={e => setNewPoints(e.target.value)} />
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button className="btn-secondary text-xs" onClick={() => { setAdding(false); setNewTitle(''); setNewPoints('') }}>Cancel</button>
+            <button className="btn-primary text-xs" onClick={add}>Add</button>
+          </div>
+        </div>
+      )}
+      {busy && tests.length === 0 ? (
+        <p className="text-sm text-[color:var(--mid-gray)] py-3">Loading tests…</p>
+      ) : tests.length === 0 ? (
+        <p className="text-sm text-[color:var(--mid-gray)] py-3">No tests yet.</p>
+      ) : (
+        <ul className="space-y-3 mt-3">
+          {tests.map(t => (
+            <TestCard
+              key={t.id}
+              test={t}
+              roster={roster}
+              attendance={attendance}
+              canEdit={canEdit}
+              viewerRole={viewerRole}
+              onChange={(updated) => setTests(prev => prev.map(x => x.id === updated.id ? updated : x))}
+              onDelete={async () => {
+                if (!confirm(`Delete "${t.title}"?`)) return
+                const ok = await deleteLessonTest(t.id)
+                if (ok) setTests(prev => prev.filter(x => x.id !== t.id))
+              }}
+            />
+          ))}
+        </ul>
+      )}
+    </Section>
+  )
+}
+
+function TestCard({ test, roster, attendance, canEdit, viewerRole, onChange, onDelete }: {
+  test: LessonTestRecord
+  roster: StoredUser[]
+  attendance: Record<string, AttendanceStatus>
+  canEdit: boolean
+  viewerRole: 'STUDENT' | 'STAFF'
+  onChange: (t: LessonTestRecord) => void
+  onDelete: () => void
+}) {
+  const presentIds = roster.filter(s => attendance[s.id] === 'PRESENT').map(s => s.id)
+  const absentIds  = roster.filter(s => attendance[s.id] === 'ABSENT').map(s => s.id)
+  const [drafts, setDrafts] = useState<Record<string, { score: number; makeupDate?: string }>>(test.scores ?? {})
+  useEffect(() => { setDrafts(test.scores ?? {}) }, [test.scores])
+
+  async function saveScores() {
+    const updated = await updateLessonTest(test.id, { scores: drafts })
+    if (updated) onChange(updated)
+  }
+  async function uploadProof(studentId: string, file: File) {
+    await uploadTestProof(test.id, studentId, file)
+  }
+  async function viewProof(studentId: string) {
+    const blob = await fetchTestProofBlob(test.id, studentId)
+    if (!blob) { alert('No proof uploaded.'); return }
+    const url = URL.createObjectURL(blob)
+    window.open(url, '_blank', 'noopener')
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }
+
+  return (
+    <li className="rounded-xl border p-3" style={{ borderColor: 'var(--paper-3)' }}>
+      <div className="flex items-start justify-between gap-2 flex-wrap">
+        <div>
+          <div className="font-semibold text-[color:var(--narra)]">{test.title}</div>
+          <div className="text-[11.5px] text-[color:var(--mid-gray)]">Out of {test.totalPoints} points</div>
+        </div>
+        {canEdit && <button className="text-[10.5px] px-2 py-0.5 rounded text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)]" onClick={onDelete}>Delete</button>}
+      </div>
+      <ScoreList
+        roster={roster}
+        presentIds={presentIds}
+        absentIds={absentIds}
+        totalPoints={test.totalPoints}
+        scores={drafts}
+        setScores={setDrafts}
+        canEdit={canEdit}
+        viewerRole={viewerRole}
+        onScoreBlur={saveScores}
+        onUploadProof={canEdit ? uploadProof : undefined}
+        onViewProof={viewProof}
+        labelMakeup="Makeup test"
+      />
+    </li>
+  )
+}
+
+/* ────────────────────  SHARED SCORE LIST  ──────────────────── */
+
+function ScoreList({ roster, presentIds, absentIds, totalPoints, scores, setScores, canEdit, viewerRole, onScoreBlur, onUploadProof, onViewProof, labelMakeup }: {
+  roster: StoredUser[]
+  presentIds: string[]
+  absentIds: string[]
+  totalPoints: number
+  scores: Record<string, { score: number; makeupDate?: string }>
+  setScores: (next: Record<string, { score: number; makeupDate?: string }>) => void
+  canEdit: boolean
+  viewerRole: 'STUDENT' | 'STAFF'
+  onScoreBlur: () => void
+  onUploadProof?: (studentId: string, file: File) => Promise<void> | void
+  onViewProof: (studentId: string) => void
+  labelMakeup: string
+}) {
+  function setScore(id: string, score: number) {
+    setScores({ ...scores, [id]: { ...(scores[id] ?? { score: 0 }), score } })
+  }
+  function setMakeup(id: string, makeupDate: string) {
+    setScores({ ...scores, [id]: { ...(scores[id] ?? { score: 0 }), makeupDate } })
+  }
+  function rowForStudent(s: StoredUser, isAbsent: boolean) {
+    if (viewerRole === 'STUDENT') {
+      // Student should only ever see their own row when this list is
+      // rendered. The caller already filters; nothing extra to do.
+    }
+    return (
+      <div key={s.id} className="grid grid-cols-[1fr_auto] gap-2 items-center text-sm py-1">
+        <span className="truncate font-semibold text-[color:var(--narra)]">{[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}</span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {isAbsent && canEdit && (
+            <input type="date" className="input" style={{ width: 140 }} value={scores[s.id]?.makeupDate ?? ''} onChange={e => setMakeup(s.id, e.target.value)} onBlur={onScoreBlur} title={labelMakeup} />
+          )}
+          <input type="number" min={0} max={totalPoints} className="input" style={{ width: 70 }} value={scores[s.id]?.score ?? ''} onChange={e => setScore(s.id, Number(e.target.value))} onBlur={onScoreBlur} disabled={!canEdit} />
+          <span className="text-[11.5px] text-[color:var(--mid-gray)]">/ {totalPoints}</span>
+          {onUploadProof && (
+            <label className="btn-secondary text-[10.5px] cursor-pointer">
+              Proof
+              <input type="file" className="sr-only" accept="image/*,.pdf" onChange={async e => {
+                const f = e.target.files?.[0]; e.target.value = ''
+                if (f) { await onUploadProof(s.id, f) }
+              }} />
+            </label>
+          )}
+          <button className="text-[10.5px] px-2 py-0.5 rounded border" style={{ borderColor: 'var(--paper-3)' }} onClick={() => onViewProof(s.id)}>View</button>
+        </div>
+      </div>
+    )
+  }
+  // For a student viewer, render ONLY their own row.
+  // The component receives full roster lists from the parent because
+  // teachers + admins see everyone; we filter at this seam.
+  return (
+    <div className="mt-3">
+      {presentIds.map(id => roster.find(s => s.id === id)).filter((s): s is StoredUser => !!s).map(s => rowForStudent(s, false))}
+      {absentIds.length > 0 && (
+        <>
+          <div className="text-[10.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] font-bold mt-3 mb-1" style={{ fontFamily: 'var(--font-display)' }}>Absent — makeup</div>
+          {absentIds.map(id => roster.find(s => s.id === id)).filter((s): s is StoredUser => !!s).map(s => rowForStudent(s, true))}
+        </>
+      )}
+    </div>
+  )
+}
+
+/* ────────────────────────  PROJECTS  ──────────────────────── */
+
+function ProjectsSection({ classId, roster, canEdit, isStudent, viewerId }: {
+  classId: string
+  roster: StoredUser[]
+  canEdit: boolean
+  isStudent: boolean
+  viewerId?: string
+}) {
+  const [projects, setProjects] = useState<ProjectRecord[]>([])
+  const [busy, setBusy] = useState(false)
+  const [editing, setEditing] = useState<ProjectRecord | 'new' | null>(null)
+
+  async function load() {
+    setBusy(true)
+    try { setProjects(await listProjects(classId)) } finally { setBusy(false) }
+  }
+  useEffect(() => { void load() }, [classId])
+
+  return (
+    <div className="card-static">
+      <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
+        <div>
+          <h2 className="text-[18px] leading-tight">Projects</h2>
+          <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1">
+            {canEdit ? 'Standalone graded projects with deadlines and per-student proof uploads.' : 'Projects assigned to this class.'}
+          </p>
+        </div>
+        {canEdit && (
+          <button className="btn-primary text-xs" onClick={() => setEditing('new')}>+ Add Project</button>
+        )}
+      </div>
+
+      {busy && projects.length === 0 ? (
+        <p className="text-sm text-[color:var(--mid-gray)] py-3">Loading…</p>
+      ) : projects.length === 0 ? (
+        <p className="text-sm text-[color:var(--mid-gray)] py-3">No projects yet.</p>
+      ) : (
+        <ul className="space-y-3">
+          {projects.map(p => (
+            <ProjectCard
+              key={p.id}
+              project={p}
+              viewerIsStudent={isStudent}
+              viewerId={viewerId}
+              onEdit={() => setEditing(p)}
+              onDelete={async () => {
+                if (!confirm(`Delete "${p.title}"?`)) return
+                const ok = await deleteProject(p.id)
+                if (ok) await load()
+              }}
+              canEdit={canEdit}
+            />
+          ))}
+        </ul>
+      )}
+
+      {editing && (
+        <ProjectEditor
+          classId={classId}
+          roster={roster}
+          existing={editing === 'new' ? null : editing}
+          onClose={() => setEditing(null)}
+          onSaved={async () => { setEditing(null); await load() }}
+          viewerIsStudent={isStudent}
+          viewerId={viewerId}
+        />
+      )}
+    </div>
+  )
+}
+
+function ProjectCard({ project, viewerIsStudent, viewerId, onEdit, onDelete, canEdit }: {
+  project: ProjectRecord
+  viewerIsStudent: boolean
+  viewerId?: string
+  onEdit: () => void
+  onDelete: () => void
+  canEdit: boolean
+}) {
+  const myScore = viewerIsStudent && viewerId ? project.grades[viewerId]?.score : undefined
+  return (
+    <li className="rounded-xl border p-3" style={{ borderColor: 'var(--paper-3)' }}>
+      <div className="flex items-start justify-between gap-2 flex-wrap">
+        <div className="min-w-0">
+          <h3 className="font-semibold text-[color:var(--narra)]">{project.title}</h3>
+          <p className="text-[11.5px] text-[color:var(--mid-gray)]">
+            Total: {project.totalScore} pts
+            {project.deadline ? ` · Due ${new Date(project.deadline).toLocaleDateString()}` : ''}
+            {viewerIsStudent && typeof myScore === 'number' ? ` · Your score: ${myScore}/${project.totalScore}` : ''}
+          </p>
+          {project.description && <p className="text-[13px] mt-1 whitespace-pre-line">{project.description}</p>}
+        </div>
+        <div className="flex gap-1.5 shrink-0">
+          <button className="btn-secondary text-xs" onClick={onEdit}>{canEdit ? 'Edit' : 'View'}</button>
+          {canEdit && <button className="text-[10.5px] px-2 py-0.5 rounded text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)]" onClick={onDelete}>Delete</button>}
+        </div>
+      </div>
+    </li>
+  )
+}
+
+function ProjectEditor({ classId, roster, existing, onClose, onSaved, viewerIsStudent, viewerId }: {
+  classId: string
+  roster: StoredUser[]
+  existing: ProjectRecord | null
+  onClose: () => void
+  onSaved: () => void | Promise<void>
+  viewerIsStudent: boolean
+  viewerId?: string
+}) {
+  const [title, setTitle] = useState(existing?.title ?? '')
+  const [description, setDescription] = useState(existing?.description ?? '')
+  const [deadline, setDeadline] = useState(existing?.deadline ? existing.deadline.slice(0, 10) : '')
+  const [totalScore, setTotalScore] = useState<string>(existing?.totalScore != null ? String(existing.totalScore) : '')
+  const [grades, setGrades] = useState<Record<string, { score: number; makeupDate?: string }>>(existing?.grades ?? {})
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [projectId, setProjectId] = useState<string | null>(existing?.id ?? null)
+  const canEdit = !viewerIsStudent
+
+  function setGrade(id: string, score: number) {
+    setGrades({ ...grades, [id]: { ...(grades[id] ?? { score: 0 }), score } })
+  }
+  function setMakeup(id: string, makeupDate: string) {
+    setGrades({ ...grades, [id]: { ...(grades[id] ?? { score: 0 }), makeupDate } })
+  }
+
+  async function save() {
+    setErr(null)
+    if (!title.trim()) { setErr('Title is required.'); return }
+    if (!totalScore.trim()) { setErr('Total score is required.'); return }
+    setBusy(true)
+    try {
+      const payload = {
+        title: title.trim(),
+        description: description.trim() || null,
+        deadline: deadline ? new Date(deadline + 'T00:00:00').toISOString() : null,
+        totalScore: Number(totalScore),
+        grades,
+      }
+      const saved = existing
+        ? await updateProject(existing.id, payload)
+        : await createProject(classId, payload)
+      if (!saved) { setErr('Could not save.'); return }
+      setProjectId(saved.id)
+      await onSaved()
+    } catch (e) { setErr((e as Error).message) }
+    finally { setBusy(false) }
+  }
+
+  async function viewProof(studentId: string) {
+    if (!projectId) return
+    const blob = await fetchProjectProofBlob(projectId, studentId)
+    if (!blob) { alert('No proof uploaded.'); return }
+    const url = URL.createObjectURL(blob)
+    window.open(url, '_blank', 'noopener')
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }
+
+  // For a student viewer, restrict the table to their own row.
+  const visibleStudents = viewerIsStudent && viewerId
+    ? roster.filter(s => s.id === viewerId)
+    : roster
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm overflow-y-auto p-4" onClick={onClose}>
+      <div className="max-w-3xl mx-auto my-4 card-static" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div>
+            <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
+              {existing ? 'Edit project' : 'Add project'}
+            </div>
+            <h2 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">{title || 'New project'}</h2>
+          </div>
+          <button className="btn-secondary text-xs" onClick={onClose}>Close</button>
+        </div>
+        {err && <div className="mb-3 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
+
+        <Section title="Details">
+          <div className="grid sm:grid-cols-[1fr_160px] gap-3">
+            <label className="block">
+              <span className="label">Title</span>
+              <input className="input" value={title} onChange={e => setTitle(e.target.value)} disabled={!canEdit} />
+            </label>
+            <label className="block">
+              <span className="label">Total score</span>
+              <input type="number" className="input" value={totalScore} onChange={e => setTotalScore(e.target.value)} disabled={!canEdit} />
+            </label>
+          </div>
+          <label className="block mt-3 max-w-[200px]">
+            <span className="label">Deadline (optional)</span>
+            <input type="date" className="input" value={deadline} onChange={e => setDeadline(e.target.value)} disabled={!canEdit} />
+          </label>
+          <label className="block mt-3">
+            <span className="label">Description</span>
+            <textarea className="input" rows={3} value={description ?? ''} onChange={e => setDescription(e.target.value)} disabled={!canEdit} />
+          </label>
+        </Section>
+
+        {projectId && (
+          <Section title={viewerIsStudent ? 'Your grade' : 'Grades + proof'}>
+            <ul className="space-y-1">
+              {visibleStudents.map(s => (
+                <div key={s.id} className="grid grid-cols-[1fr_auto] gap-2 items-center text-sm py-1">
+                  <span className="truncate font-semibold text-[color:var(--narra)]">{[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {canEdit && (
+                      <input type="date" className="input" style={{ width: 140 }} value={grades[s.id]?.makeupDate ?? ''} onChange={e => setMakeup(s.id, e.target.value)} onBlur={save} title="Makeup date (optional)" />
+                    )}
+                    <input type="number" min={0} max={Number(totalScore) || undefined} className="input" style={{ width: 70 }} value={grades[s.id]?.score ?? ''} onChange={e => setGrade(s.id, Number(e.target.value))} onBlur={save} disabled={!canEdit} />
+                    <span className="text-[11.5px] text-[color:var(--mid-gray)]">/ {totalScore || '—'}</span>
+                    {canEdit && (
+                      <label className="btn-secondary text-[10.5px] cursor-pointer">
+                        Proof
+                        <input type="file" className="sr-only" accept="image/*,.pdf" onChange={async e => {
+                          const f = e.target.files?.[0]; e.target.value = ''
+                          if (f && projectId) await uploadProjectProof(projectId, s.id, f)
+                        }} />
+                      </label>
+                    )}
+                    <button className="text-[10.5px] px-2 py-0.5 rounded border" style={{ borderColor: 'var(--paper-3)' }} onClick={() => viewProof(s.id)}>View</button>
+                  </div>
+                </div>
+              ))}
+            </ul>
+          </Section>
+        )}
+
+        {canEdit && (
+          <div className="flex gap-2 justify-end mt-4 pt-3 border-t" style={{ borderColor: 'var(--paper-3)' }}>
+            <button className="btn-secondary text-xs" onClick={onClose} disabled={busy}>Cancel</button>
+            <button className="btn-primary text-xs" onClick={save} disabled={busy}>{busy ? 'Saving…' : (existing ? 'Save changes' : 'Create project')}</button>
+          </div>
         )}
       </div>
     </div>
