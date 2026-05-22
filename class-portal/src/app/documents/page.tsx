@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { submitDocuments } from '@/lib/api'
-import { getSession, getDraft, setDraft, putFile, uploadDocumentBlob, levelLabel, type EnrollmentLevel } from '@/lib/session'
+import { getSession, getDraft, setDraft, putFile, uploadDocumentBlob, levelLabel, getWaivers, type EnrollmentLevel } from '@/lib/session'
 import { backendOrigin, backendJson } from '@/lib/backend'
 import { generateAffidavitPdf, type AffidavitInput } from '@/lib/affidavit-pdf'
+import { generateWaiverPdf } from '@/lib/waiver-pdf'
 import SignaturePad from '@/components/SignaturePad'
 
 interface DocRequirement {
@@ -235,6 +236,25 @@ export default function DocumentsPage() {
         }
         documents['affidavit_undertaking'] = {
           name: file.name, size: file.size, type: file.type, fileId,
+        }
+      }
+
+      // Render the Parent Waiver PDF from the WaiverRecord the parent
+      // signed in /waiver and push it to the server blob store so the
+      // partner-school /admission tracker can download it. WaiverRecord
+      // lives in localStorage so we look it up by the email tagged on it.
+      if (session?.studentId && waiverSignedAt) {
+        try {
+          const draftEmail = (draft.email ?? '').trim().toLowerCase()
+          const waiver = getWaivers().find(w => w.studentEmail.toLowerCase() === draftEmail)
+          if (waiver) {
+            const waiverDoc = generateWaiverPdf(waiver)
+            const waiverBlob = waiverDoc.output('blob')
+            const waiverFile = new File([waiverBlob], 'parent-guardian-waiver.pdf', { type: 'application/pdf' })
+            await uploadDocumentBlob(session.studentId, 'parent_waiver', waiverFile)
+          }
+        } catch (e) {
+          console.warn('Parent waiver server sync failed:', e)
         }
       }
 
