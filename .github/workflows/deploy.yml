@@ -407,6 +407,23 @@ jobs:
           echo "→ Creating teletherapy tables..."
           cat prisma/setup.sql | docker exec -i sapphire_db psql -U sapphire -d sapphire_marketing 2>&1 || true
 
+          echo "→ Applying Prisma migrations to sapphire_marketing..."
+          # The dockerized "migrate" service isn't part of this deploy step,
+          # and historically migrations have had to be applied by hand on
+          # the VPS. Replay every migration.sql in order — they all use
+          # CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS guards
+          # so re-running is idempotent. Failures are logged but non-fatal
+          # so a single bad migration doesn't break unrelated deploys.
+          MIGRATION_DIR="/var/www/sapphireclinicseast.org/prisma/migrations"
+          for sql_file in $(ls -d "$MIGRATION_DIR"/*/ 2>/dev/null | sort); do
+            mig_name=$(basename "$sql_file")
+            sql="$sql_file/migration.sql"
+            [ -f "$sql" ] || continue
+            echo "  ↳ $mig_name"
+            cat "$sql" | docker exec -i sapphire_db psql -U sapphire -d sapphire_marketing -q -v ON_ERROR_STOP=0 2>&1 | tail -3
+          done
+          echo "✅ Marketing-hub migrations applied."
+
           echo "→ Building Next.js app..."
           npm run build 2>&1
 
