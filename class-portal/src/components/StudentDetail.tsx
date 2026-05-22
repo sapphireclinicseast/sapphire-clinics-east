@@ -202,9 +202,9 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
         </div>
       ) : null}
 
-      {/* Generated PDFs */}
+      {/* Other Documents — auto-generated PDFs + school-issued docs */}
       <div className="card-static">
-        <h2 className="text-[18px] leading-tight mb-3">Generated forms</h2>
+        <h2 className="text-[18px] leading-tight mb-3">Other Documents</h2>
         <p className="text-[12px] text-[color:var(--mid-gray)] mb-3" style={{ fontFamily: 'var(--font-display)' }}>
           Each <span className="font-semibold">View</span> opens a freshly rebuilt PDF using the latest template — no stale cached copies.
         </p>
@@ -241,6 +241,14 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
             />
           )}
           <SchoolIdCard
+            student={student}
+            viewerRole={viewerRole}
+            onUpdated={(updated) => { setStudent(updated); onChange?.() }}
+          />
+          <StaffUploadedDocCard
+            docKey="form_137_sf10"
+            title="Form 137 / SF10"
+            description="Permanent school record endorsed by the prior school. Uploaded by the teacher or admin once received."
             student={student}
             viewerRole={viewerRole}
             onUpdated={(updated) => { setStudent(updated); onChange?.() }}
@@ -539,6 +547,79 @@ function SchoolIdCard({ student, viewerRole, onUpdated }: {
           <label className="btn-primary text-xs cursor-pointer inline-flex items-center" style={{ width: 'auto' }}>
             {busy ? 'Uploading…' : 'Upload School ID'}
             <input type="file" className="sr-only" accept=".pdf,image/*" onChange={handleUpload} disabled={busy} />
+          </label>
+        ) : (
+          <span className="badge badge-pending">Pending</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Generic staff-uploaded document card — used for school-issued records like
+ * Form 137 / SF10 that the student themselves can't produce. Upload is
+ * restricted to ADMIN + TEACHER; everyone can view / download once uploaded.
+ * Stored under `enrollment.documents[docKey]` (IndexedDB fileId + metadata)
+ * and pushed to the server blob store so /admission can pull it.
+ */
+function StaffUploadedDocCard({ docKey, title, description, student, viewerRole, onUpdated }: {
+  docKey: string
+  title: string
+  description: string
+  student: StoredUser
+  viewerRole: 'STUDENT' | 'TEACHER' | 'ADMIN'
+  onUpdated: (updated: StoredUser) => void
+}) {
+  const doc = student.enrollment?.documents?.[docKey]
+  const canEdit = viewerRole === 'ADMIN' || viewerRole === 'TEACHER'
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    if (f.size > 15 * 1024 * 1024) { setErr(`${title} is larger than 15 MB.`); return }
+    setErr(null); setBusy(true)
+    try {
+      const newFileId = 'doc_' + Math.random().toString(36).slice(2, 12)
+      await putFile(newFileId, f)
+      if (doc?.fileId) { try { await deleteFile(doc.fileId) } catch { /* ignore */ } }
+      try { await uploadDocumentBlob(student.id, docKey, f) } catch { /* ignore */ }
+      const nextDocs = { ...(student.enrollment?.documents ?? {}) }
+      nextDocs[docKey] = { name: f.name, size: f.size, type: f.type, fileId: newFileId }
+      const updated = await updateUserEnrollment(student.id, { documents: nextDocs })
+      onUpdated(updated)
+    } catch (ex) { setErr((ex as Error).message) }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <div className="rounded-2xl p-4 border" style={{ borderColor: 'var(--paper-3)', background: '#fff' }}>
+      <div className="font-semibold text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>{title}</div>
+      <div className="text-[12px] text-[color:var(--mid-gray)] mt-1">
+        {doc?.fileId
+          ? `${doc.name} · ${(doc.size / 1024).toFixed(0)} KB`
+          : (canEdit ? description : 'Not yet uploaded by the school.')}
+      </div>
+      {err && <div className="text-[11.5px] text-rose-700 mt-1">{err}</div>}
+      <div className="flex gap-2 mt-3 flex-wrap">
+        {doc?.fileId ? (
+          <>
+            <button type="button" className="btn-secondary text-xs" onClick={() => openFile(doc.fileId!, doc.name, doc.type)}>View</button>
+            <button type="button" className="btn-primary text-xs" onClick={() => downloadFile(doc.fileId!, doc.name, doc.type)}>Download</button>
+            {canEdit && (
+              <label className="btn-secondary text-xs cursor-pointer inline-flex items-center" style={{ width: 'auto' }}>
+                {busy ? 'Uploading…' : 'Replace'}
+                <input type="file" className="sr-only" accept=".pdf,image/*,.doc,.docx" onChange={handleUpload} disabled={busy} />
+              </label>
+            )}
+          </>
+        ) : canEdit ? (
+          <label className="btn-primary text-xs cursor-pointer inline-flex items-center" style={{ width: 'auto' }}>
+            {busy ? 'Uploading…' : `Upload ${title}`}
+            <input type="file" className="sr-only" accept=".pdf,image/*,.doc,.docx" onChange={handleUpload} disabled={busy} />
           </label>
         ) : (
           <span className="badge badge-pending">Pending</span>

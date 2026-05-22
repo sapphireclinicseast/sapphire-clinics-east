@@ -216,6 +216,12 @@ export default function AdmissionPage() {
 
   // Server-side blob presence checker.
   const hasBlob = (s: AdmissionStudent, docKey: string) => s.documentBlobs.some(b => b.docKey === docKey)
+  // Local-IndexedDB fallback: the parent uploaded the file but the server-side
+  // sync wasn't running at the time (legacy enrollments from before the blob
+  // sync shipped). Surfacing this lets staff know to ask the parent to re-
+  // submit so the file lands in the partner-school's reach.
+  const hasLocalOnly = (s: AdmissionStudent, docKey: string) =>
+    !hasBlob(s, docKey) && !!s.documentsMeta?.[docKey]?.fileId
 
   /** Open a document blob via the code-gated admission endpoint. */
   function openDocBlob(s: AdmissionStudent, docKey: string, inline = false) {
@@ -387,11 +393,12 @@ export default function AdmissionPage() {
                   <th className="py-1 px-1.5 font-semibold whitespace-nowrap text-center" style={{ minWidth: 110, background: '#fef3c7' }}>DepEd Affidavit</th>
                   <th className="py-1 px-1.5 font-semibold whitespace-nowrap text-center" style={{ minWidth: 110, background: '#fef3c7' }}>Report Card / SF9</th>
                   <th className="py-1 px-1.5 font-semibold whitespace-nowrap text-center" style={{ minWidth: 110, background: '#fef3c7' }}>PSA Birth Cert</th>
+                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap text-center" style={{ minWidth: 110, background: '#fef3c7' }}>Form 137 / SF10</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={44} className="py-10 text-center text-[color:var(--mid-gray)]">No students in this branch yet.</td></tr>
+                  <tr><td colSpan={45} className="py-10 text-center text-[color:var(--mid-gray)]">No students in this branch yet.</td></tr>
                 )}
                 {filtered.map(s => (
                   <tr key={s.id} className="border-b hover:bg-[color:var(--paper-2)]" style={{ borderColor: 'var(--paper-3)' }}>
@@ -482,22 +489,27 @@ export default function AdmissionPage() {
 
                     {/* Parent Waiver — server blob (if uploaded by parent) */}
                     <td className="py-1 px-1.5 whitespace-nowrap text-center" style={{ background: '#fffbe6' }}>
-                      <DocCell present={hasBlob(s, 'parent_waiver')} onView={() => openDocBlob(s, 'parent_waiver', true)} onDownload={() => openDocBlob(s, 'parent_waiver', false)} hint={s.waiverSignedAt ? `Signed ${new Date(s.waiverSignedAt).toLocaleDateString()}` : undefined} />
+                      <DocCell present={hasBlob(s, 'parent_waiver')} localOnly={hasLocalOnly(s, 'parent_waiver')} onView={() => openDocBlob(s, 'parent_waiver', true)} onDownload={() => openDocBlob(s, 'parent_waiver', false)} hint={s.waiverSignedAt ? `Signed ${new Date(s.waiverSignedAt).toLocaleDateString()}` : undefined} />
                     </td>
 
                     {/* DepEd Affidavit of Undertaking — only if filled */}
                     <td className="py-1 px-1.5 whitespace-nowrap text-center" style={{ background: '#fffbe6' }}>
-                      <DocCell present={hasBlob(s, 'affidavit_undertaking')} onView={() => openDocBlob(s, 'affidavit_undertaking', true)} onDownload={() => openDocBlob(s, 'affidavit_undertaking', false)} />
+                      <DocCell present={hasBlob(s, 'affidavit_undertaking')} localOnly={hasLocalOnly(s, 'affidavit_undertaking')} onView={() => openDocBlob(s, 'affidavit_undertaking', true)} onDownload={() => openDocBlob(s, 'affidavit_undertaking', false)} />
                     </td>
 
                     {/* Latest Report Card / SF9 */}
                     <td className="py-1 px-1.5 whitespace-nowrap text-center" style={{ background: '#fffbe6' }}>
-                      <DocCell present={hasBlob(s, 'report_card_sf9')} onView={() => openDocBlob(s, 'report_card_sf9', true)} onDownload={() => openDocBlob(s, 'report_card_sf9', false)} />
+                      <DocCell present={hasBlob(s, 'report_card_sf9')} localOnly={hasLocalOnly(s, 'report_card_sf9')} onView={() => openDocBlob(s, 'report_card_sf9', true)} onDownload={() => openDocBlob(s, 'report_card_sf9', false)} />
                     </td>
 
                     {/* PSA Birth Certificate */}
                     <td className="py-1 px-1.5 whitespace-nowrap text-center" style={{ background: '#fffbe6' }}>
-                      <DocCell present={hasBlob(s, 'psa_birth_cert')} onView={() => openDocBlob(s, 'psa_birth_cert', true)} onDownload={() => openDocBlob(s, 'psa_birth_cert', false)} />
+                      <DocCell present={hasBlob(s, 'psa_birth_cert')} localOnly={hasLocalOnly(s, 'psa_birth_cert')} onView={() => openDocBlob(s, 'psa_birth_cert', true)} onDownload={() => openDocBlob(s, 'psa_birth_cert', false)} />
+                    </td>
+
+                    {/* Form 137 / SF10 — uploaded by staff (teacher / admin / branch admin) */}
+                    <td className="py-1 px-1.5 whitespace-nowrap text-center" style={{ background: '#fffbe6' }}>
+                      <DocCell present={hasBlob(s, 'form_137_sf10')} localOnly={hasLocalOnly(s, 'form_137_sf10')} onView={() => openDocBlob(s, 'form_137_sf10', true)} onDownload={() => openDocBlob(s, 'form_137_sf10', false)} />
                     </td>
                   </tr>
                 ))}
@@ -516,15 +528,26 @@ export default function AdmissionPage() {
 
 /** Inline document-cell renderer for the /admission table. Shows View +
  *  Download mini-buttons when the server has the blob; otherwise shows a
- *  faint dash. The `hint` slot lets callers expose meta like "Signed
- *  YYYY-MM-DD" when the document existed but wasn't synced to the server. */
-function DocCell({ present, onView, onDownload, hint }: {
+ *  faint dash. `localOnly` flags the case where the parent uploaded the file
+ *  but it lives only in their browser's IndexedDB (legacy enrollments from
+ *  before the server-blob sync shipped) — staff sees a phone glyph so they
+ *  know to ask the parent to re-submit. The `hint` slot lets callers expose
+ *  meta like "Signed YYYY-MM-DD". */
+function DocCell({ present, localOnly, onView, onDownload, hint }: {
   present: boolean
+  localOnly?: boolean
   onView: () => void
   onDownload: () => void
   hint?: string
 }) {
   if (!present) {
+    if (localOnly) {
+      return (
+        <span className="text-[10.5px] text-amber-700" title="Parent uploaded this on their device, but it hasn't synced to the server yet. Ask the parent to re-submit on /documents, or upload on their behalf from the admin profile.">
+          📱 Local
+        </span>
+      )
+    }
     return (
       <span className="text-[color:var(--mid-gray)] text-[10.5px]" title={hint ?? 'Not uploaded'}>
         {hint ? '⌛' : '—'}

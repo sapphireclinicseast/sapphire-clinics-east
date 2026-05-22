@@ -1344,6 +1344,64 @@ export async function uploadDocumentBlob(studentId: string, docKey: string, file
   }
 }
 
+/**
+ * List the docKeys the server already has for a student. Returns null on
+ * any error (e.g. legacy build where the GET endpoint isn't deployed yet),
+ * so callers can fall back to "do nothing" instead of triggering a re-sync
+ * storm against an unreachable backend.
+ */
+async function listServerDocBlobKeys(studentId: string): Promise<Set<string> | null> {
+  if (typeof window === 'undefined') return null
+  if (!getToken()) return null
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/document-blobs?studentId=${encodeURIComponent(studentId)}`, {
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) return null
+    const j = await res.json() as { blobs?: Array<{ docKey: string }> }
+    return new Set((j.blobs ?? []).map(b => b.docKey))
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Catch-up resync: for every doc in `enrollment.documents` that the parent
+ * has in their local IndexedDB, push it to the server blob store if the
+ * server doesn't already have a copy. This recovers students whose docs
+ * were uploaded before the server-blob feature shipped — without forcing
+ * them to re-upload anything by hand.
+ *
+ * Safe to call repeatedly; it's a no-op once every key is in sync.
+ * Best-effort: silently swallows individual file errors and returns the
+ * count of successfully synced docs.
+ */
+export async function syncLocalDocsToServer(
+  studentId: string,
+  documents: Record<string, { name: string; size: number; type?: string; fileId?: string }> | undefined,
+): Promise<number> {
+  if (typeof window === 'undefined' || !documents) return 0
+  if (!getToken()) return 0
+  const serverKeys = await listServerDocBlobKeys(studentId)
+  if (serverKeys === null) return 0
+  let synced = 0
+  for (const [docKey, meta] of Object.entries(documents)) {
+    if (!meta.fileId) continue
+    if (serverKeys.has(docKey)) continue
+    try {
+      const blob = await getFile(meta.fileId)
+      if (!blob) continue
+      const file = new File([blob], meta.name, { type: meta.type ?? blob.type ?? 'application/octet-stream' })
+      const ok = await uploadDocumentBlob(studentId, docKey, file)
+      if (ok) synced += 1
+    } catch (e) {
+      console.warn('[syncLocalDocsToServer] skipped', docKey, e)
+    }
+  }
+  return synced
+}
+
 export async function deleteFile(id: string): Promise<void> {
   if (typeof window === 'undefined') return
   const db = await openDb()
