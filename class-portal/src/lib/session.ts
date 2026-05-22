@@ -781,19 +781,24 @@ export function remindersForStudentOn(
       }
     }
     // Also flag any *prior* unpaid month as overdue. Look back up to 3 months.
+    // Only fire when an actual PaymentRecord exists for that period — otherwise
+    // a brand-new enrollee (not yet billed for prior months) would see false
+    // OVERDUE notices for months before they joined.
+    const allRecords = getPaymentsForStudent(studentId)
     for (let back = 1; back <= 3; back++) {
       const mm = (m + 12 - back) % 12
       const yy = m - back < 0 ? y - 1 : y
       const period = `${monthName(mm)} ${yy}`
+      const hasRecord = allRecords.some(p => p.period === period)
+      if (!hasRecord) continue
       const alreadyPaid = paid.some(p => p.period === period)
       if (alreadyPaid) continue
       // Only emit if today is past the 5th of that month
       const due = new Date(yy, mm, 5, 23, 59, 59)
       if (today <= due) continue
-      // And skip if no record at all + not in current window (avoid spamming for never-paid students far back)
       emit({
         title: `Monthly tuition — ${period} OVERDUE`,
-        body: `Monthly tuition for ${period} is past due (deadline was ${monthName(mm)} 5${yy !== y ? `, ${yy}` : ''}). Please complete payment via PayMongo as soon as possible.`,
+        body: `Monthly tuition for ${period} is past due (deadline was ${monthName(mm)} 5${yy !== y ? `, ${yy}` : ''}). Please complete payment as soon as possible.`,
         dueOn: isoDate(yy, mm, 5),
         severity: 'WARNING',
         windowOpensAt: due.toISOString(),
