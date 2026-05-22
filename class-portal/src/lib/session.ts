@@ -1309,6 +1309,186 @@ export async function fetchClassPhotoBlob(id: string): Promise<Blob | null> {
 }
 
 /* ─────────────────────────────────────────────────────────────────
+   Lessons (Phase 2) — day's lessons inside a Class.
+   ───────────────────────────────────────────────────────────── */
+
+export type AttendanceStatus = 'PRESENT' | 'ABSENT'
+
+export interface LessonRecord {
+  id: string
+  classId: string
+  lessonDate: string
+  title: string
+  description: string | null
+  attendance: Record<string, AttendanceStatus>
+  hasStudentOutput: boolean
+  gradeTotal: number | null
+  grades: Record<string, { score: number; makeupDate?: string }>
+  createdAt: string
+  updatedAt: string
+}
+
+export interface LessonAttachmentMeta {
+  id: string
+  fileName: string
+  fileType: string
+  fileSize: number
+  createdAt: string
+}
+
+export interface LessonOutputMeta {
+  id: string
+  studentId: string
+  fileName: string
+  fileType: string
+  fileSize: number
+  makeupDate: string | null
+  updatedAt: string
+}
+
+export async function listLessons(classId: string): Promise<LessonRecord[]> {
+  if (typeof window === 'undefined') return []
+  if (!getToken()) return []
+  try {
+    const { lessons } = await backendJson<{ lessons: LessonRecord[] }>(`/api/public/class-portal/classes/${encodeURIComponent(classId)}/lessons`)
+    return lessons
+  } catch (e) {
+    console.warn('[listLessons]', e); return []
+  }
+}
+
+export async function fetchLessonDetail(lessonId: string): Promise<{
+  lesson: LessonRecord
+  attachments: LessonAttachmentMeta[]
+  outputs: LessonOutputMeta[]
+} | null> {
+  try {
+    return await backendJson<{ lesson: LessonRecord; attachments: LessonAttachmentMeta[]; outputs: LessonOutputMeta[] }>(
+      `/api/public/class-portal/lessons/${encodeURIComponent(lessonId)}`,
+    )
+  } catch (e) {
+    console.warn('[fetchLessonDetail]', e); return null
+  }
+}
+
+export async function createLesson(classId: string, args: {
+  lessonDate: string
+  title: string
+  description?: string | null
+  attendance?: Record<string, AttendanceStatus>
+  hasStudentOutput?: boolean
+  gradeTotal?: number | null
+  grades?: Record<string, { score: number; makeupDate?: string }>
+}): Promise<LessonRecord | null> {
+  try {
+    const { lesson } = await backendJson<{ lesson: LessonRecord }>(`/api/public/class-portal/classes/${encodeURIComponent(classId)}/lessons`, {
+      method: 'POST',
+      body: JSON.stringify(args),
+    })
+    return lesson
+  } catch (e) {
+    console.warn('[createLesson]', e); return null
+  }
+}
+
+export async function updateLesson(lessonId: string, patch: Partial<{
+  title: string
+  description: string | null
+  lessonDate: string
+  attendance: Record<string, AttendanceStatus>
+  hasStudentOutput: boolean
+  gradeTotal: number | null
+  grades: Record<string, { score: number; makeupDate?: string }>
+}>): Promise<LessonRecord | null> {
+  try {
+    const { lesson } = await backendJson<{ lesson: LessonRecord }>(`/api/public/class-portal/lessons/${encodeURIComponent(lessonId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    })
+    return lesson
+  } catch (e) {
+    console.warn('[updateLesson]', e); return null
+  }
+}
+
+export async function deleteLesson(lessonId: string): Promise<boolean> {
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/lessons/${encodeURIComponent(lessonId)}`, {
+      method: 'DELETE',
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    return res.ok
+  } catch { return false }
+}
+
+export async function uploadLessonAttachment(lessonId: string, file: File): Promise<LessonAttachmentMeta | null> {
+  if (!getToken()) return null
+  try {
+    const fd = new FormData(); fd.append('file', file)
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/lessons/${encodeURIComponent(lessonId)}/attachments`, {
+      method: 'POST', body: fd,
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) return null
+    const j = await res.json() as { attachment: LessonAttachmentMeta }
+    return j.attachment
+  } catch (e) { console.warn('[uploadLessonAttachment]', e); return null }
+}
+
+export async function deleteLessonAttachment(lessonId: string, attId: string): Promise<boolean> {
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/lessons/${encodeURIComponent(lessonId)}/attachments/${encodeURIComponent(attId)}`, {
+      method: 'DELETE',
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    return res.ok
+  } catch { return false }
+}
+
+export async function fetchLessonAttachmentBlob(lessonId: string, attId: string): Promise<Blob | null> {
+  if (!getToken()) return null
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/lessons/${encodeURIComponent(lessonId)}/attachments/${encodeURIComponent(attId)}`, {
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) return null
+    return await res.blob()
+  } catch { return null }
+}
+
+export async function uploadLessonOutput(lessonId: string, studentId: string, file: File, makeupDate?: string): Promise<LessonOutputMeta | null> {
+  if (!getToken()) return null
+  try {
+    const fd = new FormData(); fd.append('file', file)
+    if (makeupDate) fd.append('makeupDate', makeupDate)
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/lessons/${encodeURIComponent(lessonId)}/outputs/${encodeURIComponent(studentId)}`, {
+      method: 'PUT', body: fd,
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) return null
+    const j = await res.json() as { output: LessonOutputMeta }
+    return j.output
+  } catch (e) { console.warn('[uploadLessonOutput]', e); return null }
+}
+
+export async function fetchLessonOutputBlob(lessonId: string, studentId: string): Promise<Blob | null> {
+  if (!getToken()) return null
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/lessons/${encodeURIComponent(lessonId)}/outputs/${encodeURIComponent(studentId)}`, {
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) return null
+    return await res.blob()
+  } catch { return null }
+}
+
+/* ─────────────────────────────────────────────────────────────────
    Curriculum templates — uploaded per grade level
    ───────────────────────────────────────────────────────────── */
 

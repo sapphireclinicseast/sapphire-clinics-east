@@ -1002,6 +1002,70 @@ model ClassPortalClass {
   @@index([level])
 }
 
+/// One day's lesson inside a ClassPortalClass. Phase 2 of the Class
+/// feature: a date-on-schedule entry with title, description, attached
+/// reference materials, attendance per student, optional per-student
+/// outputs, and optional graded work.
+model ClassPortalLesson {
+  id               String   @id @default(cuid())
+  classId          String
+  /// The actual class day. Must fall on one of the parent class's
+  /// scheduleDays — enforced in the API.
+  lessonDate       DateTime
+  title            String
+  description      String?
+  /// Attendance map keyed by studentId → 'PRESENT' | 'ABSENT'.
+  /// JSON so adding/removing students doesn't churn the schema.
+  attendance       Json     @default("{}")
+  /// Set when the teacher ticks "Has student output?" — controls
+  /// whether the per-student output upload section renders.
+  hasStudentOutput Boolean  @default(false)
+  /// Total points if the lesson is graded (e.g. 100). When null the
+  /// lesson is not a graded session.
+  gradeTotal       Int?
+  /// Grades map keyed by studentId → { score, makeupDate? }.
+  grades           Json     @default("{}")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([classId])
+  @@index([lessonDate])
+}
+
+/// Reference material attached to a lesson — PDFs, Word, Excel files
+/// the teacher hands out. Bytes stored inline (same pattern as the
+/// shared Curriculum + Template libraries).
+model ClassPortalLessonAttachment {
+  id        String   @id @default(cuid())
+  lessonId  String
+  fileName  String
+  fileType  String
+  fileSize  Int
+  fileData  Bytes
+  createdAt DateTime @default(now())
+
+  @@index([lessonId])
+}
+
+/// One student's output for a lesson — typically a photo of their
+/// work. Stored inline. makeupDate is set when an absent student
+/// submitted later (the teacher records the makeup date alongside).
+model ClassPortalLessonOutput {
+  id         String   @id @default(cuid())
+  lessonId   String
+  studentId  String
+  fileName   String
+  fileType   String
+  fileSize   Int
+  fileData   Bytes
+  makeupDate DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([lessonId, studentId])
+  @@index([lessonId])
+}
+
 /// Shared curriculum library — per-grade. Stored on the server so admins,
 /// teachers, front desk, and students see the same set regardless of which
 /// device the file was uploaded from. Each record can carry up to three
