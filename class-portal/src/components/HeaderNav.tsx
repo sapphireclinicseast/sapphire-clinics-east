@@ -52,6 +52,12 @@ export default function HeaderNav() {
       ) : (
         <>
           <a href="/calendar" className={linkCls}>Calendar</a>
+          {/* Classes is visible to teachers, students, and admins. Front
+              desk is intentionally excluded — class management is out of
+              scope for that role. */}
+          {auth.role !== 'FRONTDESK' && (
+            <a href="/classes" className={linkCls}>Classes</a>
+          )}
           <a href={dashboardHref} className={linkCls}>
             {auth.role === 'ADMIN' ? 'Admin'
              : auth.role === 'BRANCH_ADMIN' ? 'Branch admin'
