@@ -306,6 +306,11 @@ export interface StoredUser {
   createdAt: string
   /** Snapshot of the enrollment draft at signup (students only). */
   enrollment?: Partial<EnrollmentDraft>
+  /** Audit trail for password changes — server-side only, plaintext is
+   *  NEVER stored. Used by the admin user list to show "Last reset by X
+   *  on YYYY-MM-DD" instead of the unhelpful "not on device" placeholder. */
+  passwordSetAt?: string | null
+  passwordSetBy?: string | null
 }
 
 export interface AuthSession {
@@ -347,6 +352,8 @@ interface ApiUser {
   level?: EnrollmentLevel | null
   branch?: Branch | null
   enrollment?: Partial<EnrollmentDraft> | null
+  passwordSetAt?: string | null
+  passwordSetBy?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -362,6 +369,8 @@ function apiToStored(u: ApiUser, password = ''): StoredUser {
     level: (u.level ?? undefined) as EnrollmentLevel | undefined,
     branch: (u.branch ?? undefined) as Branch | undefined,
     enrollment: u.enrollment ?? undefined,
+    passwordSetAt: u.passwordSetAt ?? null,
+    passwordSetBy: u.passwordSetBy ?? null,
     createdAt: u.createdAt,
   }
 }

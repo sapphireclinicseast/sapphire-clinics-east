@@ -764,6 +764,11 @@ model ClassPortalUser {
   /// Snapshot of the parent-submitted enrollment form (JSON). For STUDENT
   /// rows only; null for TEACHER rows. Mirrors the EnrollmentDraft shape.
   enrollment   Json?
+  /// Audit trail for password changes — who and when. Plaintext is NEVER
+  /// stored; this is just so the admin list can show "Last reset by X on
+  /// 2026-05-22" instead of the unhelpful "not on device" placeholder.
+  passwordSetAt DateTime?
+  passwordSetBy String?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 

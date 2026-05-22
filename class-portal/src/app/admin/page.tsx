@@ -271,7 +271,7 @@ function UsersPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANC
         </div>
 
         <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-2" style={{ fontFamily: 'var(--font-display)' }}>
-          Passwords are encrypted on the server and can&apos;t be retrieved later. The list shows only passwords you created or reset on this device. To recover an account use <span className="font-semibold">Reset password</span>.
+          Passwords are one-way encrypted on the server and can&apos;t be retrieved — not by Claude, not by Anthropic, not by us. The list shows the plaintext only when it was set or reset on <span className="font-semibold">this device</span>; otherwise the row shows <span className="font-semibold">who last set it and when</span>. To give a parent or staff member access, click <span className="font-semibold">Reset</span> next to their row.
         </p>
 
         {err && <div className="mt-4 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
@@ -308,15 +308,36 @@ function UsersPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANC
                   <td className="py-2.5 px-3">{u.email}</td>
                   <td className="py-2.5 px-3 text-[12.5px]">{branchLabel(u.branch)}</td>
                   <td className="py-2.5 px-3 font-mono text-[12.5px]">
-                    {u.password
-                      ? (showPasswords ? u.password : '•'.repeat(Math.min(u.password.length, 10)))
-                      : <span className="text-[color:var(--mid-gray)] italic">not on device</span>}
+                    {u.password ? (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span>{showPasswords ? u.password : '•'.repeat(Math.min(u.password.length, 10))}</span>
+                        <button
+                          type="button"
+                          className="text-[10.5px] px-2 py-0.5 rounded-md text-white font-semibold"
+                          style={{ background: 'var(--moss)' }}
+                          onClick={() => { setResetting(u); setErr(null); setInfo(null) }}
+                        >Reset</button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[color:var(--mid-gray)] text-[11px] not-italic font-sans">
+                          {u.passwordSetAt
+                            ? <>Last set by <span className="font-semibold">{u.passwordSetBy ?? 'unknown'}</span> on {new Date(u.passwordSetAt).toLocaleDateString()}</>
+                            : <span className="italic">not on device</span>}
+                        </span>
+                        <button
+                          type="button"
+                          className="text-[10.5px] px-2 py-0.5 rounded-md text-white font-semibold"
+                          style={{ background: 'var(--moss)' }}
+                          onClick={() => { setResetting(u); setErr(null); setInfo(null) }}
+                        >Reset</button>
+                      </div>
+                    )}
                   </td>
                   <td className="py-2.5 px-3">{u.level ? levelLabel(u.level) : '—'}</td>
                   <td className="py-2.5 px-3 text-[color:var(--mid-gray)] text-xs">{new Date(u.createdAt).toLocaleDateString()}</td>
                   <td className="py-2.5 px-3 text-right whitespace-nowrap">
                     <button className="text-xs px-2 py-1 rounded-md text-[color:var(--narra)] hover:bg-[color:var(--paper-2)]" onClick={() => { setEditing(u); setErr(null); setInfo(null) }}>Edit</button>
-                    <button className="text-xs px-2 py-1 rounded-md text-[color:var(--moss)] hover:bg-[color:var(--paper-2)] ml-1" onClick={() => { setResetting(u); setErr(null); setInfo(null) }}>Reset password</button>
                     {viewerRole === 'ADMIN' && (
                       <button className="text-xs px-2 py-1 rounded-md text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] ml-1" onClick={() => handleDelete(u)}>Delete</button>
                     )}
