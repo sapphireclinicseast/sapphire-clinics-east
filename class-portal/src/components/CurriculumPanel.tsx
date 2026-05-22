@@ -178,13 +178,27 @@ export default function CurriculumPanel({ viewer }: Props) {
         <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
           <h2 className="text-[18px] leading-tight">{viewer.role === 'STUDENT' ? 'Your curriculum' : 'All curriculum templates'}</h2>
           {viewer.role !== 'STUDENT' && (
-            <input
-              className="input"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search by title, file name, uploader, or grade"
-              style={{ width: 280 }}
-            />
+            <div className="flex items-center gap-2 flex-wrap">
+              <input
+                className="input"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search by title, file name, uploader, or grade"
+                style={{ width: 280 }}
+              />
+              <button
+                type="button"
+                className="btn-secondary text-xs"
+                title="Wipe this browser's cached curriculum list and pull a fresh copy from the server. Use after deleting a stale local-only entry."
+                onClick={() => {
+                  if (typeof window === 'undefined') return
+                  localStorage.removeItem('scei_class_curriculum_v1')
+                  void refresh()
+                }}
+              >
+                Reset & resync
+              </button>
+            </div>
           )}
         </div>
         {items.length === 0 ? (
