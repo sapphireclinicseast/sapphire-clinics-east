@@ -4,7 +4,6 @@
 // Without it the page state (auth, list, etc) would be served from a
 // year-old prerendered shell and reflect zero deploys.
 export const dynamic = 'force-dynamic'
-export const revalidate = 0
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'

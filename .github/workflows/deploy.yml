@@ -324,8 +324,11 @@ jobs:
             docker ps --filter "name=sapphire_class_portal" --format "  {{.Names}}  image={{.Image}}  status={{.Status}}" || true
 
             echo "→ Rebuilding class-portal image..."
-            docker compose -f /opt/sapphire/docker/docker-compose.yml --env-file "$ENV_FILE" build --pull class-portal 2>&1 | tail -5
-            BUILD_RC=$?
+            # `tail -5` reset $?, so we used to recreate the container even
+            # when docker compose failed. Read PIPESTATUS[0] instead so we
+            # actually catch a failed build and bail.
+            docker compose -f /opt/sapphire/docker/docker-compose.yml --env-file "$ENV_FILE" build --pull class-portal 2>&1 | tail -30
+            BUILD_RC=${PIPESTATUS[0]}
             if [ "$BUILD_RC" != "0" ]; then
               echo "❌ class-portal build failed (exit $BUILD_RC) — leaving previous container untouched."
               exit 1
