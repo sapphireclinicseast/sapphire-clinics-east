@@ -190,4 +190,64 @@ else
   echo "[offsite]   To enable, run on the VPS: rclone config   (add remote name \"offsite\")"
 fi
 
+
+# --- SECOND OFFSITE TARGET: Cloudflare R2 (rclone) --------------
+# Same pattern as the offsite: block above. Only fires if an rclone
+# remote named "r2" is configured. Gives provider-redundant backups
+# (Google Drive + Cloudflare R2) so a single-provider lockout cannot
+# take both copies.
+#
+# Free tier: 10GB storage + free egress on R2. We only push the
+# SMALL critical tarballs (DB dumps, system config, encrypted env)
+# to stay inside that quota; heavy media (uploads, source tree)
+# stay on Drive only.
+#
+# One-time VPS setup:
+#   1. Sign up at https://dash.cloudflare.com (free, no card).
+#   2. R2 -> Create bucket -> name "sapphire-backups".
+#   3. R2 -> Manage R2 API Tokens -> Create API token ->
+#      Object Read & Write on that bucket. Note: account_id,
+#      access_key_id, secret_access_key.
+#   4. On the VPS run:  rclone config
+#        n  (new)
+#        name>  r2
+#        Storage>  s3
+#        provider>  Cloudflare
+#        env_auth>  false
+#        access_key_id>  <paste>
+#        secret_access_key>  <paste>
+#        region>  auto
+#        endpoint>  https://<account_id>.r2.cloudflarestorage.com
+#        (defaults for the rest)
+#   5. Verify:  rclone lsd r2:
+if rclone listremotes 2>/dev/null | grep -q "^r2:$"; then
+  echo "[offsite] Pushing to rclone remote r2 (Cloudflare R2)..."
+  rclone copy --no-traverse --transfers=2 \
+    "$DEST/marketing_${TS}.sql.gz" r2:sapphire-backups/sapphire/db/ 2>&1 | tail -3
+  if [ -f "$DEST/accounting_${TS}.sql.gz" ]; then
+    rclone copy --no-traverse --transfers=2 \
+      "$DEST/accounting_${TS}.sql.gz" r2:sapphire-backups/sapphire/db/ 2>&1 | tail -3
+  fi
+  if [ -f "$DEST/hr_data_${TS}.tar.gz" ]; then
+    rclone copy --no-traverse "$DEST/hr_data_${TS}.tar.gz" r2:sapphire-backups/sapphire/hr/data/ 2>&1 | tail -3
+  fi
+  if [ -f "$DEST/system_config_${TS}.tar.gz" ]; then
+    rclone copy --no-traverse "$DEST/system_config_${TS}.tar.gz" r2:sapphire-backups/sapphire/system/ 2>&1 | tail -3
+  fi
+  if [ -f "$DEST/crontab_${TS}.txt" ]; then
+    rclone copy --no-traverse "$DEST/crontab_${TS}.txt" r2:sapphire-backups/sapphire/system/ 2>&1 | tail -3
+  fi
+  if [ -f "$DEST/env_${TS}.tar.gz.enc" ]; then
+    rclone copy --no-traverse "$DEST/env_${TS}.tar.gz.enc" r2:sapphire-backups/sapphire/env/ 2>&1 | tail -3
+  fi
+  # Mirror retention on R2
+  rclone delete --min-age ${KEEP_DAYS}d r2:sapphire-backups/sapphire/db/      2>/dev/null || true
+  rclone delete --min-age ${KEEP_DAYS}d r2:sapphire-backups/sapphire/hr/data/ 2>/dev/null || true
+  rclone delete --min-age ${KEEP_DAYS}d r2:sapphire-backups/sapphire/system/  2>/dev/null || true
+  rclone delete --min-age ${KEEP_DAYS}d r2:sapphire-backups/sapphire/env/     2>/dev/null || true
+  echo "[offsite] Pushed to R2"
+else
+  echo "[offsite] (R2 push skipped -- no rclone remote called \"r2\" configured yet)"
+fi
+
 echo "[offsite] ── Done ────────────────────────────────────"
