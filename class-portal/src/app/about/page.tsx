@@ -30,6 +30,15 @@ export default function AboutPage() {
                 Registered with the <span className="font-semibold text-white">National Privacy Commission</span> and compliant with the <span className="font-semibold text-white">Data Privacy Act of 2012</span>.
               </p>
             </div>
+
+            <div className="mt-5 pt-5 border-t border-white/15">
+              <div className="text-[11px] uppercase tracking-[0.12em] text-white/70 mb-2" style={{ fontFamily: 'var(--font-display)' }}>
+                Is this different from Sapphire Clinics?
+              </div>
+              <p className="text-white/80 text-[12.5px] leading-relaxed">
+                <span className="font-semibold text-white">Aura Academy for Learning</span> is a different entity than <span className="font-semibold text-white">Sapphire Clinics</span>, but is hosted in the clinic premises of <span className="font-semibold text-white">Sapphire Clinics East</span> and <span className="font-semibold text-white">Sapphire Clinics Greenhills</span>.
+              </p>
+            </div>
           </div>
         </div>
       </section>
