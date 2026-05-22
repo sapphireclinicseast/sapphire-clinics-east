@@ -441,63 +441,69 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
           <Section title="Student output">
             <label className="inline-flex items-center gap-2 text-sm">
               <input type="checkbox" checked={hasOutput} onChange={e => setHasOutput(e.target.checked)} disabled={!editable} />
-              Has student output? (upload one photo per student)
+              Has student output? (upload + grade per student)
             </label>
             {hasOutput && (
-              <ul className="space-y-2 mt-3">
-                {presentIds.map(sid => <OutputRow key={sid} student={roster.find(s => s.id === sid)!} output={outputs.find(o => o.studentId === sid)} onUpload={uploadOutput} onView={() => viewOutput(sid)} editable={editable} />)}
-                {absentIds.length > 0 && (
-                  <li className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--paper-3)' }}>
-                    <div className="text-[10.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] font-bold mb-2" style={{ fontFamily: 'var(--font-display)' }}>Absent students — makeup uploads</div>
-                    {absentIds.map(sid => <OutputRow key={sid} student={roster.find(s => s.id === sid)!} output={outputs.find(o => o.studentId === sid)} onUpload={uploadOutput} onView={() => viewOutput(sid)} editable={editable} requireMakeup />)}
-                  </li>
-                )}
-              </ul>
-            )}
-          </Section>
-        )}
-
-        {!isStudent && (
-          <Section title="Grade">
-            <label className="block max-w-[160px]">
-              <span className="label">Total points</span>
-              <input type="number" className="input" value={gradeTotal} onChange={e => setGradeTotal(e.target.value)} placeholder="e.g. 100" disabled={!editable} />
-            </label>
-            {gradeTotal.trim() && (
-              <ul className="space-y-1.5 mt-3">
-                {presentIds.map(sid => {
-                  const s = roster.find(r => r.id === sid)!
-                  const g = grades[sid]
-                  return (
-                    <li key={sid} className="flex items-center justify-between gap-2 text-sm">
-                      <span className="truncate font-semibold text-[color:var(--narra)]">{[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}</span>
-                      <span className="flex items-center gap-1 shrink-0">
-                        <input type="number" min={0} max={Number(gradeTotal)} className="input" style={{ width: 80 }} value={g?.score ?? ''} onChange={e => setGrade(sid, Number(e.target.value))} disabled={!editable} />
-                        <span className="text-[11.5px] text-[color:var(--mid-gray)]">/ {gradeTotal}</span>
-                      </span>
+              <>
+                <ul className="space-y-2 mt-3">
+                  {presentIds.map(sid => <OutputRow key={sid} student={roster.find(s => s.id === sid)!} output={outputs.find(o => o.studentId === sid)} onUpload={uploadOutput} onView={() => viewOutput(sid)} editable={editable} />)}
+                  {absentIds.length > 0 && (
+                    <li className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--paper-3)' }}>
+                      <div className="text-[10.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] font-bold mb-2" style={{ fontFamily: 'var(--font-display)' }}>Absent students — makeup uploads</div>
+                      {absentIds.map(sid => <OutputRow key={sid} student={roster.find(s => s.id === sid)!} output={outputs.find(o => o.studentId === sid)} onUpload={uploadOutput} onView={() => viewOutput(sid)} editable={editable} requireMakeup />)}
                     </li>
-                  )
-                })}
-                {absentIds.length > 0 && (
-                  <li className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--paper-3)' }}>
-                    <div className="text-[10.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] font-bold mb-2" style={{ fontFamily: 'var(--font-display)' }}>Absent students — makeup grade</div>
-                    {absentIds.map(sid => {
-                      const s = roster.find(r => r.id === sid)!
-                      const g = grades[sid]
-                      return (
-                        <div key={sid} className="grid grid-cols-[1fr_auto_auto] gap-2 items-center text-sm py-0.5">
-                          <span className="truncate font-semibold text-[color:var(--narra)]">{[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}</span>
-                          <input type="date" className="input" style={{ width: 150 }} value={g?.makeupDate ?? ''} onChange={e => setMakeup(sid, e.target.value)} disabled={!editable} />
-                          <span className="flex items-center gap-1">
-                            <input type="number" min={0} max={Number(gradeTotal)} className="input" style={{ width: 80 }} value={g?.score ?? ''} onChange={e => setGrade(sid, Number(e.target.value))} disabled={!editable} />
-                            <span className="text-[11.5px] text-[color:var(--mid-gray)]">/ {gradeTotal}</span>
-                          </span>
-                        </div>
-                      )
-                    })}
-                  </li>
-                )}
-              </ul>
+                  )}
+                </ul>
+
+                {/* Grade lives INSIDE the Student-output block — per spec
+                    grading is only available once "Has student output?" is
+                    ticked. Total points → per-present-student score, plus
+                    makeup grade rows for absent students who later
+                    submitted. */}
+                <div className="mt-6 pt-4 border-t" style={{ borderColor: 'var(--paper-3)' }}>
+                  <h4 className="text-[12.5px] font-bold uppercase tracking-[0.10em] text-[color:var(--bright-teal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>Grade</h4>
+                  <label className="block max-w-[160px]">
+                    <span className="label">Total points</span>
+                    <input type="number" className="input" value={gradeTotal} onChange={e => setGradeTotal(e.target.value)} placeholder="e.g. 100" disabled={!editable} />
+                  </label>
+                  {gradeTotal.trim() && (
+                    <ul className="space-y-1.5 mt-3">
+                      {presentIds.map(sid => {
+                        const s = roster.find(r => r.id === sid)!
+                        const g = grades[sid]
+                        return (
+                          <li key={sid} className="flex items-center justify-between gap-2 text-sm">
+                            <span className="truncate font-semibold text-[color:var(--narra)]">{[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}</span>
+                            <span className="flex items-center gap-1 shrink-0">
+                              <input type="number" min={0} max={Number(gradeTotal)} className="input" style={{ width: 80 }} value={g?.score ?? ''} onChange={e => setGrade(sid, Number(e.target.value))} disabled={!editable} />
+                              <span className="text-[11.5px] text-[color:var(--mid-gray)]">/ {gradeTotal}</span>
+                            </span>
+                          </li>
+                        )
+                      })}
+                      {absentIds.length > 0 && (
+                        <li className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--paper-3)' }}>
+                          <div className="text-[10.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] font-bold mb-2" style={{ fontFamily: 'var(--font-display)' }}>Absent students — makeup grade</div>
+                          {absentIds.map(sid => {
+                            const s = roster.find(r => r.id === sid)!
+                            const g = grades[sid]
+                            return (
+                              <div key={sid} className="grid grid-cols-[1fr_auto_auto] gap-2 items-center text-sm py-0.5">
+                                <span className="truncate font-semibold text-[color:var(--narra)]">{[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}</span>
+                                <input type="date" className="input" style={{ width: 150 }} value={g?.makeupDate ?? ''} onChange={e => setMakeup(sid, e.target.value)} disabled={!editable} />
+                                <span className="flex items-center gap-1">
+                                  <input type="number" min={0} max={Number(gradeTotal)} className="input" style={{ width: 80 }} value={g?.score ?? ''} onChange={e => setGrade(sid, Number(e.target.value))} disabled={!editable} />
+                                  <span className="text-[11.5px] text-[color:var(--mid-gray)]">/ {gradeTotal}</span>
+                                </span>
+                              </div>
+                            )
+                          })}
+                        </li>
+                      )}
+                    </ul>
+                  )}
+                </div>
+              </>
             )}
           </Section>
         )}
