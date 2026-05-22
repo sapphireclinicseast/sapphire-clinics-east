@@ -1489,6 +1489,135 @@ export async function fetchLessonOutputBlob(lessonId: string, studentId: string)
 }
 
 /* ─────────────────────────────────────────────────────────────────
+   Tests + Projects (Phase 3)
+   ───────────────────────────────────────────────────────────── */
+
+export interface LessonTestRecord {
+  id: string
+  lessonId: string
+  title: string
+  totalPoints: number
+  scores: Record<string, { score: number; makeupDate?: string }>
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ProofMeta {
+  id: string
+  studentId: string
+  fileName: string
+  fileType: string
+  fileSize: number
+  updatedAt: string
+}
+
+export interface ProjectRecord {
+  id: string
+  classId: string
+  title: string
+  description: string | null
+  deadline: string | null
+  totalScore: number
+  grades: Record<string, { score: number; makeupDate?: string }>
+  createdAt: string
+  updatedAt: string
+}
+
+// ── Tests ──
+export async function listLessonTests(lessonId: string): Promise<LessonTestRecord[]> {
+  try {
+    const { tests } = await backendJson<{ tests: LessonTestRecord[] }>(`/api/public/class-portal/lessons/${encodeURIComponent(lessonId)}/tests`)
+    return tests
+  } catch { return [] }
+}
+export async function createLessonTest(lessonId: string, args: { title: string; totalPoints: number; scores?: Record<string, { score: number; makeupDate?: string }> }): Promise<LessonTestRecord | null> {
+  try {
+    const { test } = await backendJson<{ test: LessonTestRecord }>(`/api/public/class-portal/lessons/${encodeURIComponent(lessonId)}/tests`, { method: 'POST', body: JSON.stringify(args) })
+    return test
+  } catch { return null }
+}
+export async function updateLessonTest(testId: string, patch: Partial<{ title: string; totalPoints: number; scores: Record<string, { score: number; makeupDate?: string }> }>): Promise<LessonTestRecord | null> {
+  try {
+    const { test } = await backendJson<{ test: LessonTestRecord }>(`/api/public/class-portal/tests/${encodeURIComponent(testId)}`, { method: 'PATCH', body: JSON.stringify(patch) })
+    return test
+  } catch { return null }
+}
+export async function deleteLessonTest(testId: string): Promise<boolean> {
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/tests/${encodeURIComponent(testId)}`, { method: 'DELETE', headers: tok ? { authorization: `Bearer ${tok}` } : undefined })
+    return res.ok
+  } catch { return false }
+}
+export async function uploadTestProof(testId: string, studentId: string, file: File): Promise<ProofMeta | null> {
+  if (!getToken()) return null
+  try {
+    const fd = new FormData(); fd.append('file', file)
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/tests/${encodeURIComponent(testId)}/proofs/${encodeURIComponent(studentId)}`, { method: 'PUT', body: fd, headers: tok ? { authorization: `Bearer ${tok}` } : undefined })
+    if (!res.ok) return null
+    const j = await res.json() as { proof: ProofMeta }
+    return j.proof
+  } catch { return null }
+}
+export async function fetchTestProofBlob(testId: string, studentId: string): Promise<Blob | null> {
+  if (!getToken()) return null
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/tests/${encodeURIComponent(testId)}/proofs/${encodeURIComponent(studentId)}`, { headers: tok ? { authorization: `Bearer ${tok}` } : undefined })
+    if (!res.ok) return null
+    return await res.blob()
+  } catch { return null }
+}
+
+// ── Projects ──
+export async function listProjects(classId: string): Promise<ProjectRecord[]> {
+  try {
+    const { projects } = await backendJson<{ projects: ProjectRecord[] }>(`/api/public/class-portal/classes/${encodeURIComponent(classId)}/projects`)
+    return projects
+  } catch { return [] }
+}
+export async function createProject(classId: string, args: { title: string; description?: string | null; deadline?: string | null; totalScore: number; grades?: Record<string, { score: number; makeupDate?: string }> }): Promise<ProjectRecord | null> {
+  try {
+    const { project } = await backendJson<{ project: ProjectRecord }>(`/api/public/class-portal/classes/${encodeURIComponent(classId)}/projects`, { method: 'POST', body: JSON.stringify(args) })
+    return project
+  } catch { return null }
+}
+export async function updateProject(projectId: string, patch: Partial<{ title: string; description: string | null; deadline: string | null; totalScore: number; grades: Record<string, { score: number; makeupDate?: string }> }>): Promise<ProjectRecord | null> {
+  try {
+    const { project } = await backendJson<{ project: ProjectRecord }>(`/api/public/class-portal/projects/${encodeURIComponent(projectId)}`, { method: 'PATCH', body: JSON.stringify(patch) })
+    return project
+  } catch { return null }
+}
+export async function deleteProject(projectId: string): Promise<boolean> {
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE', headers: tok ? { authorization: `Bearer ${tok}` } : undefined })
+    return res.ok
+  } catch { return false }
+}
+export async function uploadProjectProof(projectId: string, studentId: string, file: File): Promise<ProofMeta | null> {
+  if (!getToken()) return null
+  try {
+    const fd = new FormData(); fd.append('file', file)
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/projects/${encodeURIComponent(projectId)}/proofs/${encodeURIComponent(studentId)}`, { method: 'PUT', body: fd, headers: tok ? { authorization: `Bearer ${tok}` } : undefined })
+    if (!res.ok) return null
+    const j = await res.json() as { proof: ProofMeta }
+    return j.proof
+  } catch { return null }
+}
+export async function fetchProjectProofBlob(projectId: string, studentId: string): Promise<Blob | null> {
+  if (!getToken()) return null
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/projects/${encodeURIComponent(projectId)}/proofs/${encodeURIComponent(studentId)}`, { headers: tok ? { authorization: `Bearer ${tok}` } : undefined })
+    if (!res.ok) return null
+    return await res.blob()
+  } catch { return null }
+}
+
+/* ─────────────────────────────────────────────────────────────────
    Curriculum templates — uploaded per grade level
    ───────────────────────────────────────────────────────────── */
 
