@@ -10,6 +10,7 @@ const ALL_LEVELS: EnrollmentLevel[] = ['KINDER', 'GRADE_1', 'GRADE_2', 'GRADE_3'
 
 const PDF_ACCEPT = '.pdf,application/pdf'
 const DOC_ACCEPT = '.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+const XLS_ACCEPT = '.xls,.xlsx,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv'
 
 interface Props {
   viewer: { role: 'STUDENT' | 'TEACHER' | 'ADMIN'; level?: EnrollmentLevel; email: string }
@@ -30,6 +31,7 @@ export default function CurriculumPanel({ viewer }: Props) {
   const [title, setTitle] = useState('')
   const [pdfFile, setPdfFile] = useState<File | null>(null)
   const [docFile, setDocFile] = useState<File | null>(null)
+  const [xlsFile, setXlsFile] = useState<File | null>(null)
   const [search, setSearch] = useState('')
 
   const canUpload = viewer.role === 'ADMIN' || viewer.role === 'TEACHER'
@@ -44,7 +46,7 @@ export default function CurriculumPanel({ viewer }: Props) {
     const q = search.trim().toLowerCase()
     if (q) {
       pool = pool.filter(c => {
-        const hay = `${c.title} ${c.pdf?.fileName ?? ''} ${c.doc?.fileName ?? ''} ${c.fileName ?? ''} ${c.uploadedBy} ${levelLabel(c.level)}`.toLowerCase()
+        const hay = `${c.title} ${c.pdf?.fileName ?? ''} ${c.doc?.fileName ?? ''} ${c.xls?.fileName ?? ''} ${c.fileName ?? ''} ${c.uploadedBy} ${levelLabel(c.level)}`.toLowerCase()
         return hay.includes(q)
       })
     }
@@ -57,7 +59,7 @@ export default function CurriculumPanel({ viewer }: Props) {
   async function handleSave() {
     setErr(null)
     if (!title.trim()) { setErr('Please add a title.'); return }
-    if (!pdfFile && !docFile) { setErr('Please attach a PDF and/or Word version.'); return }
+    if (!pdfFile && !docFile && !xlsFile) { setErr('Please attach a PDF, Word, and/or Excel version.'); return }
     setUploading(true)
     try {
       const id = 'curri_' + Math.random().toString(36).slice(2, 10)
@@ -78,8 +80,13 @@ export default function CurriculumPanel({ viewer }: Props) {
         await putFile(fileId, docFile)
         record.doc = { fileId, fileName: docFile.name, fileType: docFile.type, fileSize: docFile.size }
       }
+      if (xlsFile) {
+        const fileId = 'curr_xls_' + Math.random().toString(36).slice(2, 12)
+        await putFile(fileId, xlsFile)
+        record.xls = { fileId, fileName: xlsFile.name, fileType: xlsFile.type, fileSize: xlsFile.size }
+      }
       saveCurriculum(record)
-      setTitle(''); setPdfFile(null); setDocFile(null)
+      setTitle(''); setPdfFile(null); setDocFile(null); setXlsFile(null)
       refresh()
     } catch (e) {
       setErr((e as Error).message)
@@ -92,6 +99,7 @@ export default function CurriculumPanel({ viewer }: Props) {
     if (!confirm(`Delete curriculum "${c.title}"?`)) return
     if (c.pdf?.fileId) { try { await deleteFile(c.pdf.fileId) } catch { /* ignore */ } }
     if (c.doc?.fileId) { try { await deleteFile(c.doc.fileId) } catch { /* ignore */ } }
+    if (c.xls?.fileId) { try { await deleteFile(c.xls.fileId) } catch { /* ignore */ } }
     if (c.fileId)      { try { await deleteFile(c.fileId)     } catch { /* ignore */ } }
     deleteCurriculum(c.id)
     refresh()
@@ -121,7 +129,7 @@ export default function CurriculumPanel({ viewer }: Props) {
         <div className="card-static">
           <h2 className="text-[18px] leading-tight mb-1">Upload curriculum template</h2>
           <p className="text-[12.5px] text-[color:var(--mid-gray)] mb-4">
-            Attach a PDF version, a Word (.doc / .docx) version, or both. They&apos;ll be linked together under one curriculum entry.
+            Attach a PDF, Word (.doc / .docx), and/or Excel (.xls / .xlsx / .csv) version. They&apos;ll be linked together under one curriculum entry — pick whichever formats apply.
           </p>
           {err && <div className="mb-3 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
           <div className="grid sm:grid-cols-2 gap-3">
@@ -137,7 +145,7 @@ export default function CurriculumPanel({ viewer }: Props) {
             </label>
           </div>
 
-          <div className="grid sm:grid-cols-2 gap-3 mt-3">
+          <div className="grid sm:grid-cols-3 gap-3 mt-3">
             <FileSlot
               label="PDF version"
               accept={PDF_ACCEPT}
@@ -150,9 +158,15 @@ export default function CurriculumPanel({ viewer }: Props) {
               file={docFile}
               onPick={setDocFile}
             />
+            <FileSlot
+              label="Excel version (.xls / .xlsx / .csv)"
+              accept={XLS_ACCEPT}
+              file={xlsFile}
+              onPick={setXlsFile}
+            />
           </div>
 
-          <button type="button" className="btn-primary text-xs mt-4" onClick={handleSave} disabled={uploading || (!pdfFile && !docFile) || !title.trim()}>
+          <button type="button" className="btn-primary text-xs mt-4" onClick={handleSave} disabled={uploading || (!pdfFile && !docFile && !xlsFile) || !title.trim()}>
             {uploading ? 'Uploading…' : 'Save curriculum'}
           </button>
         </div>
@@ -247,12 +261,13 @@ function CurriculumGrouped({ items, viewer, onOpen, onDownload, onDelete, single
     const sizes: string[] = []
     if (c.pdf) sizes.push(`PDF ${(c.pdf.fileSize / 1024).toFixed(0)} KB`)
     if (c.doc) sizes.push(`Word ${(c.doc.fileSize / 1024).toFixed(0)} KB`)
-    if (!c.pdf && !c.doc && c.fileSize) sizes.push(`${(c.fileSize / 1024).toFixed(0)} KB`)
+    if (c.xls) sizes.push(`Excel ${(c.xls.fileSize / 1024).toFixed(0)} KB`)
+    if (!c.pdf && !c.doc && !c.xls && c.fileSize) sizes.push(`${(c.fileSize / 1024).toFixed(0)} KB`)
     return `${sizes.join(' · ')}${sizes.length ? ' · ' : ''}uploaded by ${c.uploadedBy} on ${new Date(c.uploadedAt).toLocaleDateString()}`
   }
 
   function legacy(c: CurriculumRecord): CurriculumFile | null {
-    if (c.pdf || c.doc) return null
+    if (c.pdf || c.doc || c.xls) return null
     if (!c.fileId || !c.fileName) return null
     return { fileId: c.fileId, fileName: c.fileName, fileType: c.fileType ?? '', fileSize: c.fileSize ?? 0 }
   }
@@ -285,6 +300,9 @@ function CurriculumGrouped({ items, viewer, onOpen, onDownload, onDelete, single
                       )}
                       {c.doc && (
                         <FileButtons label="Word" file={c.doc} onOpen={onOpen} onDownload={onDownload} />
+                      )}
+                      {c.xls && (
+                        <FileButtons label="Excel" file={c.xls} onOpen={onOpen} onDownload={onDownload} />
                       )}
                       {legacyFile && (
                         <FileButtons label="File" file={legacyFile} onOpen={onOpen} onDownload={onDownload} />

@@ -925,6 +925,10 @@ export interface CurriculumRecord {
   pdf?: CurriculumFile
   /** Optional Word (.doc / .docx) version of the same document. */
   doc?: CurriculumFile
+  /** Optional Excel (.xlsx / .xls) version of the same document — for
+   *  spreadsheet-style curriculum templates (grade trackers, schedules,
+   *  scope-and-sequence sheets, etc.). */
+  xls?: CurriculumFile
   uploadedBy: string      // "admin" or teacher email
   uploadedAt: string
   /** Legacy single-file fields — read-only back-compat for records uploaded
