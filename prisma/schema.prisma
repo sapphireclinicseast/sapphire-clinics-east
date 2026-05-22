@@ -966,6 +966,42 @@ model ClassPortalImpersonationLog {
   @@index([startedAt])
 }
 
+/// A teacher-owned class — a graded class section with a roster, weekly
+/// schedule, cover photo, and a feed of lessons / tests / projects /
+/// activities (later phases). Only the assigned teacher can edit the
+/// class data; students see a redacted view (no other students' grades);
+/// admins and branch admins (within their branch) see everything; the
+/// front desk has no access at all.
+model ClassPortalClass {
+  id                String            @id @default(cuid())
+  branch            ClassPortalBranch
+  level             ClassPortalLevel
+  name              String
+  /// Optional section label, e.g. "A", "Falcons", "Section 1".
+  section           String?
+  /// ID of the ClassPortalUser (role=TEACHER) who owns this class.
+  teacherId         String
+  /// Student roster — array of ClassPortalUser.id values (role=STUDENT).
+  studentIds        String[]
+  /// Weekly schedule days, e.g. ["TUESDAY","THURSDAY"]. Lessons must
+  /// fall on one of these days.
+  scheduleDays      String[]
+  scheduleStartTime String?
+  scheduleEndTime   String?
+  /// Cover photo bytes stored inline so the same image is visible from
+  /// every device and survives the local cache being cleared.
+  photoFileName     String?
+  photoFileType     String?
+  photoFileSize     Int?
+  photoFileData     Bytes?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@index([branch])
+  @@index([teacherId])
+  @@index([level])
+}
+
 /// Shared curriculum library — per-grade. Stored on the server so admins,
 /// teachers, front desk, and students see the same set regardless of which
 /// device the file was uploaded from. Each record can carry up to three

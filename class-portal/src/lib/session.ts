@@ -1158,6 +1158,157 @@ export function saveGrade(g: GradeRecord) {
 }
 
 /* ─────────────────────────────────────────────────────────────────
+   Classes (Phase 1) — teacher-owned class sections with roster +
+   weekly schedule + cover photo. Lessons / tests / projects /
+   activities land in later phases.
+   ───────────────────────────────────────────────────────────── */
+
+export type ClassDay = 'MONDAY' | 'TUESDAY' | 'WEDNESDAY' | 'THURSDAY' | 'FRIDAY' | 'SATURDAY' | 'SUNDAY'
+
+export const CLASS_DAY_OPTIONS: Array<{ value: ClassDay; label: string; short: string }> = [
+  { value: 'MONDAY',    label: 'Monday',    short: 'Mon' },
+  { value: 'TUESDAY',   label: 'Tuesday',   short: 'Tue' },
+  { value: 'WEDNESDAY', label: 'Wednesday', short: 'Wed' },
+  { value: 'THURSDAY',  label: 'Thursday',  short: 'Thu' },
+  { value: 'FRIDAY',    label: 'Friday',    short: 'Fri' },
+  { value: 'SATURDAY',  label: 'Saturday',  short: 'Sat' },
+  { value: 'SUNDAY',    label: 'Sunday',    short: 'Sun' },
+]
+
+export interface ClassRecord {
+  id: string
+  branch: Branch
+  level: EnrollmentLevel
+  name: string
+  section: string | null
+  teacherId: string
+  studentIds: string[]
+  scheduleDays: ClassDay[]
+  scheduleStartTime: string | null
+  scheduleEndTime: string | null
+  hasPhoto: boolean
+  photoFileName: string | null
+  photoFileType: string | null
+  photoFileSize: number | null
+  createdAt: string
+  updatedAt: string
+}
+
+/** Fetch every class the caller is allowed to see (server-scoped). */
+export async function listClasses(): Promise<ClassRecord[]> {
+  if (typeof window === 'undefined') return []
+  if (!getToken()) return []
+  try {
+    const { classes } = await backendJson<{ classes: ClassRecord[] }>('/api/public/class-portal/classes')
+    return classes
+  } catch (e) {
+    console.warn('[listClasses]', e)
+    return []
+  }
+}
+
+export async function createClass(args: {
+  branch: Branch
+  level: EnrollmentLevel
+  name: string
+  section?: string | null
+  studentIds?: string[]
+  scheduleDays?: ClassDay[]
+  scheduleStartTime?: string | null
+  scheduleEndTime?: string | null
+}): Promise<ClassRecord | null> {
+  try {
+    const { class: row } = await backendJson<{ class: ClassRecord }>('/api/public/class-portal/classes', {
+      method: 'POST',
+      body: JSON.stringify(args),
+    })
+    return row
+  } catch (e) {
+    console.warn('[createClass]', e)
+    return null
+  }
+}
+
+export async function updateClass(id: string, patch: Partial<{
+  name: string
+  section: string | null
+  level: EnrollmentLevel
+  studentIds: string[]
+  scheduleDays: ClassDay[]
+  scheduleStartTime: string | null
+  scheduleEndTime: string | null
+}>): Promise<ClassRecord | null> {
+  try {
+    const { class: row } = await backendJson<{ class: ClassRecord }>(`/api/public/class-portal/classes/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    })
+    return row
+  } catch (e) {
+    console.warn('[updateClass]', e)
+    return null
+  }
+}
+
+export async function deleteClass(id: string): Promise<boolean> {
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/classes/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    return res.ok
+  } catch (e) {
+    console.warn('[deleteClass]', e)
+    return false
+  }
+}
+
+export async function uploadClassPhoto(id: string, file: File): Promise<boolean> {
+  if (typeof window === 'undefined') return false
+  if (!getToken()) return false
+  try {
+    const fd = new FormData()
+    fd.append('file', file)
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/classes/${encodeURIComponent(id)}/photo`, {
+      method: 'PUT',
+      body: fd,
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    return res.ok
+  } catch (e) {
+    console.warn('[uploadClassPhoto]', e)
+    return false
+  }
+}
+
+/** Build an auth'd URL the <img> tag can use for the class photo. */
+export function classPhotoUrl(id: string): string {
+  // The browser <img> tag can't set custom Authorization headers, so we
+  // can't include the JWT inline. Instead callers should fetch the bytes
+  // via fetchClassPhotoBlob() and create an object URL. This helper just
+  // returns the canonical URL for non-auth contexts.
+  return `${backendOrigin()}/api/public/class-portal/classes/${encodeURIComponent(id)}/photo`
+}
+
+export async function fetchClassPhotoBlob(id: string): Promise<Blob | null> {
+  if (typeof window === 'undefined') return null
+  if (!getToken()) return null
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/classes/${encodeURIComponent(id)}/photo`, {
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) return null
+    return await res.blob()
+  } catch (e) {
+    console.warn('[fetchClassPhotoBlob]', e)
+    return null
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────
    Curriculum templates — uploaded per grade level
    ───────────────────────────────────────────────────────────── */
 
