@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   getCurriculum,
   hydrateCurriculumFromServer, uploadCurriculum, deleteCurriculumServer, fetchCurriculumFileBlob,
+  migrateLocalCurriculumToServer,
   levelLabel, type CurriculumRecord, type CurriculumFile, type EnrollmentLevel,
 } from '@/lib/session'
 
@@ -55,9 +56,14 @@ export default function CurriculumPanel({ viewer }: Props) {
   }, [items, viewer.role, viewer.level, search])
 
   async function refresh() {
-    // Start with whatever localStorage cached so the panel renders instantly,
-    // then await the authoritative server list and update.
+    // Start with whatever localStorage cached so the panel renders instantly.
     setItems(getCurriculum())
+    // One-shot: push any pre-server-sync uploads (still living in this
+    // browser's IndexedDB) up to the VPS so other devices can see them.
+    // Safe to call on every mount — already-migrated rows skip.
+    await migrateLocalCurriculumToServer()
+    // Pull the authoritative server list (which now includes anything we
+    // just migrated) and replace the local cache.
     const fresh = await hydrateCurriculumFromServer()
     setItems(fresh)
   }
