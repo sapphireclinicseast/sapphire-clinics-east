@@ -6,7 +6,6 @@
 // up to a year (s-maxage=31536000) to actually reach signed-in admins.
 // Same cause as the /documents SSG cache bug fixed in PR #137.
 export const dynamic = 'force-dynamic'
-export const revalidate = 0
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -65,7 +64,7 @@ export default function AdminPage() {
         {([
           ['USERS', 'Users'],
           ['STUDENTS', 'Students'],
-          ['CLASSES', 'Classes'],
+          ['CLASSES', 'Grade Levels'],
           ['CURRICULUM', 'Curriculum'],
           ['TEMPLATES', 'Templates'],
           ['NOTIFICATIONS', 'Notifications'],

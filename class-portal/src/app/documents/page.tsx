@@ -7,7 +7,6 @@
 // route dynamic means each visit fetches a fresh shell that references
 // the current build's chunk URLs.
 export const dynamic = 'force-dynamic'
-export const revalidate = 0
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
