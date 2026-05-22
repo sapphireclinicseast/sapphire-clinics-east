@@ -630,6 +630,12 @@ function QRUploadModal({ docKey, title, onClose, onFile }: {
     return () => { cancelled = true }
   }, [docKey])
 
+  // Sub-status surfaced in the UI so the user can see exactly where a
+  // long-running fetch is stuck (previously the modal said "Receiving
+  // file from your phone…" with no progress signal, masking server
+  // hangs).
+  const [ingestStep, setIngestStep] = useState<string>('')
+
   // Poll for upload completion. NOTE: `status` is intentionally NOT in
   // the deps — when we call setStatus('INGESTING') mid-fetch, React
   // re-runs the effect, fires the cleanup (cancelled=true), and the
@@ -641,10 +647,48 @@ function QRUploadModal({ docKey, title, onClose, onFile }: {
     if (!token) return
     let cancelled = false
     let pollDone = false
+    async function ingest(fileName: string | null, fileType: string | null) {
+      try {
+        setIngestStep('Downloading file from server…')
+        // Hard timeout so a hung connection surfaces an error instead of
+        // leaving the modal stuck on "Receiving…" forever.
+        const blobRes = await fetch(
+          `${backendOrigin()}/api/public/class-portal/upload-tokens/${encodeURIComponent(token!)}/file`,
+          { cache: 'no-store', signal: AbortSignal.timeout(45_000) },
+        )
+        if (cancelled) return
+        if (!blobRes.ok) throw new Error(`Server returned HTTP ${blobRes.status} fetching the upload.`)
+        setIngestStep('Reading file bytes…')
+        const blob = await blobRes.blob()
+        if (cancelled) return
+        const f = new File([blob], fileName ?? `${docKey}.jpg`, {
+          type: fileType ?? blob.type ?? 'application/octet-stream',
+        })
+        setIngestStep('Cleaning up…')
+        void fetch(
+          `${backendOrigin()}/api/public/class-portal/upload-tokens/${encodeURIComponent(token!)}`,
+          { method: 'DELETE' },
+        ).catch(() => null)
+        if (cancelled) return
+        setStatus('DONE')
+        onFileRef.current(f)
+      } catch (e) {
+        if (!cancelled) {
+          const msg = (e as Error).name === 'TimeoutError'
+            ? 'Timed out waiting for the file from the server. Try again, or upload from the desktop instead.'
+            : (e as Error).message
+          setErr(msg)
+          setIngestStep('')
+        }
+      }
+    }
     const interval = setInterval(async () => {
       if (pollDone || cancelled) return
       try {
-        const res = await fetch(`${backendOrigin()}/api/public/class-portal/upload-tokens/${encodeURIComponent(token)}`, { cache: 'no-store' })
+        const res = await fetch(
+          `${backendOrigin()}/api/public/class-portal/upload-tokens/${encodeURIComponent(token)}`,
+          { cache: 'no-store', signal: AbortSignal.timeout(8_000) },
+        )
         if (!res.ok || cancelled) return
         const d = await res.json() as { uploadedAt: string | null; fileName: string | null; fileType: string | null }
         if (!d.uploadedAt || cancelled) return
@@ -653,18 +697,15 @@ function QRUploadModal({ docKey, title, onClose, onFile }: {
         pollDone = true
         clearInterval(interval)
         setStatus('INGESTING')
-        const blobRes = await fetch(`${backendOrigin()}/api/public/class-portal/upload-tokens/${encodeURIComponent(token)}/file`, { cache: 'no-store' })
-        if (cancelled) return
-        if (!blobRes.ok) throw new Error(`Could not fetch uploaded file (HTTP ${blobRes.status}).`)
-        const blob = await blobRes.blob()
-        const f = new File([blob], d.fileName ?? `${docKey}.jpg`, { type: d.fileType ?? blob.type ?? 'application/octet-stream' })
-        // Best-effort cleanup; doesn't block the parent handoff.
-        void fetch(`${backendOrigin()}/api/public/class-portal/upload-tokens/${encodeURIComponent(token)}`, { method: 'DELETE' }).catch(() => null)
-        if (cancelled) return
-        setStatus('DONE')
-        onFileRef.current(f)
+        // Fire the ingest in a microtask so the INGESTING render commits
+        // before we start awaiting bytes — gives the UI a chance to show
+        // the spinner + step text immediately.
+        void ingest(d.fileName, d.fileType)
       } catch (e) {
-        if (!cancelled) setErr((e as Error).message)
+        // Polling errors are non-fatal — keep trying on the next tick.
+        if ((e as Error).name !== 'TimeoutError') {
+          console.warn('[qr-upload poll]', e)
+        }
       }
     }, 2000)
     return () => { cancelled = true; clearInterval(interval) }
@@ -711,12 +752,36 @@ function QRUploadModal({ docKey, title, onClose, onFile }: {
         )}
 
         {status === 'INGESTING' && !err && (
-          <p className="text-sm text-[color:var(--mid-gray)] py-6 text-center">Receiving file from your phone…</p>
+          <div className="py-6 text-center">
+            <p className="text-sm text-[color:var(--mid-gray)]">Receiving file from your phone…</p>
+            {ingestStep && (
+              <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-2 italic" style={{ fontFamily: 'var(--font-display)' }}>
+                {ingestStep}
+              </p>
+            )}
+          </div>
         )}
         {status === 'INGESTING' && err && (
-          <p className="text-sm text-[color:var(--clay)] py-6 text-center">
-            Couldn&apos;t pull the file from the server. Try uploading again.
-          </p>
+          <div className="py-6 text-center space-y-3">
+            <p className="text-sm text-[color:var(--clay)]">
+              Couldn&apos;t pull the file from the server.
+            </p>
+            <p className="text-[11.5px] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+              {err}
+            </p>
+            <button
+              type="button"
+              className="btn-secondary text-xs"
+              onClick={() => {
+                // Reset the modal to its initial state — the parent will
+                // remount us with a fresh token next time the user clicks
+                // "QR upload" again.
+                onClose()
+              }}
+            >
+              Close & try again
+            </button>
+          </div>
         )}
 
         {status === 'DONE' && (
