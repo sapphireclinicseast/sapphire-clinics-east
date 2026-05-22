@@ -837,6 +837,33 @@ model ClassPortalLevelStatus {
   updatedBy String?
 }
 
+/// Permanent server-side storage for parent-uploaded documents. Class
+/// portal previously stored these only in the parent's IndexedDB, which
+/// meant the partner school's /admission tracker couldn't view them.
+/// Now every blob the parent uploads (PSA Birth Cert, Report Card SF9,
+/// PWD ID, Parent Valid ID, Affidavit, etc.) lands here too, keyed by
+/// (studentId, docKey). A new upload for the same slot replaces the
+/// previous one. Files capped at 15 MB; bytea storage.
+model ClassPortalDocumentBlob {
+  id         String   @id @default(cuid())
+  studentId  String
+  /// One of: psa_birth_cert, child_photo_1x1, parent_valid_id, pwd_id,
+  /// medical_reports, report_card_sf9, good_moral, form_137_sf10,
+  /// affidavit_undertaking, school_id. Free-form string so new doc
+  /// types can land without a schema change.
+  docKey     String
+  fileName   String
+  fileType   String
+  fileSize   Int
+  fileData   Bytes
+  uploadedBy String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([studentId, docKey])
+  @@index([studentId])
+}
+
 /// QR-from-phone upload handoff. Desktop /documents creates a row + shows
 /// a QR code that encodes /upload/<token>. The parent scans it on their
 /// phone, picks/takes a photo, the phone POSTs the file body here. The

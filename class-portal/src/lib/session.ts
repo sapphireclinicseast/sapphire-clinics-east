@@ -192,7 +192,7 @@ export function ageFromDob(dob: string): string {
    cache so all existing sync helpers stay correct.
    ───────────────────────────────────────────────────────────── */
 
-import { backendJson, setToken, clearToken, getToken } from './backend'
+import { backendJson, setToken, clearToken, getToken, backendOrigin } from './backend'
 
 const USERS_KEY = 'scei_class_users_v1'
 const AUTH_KEY = 'scei_class_auth_v1'
@@ -1305,6 +1305,38 @@ export async function getFile(id: string): Promise<Blob | null> {
     req.onsuccess = () => { db.close(); resolve((req.result as Blob | undefined) ?? null) }
     req.onerror = () => { db.close(); reject(req.error) }
   })
+}
+
+/**
+ * Persist a file to the marketing-app blob store under (studentId, docKey).
+ * Called alongside putFile() so the partner-school /admission view can
+ * download the same file. Best-effort — local IndexedDB stays the source
+ * of truth for the parent's UI; failure here is logged but not surfaced.
+ */
+export async function uploadDocumentBlob(studentId: string, docKey: string, file: File): Promise<boolean> {
+  if (typeof window === 'undefined') return false
+  if (!getToken()) return false
+  try {
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('studentId', studentId)
+    fd.append('docKey', docKey)
+    const tok = getToken()
+    const res = await fetch(backendOrigin() + '/api/public/class-portal/document-blobs', {
+      method: 'POST',
+      body: fd,
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      console.warn('[uploadDocumentBlob] failed:', res.status, j)
+      return false
+    }
+    return true
+  } catch (e) {
+    console.warn('[uploadDocumentBlob] error:', e)
+    return false
+  }
 }
 
 export async function deleteFile(id: string): Promise<void> {
