@@ -1,5 +1,14 @@
 'use client'
 
+// Force per-request rendering instead of static prerender. The full route
+// was being cached for s-maxage=31536000 (1 year), which made every deploy
+// invisible to users until the cache TTL expired — symptom: bug fixes to
+// the QR-upload flow kept "not landing" even after merge. Marking this
+// route dynamic means each visit fetches a fresh shell that references
+// the current build's chunk URLs.
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { submitDocuments } from '@/lib/api'
