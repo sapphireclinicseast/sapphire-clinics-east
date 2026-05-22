@@ -157,6 +157,7 @@ function ClassCard({ c, teacherName, canEdit, onEdit, onDelete }: {
   onEdit: () => void
   onDelete: () => void
 }) {
+  const router = useRouter()
   const [photoUrl, setPhotoUrl] = useState<string | null>(null)
 
   useEffect(() => {
@@ -180,7 +181,12 @@ function ClassCard({ c, teacherName, canEdit, onEdit, onDelete }: {
 
   return (
     <div className="card-static overflow-hidden p-0">
-      <div className="aspect-[16/9] bg-[color:var(--paper-2)] relative">
+      <button
+        type="button"
+        onClick={() => router.push(`/classes/${c.id}`)}
+        className="block w-full text-left aspect-[16/9] bg-[color:var(--paper-2)] relative hover:opacity-90 transition-opacity"
+        aria-label={`Open ${c.name}`}
+      >
         {photoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={photoUrl} alt={c.name} className="w-full h-full object-cover" />
@@ -189,27 +195,30 @@ function ClassCard({ c, teacherName, canEdit, onEdit, onDelete }: {
             No cover photo
           </div>
         )}
-      </div>
+      </button>
       <div className="p-4 space-y-1.5">
         <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <h3 className="text-[18px] leading-tight text-[color:var(--narra)] font-semibold truncate" style={{ fontFamily: 'var(--font-display)' }}>
+          <button type="button" className="min-w-0 text-left" onClick={() => router.push(`/classes/${c.id}`)}>
+            <h3 className="text-[18px] leading-tight text-[color:var(--narra)] font-semibold truncate hover:underline" style={{ fontFamily: 'var(--font-display)' }}>
               {c.name}{c.section ? <span className="text-[color:var(--mid-gray)] font-normal"> · {c.section}</span> : null}
             </h3>
             <p className="text-[12px] text-[color:var(--mid-gray)] mt-0.5">
               {levelLabel(c.level)} · {branchLabel(c.branch)} · {teacherName}
             </p>
-          </div>
+          </button>
         </div>
         <p className="text-[12px] text-[color:var(--mid-gray)]">
           {dayShorts || 'No schedule set'}{time ? ` · ${time}` : ''} · {c.studentIds.length} student{c.studentIds.length === 1 ? '' : 's'}
         </p>
-        {canEdit && (
-          <div className="flex gap-2 mt-3">
-            <button type="button" className="btn-secondary text-xs" onClick={onEdit}>Edit</button>
-            <button type="button" className="text-xs px-2 py-1 rounded-md text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)]" onClick={onDelete}>Delete</button>
-          </div>
-        )}
+        <div className="flex gap-2 mt-3 flex-wrap">
+          <button type="button" className="btn-primary text-xs" onClick={() => router.push(`/classes/${c.id}`)}>Open</button>
+          {canEdit && (
+            <>
+              <button type="button" className="btn-secondary text-xs" onClick={onEdit}>Edit</button>
+              <button type="button" className="text-xs px-2 py-1 rounded-md text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)]" onClick={onDelete}>Delete</button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   )
