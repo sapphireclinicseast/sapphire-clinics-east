@@ -93,6 +93,9 @@ export default function AboutPage() {
                   <span className={`text-[13.5px] leading-snug ${isMandatory ? 'font-semibold text-[color:var(--clay)]' : 'text-[color:var(--ink)]'}`}>
                     {doc.title}
                     {isMandatory && <span className="ml-1 text-[11px] uppercase tracking-[0.08em]">&larr; Mandatory</span>}
+                    {doc.note && (
+                      <span className="block text-[11.5px] text-[color:var(--mid-gray)] font-normal mt-0.5">{doc.note}</span>
+                    )}
                   </span>
                 </li>
               )
@@ -218,9 +221,11 @@ function renderHighlighted(text: string, phrase: string): React.ReactNode {
 
 // Form 137 / SF10 is endorsed by the previous school directly — parents
 // don't bring or upload it, so it's excluded from the parent-facing list.
-const ENROLLMENT_DOCS: Array<{ title: string; mandatory?: boolean }> = [
+const ENROLLMENT_DOCS: Array<{ title: string; note?: string; mandatory?: boolean }> = [
   { title: 'PSA Birth Certificate (photocopy)' },
   { title: '1x1 photo of your child (for student ID)' },
+  { title: 'Parent/Guardian Valid ID', note: 'For the main signatory and contact person on the enrollment.' },
+  { title: 'PWD ID (if applicable)' },
   { title: 'Latest Report Card / SF9' },
   { title: 'Certificate of Good Moral Character' },
   { title: 'Completed enrollment form (LBCA digital form)' },
