@@ -15,7 +15,7 @@ import {
   type LsenClassification,
 } from '@/lib/session'
 import { generateEnrollmentPdf } from '@/lib/enrollment-pdf'
-import { exportToPdf, exportToXlsx, type ExportCol } from '@/lib/admission-export'
+import { exportToXlsx, type ExportCol } from '@/lib/admission-export'
 
 const ACCESS_CODE_KEY = 'scei_admission_code_v1'
 
@@ -329,7 +329,6 @@ export default function AdmissionPage() {
               <input className="input" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, email, LRN" style={{ width: 260 }} />
               <button onClick={() => void refresh()} className="btn-secondary text-xs" disabled={loading}>{loading ? '…' : 'Refresh'}</button>
               <button onClick={() => exportToXlsx(filtered, exportCols, `admission-${tab.toLowerCase()}`)} className="btn-secondary text-xs">Excel</button>
-              <button onClick={() => exportToPdf(filtered, exportCols, `admission-${tab.toLowerCase()}`, `Admission tracker — ${tab === 'EAST' ? 'East Branch' : 'Greenhills Branch'}`)} className="btn-secondary text-xs">PDF</button>
               <button onClick={signOut} className="text-xs text-[color:var(--mid-gray)] hover:text-[color:var(--clay)] px-2 py-1">Sign out</button>
             </div>
           </div>

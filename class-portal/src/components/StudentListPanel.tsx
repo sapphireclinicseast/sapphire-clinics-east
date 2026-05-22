@@ -1,15 +1,16 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   getUsers, getWaivers, saveWaiver,
   teacherAssignedPairs,
   paymentStatusFor,
+  uploadDocumentBlob,
   levelLabel,
   type StoredUser, type EnrollmentLevel, type Branch, type WaiverRecord,
 } from '@/lib/session'
-import { downloadWaiverPdf } from '@/lib/waiver-pdf'
+import { downloadWaiverPdf, generateWaiverPdf } from '@/lib/waiver-pdf'
 import StudentDetail from './StudentDetail'
 import SignaturePad from './SignaturePad'
 
@@ -30,6 +31,28 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
   const [selected, setSelected] = useState<StoredUser | null>(null)
   const [filter, setFilter] = useState('')
   const [witnessOpen, setWitnessOpen] = useState(false)
+  const witnessFormRef = useRef<HTMLDivElement | null>(null)
+  const [sceiAckOpen, setSceiAckOpen] = useState(false)
+  const sceiAckFormRef = useRef<HTMLDivElement | null>(null)
+
+  // When the teacher clicks "Sign as witness" or the admin clicks "Sign
+  // as SCEI", the form mounts after the (long) StudentDetail block — so
+  // it lands off-screen and looks like the button did nothing. Scroll it
+  // into view on mount.
+  useEffect(() => {
+    if (!witnessOpen) return
+    const t = window.setTimeout(() => {
+      witnessFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 50)
+    return () => window.clearTimeout(t)
+  }, [witnessOpen])
+  useEffect(() => {
+    if (!sceiAckOpen) return
+    const t = window.setTimeout(() => {
+      sceiAckFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 50)
+    return () => window.clearTimeout(t)
+  }, [sceiAckOpen])
   const [waiver, setWaiver] = useState<WaiverRecord | null>(null)
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
@@ -97,6 +120,43 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
     setWaiver(updated)
     setWitnessOpen(false)
     try { downloadWaiverPdf(updated) } catch (e) { console.warn('PDF download failed', e) }
+  }
+
+  // Admin / branch admin signs the "Sapphire Clinics East, Inc. —
+  // Acknowledged & Received" block. Only one signature is required
+  // (main admin OR branch admin — whoever gets to it first). After
+  // signing we regenerate the PDF and push it to the server blob
+  // store so /admission shows the fully-countersigned copy.
+  async function handleSceiAck(printedName: string, sig: string) {
+    if (!waiver || !selected) return
+    if (!printedName.trim()) { alert('Please type your printed name.'); return }
+    if (!sig) { alert('Please sign before submitting.'); return }
+    const now = new Date().toISOString()
+    const updated: WaiverRecord = {
+      ...waiver,
+      sceiAckSig: {
+        printedName,
+        signatureDataUrl: sig,
+        signedAt: now,
+        signerEmail: viewer.email,
+        signerRole: viewer.role === 'ADMIN' ? 'ADMIN' : undefined,
+      },
+      updatedAt: now,
+    }
+    saveWaiver(updated)
+    setWaiver(updated)
+    setSceiAckOpen(false)
+    // Regenerate the PDF + push to the server so the admission tracker
+    // shows the fully-signed copy. Failure here is non-fatal — the
+    // local record is still updated.
+    try {
+      const doc = generateWaiverPdf(updated)
+      const blob = doc.output('blob')
+      const file = new File([blob], 'parent-guardian-waiver.pdf', { type: 'application/pdf' })
+      await uploadDocumentBlob(selected.id, 'parent_waiver', file)
+    } catch (e) {
+      console.warn('SCEI ACK PDF re-upload failed', e)
+    }
   }
 
   return (
@@ -185,6 +245,16 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
                 {viewer.role === 'TEACHER' && waiver?.witnessSig && (
                   <span className="badge badge-paid whitespace-nowrap">Waiver witness signed</span>
                 )}
+                {viewer.role === 'ADMIN' && waiver && !waiver.sceiAckSig && (
+                  <button
+                    className="btn-cta text-xs whitespace-nowrap"
+                    onClick={() => setSceiAckOpen(true)}
+                    title="Sign the 'Sapphire Clinics East, Inc. — Acknowledged & Received' block. Either main admin or a branch admin can sign — one signature is enough."
+                  >Sign as SCEI</button>
+                )}
+                {viewer.role === 'ADMIN' && waiver?.sceiAckSig && (
+                  <span className="badge badge-paid whitespace-nowrap" title={`Signed by ${waiver.sceiAckSig.signerEmail ?? 'admin'} on ${new Date(waiver.sceiAckSig.signedAt).toLocaleDateString()}`}>SCEI countersigned</span>
+                )}
                 <button
                   type="button"
                   aria-label="Close"
@@ -209,7 +279,14 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
               />
 
               {witnessOpen && waiver && (
-                <WitnessForm onCancel={() => setWitnessOpen(false)} onSign={handleWitness} defaultName={viewer.name} />
+                <div ref={witnessFormRef}>
+                  <WitnessForm onCancel={() => setWitnessOpen(false)} onSign={handleWitness} defaultName={viewer.name} />
+                </div>
+              )}
+              {sceiAckOpen && waiver && (
+                <div ref={sceiAckFormRef}>
+                  <SceiAckForm onCancel={() => setSceiAckOpen(false)} onSign={handleSceiAck} defaultName={viewer.name} />
+                </div>
               )}
             </div>
           </div>
@@ -232,6 +309,31 @@ function WitnessForm({ onCancel, onSign, defaultName }: { onCancel: () => void; 
   return (
     <div className="card-static mt-4">
       <h3 className="text-[16px] leading-tight mb-3">Witness signature (assigned SCEI teacher)</h3>
+      <label className="block mb-3">
+        <span className="label">Printed name</span>
+        <input className="input" value={name} onChange={e => setName(e.target.value)} />
+      </label>
+      <div>
+        <span className="label">Signature</span>
+        <SignaturePad onChange={setSig} height={150} />
+      </div>
+      <div className="flex gap-2 justify-end mt-3">
+        <button type="button" className="btn-secondary text-xs" onClick={onCancel}>Cancel</button>
+        <button type="button" className="btn-primary text-xs" onClick={() => onSign(name, sig)}>Sign &amp; regenerate PDF</button>
+      </div>
+    </div>
+  )
+}
+
+function SceiAckForm({ onCancel, onSign, defaultName }: { onCancel: () => void; onSign: (name: string, sig: string) => void; defaultName?: string }) {
+  const [name, setName] = useState(defaultName ?? '')
+  const [sig, setSig] = useState('')
+  return (
+    <div className="card-static mt-4">
+      <h3 className="text-[16px] leading-tight mb-1">Sapphire Clinics East, Inc. — Acknowledged &amp; Received</h3>
+      <p className="text-[12.5px] text-[color:var(--mid-gray)] mb-3">
+        Either the main admin or a branch admin can sign — one signature is enough. The PDF is regenerated and pushed to the admission tracker.
+      </p>
       <label className="block mb-3">
         <span className="label">Printed name</span>
         <input className="input" value={name} onChange={e => setName(e.target.value)} />
