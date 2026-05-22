@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   getTemplates,
   hydrateTemplatesFromServer, uploadTemplate, deleteTemplateServer, fetchTemplateFileBlob,
+  migrateLocalTemplatesToServer,
   type TemplateRecord, type CurriculumFile,
 } from '@/lib/session'
 
@@ -31,6 +32,9 @@ export default function TemplatesPanel({ viewer }: Props) {
 
   async function refresh() {
     setItems(getTemplates())
+    // One-shot migration: push any pre-server-sync uploads from this
+    // browser's IndexedDB to the VPS so other devices can see them.
+    await migrateLocalTemplatesToServer()
     const fresh = await hydrateTemplatesFromServer()
     setItems(fresh)
   }

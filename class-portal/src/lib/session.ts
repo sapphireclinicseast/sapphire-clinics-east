@@ -1192,6 +1192,56 @@ export async function deleteCurriculumServer(id: string): Promise<boolean> {
 }
 
 /**
+ * One-shot migration: find any localStorage curriculum entries that were
+ * uploaded *before* the server-backed library shipped (their per-variant
+ * fileIds look like `curr_pdf_XXX` instead of the new `<id>:pdf` shape),
+ * read the file bytes back out of IndexedDB, and upload them to the server
+ * under the same id. Safe to call repeatedly — already-migrated rows skip
+ * because their fileIds contain a colon. Returns the count of rows pushed.
+ */
+export async function migrateLocalCurriculumToServer(): Promise<number> {
+  if (typeof window === 'undefined') return 0
+  if (!getToken()) return 0
+  const local = getCurriculum()
+  // "Legacy" record has at least one variant whose fileId is an IndexedDB key
+  // (no colon) instead of the new "<id>:variant" handle.
+  const isIdbHandle = (id?: string) => !!id && !id.includes(':')
+  const legacy = local.filter(c =>
+    isIdbHandle(c.pdf?.fileId) || isIdbHandle(c.doc?.fileId) || isIdbHandle(c.xls?.fileId) || isIdbHandle(c.fileId),
+  )
+  if (legacy.length === 0) return 0
+
+  let migrated = 0
+  for (const c of legacy) {
+    const files: { pdf?: File; doc?: File; xls?: File } = {}
+    async function pull(meta?: { fileId: string; fileName: string; fileType: string }) {
+      if (!meta?.fileId || !isIdbHandle(meta.fileId)) return undefined
+      const blob = await getFile(meta.fileId)
+      if (!blob) return undefined
+      return new File([blob], meta.fileName, { type: meta.fileType || blob.type || 'application/octet-stream' })
+    }
+    files.pdf = await pull(c.pdf)
+    files.doc = await pull(c.doc)
+    files.xls = await pull(c.xls)
+    // Legacy single-file records (no per-variant fields) — push whatever they
+    // had under .fileId as PDF (best guess for a generic upload).
+    if (!files.pdf && !files.doc && !files.xls && isIdbHandle(c.fileId) && c.fileName) {
+      const blob = await getFile(c.fileId!)
+      if (blob) files.pdf = new File([blob], c.fileName, { type: c.fileType || blob.type || 'application/octet-stream' })
+    }
+    if (!files.pdf && !files.doc && !files.xls) continue
+    const ok = await uploadCurriculum({
+      id: c.id,
+      level: c.level,
+      title: c.title,
+      ...files,
+    })
+    if (ok) migrated++
+  }
+  return migrated
+}
+
+/**
  * Fetch the bytes for a curriculum variant. fileId is the
  * "<curriculumId>:<variant>" handle that hydrateCurriculumFromServer
  * encodes; we split it back here.
@@ -1317,6 +1367,36 @@ export async function deleteTemplateServer(id: string): Promise<boolean> {
     console.warn('[deleteTemplateServer] error:', e)
     return false
   }
+}
+
+/**
+ * Same one-shot migration as migrateLocalCurriculumToServer but for the
+ * template library. Pushes legacy IndexedDB-backed records to the server.
+ */
+export async function migrateLocalTemplatesToServer(): Promise<number> {
+  if (typeof window === 'undefined') return 0
+  if (!getToken()) return 0
+  const local = getTemplates()
+  const isIdbHandle = (id?: string) => !!id && !id.includes(':')
+  const legacy = local.filter(t => isIdbHandle(t.pdf?.fileId) || isIdbHandle(t.doc?.fileId))
+  if (legacy.length === 0) return 0
+
+  let migrated = 0
+  for (const t of legacy) {
+    const files: { pdf?: File; doc?: File } = {}
+    async function pull(meta?: { fileId: string; fileName: string; fileType: string }) {
+      if (!meta?.fileId || !isIdbHandle(meta.fileId)) return undefined
+      const blob = await getFile(meta.fileId)
+      if (!blob) return undefined
+      return new File([blob], meta.fileName, { type: meta.fileType || blob.type || 'application/octet-stream' })
+    }
+    files.pdf = await pull(t.pdf)
+    files.doc = await pull(t.doc)
+    if (!files.pdf && !files.doc) continue
+    const ok = await uploadTemplate({ id: t.id, title: t.title, ...files })
+    if (ok) migrated++
+  }
+  return migrated
 }
 
 export async function fetchTemplateFileBlob(fileId: string): Promise<Blob | null> {
