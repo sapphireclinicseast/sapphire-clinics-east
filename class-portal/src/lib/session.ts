@@ -674,6 +674,70 @@ export function studentHasActivePayment(studentId: string): boolean {
   return getPaymentsForStudent(studentId).some(p => p.status === 'PAID')
 }
 
+export interface FrontDeskPaymentRow {
+  id: string
+  classPortalPaymentId: string
+  studentId: string
+  studentEmail: string
+  studentName: string
+  branch: 'EAST' | 'GREENHILLS'
+  plan: PaymentPlan
+  tuitionCentavos: number
+  miscCentavos: number
+  period: string
+  method: 'FRONT_DESK_CASH' | 'BANK_DEPOSIT' | null
+  status: 'PENDING' | 'CONVERTED' | 'VOIDED'
+  createdAt: string
+  convertedAt: string | null
+}
+
+/**
+ * Server-side view of every front-desk-bound tuition payment the logged-in
+ * staffer can see (scoped to their branch for FRONTDESK + BRANCH_ADMIN;
+ * unscoped for ADMIN). Used by the /frontdesk Payments tab so confirmers
+ * see payments submitted from any device — not just their own browser.
+ */
+export async function getFrontDeskPaymentsServer(): Promise<FrontDeskPaymentRow[]> {
+  if (typeof window === 'undefined') return []
+  if (!getToken()) return []
+  try {
+    const { payments } = await backendJson<{ payments: FrontDeskPaymentRow[] }>('/api/public/class-portal/frontdesk-payments')
+    return payments
+  } catch (e) {
+    console.warn('[getFrontDeskPaymentsServer] failed:', e)
+    return []
+  }
+}
+
+/**
+ * Flip a queued front-desk payment from PENDING → CONVERTED. Triggers the
+ * student's local PaymentRecord to hydrate to PAID on next refresh.
+ * Returns true on success.
+ */
+export async function confirmFrontDeskPayment(classPortalPaymentId: string): Promise<boolean> {
+  if (typeof window === 'undefined') return false
+  if (!getToken()) return false
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/frontdesk-payments/${encodeURIComponent(classPortalPaymentId)}`, {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+        ...(tok ? { authorization: `Bearer ${tok}` } : {}),
+      },
+      body: JSON.stringify({ status: 'CONVERTED' }),
+    })
+    if (!res.ok) {
+      console.warn('[confirmFrontDeskPayment] failed:', res.status)
+      return false
+    }
+    return true
+  } catch (e) {
+    console.warn('[confirmFrontDeskPayment] error:', e)
+    return false
+  }
+}
+
 /**
  * Pull the marketing-hub view of class-portal front-desk payments. Any row
  * the accounting hub cashier has marked CONVERTED flips the matching local

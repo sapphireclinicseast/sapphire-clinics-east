@@ -46,6 +46,7 @@ export async function POST(req: Request) {
       tuitionCentavos?: number
       miscCentavos?: number
       period?: string
+      method?: string
       notes?: string
     }
 
@@ -70,6 +71,7 @@ export async function POST(req: Request) {
       return withCors(NextResponse.json({ error: 'You can only post payment notifications for your own account.' }, { status: 403 }), origin)
     }
 
+    const method = body.method === 'BANK_DEPOSIT' || body.method === 'FRONT_DESK_CASH' ? body.method : null
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const row = await (prisma.classPortalFrontDeskPayment as any).upsert({
       where: { classPortalPaymentId: body.classPortalPaymentId },
@@ -81,6 +83,7 @@ export async function POST(req: Request) {
         tuitionCentavos,
         miscCentavos,
         period: body.period,
+        method,
         notes: body.notes ?? null,
       },
       create: {
@@ -93,6 +96,7 @@ export async function POST(req: Request) {
         tuitionCentavos,
         miscCentavos,
         period: body.period!,
+        method,
         notes: body.notes ?? null,
         status: 'PENDING',
       },
@@ -110,6 +114,7 @@ export async function POST(req: Request) {
         tuitionCentavos: row.tuitionCentavos,
         miscCentavos: row.miscCentavos,
         period: row.period,
+        method: row.method ?? null,
         status: row.status,
         createdAt: row.createdAt.toISOString(),
         convertedAt: row.convertedAt?.toISOString() ?? null,
@@ -146,6 +151,7 @@ export async function GET(req: Request) {
       tuitionCentavos: r.tuitionCentavos,
       miscCentavos: r.miscCentavos,
       period: r.period,
+      method: r.method ?? null,
       status: r.status,
       createdAt: r.createdAt.toISOString(),
       convertedAt: r.convertedAt?.toISOString() ?? null,

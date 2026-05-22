@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { getAuth } from '@/lib/session'
 import StudentListPanel from '@/components/StudentListPanel'
 import PaymentsGrouped from '@/components/PaymentsGrouped'
+import FrontDeskPaymentConfirmations from '@/components/FrontDeskPaymentConfirmations'
 import PaidStudentsSpreadsheet from '@/components/PaidStudentsSpreadsheet'
 import CalendarPage from '@/app/calendar/page'
 
@@ -70,7 +71,10 @@ export default function FrontdeskPage() {
       )}
 
       {tab === 'PAYMENTS' && (
-        <PaymentsGrouped canSendReminders senderEmail={email} senderName="Front desk" senderRole="ADMIN" />
+        <div className="space-y-6">
+          <FrontDeskPaymentConfirmations />
+          <PaymentsGrouped canSendReminders senderEmail={email} senderName="Front desk" senderRole="ADMIN" />
+        </div>
       )}
 
       {tab === 'SPREADSHEET' && (

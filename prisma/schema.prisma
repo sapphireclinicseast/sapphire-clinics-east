@@ -911,6 +911,10 @@ model ClassPortalFrontDeskPayment {
   miscCentavos         Int               @default(0)
   period               String
   status               String            @default("PENDING") // PENDING | CONVERTED | VOIDED
+  /// FRONT_DESK_CASH | BANK_DEPOSIT — informational for the front desk
+  /// confirming the payment. PayMongo never lands in this table (it flips
+  /// the local class-portal record to PAID directly via the success redirect).
+  method               String?
   notes                String?
   createdAt            DateTime          @default(now())
   convertedAt          DateTime?
