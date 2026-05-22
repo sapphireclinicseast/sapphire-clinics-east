@@ -6,6 +6,7 @@ import {
   getUsers, getWaivers, saveWaiver,
   teacherAssignedPairs,
   paymentStatusFor,
+  hydrateFrontDeskPayments,
   uploadDocumentBlob,
   levelLabel,
   type StoredUser, type EnrollmentLevel, type Branch, type WaiverRecord,
@@ -65,6 +66,14 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
     return () => { document.body.style.overflow = prev }
   }, [selected])
 
+  // Bumps every time hydrateFrontDeskPayments completes so the
+  // PaymentStatusBadge column re-reads from the freshly-materialized
+  // local cache. The value itself isn't used directly — it's the
+  // setState that triggers the re-render which re-runs the inline
+  // paymentStatusFor(s.id) call in the row map.
+  const [paymentsRev, setPaymentsRev] = useState(0)
+  void paymentsRev
+
   function refresh() {
     let pool = getUsers().filter(u => u.role === 'STUDENT')
     if (viewer.role === 'TEACHER' && viewer.userId) {
@@ -83,6 +92,16 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
     setStudents(pool)
   }
   useEffect(refresh, [viewer.role, viewer.userId, viewerBranch])
+
+  // Pull the latest server-side payment statuses on mount so the per-row
+  // "Paid / Pending / No payment" badge reflects what the front desk has
+  // actually confirmed, even if the local cache on this device had no
+  // PaymentRecord for the student (e.g. they paid on a different device
+  // or the front desk confirmed cash). hydrateFrontDeskPayments now
+  // materializes missing local rows in addition to flipping statuses.
+  useEffect(() => {
+    void hydrateFrontDeskPayments().then(() => setPaymentsRev(r => r + 1))
+  }, [])
 
   // When a student is selected, find their waiver.
   useEffect(() => {
