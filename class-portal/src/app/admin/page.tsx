@@ -1,5 +1,13 @@
 'use client'
 
+// Force dynamic rendering — admin page state depends on the per-user JWT
+// (role, branch). Without this Next.js serves a prerendered HTML shell
+// from the build that references older chunks, which means deploys take
+// up to a year (s-maxage=31536000) to actually reach signed-in admins.
+// Same cause as the /documents SSG cache bug fixed in PR #137.
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {

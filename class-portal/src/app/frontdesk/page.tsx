@@ -1,5 +1,12 @@
 'use client'
 
+// Force dynamic rendering — same SSG-cache fix applied to /admin and
+// /documents. Without it Next.js serves a prerendered HTML shell that
+// references older chunks for up to a year, hiding deploys from the
+// front desk.
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getAuth } from '@/lib/session'

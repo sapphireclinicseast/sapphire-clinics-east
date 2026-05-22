@@ -384,7 +384,7 @@ export function generateWaiverPdf(record: WaiverRecord): jsPDF {
   signatureBlock(c, 'Parent / Guardian', record.parentSig)
   if (record.secondaryParentSig) signatureBlock(c, 'Secondary Parent / Guardian (if applicable)', record.secondaryParentSig)
   signatureBlock(c, 'Witness — Assigned SCEI Teacher', record.witnessSig)
-  signatureBlock(c, 'Sapphire Clinics East, Inc. — Acknowledged & Received', undefined)
+  signatureBlock(c, 'Sapphire Clinics East, Inc. — Acknowledged & Received', record.sceiAckSig)
 
   // 9. Notarization
   sectionTitle(c, '9. Acknowledgment (For Notarization)')

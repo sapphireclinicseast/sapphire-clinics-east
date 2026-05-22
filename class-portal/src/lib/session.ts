@@ -657,6 +657,11 @@ export interface WaiverRecord {
   parentSig: WaiverPersonName
   secondaryParentSig?: WaiverPersonName
   witnessSig?: WaiverPersonName & { teacherId?: string; teacherEmail?: string }
+  /** "Sapphire Clinics East, Inc. — Acknowledged & Received" signature.
+   *  Signed by EITHER the main admin OR a branch admin (one signature is
+   *  enough). Captured by the admin/branch-admin from the student detail
+   *  drawer after the parent has signed. */
+  sceiAckSig?: WaiverPersonName & { signerEmail?: string; signerRole?: 'ADMIN' | 'BRANCH_ADMIN' }
   createdAt: string
   updatedAt: string
 }
