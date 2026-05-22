@@ -445,6 +445,23 @@ export async function deleteUser(id: string): Promise<void> {
 }
 
 /**
+ * Ask the marketing-hub to mint a one-shot password-reset link and email
+ * it to the user. Plaintext passwords never pass through this flow — the
+ * recipient sets their own new password via /reset?token=…
+ *
+ * Returns:
+ *   { emailed: true }                         — sent successfully
+ *   { emailed: false, manualLink: 'https…' }  — Resend down; admin shares link manually
+ */
+export async function sendPasswordResetLink(userId: string): Promise<{ emailed: boolean; manualLink?: string; warning?: string }> {
+  const j = await backendJson<{ ok: boolean; emailed: boolean; manualLink?: string; warning?: string }>(
+    '/api/public/class-portal/password-reset',
+    { method: 'POST', body: JSON.stringify({ userId }) },
+  )
+  return { emailed: j.emailed, manualLink: j.manualLink, warning: j.warning }
+}
+
+/**
  * Patch a student's enrollment. Admin can call for any student; students
  * can only call for their own record (enforced server-side).
  */

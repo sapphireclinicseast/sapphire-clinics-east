@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   getAuth, getUsers, hydrateUsers, addUser, updateUser, deleteUser,
+  sendPasswordResetLink,
   levelLabel, branchLabel, roleLabel, generatePassword,
   getFees, hydrateFees, saveFees, DEFAULT_FEE_VALUES,
   type StoredUser, type UserRole, type Branch, type FeeSchedule, type FeeExtraItem,
@@ -242,6 +243,23 @@ function UsersPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANC
     } catch (e) { setErr((e as Error).message) }
   }
 
+  async function handleSendResetLink(u: StoredUser) {
+    setErr(null); setInfo(null)
+    if (!confirm(`Email ${u.email} a one-shot password-reset link?\n\nThey'll set their own new password — you won't see it.`)) return
+    try {
+      const r = await sendPasswordResetLink(u.id)
+      if (r.emailed) {
+        setInfo(`Reset link emailed to ${u.email}. They have 24 hours to use it.`)
+      } else if (r.manualLink) {
+        setInfo(`${r.warning ?? 'Email send failed.'} Share this link with ${u.email} manually: ${r.manualLink}`)
+      } else {
+        setInfo('Reset link queued — but no manual link was returned. Check server logs.')
+      }
+    } catch (e) {
+      setErr((e as Error).message)
+    }
+  }
+
   async function handleConfirmReset(newPassword: string) {
     if (!resetting) return
     setErr(null); setInfo(null)
@@ -338,6 +356,11 @@ function UsersPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANC
                   <td className="py-2.5 px-3 text-[color:var(--mid-gray)] text-xs">{new Date(u.createdAt).toLocaleDateString()}</td>
                   <td className="py-2.5 px-3 text-right whitespace-nowrap">
                     <button className="text-xs px-2 py-1 rounded-md text-[color:var(--narra)] hover:bg-[color:var(--paper-2)]" onClick={() => { setEditing(u); setErr(null); setInfo(null) }}>Edit</button>
+                    <button
+                      className="text-xs px-2 py-1 rounded-md text-[color:var(--moss)] hover:bg-[color:var(--paper-2)] ml-1"
+                      title="Email a one-shot reset link — the user picks their own new password."
+                      onClick={() => handleSendResetLink(u)}
+                    >Email reset link</button>
                     {viewerRole === 'ADMIN' && (
                       <button className="text-xs px-2 py-1 rounded-md text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] ml-1" onClick={() => handleDelete(u)}>Delete</button>
                     )}
