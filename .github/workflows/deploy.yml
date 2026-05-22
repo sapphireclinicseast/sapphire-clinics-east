@@ -26,6 +26,14 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Serialize deploys to a single VPS host. Two parallel runs collide on the
+# Next.js `.next` build-info lock and fail with "Another next build process
+# is already running" (seen in PR #133 / #134 / #135). Queueing forces the
+# second deploy to wait until the first finishes.
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
 jobs:
   deploy:
     name: Build & Deploy
