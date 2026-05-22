@@ -70,8 +70,16 @@ export default function ClassesPage() {
   const canCreate = isTeacher || isAdmin
 
   function teacherName(id: string): string {
+    // If the viewer IS this teacher, show them their own name. The
+    // /api/public/class-portal/users response for a TEACHER caller is
+    // scoped to STUDENT rows, so the teacher won't find themselves in
+    // the `teachers` list — without this branch the card would fall
+    // through to the raw cuid as the "teacher name".
+    if (auth?.userId === id) {
+      return [auth.firstName, auth.email].filter(Boolean).join(' · ') || 'You'
+    }
     const t = teachers.find(x => x.id === id)
-    return [t?.firstName, t?.lastName].filter(Boolean).join(' ') || t?.email || id
+    return [t?.firstName, t?.lastName].filter(Boolean).join(' ') || t?.email || 'Teacher'
   }
 
   async function handleDelete(c: ClassRecord) {
@@ -365,9 +373,26 @@ function ClassEditor({ existing, students, defaultBranch, onClose, onSaved }: {
 
           <div>
             <span className="label">Cover photo (optional)</span>
-            <input type="file" accept="image/*" className="block mt-1 text-xs" onChange={e => setPhotoFile(e.target.files?.[0] ?? null)} />
+            <div className="mt-1 flex items-center gap-3 flex-wrap">
+              <label className="btn-secondary text-xs cursor-pointer inline-flex items-center" style={{ width: 'auto' }}>
+                {photoFile || existing?.hasPhoto ? 'Replace photo' : 'Choose photo'}
+                <input
+                  type="file"
+                  className="sr-only"
+                  accept="image/*"
+                  onChange={e => setPhotoFile(e.target.files?.[0] ?? null)}
+                />
+              </label>
+              {photoFile && (
+                <button
+                  type="button"
+                  className="text-xs px-2 py-1 rounded-md text-[color:var(--mid-gray)] hover:text-[color:var(--clay)]"
+                  onClick={() => setPhotoFile(null)}
+                >Clear</button>
+              )}
+            </div>
             {photoFile && (
-              <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-1">
+              <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-2">
                 {photoFile.name} · {(photoFile.size / 1024).toFixed(0)} KB
               </p>
             )}
