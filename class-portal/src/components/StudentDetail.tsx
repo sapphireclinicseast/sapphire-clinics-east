@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import {
   getFile, putFile, deleteFile, uploadDocumentBlob,
-  getPaymentsForStudent, getWaivers, getGradeForStudent,
+  getPaymentsForStudent, getWaivers, hydrateWaiverForStudent, getGradeForStudent,
   updateUserEnrollment, updateUser, saveHeadshot,
   levelLabel, lrnStatusLabel, lsenClassificationLabel,
   LSEN_CLASSIFICATION_GROUPS,
@@ -43,8 +43,23 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
 
   useEffect(() => {
     setPayments(getPaymentsForStudent(student.id))
+    // First render whatever's in this device's local cache so the
+    // card paints immediately. The waiver record was previously
+    // localStorage-only — if the parent signed on phone and admin
+    // opens on laptop, the local lookup misses and the card said
+    // "Not yet signed." even when the signed record existed on
+    // the server. We pull from the server-side document-blob store
+    // (docKey `waiver_record`) and update React state when it
+    // arrives. Network failures are silently ignored so the cached
+    // copy keeps rendering.
     setWaiver(getWaivers().find(w => w.studentEmail.toLowerCase() === student.email.toLowerCase()) ?? null)
     setGrade(getGradeForStudent(student.id))
+    let cancelled = false
+    void hydrateWaiverForStudent(student.id).then(remote => {
+      if (cancelled || !remote) return
+      setWaiver(remote)
+    })
+    return () => { cancelled = true }
   }, [student.id, student.email])
 
   const e = student.enrollment ?? {}
