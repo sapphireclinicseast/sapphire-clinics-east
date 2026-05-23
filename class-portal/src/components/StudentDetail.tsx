@@ -4,12 +4,13 @@ import { useEffect, useState } from 'react'
 import {
   getFile, putFile, deleteFile, uploadDocumentBlob,
   getPaymentsForStudent, getWaivers, getGradeForStudent,
-  updateUserEnrollment, saveHeadshot,
+  updateUserEnrollment, updateUser, saveHeadshot,
   levelLabel, lrnStatusLabel, lsenClassificationLabel,
   LSEN_CLASSIFICATION_GROUPS,
   type StoredUser, type PaymentRecord, type WaiverRecord, type GradeRecord,
-  type EnrollmentDraft, type LsenClassification,
+  type EnrollmentDraft, type LsenClassification, type EnrollmentLevel,
 } from '@/lib/session'
+import { backendOrigin, getToken } from '@/lib/backend'
 import { downloadWaiverPdf, generateWaiverPdf } from '@/lib/waiver-pdf'
 import { downloadEnrollmentPdf, generateEnrollmentPdf } from '@/lib/enrollment-pdf'
 import { generateAffidavitPdf, type AffidavitInput } from '@/lib/affidavit-pdf'
@@ -63,9 +64,11 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
               </h1>
               <p className="text-sm text-[color:var(--mid-gray)] mt-1">{student.email}</p>
               {student.level && (
-                <p className="text-sm text-[color:var(--mid-gray)] mt-0.5">
-                  Enrolled in <span className="font-semibold text-[color:var(--narra)]">{levelLabel(student.level)}</span>
-                </p>
+                <LevelEditor
+                  student={student}
+                  viewerRole={viewerRole}
+                  onUpdated={u => { setStudent(u); onChange?.() }}
+                />
               )}
             </div>
           </div>
@@ -161,6 +164,7 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
               <DocumentRow
                 key={k}
                 docKey={k}
+                studentId={student.id}
                 title={docTitle(k)}
                 fileName={v.name}
                 size={v.size}
@@ -614,8 +618,8 @@ function SchoolIdCard({ student, viewerRole, onUpdated }: {
       <div className="flex gap-2 mt-3 flex-wrap">
         {idDoc?.fileId ? (
           <>
-            <button type="button" className="btn-secondary text-xs" onClick={() => openFile(idDoc.fileId!, idDoc.name, idDoc.type)}>View</button>
-            <button type="button" className="btn-primary text-xs" onClick={() => downloadFile(idDoc.fileId!, idDoc.name, idDoc.type)}>Download</button>
+            <button type="button" className="btn-secondary text-xs" onClick={() => openFile(idDoc.fileId!, idDoc.name, idDoc.type, student.id, 'school_id')}>View</button>
+            <button type="button" className="btn-primary text-xs" onClick={() => downloadFile(idDoc.fileId!, idDoc.name, idDoc.type, student.id, 'school_id')}>Download</button>
             {canEdit && (
               <label className="btn-secondary text-xs cursor-pointer inline-flex items-center" style={{ width: 'auto' }}>
                 {busy ? 'Uploading…' : 'Replace'}
@@ -687,8 +691,8 @@ function StaffUploadedDocCard({ docKey, title, description, student, viewerRole,
       <div className="flex gap-2 mt-3 flex-wrap">
         {doc?.fileId ? (
           <>
-            <button type="button" className="btn-secondary text-xs" onClick={() => openFile(doc.fileId!, doc.name, doc.type)}>View</button>
-            <button type="button" className="btn-primary text-xs" onClick={() => downloadFile(doc.fileId!, doc.name, doc.type)}>Download</button>
+            <button type="button" className="btn-secondary text-xs" onClick={() => openFile(doc.fileId!, doc.name, doc.type, student.id, docKey)}>View</button>
+            <button type="button" className="btn-primary text-xs" onClick={() => downloadFile(doc.fileId!, doc.name, doc.type, student.id, docKey)}>Download</button>
             {canEdit && (
               <label className="btn-secondary text-xs cursor-pointer inline-flex items-center" style={{ width: 'auto' }}>
                 {busy ? 'Uploading…' : 'Replace'}
@@ -808,9 +812,13 @@ async function regenerateAndOpen(build: () => import('jspdf').jsPDF) {
 }
 
 function DocumentRow({
-  docKey, title, fileName, size, fileId, mime, canReplace, onReplace,
+  docKey, studentId, title, fileName, size, fileId, mime, canReplace, onReplace,
 }: {
   docKey: string
+  /** Passed through to openFile/downloadFile so the helper can fall
+   *  back to the server-side blob when this device's IDB cache is empty
+   *  (e.g. main admin viewing a doc the parent uploaded from their phone). */
+  studentId: string
   title: string
   fileName: string
   size: number
@@ -842,8 +850,8 @@ function DocumentRow({
       <div className="flex gap-2 shrink-0">
         {fileId ? (
           <>
-            <button type="button" className="btn-secondary text-xs" onClick={() => openFile(fileId, fileName, mime)}>View</button>
-            <button type="button" className="btn-primary text-xs" onClick={() => downloadFile(fileId, fileName, mime)}>Download</button>
+            <button type="button" className="btn-secondary text-xs" onClick={() => openFile(fileId, fileName, mime, studentId, docKey)}>View</button>
+            <button type="button" className="btn-primary text-xs" onClick={() => downloadFile(fileId, fileName, mime, studentId, docKey)}>Download</button>
           </>
         ) : (
           <span className="badge badge-pending" title="File content not stored in this browser">Metadata only</span>
@@ -885,6 +893,89 @@ function downscaleToDataUrl(file: Blob, maxEdge: number, jpegQuality: number): P
   })
 }
 
+/**
+ * Inline grade-level editor. Renders as read-only text for students;
+ * teachers + admins see a "Change" button next to the current level
+ * that toggles a select. We use `updateUser({ level })` which the
+ * server already supports — no DB migration needed. Branch/grade
+ * scoping for teachers (StudentListPanel) automatically re-runs after
+ * the parent prop refreshes via `onUpdated`.
+ */
+const LEVEL_OPTIONS: EnrollmentLevel[] = [
+  'NURSERY', 'KINDER',
+  'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5',
+  'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10',
+]
+function LevelEditor({ student, viewerRole, onUpdated }: {
+  student: StoredUser
+  viewerRole: 'STUDENT' | 'TEACHER' | 'ADMIN'
+  onUpdated: (u: StoredUser) => void
+}) {
+  const canEdit = viewerRole === 'ADMIN' || viewerRole === 'TEACHER'
+  const [editing, setEditing] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  async function commit(next: EnrollmentLevel) {
+    if (next === student.level) { setEditing(false); return }
+    setErr(null); setBusy(true)
+    try {
+      const updated = await updateUser(student.id, { level: next })
+      onUpdated(updated)
+      setEditing(false)
+    } catch (e) {
+      setErr((e as Error).message || 'Could not update grade level.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!editing) {
+    return (
+      <p className="text-sm text-[color:var(--mid-gray)] mt-0.5 flex items-center gap-2 flex-wrap">
+        <span>Enrolled in <span className="font-semibold text-[color:var(--narra)]">{student.level ? levelLabel(student.level) : '—'}</span></span>
+        {canEdit && (
+          <button
+            type="button"
+            className="text-[11px] px-2 py-0.5 rounded border text-[color:var(--moss)] hover:bg-[color:var(--paper-2)]"
+            style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}
+            onClick={() => setEditing(true)}
+          >
+            Change
+          </button>
+        )}
+      </p>
+    )
+  }
+
+  return (
+    <div className="mt-1 flex items-center gap-2 flex-wrap">
+      <span className="text-sm text-[color:var(--mid-gray)]">Enrolled in</span>
+      <select
+        className="select"
+        value={student.level ?? ''}
+        disabled={busy}
+        onChange={e => void commit(e.target.value as EnrollmentLevel)}
+        style={{ minWidth: 160 }}
+      >
+        {LEVEL_OPTIONS.map(l => (
+          <option key={l} value={l}>{levelLabel(l)}</option>
+        ))}
+      </select>
+      <button
+        type="button"
+        className="text-[11px] px-2 py-0.5 rounded text-[color:var(--mid-gray)] hover:bg-[color:var(--paper-2)]"
+        onClick={() => setEditing(false)}
+        disabled={busy}
+      >
+        Cancel
+      </button>
+      {busy && <span className="text-[11px] text-[color:var(--mid-gray)]">Saving…</span>}
+      {err && <span className="text-[11px] text-rose-700">{err}</span>}
+    </div>
+  )
+}
+
 function DownloadButton({ fileId, label }: { fileId: string; label: string }) {
   return (
     <button type="button" className="btn-secondary text-xs" onClick={() => downloadFile(fileId, label.replace(/[^a-z0-9.\-]+/gi, '-'))}>
@@ -893,17 +984,42 @@ function DownloadButton({ fileId, label }: { fileId: string; label: string }) {
   )
 }
 
-async function openFile(fileId: string, fileName: string, mime?: string) {
-  const blob = await getFile(fileId)
-  if (!blob) { alert('File not found in browser storage.'); return }
+/**
+ * Resolve a document blob by trying local IDB first, then the
+ * server-side document store as a fallback. The local IDB only
+ * contains blobs uploaded ON THIS device — so a main admin opening
+ * a student's documents from their own machine will miss everything
+ * the parent uploaded from their phone unless we fetch from the
+ * server. The server route is auth-scoped: STUDENT can only pull
+ * their own, TEACHER + ADMIN + BRANCH_ADMIN can pull any.
+ */
+async function fetchBlob(fileId: string, studentId?: string, docKey?: string): Promise<Blob | null> {
+  // Try local cache first — it's instant and works offline.
+  const local = await getFile(fileId).catch(() => null)
+  if (local) return local
+  if (!studentId || !docKey) return null
+  try {
+    const tok = getToken()
+    const res = await fetch(
+      `${backendOrigin()}/api/public/class-portal/document-blobs/${encodeURIComponent(studentId)}/${encodeURIComponent(docKey)}`,
+      { headers: tok ? { authorization: `Bearer ${tok}` } : undefined },
+    )
+    if (!res.ok) return null
+    return await res.blob()
+  } catch { return null }
+}
+
+async function openFile(fileId: string, fileName: string, mime?: string, studentId?: string, docKey?: string) {
+  const blob = await fetchBlob(fileId, studentId, docKey)
+  if (!blob) { alert('Could not load this file. The original upload may have been from another device and the server copy is missing. Ask the parent to re-upload.'); return }
   const url = URL.createObjectURL(blob)
   void mime; void fileName
   window.open(url, '_blank', 'noopener')
   setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
-async function downloadFile(fileId: string, fileName: string, mime?: string) {
-  const blob = await getFile(fileId)
-  if (!blob) { alert('File not found in browser storage.'); return }
+async function downloadFile(fileId: string, fileName: string, mime?: string, studentId?: string, docKey?: string) {
+  const blob = await fetchBlob(fileId, studentId, docKey)
+  if (!blob) { alert('Could not load this file. The original upload may have been from another device and the server copy is missing. Ask the parent to re-upload.'); return }
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url; a.download = fileName; document.body.appendChild(a); a.click(); a.remove()
