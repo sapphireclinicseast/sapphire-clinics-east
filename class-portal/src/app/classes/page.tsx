@@ -11,6 +11,7 @@ import {
   getAuth, hydrateUsers, getUsers,
   listClasses, createClass, updateClass, deleteClass,
   uploadClassPhoto, fetchClassPhotoBlob,
+  getAssignments, hydrateAssignments,
   levelLabel, branchLabel,
   CLASS_DAY_OPTIONS,
   type AuthSession, type StoredUser, type ClassRecord, type ClassDay,
@@ -56,6 +57,10 @@ export default function ClassesPage() {
       const [list, allUsers] = await Promise.all([
         listClasses(),
         hydrateUsers().catch(() => getUsers()),
+        // Pull the assignments matrix so teacherName() can fall back
+        // to (branch × level → teacher) when a class has no explicit
+        // teacherId set.
+        hydrateAssignments().catch(() => null),
       ])
       setClasses(list)
       setTeachers(allUsers.filter(u => u.role === 'TEACHER'))
@@ -70,17 +75,33 @@ export default function ClassesPage() {
   const isAdmin = auth?.role === 'ADMIN' || auth?.role === 'BRANCH_ADMIN'
   const canCreate = isTeacher || isAdmin
 
-  function teacherName(id: string): string {
-    // If the viewer IS this teacher, show them their own name. The
-    // /api/public/class-portal/users response for a TEACHER caller is
-    // scoped to STUDENT rows, so the teacher won't find themselves in
-    // the `teachers` list — without this branch the card would fall
-    // through to the raw cuid as the "teacher name".
-    if (auth?.userId === id) {
-      return [auth.firstName, auth.email].filter(Boolean).join(' · ') || 'You'
+  // Teacher-name resolution shared with /classes/[id]. Falls through:
+  //   1. Explicit teacherId, viewer is self → own auth row.
+  //   2. Explicit teacherId, look in `teachers` list.
+  //   3. No teacherId (or not found) → Assignments matrix lookup
+  //      (branch × level → first matching teacher row). This is what
+  //      the main admin configured under /admin → Assignments and is
+  //      the user-intended default.
+  //   4. Last resort: "Teacher" placeholder so the card never shows
+  //      a raw cuid.
+  function teacherNameForClass(c: ClassRecord): string {
+    const tid = c.teacherId
+    if (tid && auth?.userId === tid) {
+      return [auth.firstName].filter(Boolean).join(' ') || auth.email
     }
-    const t = teachers.find(x => x.id === id)
-    return [t?.firstName, t?.lastName].filter(Boolean).join(' ') || t?.email || 'Teacher'
+    if (tid) {
+      const t = teachers.find(x => x.id === tid)
+      if (t) return [t.firstName, t.lastName].filter(Boolean).join(' ') || t.email
+    }
+    const a = getAssignments().find(x => x.branch === c.branch && x.level === c.level)
+    if (a) {
+      if (auth?.userId === a.teacherId) {
+        return [auth.firstName].filter(Boolean).join(' ') || auth.email
+      }
+      const t = teachers.find(x => x.id === a.teacherId)
+      if (t) return [t.firstName, t.lastName].filter(Boolean).join(' ') || t.email
+    }
+    return 'Teacher'
   }
 
   async function handleDelete(c: ClassRecord) {
@@ -145,7 +166,7 @@ export default function ClassesPage() {
             <ClassCard
               key={c.id}
               c={c}
-              teacherName={teacherName(c.teacherId)}
+              teacherName={teacherNameForClass(c)}
               canEdit={isAdmin || (isTeacher && c.teacherId === auth?.userId)}
               onEdit={() => { setEditing(c); setShowForm(true) }}
               onDelete={() => void handleDelete(c)}
