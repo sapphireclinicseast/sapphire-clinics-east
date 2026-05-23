@@ -82,26 +82,31 @@ export default function SignInPage() {
           />
 
           <div className="relative z-10">
-            <div className="flex items-center gap-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/aura-academy-mark.png" alt="Aura Academy for Learning" className="w-12 h-12 object-contain" />
-              <div className="leading-tight">
-                <div className="text-[18px] font-semibold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-                  Aura Academy
-                </div>
-                <div className="text-[10.5px] uppercase tracking-[0.14em] text-white/75" style={{ fontFamily: 'var(--font-display)' }}>
-                  for Learning · Class Portal
-                </div>
-              </div>
+            {/* Small kicker badge above the headline. The big "Aura
+                Academy" lockup that used to live here was redundant
+                with the header lockup at the top of the page — we drop
+                it and let the headline carry the brand. */}
+            <div
+              className="inline-block text-[10.5px] uppercase tracking-[0.16em] font-semibold px-3 py-1 rounded-full"
+              style={{ fontFamily: 'var(--font-display)', background: 'rgba(255,255,255,0.14)', color: '#fff' }}
+            >
+              Aura Academy · Class Portal
             </div>
 
             <h1
-              className="mt-14 text-[44px] xl:text-[52px] leading-[1.05]"
-              style={{ fontFamily: 'var(--font-display)' }}
+              className="mt-8 text-[44px] xl:text-[52px] leading-[1.05]"
+              style={{
+                fontFamily: 'var(--font-display)',
+                // Force white explicitly — the global stylesheet sets
+                // h1 to var(--deep-teal), which is exactly the panel's
+                // background colour and would make the headline
+                // invisible against the gradient.
+                color: '#ffffff',
+              }}
             >
               A small class<br/>with big care.
             </h1>
-            <p className="mt-5 text-white/85 text-[15px] leading-relaxed max-w-md">
+            <p className="mt-5 text-white/90 text-[15px] leading-relaxed max-w-md">
               Welcome back. Sign in to manage your child&apos;s enrollment, see today&apos;s lesson, or post the day&apos;s update for your class.
             </p>
 
