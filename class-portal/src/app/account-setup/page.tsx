@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   getSession, getDraft, clearDraft, clearSession,
   addUser, signIn, levelLabel,
-  getFile, saveHeadshot,
+  getFile, saveHeadshot, syncLocalDocsToServer,
 } from '@/lib/session'
 
 type Phase = 'password' | 'choose'
@@ -62,6 +62,16 @@ export default function AccountSetupPage() {
       const photoFileId = d.documents?.child_photo_1x1?.fileId
       if (photoFileId) {
         await syncHeadshotFromPhoto(user.id, photoFileId)
+      }
+      // Push every enrollment document up to the server now that we
+      // finally have a JWT. The /documents page tries this earlier
+      // (best-effort) but the parent had no token at that point, so
+      // uploadDocumentBlob silently no-ops. Without this catch-up,
+      // every doc the parent uploaded lives only in this device's
+      // IndexedDB — the main admin viewing the new student from her
+      // own laptop can't pull the bytes.
+      if (d.documents && Object.keys(d.documents).length > 0) {
+        try { await syncLocalDocsToServer(user.id, d.documents) } catch (e) { console.warn('doc sync failed', e) }
       }
       setPhase('choose')
     } catch (e) {
