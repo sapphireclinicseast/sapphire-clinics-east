@@ -812,8 +812,14 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
                     <span className="label">Total points</span>
                     <input type="number" className="input" value={gradeTotal} onChange={e => setGradeTotal(e.target.value)} placeholder="e.g. 100" disabled={!editable} />
                   </label>
-                  {gradeTotal.trim() && (
-                    <ul className="space-y-1.5 mt-3">
+                  {/* Student rows render immediately on tick, even
+                      before Total points is filled. The score input
+                      uses `gradeTotal` as max when set, otherwise
+                      leaves it open. This way the teacher sees the
+                      full roster the moment they confirm there's a
+                      graded output, without having to remember to
+                      type a number first. */}
+                  <ul className="space-y-1.5 mt-3">
                       {presentIds.map(sid => {
                         const s = roster.find(r => r.id === sid)!
                         const g = grades[sid]
@@ -822,8 +828,8 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
                           <li key={sid} className="grid grid-cols-[1fr_auto] gap-2 items-center text-sm">
                             <span className="truncate font-semibold text-[color:var(--narra)]">{[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}</span>
                             <span className="flex items-center gap-1.5 shrink-0">
-                              <input type="number" min={0} max={Number(gradeTotal)} className="input" style={{ width: 80 }} value={g?.score ?? ''} onChange={e => setGrade(sid, Number(e.target.value))} disabled={!editable} />
-                              <span className="text-[11.5px] text-[color:var(--mid-gray)]">/ {gradeTotal}</span>
+                              <input type="number" min={0} max={gradeTotal.trim() ? Number(gradeTotal) : undefined} className="input" style={{ width: 80 }} value={g?.score ?? ''} onChange={e => setGrade(sid, Number(e.target.value))} disabled={!editable} />
+                              <span className="text-[11.5px] text-[color:var(--mid-gray)]">/ {gradeTotal || '—'}</span>
                               {editable && (
                                 <ProofPicker
                                   hasUpload={!!out}
@@ -848,8 +854,8 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
                                 <span className="truncate font-semibold text-[color:var(--narra)]">{[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}</span>
                                 <span className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
                                   <input type="date" className="input" style={{ width: 140 }} value={g?.makeupDate ?? ''} onChange={e => setMakeup(sid, e.target.value)} disabled={!editable} title="Makeup date" />
-                                  <input type="number" min={0} max={Number(gradeTotal)} className="input" style={{ width: 80 }} value={g?.score ?? ''} onChange={e => setGrade(sid, Number(e.target.value))} disabled={!editable} />
-                                  <span className="text-[11.5px] text-[color:var(--mid-gray)]">/ {gradeTotal}</span>
+                                  <input type="number" min={0} max={gradeTotal.trim() ? Number(gradeTotal) : undefined} className="input" style={{ width: 80 }} value={g?.score ?? ''} onChange={e => setGrade(sid, Number(e.target.value))} disabled={!editable} />
+                                  <span className="text-[11.5px] text-[color:var(--mid-gray)]">/ {gradeTotal || '—'}</span>
                                   {editable && (
                                     <ProofPicker
                                       hasUpload={!!out}
@@ -865,7 +871,6 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
                         </li>
                       )}
                     </ul>
-                  )}
                 </div>
 
                 {/* OutputRow component is still used by older code paths

@@ -1886,7 +1886,10 @@ export async function deleteActivity(activityId: string): Promise<boolean> {
 }
 
 export async function uploadActivityPhoto(activityId: string, file: File): Promise<ActivityPhotoMeta | null> {
-  if (!getToken()) return null
+  if (!getToken()) {
+    console.warn('[uploadActivityPhoto] no token — user not signed in')
+    return null
+  }
   try {
     const fd = new FormData(); fd.append('file', file)
     const tok = getToken()
@@ -1894,10 +1897,21 @@ export async function uploadActivityPhoto(activityId: string, file: File): Promi
       method: 'POST', body: fd,
       headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
     })
-    if (!res.ok) return null
+    if (!res.ok) {
+      // Log the actual server response so a teacher reporting "the
+      // button does nothing" has a real error message in the console.
+      // 403 = canEditClass denied; 413 = file too big; 500 = server.
+      let body = ''
+      try { body = await res.text() } catch { /* ignore */ }
+      console.warn(`[uploadActivityPhoto] ${res.status} ${res.statusText} → ${body.slice(0, 200)}`)
+      return null
+    }
     const j = await res.json() as { photo: ActivityPhotoMeta }
     return j.photo
-  } catch { return null }
+  } catch (e) {
+    console.warn('[uploadActivityPhoto] network error', e)
+    return null
+  }
 }
 
 export async function deleteActivityPhoto(activityId: string, photoId: string): Promise<boolean> {
