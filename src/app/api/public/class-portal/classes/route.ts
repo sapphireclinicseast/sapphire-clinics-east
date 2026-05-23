@@ -26,7 +26,7 @@ export async function OPTIONS(req: Request) {
 const ALLOWED_DAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function serialize(r: any) {
+function serialize(r: any, teacherName?: string | null) {
   return {
     id: r.id,
     branch: r.branch,
@@ -34,6 +34,12 @@ function serialize(r: any) {
     name: r.name,
     section: r.section,
     teacherId: r.teacherId,
+    // Server-resolved teacher name. The class-portal user list endpoint
+    // scopes results to STUDENT rows for non-admin callers, so a student
+    // viewer's local teachers cache is always empty and the client-side
+    // resolver falls through to "—". Returning the name here lets every
+    // viewer render it without leaking the rest of the teacher list.
+    teacherName: teacherName ?? null,
     studentIds: r.studentIds ?? [],
     scheduleDays: r.scheduleDays ?? [],
     scheduleStartTime: r.scheduleStartTime,
@@ -45,6 +51,65 @@ function serialize(r: any) {
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
   }
+}
+
+/**
+ * Build a teacherId → "First Last" / email map for a set of classes.
+ * Uses the explicit teacherId when present; falls back to the
+ * branch × level entry in the Assignments matrix (set by the main admin
+ * under /admin → Assignments) when the class has no teacher pinned.
+ * Performs a single batched query each for users + assignments, so the
+ * list endpoint stays O(1) DB roundtrips regardless of how many classes
+ * the caller can see.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function resolveTeacherNames(rows: any[]): Promise<Map<string, string>> {
+  // Step 1: gather the explicit teacherIds.
+  const explicitIds = new Set<string>()
+  for (const r of rows) if (r.teacherId) explicitIds.add(r.teacherId)
+
+  // Step 2: for rows without a teacherId, look up the Assignments
+  // matrix entry by branch × level and gather those teacherIds too.
+  const needAssignment = rows.filter(r => !r.teacherId)
+  let assignmentRows: Array<{ branch: string; level: string; teacherId: string }> = []
+  if (needAssignment.length > 0) {
+    const branchLevels = new Set(needAssignment.map(r => `${r.branch}|${r.level}`))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const all = await (prisma.classPortalTeacherAssignment as any).findMany({
+      select: { branch: true, level: true, teacherId: true },
+    })
+    assignmentRows = (all as Array<{ branch: string; level: string; teacherId: string }>).filter(a => branchLevels.has(`${a.branch}|${a.level}`))
+    for (const a of assignmentRows) explicitIds.add(a.teacherId)
+  }
+
+  // Step 3: fetch all involved teacher users in one go.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const users = explicitIds.size > 0
+    ? await (prisma.classPortalUser as any).findMany({
+        where: { id: { in: Array.from(explicitIds) } },
+        select: { id: true, firstName: true, lastName: true, email: true },
+      })
+    : []
+
+  // Step 4: build the row.id → name map.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const userById = new Map<string, { firstName?: string; lastName?: string; email: string }>(
+    (users as Array<{ id: string; firstName?: string; lastName?: string; email: string }>).map(u => [u.id, u]),
+  )
+  const out = new Map<string, string>()
+  for (const r of rows) {
+    let tid = r.teacherId as string | null
+    if (!tid) {
+      const a = assignmentRows.find(x => x.branch === r.branch && x.level === r.level)
+      tid = a?.teacherId ?? null
+    }
+    if (!tid) continue
+    const u = userById.get(tid)
+    if (!u) continue
+    const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email
+    out.set(r.id, name)
+  }
+  return out
 }
 
 export async function GET(req: Request) {
@@ -76,7 +141,9 @@ export async function GET(req: Request) {
         createdAt: true, updatedAt: true,
       },
     })
-    return withCors(NextResponse.json({ classes: rows.map(serialize) }), origin)
+    const nameByClassId = await resolveTeacherNames(rows)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return withCors(NextResponse.json({ classes: rows.map((r: any) => serialize(r, nameByClassId.get(r.id))) }), origin)
   } catch (e) {
     if (e instanceof Response) {
       const headers = new Headers(e.headers)
@@ -135,7 +202,8 @@ export async function POST(req: Request) {
         scheduleEndTime: body.scheduleEndTime || null,
       },
     })
-    return withCors(NextResponse.json({ class: serialize(row) }), origin)
+    const nameMap = await resolveTeacherNames([row])
+    return withCors(NextResponse.json({ class: serialize(row, nameMap.get(row.id)) }), origin)
   } catch (e) {
     if (e instanceof Response) {
       const headers = new Headers(e.headers)

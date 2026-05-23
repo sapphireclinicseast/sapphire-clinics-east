@@ -85,6 +85,11 @@ export default function ClassesPage() {
   //   4. Last resort: "Teacher" placeholder so the card never shows
   //      a raw cuid.
   function teacherNameForClass(c: ClassRecord): string {
+    // Server now ships a resolved name on the class row (works for
+    // students whose user-list scope is just their own row). Always
+    // prefer it — the client-side fallbacks below only run for old
+    // cached payloads from before this deploy landed.
+    if (c.teacherName) return c.teacherName
     const tid = c.teacherId
     if (tid && auth?.userId === tid) {
       return [auth.firstName].filter(Boolean).join(' ') || auth.email
