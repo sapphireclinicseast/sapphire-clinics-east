@@ -1687,6 +1687,11 @@ function ActivityEditor({ classId, existing, canEdit, onClose, onSaved }: {
 }) {
   const [name, setName] = useState(existing?.name ?? '')
   const [type, setType] = useState(existing?.type ?? '')
+  // If the loaded type isn't one of the preset categories, render the
+  // dropdown as "Other (specify)…" with a free-text input underneath.
+  const [showCustomType, setShowCustomType] = useState(
+    !!existing?.type && !ACTIVITY_TYPE_SUGGESTIONS.includes(existing.type)
+  )
   const [description, setDescription] = useState(existing?.description ?? '')
   const [fromDate, setFromDate] = useState(existing?.fromDate ? existing.fromDate.slice(0, 10) : '')
   const [toDate, setToDate] = useState(existing?.toDate ? existing.toDate.slice(0, 10) : '')
@@ -1836,10 +1841,35 @@ function ActivityEditor({ classId, existing, canEdit, onClose, onSaved }: {
             </label>
             <label className="block">
               <span className="label">Type</span>
-              <input className="input" value={type ?? ''} onChange={e => setType(e.target.value)} list="activity-type-suggestions" placeholder="School Event" disabled={!canEdit} />
-              <datalist id="activity-type-suggestions">
-                {ACTIVITY_TYPE_SUGGESTIONS.map(s => <option key={s} value={s} />)}
-              </datalist>
+              <select
+                className="select"
+                value={showCustomType ? '__custom__' : (type ?? '')}
+                onChange={e => {
+                  const v = e.target.value
+                  if (v === '__custom__') {
+                    setShowCustomType(true)
+                    if (ACTIVITY_TYPE_SUGGESTIONS.includes(type)) setType('')
+                  } else {
+                    setShowCustomType(false)
+                    setType(v)
+                  }
+                }}
+                disabled={!canEdit}
+              >
+                <option value="">Select activity type…</option>
+                {ACTIVITY_TYPE_SUGGESTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                <option value="__custom__">Other (specify)…</option>
+              </select>
+              {showCustomType && (
+                <input
+                  className="input mt-2"
+                  value={type}
+                  onChange={e => setType(e.target.value)}
+                  placeholder="e.g. Christmas concert rehearsal"
+                  disabled={!canEdit}
+                  autoFocus
+                />
+              )}
             </label>
           </div>
           <div className="grid sm:grid-cols-2 gap-3 mt-3">
