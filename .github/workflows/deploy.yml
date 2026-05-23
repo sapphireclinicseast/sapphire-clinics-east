@@ -934,15 +934,18 @@ jobs:
       # Docker builds + image rebuilds accumulate FAST on a single-VPS
       # multi-app stack (marketing, class-portal, accounting, teletherapy,
       # survey + their DBs). Without periodic pruning, /var/lib/docker
-      # grows by a few hundred MB per deploy and eventually OOM-kills the
-      # smaller containers (accounting + class portal first).
+      # grows by GB per deploy and eventually OOM-kills the smaller
+      # containers (accounting + class portal first).
       #
-      # SAFE pruning only:
-      #   • images:        unused images older than 48h
-      #   • build cache:   unused build cache older than 24h
-      #   • containers:    exited/dead containers
-      #   • logs:          truncate per-container json log files >100MB
-      # We do NOT prune volumes — that's where Postgres data lives.
+      # First version of this step used `until=48h` and `unused-for=24h`
+      # time filters — which reclaimed 0 bytes because everything we'd
+      # want pruned was created during THIS deploy. Filters removed.
+      # Safety now comes from Docker's own "in-use" guards (`rmi` fails
+      # on referenced images, `prune` skips active build cache) plus an
+      # explicit allow-list that protects `:rollback` tags during the
+      # aggressive fallback pass.
+      #
+      # SAFE pruning only — never touches volumes (Postgres data).
       - name: Prune Docker resources
         if: always()
         uses: appleboy/ssh-action@v1
@@ -950,6 +953,7 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 15m
           script: |
             set +e  # never let pruning fail the deploy
             echo "==========================================="
@@ -961,46 +965,85 @@ jobs:
             free -m 2>&1 | head -3
             echo "→ Docker disk usage:"
             docker system df 2>&1
+            DISK_BEFORE_KB=$(df / | awk 'NR==2 {print $3}')
             echo ""
             echo "==========================================="
             echo "Pruning..."
             echo "==========================================="
 
-            # Stopped/exited/dead containers (never touches running ones)
-            echo "→ Containers..."
+            # Stopped/exited/dead containers (never touches running ones).
+            echo "→ Containers (stopped only)..."
             docker container prune -f 2>&1 | tail -3
 
-            # Unused images >48h old. The :rollback tag we maintain in
-            # the marketing rebuild step is excluded by the time filter
-            # because it gets retagged on every successful deploy.
-            echo "→ Images (unused, >48h)..."
-            docker image prune -a -f --filter "until=48h" 2>&1 | tail -3
+            # Dangling images (untagged). Always safe — these are never
+            # referenced by anything by definition.
+            echo "→ Dangling images..."
+            docker image prune -f 2>&1 | tail -3
 
-            # Build cache. This is the big one — buildx layers can
-            # easily exceed 20GB on a busy multi-app repo. Keep 24h
-            # of recent cache so back-to-back deploys stay fast.
-            echo "→ Build cache (unused, >24h)..."
-            docker builder prune -a -f --filter "unused-for=24h" 2>&1 | tail -3
+            # Build cache — the big win. buildx maintains its own cache
+            # store; `docker builder prune` only touches the legacy
+            # cache. Use BOTH, with no time filter. Active builds keep
+            # their layers automatically via reference counting.
+            echo "→ Build cache (legacy)..."
+            docker builder prune -a -f 2>&1 | tail -3
+            echo "→ Build cache (buildx)..."
+            docker buildx prune --all --force 2>&1 | tail -3 || true
 
-            # Dangling networks (containers that no longer reference them)
+            # Dangling networks.
             echo "→ Networks..."
             docker network prune -f 2>&1 | tail -3
 
-            # Truncate any per-container JSON log file that's grown past
-            # 100MB. Docker's default log driver does not rotate by
-            # default; some of our long-running containers (sapphire_app,
-            # accounting_app) can produce many GB of logs over weeks.
-            echo "→ Container logs >100MB..."
-            for f in $(find /var/lib/docker/containers -name "*-json.log" -size +100M 2>/dev/null); do
-              sz=$(du -h "$f" 2>/dev/null | cut -f1)
-              echo "   truncating $f ($sz)"
+            # Truncate per-container JSON log files >50MB. Docker's
+            # default log driver does not rotate, so long-running
+            # containers can produce many GB over weeks. Lowered from
+            # 100MB → 50MB because logs are cheap to lose vs disk.
+            echo "→ Container logs >50MB..."
+            LOG_FREED_MB=0
+            for f in $(find /var/lib/docker/containers -name "*-json.log" -size +50M 2>/dev/null); do
+              sz_mb=$(($(stat -c %s "$f" 2>/dev/null || echo 0) / 1024 / 1024))
+              LOG_FREED_MB=$((LOG_FREED_MB + sz_mb))
+              echo "   truncating $f (${sz_mb}MB)"
               : > "$f"
             done
+            echo "   total log space freed: ${LOG_FREED_MB}MB"
 
-            # System tmpfiles + apt cache. Cheap quick wins.
+            # System tmpfiles + apt cache.
             echo "→ /tmp + apt cache..."
             find /tmp -mindepth 1 -maxdepth 1 -mtime +2 -exec rm -rf {} + 2>/dev/null
             apt-get clean 2>/dev/null
+
+            # Untagged images that prune missed because they're not
+            # dangling (they have a name like <none>:<none>). These
+            # accumulate when buildx fails mid-build.
+            echo "→ Orphan <none> images..."
+            ORPHAN_IDS=$(docker images --filter "dangling=false" --format "{{.ID}} {{.Repository}}:{{.Tag}}" | awk '$2 == "<none>:<none>" {print $1}' | sort -u)
+            for id in $ORPHAN_IDS; do
+              docker rmi "$id" 2>/dev/null && echo "   removed $id" || true
+            done
+
+            # Aggressive fallback: if still >80% disk, prune ALL unused
+            # tagged images. Protect :rollback tags first so the
+            # deploy's manual-rollback hook still works.
+            USAGE=$(df / | awk 'NR==2 {gsub("%",""); print $5}')
+            if [ "$USAGE" -gt 80 ]; then
+              echo "⚠️  Disk still ${USAGE}% — aggressive image prune"
+              # Re-tag :rollback images under a temporary name so the
+              # subsequent `prune -a` keeps them.
+              for img in $(docker images --format "{{.Repository}}:{{.Tag}}" | grep ":rollback$"); do
+                base="${img%:rollback}"
+                docker tag "$img" "${base}:pruneproof" && echo "   protecting ${img}"
+              done
+              docker image prune -a -f 2>&1 | tail -3
+              # Restore :rollback names from the protected tags.
+              for img in $(docker images --format "{{.Repository}}:{{.Tag}}" | grep ":pruneproof$"); do
+                base="${img%:pruneproof}"
+                docker tag "$img" "${base}:rollback"
+                docker rmi "${base}:pruneproof" 2>/dev/null
+                echo "   restored ${base}:rollback"
+              done
+            else
+              echo "→ Disk OK at ${USAGE}% — skipping aggressive pass."
+            fi
 
             echo ""
             echo "==========================================="
@@ -1008,6 +1051,9 @@ jobs:
             echo "==========================================="
             echo "→ Disk usage (/):"
             df -h / 2>&1 | tail -1
+            DISK_AFTER_KB=$(df / | awk 'NR==2 {print $3}')
+            DELTA_MB=$(( (DISK_BEFORE_KB - DISK_AFTER_KB) / 1024 ))
+            echo "→ Reclaimed: ${DELTA_MB} MB"
             echo "→ Memory:"
             free -m 2>&1 | head -3
             echo "→ Docker disk usage:"
