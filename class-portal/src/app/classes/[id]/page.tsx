@@ -697,10 +697,13 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
   }
 
   async function handleAttachmentUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files
+    // Snapshot before clearing — `e.target.files` is a live FileList,
+    // so reading it after `value=''` returns nothing. See ActivityEditor
+    // handleUpload for the full explanation.
+    const picked = e.target.files ? Array.from(e.target.files) : []
     e.target.value = ''
-    if (!files || !lessonId) return
-    for (const f of Array.from(files)) {
+    if (picked.length === 0 || !lessonId) return
+    for (const f of picked) {
       const att = await uploadLessonAttachment(lessonId, f)
       if (att) setAttachments(prev => [...prev, att])
     }
@@ -1752,20 +1755,26 @@ function ActivityEditor({ classId, existing, canEdit, onClose, onSaved }: {
   }
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files
+    // Snapshot the FileList into a real array BEFORE clearing the
+    // input. `e.target.files` is a *live* FileList bound to the input;
+    // assigning value='' empties it, so reading via the captured
+    // reference afterwards yields zero files — symptom was "I click
+    // + Add photos, pick a photo, nothing appears, no error".
+    const picked = e.target.files ? Array.from(e.target.files) : []
     e.target.value = ''
-    if (!files || files.length === 0) return
+    if (picked.length === 0) return
     setErr(null)
     if (!activityId) {
       // No saved row yet → stage locally for upload on Save. Skip any
       // file > 15 MB up front so the user sees the error here instead
-      // of mid-flush. Image-only by file.type because the input's
-      // accept="image/*" is advisory.
+      // of mid-flush. Image-only by file.type, but accept files whose
+      // browser-reported type is empty (Safari does this for HEIC) —
+      // the server validates again on POST.
       const additions: typeof pendingFiles = []
       let rejected = 0
-      for (const f of Array.from(files)) {
+      for (const f of picked) {
         if (f.size > 15 * 1024 * 1024) { rejected += 1; continue }
-        if (!f.type.startsWith('image/')) { rejected += 1; continue }
+        if (f.type && !f.type.startsWith('image/')) { rejected += 1; continue }
         additions.push({
           file: f,
           previewUrl: URL.createObjectURL(f),
@@ -1780,7 +1789,7 @@ function ActivityEditor({ classId, existing, canEdit, onClose, onSaved }: {
     }
     // Activity already exists → upload immediately.
     let failed = 0
-    for (const f of Array.from(files)) {
+    for (const f of picked) {
       const meta = await uploadActivityPhoto(activityId, f)
       if (meta) setPhotos(prev => [...prev, meta])
       else failed += 1
