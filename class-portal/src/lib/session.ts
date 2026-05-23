@@ -685,6 +685,64 @@ export function saveWaiver(record: WaiverRecord) {
   if (idx >= 0) all[idx] = record
   else all.push(record)
   writeWaivers(all)
+  // Best-effort server persistence so admins / teachers on other
+  // devices see the latest signed state. Without this push, the
+  // record only lives in the signing device's localStorage and the
+  // student-detail card shows "Not yet signed." even after the
+  // parent + teacher have both signed.
+  const student = getUsers().find(u => u.email.toLowerCase() === record.studentEmail.toLowerCase())
+  if (student?.id) {
+    void uploadWaiverRecord(student.id, record)
+  }
+}
+
+/** Internal helper — local writes only, no server push (used by
+ *  hydrateWaiverForStudent so we don't bounce what we just fetched
+ *  back up to the server). */
+function saveWaiverLocal(record: WaiverRecord) {
+  const all = getWaivers()
+  const idx = all.findIndex(w => w.id === record.id)
+  if (idx >= 0) all[idx] = record
+  else all.push(record)
+  writeWaivers(all)
+}
+
+/** Persist the full WaiverRecord JSON server-side by reusing the
+ *  existing document-blob store under a fixed docKey. Lets us keep
+ *  the structured record (witness sig, SCEI ack sig, etc.) in sync
+ *  across devices without needing a new Prisma model + migration. */
+async function uploadWaiverRecord(studentId: string, record: WaiverRecord): Promise<void> {
+  try {
+    const json = JSON.stringify(record)
+    const file = new File([new Blob([json], { type: 'application/json' })], 'waiver-record.json', { type: 'application/json' })
+    await uploadDocumentBlob(studentId, 'waiver_record', file)
+  } catch (e) {
+    console.warn('[uploadWaiverRecord]', e)
+  }
+}
+
+/** Fetch the server-stored WaiverRecord for a student and merge it
+ *  into the local cache. Returns the record so callers can update
+ *  React state immediately. Null on miss or auth failure — caller
+ *  keeps showing whatever's in local cache. */
+export async function hydrateWaiverForStudent(studentId: string): Promise<WaiverRecord | null> {
+  if (typeof window === 'undefined') return null
+  const tok = getToken()
+  if (!tok) return null
+  try {
+    const res = await fetch(
+      `${backendOrigin()}/api/public/class-portal/document-blobs/${encodeURIComponent(studentId)}/waiver_record`,
+      { headers: { authorization: `Bearer ${tok}` } },
+    )
+    if (!res.ok) return null
+    const text = await res.text()
+    const record = JSON.parse(text) as WaiverRecord
+    saveWaiverLocal(record)
+    return record
+  } catch (e) {
+    console.warn('[hydrateWaiverForStudent]', e)
+    return null
+  }
 }
 
 export function findPendingWaivers(): WaiverRecord[] {
