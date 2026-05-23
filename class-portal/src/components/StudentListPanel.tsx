@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   getUsers, hydrateUsers, getWaivers, saveWaiver,
-  hydrateWaiverForStudent,
+  hydrateWaiverForStudent, syncLocalWaiversToServer,
   teacherAssignedPairs, hydrateAssignments,
   paymentStatusFor,
   hydrateFrontDeskPayments,
@@ -115,11 +115,20 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
   // this, a teacher signing in on a fresh device would briefly see no
   // students (or, if `viewer.userId` is null because their own record
   // hasn't loaded, would fall back to viewerBranch-only filtering).
+  //
+  // Also fire syncLocalWaiversToServer here so any WaiverRecord still
+  // sitting in this device's localStorage gets pushed to the server
+  // even when the admin / teacher has been signed in continuously
+  // and hasn't bounced through signIn() since PR #174 deployed. This
+  // is what lets the "Sign as SCEI" / "Sign as witness" buttons
+  // appear for students whose original signing predated PR #169 (the
+  // server-JSON persistence rollout).
   useEffect(() => {
     let cancelled = false
     void Promise.all([
       hydrateUsers().catch(() => null),
       hydrateAssignments().catch(() => null),
+      syncLocalWaiversToServer().catch(() => null),
     ]).then(() => { if (!cancelled) refresh() })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
