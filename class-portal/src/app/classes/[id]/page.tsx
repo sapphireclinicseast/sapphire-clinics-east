@@ -100,6 +100,22 @@ export default function ClassDetailPage() {
   const dayShorts = CLASS_DAY_OPTIONS.filter(o => klass.scheduleDays.includes(o.value)).map(o => o.short).join(', ')
   const time = klass.scheduleStartTime && klass.scheduleEndTime ? `${klass.scheduleStartTime}–${klass.scheduleEndTime}` : null
 
+  // KPI numbers shown in the dashboard. Avg attendance is a weighted
+  // average across every roster × lesson cell that's been marked —
+  // un-marked cells are excluded so a lesson with no attendance taken
+  // doesn't drag the percentage to 0. If nothing's been graded yet,
+  // we render "—" instead of 0% so the empty state is honest.
+  let presentTotal = 0
+  let markedTotal = 0
+  for (const l of lessons) {
+    for (const s of roster) {
+      const status = l.attendance[s.id]
+      if (status === 'PRESENT') presentTotal += 1
+      if (status === 'PRESENT' || status === 'ABSENT') markedTotal += 1
+    }
+  }
+  const avgAttendancePct = markedTotal > 0 ? Math.round((presentTotal / markedTotal) * 100) : null
+
   return (
     <div
       className="animate-fade-up"
@@ -111,29 +127,81 @@ export default function ClassDetailPage() {
       }}
     >
       <div className="px-3 sm:px-5 max-w-7xl mx-auto space-y-4">
-      {/* Compact class header. Cover photo is 16:4 with a 220px cap so it
-          doesn't dominate the wider layout; meta lines moved next to the
-          title using a flex row when there's space. Saves ~120px of
-          vertical real estate vs the old 16:6 hero. */}
-      <div className="card-static p-0 overflow-hidden">
-        <div className="bg-[color:var(--paper-2)] relative w-full aspect-[16/4] max-h-[220px]">
-          {photoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={photoUrl} alt={klass.name} className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-[color:var(--mid-gray)] text-[12.5px]" style={{ fontFamily: 'var(--font-display)' }}>No cover photo</div>
-          )}
-        </div>
-        <div className="px-4 py-3 sm:px-5 sm:py-3.5 flex items-start gap-3 flex-wrap">
-          <button className="btn-secondary text-xs shrink-0" onClick={() => router.push('/classes')}>← All classes</button>
-          <div className="min-w-0 flex-1">
-            <h1 className="text-[22px] leading-tight text-[color:var(--deep-teal)]">
-              {klass.name}{klass.section ? <span className="text-[color:var(--mid-gray)] font-normal"> · {klass.section}</span> : null}
-            </h1>
-            <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-0.5">
-              {levelLabel(klass.level)} · {branchLabel(klass.branch)} · Teacher: {teacherName} · {dayShorts || '—'}{time ? ` · ${time}` : ''} · {roster.length} student{roster.length === 1 ? '' : 's'}
-            </p>
+
+      {/* ── Top row: 2/3 class-overview card (cover + meta + roster) +
+          1/3 KPI strip (classes completed · students · avg attendance).
+          Stacks vertically on < lg so mobile still reads cleanly. ── */}
+      <div className="grid lg:grid-cols-3 gap-4">
+
+        {/* LEFT — overview card */}
+        <div className="lg:col-span-2 card-static p-0 overflow-hidden">
+          <div className="flex flex-col sm:flex-row">
+            {/* Cover thumbnail — much smaller than the old hero strip
+                (200px wide on sm+, full-width on xs) so the meta + roster
+                can sit beside it without the photo dominating. */}
+            <div className="bg-[color:var(--paper-2)] relative w-full sm:w-[200px] aspect-[16/10] sm:aspect-auto sm:min-h-[140px] shrink-0">
+              {photoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={photoUrl} alt={klass.name} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-[color:var(--mid-gray)] text-[11.5px]" style={{ fontFamily: 'var(--font-display)' }}>No cover photo</div>
+              )}
+            </div>
+            <div className="px-4 py-3 sm:py-3.5 flex-1 min-w-0">
+              <button className="btn-secondary text-[11px] mb-2" onClick={() => router.push('/classes')}>← All classes</button>
+              <h1 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">
+                {klass.name}{klass.section ? <span className="text-[color:var(--mid-gray)] font-normal"> · {klass.section}</span> : null}
+              </h1>
+              <p className="text-[12px] text-[color:var(--mid-gray)] mt-1 leading-relaxed">
+                {levelLabel(klass.level)} · {branchLabel(klass.branch)}<br/>
+                Teacher: <span className="font-semibold text-[color:var(--narra)]">{teacherName}</span><br/>
+                Schedule: {dayShorts || '—'}{time ? ` · ${time}` : ''}
+              </p>
+            </div>
           </div>
+
+          {/* Student roster — collapsible on tall pages, scroll-locked
+              above ~8 students so the card never grows past ~280px tall. */}
+          <div className="border-t px-4 py-3" style={{ borderColor: 'var(--paper-3)' }}>
+            <div className="text-[11px] font-bold uppercase tracking-[0.10em] text-[color:var(--bright-teal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>
+              Students ({roster.length})
+            </div>
+            {roster.length === 0 ? (
+              <p className="text-[12.5px] text-[color:var(--mid-gray)] py-1">No students enrolled yet.</p>
+            ) : (
+              <ul className="space-y-0.5 text-[13px] max-h-[180px] overflow-y-auto pr-1">
+                {roster.map(s => (
+                  <li key={s.id} className="flex items-center gap-2 py-0.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[color:var(--moss)] shrink-0" />
+                    <span className="truncate font-medium text-[color:var(--narra)]">
+                      {[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+
+        {/* RIGHT — KPI strip. Stacks into a 3-col row on phones to stay
+            compact; switches to a single column on lg+ to align with
+            the taller overview card on its left. */}
+        <div className="card-static p-3 sm:p-4 grid grid-cols-3 lg:grid-cols-1 gap-3 lg:gap-4">
+          <KpiTile
+            label="Classes completed"
+            value={lessons.length}
+            hint={lessons.length === 1 ? 'day’s lesson logged' : 'day’s lessons logged'}
+          />
+          <KpiTile
+            label="Students"
+            value={roster.length}
+            hint={roster.length === 1 ? 'enrolled' : 'enrolled'}
+          />
+          <KpiTile
+            label="Avg attendance"
+            value={avgAttendancePct === null ? '—' : `${avgAttendancePct}%`}
+            hint={avgAttendancePct === null ? 'no attendance yet' : 'across all lessons'}
+          />
         </div>
       </div>
 
@@ -207,6 +275,32 @@ export default function ClassDetailPage() {
         />
       )}
       </div>
+    </div>
+  )
+}
+
+/**
+ * Compact KPI tile used in the class-detail dashboard sidebar.
+ * One number, a short label above, and a one-line caption below.
+ * Layout flips between row (mobile, 3 tiles across) and column (lg+)
+ * by inheriting the parent grid's alignment.
+ */
+function KpiTile({ label, value, hint }: {
+  label: string
+  value: string | number
+  hint?: string
+}) {
+  return (
+    <div className="rounded-xl border bg-[color:var(--paper)] px-3 py-2.5" style={{ borderColor: 'var(--paper-3)' }}>
+      <div className="text-[10px] font-bold uppercase tracking-[0.10em] text-[color:var(--bright-teal)] leading-tight" style={{ fontFamily: 'var(--font-display)' }}>
+        {label}
+      </div>
+      <div className="text-[26px] sm:text-[28px] leading-none font-semibold text-[color:var(--deep-teal)] mt-1.5" style={{ fontFamily: 'var(--font-display)' }}>
+        {value}
+      </div>
+      {hint && (
+        <div className="text-[10.5px] text-[color:var(--mid-gray)] mt-1">{hint}</div>
+      )}
     </div>
   )
 }
