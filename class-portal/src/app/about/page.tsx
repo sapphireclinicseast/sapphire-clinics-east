@@ -126,6 +126,66 @@ export default function AboutPage() {
         </div>
 
         <div className="card-static">
+          <h2 className="text-[22px] leading-tight mb-1">Other FAQs</h2>
+          <p className="text-sm text-[color:var(--mid-gray)] mb-5">
+            Quick answers to the questions parents ask most often. Tap any question to expand the answer.
+          </p>
+
+          {/* Native <details>/<summary> for accordion behaviour — no JS, no
+              hydration mismatch, fully keyboard-accessible, and works
+              identically on every device. Styling matches the rest of the
+              cards (rounded corners, paper-3 borders, narra/moss accents). */}
+          <ul className="flex flex-col gap-2.5">
+            {[
+              {
+                q: 'Is this a real school?',
+                a: 'Yes. We’re in partnership with Light Bearer Christian Academy, so each student gets an LRN (Learner Reference Number) and an actual DepEd-compliant report card.',
+              },
+              {
+                q: 'Will you add the other grade levels?',
+                a: 'We plan to add Grades 4–10 next year. For now we offer Nursery, Kindergarten, and Grades 1–3. All levels are graded except Nursery.',
+              },
+              {
+                q: 'What subjects are taught?',
+                a: 'The full DepEd-aligned curriculum — English, Math, Science, Filipino, Araling Panlipunan, MAPEH, and Edukasyon sa Pagpapakatao — plus the practical-life and SPED supports our clinic team adds on top.',
+              },
+              {
+                q: 'Is the IE (Initial Evaluation) fee the same as the clinic’s normal IE?',
+                a: 'Yes. The IE assessment uses the prevailing clinic rate and is separate from the school tuition.',
+              },
+              {
+                q: 'How much are the books, and what’s the class schedule?',
+                a: 'Classes meet every Tuesday and Thursday. Books are roughly ₱7,500 per set — final price to be announced once we lock in the supplier.',
+              },
+              {
+                q: 'Is Aura Academy DepEd-accredited?',
+                a: 'Yes. Through our partnership with Light Bearer Christian Academy, the program is DepEd-accredited end to end.',
+              },
+            ].map((item, i) => (
+              <li key={i}>
+                <details className="group rounded-2xl border border-[color:var(--paper-3)] bg-white/60 overflow-hidden transition-colors hover:border-[color:var(--moss)]/40 open:border-[color:var(--moss)]/60 open:bg-[color:var(--paper-2)]">
+                  <summary
+                    className="cursor-pointer list-none px-4 py-3 sm:px-5 sm:py-3.5 flex items-center justify-between gap-3 text-[14px] leading-snug font-semibold text-[color:var(--narra)] group-open:text-[color:var(--moss)]"
+                    style={{ fontFamily: 'var(--font-display)' }}
+                  >
+                    <span>{item.q}</span>
+                    <span
+                      aria-hidden
+                      className="shrink-0 w-6 h-6 rounded-full bg-[color:var(--paper-3)] text-[color:var(--narra)] flex items-center justify-center text-[14px] font-bold leading-none transition-transform group-open:rotate-45 group-open:bg-[color:var(--moss)] group-open:text-white"
+                    >
+                      +
+                    </span>
+                  </summary>
+                  <div className="px-4 pb-4 sm:px-5 sm:pb-5 -mt-1 text-[13.5px] leading-relaxed text-[color:var(--ink)]">
+                    {item.a}
+                  </div>
+                </details>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="card-static">
           <h2 className="text-[22px] leading-tight mb-1">Questions?</h2>
           <p className="text-sm text-[color:var(--mid-gray)] mb-5">
             If you have any questions about admissions, programs, or your child&apos;s enrollment, please reach out to us.
