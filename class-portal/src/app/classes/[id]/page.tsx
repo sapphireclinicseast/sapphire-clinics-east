@@ -100,7 +100,16 @@ export default function ClassDetailPage() {
   const time = klass.scheduleStartTime && klass.scheduleEndTime ? `${klass.scheduleStartTime}–${klass.scheduleEndTime}` : null
 
   return (
-    <div className="max-w-5xl mx-auto animate-fade-up space-y-6">
+    <div
+      className="animate-fade-up"
+      style={{
+        width: '100vw',
+        maxWidth: '100vw',
+        marginLeft: 'calc(50% - 50vw)',
+        marginRight: 'calc(50% - 50vw)',
+      }}
+    >
+      <div className="px-3 sm:px-5 max-w-7xl mx-auto space-y-6">
       <div className="card-static p-0 overflow-hidden">
         <div className="aspect-[16/6] bg-[color:var(--paper-2)] relative">
           {photoUrl ? (
@@ -193,6 +202,7 @@ export default function ClassDetailPage() {
           isStudent={isStudent}
         />
       )}
+      </div>
     </div>
   )
 }
