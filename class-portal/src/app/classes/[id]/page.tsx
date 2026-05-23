@@ -16,6 +16,7 @@ import {
   listActivities, createActivity, updateActivity, deleteActivity,
   uploadActivityPhoto, deleteActivityPhoto, fetchActivityPhotoBlob,
   ACTIVITY_TYPE_SUGGESTIONS,
+  getAssignments, hydrateAssignments,
   levelLabel, branchLabel, CLASS_DAY_OPTIONS,
   type AuthSession, type StoredUser,
   type ClassRecord, type LessonRecord, type LessonAttachmentMeta, type LessonOutputMeta,
@@ -58,6 +59,10 @@ export default function ClassDetailPage() {
         backendJson<{ class: ClassRecord }>(`/api/public/class-portal/classes/${encodeURIComponent(classId)}`),
         listLessons(classId),
         hydrateUsers().catch(() => getUsers()),
+        // Pull the assignments matrix so the teacher-name resolver
+        // below can fall back to (branch × level → teacher) when the
+        // class itself doesn't have a `teacherId` set.
+        hydrateAssignments().catch(() => null),
       ])
       setKlass(k)
       setLessons(ls)
@@ -95,8 +100,38 @@ export default function ClassDetailPage() {
   const isStudent = auth.role === 'STUDENT'
 
   const roster = students.filter(s => klass.studentIds.includes(s.id))
-  const teacher = teachers.find(t => t.id === klass.teacherId)
-  const teacherName = [teacher?.firstName, teacher?.lastName].filter(Boolean).join(' ') || teacher?.email || '—'
+
+  // Teacher-name resolution. Falls through in this order:
+  //   1. If the class has an explicit teacherId AND the viewer is that
+  //      teacher → use the viewer's own auth row (TEACHER callers
+  //      get a STUDENT-only user list back from the API, so they
+  //      won't find themselves in `teachers` otherwise).
+  //   2. Look up the explicit teacherId in the `teachers` array.
+  //   3. If teacherId is empty or not found, fall back to the
+  //      Assignments matrix (branch × level → first matching teacher
+  //      row). This is what the main admin set up under
+  //      /admin → Assignments and is the user-intended default.
+  //   4. As a last resort, render an em-dash.
+  const teacherName = (() => {
+    const tid = klass.teacherId
+    if (tid && auth && auth.userId === tid) {
+      return [auth.firstName].filter(Boolean).join(' ') || auth.email
+    }
+    if (tid) {
+      const t = teachers.find(x => x.id === tid)
+      if (t) return [t.firstName, t.lastName].filter(Boolean).join(' ') || t.email
+    }
+    // Fall back to the assignments matrix.
+    const a = getAssignments().find(x => x.branch === klass.branch && x.level === klass.level)
+    if (a) {
+      if (auth && auth.userId === a.teacherId) {
+        return [auth.firstName].filter(Boolean).join(' ') || auth.email
+      }
+      const t = teachers.find(x => x.id === a.teacherId)
+      if (t) return [t.firstName, t.lastName].filter(Boolean).join(' ') || t.email
+    }
+    return '—'
+  })()
   const dayShorts = CLASS_DAY_OPTIONS.filter(o => klass.scheduleDays.includes(o.value)).map(o => o.short).join(', ')
   const time = klass.scheduleStartTime && klass.scheduleEndTime ? `${klass.scheduleStartTime}–${klass.scheduleEndTime}` : null
 
