@@ -16,6 +16,7 @@ import {
   type AuthSession, type StoredUser, type ClassRecord, type ClassDay,
   type EnrollmentLevel, type Branch,
 } from '@/lib/session'
+import { Portal } from '@/components/Modal'
 
 const ALL_LEVELS: EnrollmentLevel[] = ['NURSERY', 'KINDER', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10']
 const ALL_BRANCHES: Branch[] = ['EAST', 'GREENHILLS']
@@ -312,6 +313,7 @@ function ClassEditor({ existing, students, defaultBranch, onClose, onSaved }: {
   }
 
   return (
+    <Portal>
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm overflow-y-auto p-2 sm:p-4 animate-fade-in" onClick={onClose}>
       <div className="max-w-6xl mx-auto my-2 sm:my-4 card-static min-h-[calc(100vh-1rem)] sm:min-h-[calc(100vh-2rem)]" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
@@ -445,5 +447,6 @@ function ClassEditor({ existing, students, defaultBranch, onClose, onSaved }: {
         </div>
       </div>
     </div>
+    </Portal>
   )
 }
