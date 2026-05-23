@@ -1110,19 +1110,30 @@ function ProjectEditor({ classId, roster, existing, readOnly, onClose, onSaved, 
           </label>
         </Section>
 
-        {projectId && (
-          <Section title={viewerIsStudent ? 'Your grade' : 'Grades + proof'}>
+        {/* Grades + proof — shown immediately on open, even before the
+            project has been saved. Score/makeup inputs work against
+            local state; the per-student Proof upload + View buttons
+            need a `projectId` (a saved row to attach blobs against),
+            so we gate JUST those two controls and show a one-line
+            hint while the project is still a draft. */}
+        <Section title={viewerIsStudent ? 'Your grade' : 'Grades + proof'}>
+          {visibleStudents.length === 0 ? (
+            <p className="text-sm text-[color:var(--mid-gray)] py-3">
+              {viewerIsStudent ? 'You are not on this roster.' : 'No students enrolled in this class yet.'}
+            </p>
+          ) : (
             <ul className="space-y-1">
               {visibleStudents.map(s => (
                 <div key={s.id} className="grid grid-cols-[1fr_auto] gap-2 items-center text-sm py-1">
                   <span className="truncate font-semibold text-[color:var(--narra)]">{[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}</span>
                   <div className="flex items-center gap-1.5 shrink-0">
                     {canEdit && (
-                      <input type="date" className="input" style={{ width: 140 }} value={grades[s.id]?.makeupDate ?? ''} onChange={e => setMakeup(s.id, e.target.value)} onBlur={save} title="Makeup date (optional)" />
+                      <input type="date" className="input" style={{ width: 140 }} value={grades[s.id]?.makeupDate ?? ''} onChange={e => setMakeup(s.id, e.target.value)} onBlur={projectId ? save : undefined} title="Makeup date (optional)" />
                     )}
-                    <input type="number" min={0} max={Number(totalScore) || undefined} className="input" style={{ width: 70 }} value={grades[s.id]?.score ?? ''} onChange={e => setGrade(s.id, Number(e.target.value))} onBlur={save} disabled={!canEdit} />
+                    <input type="number" min={0} max={Number(totalScore) || undefined} className="input" style={{ width: 70 }} value={grades[s.id]?.score ?? ''} onChange={e => setGrade(s.id, Number(e.target.value))} onBlur={projectId ? save : undefined} disabled={!canEdit} />
                     <span className="text-[11.5px] text-[color:var(--mid-gray)]">/ {totalScore || '—'}</span>
-                    {canEdit && (
+                    {/* Proof upload + View require a saved project row. */}
+                    {canEdit && projectId && (
                       <label className="btn-secondary text-[10.5px] cursor-pointer">
                         Proof
                         <input type="file" className="sr-only" accept="image/*,.pdf" onChange={async e => {
@@ -1131,13 +1142,20 @@ function ProjectEditor({ classId, roster, existing, readOnly, onClose, onSaved, 
                         }} />
                       </label>
                     )}
-                    <button className="text-[10.5px] px-2 py-0.5 rounded border" style={{ borderColor: 'var(--paper-3)' }} onClick={() => viewProof(s.id)}>View</button>
+                    {projectId && (
+                      <button className="text-[10.5px] px-2 py-0.5 rounded border" style={{ borderColor: 'var(--paper-3)' }} onClick={() => viewProof(s.id)}>View</button>
+                    )}
                   </div>
                 </div>
               ))}
             </ul>
-          </Section>
-        )}
+          )}
+          {canEdit && !projectId && visibleStudents.length > 0 && (
+            <p className="text-[12px] text-[color:var(--mid-gray)] mt-3 italic">
+              Tip: scores save when the project is created. Click <span className="font-semibold">Create project</span> below — proof uploads become available right after.
+            </p>
+          )}
+        </Section>
 
         {canEdit && (
           <div className="flex gap-2 justify-end mt-4 pt-3 border-t" style={{ borderColor: 'var(--paper-3)' }}>
