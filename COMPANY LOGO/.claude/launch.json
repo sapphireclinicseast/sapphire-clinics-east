@@ -42,6 +42,18 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--prefix", "/Users/hannahpellejo/Mirror/SAPPHIRE/00 SAPPHIRE EAST/02 Sandbox East/Marketing/Website/verdana-store"],
       "port": 3003
+    },
+    {
+      "name": "client-portal",
+      "runtimeExecutable": "/bin/zsh",
+      "runtimeArgs": ["-c", "export PATH=/opt/homebrew/bin:$PATH && cd /Users/hannahpellejo/Mirror/SAPPHIRE/00\\ SAPPHIRE\\ EAST/02\\ Sandbox\\ East/Marketing/Website/client-portal && MARKETING_URL=http://localhost:3000 npx next dev -p 3004"],
+      "port": 3004
+    },
+    {
+      "name": "class-portal",
+      "runtimeExecutable": "/bin/zsh",
+      "runtimeArgs": ["-c", "export PATH=/opt/homebrew/bin:$PATH && cd /Users/hannahpellejo/Mirror/SAPPHIRE/00\\ SAPPHIRE\\ EAST/02\\ Sandbox\\ East/Marketing/Website/class-portal && npx next dev -p 3006"],
+      "port": 3006
     }
   ]
 }
