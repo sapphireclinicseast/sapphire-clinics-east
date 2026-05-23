@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  getUsers, getWaivers, saveWaiver,
-  teacherAssignedPairs,
+  getUsers, hydrateUsers, getWaivers, saveWaiver,
+  teacherAssignedPairs, hydrateAssignments,
   paymentStatusFor,
   hydrateFrontDeskPayments,
   uploadDocumentBlob,
@@ -77,6 +77,22 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
   function refresh() {
     let pool = getUsers().filter(u => u.role === 'STUDENT')
     if (viewer.role === 'TEACHER' && viewer.userId) {
+      // Fail-CLOSED branch scoping. We restrict to the teacher's own
+      // `branch` field FIRST, regardless of whether their per-grade
+      // assignment cache has loaded. The previous version only filtered
+      // when `teacherAssignedPairs()` returned non-empty results — so a
+      // teacher whose localStorage hadn't hydrated yet (e.g. fresh
+      // sign-in on a new device) saw EVERY student in the school,
+      // leaking students from the other branch. The teacher's own
+      // `branch` field is set at account creation and never null, so
+      // this guard always applies.
+      const me = getUsers().find(u => u.id === viewer.userId)
+      if (me?.branch) {
+        pool = pool.filter(u => u.branch === me.branch)
+      }
+      // Additional per-grade narrowing layered on top — only applies
+      // when assignments are loaded. If assignments are still loading
+      // we already have the branch filter as a safety net.
       const pairs = teacherAssignedPairs(viewer.userId)
       if (pairs.length > 0) {
         const allowed = new Set(pairs.map(p => `${p.branch}|${p.level}`))
@@ -92,6 +108,21 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
     setStudents(pool)
   }
   useEffect(refresh, [viewer.role, viewer.userId, viewerBranch])
+
+  // Hydrate users + assignments from the server so the very first
+  // refresh() above doesn't run against a stale or empty cache. Without
+  // this, a teacher signing in on a fresh device would briefly see no
+  // students (or, if `viewer.userId` is null because their own record
+  // hasn't loaded, would fall back to viewerBranch-only filtering).
+  useEffect(() => {
+    let cancelled = false
+    void Promise.all([
+      hydrateUsers().catch(() => null),
+      hydrateAssignments().catch(() => null),
+    ]).then(() => { if (!cancelled) refresh() })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewer.role, viewer.userId, viewerBranch])
 
   // Pull the latest server-side payment statuses on mount so the per-row
   // "Paid / Pending / No payment" badge reflects what the front desk has
