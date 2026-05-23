@@ -287,6 +287,25 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
             <div className="rounded-2xl p-4 border text-sm" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
               <div className="font-semibold text-[color:var(--narra)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>Parent / Guardian Waiver</div>
               <div className="text-[12.5px] text-[color:var(--mid-gray)]">Not yet signed.</div>
+              {/* Direct path to /waiver for the parent themselves. This
+                  is the only way they can get there once enrollment is
+                  done — the standalone /waiver page is reachable by
+                  URL but there was no nav link from inside the
+                  student portal. Admin/teacher viewers see a hint
+                  pointing the parent at this same flow. */}
+              {viewerRole === 'STUDENT' && student.level ? (
+                <a
+                  href={`/waiver?level=${encodeURIComponent(student.level)}`}
+                  className="btn-primary text-xs inline-block mt-3"
+                  style={{ width: 'auto' }}
+                >
+                  Sign waiver →
+                </a>
+              ) : (
+                <div className="text-[11.5px] text-[color:var(--mid-gray)] mt-2 italic">
+                  Ask the parent to sign in and click <span className="font-semibold">Sign waiver</span> on this card. The system regenerates the PDF from their signatures and stores it on the server.
+                </div>
+              )}
             </div>
           )}
           {/* The Annex 3 admin-preview card was removed — it regenerated
