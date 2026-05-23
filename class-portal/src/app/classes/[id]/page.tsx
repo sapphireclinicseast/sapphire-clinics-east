@@ -22,6 +22,7 @@ import {
   type AttendanceStatus, type LessonTestRecord, type ProjectRecord, type ActivityRecord, type ActivityPhotoMeta,
 } from '@/lib/session'
 import { backendJson } from '@/lib/backend'
+import { Portal } from '@/components/Modal'
 
 /**
  * Class detail dashboard. Header (cover, name, schedule, roster) +
@@ -374,6 +375,7 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
   const editable = !isStudent
 
   return (
+    <Portal>
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm overflow-y-auto p-2 sm:p-4" onClick={onClose}>
       <div className="max-w-6xl mx-auto my-2 sm:my-4 card-static min-h-[calc(100vh-1rem)] sm:min-h-[calc(100vh-2rem)]" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 mb-4">
@@ -534,6 +536,7 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
         )}
       </div>
     </div>
+    </Portal>
   )
 }
 
@@ -945,6 +948,7 @@ function ProjectEditor({ classId, roster, existing, onClose, onSaved, viewerIsSt
     : roster
 
   return (
+    <Portal>
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm overflow-y-auto p-2 sm:p-4" onClick={onClose}>
       <div className="max-w-6xl mx-auto my-2 sm:my-4 card-static min-h-[calc(100vh-1rem)] sm:min-h-[calc(100vh-2rem)]" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 mb-4">
@@ -1016,6 +1020,7 @@ function ProjectEditor({ classId, roster, existing, onClose, onSaved, viewerIsSt
         )}
       </div>
     </div>
+    </Portal>
   )
 }
 
@@ -1235,6 +1240,7 @@ function ActivityEditor({ classId, existing, canEdit, onClose, onSaved }: {
   }
 
   return (
+    <Portal>
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm overflow-y-auto p-2 sm:p-4" onClick={onClose}>
       <div className="max-w-6xl mx-auto my-2 sm:my-4 card-static min-h-[calc(100vh-1rem)] sm:min-h-[calc(100vh-2rem)]" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 mb-4">
@@ -1317,5 +1323,6 @@ function ActivityEditor({ classId, existing, canEdit, onClose, onSaved }: {
         )}
       </div>
     </div>
+    </Portal>
   )
 }
