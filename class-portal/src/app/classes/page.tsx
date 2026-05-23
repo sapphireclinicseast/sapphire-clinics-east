@@ -94,7 +94,16 @@ export default function ClassesPage() {
   if (!ready) return null
 
   return (
-    <div className="max-w-5xl mx-auto animate-fade-up space-y-6">
+    <div
+      className="animate-fade-up"
+      style={{
+        width: '100vw',
+        maxWidth: '100vw',
+        marginLeft: 'calc(50% - 50vw)',
+        marginRight: 'calc(50% - 50vw)',
+      }}
+    >
+      <div className="px-3 sm:px-5 max-w-7xl mx-auto space-y-6">
       <div className="card-static">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
@@ -153,6 +162,7 @@ export default function ClassesPage() {
           onSaved={async () => { setShowForm(false); setEditing(null); await load() }}
         />
       )}
+      </div>
     </div>
   )
 }
