@@ -310,7 +310,7 @@ const ENROLLMENT_DOCS: Array<{ title: string; note?: string; mandatory?: boolean
   { title: 'PWD ID (if applicable)' },
   { title: 'Latest Report Card / SF9' },
   { title: 'Certificate of Good Moral Character' },
-  { title: 'Completed enrollment form (LBCA digital form)' },
+  { title: 'Completed enrollment form (DepEd Annex 2)', note: 'Generated from the Learner Profile you complete on our website.' },
   { title: 'Medical / developmental / therapy reports (if relevant)' },
   { title: 'Signed Parent/Guardian Waiver', mandatory: true },
 ]
