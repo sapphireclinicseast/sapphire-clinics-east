@@ -151,7 +151,7 @@ export default function AboutPage() {
               },
               {
                 q: 'Is the IE (Initial Evaluation) fee the same as the clinic’s normal IE?',
-                a: 'Yes. The IE assessment uses the prevailing clinic rate and is separate from the school tuition.',
+                a: 'Yes. The IE assessment uses the prevailing clinic rate and is separate from the school tuition. It also includes an entrance exam so we can place your child in the right grade level and tailor support from day one.',
               },
               {
                 q: 'How much are the books, and what’s the class schedule?',
