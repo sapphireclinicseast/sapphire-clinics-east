@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { getHeadshotFor, saveHeadshot } from '@/lib/session'
+import { backendOrigin, getToken } from '@/lib/backend'
 
 interface Props {
   studentId: string
@@ -15,8 +16,38 @@ export default function HeadshotEditor({ studentId, editable = true }: Props) {
   const [err, setErr] = useState<string | null>(null)
 
   useEffect(() => {
+    // 1) Instant render from this device's local cache, if any.
     const h = getHeadshotFor(studentId)
-    if (h) setDataUrl(h.dataUrl)
+    if (h) { setDataUrl(h.dataUrl); return }
+
+    // 2) Fallback to the server-side 1x1 photo the parent uploaded
+    //    during enrollment. The headshot store is localStorage-only
+    //    so without this, anyone viewing the student from a different
+    //    device (main admin on laptop, teacher on classroom tablet)
+    //    sees only the placeholder avatar even though the photo was
+    //    captured at signup. We downscale the blob to ~500 KB so it
+    //    fits inside the headshot store and renders instantly on
+    //    subsequent loads.
+    let cancelled = false
+    ;(async () => {
+      try {
+        const tok = getToken()
+        const res = await fetch(
+          `${backendOrigin()}/api/public/class-portal/document-blobs/${encodeURIComponent(studentId)}/child_photo_1x1`,
+          { headers: tok ? { authorization: `Bearer ${tok}` } : undefined },
+        )
+        if (cancelled || !res.ok) return
+        const blob = await res.blob()
+        if (!blob.type.startsWith('image/')) return
+        const small = await downscale(blob, 500, 0.85)
+        if (!cancelled && small) {
+          setDataUrl(small)
+          // Cache so subsequent renders are instant, no network.
+          try { saveHeadshot({ studentId, dataUrl: small, uploadedAt: new Date().toISOString() }) } catch { /* ignore quota */ }
+        }
+      } catch { /* swallow — keeps the placeholder rendering */ }
+    })()
+    return () => { cancelled = true }
   }, [studentId])
 
   function onFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -67,4 +98,36 @@ export default function HeadshotEditor({ studentId, editable = true }: Props) {
       )}
     </div>
   )
+}
+
+/**
+ * Read an image blob, resize so the longer edge ≤ maxEdge, and return
+ * a JPEG data URL. Mirrors the helper account-setup uses on the
+ * enrollment flow so a photo seeded from the server fallback ends up
+ * the same size as one captured at signup. Returns null if the
+ * environment can't decode or render the image.
+ */
+function downscale(blob: Blob, maxEdge: number, jpegQuality: number): Promise<string | null> {
+  return new Promise((resolve) => {
+    if (typeof document === 'undefined') { resolve(null); return }
+    const url = URL.createObjectURL(blob)
+    const img = new Image()
+    img.onload = () => {
+      try {
+        const longer = Math.max(img.width, img.height)
+        const scale = longer > maxEdge ? maxEdge / longer : 1
+        const w = Math.round(img.width * scale)
+        const h = Math.round(img.height * scale)
+        const canvas = document.createElement('canvas')
+        canvas.width = w; canvas.height = h
+        const ctx = canvas.getContext('2d')
+        if (!ctx) { URL.revokeObjectURL(url); resolve(null); return }
+        ctx.drawImage(img, 0, 0, w, h)
+        resolve(canvas.toDataURL('image/jpeg', jpegQuality))
+      } catch { resolve(null) }
+      finally { URL.revokeObjectURL(url) }
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null) }
+    img.src = url
+  })
 }
