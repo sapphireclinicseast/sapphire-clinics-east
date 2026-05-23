@@ -268,14 +268,17 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
               onPreview={() => regenerateAndOpen(() => generateWaiverPdf(waiver))}
             />
           )}
-          {/* No structured record, but a signed PDF lives on the
-              server (uploaded by the SCEI ACK flow). Render a proper
-              "Signed (PDF on file)" card whose View/Download stream
-              the server PDF directly — no client-side regeneration. */}
+          {/* The waiver is system-generated from the structured
+              WaiverRecord (signatures, dates, content clauses). When
+              the parent signed it on /waiver, the generated PDF was
+              archived to the server's document store. We stream that
+              archived PDF here when the structured record isn't on
+              this device — there is NO concept of a "parent re-upload"
+              for this document. */}
           {!waiver && waiverPdfOnServer && (
             <GeneratedFormCard
               title="Parent / Guardian Waiver"
-              description="Signed — PDF on file. The structured signing log isn't on this device, so View / Download stream the server copy directly."
+              description="Signed. The system-generated PDF (with embedded signatures) is on file — View / Download stream the archived copy."
               onDownload={() => void downloadServerWaiverPdf(student.id, student.lastName ?? 'student')}
               onPreview={() => openServerWaiverPdf(student.id)}
             />
