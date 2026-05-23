@@ -273,62 +273,80 @@ export default function ClassDetailPage() {
 
       {err && <div className="px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
 
-      <div className="card-static">
-        <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
-          <div>
-            <h2 className="text-[18px] leading-tight">Day&apos;s lessons</h2>
-            <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1">
-              {canEdit
-                ? 'Add a lesson for any scheduled day. Attach reference materials, take attendance, mark grades, and (optionally) collect student outputs.'
-                : 'Every lesson published by the teacher appears here. You can download the materials and see your own attendance + grade.'}
-            </p>
+      {/* ── Lower section: 2-column dashboard ──────────────────────
+            LEFT (3/5 on lg)  — Day's lessons widget. Scroll-locked
+                                so a 42-week / ~84-lesson list never
+                                pushes the right column off-screen.
+            RIGHT (2/5)       — Projects (top) and Activities (below)
+                                stacked. Compact card chrome to match
+                                the 21st.dev clean-dashboard look. */}
+      <div className="grid lg:grid-cols-5 gap-4">
+
+        {/* LEFT — Day's lessons */}
+        <section className="lg:col-span-3 card-static p-0 flex flex-col overflow-hidden">
+          <div className="px-4 py-3 sm:px-5 sm:py-3.5 border-b flex items-start justify-between gap-3 flex-wrap" style={{ borderColor: 'var(--paper-3)' }}>
+            <div className="min-w-0">
+              <div className="text-[10.5px] font-bold uppercase tracking-[0.10em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
+                Day&apos;s lessons
+              </div>
+              <div className="text-[12px] text-[color:var(--mid-gray)] mt-0.5">
+                {canEdit ? 'Add a lesson, take attendance, mark grades, collect proofs.' : 'Posted lessons appear here.'}
+                <span className="ml-1 text-[color:var(--moss)] font-semibold">{lessons.length}</span>
+              </div>
+            </div>
+            {canEdit && (
+              <button className="btn-primary text-[11px] shrink-0" onClick={() => setEditingLesson('new')}>+ Add Day&apos;s Lesson</button>
+            )}
           </div>
-          {canEdit && (
-            <button className="btn-primary text-xs" onClick={() => setEditingLesson('new')}>+ Add Day&apos;s Lesson</button>
-          )}
+
+          {/* Scrollable feed — capped at ~70vh so the right column's
+              cards stay reachable even on a packed semester. */}
+          <div className="overflow-y-auto px-3 py-3 sm:px-4" style={{ maxHeight: '70vh' }}>
+            {busy && lessons.length === 0 ? (
+              <p className="text-sm text-[color:var(--mid-gray)] text-center py-6">Loading…</p>
+            ) : lessons.length === 0 ? (
+              <p className="text-sm text-[color:var(--mid-gray)] text-center py-8">
+                {canEdit ? 'No lessons yet. Click + Add Day’s Lesson to create the first one.' : 'No lessons posted yet.'}
+              </p>
+            ) : (
+              <ul className="space-y-2.5">
+                {lessons.map(l => (
+                  <LessonCard
+                    key={l.id}
+                    lesson={l}
+                    roster={roster}
+                    viewerRole={auth.role}
+                    viewerId={auth.userId}
+                    canEdit={canEdit}
+                    onEdit={() => setEditingLesson(l)}
+                    onDelete={async () => {
+                      if (!confirm(`Delete "${l.title}"?`)) return
+                      const ok = await deleteLesson(l.id)
+                      if (ok) await load()
+                      else setErr('Could not delete lesson.')
+                    }}
+                  />
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+
+        {/* RIGHT — Projects on top, Activities below */}
+        <div className="lg:col-span-2 flex flex-col gap-4 min-w-0">
+          <ProjectsSection
+            classId={klass.id}
+            roster={roster}
+            canEdit={canEdit}
+            isStudent={isStudent}
+            viewerId={auth.userId}
+          />
+          <ActivitiesSection
+            classId={klass.id}
+            canEdit={canEdit}
+          />
         </div>
-
-        {busy && lessons.length === 0 ? (
-          <p className="text-sm text-[color:var(--mid-gray)] text-center py-6">Loading…</p>
-        ) : lessons.length === 0 ? (
-          <p className="text-sm text-[color:var(--mid-gray)] text-center py-8">
-            {canEdit ? 'No lessons yet. Click + Add Day’s Lesson to create the first one.' : 'No lessons posted yet.'}
-          </p>
-        ) : (
-          <ul className="space-y-3">
-            {lessons.map(l => (
-              <LessonCard
-                key={l.id}
-                lesson={l}
-                roster={roster}
-                viewerRole={auth.role}
-                viewerId={auth.userId}
-                canEdit={canEdit}
-                onEdit={() => setEditingLesson(l)}
-                onDelete={async () => {
-                  if (!confirm(`Delete "${l.title}"?`)) return
-                  const ok = await deleteLesson(l.id)
-                  if (ok) await load()
-                  else setErr('Could not delete lesson.')
-                }}
-              />
-            ))}
-          </ul>
-        )}
       </div>
-
-      <ProjectsSection
-        classId={klass.id}
-        roster={roster}
-        canEdit={canEdit}
-        isStudent={isStudent}
-        viewerId={auth.userId}
-      />
-
-      <ActivitiesSection
-        classId={klass.id}
-        canEdit={canEdit}
-      />
 
       {editingLesson && (
         <LessonEditor
@@ -1609,9 +1627,27 @@ function ActivityEditor({ classId, existing, canEdit, onClose, onSaved }: {
   const [fromDate, setFromDate] = useState(existing?.fromDate ? existing.fromDate.slice(0, 10) : '')
   const [toDate, setToDate] = useState(existing?.toDate ? existing.toDate.slice(0, 10) : '')
   const [photos, setPhotos] = useState<ActivityPhotoMeta[]>(existing?.photos ?? [])
+  // Pending photos picked BEFORE the activity row exists on the
+  // server. We hold the raw File objects + local blob URLs for
+  // preview, then flush them through uploadActivityPhoto on Save.
+  // The teacher can drop in photos the moment the modal opens —
+  // no "save first" round-trip required.
+  const [pendingFiles, setPendingFiles] = useState<Array<{ file: File; previewUrl: string; localId: string }>>([])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [activityId, setActivityId] = useState<string | null>(existing?.id ?? null)
+
+  // Revoke the blob preview URLs on unmount so we don't leak memory
+  // (one URL per pending file, freed when the queue clears or the
+  // modal closes).
+  useEffect(() => {
+    return () => {
+      for (const p of pendingFiles) {
+        try { URL.revokeObjectURL(p.previewUrl) } catch { /* ignore */ }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function save() {
     setErr(null)
@@ -1630,6 +1666,25 @@ function ActivityEditor({ classId, existing, canEdit, onClose, onSaved }: {
         : await createActivity(classId, payload)
       if (!saved) { setErr('Could not save.'); return }
       setActivityId(saved.id)
+      // Flush any pending photos now that the activity row exists.
+      // We don't block the save callback on this — failures just leave
+      // the file in the queue so the user can retry.
+      if (pendingFiles.length > 0) {
+        let failed = 0
+        for (const p of pendingFiles) {
+          const meta = await uploadActivityPhoto(saved.id, p.file)
+          if (meta) {
+            setPhotos(prev => [...prev, meta])
+            try { URL.revokeObjectURL(p.previewUrl) } catch { /* ignore */ }
+            setPendingFiles(prev => prev.filter(x => x.localId !== p.localId))
+          } else {
+            failed += 1
+          }
+        }
+        if (failed > 0) {
+          setErr(`${failed} photo${failed === 1 ? '' : 's'} failed to upload — they're still queued. Click Save changes to retry.`)
+        }
+      }
       await onSaved()
     } catch (e) { setErr((e as Error).message) }
     finally { setBusy(false) }
@@ -1638,12 +1693,31 @@ function ActivityEditor({ classId, existing, canEdit, onClose, onSaved }: {
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files
     e.target.value = ''
-    if (!files) return
+    if (!files || files.length === 0) return
+    setErr(null)
     if (!activityId) {
-      setErr('Save the activity first, then add photos.')
+      // No saved row yet → stage locally for upload on Save. Skip any
+      // file > 15 MB up front so the user sees the error here instead
+      // of mid-flush. Image-only by file.type because the input's
+      // accept="image/*" is advisory.
+      const additions: typeof pendingFiles = []
+      let rejected = 0
+      for (const f of Array.from(files)) {
+        if (f.size > 15 * 1024 * 1024) { rejected += 1; continue }
+        if (!f.type.startsWith('image/')) { rejected += 1; continue }
+        additions.push({
+          file: f,
+          previewUrl: URL.createObjectURL(f),
+          localId: 'pf_' + Math.random().toString(36).slice(2, 10),
+        })
+      }
+      if (additions.length > 0) setPendingFiles(prev => [...prev, ...additions])
+      if (rejected > 0) {
+        setErr(`${rejected} file${rejected === 1 ? '' : 's'} skipped — must be image; under 15 MB.`)
+      }
       return
     }
-    setErr(null)
+    // Activity already exists → upload immediately.
     let failed = 0
     for (const f of Array.from(files)) {
       const meta = await uploadActivityPhoto(activityId, f)
@@ -1659,6 +1733,13 @@ function ActivityEditor({ classId, existing, canEdit, onClose, onSaved }: {
     if (!confirm(`Delete this photo?`)) return
     const ok = await deleteActivityPhoto(activityId, p.id)
     if (ok) setPhotos(prev => prev.filter(x => x.id !== p.id))
+  }
+  function handleDeletePending(localId: string) {
+    setPendingFiles(prev => {
+      const target = prev.find(x => x.localId === localId)
+      if (target) { try { URL.revokeObjectURL(target.previewUrl) } catch { /* ignore */ } }
+      return prev.filter(x => x.localId !== localId)
+    })
   }
 
   return (
@@ -1707,11 +1788,11 @@ function ActivityEditor({ classId, existing, canEdit, onClose, onSaved }: {
           </label>
         </Section>
 
-        {/* Photo gallery — always visible so users see the upload
-            affordance from the start. When creating a brand-new
-            activity (activityId still null), the upload button shows
-            a friendly "save first" message via setErr instead of
-            silently doing nothing. */}
+        {/* Photo gallery — photo picker is always live. Picking
+            files BEFORE the activity is saved stages them locally
+            (with blob-URL previews); they flush to the server the
+            moment the user clicks Create activity. After save, the
+            picker uploads immediately like before. */}
         <Section title="Photo gallery">
           {canEdit && (
             <label className="btn-secondary text-xs cursor-pointer inline-flex items-center" style={{ width: 'auto' }}>
@@ -1719,12 +1800,12 @@ function ActivityEditor({ classId, existing, canEdit, onClose, onSaved }: {
               <input type="file" className="sr-only" accept="image/*" multiple onChange={handleUpload} />
             </label>
           )}
-          {canEdit && !activityId && (
+          {canEdit && !activityId && pendingFiles.length > 0 && (
             <p className="text-[12px] text-[color:var(--mid-gray)] mt-2 italic">
-              Tip: enter a name and click <span className="font-semibold">Create activity</span> first — then you can upload photos here.
+              {pendingFiles.length} photo{pendingFiles.length === 1 ? '' : 's'} queued — will upload when you click <span className="font-semibold">Create activity</span>.
             </p>
           )}
-          {photos.length === 0 ? (
+          {photos.length === 0 && pendingFiles.length === 0 ? (
             <p className="text-sm text-[color:var(--mid-gray)] py-3">No photos yet.</p>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 mt-3">
@@ -1737,6 +1818,26 @@ function ActivityEditor({ classId, existing, canEdit, onClose, onSaved }: {
                       onClick={() => handleDeletePhoto(p)}
                       className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity"
                       title="Delete photo"
+                    >×</button>
+                  )}
+                </div>
+              ))}
+              {pendingFiles.map(p => (
+                <div key={p.localId} className="relative group aspect-square rounded-lg overflow-hidden border" style={{ borderColor: 'var(--paper-3)' }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={p.previewUrl} alt="" className="w-full h-full object-cover" />
+                  {/* "Pending" badge so the user understands these
+                      haven't yet been uploaded — flush happens on Save. */}
+                  <span
+                    className="absolute bottom-1 left-1 text-[9.5px] uppercase tracking-[0.08em] font-bold px-1.5 py-0.5 rounded"
+                    style={{ background: 'rgba(0,0,0,0.55)', color: '#fff', fontFamily: 'var(--font-display)' }}
+                  >Pending</span>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeletePending(p.localId)}
+                      className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Remove from queue"
                     >×</button>
                   )}
                 </div>
