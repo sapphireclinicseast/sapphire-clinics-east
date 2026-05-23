@@ -110,9 +110,13 @@ export default function ClassDetailPage() {
         marginRight: 'calc(50% - 50vw)',
       }}
     >
-      <div className="px-3 sm:px-5 max-w-7xl mx-auto space-y-6">
+      <div className="px-3 sm:px-5 max-w-7xl mx-auto space-y-4">
+      {/* Compact class header. Cover photo is 16:4 with a 220px cap so it
+          doesn't dominate the wider layout; meta lines moved next to the
+          title using a flex row when there's space. Saves ~120px of
+          vertical real estate vs the old 16:6 hero. */}
       <div className="card-static p-0 overflow-hidden">
-        <div className="aspect-[16/6] bg-[color:var(--paper-2)] relative">
+        <div className="bg-[color:var(--paper-2)] relative w-full aspect-[16/4] max-h-[220px]">
           {photoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={photoUrl} alt={klass.name} className="w-full h-full object-cover" />
@@ -120,17 +124,16 @@ export default function ClassDetailPage() {
             <div className="w-full h-full flex items-center justify-center text-[color:var(--mid-gray)] text-[12.5px]" style={{ fontFamily: 'var(--font-display)' }}>No cover photo</div>
           )}
         </div>
-        <div className="p-5">
-          <button className="btn-secondary text-xs mb-3" onClick={() => router.push('/classes')}>← All classes</button>
-          <h1 className="text-[26px] leading-tight text-[color:var(--deep-teal)]">
-            {klass.name}{klass.section ? <span className="text-[color:var(--mid-gray)] font-normal"> · {klass.section}</span> : null}
-          </h1>
-          <p className="text-sm text-[color:var(--mid-gray)] mt-1">
-            {levelLabel(klass.level)} · {branchLabel(klass.branch)} · Teacher: {teacherName}
-          </p>
-          <p className="text-sm text-[color:var(--mid-gray)] mt-0.5">
-            Schedule: {dayShorts || '—'}{time ? ` · ${time}` : ''} · {roster.length} student{roster.length === 1 ? '' : 's'}
-          </p>
+        <div className="px-4 py-3 sm:px-5 sm:py-3.5 flex items-start gap-3 flex-wrap">
+          <button className="btn-secondary text-xs shrink-0" onClick={() => router.push('/classes')}>← All classes</button>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-[22px] leading-tight text-[color:var(--deep-teal)]">
+              {klass.name}{klass.section ? <span className="text-[color:var(--mid-gray)] font-normal"> · {klass.section}</span> : null}
+            </h1>
+            <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-0.5">
+              {levelLabel(klass.level)} · {branchLabel(klass.branch)} · Teacher: {teacherName} · {dayShorts || '—'}{time ? ` · ${time}` : ''} · {roster.length} student{roster.length === 1 ? '' : 's'}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -808,7 +811,12 @@ function ProjectsSection({ classId, roster, canEdit, isStudent, viewerId }: {
 }) {
   const [projects, setProjects] = useState<ProjectRecord[]>([])
   const [busy, setBusy] = useState(false)
+  // `editing` holds the row we're working on; `mode` decides whether the
+  // editor opens read-only ("View") or read-write ("Edit"). Splitting the
+  // mode out keeps both buttons clickable on the card without having to
+  // duplicate the editor instance.
   const [editing, setEditing] = useState<ProjectRecord | 'new' | null>(null)
+  const [mode, setMode] = useState<'view' | 'edit'>('edit')
 
   async function load() {
     setBusy(true)
@@ -826,7 +834,7 @@ function ProjectsSection({ classId, roster, canEdit, isStudent, viewerId }: {
           </p>
         </div>
         {canEdit && (
-          <button className="btn-primary text-xs" onClick={() => setEditing('new')}>+ Add Project</button>
+          <button className="btn-primary text-xs" onClick={() => { setMode('edit'); setEditing('new') }}>+ Add Project</button>
         )}
       </div>
 
@@ -842,7 +850,8 @@ function ProjectsSection({ classId, roster, canEdit, isStudent, viewerId }: {
               project={p}
               viewerIsStudent={isStudent}
               viewerId={viewerId}
-              onEdit={() => setEditing(p)}
+              onView={() => { setMode('view'); setEditing(p) }}
+              onEdit={() => { setMode('edit'); setEditing(p) }}
               onDelete={async () => {
                 if (!confirm(`Delete "${p.title}"?`)) return
                 const ok = await deleteProject(p.id)
@@ -859,6 +868,7 @@ function ProjectsSection({ classId, roster, canEdit, isStudent, viewerId }: {
           classId={classId}
           roster={roster}
           existing={editing === 'new' ? null : editing}
+          readOnly={mode === 'view'}
           onClose={() => setEditing(null)}
           onSaved={async () => { setEditing(null); await load() }}
           viewerIsStudent={isStudent}
@@ -869,10 +879,11 @@ function ProjectsSection({ classId, roster, canEdit, isStudent, viewerId }: {
   )
 }
 
-function ProjectCard({ project, viewerIsStudent, viewerId, onEdit, onDelete, canEdit }: {
+function ProjectCard({ project, viewerIsStudent, viewerId, onView, onEdit, onDelete, canEdit }: {
   project: ProjectRecord
   viewerIsStudent: boolean
   viewerId?: string
+  onView: () => void
   onEdit: () => void
   onDelete: () => void
   canEdit: boolean
@@ -890,8 +901,12 @@ function ProjectCard({ project, viewerIsStudent, viewerId, onEdit, onDelete, can
           </p>
           {project.description && <p className="text-[13px] mt-1 whitespace-pre-line">{project.description}</p>}
         </div>
+        {/* View is always available so teachers can inspect a project
+            without entering edit mode (and accidentally changing grades
+            mid-class). Edit + Delete only when the viewer has rights. */}
         <div className="flex gap-1.5 shrink-0">
-          <button className="btn-secondary text-xs" onClick={onEdit}>{canEdit ? 'Edit' : 'View'}</button>
+          <button className="btn-secondary text-xs" onClick={onView}>View</button>
+          {canEdit && <button className="btn-secondary text-xs" onClick={onEdit}>Edit</button>}
           {canEdit && <button className="text-[10.5px] px-2 py-0.5 rounded text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)]" onClick={onDelete}>Delete</button>}
         </div>
       </div>
@@ -899,10 +914,11 @@ function ProjectCard({ project, viewerIsStudent, viewerId, onEdit, onDelete, can
   )
 }
 
-function ProjectEditor({ classId, roster, existing, onClose, onSaved, viewerIsStudent, viewerId }: {
+function ProjectEditor({ classId, roster, existing, readOnly, onClose, onSaved, viewerIsStudent, viewerId }: {
   classId: string
   roster: StoredUser[]
   existing: ProjectRecord | null
+  readOnly?: boolean
   onClose: () => void
   onSaved: () => void | Promise<void>
   viewerIsStudent: boolean
@@ -916,7 +932,9 @@ function ProjectEditor({ classId, roster, existing, onClose, onSaved, viewerIsSt
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [projectId, setProjectId] = useState<string | null>(existing?.id ?? null)
-  const canEdit = !viewerIsStudent
+  // Students never edit; teachers/admins can edit unless the parent
+  // opened us in "View" mode (read-only inspection).
+  const canEdit = !viewerIsStudent && !readOnly
 
   function setGrade(id: string, score: number) {
     setGrades({ ...grades, [id]: { ...(grades[id] ?? { score: 0 }), score } })
@@ -969,7 +987,7 @@ function ProjectEditor({ classId, roster, existing, onClose, onSaved, viewerIsSt
         <div className="flex items-start justify-between gap-3 mb-4">
           <div>
             <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
-              {existing ? 'Edit project' : 'Add project'}
+              {readOnly ? 'View project' : existing ? 'Edit project' : 'Add project'}
             </div>
             <h2 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">{title || 'New project'}</h2>
           </div>
@@ -1048,6 +1066,7 @@ function ActivitiesSection({ classId, canEdit }: {
   const [activities, setActivities] = useState<ActivityRecord[]>([])
   const [busy, setBusy] = useState(false)
   const [editing, setEditing] = useState<ActivityRecord | 'new' | null>(null)
+  const [mode, setMode] = useState<'view' | 'edit'>('edit')
 
   async function load() {
     setBusy(true)
@@ -1065,7 +1084,7 @@ function ActivitiesSection({ classId, canEdit }: {
           </p>
         </div>
         {canEdit && (
-          <button className="btn-primary text-xs" onClick={() => setEditing('new')}>+ Add Activity</button>
+          <button className="btn-primary text-xs" onClick={() => { setMode('edit'); setEditing('new') }}>+ Add Activity</button>
         )}
       </div>
 
@@ -1080,7 +1099,8 @@ function ActivitiesSection({ classId, canEdit }: {
               key={a.id}
               activity={a}
               canEdit={canEdit}
-              onEdit={() => setEditing(a)}
+              onView={() => { setMode('view'); setEditing(a) }}
+              onEdit={() => { setMode('edit'); setEditing(a) }}
               onDelete={async () => {
                 if (!confirm(`Delete "${a.name}"?`)) return
                 const ok = await deleteActivity(a.id)
@@ -1095,7 +1115,7 @@ function ActivitiesSection({ classId, canEdit }: {
         <ActivityEditor
           classId={classId}
           existing={editing === 'new' ? null : editing}
-          canEdit={canEdit}
+          canEdit={canEdit && mode === 'edit'}
           onClose={() => setEditing(null)}
           onSaved={async () => { setEditing(null); await load() }}
         />
@@ -1104,9 +1124,10 @@ function ActivitiesSection({ classId, canEdit }: {
   )
 }
 
-function ActivityCard({ activity, canEdit, onEdit, onDelete }: {
+function ActivityCard({ activity, canEdit, onView, onEdit, onDelete }: {
   activity: ActivityRecord
   canEdit: boolean
+  onView: () => void
   onEdit: () => void
   onDelete: () => void
 }) {
@@ -1137,8 +1158,12 @@ function ActivityCard({ activity, canEdit, onEdit, onDelete }: {
             <p className="text-[13px] mt-1 whitespace-pre-line">{activity.description}</p>
           )}
         </div>
+        {/* Two buttons so the teacher can browse the photo gallery
+            without entering edit mode. "+N more" thumbnail also routes
+            to view, not edit. */}
         <div className="flex gap-1.5 shrink-0">
-          <button className="btn-secondary text-xs" onClick={onEdit}>{canEdit ? 'Edit' : 'View'}</button>
+          <button className="btn-secondary text-xs" onClick={onView}>View</button>
+          {canEdit && <button className="btn-secondary text-xs" onClick={onEdit}>Edit</button>}
           {canEdit && (
             <button className="text-[10.5px] px-2 py-0.5 rounded text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)]" onClick={onDelete}>Delete</button>
           )}
@@ -1153,7 +1178,7 @@ function ActivityCard({ activity, canEdit, onEdit, onDelete }: {
             <button
               type="button"
               className="aspect-square rounded-lg bg-[color:var(--paper-2)] text-[color:var(--mid-gray)] text-xs font-semibold hover:bg-[color:var(--paper-3)]"
-              onClick={onEdit}
+              onClick={onView}
               style={{ fontFamily: 'var(--font-display)' }}
             >+{activity.photos.length - 6} more</button>
           )}
@@ -1241,10 +1266,20 @@ function ActivityEditor({ classId, existing, canEdit, onClose, onSaved }: {
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files
     e.target.value = ''
-    if (!files || !activityId) return
+    if (!files) return
+    if (!activityId) {
+      setErr('Save the activity first, then add photos.')
+      return
+    }
+    setErr(null)
+    let failed = 0
     for (const f of Array.from(files)) {
       const meta = await uploadActivityPhoto(activityId, f)
       if (meta) setPhotos(prev => [...prev, meta])
+      else failed += 1
+    }
+    if (failed > 0) {
+      setErr(`${failed} photo${failed === 1 ? '' : 's'} failed to upload — please retry (must be image; under 15 MB).`)
     }
   }
   async function handleDeletePhoto(p: ActivityPhotoMeta) {
@@ -1261,7 +1296,7 @@ function ActivityEditor({ classId, existing, canEdit, onClose, onSaved }: {
         <div className="flex items-start justify-between gap-3 mb-4">
           <div>
             <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
-              {existing ? 'Edit activity' : 'Add activity'}
+              {!canEdit && existing ? 'View activity' : existing ? 'Edit activity' : 'Add activity'}
             </div>
             <h2 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">{name || 'New activity'}</h2>
           </div>
@@ -1300,35 +1335,43 @@ function ActivityEditor({ classId, existing, canEdit, onClose, onSaved }: {
           </label>
         </Section>
 
-        {activityId && (
-          <Section title="Photo gallery">
-            {canEdit && (
-              <label className="btn-secondary text-xs cursor-pointer inline-flex items-center" style={{ width: 'auto' }}>
-                + Add photos
-                <input type="file" className="sr-only" accept="image/*" multiple onChange={handleUpload} />
-              </label>
-            )}
-            {photos.length === 0 ? (
-              <p className="text-sm text-[color:var(--mid-gray)] py-3">No photos yet.</p>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 mt-3">
-                {photos.map(p => (
-                  <div key={p.id} className="relative group">
-                    <ActivityPhotoThumb activityId={activityId} photo={p} />
-                    {canEdit && (
-                      <button
-                        type="button"
-                        onClick={() => handleDeletePhoto(p)}
-                        className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-                        title="Delete photo"
-                      >×</button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </Section>
-        )}
+        {/* Photo gallery — always visible so users see the upload
+            affordance from the start. When creating a brand-new
+            activity (activityId still null), the upload button shows
+            a friendly "save first" message via setErr instead of
+            silently doing nothing. */}
+        <Section title="Photo gallery">
+          {canEdit && (
+            <label className="btn-secondary text-xs cursor-pointer inline-flex items-center" style={{ width: 'auto' }}>
+              + Add photos
+              <input type="file" className="sr-only" accept="image/*" multiple onChange={handleUpload} />
+            </label>
+          )}
+          {canEdit && !activityId && (
+            <p className="text-[12px] text-[color:var(--mid-gray)] mt-2 italic">
+              Tip: enter a name and click <span className="font-semibold">Create activity</span> first — then you can upload photos here.
+            </p>
+          )}
+          {photos.length === 0 ? (
+            <p className="text-sm text-[color:var(--mid-gray)] py-3">No photos yet.</p>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 mt-3">
+              {photos.map(p => (
+                <div key={p.id} className="relative group">
+                  {activityId && <ActivityPhotoThumb activityId={activityId} photo={p} />}
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeletePhoto(p)}
+                      className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Delete photo"
+                    >×</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </Section>
 
         {canEdit && (
           <div className="flex gap-2 justify-end mt-4 pt-3 border-t" style={{ borderColor: 'var(--paper-3)' }}>
