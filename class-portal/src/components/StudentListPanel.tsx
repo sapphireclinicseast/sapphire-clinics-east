@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   getUsers, hydrateUsers, getWaivers, saveWaiver,
+  hydrateWaiverForStudent,
   teacherAssignedPairs, hydrateAssignments,
   paymentStatusFor,
   hydrateFrontDeskPayments,
@@ -134,11 +135,22 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
     void hydrateFrontDeskPayments().then(() => setPaymentsRev(r => r + 1))
   }, [])
 
-  // When a student is selected, find their waiver.
+  // When a student is selected, look up their waiver. First paint
+  // from this device's local cache (instant), then hydrate from the
+  // server's `waiver_record` blob (post PR #169). Without the server
+  // hop, a main admin opening a student profile on a fresh device
+  // sees a null waiver and the "Sign as SCEI" button never appears —
+  // even when the parent + witness have already signed.
   useEffect(() => {
     if (!selected) { setWaiver(null); return }
-    const w = getWaivers().find(x => x.studentEmail.toLowerCase() === selected.email.toLowerCase())
-    setWaiver(w ?? null)
+    const local = getWaivers().find(x => x.studentEmail.toLowerCase() === selected.email.toLowerCase())
+    setWaiver(local ?? null)
+    let cancelled = false
+    void hydrateWaiverForStudent(selected.id).then(remote => {
+      if (cancelled || !remote) return
+      setWaiver(remote)
+    })
+    return () => { cancelled = true }
   }, [selected])
 
   const filtered = useMemo(() => {
