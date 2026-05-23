@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react'
 import {
   getFile, putFile, deleteFile, uploadDocumentBlob,
-  getPaymentsForStudent, getWaivers, hydrateWaiverForStudent, getGradeForStudent,
+  getPaymentsForStudent, getWaivers, hydrateWaiverForStudent,
+  hasServerWaiverPdf, fetchServerWaiverPdfBlob,
+  getGradeForStudent,
   updateUserEnrollment, updateUser, saveHeadshot,
   levelLabel, lrnStatusLabel, lsenClassificationLabel,
   LSEN_CLASSIFICATION_GROUPS,
@@ -13,7 +15,11 @@ import {
 import { backendOrigin, getToken } from '@/lib/backend'
 import { downloadWaiverPdf, generateWaiverPdf } from '@/lib/waiver-pdf'
 import { downloadEnrollmentPdf, generateEnrollmentPdf } from '@/lib/enrollment-pdf'
-import { generateAffidavitPdf, type AffidavitInput } from '@/lib/affidavit-pdf'
+// Removed `generateAffidavitPdf` / `AffidavitInput` imports — the
+// admin-preview Annex 3 card was deleted (regenerated affidavit had
+// blank fields that confused users into thinking it was the official
+// document). The actual signed Annex 3 still appears as a regular
+// row under Submitted documents.
 import HeadshotEditor from './HeadshotEditor'
 import EnrollmentEditor from './EnrollmentEditor'
 
@@ -36,6 +42,12 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
   const [student, setStudent] = useState<StoredUser>(studentProp)
   const [payments, setPayments] = useState<PaymentRecord[]>([])
   const [waiver, setWaiver] = useState<WaiverRecord | null>(null)
+  // Fallback flag: true when the server has a `parent_waiver` PDF on
+  // file but no structured `waiver_record` JSON yet. This is the
+  // common state for any waiver signed BEFORE PR #169 — the SCEI-ACK
+  // flow uploaded the PDF but the structured JSON only started
+  // shipping to the server post-PR-#169.
+  const [waiverPdfOnServer, setWaiverPdfOnServer] = useState(false)
   const [grade, setGrade] = useState<GradeRecord | null>(null)
   const [editorOpen, setEditorOpen] = useState(false)
 
@@ -43,21 +55,27 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
 
   useEffect(() => {
     setPayments(getPaymentsForStudent(student.id))
-    // First render whatever's in this device's local cache so the
-    // card paints immediately. The waiver record was previously
-    // localStorage-only — if the parent signed on phone and admin
-    // opens on laptop, the local lookup misses and the card said
-    // "Not yet signed." even when the signed record existed on
-    // the server. We pull from the server-side document-blob store
-    // (docKey `waiver_record`) and update React state when it
-    // arrives. Network failures are silently ignored so the cached
-    // copy keeps rendering.
+    // First paint from this device's local cache so the card renders
+    // immediately. Then hydrate from the server in two passes:
+    //   1. Try `waiver_record` (structured JSON, post PR #169) →
+    //      if found, the full signing log + signature snapshots are
+    //      available and the regenerate-PDF action works.
+    //   2. Else probe `parent_waiver` (PDF, populated by the SCEI-ACK
+    //      flow since the original feature shipped) → if found,
+    //      surface a "Signed (PDF on file)" card with download going
+    //      straight to the server PDF.
+    // This covers waivers signed BEFORE PR #169 deployed, whose
+    // structured JSON was never persisted server-side.
     setWaiver(getWaivers().find(w => w.studentEmail.toLowerCase() === student.email.toLowerCase()) ?? null)
+    setWaiverPdfOnServer(false)
     setGrade(getGradeForStudent(student.id))
     let cancelled = false
-    void hydrateWaiverForStudent(student.id).then(remote => {
-      if (cancelled || !remote) return
-      setWaiver(remote)
+    void hydrateWaiverForStudent(student.id).then(async remote => {
+      if (cancelled) return
+      if (remote) { setWaiver(remote); return }
+      // No structured record on the server — check for the legacy PDF.
+      const pdfExists = await hasServerWaiverPdf(student.id)
+      if (!cancelled) setWaiverPdfOnServer(pdfExists)
     })
     return () => { cancelled = true }
   }, [student.id, student.email])
@@ -250,23 +268,30 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
               onPreview={() => regenerateAndOpen(() => generateWaiverPdf(waiver))}
             />
           )}
-          {!waiver && (
+          {/* No structured record, but a signed PDF lives on the
+              server (uploaded by the SCEI ACK flow). Render a proper
+              "Signed (PDF on file)" card whose View/Download stream
+              the server PDF directly — no client-side regeneration. */}
+          {!waiver && waiverPdfOnServer && (
+            <GeneratedFormCard
+              title="Parent / Guardian Waiver"
+              description="Signed — PDF on file. The structured signing log isn't on this device, so View / Download stream the server copy directly."
+              onDownload={() => void downloadServerWaiverPdf(student.id, student.lastName ?? 'student')}
+              onPreview={() => openServerWaiverPdf(student.id)}
+            />
+          )}
+          {!waiver && !waiverPdfOnServer && (
             <div className="rounded-2xl p-4 border text-sm" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
               <div className="font-semibold text-[color:var(--narra)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>Parent / Guardian Waiver</div>
               <div className="text-[12.5px] text-[color:var(--mid-gray)]">Not yet signed.</div>
             </div>
           )}
-          {viewerRole === 'ADMIN' && (
-            <GeneratedFormCard
-              title="Affidavit of Undertaking (Annex 3) — admin preview"
-              description="Rebuilds the DepEd affidavit from the latest template using whatever data is on this record. Fields not captured here (parent govt ID, reason, signature) render blank. The signed copy in Documents is the official one — this preview is just to validate layout changes."
-              onDownload={() => {
-                const doc = generateAffidavitPdf(enrollmentToAffidavitInput(student))
-                doc.save(`affidavit-${(student.lastName ?? 'student').toLowerCase()}.pdf`)
-              }}
-              onPreview={() => regenerateAndOpen(() => generateAffidavitPdf(enrollmentToAffidavitInput(student)))}
-            />
-          )}
+          {/* The Annex 3 admin-preview card was removed — it regenerated
+              the affidavit from raw enrollment data and left several
+              fields blank (parent govt ID, reason, signature), which
+              confused users into thinking it was the official document.
+              The actual signed Annex 3 still appears as a regular doc
+              row under "Submitted documents" with the correct content. */}
           <SchoolIdCard
             student={student}
             viewerRole={viewerRole}
@@ -749,56 +774,9 @@ async function previewPdf(doc: import('jspdf').jsPDF) {
   setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
-/**
- * Build an AffidavitInput from a student record for the admin layout-preview
- * button. Most fields are derivable from the enrollment draft. The few that
- * only live in the /documents composer (parent govt ID, reason for missing
- * credentials, signature image) come back blank — the PDF generator already
- * handles empty strings cleanly, so the layout still renders correctly.
- */
-function enrollmentToAffidavitInput(student: StoredUser): AffidavitInput {
-  const e = student.enrollment ?? {}
-  const fullName = (n?: { lastName?: string; firstName?: string; middleName?: string }): string => {
-    if (!n) return ''
-    return [n.lastName, n.firstName, n.middleName].filter(Boolean).join(', ').trim()
-  }
-  const learner = [
-    e.firstName ?? student.firstName ?? '',
-    e.middleName ?? '',
-    e.lastName ?? student.lastName ?? '',
-    e.extensionName ?? '',
-  ].map(s => s.trim()).filter(Boolean).join(' ')
-
-  // Primary parent name → father / mother / guardian per guardianOfRecord.
-  let parentName = ''
-  switch (e.guardianOfRecord) {
-    case 'FATHER': parentName = fullName(e.father)   || fullName(e.mother) || fullName(e.guardian); break
-    case 'MOTHER': parentName = fullName(e.mother)   || fullName(e.father) || fullName(e.guardian); break
-    case 'OTHER':  parentName = fullName(e.guardian) || fullName(e.father) || fullName(e.mother);   break
-    default:       parentName = fullName(e.father)   || fullName(e.mother) || fullName(e.guardian); break
-  }
-
-  const parentAddress = [e.houseStreet, e.barangay, e.cityProvinceCountry, e.zipCode]
-    .filter(Boolean).join(', ')
-
-  const today = new Date()
-  const monthName = today.toLocaleString('en-US', { month: 'long' })
-  // Affidavits are typically attested at the school branch's city.
-  const attestedCity = student.branch === 'GREENHILLS' ? 'San Juan City' : 'Antipolo City'
-
-  return {
-    parentName,
-    parentAddress,
-    learnerName: learner,
-    previousSchoolName: e.previousSchoolName ?? '',
-    previousGradeLevel: e.lastGradeCompleted ?? '',
-    reason: '',
-    attestedDay: String(today.getDate()),
-    attestedMonth: monthName,
-    attestedCity,
-    signatureDataUrl: e.certSignatureDataUrl,
-  }
-}
+// `enrollmentToAffidavitInput` removed alongside the admin-preview
+// Annex 3 card. Reintroduce only if a real "preview the PDF that
+// would be generated from this record" surface comes back.
 
 /**
  * Force the freshest possible PDF: clear the service-worker / HTTP cache for
@@ -1068,4 +1046,40 @@ async function downloadFile(fileId: string, fileName: string, mime?: string, stu
   a.href = url; a.download = fileName; document.body.appendChild(a); a.click(); a.remove()
   setTimeout(() => URL.revokeObjectURL(url), 5_000)
   void mime
+}
+
+/** Open the server-stored signed-waiver PDF in a new tab. Same popup-
+ *  blocker dance as openFile() — pre-open about:blank synchronously
+ *  inside the click handler, redirect once the fetch resolves. Used
+ *  by the "Signed (PDF on file)" fallback card for waivers whose
+ *  structured JSON record didn't make it to the server. */
+function openServerWaiverPdf(studentId: string) {
+  const win = typeof window !== 'undefined' ? window.open('about:blank', '_blank', 'noopener') : null
+  void fetchServerWaiverPdfBlob(studentId).then(blob => {
+    if (!blob) {
+      if (win && !win.closed) { try { win.close() } catch { /* ignore */ } }
+      alert('Could not load the signed waiver PDF. The server copy is missing.')
+      return
+    }
+    const url = URL.createObjectURL(blob)
+    if (win && !win.closed) {
+      try { win.location.href = url } catch { /* fall through */ }
+    } else {
+      const a = document.createElement('a')
+      a.href = url; a.target = '_blank'; a.rel = 'noopener'
+      document.body.appendChild(a); a.click(); a.remove()
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  })
+}
+
+async function downloadServerWaiverPdf(studentId: string, lastName: string): Promise<void> {
+  const blob = await fetchServerWaiverPdfBlob(studentId)
+  if (!blob) { alert('Could not load the signed waiver PDF. The server copy is missing.'); return }
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `parent-guardian-waiver-${lastName.toLowerCase()}.pdf`
+  document.body.appendChild(a); a.click(); a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 5_000)
 }
