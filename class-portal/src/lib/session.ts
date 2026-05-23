@@ -2562,6 +2562,15 @@ export interface HeadshotMeta {
   studentId: string
   dataUrl: string        // base64-encoded image — capped to ~500KB
   uploadedAt: string
+  /**
+   * Where this headshot came from. '1x1' means it was synced from the
+   * parent-uploaded enrollment photo (auto, can be replaced if the
+   * server has a newer version). 'manual' means a teacher/admin/student
+   * uploaded it directly via HeadshotEditor — never overwrite those.
+   * Older cached entries are undefined; treat them as '1x1' so they
+   * stay in sync with the server.
+   */
+  source?: '1x1' | 'manual'
 }
 
 export function getHeadshots(): Record<string, HeadshotMeta> {

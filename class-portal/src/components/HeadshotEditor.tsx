@@ -17,17 +17,23 @@ export default function HeadshotEditor({ studentId, editable = true }: Props) {
 
   useEffect(() => {
     // 1) Instant render from this device's local cache, if any.
-    const h = getHeadshotFor(studentId)
-    if (h) { setDataUrl(h.dataUrl); return }
+    const cached = getHeadshotFor(studentId)
+    if (cached) setDataUrl(cached.dataUrl)
 
-    // 2) Fallback to the server-side 1x1 photo the parent uploaded
-    //    during enrollment. The headshot store is localStorage-only
-    //    so without this, anyone viewing the student from a different
-    //    device (main admin on laptop, teacher on classroom tablet)
-    //    sees only the placeholder avatar even though the photo was
-    //    captured at signup. We downscale the blob to ~500 KB so it
-    //    fits inside the headshot store and renders instantly on
-    //    subsequent loads.
+    // 2) ALWAYS try the server-side 1x1 photo the parent uploaded at
+    //    enrollment, UNLESS the local cache was set by an explicit
+    //    upload via this editor (source === 'manual'). Reasons:
+    //      - Headshot store is per-device localStorage, so a teacher
+    //        viewing from a classroom tablet wouldn't have any cache.
+    //      - Older auto-synced caches won't refresh if the parent
+    //        later re-uploads a clearer photo.
+    //      - Aurora-style cases: enrollment uploaded a 1x1 but it
+    //        never made it into the cache on the viewer's device.
+    //    We accept any decodable blob — the server stores
+    //    'application/octet-stream' for older uploads that lacked a
+    //    proper MIME, and the canvas downscaler will tell us soon
+    //    enough whether the bytes are actually an image.
+    if (cached?.source === 'manual') return
     let cancelled = false
     ;(async () => {
       try {
@@ -38,14 +44,16 @@ export default function HeadshotEditor({ studentId, editable = true }: Props) {
         )
         if (cancelled || !res.ok) return
         const blob = await res.blob()
-        if (!blob.type.startsWith('image/')) return
         const small = await downscale(blob, 500, 0.85)
-        if (!cancelled && small) {
-          setDataUrl(small)
-          // Cache so subsequent renders are instant, no network.
-          try { saveHeadshot({ studentId, dataUrl: small, uploadedAt: new Date().toISOString() }) } catch { /* ignore quota */ }
-        }
-      } catch { /* swallow — keeps the placeholder rendering */ }
+        if (cancelled || !small) return
+        // Don't churn the DOM if the freshly-fetched copy matches what
+        // we already rendered from cache.
+        if (small === cached?.dataUrl) return
+        setDataUrl(small)
+        try {
+          saveHeadshot({ studentId, dataUrl: small, uploadedAt: new Date().toISOString(), source: '1x1' })
+        } catch { /* ignore localStorage quota */ }
+      } catch { /* swallow — keeps the placeholder or cached value rendering */ }
     })()
     return () => { cancelled = true }
   }, [studentId])
@@ -62,7 +70,9 @@ export default function HeadshotEditor({ studentId, editable = true }: Props) {
         setErr('Image is too large. Try a smaller crop (<500 KB).')
         return
       }
-      saveHeadshot({ studentId, dataUrl: v, uploadedAt: new Date().toISOString() })
+      // Mark this upload as 'manual' so the server-fallback effect on
+      // the next render doesn't blow it away with the 1x1.
+      saveHeadshot({ studentId, dataUrl: v, uploadedAt: new Date().toISOString(), source: 'manual' })
       setDataUrl(v)
     }
     r.readAsDataURL(f)

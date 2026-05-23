@@ -179,10 +179,13 @@ function StepBar({ step }: { step: 1 | 2 | 3 | 4 }) {
 async function syncHeadshotFromPhoto(studentId: string, fileId: string): Promise<void> {
   try {
     const blob = await getFile(fileId)
-    if (!blob || !blob.type.startsWith('image/')) return
+    if (!blob) return
+    // Accept anything decodable — older IndexedDB-stored files have
+    // empty .type on Safari for HEIC. The canvas pipeline below will
+    // tell us if it's truly an image.
     const dataUrl = await downscale(blob, 500, 0.85)
     if (!dataUrl) return
-    saveHeadshot({ studentId, dataUrl, uploadedAt: new Date().toISOString() })
+    saveHeadshot({ studentId, dataUrl, uploadedAt: new Date().toISOString(), source: '1x1' })
   } catch (e) {
     console.warn('headshot sync failed', e)
   }
