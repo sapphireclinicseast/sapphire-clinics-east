@@ -745,6 +745,74 @@ export async function hydrateWaiverForStudent(studentId: string): Promise<Waiver
   }
 }
 
+/** Probe for the server-stored PDF copy of the signed waiver. Used as
+ *  a fallback signal when no structured `waiver_record` JSON exists on
+ *  the server — common for any waiver signed BEFORE PR #169 deployed
+ *  (the SCEI-ACK flow uploaded the PDF as `parent_waiver`, but the
+ *  structured JSON was never persisted). HEAD-style probe via a small
+ *  ranged GET so we don't pull the whole PDF just to check existence. */
+export async function hasServerWaiverPdf(studentId: string): Promise<boolean> {
+  if (typeof window === 'undefined') return false
+  const tok = getToken()
+  if (!tok) return false
+  try {
+    const res = await fetch(
+      `${backendOrigin()}/api/public/class-portal/document-blobs/${encodeURIComponent(studentId)}/parent_waiver`,
+      {
+        method: 'GET',
+        headers: { authorization: `Bearer ${tok}`, range: 'bytes=0-0' },
+      },
+    )
+    // 200 (full body) or 206 (partial content) both mean the row exists.
+    return res.ok || res.status === 206
+  } catch { return false }
+}
+
+/** Fetch the full PDF blob of the signed waiver from the server.
+ *  Used by the View/Download buttons when we don't have a structured
+ *  WaiverRecord to regenerate the PDF from. */
+export async function fetchServerWaiverPdfBlob(studentId: string): Promise<Blob | null> {
+  if (typeof window === 'undefined') return null
+  const tok = getToken()
+  if (!tok) return null
+  try {
+    const res = await fetch(
+      `${backendOrigin()}/api/public/class-portal/document-blobs/${encodeURIComponent(studentId)}/parent_waiver`,
+      { headers: { authorization: `Bearer ${tok}` } },
+    )
+    if (!res.ok) return null
+    return await res.blob()
+  } catch { return null }
+}
+
+/** Push any local WaiverRecord rows up to the server, ONE PER STUDENT.
+ *  Only pushes if the server has nothing yet for that student (so we
+ *  never overwrite a server record that may carry signatures captured
+ *  on another device). Runs fire-and-forget after every sign-in so
+ *  whichever device the SCEI-ACK signer used eventually pushes the
+ *  full structured record — closing the gap for any waiver signed
+ *  before PR #169 deployed. */
+export async function syncLocalWaiversToServer(): Promise<number> {
+  if (typeof window === 'undefined') return 0
+  if (!getToken()) return 0
+  const all = getWaivers()
+  if (all.length === 0) return 0
+  const users = getUsers()
+  let pushed = 0
+  for (const w of all) {
+    const student = users.find(u => u.email.toLowerCase() === w.studentEmail.toLowerCase())
+    if (!student?.id) continue
+    // Only push if the server doesn't already have this student's
+    // record. Avoids racing-overwrite when multiple signers each have
+    // a partial copy in their localStorage.
+    const existing = await hydrateWaiverForStudent(student.id).catch(() => null)
+    if (existing) continue
+    await uploadWaiverRecord(student.id, w)
+    pushed += 1
+  }
+  return pushed
+}
+
 export function findPendingWaivers(): WaiverRecord[] {
   // "Pending" = parent signed but witness has not.
   return getWaivers().filter(w => !w.witnessSig)
@@ -2622,6 +2690,12 @@ export async function signIn(role: AuthRole, email: string, password: string): P
         void syncLocalDocsToServer(sid, docs)
       }
     }
+    // Push any local WaiverRecord rows up to the server. Fires for
+    // every role (parent, teacher, admin) — whichever signer's device
+    // still holds the full structured record will close the gap left
+    // by waivers signed BEFORE PR #169 deployed (which never made it
+    // to the server-side blob store on their own).
+    void syncLocalWaiversToServer()
   }
   return session
 }
