@@ -302,7 +302,11 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
     setBusy(true)
     try {
       const payload = {
-        lessonDate: new Date(lessonDate + 'T00:00:00').toISOString(),
+        // Anchor at noon UTC so the calendar date round-trips identically no
+        // matter the browser timezone. Sending `T00:00:00` (local) would shift
+        // to the previous day when serialized via toISOString() east of UTC,
+        // and break the server's day-of-week schedule check.
+        lessonDate: `${lessonDate}T12:00:00.000Z`,
         title: title.trim(),
         description: description.trim() || null,
         attendance,

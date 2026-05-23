@@ -50,10 +50,16 @@ export async function classForLesson(lessonId: string): Promise<{
 
 const ALLOWED_DAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
 
-/** Confirm a lesson date falls on one of the parent class's scheduleDays. */
+/** Confirm a lesson date falls on one of the parent class's scheduleDays.
+ *
+ * The wire format anchors calendar dates at noon UTC (see class-portal
+ * createLesson/updateLesson) so the day-of-week round-trips regardless of
+ * the browser or container TZ. We MUST use getUTCDay() here — getDay()
+ * would shift the weekday by a day for any container not running in the
+ * picker's local timezone, rejecting valid dates.
+ */
 export function lessonDateMatchesSchedule(lessonDate: Date, scheduleDays: string[]): boolean {
-  // 0=Sunday ... 6=Saturday in JS
-  const idx = lessonDate.getDay()
+  const idx = lessonDate.getUTCDay()
   const name = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][idx]
   return ALLOWED_DAYS.includes(name) && scheduleDays.includes(name)
 }

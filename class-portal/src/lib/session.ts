@@ -1380,15 +1380,15 @@ export async function createLesson(classId: string, args: {
   gradeTotal?: number | null
   grades?: Record<string, { score: number; makeupDate?: string }>
 }): Promise<LessonRecord | null> {
-  try {
-    const { lesson } = await backendJson<{ lesson: LessonRecord }>(`/api/public/class-portal/classes/${encodeURIComponent(classId)}/lessons`, {
-      method: 'POST',
-      body: JSON.stringify(args),
-    })
-    return lesson
-  } catch (e) {
-    console.warn('[createLesson]', e); return null
-  }
+  // We deliberately do NOT swallow the error here — backendJson throws with
+  // the real server message (e.g. "Lesson date must fall on one of the class
+  // scheduled days"), and the editor's `catch (e) { setErr(e.message) }` is
+  // the only thing that gives the user a hint about why the save failed.
+  const { lesson } = await backendJson<{ lesson: LessonRecord }>(`/api/public/class-portal/classes/${encodeURIComponent(classId)}/lessons`, {
+    method: 'POST',
+    body: JSON.stringify(args),
+  })
+  return lesson
 }
 
 export async function updateLesson(lessonId: string, patch: Partial<{
@@ -1400,15 +1400,13 @@ export async function updateLesson(lessonId: string, patch: Partial<{
   gradeTotal: number | null
   grades: Record<string, { score: number; makeupDate?: string }>
 }>): Promise<LessonRecord | null> {
-  try {
-    const { lesson } = await backendJson<{ lesson: LessonRecord }>(`/api/public/class-portal/lessons/${encodeURIComponent(lessonId)}`, {
-      method: 'PATCH',
-      body: JSON.stringify(patch),
-    })
-    return lesson
-  } catch (e) {
-    console.warn('[updateLesson]', e); return null
-  }
+  // Same rationale as createLesson — let backendJson's message bubble up so
+  // the editor surfaces it instead of the generic "Could not save."
+  const { lesson } = await backendJson<{ lesson: LessonRecord }>(`/api/public/class-portal/lessons/${encodeURIComponent(lessonId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  })
+  return lesson
 }
 
 export async function deleteLesson(lessonId: string): Promise<boolean> {
