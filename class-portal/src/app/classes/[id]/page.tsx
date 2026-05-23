@@ -28,6 +28,40 @@ import { backendJson } from '@/lib/backend'
 import { Portal } from '@/components/Modal'
 
 /**
+ * Open a blob in a new browser tab in a way that survives popup
+ * blockers. window.open() is blocked across every modern browser
+ * once the JS execution has yielded — symptom: user clicks View,
+ * fetch resolves, nothing visible happens. We open about:blank
+ * synchronously inside the click handler (still inside the user
+ * gesture), then redirect that tab to the blob URL once the fetch
+ * resolves. If the popup blocker killed the synchronous open, fall
+ * back to a synthetic anchor click which most browsers permit.
+ */
+function openBlobInNewTab(getBlob: () => Promise<Blob | null>, missingMsg = 'Could not open file.') {
+  if (typeof window === 'undefined') return
+  const win = window.open('about:blank', '_blank', 'noopener')
+  void getBlob().then(blob => {
+    if (!blob) {
+      if (win && !win.closed) { try { win.close() } catch { /* ignore */ } }
+      alert(missingMsg)
+      return
+    }
+    const url = URL.createObjectURL(blob)
+    if (win && !win.closed) {
+      try { win.location.href = url } catch { /* fall through */ }
+    } else {
+      const a = document.createElement('a')
+      a.href = url; a.target = '_blank'; a.rel = 'noopener'
+      document.body.appendChild(a); a.click(); a.remove()
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }).catch(() => {
+    if (win && !win.closed) { try { win.close() } catch { /* ignore */ } }
+    alert(missingMsg)
+  })
+}
+
+/**
  * Class detail dashboard. Header (cover, name, schedule, roster) +
  * lessons feed. Future phases (tests, projects, activities) plug into
  * additional sections on this page.
@@ -630,13 +664,11 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
     if (ok) setAttachments(prev => prev.filter(a => a.id !== att.id))
   }
 
-  async function openAttachment(att: LessonAttachmentMeta) {
+  function openAttachment(att: LessonAttachmentMeta) {
     if (!lessonId) return
-    const blob = await fetchLessonAttachmentBlob(lessonId, att.id)
-    if (!blob) { alert('Could not open file.'); return }
-    const url = URL.createObjectURL(blob)
-    window.open(url, '_blank', 'noopener')
-    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    // Sync wrapper so the window.open call happens inside the click
+    // event (see openBlobInNewTab comment for why this matters).
+    openBlobInNewTab(() => fetchLessonAttachmentBlob(lessonId, att.id), 'Could not open file.')
   }
 
   async function uploadOutput(studentId: string, file: File, makeupDate?: string) {
@@ -649,13 +681,9 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
     })
   }
 
-  async function viewOutput(studentId: string) {
+  function viewOutput(studentId: string) {
     if (!lessonId) return
-    const blob = await fetchLessonOutputBlob(lessonId, studentId)
-    if (!blob) { alert('No output available.'); return }
-    const url = URL.createObjectURL(blob)
-    window.open(url, '_blank', 'noopener')
-    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    openBlobInNewTab(() => fetchLessonOutputBlob(lessonId, studentId), 'No output available.')
   }
 
   const presentIds = roster.filter(s => attendance[s.id] === 'PRESENT').map(s => s.id)
@@ -984,12 +1012,8 @@ function TestCard({ test, roster, attendance, canEdit, viewerRole, onChange, onD
   async function uploadProof(studentId: string, file: File) {
     await uploadTestProof(test.id, studentId, file)
   }
-  async function viewProof(studentId: string) {
-    const blob = await fetchTestProofBlob(test.id, studentId)
-    if (!blob) { alert('No proof uploaded.'); return }
-    const url = URL.createObjectURL(blob)
-    window.open(url, '_blank', 'noopener')
-    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  function viewProof(studentId: string) {
+    openBlobInNewTab(() => fetchTestProofBlob(test.id, studentId), 'No proof uploaded.')
   }
 
   return (
@@ -1251,13 +1275,9 @@ function ProjectEditor({ classId, roster, existing, readOnly, onClose, onSaved, 
     finally { setBusy(false) }
   }
 
-  async function viewProof(studentId: string) {
+  function viewProof(studentId: string) {
     if (!projectId) return
-    const blob = await fetchProjectProofBlob(projectId, studentId)
-    if (!blob) { alert('No proof uploaded.'); return }
-    const url = URL.createObjectURL(blob)
-    window.open(url, '_blank', 'noopener')
-    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    openBlobInNewTab(() => fetchProjectProofBlob(projectId, studentId), 'No proof uploaded.')
   }
 
   // For a student viewer, restrict the table to their own row.

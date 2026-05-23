@@ -1025,11 +1025,39 @@ async function fetchBlob(fileId: string, studentId?: string, docKey?: string): P
 }
 
 async function openFile(fileId: string, fileName: string, mime?: string, studentId?: string, docKey?: string) {
+  // CRITICAL — open the new tab SYNCHRONOUSLY here, BEFORE any awaits.
+  //
+  // Chrome / Safari / Firefox all block window.open() once the JS
+  // execution has yielded to async work — the click is no longer
+  // considered "user-initiated" by the time the fetch resolves.
+  // Symptom: user clicks View, blob loads successfully, but nothing
+  // visible happens (no tab, no alert).
+  //
+  // Workaround: open about:blank now while we're still inside the
+  // click handler, keep a handle to that window, then redirect it
+  // to the blob URL once we have the bytes. If the popup blocker
+  // killed us anyway (`win === null` or already closed), fall back
+  // to a synthetic anchor click which downloads-on-click — still
+  // visible to the user.
+  const win = typeof window !== 'undefined' ? window.open('about:blank', '_blank', 'noopener') : null
   const blob = await fetchBlob(fileId, studentId, docKey)
-  if (!blob) { alert('Could not load this file. The original upload may have been from another device and the server copy is missing. Ask the parent to re-upload.'); return }
+  if (!blob) {
+    if (win && !win.closed) try { win.close() } catch { /* ignore */ }
+    alert('Could not load this file. The original upload may have been from another device and the server copy is missing. Ask the parent to re-upload.')
+    return
+  }
   const url = URL.createObjectURL(blob)
   void mime; void fileName
-  window.open(url, '_blank', 'noopener')
+  if (win && !win.closed) {
+    try { win.location.href = url } catch { /* ignore — fall through to anchor click below */ }
+  } else {
+    // Popup blocker won the race — fall back to an anchor click.
+    // Same gesture-loss caveat applies, but anchor activations are
+    // far more permissive than window.open().
+    const a = document.createElement('a')
+    a.href = url; a.target = '_blank'; a.rel = 'noopener'
+    document.body.appendChild(a); a.click(); a.remove()
+  }
   setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 async function downloadFile(fileId: string, fileName: string, mime?: string, studentId?: string, docKey?: string) {
