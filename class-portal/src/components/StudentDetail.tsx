@@ -1033,13 +1033,14 @@ async function openFile(fileId: string, fileName: string, mime?: string, student
   // Symptom: user clicks View, blob loads successfully, but nothing
   // visible happens (no tab, no alert).
   //
-  // Workaround: open about:blank now while we're still inside the
-  // click handler, keep a handle to that window, then redirect it
-  // to the blob URL once we have the bytes. If the popup blocker
-  // killed us anyway (`win === null` or already closed), fall back
-  // to a synthetic anchor click which downloads-on-click — still
-  // visible to the user.
-  const win = typeof window !== 'undefined' ? window.open('about:blank', '_blank', 'noopener') : null
+  // Workaround: open a blank tab now while we're still inside the
+  // click handler, keep a handle, then redirect it to the blob URL
+  // once we have the bytes. Do NOT pass `noopener` here — per the
+  // HTML spec it forces window.open() to return null, which leaves
+  // the empty tab orphaned and triggers the anchor-click fallback,
+  // so the user ends up with two windows (about:blank + blob:).
+  // We null `win.opener` after redirect to harden it.
+  const win = typeof window !== 'undefined' ? window.open('', '_blank') : null
   const blob = await fetchBlob(fileId, studentId, docKey)
   if (!blob) {
     if (win && !win.closed) try { win.close() } catch { /* ignore */ }
@@ -1049,7 +1050,8 @@ async function openFile(fileId: string, fileName: string, mime?: string, student
   const url = URL.createObjectURL(blob)
   void mime; void fileName
   if (win && !win.closed) {
-    try { win.location.href = url } catch { /* ignore — fall through to anchor click below */ }
+    try { win.opener = null } catch { /* ignore */ }
+    try { win.location.replace(url) } catch { /* ignore — fall through to anchor click below */ }
   } else {
     // Popup blocker won the race — fall back to an anchor click.
     // Same gesture-loss caveat applies, but anchor activations are
@@ -1071,12 +1073,18 @@ async function downloadFile(fileId: string, fileName: string, mime?: string, stu
 }
 
 /** Open the server-stored signed-waiver PDF in a new tab. Same popup-
- *  blocker dance as openFile() — pre-open about:blank synchronously
+ *  blocker dance as openFile() — pre-open a blank tab synchronously
  *  inside the click handler, redirect once the fetch resolves. Used
  *  by the "Signed (PDF on file)" fallback card for waivers whose
- *  structured JSON record didn't make it to the server. */
+ *  structured JSON record didn't make it to the server.
+ *
+ *  Do NOT pass `noopener` to the pre-open: per the HTML spec it
+ *  forces window.open() to return null, orphaning the blank tab and
+ *  triggering the anchor-click fallback — the user gets two windows.
+ *  We null `win.opener` after the redirect to harden it.
+ */
 function openServerWaiverPdf(studentId: string) {
-  const win = typeof window !== 'undefined' ? window.open('about:blank', '_blank', 'noopener') : null
+  const win = typeof window !== 'undefined' ? window.open('', '_blank') : null
   void fetchServerWaiverPdfBlob(studentId).then(blob => {
     if (!blob) {
       if (win && !win.closed) { try { win.close() } catch { /* ignore */ } }
@@ -1085,7 +1093,8 @@ function openServerWaiverPdf(studentId: string) {
     }
     const url = URL.createObjectURL(blob)
     if (win && !win.closed) {
-      try { win.location.href = url } catch { /* fall through */ }
+      try { win.opener = null } catch { /* ignore */ }
+      try { win.location.replace(url) } catch { /* fall through */ }
     } else {
       const a = document.createElement('a')
       a.href = url; a.target = '_blank'; a.rel = 'noopener'

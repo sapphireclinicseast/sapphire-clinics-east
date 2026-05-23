@@ -31,15 +31,21 @@ import { Portal } from '@/components/Modal'
  * Open a blob in a new browser tab in a way that survives popup
  * blockers. window.open() is blocked across every modern browser
  * once the JS execution has yielded — symptom: user clicks View,
- * fetch resolves, nothing visible happens. We open about:blank
+ * fetch resolves, nothing visible happens. We open a blank tab
  * synchronously inside the click handler (still inside the user
  * gesture), then redirect that tab to the blob URL once the fetch
- * resolves. If the popup blocker killed the synchronous open, fall
- * back to a synthetic anchor click which most browsers permit.
+ * resolves.
+ *
+ * Do NOT pass `noopener` to the pre-open: per the HTML spec, the
+ * `noopener` feature forces window.open() to return `null`, which
+ * means we lose the handle and can't redirect — the empty tab stays
+ * open and a separate fallback anchor opens *another* tab, so the
+ * user ends up with two windows. Same origin only, and we null out
+ * `win.opener` after the redirect to harden it.
  */
 function openBlobInNewTab(getBlob: () => Promise<Blob | null>, missingMsg = 'Could not open file.') {
   if (typeof window === 'undefined') return
-  const win = window.open('about:blank', '_blank', 'noopener')
+  const win = window.open('', '_blank')
   void getBlob().then(blob => {
     if (!blob) {
       if (win && !win.closed) { try { win.close() } catch { /* ignore */ } }
@@ -48,7 +54,8 @@ function openBlobInNewTab(getBlob: () => Promise<Blob | null>, missingMsg = 'Cou
     }
     const url = URL.createObjectURL(blob)
     if (win && !win.closed) {
-      try { win.location.href = url } catch { /* fall through */ }
+      try { win.opener = null } catch { /* ignore */ }
+      try { win.location.replace(url) } catch { /* fall through */ }
     } else {
       const a = document.createElement('a')
       a.href = url; a.target = '_blank'; a.rel = 'noopener'
@@ -614,6 +621,9 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
   const [grades, setGrades] = useState<Record<string, { score: number; makeupDate?: string }>>(existing?.grades ?? {})
   const [attachments, setAttachments] = useState<LessonAttachmentMeta[]>([])
   const [outputs, setOutputs] = useState<LessonOutputMeta[]>([])
+  // Per-student proof files picked before the lesson row exists on
+  // the server. Flushed in save() after createLesson, then cleared.
+  const [pendingOutputs, setPendingOutputs] = useState<Record<string, File>>({})
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [lessonId, setLessonId] = useState<string | null>(existing?.id ?? null)
@@ -660,6 +670,27 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
         : await createLesson(klass.id, payload)
       if (!saved) { setErr('Could not save. Retry?'); return }
       setLessonId(saved.id)
+      // Flush any proof files the teacher picked before the lesson
+      // had a server-side row. Each upload is independent — collect
+      // failures, surface a count, and clear the queue regardless so
+      // a second Save doesn't re-upload duplicates.
+      const entries = Object.entries(pendingOutputs)
+      if (entries.length) {
+        const uploaded: LessonOutputMeta[] = []
+        let failed = 0
+        for (const [sid, file] of entries) {
+          const meta = await uploadLessonOutput(saved.id, sid, file, grades[sid]?.makeupDate)
+          if (meta) uploaded.push(meta); else failed += 1
+        }
+        if (uploaded.length) {
+          setOutputs(prev => {
+            const others = prev.filter(o => !uploaded.some(u => u.studentId === o.studentId))
+            return [...others, ...uploaded]
+          })
+        }
+        setPendingOutputs({})
+        if (failed > 0) setErr(`${failed} proof upload${failed === 1 ? '' : 's'} failed. Re-pick from the row to retry.`)
+      }
       await onSaved()
     } catch (e) { setErr((e as Error).message) }
     finally { setBusy(false) }
@@ -697,6 +728,17 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
       const others = prev.filter(o => o.studentId !== studentId)
       return [...others, meta]
     })
+  }
+
+  // ProofPicker pick handler. If the lesson already exists, upload
+  // straight away; otherwise queue the file so we can flush it after
+  // the lesson row is created in save().
+  function queueOrUploadProof(studentId: string, file: File, makeupDate?: string) {
+    if (lessonId) {
+      void uploadOutput(studentId, file, makeupDate)
+    } else {
+      setPendingOutputs(prev => ({ ...prev, [studentId]: file }))
+    }
   }
 
   function viewOutput(studentId: string) {
@@ -824,6 +866,7 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
                         const s = roster.find(r => r.id === sid)!
                         const g = grades[sid]
                         const out = outputs.find(o => o.studentId === sid)
+                        const pending = pendingOutputs[sid]
                         return (
                           <li key={sid} className="grid grid-cols-[1fr_auto] gap-2 items-center text-sm">
                             <span className="truncate font-semibold text-[color:var(--narra)]">{[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}</span>
@@ -832,12 +875,18 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
                               <span className="text-[11.5px] text-[color:var(--mid-gray)]">/ {gradeTotal || '—'}</span>
                               {editable && (
                                 <ProofPicker
-                                  hasUpload={!!out}
-                                  disabledHint={lessonId ? null : 'Save the lesson first to attach proof.'}
-                                  onPick={(f) => { if (lessonId) void uploadOutput(sid, f) }}
+                                  hasUpload={!!out || !!pending}
+                                  disabledHint={null}
+                                  onPick={(f) => queueOrUploadProof(sid, f)}
                                 />
                               )}
-                              {out && <button type="button" className="text-[10.5px] px-2 py-0.5 rounded border" style={{ borderColor: 'var(--paper-3)' }} onClick={() => viewOutput(sid)}>View</button>}
+                              {pending && (
+                                <span
+                                  className="text-[9px] font-bold uppercase tracking-[0.08em] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200"
+                                  title={`Will upload "${pending.name}" when you save the lesson.`}
+                                >Pending</span>
+                              )}
+                              {out && lessonId && <button type="button" className="text-[10.5px] px-2 py-0.5 rounded border" style={{ borderColor: 'var(--paper-3)' }} onClick={() => viewOutput(sid)}>View</button>}
                             </span>
                           </li>
                         )
@@ -849,6 +898,7 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
                             const s = roster.find(r => r.id === sid)!
                             const g = grades[sid]
                             const out = outputs.find(o => o.studentId === sid)
+                            const pending = pendingOutputs[sid]
                             return (
                               <div key={sid} className="grid grid-cols-[1fr_auto] gap-2 items-center text-sm py-0.5">
                                 <span className="truncate font-semibold text-[color:var(--narra)]">{[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}</span>
@@ -858,12 +908,18 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
                                   <span className="text-[11.5px] text-[color:var(--mid-gray)]">/ {gradeTotal || '—'}</span>
                                   {editable && (
                                     <ProofPicker
-                                      hasUpload={!!out}
-                                      disabledHint={lessonId ? null : 'Save the lesson first to attach proof.'}
-                                      onPick={(f) => { if (lessonId) void uploadOutput(sid, f, g?.makeupDate) }}
+                                      hasUpload={!!out || !!pending}
+                                      disabledHint={null}
+                                      onPick={(f) => queueOrUploadProof(sid, f, g?.makeupDate)}
                                     />
                                   )}
-                                  {out && <button type="button" className="text-[10.5px] px-2 py-0.5 rounded border" style={{ borderColor: 'var(--paper-3)' }} onClick={() => viewOutput(sid)}>View</button>}
+                                  {pending && (
+                                    <span
+                                      className="text-[9px] font-bold uppercase tracking-[0.08em] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200"
+                                      title={`Will upload "${pending.name}" when you save the lesson.`}
+                                    >Pending</span>
+                                  )}
+                                  {out && lessonId && <button type="button" className="text-[10.5px] px-2 py-0.5 rounded border" style={{ borderColor: 'var(--paper-3)' }} onClick={() => viewOutput(sid)}>View</button>}
                                 </span>
                               </div>
                             )
