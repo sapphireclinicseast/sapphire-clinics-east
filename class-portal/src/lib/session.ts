@@ -722,9 +722,18 @@ async function uploadWaiverRecord(studentId: string, record: WaiverRecord): Prom
 }
 
 /** Fetch the server-stored WaiverRecord for a student and merge it
- *  into the local cache. Returns the record so callers can update
- *  React state immediately. Null on miss or auth failure — caller
- *  keeps showing whatever's in local cache. */
+ *  into the local cache **only if the server copy is newer than the
+ *  local one**. Returns the record we ended up keeping (whichever was
+ *  newer) so callers can update React state. Null on miss / auth
+ *  failure — caller keeps showing whatever's in local cache.
+ *
+ *  IMPORTANT — the old version always overwrote local with the server
+ *  blob. That was unsafe: a parent who'd only signed parentSig could
+ *  push their partial record to the server via syncLocalWaiversToServer,
+ *  and the next time the witness teacher's hydrate fired the partial
+ *  server version would wipe out their local witnessSig. The
+ *  updatedAt comparison below prevents that regression.
+ */
 export async function hydrateWaiverForStudent(studentId: string): Promise<WaiverRecord | null> {
   if (typeof window === 'undefined') return null
   const tok = getToken()
@@ -736,13 +745,49 @@ export async function hydrateWaiverForStudent(studentId: string): Promise<Waiver
     )
     if (!res.ok) return null
     const text = await res.text()
-    const record = JSON.parse(text) as WaiverRecord
-    saveWaiverLocal(record)
-    return record
+    const remote = JSON.parse(text) as WaiverRecord
+    // Compare to whatever's in local cache. Only overwrite when the
+    // server's updatedAt is strictly newer — equal or older keeps the
+    // local copy (which might be a superset, e.g. carries a witness
+    // signature the server hasn't seen yet because that device hasn't
+    // synced).
+    const local = getWaivers().find(w => w.id === remote.id)
+    if (!local) {
+      saveWaiverLocal(remote)
+      return remote
+    }
+    const localTs = new Date(local.updatedAt).getTime()
+    const remoteTs = new Date(remote.updatedAt).getTime()
+    if (Number.isFinite(remoteTs) && Number.isFinite(localTs) && remoteTs > localTs) {
+      saveWaiverLocal(remote)
+      return remote
+    }
+    // Local is newer-or-equal: try to push it up so the server catches
+    // up. Fire-and-forget; we don't want to block render. Returns the
+    // local copy unchanged.
+    void uploadWaiverRecord(studentId, local)
+    return local
   } catch (e) {
     console.warn('[hydrateWaiverForStudent]', e)
     return null
   }
+}
+
+/** Existence-only probe — does the server have a waiver_record blob
+ *  for this student? Does NOT write to local cache, so syncing logic
+ *  can ask "is the server stale?" without inadvertently overwriting
+ *  the caller's local record. */
+async function hasServerWaiverRecord(studentId: string): Promise<boolean> {
+  if (typeof window === 'undefined') return false
+  const tok = getToken()
+  if (!tok) return false
+  try {
+    const res = await fetch(
+      `${backendOrigin()}/api/public/class-portal/document-blobs/${encodeURIComponent(studentId)}/waiver_record`,
+      { method: 'GET', headers: { authorization: `Bearer ${tok}`, range: 'bytes=0-0' } },
+    )
+    return res.ok || res.status === 206
+  } catch { return false }
 }
 
 /** Probe for the server-stored PDF copy of the signed waiver. Used as
@@ -786,12 +831,18 @@ export async function fetchServerWaiverPdfBlob(studentId: string): Promise<Blob 
 }
 
 /** Push any local WaiverRecord rows up to the server, ONE PER STUDENT.
- *  Only pushes if the server has nothing yet for that student (so we
- *  never overwrite a server record that may carry signatures captured
- *  on another device). Runs fire-and-forget after every sign-in so
- *  whichever device the SCEI-ACK signer used eventually pushes the
- *  full structured record — closing the gap for any waiver signed
- *  before PR #169 deployed. */
+ *  Only pushes if the server doesn't already have a record for that
+ *  student. Existence is checked via a non-destructive HEAD-style
+ *  probe so we don't accidentally pull a partial server copy into
+ *  the local cache and clobber a more-complete local record (e.g.
+ *  one that carries a witnessSig the server hasn't seen yet because
+ *  the witness teacher's device hasn't synced yet).
+ *
+ *  Runs fire-and-forget after every sign-in and on every
+ *  StudentListPanel mount, so whichever device the SCEI-ACK signer
+ *  used eventually pushes the full structured record — closing the
+ *  gap for any waiver signed before PR #169 deployed.
+ */
 export async function syncLocalWaiversToServer(): Promise<number> {
   if (typeof window === 'undefined') return 0
   if (!getToken()) return 0
@@ -802,11 +853,12 @@ export async function syncLocalWaiversToServer(): Promise<number> {
   for (const w of all) {
     const student = users.find(u => u.email.toLowerCase() === w.studentEmail.toLowerCase())
     if (!student?.id) continue
-    // Only push if the server doesn't already have this student's
-    // record. Avoids racing-overwrite when multiple signers each have
-    // a partial copy in their localStorage.
-    const existing = await hydrateWaiverForStudent(student.id).catch(() => null)
-    if (existing) continue
+    // Non-destructive existence check — does NOT mutate local cache,
+    // unlike hydrateWaiverForStudent. Avoids racing-overwrite when
+    // multiple signers each hold a different snapshot in their
+    // localStorage.
+    const onServer = await hasServerWaiverRecord(student.id)
+    if (onServer) continue
     await uploadWaiverRecord(student.id, w)
     pushed += 1
   }
