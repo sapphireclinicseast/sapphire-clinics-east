@@ -2600,6 +2600,22 @@ export async function signIn(role: AuthRole, email: string, password: string): P
   // Hydrate the local user cache so subsequent sync getUsers() calls have data.
   if (typeof window !== 'undefined') {
     try { await hydrateUsers() } catch { /* ignore */ }
+    // STUDENT-role signins also try to push any locally-cached
+    // enrollment documents up to the server. Without this, files
+    // uploaded BEFORE the parent had a JWT (during the public
+    // /documents enrollment step) only ever live in this device's
+    // IndexedDB — the main admin opening the student profile from
+    // their own laptop sees the metadata row but the View/Download
+    // buttons can't pull the bytes from anywhere. Fire-and-forget;
+    // the sync is idempotent and skips docs already on the server.
+    if (role === 'STUDENT' && res.user.id) {
+      const sid = res.user.id
+      const me = getUsers().find(u => u.id === sid)
+      const docs = me?.enrollment?.documents
+      if (docs && Object.keys(docs).length > 0) {
+        void syncLocalDocsToServer(sid, docs)
+      }
+    }
   }
   return session
 }
