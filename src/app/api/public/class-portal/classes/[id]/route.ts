@@ -23,10 +23,15 @@ export async function OPTIONS(req: Request) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function serialize(r: any) {
+function serialize(r: any, teacherName?: string | null) {
   return {
     id: r.id, branch: r.branch, level: r.level, name: r.name, section: r.section,
-    teacherId: r.teacherId, studentIds: r.studentIds ?? [],
+    teacherId: r.teacherId,
+    // Server-resolved teacher name — see the list endpoint comment for
+    // why this needs to live on the row instead of being resolved by
+    // the client.
+    teacherName: teacherName ?? null,
+    studentIds: r.studentIds ?? [],
     scheduleDays: r.scheduleDays ?? [],
     scheduleStartTime: r.scheduleStartTime, scheduleEndTime: r.scheduleEndTime,
     hasPhoto: !!r.photoFileName,
@@ -34,6 +39,31 @@ function serialize(r: any) {
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
   }
+}
+
+/** Resolve the teacher display name for a single class row.
+ *  1) Explicit teacherId on the class → fetch user row.
+ *  2) No teacherId → look up Assignments matrix (branch × level → teacher).
+ *  Returns null if no teacher can be resolved (truly unassigned class). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function resolveTeacherName(row: any): Promise<string | null> {
+  let tid = row.teacherId as string | null
+  if (!tid) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const a = await (prisma.classPortalTeacherAssignment as any).findFirst({
+      where: { branch: row.branch, level: row.level },
+      select: { teacherId: true },
+    })
+    tid = a?.teacherId ?? null
+  }
+  if (!tid) return null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const u = await (prisma.classPortalUser as any).findUnique({
+    where: { id: tid },
+    select: { firstName: true, lastName: true, email: true },
+  })
+  if (!u) return null
+  return [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -72,7 +102,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     })
     if (!row) return withCors(NextResponse.json({ error: 'Class not found.' }, { status: 404 }), origin)
     if (!canSee(auth, row)) return withCors(NextResponse.json({ error: 'Forbidden.' }, { status: 403 }), origin)
-    return withCors(NextResponse.json({ class: serialize(row) }), origin)
+    const teacherName = await resolveTeacherName(row)
+    return withCors(NextResponse.json({ class: serialize(row, teacherName) }), origin)
   } catch (e) {
     if (e instanceof Response) {
       const headers = new Headers(e.headers)
@@ -125,7 +156,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         createdAt: true, updatedAt: true,
       },
     })
-    return withCors(NextResponse.json({ class: serialize(updated) }), origin)
+    const teacherName = await resolveTeacherName(updated)
+    return withCors(NextResponse.json({ class: serialize(updated, teacherName) }), origin)
   } catch (e) {
     if (e instanceof Response) {
       const headers = new Headers(e.headers)

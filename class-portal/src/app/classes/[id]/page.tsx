@@ -104,17 +104,17 @@ export default function ClassDetailPage() {
   const roster = students.filter(s => klass.studentIds.includes(s.id))
 
   // Teacher-name resolution. Falls through in this order:
-  //   1. If the class has an explicit teacherId AND the viewer is that
-  //      teacher → use the viewer's own auth row (TEACHER callers
-  //      get a STUDENT-only user list back from the API, so they
-  //      won't find themselves in `teachers` otherwise).
-  //   2. Look up the explicit teacherId in the `teachers` array.
-  //   3. If teacherId is empty or not found, fall back to the
-  //      Assignments matrix (branch × level → first matching teacher
-  //      row). This is what the main admin set up under
-  //      /admin → Assignments and is the user-intended default.
-  //   4. As a last resort, render an em-dash.
+  //   1. Server-supplied `klass.teacherName` (works for every viewer
+  //      role — students included — because the server resolves the
+  //      name regardless of the caller's user-list scope).
+  //   2. If the viewer IS the teacher → own auth row (still useful
+  //      when the server didn't populate teacherName, e.g. legacy
+  //      payloads from cache before this deploy).
+  //   3. Look up the explicit teacherId in `teachers` (admin caller).
+  //   4. Fall back to the Assignments matrix on the client (admin).
+  //   5. Last resort: em-dash.
   const teacherName = (() => {
+    if (klass.teacherName) return klass.teacherName
     const tid = klass.teacherId
     if (tid && auth && auth.userId === tid) {
       return [auth.firstName].filter(Boolean).join(' ') || auth.email
@@ -123,7 +123,6 @@ export default function ClassDetailPage() {
       const t = teachers.find(x => x.id === tid)
       if (t) return [t.firstName, t.lastName].filter(Boolean).join(' ') || t.email
     }
-    // Fall back to the assignments matrix.
     const a = getAssignments().find(x => x.branch === klass.branch && x.level === klass.level)
     if (a) {
       if (auth && auth.userId === a.teacherId) {
@@ -1421,7 +1420,14 @@ function ActivitiesSection({ classId, canEdit }: {
           existing={editing === 'new' ? null : editing}
           canEdit={canEdit && mode === 'edit'}
           onClose={() => setEditing(null)}
-          onSaved={async () => { setEditing(null); await load() }}
+          // Don't auto-close on save. After the first save the editor
+          // now holds an `activityId`, which unlocks the "+ Add photos"
+          // workflow inside the same modal — closing here would force
+          // the teacher to re-open the activity from the list before
+          // they can attach any photos. The user explicitly clicks
+          // Close / Cancel to dismiss instead. We still re-load() so
+          // the parent's activity list and photo counts refresh.
+          onSaved={async () => { await load() }}
         />
       )}
     </div>
@@ -1600,7 +1606,7 @@ function ActivityEditor({ classId, existing, canEdit, onClose, onSaved }: {
         <div className="flex items-start justify-between gap-3 mb-4">
           <div>
             <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
-              {!canEdit && existing ? 'View activity' : existing ? 'Edit activity' : 'Add activity'}
+              {!canEdit && (existing || activityId) ? 'View activity' : (existing || activityId) ? 'Edit activity' : 'Add activity'}
             </div>
             <h2 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">{name || 'New activity'}</h2>
           </div>
@@ -1680,7 +1686,11 @@ function ActivityEditor({ classId, existing, canEdit, onClose, onSaved }: {
         {canEdit && (
           <div className="flex gap-2 justify-end mt-4 pt-3 border-t" style={{ borderColor: 'var(--paper-3)' }}>
             <button className="btn-secondary text-xs" onClick={onClose} disabled={busy}>Cancel</button>
-            <button className="btn-primary text-xs" onClick={save} disabled={busy}>{busy ? 'Saving…' : (existing ? 'Save changes' : 'Create activity')}</button>
+            {/* Once `activityId` is set we've persisted the row at
+                least once — flip the label so a teacher returning to
+                edit fields after their initial save sees "Save
+                changes" instead of the original "Create activity". */}
+            <button className="btn-primary text-xs" onClick={save} disabled={busy}>{busy ? 'Saving…' : (activityId ? 'Save changes' : 'Create activity')}</button>
           </div>
         )}
       </div>

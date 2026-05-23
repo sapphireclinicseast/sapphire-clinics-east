@@ -1240,6 +1240,12 @@ export interface ClassRecord {
   name: string
   section: string | null
   teacherId: string
+  /** Server-resolved teacher display name — populated even when the
+   *  caller's local users cache doesn't include teacher rows (e.g.
+   *  STUDENT viewers). Falls back to the Assignments matrix on the
+   *  server when the class has no explicit teacherId. Null only if
+   *  the class is genuinely unassigned. */
+  teacherName?: string | null
   studentIds: string[]
   scheduleDays: ClassDay[]
   scheduleStartTime: string | null
