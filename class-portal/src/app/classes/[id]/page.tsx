@@ -453,31 +453,23 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
           </Section>
         )}
 
-        {!isStudent && lessonId && (
-          <Section title="Student output">
+        {!isStudent && (
+          <Section title="Class output / test">
             <label className="inline-flex items-center gap-2 text-sm">
               <input type="checkbox" checked={hasOutput} onChange={e => setHasOutput(e.target.checked)} disabled={!editable} />
-              Has student output? (upload + grade per student)
+              Has class output / test?
             </label>
+            <p className="text-[12px] text-[color:var(--mid-gray)] mt-1">
+              Tick this if today&apos;s lesson produced a graded output or test. You can set a total score and grade each student below; optional per-student file uploads appear once the lesson is saved.
+            </p>
             {hasOutput && (
               <>
-                <ul className="space-y-2 mt-3">
-                  {presentIds.map(sid => <OutputRow key={sid} student={roster.find(s => s.id === sid)!} output={outputs.find(o => o.studentId === sid)} onUpload={uploadOutput} onView={() => viewOutput(sid)} editable={editable} />)}
-                  {absentIds.length > 0 && (
-                    <li className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--paper-3)' }}>
-                      <div className="text-[10.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] font-bold mb-2" style={{ fontFamily: 'var(--font-display)' }}>Absent students — makeup uploads</div>
-                      {absentIds.map(sid => <OutputRow key={sid} student={roster.find(s => s.id === sid)!} output={outputs.find(o => o.studentId === sid)} onUpload={uploadOutput} onView={() => viewOutput(sid)} editable={editable} requireMakeup />)}
-                    </li>
-                  )}
-                </ul>
-
-                {/* Grade lives INSIDE the Student-output block — per spec
-                    grading is only available once "Has student output?" is
-                    ticked. Total points → per-present-student score, plus
+                {/* Grade — available immediately, even before the lesson row
+                    exists. Total points → per-present-student score, plus
                     makeup grade rows for absent students who later
-                    submitted. */}
-                <div className="mt-6 pt-4 border-t" style={{ borderColor: 'var(--paper-3)' }}>
-                  <h4 className="text-[12.5px] font-bold uppercase tracking-[0.10em] text-[color:var(--bright-teal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>Grade</h4>
+                    submitted. The DB column is still `hasStudentOutput` /
+                    `gradeTotal` for backwards compatibility. */}
+                <div className="mt-4">
                   <label className="block max-w-[160px]">
                     <span className="label">Total points</span>
                     <input type="number" className="input" value={gradeTotal} onChange={e => setGradeTotal(e.target.value)} placeholder="e.g. 100" disabled={!editable} />
@@ -519,6 +511,29 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
                     </ul>
                   )}
                 </div>
+
+                {/* Per-student file uploads. These need a saved lesson row
+                    (lessonId) because the upload endpoint stores the blob
+                    against it — so we hide them when creating a brand-new
+                    lesson and show a hint instead. */}
+                {lessonId ? (
+                  <div className="mt-6 pt-4 border-t" style={{ borderColor: 'var(--paper-3)' }}>
+                    <h4 className="text-[12.5px] font-bold uppercase tracking-[0.10em] text-[color:var(--bright-teal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>Student uploads (optional)</h4>
+                    <ul className="space-y-2">
+                      {presentIds.map(sid => <OutputRow key={sid} student={roster.find(s => s.id === sid)!} output={outputs.find(o => o.studentId === sid)} onUpload={uploadOutput} onView={() => viewOutput(sid)} editable={editable} />)}
+                      {absentIds.length > 0 && (
+                        <li className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--paper-3)' }}>
+                          <div className="text-[10.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] font-bold mb-2" style={{ fontFamily: 'var(--font-display)' }}>Absent students — makeup uploads</div>
+                          {absentIds.map(sid => <OutputRow key={sid} student={roster.find(s => s.id === sid)!} output={outputs.find(o => o.studentId === sid)} onUpload={uploadOutput} onView={() => viewOutput(sid)} editable={editable} requireMakeup />)}
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                ) : (
+                  <p className="text-[12px] text-[color:var(--mid-gray)] mt-4 pt-3 border-t italic" style={{ borderColor: 'var(--paper-3)' }}>
+                    Tip: save the lesson first to enable per-student file uploads (e.g. photo of the worksheet or scanned test paper).
+                  </p>
+                )}
               </>
             )}
           </Section>
