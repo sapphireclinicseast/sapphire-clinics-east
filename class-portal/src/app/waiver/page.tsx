@@ -3,11 +3,11 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
-  getDraft, setDraft, saveWaiver,
+  getDraft, setDraft, getSession, saveWaiver, uploadDocumentBlob,
   levelLabel, ageFromDob,
   type EnrollmentLevel, type WaiverContent, type WaiverRecord,
 } from '@/lib/session'
-import { downloadWaiverPdf } from '@/lib/waiver-pdf'
+import { downloadWaiverPdf, generateWaiverPdf } from '@/lib/waiver-pdf'
 import SignaturePad from '@/components/SignaturePad'
 
 const CLAUSES: Array<{ key: string; title: string; body: string }> = [
@@ -127,6 +127,28 @@ function WaiverInner() {
 
       // Auto-download immediately so the parent has a copy.
       try { downloadWaiverPdf(record) } catch (e) { console.warn('PDF download failed', e) }
+
+      // Also push the generated PDF up to the server right now (best
+      // effort). The waiver is system-generated from the structured
+      // WaiverRecord — there's no "parent uploads a file" step — so
+      // we stage the PDF for admins viewing the student profile on
+      // any device, even before the witness or SCEI-ACK signs.
+      //
+      // Fire-and-forget so we don't have to make handleSign async (it
+      // doesn't currently need to be, and the parent doesn't care
+      // about the upload result). uploadDocumentBlob silently no-ops
+      // if no JWT is in localStorage yet (the standalone /waiver page
+      // is reachable mid-enrollment, pre-signin) — in that case the
+      // next signIn() will catch up via syncLocalWaiversToServer.
+      try {
+        const session = getSession()
+        if (session?.studentId) {
+          const pdfDoc = generateWaiverPdf(record)
+          const blob = pdfDoc.output('blob')
+          const file = new File([blob], 'parent-guardian-waiver.pdf', { type: 'application/pdf' })
+          void uploadDocumentBlob(session.studentId, 'parent_waiver', file)
+        }
+      } catch (e) { console.warn('waiver PDF upload failed', e) }
     } catch (e) {
       setErr((e as Error).message)
     } finally {
