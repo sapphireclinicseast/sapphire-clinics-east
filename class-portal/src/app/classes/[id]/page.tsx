@@ -780,11 +780,15 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
             </p>
             {hasOutput && (
               <>
-                {/* Grade — available immediately, even before the lesson row
-                    exists. Total points → per-present-student score, plus
-                    makeup grade rows for absent students who later
-                    submitted. The DB column is still `hasStudentOutput` /
-                    `gradeTotal` for backwards compatibility. */}
+                {/* One unified grade row per student:
+                      [Student name]   [score input]/[total]   [Proof file button]
+                    Total points input lives at the top of the section, so
+                    every row uses the same "/ X" denominator. Proof upload
+                    is disabled (with a "Save lesson first" tooltip) until
+                    the lesson row exists on the server — that's the only
+                    point at which the upload endpoint can attach blobs.
+                    Absent students render below with an extra makeup-date
+                    input on the same line. */}
                 <div className="mt-4">
                   <label className="block max-w-[160px]">
                     <span className="label">Total points</span>
@@ -795,29 +799,47 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
                       {presentIds.map(sid => {
                         const s = roster.find(r => r.id === sid)!
                         const g = grades[sid]
+                        const out = outputs.find(o => o.studentId === sid)
                         return (
-                          <li key={sid} className="flex items-center justify-between gap-2 text-sm">
+                          <li key={sid} className="grid grid-cols-[1fr_auto] gap-2 items-center text-sm">
                             <span className="truncate font-semibold text-[color:var(--narra)]">{[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}</span>
-                            <span className="flex items-center gap-1 shrink-0">
+                            <span className="flex items-center gap-1.5 shrink-0">
                               <input type="number" min={0} max={Number(gradeTotal)} className="input" style={{ width: 80 }} value={g?.score ?? ''} onChange={e => setGrade(sid, Number(e.target.value))} disabled={!editable} />
                               <span className="text-[11.5px] text-[color:var(--mid-gray)]">/ {gradeTotal}</span>
+                              {editable && (
+                                <ProofPicker
+                                  hasUpload={!!out}
+                                  disabledHint={lessonId ? null : 'Save the lesson first to attach proof.'}
+                                  onPick={(f) => { if (lessonId) void uploadOutput(sid, f) }}
+                                />
+                              )}
+                              {out && <button type="button" className="text-[10.5px] px-2 py-0.5 rounded border" style={{ borderColor: 'var(--paper-3)' }} onClick={() => viewOutput(sid)}>View</button>}
                             </span>
                           </li>
                         )
                       })}
                       {absentIds.length > 0 && (
                         <li className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--paper-3)' }}>
-                          <div className="text-[10.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] font-bold mb-2" style={{ fontFamily: 'var(--font-display)' }}>Absent students — makeup grade</div>
+                          <div className="text-[10.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] font-bold mb-2" style={{ fontFamily: 'var(--font-display)' }}>Absent students — makeup grade + proof</div>
                           {absentIds.map(sid => {
                             const s = roster.find(r => r.id === sid)!
                             const g = grades[sid]
+                            const out = outputs.find(o => o.studentId === sid)
                             return (
-                              <div key={sid} className="grid grid-cols-[1fr_auto_auto] gap-2 items-center text-sm py-0.5">
+                              <div key={sid} className="grid grid-cols-[1fr_auto] gap-2 items-center text-sm py-0.5">
                                 <span className="truncate font-semibold text-[color:var(--narra)]">{[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}</span>
-                                <input type="date" className="input" style={{ width: 150 }} value={g?.makeupDate ?? ''} onChange={e => setMakeup(sid, e.target.value)} disabled={!editable} />
-                                <span className="flex items-center gap-1">
+                                <span className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                                  <input type="date" className="input" style={{ width: 140 }} value={g?.makeupDate ?? ''} onChange={e => setMakeup(sid, e.target.value)} disabled={!editable} title="Makeup date" />
                                   <input type="number" min={0} max={Number(gradeTotal)} className="input" style={{ width: 80 }} value={g?.score ?? ''} onChange={e => setGrade(sid, Number(e.target.value))} disabled={!editable} />
                                   <span className="text-[11.5px] text-[color:var(--mid-gray)]">/ {gradeTotal}</span>
+                                  {editable && (
+                                    <ProofPicker
+                                      hasUpload={!!out}
+                                      disabledHint={lessonId ? null : 'Save the lesson first to attach proof.'}
+                                      onPick={(f) => { if (lessonId) void uploadOutput(sid, f, g?.makeupDate) }}
+                                    />
+                                  )}
+                                  {out && <button type="button" className="text-[10.5px] px-2 py-0.5 rounded border" style={{ borderColor: 'var(--paper-3)' }} onClick={() => viewOutput(sid)}>View</button>}
                                 </span>
                               </div>
                             )
@@ -828,28 +850,10 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
                   )}
                 </div>
 
-                {/* Per-student file uploads. These need a saved lesson row
-                    (lessonId) because the upload endpoint stores the blob
-                    against it — so we hide them when creating a brand-new
-                    lesson and show a hint instead. */}
-                {lessonId ? (
-                  <div className="mt-6 pt-4 border-t" style={{ borderColor: 'var(--paper-3)' }}>
-                    <h4 className="text-[12.5px] font-bold uppercase tracking-[0.10em] text-[color:var(--bright-teal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>Student uploads (optional)</h4>
-                    <ul className="space-y-2">
-                      {presentIds.map(sid => <OutputRow key={sid} student={roster.find(s => s.id === sid)!} output={outputs.find(o => o.studentId === sid)} onUpload={uploadOutput} onView={() => viewOutput(sid)} editable={editable} />)}
-                      {absentIds.length > 0 && (
-                        <li className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--paper-3)' }}>
-                          <div className="text-[10.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] font-bold mb-2" style={{ fontFamily: 'var(--font-display)' }}>Absent students — makeup uploads</div>
-                          {absentIds.map(sid => <OutputRow key={sid} student={roster.find(s => s.id === sid)!} output={outputs.find(o => o.studentId === sid)} onUpload={uploadOutput} onView={() => viewOutput(sid)} editable={editable} requireMakeup />)}
-                        </li>
-                      )}
-                    </ul>
-                  </div>
-                ) : (
-                  <p className="text-[12px] text-[color:var(--mid-gray)] mt-4 pt-3 border-t italic" style={{ borderColor: 'var(--paper-3)' }}>
-                    Tip: save the lesson first to enable per-student file uploads (e.g. photo of the worksheet or scanned test paper).
-                  </p>
-                )}
+                {/* OutputRow component is still used by older code paths
+                    (e.g. read-only student-side rendering elsewhere); the
+                    inline ProofPicker above replaces it for the teacher's
+                    Add Lesson flow specifically. */}
               </>
             )}
           </Section>
@@ -877,6 +881,44 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h3 className="text-[13px] font-bold uppercase tracking-[0.10em] text-[color:var(--bright-teal)] mb-3" style={{ fontFamily: 'var(--font-display)' }}>{title}</h3>
       {children}
     </div>
+  )
+}
+
+/**
+ * Inline "Proof" button used by the unified grade-row in the Add
+ * Lesson modal. Renders:
+ *   • "Replace" if a proof has already been uploaded
+ *   • "Proof"   if nothing yet
+ *   • Disabled "Proof" with hint tooltip when no lessonId yet
+ * The actual upload action lives in the parent — this is presentation +
+ * file picker only.
+ */
+function ProofPicker({ hasUpload, disabledHint, onPick }: {
+  hasUpload: boolean
+  disabledHint: string | null
+  onPick: (file: File) => void
+}) {
+  function handle(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (f) onPick(f)
+  }
+  if (disabledHint) {
+    return (
+      <span
+        className="btn-secondary text-[10.5px] inline-flex items-center opacity-50 cursor-not-allowed"
+        title={disabledHint}
+        style={{ width: 'auto' }}
+      >
+        Proof
+      </span>
+    )
+  }
+  return (
+    <label className="btn-secondary text-[10.5px] cursor-pointer inline-flex items-center" style={{ width: 'auto' }}>
+      {hasUpload ? 'Replace' : 'Proof'}
+      <input type="file" className="sr-only" accept="image/*,.pdf" onChange={handle} />
+    </label>
   )
 }
 
