@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import {
   getAuth, hydrateUsers, getUsers, fetchClassPhotoBlob,
+  updateClass,
   listLessons, createLesson, updateLesson, deleteLesson, fetchLessonDetail,
   uploadLessonAttachment, deleteLessonAttachment, fetchLessonAttachmentBlob,
   uploadLessonOutput, fetchLessonOutputBlob,
@@ -21,6 +22,7 @@ import {
   type AuthSession, type StoredUser,
   type ClassRecord, type LessonRecord, type LessonAttachmentMeta, type LessonOutputMeta,
   type AttendanceStatus, type LessonTestRecord, type ProjectRecord, type ActivityRecord, type ActivityPhotoMeta,
+  type ClassDay,
 } from '@/lib/session'
 import { backendJson } from '@/lib/backend'
 import { Portal } from '@/components/Modal'
@@ -132,8 +134,6 @@ export default function ClassDetailPage() {
     }
     return '—'
   })()
-  const dayShorts = CLASS_DAY_OPTIONS.filter(o => klass.scheduleDays.includes(o.value)).map(o => o.short).join(', ')
-  const time = klass.scheduleStartTime && klass.scheduleEndTime ? `${klass.scheduleStartTime}–${klass.scheduleEndTime}` : null
 
   // KPI numbers shown in the dashboard. Avg attendance is a weighted
   // average across every roster × lesson cell that's been marked —
@@ -184,14 +184,12 @@ export default function ClassDetailPage() {
             </div>
             <div className="px-4 py-3 sm:py-3.5 flex-1 min-w-0">
               <button className="btn-secondary text-[11px] mb-2" onClick={() => router.push('/classes')}>← All classes</button>
-              <h1 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">
-                {klass.name}{klass.section ? <span className="text-[color:var(--mid-gray)] font-normal"> · {klass.section}</span> : null}
-              </h1>
-              <p className="text-[12px] text-[color:var(--mid-gray)] mt-1 leading-relaxed">
-                {levelLabel(klass.level)} · {branchLabel(klass.branch)}<br/>
-                Teacher: <span className="font-semibold text-[color:var(--narra)]">{teacherName}</span><br/>
-                Schedule: {dayShorts || '—'}{time ? ` · ${time}` : ''}
-              </p>
+              <ClassMetaEditor
+                klass={klass}
+                canEdit={canEdit}
+                teacherName={teacherName}
+                onUpdated={(k) => { setKlass(k); void load() }}
+              />
             </div>
           </div>
 
@@ -320,6 +318,165 @@ export default function ClassDetailPage() {
  * Layout flips between row (mobile, 3 tiles across) and column (lg+)
  * by inheriting the parent grid's alignment.
  */
+/**
+ * Inline editor for the class header meta (name, section, schedule
+ * days, start/end times). Read-only by default; admins and the
+ * teacher of record can click "Edit" to toggle to inputs. Save calls
+ * `updateClass()` and bubbles the fresh record up via `onUpdated`.
+ *
+ * Branch + level are deliberately NOT editable here — those carry
+ * downstream implications (assignment-matrix scoping, student
+ * filtering) and should remain locked to whatever was set at create
+ * time. To change branch/level, delete the class and recreate.
+ */
+function ClassMetaEditor({ klass, canEdit, teacherName, onUpdated }: {
+  klass: ClassRecord
+  canEdit: boolean
+  teacherName: string
+  onUpdated: (next: ClassRecord) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [name, setName] = useState(klass.name)
+  const [section, setSection] = useState(klass.section ?? '')
+  const [days, setDays] = useState<ClassDay[]>(klass.scheduleDays)
+  const [startTime, setStartTime] = useState(klass.scheduleStartTime ?? '')
+  const [endTime, setEndTime] = useState(klass.scheduleEndTime ?? '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  // Re-seed state when the parent klass prop refreshes (e.g. another
+  // tab edited the same class). Without this the form would keep its
+  // stale draft after an external update.
+  useEffect(() => {
+    if (editing) return
+    setName(klass.name)
+    setSection(klass.section ?? '')
+    setDays(klass.scheduleDays)
+    setStartTime(klass.scheduleStartTime ?? '')
+    setEndTime(klass.scheduleEndTime ?? '')
+  }, [klass.id, klass.name, klass.section, klass.scheduleDays, klass.scheduleStartTime, klass.scheduleEndTime, editing])
+
+  function toggleDay(d: ClassDay) {
+    setDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])
+  }
+
+  async function save() {
+    setErr(null)
+    if (!name.trim()) { setErr('Class name is required.'); return }
+    setBusy(true)
+    try {
+      const updated = await updateClass(klass.id, {
+        name: name.trim(),
+        section: section.trim() || null,
+        scheduleDays: days,
+        scheduleStartTime: startTime || null,
+        scheduleEndTime: endTime || null,
+      })
+      if (!updated) { setErr('Could not save. Retry?'); return }
+      onUpdated(updated)
+      setEditing(false)
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function cancel() {
+    setName(klass.name)
+    setSection(klass.section ?? '')
+    setDays(klass.scheduleDays)
+    setStartTime(klass.scheduleStartTime ?? '')
+    setEndTime(klass.scheduleEndTime ?? '')
+    setErr(null)
+    setEditing(false)
+  }
+
+  const dayShorts = CLASS_DAY_OPTIONS.filter(o => klass.scheduleDays.includes(o.value)).map(o => o.short).join(', ')
+  const time = klass.scheduleStartTime && klass.scheduleEndTime ? `${klass.scheduleStartTime}–${klass.scheduleEndTime}` : null
+
+  if (!editing) {
+    return (
+      <>
+        <div className="flex items-start gap-2 flex-wrap">
+          <h1 className="text-[20px] leading-tight text-[color:var(--deep-teal)] min-w-0">
+            {klass.name}{klass.section ? <span className="text-[color:var(--mid-gray)] font-normal"> · {klass.section}</span> : null}
+          </h1>
+          {canEdit && (
+            <button
+              type="button"
+              className="text-[10.5px] px-2 py-0.5 rounded border text-[color:var(--moss)] hover:bg-[color:var(--paper-2)] mt-1"
+              style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}
+              onClick={() => setEditing(true)}
+            >Edit</button>
+          )}
+        </div>
+        <p className="text-[12px] text-[color:var(--mid-gray)] mt-1 leading-relaxed">
+          {levelLabel(klass.level)} · {branchLabel(klass.branch)}<br/>
+          Teacher: <span className="font-semibold text-[color:var(--narra)]">{teacherName}</span><br/>
+          Schedule: {dayShorts || '—'}{time ? ` · ${time}` : ''}
+        </p>
+      </>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="text-[10px] font-bold uppercase tracking-[0.10em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
+        Editing class
+      </div>
+      {err && <div className="px-3 py-1.5 rounded bg-rose-50 border border-rose-100 text-[12px] text-rose-800">{err}</div>}
+      <div className="grid sm:grid-cols-[1fr_140px] gap-2">
+        <label className="block">
+          <span className="label text-[10.5px]">Class name</span>
+          <input className="input" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Math A" disabled={busy} />
+        </label>
+        <label className="block">
+          <span className="label text-[10.5px]">Section</span>
+          <input className="input" value={section} onChange={e => setSection(e.target.value)} placeholder="(optional)" disabled={busy} />
+        </label>
+      </div>
+      <div>
+        <span className="label text-[10.5px]">Days</span>
+        <div className="flex flex-wrap gap-1 mt-1">
+          {CLASS_DAY_OPTIONS.map(d => {
+            const on = days.includes(d.value)
+            return (
+              <button
+                key={d.value}
+                type="button"
+                onClick={() => toggleDay(d.value)}
+                disabled={busy}
+                className="text-[11px] px-2 py-1 rounded border transition-colors"
+                style={{
+                  borderColor: on ? 'var(--moss)' : 'var(--paper-3)',
+                  background: on ? 'var(--paper-2)' : 'transparent',
+                  color: on ? 'var(--moss)' : 'var(--mid-gray)',
+                  fontFamily: 'var(--font-display)',
+                }}
+              >{d.short}</button>
+            )
+          })}
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <label className="block">
+          <span className="label text-[10.5px]">Start</span>
+          <input type="time" className="input" value={startTime} onChange={e => setStartTime(e.target.value)} disabled={busy} />
+        </label>
+        <label className="block">
+          <span className="label text-[10.5px]">End</span>
+          <input type="time" className="input" value={endTime} onChange={e => setEndTime(e.target.value)} disabled={busy} />
+        </label>
+      </div>
+      <div className="flex gap-2 pt-1">
+        <button type="button" className="btn-primary text-[11px]" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+        <button type="button" className="btn-secondary text-[11px]" onClick={cancel} disabled={busy}>Cancel</button>
+      </div>
+    </div>
+  )
+}
+
 function KpiTile({ label, value, hint }: {
   label: string
   value: string | number
