@@ -58,7 +58,15 @@ export default function PatientRequestsPanel({ branch }: Props) {
   useEffect(() => { load() }, [load])
 
   // Show paid bookings first, then any COMPLETED archive.
-  const paid = useMemo(() => bookings.filter((b) => b.status === 'PAID'), [bookings])
+  // 2026-05-24: render PENDING (awaiting payment) + PAID + COMPLETED so the
+  // front desk can spot abandoned payment flows. Dead-end states
+  // (REJECTED, CANCELLED) stay hidden.
+  const active = useMemo(
+    () => bookings.filter((b) => b.status === 'PENDING' || b.status === 'PAID' || b.status === 'COMPLETED'),
+    [bookings],
+  )
+  const pendingCount = useMemo(() => active.filter((b) => b.status === 'PENDING').length, [active])
+  const paidCount    = useMemo(() => active.filter((b) => b.status === 'PAID').length, [active])
 
   async function addToDeck(b: BookingRow) {
     const who = `${b.patient.firstName} ${b.patient.lastName}`.trim()
@@ -97,10 +105,10 @@ export default function PatientRequestsPanel({ branch }: Props) {
 
   const rows = (
     <div className="space-y-2">
-      {paid.length === 0 && (
-        <div className="text-sm text-gray-500 italic px-2 py-1">No paid bookings yet.</div>
+      {active.length === 0 && (
+        <div className="text-sm text-gray-500 italic px-2 py-1">No patient bookings yet.</div>
       )}
-      {paid.map((b) => {
+      {active.map((b) => {
         const who = `${b.patient.firstName ?? ''} ${b.patient.lastName ?? ''}`.trim()
         const initials = `${b.staff.firstName?.[0] ?? '?'}${b.staff.lastName?.[0] ?? '?'}`.toUpperCase()
         const amount = b.payment?.amount ? `₱${Number(b.payment.amount).toLocaleString()}` : null
@@ -114,9 +122,22 @@ export default function PatientRequestsPanel({ branch }: Props) {
                   {b.isTeletherapy && (
                     <span className="ml-2 text-xs bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded">tele</span>
                   )}
-                  <span className="ml-2 text-xs text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
-                    💰 Paid Downpayment{amount ? ` · ${amount}` : ''}
-                  </span>
+                  {/* Status badge — colour-coded so a pending row is visible at a glance */}
+                  {b.status === 'PENDING' && (
+                    <span className="ml-2 text-xs text-amber-800 bg-amber-100 px-2 py-0.5 rounded" title="Patient submitted the form but hasn't completed payment yet.">
+                      ⏳ Awaiting Payment
+                    </span>
+                  )}
+                  {b.status === 'PAID' && (
+                    <span className="ml-2 text-xs text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                      💰 Paid Downpayment{amount ? ` · ${amount}` : ''}
+                    </span>
+                  )}
+                  {b.status === 'COMPLETED' && (
+                    <span className="ml-2 text-xs text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
+                      ✓ Completed
+                    </span>
+                  )}
                 </div>
                 <div className="text-xs text-gray-600 mt-0.5 flex flex-wrap gap-x-3">
                   <span className="font-mono">{b.date} · {b.startTime}–{b.endTime} · with {initials}</span>
@@ -132,9 +153,9 @@ export default function PatientRequestsPanel({ branch }: Props) {
                       ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-default'
                       : 'bg-emerald-600 text-white hover:bg-emerald-700'
                   }`}
-                  disabled={busy === b.id || b.addedToDeck}
+                  disabled={busy === b.id || b.addedToDeck || b.status === 'PENDING'}
                   onClick={() => addToDeck(b)}
-                  title={b.addedToDeck ? 'Already added to this therapist\'s deck' : 'Materialize as a recurring slot in the Decking grid'}
+                  title={b.status === 'PENDING' ? 'Patient has not paid yet — wait for payment confirmation.' : (b.addedToDeck ? 'Already added to this therapist\'s deck' : 'Materialize as a recurring slot in the Decking grid')}
                 >
                   {b.addedToDeck ? '✓ Added to Staff Deck' : 'Add to Staff Deck'}
                 </button>
@@ -144,9 +165,9 @@ export default function PatientRequestsPanel({ branch }: Props) {
                       ? 'bg-sky-50 text-sky-700 border border-sky-200 cursor-default'
                       : 'bg-sky-600 text-white hover:bg-sky-700'
                   }`}
-                  disabled={busy === b.id || b.accountingRecorded}
+                  disabled={busy === b.id || b.accountingRecorded || b.status === 'PENDING'}
                   onClick={() => markRecorded(b)}
-                  title={b.accountingRecorded ? 'Already recorded in accounting-hub' : 'Mark that the DP was logged in accounting-hub'}
+                  title={b.status === 'PENDING' ? 'Patient has not paid yet — wait for payment confirmation.' : (b.accountingRecorded ? 'Already recorded in accounting-hub' : 'Mark that the DP was logged in accounting-hub')}
                 >
                   {b.accountingRecorded ? '✓ Recorded in Accounting Hub' : 'Recorded DP in Accounting Hub'}
                 </button>
@@ -177,7 +198,9 @@ export default function PatientRequestsPanel({ branch }: Props) {
             Patient Appointment Requests
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            {paid.length} paid downpayment{paid.length === 1 ? '' : 's'}
+            {pendingCount > 0
+              ? `${pendingCount} pending · ${paidCount} paid`
+              : `${paidCount} paid downpayment${paidCount === 1 ? '' : 's'}`}
           </p>
         </div>
         <span className="text-slate-400 text-xs">{expanded ? '▾' : '▸'}</span>
@@ -189,7 +212,7 @@ export default function PatientRequestsPanel({ branch }: Props) {
           {loading && <div className="text-slate-500 text-sm">Loading…</div>}
           {!loading && (
             <div>
-              <div className="text-xs font-semibold text-slate-600 mb-1">Paid Downpayment</div>
+              <div className="text-xs font-semibold text-slate-600 mb-1">Bookings</div>
               {rows}
             </div>
           )}

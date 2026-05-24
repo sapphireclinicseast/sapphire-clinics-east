@@ -24,7 +24,11 @@ export async function GET(req: NextRequest) {
   if (statusParam) {
     where.status = statusParam
   } else {
-    where.status = { in: ['PAID', 'COMPLETED'] }
+    // 2026-05-24: also include PENDING so the front desk can see bookings
+    // where the patient hasn't completed payment yet. They render with a
+    // PENDING status badge and disabled action buttons in the UI. REJECTED
+    // and CANCELLED stay hidden (dead-end states, not actionable).
+    where.status = { in: ['PENDING', 'PAID', 'COMPLETED'] }
   }
 
   const bookings = await prisma.patientBooking.findMany({
