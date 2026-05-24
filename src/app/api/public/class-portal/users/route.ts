@@ -19,15 +19,18 @@ export async function GET(req: Request) {
     const where: any = {}
     if (auth.role === 'TEACHER') where.role = 'STUDENT'
     if (auth.role === 'STUDENT') where.id = auth.userId
-    // Branch admins are scoped to their own branch. Teachers without a
-    // branch (unscoped) stay visible because their assignments table
-    // covers cross-branch coverage; rows tagged to the other branch are
-    // hidden.
-    if (auth.role === 'BRANCH_ADMIN' && auth.branch) {
+    // Branch admins AND DB-backed front desk are scoped to their own
+    // branch. Teachers without a branch (unscoped) stay visible because
+    // their assignments table covers cross-branch coverage; rows tagged
+    // to the other branch are hidden. The `auth.branch` guard keeps the
+    // legacy shared hardcoded frontdesk login (no branch on token)
+    // working with its current global view — only branch-tagged tokens
+    // get scoped.
+    if ((auth.role === 'BRANCH_ADMIN' || auth.role === 'FRONTDESK') && auth.branch) {
       where.OR = [
         { branch: auth.branch },
         // Teachers + frontdesk + branch_admin rows might have null branch
-        // for the teacher case — include them so the branch admin can see
+        // for the teacher case — include them so the staff can see
         // unscoped teachers. Student rows always have a branch.
         { AND: [{ branch: null }, { role: { in: ['TEACHER'] } }] },
       ]

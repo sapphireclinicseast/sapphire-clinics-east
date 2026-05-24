@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { getAuth } from '@/lib/session'
+import { getAuth, type Branch } from '@/lib/session'
 import StudentListPanel from '@/components/StudentListPanel'
 import FrontDeskPaymentConfirmations from '@/components/FrontDeskPaymentConfirmations'
 import PaidStudentsSpreadsheet from '@/components/PaidStudentsSpreadsheet'
@@ -22,6 +22,12 @@ export default function FrontdeskPage() {
   const router = useRouter()
   const [ready, setReady] = useState(false)
   const [email, setEmail] = useState('')
+  // Branch this front-desk account is scoped to. Comes from the sign-in
+  // token for DB-backed per-branch front desks (e.g. East / Greenhills);
+  // legacy hardcoded shared-frontdesk credentials don't carry a branch,
+  // in which case we leave it undefined and the server's branch filter
+  // also short-circuits — preserving the old global view.
+  const [viewerBranch, setViewerBranch] = useState<Branch | undefined>(undefined)
   const [tab, setTab] = useState<FrontdeskTab>('STUDENTS')
 
   useEffect(() => {
@@ -33,6 +39,7 @@ export default function FrontdeskPage() {
       return
     }
     setEmail(auth.email)
+    setViewerBranch(auth.branch)
     setReady(true)
   }, [router])
 
@@ -69,7 +76,7 @@ export default function FrontdeskPage() {
         // Front desk sees the same student list view admin does — full
         // student details, uploaded/generated documents, and assigned
         // teachers (via the existing detail popup).
-        <StudentListPanel viewer={{ role: 'ADMIN', email, name: 'Front desk' }} />
+        <StudentListPanel viewer={{ role: 'ADMIN', email, name: 'Front desk' }} viewerBranch={viewerBranch} />
       )}
 
       {tab === 'CALENDAR' && (
