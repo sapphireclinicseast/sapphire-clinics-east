@@ -1,5 +1,14 @@
 export const metadata = {
-  title: 'About — Aura Academy for Learning',
+  title: 'About',
+  description:
+    'Aura Academy for Learning is a DepEd-accredited small private school in partnership with Light Bearer Christian Academy. Nursery, Kindergarten, and Grades 1–12 in small graded classes, with SPED-inclusive support from the Sapphire Clinics East team.',
+  alternates: { canonical: 'https://class.sapphireclinicseast.org/about' },
+  openGraph: {
+    title: 'About Aura Academy for Learning',
+    description:
+      'Small, attentive classes from Nursery through Grade 12. DepEd-accredited, with a Learner Reference Number for every student.',
+    url: 'https://class.sapphireclinicseast.org/about',
+  },
 }
 
 export default function AboutPage() {
