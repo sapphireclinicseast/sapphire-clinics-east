@@ -20,7 +20,7 @@ const manrope = Manrope({
 
 export const metadata: Metadata = {
   title: 'Aura Academy for Learning — Class Portal',
-  description: 'Enroll your child at Aura Academy for Learning (Kindergarten – Grade 10, DepEd-accredited)',
+  description: 'Enroll your child at Aura Academy for Learning (Nursery – Grade 12, DepEd-accredited)',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

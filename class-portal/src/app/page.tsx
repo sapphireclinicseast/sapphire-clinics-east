@@ -31,6 +31,8 @@ const LEVELS: { value: EnrollmentLevel; title: string }[] = [
   { value: 'GRADE_8', title: 'Grade 8' },
   { value: 'GRADE_9', title: 'Grade 9' },
   { value: 'GRADE_10', title: 'Grade 10' },
+  { value: 'GRADE_11', title: 'Grade 11' },
+  { value: 'GRADE_12', title: 'Grade 12' },
 ]
 
 export default function HomePage() {
@@ -100,7 +102,7 @@ function HomeInner() {
             <div className="mb-7 animate-fade-in-down">
               <div className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-white/60 backdrop-blur-md border border-[color:var(--paper-3)] text-[11.5px] uppercase tracking-[0.12em] text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>
                 <span aria-hidden>✨</span>
-                Kindergarten · Grade 1–10 · DepEd-accredited
+                Nursery · Kindergarten · Grade 1–12 · DepEd-accredited
               </div>
             </div>
 
@@ -117,7 +119,7 @@ function HomeInner() {
             </h1>
 
             <p className="max-w-2xl mt-6 text-base md:text-lg lg:text-xl text-[color:var(--ink)]/80 leading-relaxed animate-fade-in-up animation-delay-600">
-              Aura Academy for Learning offers Kindergarten through Grade 10 in a small, attentive setting — with a DepEd-recognised graded class and a Learner Reference Number for every child.
+              Aura Academy for Learning offers Nursery and Kindergarten through Grade 12 in a small, attentive setting — with a DepEd-recognised graded class and a Learner Reference Number for every child.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-3 mt-9 animate-fade-in-up animation-delay-800">
@@ -148,7 +150,7 @@ function HomeInner() {
               Pick an enrollment level, fill out the learner profile, then upload the required documents. The admissions team will confirm next steps.
             </p>
             <div className="flex flex-col gap-2.5 text-[13px] text-white/85" style={{ fontFamily: 'var(--font-display)' }}>
-              <div className="flex items-center gap-2"><Check/> Kindergarten · Grade 1–10</div>
+              <div className="flex items-center gap-2"><Check/> Nursery · Kindergarten · Grade 1–12</div>
               <div className="flex items-center gap-2"><Check/> Graded class · DepEd-accredited</div>
               <div className="flex items-center gap-2"><Check/> Issued LRN for every student</div>
             </div>

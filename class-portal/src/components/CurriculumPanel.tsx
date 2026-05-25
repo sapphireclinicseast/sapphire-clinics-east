@@ -8,7 +8,7 @@ import {
   levelLabel, type CurriculumRecord, type CurriculumFile, type EnrollmentLevel,
 } from '@/lib/session'
 
-const ALL_LEVELS: EnrollmentLevel[] = ['NURSERY', 'KINDER', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10']
+const ALL_LEVELS: EnrollmentLevel[] = ['NURSERY', 'KINDER', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10', 'GRADE_11', 'GRADE_12']
 
 const PDF_ACCEPT = '.pdf,application/pdf'
 const DOC_ACCEPT = '.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -270,6 +270,7 @@ function CurriculumGrouped({ items, viewer, onOpen, onDownload, onDelete, single
   const byLevel: Record<EnrollmentLevel, CurriculumRecord[]> = {
     NURSERY:  [], KINDER:   [], GRADE_1:  [], GRADE_2:  [], GRADE_3:  [], GRADE_4:  [],
     GRADE_5:  [], GRADE_6:  [], GRADE_7:  [], GRADE_8:  [], GRADE_9:  [], GRADE_10: [],
+    GRADE_11: [], GRADE_12: [],
   }
   for (const c of items) byLevel[c.level].push(c)
 

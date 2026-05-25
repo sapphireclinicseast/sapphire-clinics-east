@@ -8,7 +8,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/class-portal-auth'
 import { withCors, corsHeaders } from '../../_cors'
 
-const ALL_LEVELS = ['KINDER', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10'] as const
+const ALL_LEVELS = ['NURSERY', 'KINDER', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10', 'GRADE_11', 'GRADE_12'] as const
 type ClassPortalLevel = (typeof ALL_LEVELS)[number]
 
 export async function OPTIONS(req: Request) {

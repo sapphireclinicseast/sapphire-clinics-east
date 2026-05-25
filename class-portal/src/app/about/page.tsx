@@ -47,7 +47,7 @@ export default function AboutPage() {
         <div className="card-static">
           <h2 className="text-[22px] leading-tight mb-3">What we offer</h2>
           <ul className="space-y-2.5 text-[14.5px] text-[color:var(--ink)]">
-            <li className="flex gap-3"><Dot/><span>Kindergarten and Grades 1–10 in graded classes.</span></li>
+            <li className="flex gap-3"><Dot/><span>Nursery, Kindergarten, and Grades 1–12 in graded classes.</span></li>
             <li className="flex gap-3"><Dot/><span>DepEd-accredited curriculum — your child stays on track with the national program.</span></li>
             <li className="flex gap-3"><Dot/><span>Every enrolled student is issued a Learner Reference Number (LRN).</span></li>
             <li className="flex gap-3"><Dot/><span>Students are issued an official <span className="font-semibold">report card</span> each grading period.</span></li>
@@ -250,7 +250,7 @@ const ENROLLMENT_STEPS: Array<{ title: string; titleHighlight?: string; body: st
   {
     title: 'Register your child and choose an enrollment level (here in the website)',
     titleHighlight: 'Register',
-    body: 'Create a parent account and pick the grade level (Kindergarten or Grade 1 through Grade 10).',
+    body: 'Create a parent account and pick the grade level (Nursery, Kindergarten, or Grade 1 through Grade 12).',
   },
   {
     title: 'Fill out and sign the enrollment form on the website',
