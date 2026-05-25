@@ -142,8 +142,8 @@ export default function AboutPage() {
                 a: 'Yes. We’re in partnership with Light Bearer Christian Academy, so each student gets an LRN (Learner Reference Number) and an actual DepEd-compliant report card.',
               },
               {
-                q: 'Will you add the other grade levels?',
-                a: 'We plan to add Grades 4–10 next year. For now we offer Nursery, Kindergarten, and Grades 1–3. All levels are graded except Nursery.',
+                q: 'What grade levels do you offer?',
+                a: 'We now offer all grade levels — Nursery and Kindergarten through Grade 12. All levels are graded except Nursery.',
               },
               {
                 q: 'What subjects are taught?',
