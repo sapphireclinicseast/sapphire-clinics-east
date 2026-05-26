@@ -526,6 +526,17 @@ jobs:
 
           cd /var/www/sapphireclinicseast.org/teletherapy
 
+          # Install + build BEFORE restarting — pm2 just runs `next start`
+          # against the existing .next/, which would otherwise serve a stale
+          # compiled CSS/JS (the old brand palette stayed visible for days
+          # because of this). npm install is idempotent; build is fast on a
+          # warm cache.
+          echo "→ Installing teletherapy deps..."
+          npm install --no-audit --no-fund 2>&1 | tail -5
+
+          echo "→ Building teletherapy Next.js app..."
+          npm run build 2>&1 | tail -8
+
           echo "→ Starting teletherapy app..."
           pm2 delete scei-teletherapy 2>/dev/null || true
           PORT=3002 HOSTNAME=0.0.0.0 pm2 start npm --name scei-teletherapy -- start && pm2 save
