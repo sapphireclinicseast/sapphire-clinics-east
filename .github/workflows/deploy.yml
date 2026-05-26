@@ -555,6 +555,24 @@ jobs:
 
           echo ""
           echo "✅ Teletherapy deployed."
+
+          # ── Rebuild + restart client-portal Docker container ──────────
+          # Same problem as teletherapy: rsync updates the source on disk
+          # but the running container keeps serving the previous build.
+          # `docker compose build client-portal && up -d` swaps the image.
+          echo "→ Rebuilding client-portal Docker image..."
+          cd /opt/sapphire
+          ENV_FILE="/opt/sapphire/docker/.env"
+          if [ ! -f "$ENV_FILE" ]; then ENV_FILE="/opt/sapphire/docker/.env.production"; fi
+          docker compose -f /opt/sapphire/docker/docker-compose.yml --env-file "$ENV_FILE" build client-portal 2>&1 | tail -15
+          echo "→ Restarting client-portal container..."
+          docker compose -f /opt/sapphire/docker/docker-compose.yml --env-file "$ENV_FILE" up -d --no-deps client-portal 2>&1 | tail -5
+          echo "→ Waiting 6s for client-portal to stabilize..."
+          sleep 6
+          echo "→ Checking port 3005:"
+          curl -s -o /dev/null -w "%{http_code}" http://localhost:3005/ 2>&1 || echo "curl failed"
+          echo ""
+          echo "✅ Client-portal deployed."
           REMOTE_SCRIPT
 
       # ── 7b. Emergency accounting-hub container recovery ─────────────

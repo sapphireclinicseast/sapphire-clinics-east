@@ -1,28 +1,25 @@
 @import "tailwindcss";
 
-/* ─── Brand palette ─────────────────────────────────────────────
+/* ─── Brand palette (2026.05 — Aura Academy refresh) ────────────
+   Matches seminars + teletherapy + hiring apply page.
    60% Paper + Narra · 25% Moss + Sage · 10% Ink · 5% Clay + Sun
-   Narra + Paper — default highest-contrast surface
-   Sage + Paper  — section openers, secondary surfaces
-   Narra + Sun   — hero moments
-   Moss + Clay   — editorial accents, sparingly
 */
 :root {
-  --narra:  #1B3F38;       /* primary deep green — type, narra surfaces */
-  --moss:   #26554B;       /* secondary — supporting cards / sections */
-  --sage:   #4A8073;       /* tertiary — softer green */
-  --clay:   #A85C3D;       /* accent warm — CTAs, links */
-  --sun:    #C69849;       /* accent light — key data, single-point emphasis */
-  --paper:  #F5F0E8;       /* neutral ground — primary surface */
+  --narra:  #194850;       /* primary deep teal */
+  --moss:   #3E6B66;       /* secondary mid-teal */
+  --sage:   #7B988A;       /* tertiary soft sage */
+  --clay:   #C68077;       /* accent warm — coral / dusty rose */
+  --sun:    #EDD8A8;       /* accent light — warm sand */
+  --paper:  #F4ECDD;       /* neutral ground — cream */
   --ink:    #1A1A1A;       /* near-black — type, fine rules */
 
   /* Tonal helpers for borders, hover wash, and divider lines on paper. */
-  --paper-2:  #ECE6D9;     /* slightly deeper paper for cards over paper */
-  --paper-3:  #DCD3C0;     /* softest divider on paper */
-  --sage-tint: rgba(74, 128, 115, 0.10);    /* sage 10% wash */
-  --moss-tint: rgba(38, 85, 75, 0.08);
-  --clay-tint: rgba(168, 92, 61, 0.10);
-  --sun-tint:  rgba(198, 152, 73, 0.14);
+  --paper-2:  #EBE0CB;     /* slightly deeper paper for cards */
+  --paper-3:  #D9CDB4;     /* softest divider on paper */
+  --sage-tint: rgba(123, 152, 138, 0.18);
+  --moss-tint: rgba(62, 107, 102, 0.10);
+  --clay-tint: rgba(198, 128, 119, 0.14);
+  --sun-tint:  rgba(237, 216, 168, 0.30);
   --mid-gray: #6B6357;     /* warm grey on paper, replaces cool slate */
 
   --font-display: var(--font-montserrat), 'Helvetica Neue', Arial, sans-serif;
@@ -82,9 +79,9 @@ body {
 @keyframes slideDown { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes gateSlideUp { from { opacity: 0; transform: translateY(30px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @keyframes pulseRing {
-  0%   { box-shadow: 0 0 0 0 rgba(168, 92, 61, 0.4); }
-  70%  { box-shadow: 0 0 0 12px rgba(168, 92, 61, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(168, 92, 61, 0); }
+  0%   { box-shadow: 0 0 0 0 rgba(198, 128, 119, 0.4); }
+  70%  { box-shadow: 0 0 0 12px rgba(198, 128, 119, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(198, 128, 119, 0); }
 }
 
 .animate-fade-up   { animation: fadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards; opacity: 0; }
@@ -122,20 +119,20 @@ body {
   border-radius: 18px;
   border: 1px solid var(--paper-3);
   padding: 28px;
-  box-shadow: 0 2px 12px rgba(27, 63, 56, 0.06);
+  box-shadow: 0 2px 12px rgba(25, 72, 80, 0.06);
   transition: transform 0.25s ease-out, box-shadow 0.25s ease-out, border-color 0.25s ease-out;
 }
 .card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 12px 32px rgba(27, 63, 56, 0.12);
-  border-color: rgba(74, 128, 115, 0.35);
+  box-shadow: 0 12px 32px rgba(25, 72, 80, 0.12);
+  border-color: rgba(123, 152, 138, 0.35);
 }
 .card-static {
   background: #fff;
   border-radius: 18px;
   border: 1px solid var(--paper-3);
   padding: 28px;
-  box-shadow: 0 2px 12px rgba(27, 63, 56, 0.06);
+  box-shadow: 0 2px 12px rgba(25, 72, 80, 0.06);
 }
 
 /* ─── Buttons ────────────────────────────────────────────────── */
@@ -156,11 +153,11 @@ body {
   border: none;
   cursor: pointer;
   transition: all 0.2s ease-out;
-  box-shadow: 0 2px 10px rgba(27, 63, 56, 0.25);
+  box-shadow: 0 2px 10px rgba(25, 72, 80, 0.25);
 }
 .btn-primary:hover:not(:disabled) {
   background: var(--moss);
-  box-shadow: 0 6px 20px rgba(27, 63, 56, 0.35);
+  box-shadow: 0 6px 20px rgba(25, 72, 80, 0.35);
   transform: translateY(-1px);
 }
 .btn-primary:active:not(:disabled) { transform: scale(0.97); }
@@ -183,11 +180,11 @@ body {
   border: none;
   cursor: pointer;
   transition: all 0.2s ease-out;
-  box-shadow: 0 2px 10px rgba(168, 92, 61, 0.30);
+  box-shadow: 0 2px 10px rgba(198, 128, 119, 0.30);
 }
 .btn-cta:hover:not(:disabled) {
-  background: #944D32;
-  box-shadow: 0 6px 20px rgba(168, 92, 61, 0.40);
+  background: #A06157;
+  box-shadow: 0 6px 20px rgba(198, 128, 119, 0.40);
   transform: translateY(-1px);
 }
 .btn-cta:active:not(:disabled) { transform: scale(0.97); }
@@ -236,13 +233,13 @@ body {
   background: var(--narra);
   color: #fff;
   border-color: transparent;
-  box-shadow: 0 2px 10px rgba(27, 63, 56, 0.30);
+  box-shadow: 0 2px 10px rgba(25, 72, 80, 0.30);
 }
 .pill-gold-active {
   background: var(--clay);
   color: #fff;
   border-color: transparent;
-  box-shadow: 0 2px 10px rgba(168, 92, 61, 0.30);
+  box-shadow: 0 2px 10px rgba(198, 128, 119, 0.30);
 }
 
 /* ─── Badges ─────────────────────────────────────────────────── */
@@ -258,12 +255,12 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
-.badge-pending     { background: var(--sun-tint);  color: #8a6a1f; border: 1px solid rgba(198, 152, 73, 0.4); }
-.badge-approved    { background: var(--sage-tint); color: var(--moss); border: 1px solid rgba(74, 128, 115, 0.3); }
+.badge-pending     { background: var(--sun-tint);  color: #8a6a1f; border: 1px solid rgba(237, 216, 168, 0.4); }
+.badge-approved    { background: var(--sage-tint); color: var(--moss); border: 1px solid rgba(123, 152, 138, 0.3); }
 .badge-paid        { background: rgba(34, 197, 94, 0.10); color: #166534; border: 1px solid rgba(34, 197, 94, 0.28); }
-.badge-rejected    { background: var(--clay-tint); color: var(--clay); border: 1px solid rgba(168, 92, 61, 0.28); }
+.badge-rejected    { background: var(--clay-tint); color: var(--clay); border: 1px solid rgba(198, 128, 119, 0.28); }
 .badge-cancelled   { background: var(--paper-2); color: var(--mid-gray); border: 1px solid var(--paper-3); }
-.badge-teletherapy { background: var(--sage-tint); color: var(--narra); border: 1px solid rgba(74, 128, 115, 0.3); }
+.badge-teletherapy { background: var(--sage-tint); color: var(--narra); border: 1px solid rgba(123, 152, 138, 0.3); }
 
 /* ─── Inputs ─────────────────────────────────────────────────── */
 .input, .select {
@@ -280,7 +277,7 @@ body {
 }
 .input:focus, .select:focus {
   border-color: var(--sage);
-  box-shadow: 0 0 0 3px rgba(74, 128, 115, 0.18);
+  box-shadow: 0 0 0 3px rgba(123, 152, 138, 0.18);
 }
 .input::placeholder { color: var(--mid-gray); }
 
@@ -295,12 +292,21 @@ body {
   margin-bottom: 7px;
 }
 
-/* ─── Hero gradient — Narra + Sun (warmth where it matters most) ─ */
+/* ─── Hero gradient — Aura coral → sage ─────────────────────────
+   The signature Aura Academy diagonal blend: coral / dusty rose at
+   the top-left flowing into soft sage at the bottom-right, with a
+   warm cream halo through the middle and sand-outlined orbital
+   rings echoing the marketing creative.                            */
 .hero-gradient {
   background:
-    radial-gradient(1200px 400px at 110% -10%, rgba(198, 152, 73, 0.30), transparent 60%),
-    radial-gradient(900px 400px at -10% 120%, rgba(168, 92, 61, 0.20), transparent 60%),
-    linear-gradient(135deg, var(--narra) 0%, var(--moss) 70%, var(--sage) 130%);
+    radial-gradient(1200px 380px at 50% 35%, rgba(244, 236, 221, 0.22), transparent 60%),
+    radial-gradient(820px 380px at 8% 0%, rgba(212, 145, 132, 0.55), transparent 60%),
+    radial-gradient(1100px 440px at 100% 110%, rgba(123, 152, 138, 0.55), transparent 65%),
+    linear-gradient(135deg,
+      #D49184 0%,
+      #C9A28F 38%,
+      #9CB1A2 72%,
+      #7B988A 100%);
   position: relative;
   overflow: hidden;
   color: #fff;
@@ -308,10 +314,23 @@ body {
 .hero-gradient::before {
   content: '';
   position: absolute;
-  top: -50%; right: -25%;
-  width: 520px; height: 520px;
+  top: -260px;
+  right: -180px;
+  width: 560px;
+  height: 560px;
+  border: 1px solid rgba(244, 236, 221, 0.28);
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.05);
+  pointer-events: none;
+}
+.hero-gradient::after {
+  content: '';
+  position: absolute;
+  top: -200px;
+  right: -300px;
+  width: 760px;
+  height: 760px;
+  border: 1px solid rgba(244, 236, 221, 0.18);
+  border-radius: 50%;
   pointer-events: none;
 }
 
@@ -324,7 +343,7 @@ body {
 }
 .step-dot-active {
   background: var(--clay);
-  box-shadow: 0 0 0 4px rgba(168, 92, 61, 0.18);
+  box-shadow: 0 0 0 4px rgba(198, 128, 119, 0.18);
 }
 .step-dot-done { background: var(--moss); }
 
@@ -349,7 +368,7 @@ body {
   border-color: var(--sage);
   background: var(--sage-tint);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(27, 63, 56, 0.10);
+  box-shadow: 0 4px 12px rgba(25, 72, 80, 0.10);
 }
 .slot-tile-time {
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
@@ -366,7 +385,7 @@ body {
   min-height: 160px;
   transition: border-color 0.2s;
 }
-.day-col:hover { border-color: rgba(74, 128, 115, 0.35); }
+.day-col:hover { border-color: rgba(123, 152, 138, 0.35); }
 .day-col-header {
   font-family: var(--font-display);
   font-size: 11.5px;

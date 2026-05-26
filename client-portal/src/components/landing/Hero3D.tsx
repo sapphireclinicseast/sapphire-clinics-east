@@ -32,7 +32,7 @@ export function Hero3D({ signedInFirstName }: Hero3DProps) {
         background:
           'radial-gradient(800px 360px at 110% -10%, rgba(198,152,73,0.28), transparent 60%),' +
           'radial-gradient(700px 320px at -10% 120%, rgba(168,92,61,0.22), transparent 60%),' +
-          'linear-gradient(135deg, #0F1F1D 0%, #1B3F38 55%, #26554B 110%)',
+          'linear-gradient(135deg, #0F1F1D 0%, #194850 55%, #3E6B66 110%)',
       }}
     >
       <Spotlight
@@ -55,7 +55,7 @@ export function Hero3D({ signedInFirstName }: Hero3DProps) {
             className="text-[40px] md:text-[52px] leading-[1.04] tracking-[-0.02em] font-bold bg-clip-text text-transparent"
             style={{
               backgroundImage:
-                'linear-gradient(180deg, #F5F0E8 0%, rgba(245,240,232,0.65) 100%)',
+                'linear-gradient(180deg, #F4ECDD 0%, rgba(245,240,232,0.65) 100%)',
             }}
           >
             Care for the<br />whole human.
