@@ -69,7 +69,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}
         style={{
-          background: 'linear-gradient(180deg, #0F2520 0%, #1B3F38 100%)',
+          background: 'linear-gradient(180deg, #0F3138 0%, #194850 100%)',
         }}
       >
         {/* Brand */}
@@ -118,11 +118,11 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
                     ? 'text-white shadow-[0_2px_8px_rgba(46,94,90,0.3)]'
                     : 'text-white/50 hover:text-white/80 hover:bg-white/5'
                 )}
-                style={active ? { background: 'linear-gradient(135deg, var(--teal), var(--deep-teal))', borderLeft: '3px solid #A85C3D' } : {}}
+                style={active ? { background: 'linear-gradient(135deg, var(--teal), var(--deep-teal))', borderLeft: '3px solid #C68077' } : {}}
               >
-                <Icon size={18} style={active ? { color: '#C69849' } : {}} />
+                <Icon size={18} style={active ? { color: '#EDD8A8' } : {}} />
                 {item.label}
-                {active && <ChevronRight size={14} className="ml-auto" style={{ color: '#C69849' }} />}
+                {active && <ChevronRight size={14} className="ml-auto" style={{ color: '#EDD8A8' }} />}
               </Link>
             )
           })}
@@ -131,7 +131,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
         {/* User card */}
         <div className="mx-3 mb-4 p-4 rounded-xl bg-white/5 border border-white/8">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-[12px] font-bold shrink-0" style={{ background: 'linear-gradient(135deg, #A85C3D, #C69849)' }}>
+            <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-[12px] font-bold shrink-0" style={{ background: 'linear-gradient(135deg, #C68077, #EDD8A8)' }}>
               {session?.user?.name?.split(' ').map(n => n[0]).join('').slice(0, 2) ?? '?'}
             </div>
             <div className="flex-1 min-w-0">

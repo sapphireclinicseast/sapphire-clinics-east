@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
-/* ─── Brand palette ─────────────────────────────────────────────
+/* ─── Brand palette (2026.05 — Aura Academy refresh) ────────────
+   Matches seminars.sapphireclinicseast.org + the hiring apply page.
    60% Paper + Narra · 25% Moss + Sage · 10% Ink · 5% Clay + Sun
    Narra + Paper — default highest-contrast surface
    Sage + Paper  — section openers, secondary surfaces
@@ -8,20 +9,20 @@
    Moss + Clay   — editorial accents, sparingly
 */
 :root {
-  --narra:  #1B3F38;       /* primary deep green */
-  --moss:   #26554B;       /* secondary */
-  --sage:   #4A8073;       /* tertiary */
-  --clay:   #A85C3D;       /* accent warm — CTAs, links */
-  --sun:    #C69849;       /* accent light — key data, emphasis */
-  --paper:  #F5F0E8;       /* neutral ground */
+  --narra:  #194850;       /* primary deep teal */
+  --moss:   #3E6B66;       /* secondary mid-teal */
+  --sage:   #7B988A;       /* tertiary soft sage */
+  --clay:   #C68077;       /* accent warm — coral / dusty rose */
+  --sun:    #EDD8A8;       /* accent light — warm sand */
+  --paper:  #F4ECDD;       /* neutral ground — cream */
   --ink:    #1A1A1A;       /* near-black — type */
 
-  --paper-2:  #ECE6D9;
-  --paper-3:  #DCD3C0;
-  --sage-tint: rgba(74, 128, 115, 0.10);
-  --moss-tint: rgba(38, 85, 75, 0.08);
-  --clay-tint: rgba(168, 92, 61, 0.10);
-  --sun-tint:  rgba(198, 152, 73, 0.14);
+  --paper-2:  #EBE0CB;
+  --paper-3:  #D9CDB4;
+  --sage-tint: rgba(123, 152, 138, 0.18);
+  --moss-tint: rgba(62, 107, 102, 0.10);
+  --clay-tint: rgba(198, 128, 119, 0.14);
+  --sun-tint:  rgba(237, 216, 168, 0.30);
   --mid-gray: #6B6357;
 
   --font-display: var(--font-montserrat), 'Helvetica Neue', Arial, sans-serif;
@@ -117,20 +118,20 @@ body {
   border-radius: 14px;
   border: 1px solid var(--paper-3);
   padding: 24px;
-  box-shadow: 0 2px 12px rgba(27, 63, 56, 0.06);
+  box-shadow: 0 2px 12px rgba(25, 72, 80, 0.06);
   transition: transform 0.25s ease-out, box-shadow 0.25s ease-out, border-color 0.25s ease-out;
 }
 .card:hover {
   transform: translateY(-3px);
-  box-shadow: 0 8px 28px rgba(27, 63, 56, 0.12);
-  border-color: rgba(74, 128, 115, 0.4);
+  box-shadow: 0 8px 28px rgba(25, 72, 80, 0.12);
+  border-color: rgba(123, 152, 138, 0.4);
 }
 .card-static {
   background: #fff;
   border-radius: 14px;
   border: 1px solid var(--paper-3);
   padding: 24px;
-  box-shadow: 0 2px 12px rgba(27, 63, 56, 0.06);
+  box-shadow: 0 2px 12px rgba(25, 72, 80, 0.06);
 }
 
 /* ─── Button system ──────────────────────────────────────────── */
@@ -150,9 +151,9 @@ body {
   border: none;
   cursor: pointer;
   transition: all 0.2s ease-out;
-  box-shadow: 0 2px 8px rgba(27, 63, 56, 0.25);
+  box-shadow: 0 2px 8px rgba(25, 72, 80, 0.25);
 }
-.btn-primary:hover { background: var(--moss); box-shadow: 0 4px 16px rgba(27, 63, 56, 0.35); transform: translateY(-1px); }
+.btn-primary:hover { background: var(--moss); box-shadow: 0 4px 16px rgba(25, 72, 80, 0.35); transform: translateY(-1px); }
 .btn-primary:active { transform: scale(0.97); }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
@@ -190,9 +191,9 @@ body {
   border: none;
   cursor: pointer;
   transition: all 0.2s ease-out;
-  box-shadow: 0 2px 8px rgba(168, 92, 61, 0.30);
+  box-shadow: 0 2px 8px rgba(198, 128, 119, 0.30);
 }
-.btn-cta:hover { background: #944D32; box-shadow: 0 4px 16px rgba(168, 92, 61, 0.40); transform: translateY(-1px); }
+.btn-cta:hover { background: #944D32; box-shadow: 0 4px 16px rgba(198, 128, 119, 0.40); transform: translateY(-1px); }
 .btn-cta:active { transform: scale(0.97); }
 .btn-cta:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
@@ -234,9 +235,9 @@ body {
   background: var(--clay);
   color: #fff;
 }
-.badge-pending     { background: var(--sun-tint);  color: #8a6a1f; border: 1px solid rgba(198, 152, 73, 0.4); }
-.badge-confirmed   { background: var(--sage-tint); color: var(--moss); border: 1px solid rgba(74, 128, 115, 0.3); }
-.badge-cancelled   { background: var(--clay-tint); color: var(--clay); border: 1px solid rgba(168, 92, 61, 0.28); }
+.badge-pending     { background: var(--sun-tint);  color: #8a6a1f; border: 1px solid rgba(237, 216, 168, 0.4); }
+.badge-confirmed   { background: var(--sage-tint); color: var(--moss); border: 1px solid rgba(123, 152, 138, 0.3); }
+.badge-cancelled   { background: var(--clay-tint); color: var(--clay); border: 1px solid rgba(198, 128, 119, 0.28); }
 .badge-rescheduled { background: var(--paper-2);   color: var(--mid-gray); border: 1px solid var(--paper-3); }
 
 /* ─── Input system ───────────────────────────────────────────── */
@@ -254,7 +255,7 @@ body {
 }
 .input:focus {
   border-color: var(--sage);
-  box-shadow: 0 0 0 3px rgba(74, 128, 115, 0.18);
+  box-shadow: 0 0 0 3px rgba(123, 152, 138, 0.18);
 }
 .input::placeholder { color: var(--mid-gray); }
 
@@ -274,31 +275,48 @@ body {
   animation: gateSlideUp 0.3s ease-out;
 }
 
-/* ─── Hero gradient — Narra + Sun ────────────────────────────── */
+/* ─── Hero gradient — Aura coral → sage ───────────────────────
+   The signature diagonal blend from the Aura Academy creative:
+   coral / dusty rose top-left → cream halo through the middle →
+   soft sage bottom-right, with sand-outlined orbital rings.        */
 .hero-gradient {
   background:
-    radial-gradient(1200px 400px at 110% -10%, rgba(198, 152, 73, 0.30), transparent 60%),
-    radial-gradient(900px 400px at -10% 120%, rgba(168, 92, 61, 0.20), transparent 60%),
-    linear-gradient(135deg, var(--narra) 0%, var(--moss) 60%, var(--sage) 110%);
+    /* warm cream halo through the centre */
+    radial-gradient(1200px 380px at 50% 35%, rgba(244, 236, 221, 0.22), transparent 60%),
+    /* coral lift in the top-left */
+    radial-gradient(820px 380px at 8% 0%, rgba(212, 145, 132, 0.55), transparent 60%),
+    /* sage settle in the bottom-right */
+    radial-gradient(1100px 440px at 100% 110%, rgba(123, 152, 138, 0.55), transparent 65%),
+    /* underlying coral → sand → sage diagonal */
+    linear-gradient(135deg,
+      #D49184 0%,
+      #C9A28F 38%,
+      #9CB1A2 72%,
+      #7B988A 100%);
   position: relative;
   overflow: hidden;
   color: #fff;
 }
+/* Thin sand-outlined orbital rings — echoing the marketing creative */
 .hero-gradient::before {
   content: '';
   position: absolute;
-  top: -50%; right: -30%;
-  width: 500px; height: 500px;
+  top: -260px;
+  right: -180px;
+  width: 560px;
+  height: 560px;
+  border: 1px solid rgba(244, 236, 221, 0.28);
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.05);
   pointer-events: none;
 }
 .hero-gradient::after {
   content: '';
   position: absolute;
-  bottom: -40%; left: -20%;
-  width: 400px; height: 400px;
+  top: -200px;
+  right: -300px;
+  width: 760px;
+  height: 760px;
+  border: 1px solid rgba(244, 236, 221, 0.18);
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.03);
   pointer-events: none;
 }

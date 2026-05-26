@@ -145,11 +145,11 @@ export default function DashboardPage() {
       {!loading && sessions.length > 0 && (
         <div className="grid grid-cols-3 gap-4 mb-6">
           <div className="card-static flex items-center gap-3 animate-fade-up stagger-1">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #A85C3D20, #C6984920)' }}>
-              <Activity size={18} style={{ color: '#A85C3D' }} />
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #C6807720, #EDD8A820)' }}>
+              <Activity size={18} style={{ color: '#C68077' }} />
             </div>
             <div>
-              <p className="text-2xl font-bold" style={{ color: '#A85C3D' }}>{sessions.length}</p>
+              <p className="text-2xl font-bold" style={{ color: '#C68077' }}>{sessions.length}</p>
               <p className="text-[11px] text-[var(--mid-gray)] uppercase font-semibold tracking-wider">Total</p>
             </div>
           </div>
@@ -200,7 +200,7 @@ export default function DashboardPage() {
             >
               <div className="flex items-center gap-4">
                 {/* Avatar circle */}
-                <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-[13px] shrink-0" style={{ background: 'linear-gradient(135deg, #A85C3D, #C69849)' }}>
+                <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-[13px] shrink-0" style={{ background: 'linear-gradient(135deg, #C68077, #EDD8A8)' }}>
                   {s.patient ? `${s.patient.firstName[0]}${s.patient.lastName[0]}` : 'W'}
                 </div>
 

@@ -34,15 +34,23 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center px-4" style={{
-      background: 'linear-gradient(135deg, #0F2520 0%, #1B3F38 40%, #26554B 70%, #1B3F38 100%)',
+    <div className="fixed inset-0 flex items-center justify-center px-4 overflow-hidden" style={{
+      background: [
+        'radial-gradient(1200px 380px at 50% 35%, rgba(244, 236, 221, 0.22), transparent 60%)',
+        'radial-gradient(820px 380px at 8% 0%, rgba(212, 145, 132, 0.55), transparent 60%)',
+        'radial-gradient(1100px 440px at 100% 110%, rgba(123, 152, 138, 0.55), transparent 65%)',
+        'linear-gradient(135deg, #D49184 0%, #C9A28F 38%, #9CB1A2 72%, #7B988A 100%)',
+      ].join(', '),
     }}>
-      <div className="absolute top-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full opacity-[0.04] bg-white pointer-events-none" />
+      <div className="absolute top-[-260px] right-[-180px] w-[560px] h-[560px] rounded-full pointer-events-none"
+           style={{ border: '1px solid rgba(244, 236, 221, 0.28)' }} />
+      <div className="absolute top-[-200px] right-[-300px] w-[760px] h-[760px] rounded-full pointer-events-none"
+           style={{ border: '1px solid rgba(244, 236, 221, 0.18)' }} />
 
       <div className="w-full max-w-[400px] animate-gate">
         <div className="flex justify-center mb-6">
           <div className="w-[60px] h-[60px] rounded-full flex items-center justify-center"
-               style={{ background: 'linear-gradient(135deg, var(--teal), var(--bright-teal))', boxShadow: '0 4px 20px rgba(46, 94, 90, 0.4)' }}>
+               style={{ background: 'linear-gradient(135deg, var(--narra), var(--moss))', boxShadow: '0 4px 20px rgba(15, 49, 56, 0.40)' }}>
             <Video className="w-7 h-7 text-white" />
           </div>
         </div>

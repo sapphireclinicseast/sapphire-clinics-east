@@ -68,9 +68,9 @@ export default function CapturePage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0F2520] flex flex-col">
+    <div className="min-h-screen bg-[#0F3138] flex flex-col">
       {/* Header */}
-      <div className="bg-[#1B3F38] px-4 py-3 text-center">
+      <div className="bg-[#194850] px-4 py-3 text-center">
         <h1 className="text-white font-semibold text-sm">SCEI Staff Portal</h1>
         <p className="text-white/50 text-xs">Capture Session Notes</p>
       </div>
@@ -121,7 +121,7 @@ export default function CapturePage() {
             <div className="flex flex-col gap-3 w-full max-w-xs">
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="w-full flex items-center justify-center gap-3 bg-white text-[#1B3F38] py-4 rounded-xl font-semibold text-base shadow-lg active:scale-[0.98] transition-transform"
+                className="w-full flex items-center justify-center gap-3 bg-white text-[#194850] py-4 rounded-xl font-semibold text-base shadow-lg active:scale-[0.98] transition-transform"
               >
                 <Camera className="w-6 h-6" />
                 Take Photo
@@ -152,7 +152,7 @@ export default function CapturePage() {
               </button>
               <button
                 onClick={upload}
-                className="flex items-center gap-2 bg-[#26554B] text-white px-5 py-2.5 rounded-lg text-sm font-medium active:scale-95 transition-transform"
+                className="flex items-center gap-2 bg-[#3E6B66] text-white px-5 py-2.5 rounded-lg text-sm font-medium active:scale-95 transition-transform"
               >
                 <Upload size={16} />
                 Upload
