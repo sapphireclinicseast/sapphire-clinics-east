@@ -529,13 +529,29 @@ jobs:
           # Install + build BEFORE restarting — pm2 just runs `next start`
           # against the existing .next/, which would otherwise serve a stale
           # compiled CSS/JS (the old brand palette stayed visible for days
-          # because of this). npm install is idempotent; build is fast on a
-          # warm cache.
+          # because of this). --include=dev forces dev dependencies even if
+          # the runner's NODE_ENV is production. Pipe to a log file so the
+          # build doesn't silently start on an incomplete install.
           echo "→ Installing teletherapy deps..."
-          npm install --no-audit --no-fund 2>&1 | tail -5
+          if ! npm install --include=dev --no-audit --no-fund > /tmp/tt-install.log 2>&1; then
+            echo "❌ npm install failed — last 20 lines:"
+            tail -20 /tmp/tt-install.log
+            exit 1
+          fi
+          echo "   ✓ install OK ($(wc -l < /tmp/tt-install.log) log lines)"
+          if [ ! -x node_modules/.bin/next ]; then
+            echo "❌ FATAL: node_modules/.bin/next missing after install"
+            ls node_modules/.bin/ 2>&1 | head -20
+            exit 1
+          fi
 
           echo "→ Building teletherapy Next.js app..."
-          npm run build 2>&1 | tail -8
+          if ! npm run build > /tmp/tt-build.log 2>&1; then
+            echo "❌ npm run build failed — last 30 lines:"
+            tail -30 /tmp/tt-build.log
+            exit 1
+          fi
+          echo "   ✓ build OK"
 
           echo "→ Starting teletherapy app..."
           pm2 delete scei-teletherapy 2>/dev/null || true
