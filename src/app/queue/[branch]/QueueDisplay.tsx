@@ -269,18 +269,31 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
   return (
     <div style={{
       width: '100vw', height: '100vh', overflow: 'hidden',
-      background: BRAND.narra, display: 'flex', flexDirection: 'column',
+      // Aura backdrop — deep teal grounded but with soft coral / sand glows
+      // in opposite corners so the TV display has the same warm tints as the
+      // rest of the brand surfaces (seminars, teletherapy, client portal).
+      background: [
+        'radial-gradient(900px 540px at 92% 92%, rgba(198,128,119,0.22), transparent 60%)',
+        'radial-gradient(1100px 620px at 8% 6%, rgba(237,216,168,0.14), transparent 60%)',
+        `linear-gradient(135deg, ${BRAND.narraDeep} 0%, ${BRAND.narra} 60%, ${BRAND.moss} 100%)`,
+      ].join(', '),
+      display: 'flex', flexDirection: 'column',
       // Manrope is the body/data face; Montserrat takes over for headings via inline fontFamily.
       fontFamily: 'var(--font-manrope), "Helvetica Neue", system-ui, -apple-system, sans-serif',
       color: BRAND.paper,
     }}>
-      {/* ── Header — Narra + Sun (hero pairing) ──────────────────────────── */}
+      {/* ── Header — Aura masthead (deep teal with coral lift + sand glow) ── */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '0.75rem 2rem',
-        background: `linear-gradient(90deg, ${BRAND.narraDeep} 0%, ${BRAND.narra} 60%, ${BRAND.moss} 100%)`,
+        background: [
+          'radial-gradient(700px 240px at 50% 50%, rgba(237,216,168,0.16), transparent 65%)',
+          'radial-gradient(500px 200px at 100% 100%, rgba(198,128,119,0.32), transparent 65%)',
+          `linear-gradient(90deg, ${BRAND.narraDeep} 0%, ${BRAND.narra} 55%, ${BRAND.moss} 100%)`,
+        ].join(', '),
         borderBottom: `2px solid ${BRAND.sun}`,
         flexShrink: 0,
+        position: 'relative',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <Image src="/sandbox-clinic-logo.png" alt="Sandbox Clinic" width={48} height={48}
@@ -433,10 +446,15 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
           )}
         </div>
 
-        {/* ── Ads Panel (60%) ───────────────────────────────────────────── */}
+        {/* ── Ads Panel (60%) — narraDeep with warm coral lift bottom-right ── */}
         <div style={{
           flex: '0 0 60%', borderLeft: `1px solid ${BRAND.narraDeep}`,
-          background: BRAND.narraDeep, position: 'relative', overflow: 'hidden',
+          background: [
+            'radial-gradient(700px 460px at 90% 92%, rgba(198,128,119,0.18), transparent 65%)',
+            'radial-gradient(620px 420px at 12% 8%, rgba(237,216,168,0.10), transparent 65%)',
+            BRAND.narraDeep,
+          ].join(', '),
+          position: 'relative', overflow: 'hidden',
           display: 'flex', flexDirection: 'column',
         }}>
           {ads.length === 0 && (!lbEnabled || !leaderboard) && !cfEnabled ? (
@@ -703,10 +721,14 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
         </div>
       </div>
 
-      {/* ── Footer ────────────────────────────────────────────────────────── */}
+      {/* ── Footer — narraDeep with a quiet coral wash on the left edge ──── */}
       <div style={{
         padding: '0.4rem 2rem', flexShrink: 0,
-        background: BRAND.narraDeep, borderTop: `1px solid rgba(123,152,138,0.25)`,
+        background: [
+          'radial-gradient(360px 80px at 0% 50%, rgba(198,128,119,0.18), transparent 70%)',
+          BRAND.narraDeep,
+        ].join(', '),
+        borderTop: `1px solid rgba(123,152,138,0.25)`,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <p style={{ fontSize: '0.7rem', color: 'rgba(244,236,221,0.45)', letterSpacing: '0.02em' }}>
