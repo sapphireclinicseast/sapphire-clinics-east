@@ -63,12 +63,12 @@ function getSortVal(s: PublicSchedule, col: SortCol): string {
 
 // ── Brand palette ─────────────────────────────────────────────────────────────
 // 60% Paper/Narra · 25% Moss/Sage · 10% Ink · 5% Clay/Sun
-const NARRA       = '#1B3F38' // primary
-const MOSS        = '#26554B' // secondary
-const SAGE        = '#4A8073' // tertiary
-const CLAY        = '#A85C3D' // accent warm
-const SUN         = '#C69849' // accent light — single-point emphasis
-const PAPER       = '#F5F0E8' // neutral light
+const NARRA       = '#194850' // primary
+const MOSS        = '#3E6B66' // secondary
+const SAGE        = '#7B988A' // tertiary
+const CLAY        = '#C68077' // accent warm
+const SUN         = '#EDD8A8' // accent light — single-point emphasis
+const PAPER       = '#F4ECDD' // neutral light
 const INK         = '#1A1A1A' // neutral dark
 const SAGE_TINT   = '#EAF1ED' // section-opener bg (Sage + Paper)
 const SAGE_BORDER = '#C8D6CF' // soft sage border
@@ -909,7 +909,7 @@ export default function PublicScheduleView({
 
 // ── Leaderboard Card sub-component ───────────────────────────────────────────
 // Sun → Clay → Sage for the podium (warm-to-cool, brand-pure)
-const RANK_COLORS = ['#C69849', '#A85C3D', '#4A8073', '#aaa', '#aaa']
+const RANK_COLORS = ['#EDD8A8', '#C68077', '#7B988A', '#aaa', '#aaa']
 const RANK_LABELS = ['1st', '2nd', '3rd', '4th', '5th']
 
 function LeaderboardCard({
@@ -929,13 +929,13 @@ function LeaderboardCard({
     }}>
       {/* Card header — Narra → Sun gradient (hero moment, warmth) */}
       <div style={{
-        background: 'linear-gradient(135deg, #1B3F38 0%, #26554B 55%, #C69849 130%)',
+        background: 'linear-gradient(135deg, #194850 0%, #3E6B66 55%, #EDD8A8 130%)',
         padding: '14px 16px',
       }}>
         <p className="sched-display" style={{
           fontFamily: 'var(--font-montserrat), system-ui, sans-serif',
           fontSize: '10px', fontWeight: 700, textTransform: 'uppercase',
-          letterSpacing: '0.12em', color: 'rgba(245,240,232,0.75)', margin: '0 0 2px',
+          letterSpacing: '0.12em', color: 'rgba(244,236,221,0.75)', margin: '0 0 2px',
         }}>
           {title}
         </p>
@@ -962,7 +962,7 @@ function LeaderboardCard({
                 display: 'flex', alignItems: 'flex-start', gap: '12px',
                 padding: '10px 16px',
                 borderBottom: i < entries.length - 1 ? '1px solid #f0eee9' : 'none',
-                background: group.rank === 1 ? '#F5F0E8' : '#fff',
+                background: group.rank === 1 ? '#F4ECDD' : '#fff',
               }}>
                 {/* Rank badge */}
                 <div style={{
@@ -981,7 +981,7 @@ function LeaderboardCard({
                     <>
                       <p style={{
                         fontFamily: 'var(--font-montserrat), system-ui, sans-serif',
-                        fontSize: '10px', color: '#A85C3D', margin: '0 0 4px',
+                        fontSize: '10px', color: '#C68077', margin: '0 0 4px',
                         fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em',
                       }}>
                         Tied · {group.members.length} therapists
@@ -989,12 +989,12 @@ function LeaderboardCard({
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                         {group.members.map(m => (
                           <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#4A8073', flexShrink: 0 }} />
+                            <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#7B988A', flexShrink: 0 }} />
                             <span style={{ fontSize: '13px', fontWeight: 600, color: '#1A1A1A', lineHeight: 1.3 }}>
                               {m.name}
                             </span>
                             {highlightDept !== undefined && (
-                              <span style={{ fontSize: '10px', color: '#4A8073', opacity: 0.85 }}>{m.dept}</span>
+                              <span style={{ fontSize: '10px', color: '#7B988A', opacity: 0.85 }}>{m.dept}</span>
                             )}
                           </div>
                         ))}
@@ -1008,7 +1008,7 @@ function LeaderboardCard({
                         {group.members[0].name}
                       </p>
                       {highlightDept !== undefined && (
-                        <p style={{ fontSize: '10px', color: '#4A8073', margin: 0, opacity: 0.85 }}>{group.members[0].dept}</p>
+                        <p style={{ fontSize: '10px', color: '#7B988A', margin: 0, opacity: 0.85 }}>{group.members[0].dept}</p>
                       )}
                     </>
                   )}
@@ -1018,7 +1018,7 @@ function LeaderboardCard({
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
                   <p className="sched-display" style={{
                     fontFamily: 'var(--font-montserrat), system-ui, sans-serif',
-                    fontSize: '17px', fontWeight: 700, color: '#A85C3D',
+                    fontSize: '17px', fontWeight: 700, color: '#C68077',
                     margin: 0, lineHeight: 1, letterSpacing: '-0.01em',
                   }}>
                     {group.score.toFixed(1)}

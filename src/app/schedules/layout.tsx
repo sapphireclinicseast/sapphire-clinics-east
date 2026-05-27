@@ -4,7 +4,7 @@ export default function SchedulesLayout({ children }: { children: React.ReactNod
   return (
     <div style={{
       minHeight: '100vh',
-      background: '#F5F0E8',
+      background: '#F4ECDD',
       fontFamily: 'var(--font-manrope), system-ui, -apple-system, sans-serif',
       color: '#1A1A1A',
       overflowX: 'hidden',
@@ -27,7 +27,7 @@ export default function SchedulesLayout({ children }: { children: React.ReactNod
       <header style={{
         background: '#fff',
         borderBottom: '1px solid #C8D6CF',
-        boxShadow: '0 1px 0 rgba(27,63,56,0.04)',
+        boxShadow: '0 1px 0 rgba(25,72,80,0.04)',
       }}>
         <div className="sched-header-inner" style={{ maxWidth: '1100px', margin: '0 auto' }}>
           <Image

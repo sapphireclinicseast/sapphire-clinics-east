@@ -39,14 +39,14 @@ export default async function SchedulesGatePage({
         border: '1px solid #C8D6CF',
         borderRadius: '16px',
         overflow: 'hidden',
-        boxShadow: '0 8px 32px rgba(27,63,56,0.10)',
+        boxShadow: '0 8px 32px rgba(25,72,80,0.10)',
       }}>
         {/* Narra → Sun accent bar (Narra + Sun: hero moment, warmth) */}
-        <div style={{ height: '6px', background: 'linear-gradient(90deg,#1B3F38 0%,#4A8073 60%,#C69849 100%)' }} />
+        <div style={{ height: '6px', background: 'linear-gradient(90deg,#194850 0%,#7B988A 60%,#EDD8A8 100%)' }} />
 
         <div style={{ padding: '32px 28px 28px' }}>
           <h1 className="sched-display" style={{
-            fontSize: '22px', fontWeight: 700, color: '#1B3F38',
+            fontSize: '22px', fontWeight: 700, color: '#194850',
             margin: '0 0 6px', letterSpacing: '-0.01em',
           }}>
             Schedule Access
@@ -61,7 +61,7 @@ export default async function SchedulesGatePage({
             <div style={{ marginBottom: '18px' }}>
               <label className="sched-display" style={{
                 display: 'block', fontSize: '11px', fontWeight: 700,
-                color: '#1B3F38', marginBottom: '6px',
+                color: '#194850', marginBottom: '6px',
                 textTransform: 'uppercase', letterSpacing: '0.08em',
               }}>
                 Access Code
@@ -76,14 +76,14 @@ export default async function SchedulesGatePage({
                   width: '100%', boxSizing: 'border-box',
                   padding: '11px 14px', fontSize: '15px',
                   fontFamily: 'var(--font-manrope), system-ui, sans-serif',
-                  border: hasError ? '1.5px solid #A85C3D' : '1.5px solid #C8D6CF',
+                  border: hasError ? '1.5px solid #C68077' : '1.5px solid #C8D6CF',
                   borderRadius: '8px', outline: 'none',
                   color: '#1A1A1A', background: '#fff',
                   transition: 'border-color 0.15s',
                 }}
               />
               {hasError && (
-                <p style={{ fontSize: '12px', color: '#A85C3D', margin: '6px 0 0', fontWeight: 500 }}>
+                <p style={{ fontSize: '12px', color: '#C68077', margin: '6px 0 0', fontWeight: 500 }}>
                   Incorrect code. Please try again.
                 </p>
               )}
@@ -94,7 +94,7 @@ export default async function SchedulesGatePage({
               className="sched-display"
               style={{
                 width: '100%', padding: '12px',
-                background: '#1B3F38', color: '#fff',
+                background: '#194850', color: '#fff',
                 fontWeight: 700, fontSize: '13px',
                 border: 'none', borderRadius: '8px',
                 cursor: 'pointer', letterSpacing: '0.06em',

@@ -1,24 +1,25 @@
 @import "tailwindcss";
 
 :root {
-  /* ─── Brand palette (Sapphire Clinics 2026 refresh) ───────────
-   * Distribution target:
+  /* ─── Brand palette (2026.05 — Aura Academy refresh) ──────────
+   * Matches seminars / teletherapy / hiring / queue / client-portal /
+   * hr platform. Distribution target:
    *   60% Paper / Narra      — default surfaces
    *   25% Moss / Sage        — secondary surfaces, quiet hierarchy
    *   10% Ink                — type, fine rules, monochrome photography
    *    5% Clay / Sun         — accents, links, CTAs, single-point emphasis
    */
-  --narra: #1B3F38;   /* Primary — deep evergreen */
-  --moss:  #26554B;   /* Secondary */
-  --sage:  #4A8073;   /* Tertiary */
-  --clay:  #A85C3D;   /* Warm accent */
-  --sun:   #C69849;   /* Light accent */
-  --paper: #F5F0E8;   /* Neutral, dominant surface */
+  --narra: #194850;   /* Primary — deep teal */
+  --moss:  #3E6B66;   /* Secondary — mid-teal */
+  --sage:  #7B988A;   /* Tertiary — soft sage */
+  --clay:  #C68077;   /* Warm accent — coral / dusty rose */
+  --sun:   #EDD8A8;   /* Light accent — warm sand */
+  --paper: #F4ECDD;   /* Neutral, dominant surface — cream */
   --ink:   #1A1A1A;   /* Neutral, type + fine rules */
 
   /* ─── Legacy aliases (so existing components keep working) ─── */
   --teal:        var(--narra);
-  --deep-teal:   #14322C;
+  --deep-teal:   #0F3138;
   --bright-teal: var(--clay);
   --pale-teal:   var(--paper);
   --gold:        var(--moss);
@@ -28,7 +29,7 @@
   --charcoal:    var(--ink);
   --near-black:  var(--ink);
   --off-white:   var(--paper);
-  --light-gray:  #E5DED1;   /* Paper, slightly darker for borders */
+  --light-gray:  #D9CDB4;   /* Paper, slightly darker for borders */
   --mid-gray:    var(--sage);
 
   /* ─── Fonts ───────────────────────────────────────────────────

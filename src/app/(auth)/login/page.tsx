@@ -134,14 +134,31 @@ export default function LoginPage() {
   return (
     <div
       className="min-h-screen flex items-center justify-center relative overflow-hidden"
-      style={{ background: 'var(--near-black)' }}
+      style={{
+        // Aura backdrop — coral top-left → cream halo → soft sage bottom-right
+        background: [
+          'radial-gradient(1200px 380px at 50% 35%, rgba(244, 236, 221, 0.22), transparent 60%)',
+          'radial-gradient(820px 380px at 8% 0%, rgba(212, 145, 132, 0.55), transparent 60%)',
+          'radial-gradient(1100px 440px at 100% 110%, rgba(123, 152, 138, 0.55), transparent 65%)',
+          'linear-gradient(135deg, #D49184 0%, #C9A28F 38%, #9CB1A2 72%, #7B988A 100%)',
+        ].join(', '),
+      }}
     >
-      {/* Ambient glow */}
+      {/* Sand-outlined orbital rings — echoing the Aura creative */}
       <div
-        className="absolute inset-0 pointer-events-none"
+        className="absolute pointer-events-none"
         style={{
-          background:
-            'radial-gradient(ellipse 70% 60% at 50% 50%, rgba(26,123,138,0.12) 0%, rgba(13,91,104,0.05) 50%, transparent 75%)',
+          top: -260, right: -180, width: 560, height: 560,
+          border: '1px solid rgba(244, 236, 221, 0.28)',
+          borderRadius: '50%',
+        }}
+      />
+      <div
+        className="absolute pointer-events-none"
+        style={{
+          top: -200, right: -300, width: 760, height: 760,
+          border: '1px solid rgba(244, 236, 221, 0.18)',
+          borderRadius: '50%',
         }}
       />
 
@@ -151,7 +168,7 @@ export default function LoginPage() {
         style={{
           opacity: introComplete ? 0 : 1,
           pointerEvents: introComplete ? 'none' : 'auto',
-          background: 'var(--near-black)',
+          background: 'var(--narra)',
         }}
       >
         <div className="flex flex-col items-center gap-6">
