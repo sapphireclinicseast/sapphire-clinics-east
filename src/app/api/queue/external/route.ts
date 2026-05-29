@@ -113,5 +113,61 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ date: dateStr, branch, items: [...tuitionItems, ...items] })
+  // ── Patient bookings awaiting cashier conversion ─────────────────
+  // Patients book sessions via client.sapphireclinicseast.org and pay the
+  // downpayment through PayMongo. When the webhook flips the booking to
+  // PAID, surface it in the cashier appointment queue as a virtual item
+  // (id prefix `pbk_`). The cashier converts → existing POS order flow
+  // auto-creates a downpayment DigitalWallet on the accounting side; the
+  // marketing hub itself never creates a wallet.
+  //
+  // Filter:
+  //   - PAID only (PENDING patients haven't paid; COMPLETED are done)
+  //   - not yet accountingRecorded (the order POST handler in accounting-hub
+  //     flips this back via /api/decking/bookings/:id/mark-accounted-external
+  //     once the booking is converted, so the row drops off the queue)
+  //   - the booking's APPOINTMENT date matches the cashier's selected date.
+  //     Previously this block ignored the date filter, so a booking for a
+  //     future appointment (e.g. May 25) appeared in the cashier on every
+  //     day until converted. Patients arrive on their appointment date, so
+  //     the downpayment should only surface in the queue for that day.
+  let bookingItems: typeof items = []
+  try {
+    const paidBookings = await prisma.patientBooking.findMany({
+      where: {
+        branch,
+        status: 'PAID',
+        accountingRecorded: false,
+        date: { gte: dayStart, lte: dayEnd },
+      },
+      include: {
+        staff:   { select: { firstName: true, lastName: true, department: true } },
+        patient: { select: { id: true, firstName: true, lastName: true } },
+      },
+      orderBy: { paidAt: 'asc' },
+    })
+    const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    bookingItems = paidBookings.map(b => {
+      const dp = b.downpayment ? Number(b.downpayment) : 0
+      const dateLabel = b.date.toISOString().slice(0, 10)
+      return {
+        id:          `pbk_${b.id}`,
+        startTime:   b.startTime,
+        endTime:     b.endTime,
+        sessionType: `Booking ${dateLabel} ${b.startTime} — Downpayment ₱${peso(dp)}`,
+        // Emit CONFIRMED so the accounting-hub queue route (which filters
+        // schedules by status=CONFIRMED) lets these pass through unchanged.
+        status:      'CONFIRMED',
+        department:  b.department,
+        branch,
+        clinician:   `${b.staff.lastName}, ${b.staff.firstName}`,
+        patientId:   b.patient?.id ?? null,
+        patientName: b.patient ? `${b.patient.firstName} ${b.patient.lastName}` : '—',
+      }
+    })
+  } catch (e) {
+    console.warn('[queue/external] patient bookings unavailable:', e)
+  }
+
+  return NextResponse.json({ date: dateStr, branch, items: [...tuitionItems, ...bookingItems, ...items] })
 }
