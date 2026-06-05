@@ -12,8 +12,8 @@ export default async function QueuePage({ params }: { params: Promise<{ branch: 
   if (!branchCode) notFound()
 
   const clinicName = branchCode === 'SBEA'
-    ? 'Sandbox Clinic — East'
-    : 'Sandbox Clinic — Greenhills'
+    ? 'East Branch'
+    : 'Greenhills Branch'
 
   return <QueueDisplay branch={branchCode} clinicName={clinicName} />
 }

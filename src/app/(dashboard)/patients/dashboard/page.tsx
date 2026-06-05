@@ -28,8 +28,8 @@ const ALL_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE'] as 
 type Branch = typeof ALL_BRANCHES[number]
 
 const BRANCH_LABELS: Record<string, string> = {
-  SANDBOX_EAST:       'Sandbox East',
-  SANDBOX_GREENHILLS: 'Sandbox Greenhills',
+  SANDBOX_EAST:       'East Branch',
+  SANDBOX_GREENHILLS: 'Greenhills Branch',
   VERDANA_STORE:      'Verdana Store',
   UNASSIGNED:         'Unassigned',
 }

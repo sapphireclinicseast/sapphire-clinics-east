@@ -53,7 +53,7 @@ export function renderApprovalEmail(params: {
   payUrl: string
   meetLink?: string | null
 }): { subject: string; html: string } {
-  const branchName = params.branch === 'SBEA' ? 'Sandbox East' : 'Sandbox Greenhills'
+  const branchName = params.branch === 'SBEA' ? 'East Branch' : 'Greenhills Branch'
   const subject = 'Your appointment is approved — please pay ₱' + params.downpaymentPhp.toLocaleString() + ' to confirm'
   const tele = params.meetLink
     ? '<p style="margin:16px 0 0"><strong>Teletherapy link (available after payment):</strong><br><a href="' + params.meetLink + '">' + params.meetLink + '</a></p>'

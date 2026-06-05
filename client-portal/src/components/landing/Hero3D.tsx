@@ -54,8 +54,8 @@ export function Hero3D({ signedInFirstName }: Hero3DProps) {
           </h1>
 
           <p className="mt-5 text-[15px] md:text-[16px] text-white/75 leading-relaxed max-w-md">
-            Sapphire Clinics East — pick a clinician, choose your slot, and the
-            front desk confirms in a single, calm flow.
+            Sapphire Clinics East — log in, pick a clinician, choose your slot,
+            and the front desk confirms in a single, calm flow.
           </p>
 
           {signedInFirstName && (

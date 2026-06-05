@@ -22,11 +22,11 @@ import {
 import { cn } from '@/lib/utils'
 
 const BRANCH_LABEL: Record<string, string> = {
-  SANDBOX_EAST: 'Sandbox East',
-  SANDBOX_GREENHILLS: 'Sandbox Greenhills',
+  SANDBOX_EAST: 'East Branch',
+  SANDBOX_GREENHILLS: 'Greenhills Branch',
   VERDANA_STORE: 'Verdana Store',
-  SBEA: 'Sandbox East (legacy)',
-  SBGH: 'Sandbox Greenhills (legacy)',
+  SBEA: 'East Branch (legacy)',
+  SBGH: 'Greenhills Branch (legacy)',
 }
 
 interface StaffOption {

@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { issuePatientToken } from '@/lib/patient-session'
+import { hashPassword, validatePassword } from '@/lib/patient-password'
 import { preflight, withCors } from '../../_cors'
 
 export async function OPTIONS(req: NextRequest) {
@@ -25,6 +26,7 @@ type Body = {
   nationality?: string
   diagnosis?: string
   pwdSeniorId?: string
+  password?: string         // optional: create a portal login account
   branch?: 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS'
   patientType?: 'PEDIATRIC' | 'ADULT'
 }
@@ -61,12 +63,37 @@ export async function POST(req: NextRequest) {
     return withCors(NextResponse.json({ error: 'invalid patientType' }, { status: 400 }), origin)
   }
 
+  // Optional portal account: validate the password up front if one was supplied.
+  const wantsAccount = typeof body.password === 'string' && body.password.length > 0
+  if (wantsAccount) {
+    const pwErr = validatePassword(body.password)
+    if (pwErr) {
+      return withCors(NextResponse.json({ error: pwErr }, { status: 400 }), origin)
+    }
+  }
+
   // Merge with existing patient if email+lastName already exist (returning user).
   const existing = await prisma.patient.findFirst({
     where: { email: { equals: email, mode: 'insensitive' } },
-    select: { id: true, firstName: true, lastName: true },
+    select: { id: true, firstName: true, lastName: true, passwordHash: true },
   })
   if (existing && existing.lastName.toLowerCase() === lastName.toLowerCase()) {
+    if (wantsAccount) {
+      // Claiming a portal account for a record already in the CRM.
+      if (existing.passwordHash) {
+        return withCors(
+          NextResponse.json(
+            { error: 'An account already exists for this email. Please sign in instead.' },
+            { status: 409 },
+          ),
+          origin,
+        )
+      }
+      await prisma.patient.update({
+        where: { id: existing.id },
+        data: { passwordHash: await hashPassword(body.password as string) },
+      })
+    }
     const token = issuePatientToken(existing.id)
     return withCors(
       NextResponse.json({
@@ -96,6 +123,7 @@ export async function POST(req: NextRequest) {
       nationality: uc(body.nationality),
       diagnosis: uc(body.diagnosis),
       pwdSeniorId: uc(body.pwdSeniorId),
+      passwordHash: wantsAccount ? await hashPassword(body.password as string) : null,
       branch,
       branches: [branch],
       patientType,

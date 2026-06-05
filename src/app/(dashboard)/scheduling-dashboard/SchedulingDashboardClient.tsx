@@ -20,7 +20,7 @@ const DEPT_LABELS: Record<string, string> = {
 }
 
 const BRANCHES = ['SBEA', 'SBGH'] as const
-const BRANCH_LABELS: Record<string, string> = { SBEA: 'Sandbox East', SBGH: 'Sandbox Greenhills' }
+const BRANCH_LABELS: Record<string, string> = { SBEA: 'East Branch', SBGH: 'Greenhills Branch' }
 
 const TIME_SLOTS = [
   '09:00', '10:00', '11:00', '12:00', '13:00', '14:00',

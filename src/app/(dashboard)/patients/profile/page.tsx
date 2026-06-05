@@ -102,8 +102,8 @@ function calcAge(dob: string): string {
 
 function branchLabel(b: string): string {
   const map: Record<string, string> = {
-    SANDBOX_EAST: 'Sandbox East',
-    SANDBOX_GREENHILLS: 'Sandbox Greenhills',
+    SANDBOX_EAST: 'East Branch',
+    SANDBOX_GREENHILLS: 'Greenhills Branch',
     VERDANA_STORE: 'Verdana Store',
   }
   return map[b] ?? b

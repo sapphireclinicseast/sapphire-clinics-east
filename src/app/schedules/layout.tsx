@@ -32,7 +32,7 @@ export default function SchedulesLayout({ children }: { children: React.ReactNod
         <div className="sched-header-inner" style={{ maxWidth: '1100px', margin: '0 auto' }}>
           <Image
             src="/sandbox-clinic-logo.png"
-            alt="Sandbox Clinic"
+            alt="Sapphire Clinics East"
             width={180}
             height={48}
             style={{ height: '44px', width: 'auto', objectFit: 'contain' }}

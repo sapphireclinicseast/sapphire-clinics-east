@@ -64,7 +64,7 @@ function BookConfirmInner() {
     } finally { setBusy(false) }
   }
 
-  const branchName = branch === 'SBEA' ? 'Sandbox East' : 'Sandbox Greenhills'
+  const branchName = branch === 'SBEA' ? 'East Branch' : 'Greenhills Branch'
   const sexIcon = therapistSex === 'M' ? <span className="text-sky-600">♂</span> : therapistSex === 'F' ? <span className="text-pink-600">♀</span> : null
 
   function fmtDate(d: string) {

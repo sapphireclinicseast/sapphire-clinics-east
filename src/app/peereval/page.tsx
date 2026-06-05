@@ -101,12 +101,12 @@ const SCORE_LABELS: Record<number, string> = {
 // ─── Header ───────────────────────────────────────────────────────────────────
 
 const BRANCH_NAMES: Record<string, string> = {
-  SBEA: 'Sandbox Clinics East',
-  SBGH: 'Sandbox Clinics Greenhills',
+  SBEA: 'East Branch',
+  SBGH: 'Greenhills Branch',
 }
 
 function Header({ branch }: { branch?: string }) {
-  const label = branch ? (BRANCH_NAMES[branch] ?? 'Sandbox Clinics') : 'Sandbox Clinics'
+  const label = branch ? (BRANCH_NAMES[branch] ?? 'Sapphire Clinics East') : 'Sapphire Clinics East'
   return (
     <div style={{
       background: B.charcoal,
@@ -117,7 +117,7 @@ function Header({ branch }: { branch?: string }) {
       height: 60,
       boxShadow: '0 2px 8px rgba(0,0,0,0.18)',
     }}>
-      <Image src="/sandbox-clinic-logo.png" alt="Sandbox Clinic" width={36} height={36} style={{ objectFit: 'contain' }} />
+      <Image src="/sandbox-clinic-logo.png" alt="Sapphire Clinics East" width={36} height={36} style={{ objectFit: 'contain' }} />
       <div style={{ flex: 1 }}>
         <div style={{ fontWeight: 800, fontSize: '0.95rem', color: B.white, letterSpacing: '0.01em' }}>
           {label}
@@ -163,8 +163,8 @@ function BranchPicker({ onSelect }: { onSelect: (branch: string) => void }) {
 
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'center' }}>
         {[
-          { id: 'SBEA', label: 'Sandbox East', sub: 'SBEA' },
-          { id: 'SBGH', label: 'Sandbox Greenhills', sub: 'SBGH' },
+          { id: 'SBEA', label: 'East Branch', sub: 'SBEA' },
+          { id: 'SBGH', label: 'Greenhills Branch', sub: 'SBGH' },
         ].map(b => (
           <button
             key={b.id}

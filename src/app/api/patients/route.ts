@@ -76,7 +76,7 @@ function parseDate(s: string): Date | null {
 }
 
 function branchLabel(branch: string): string {
-  return { SANDBOX_EAST: 'Sandbox East', SANDBOX_GREENHILLS: 'Sandbox Greenhills', VERDANA_STORE: 'Verdana Store' }[branch] ?? branch
+  return { SANDBOX_EAST: 'East Branch', SANDBOX_GREENHILLS: 'Greenhills Branch', VERDANA_STORE: 'Verdana Store' }[branch] ?? branch
 }
 
 // ─── GET: list patients or export as CSV ─────────────────────────────────────

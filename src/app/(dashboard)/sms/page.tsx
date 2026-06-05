@@ -35,8 +35,8 @@ export default function SmsCampaignsPage() {
             className="text-xs px-2 py-1 rounded border"
             style={{ borderColor: 'var(--light-gray)', background: '#fff' }}>
             <option value="BOTH">Both branches</option>
-            <option value="SBEA">SBEA — Sandbox East</option>
-            <option value="SBGH">SBGH — Sandbox Greenhills</option>
+            <option value="SBEA">SBEA — East Branch</option>
+            <option value="SBGH">SBGH — Greenhills Branch</option>
           </select>
         </div>
       </div>
@@ -161,7 +161,7 @@ function NewCampaign({ branch }: { branch: 'BOTH' | 'SBEA' | 'SBGH' }) {
         </label>
         <textarea value={message} onChange={(e) => setMessage(e.target.value)}
           rows={5} maxLength={MAX_LEN + 50}
-          placeholder={`Hi! This is a quick reminder from Sandbox Clinic...`}
+          placeholder={`Hi! This is a quick reminder from Sapphire Clinics East...`}
           className="w-full px-3 py-2 rounded border text-sm font-mono"
           style={{
             borderColor: overLimit ? '#dc2626' : 'var(--light-gray)',

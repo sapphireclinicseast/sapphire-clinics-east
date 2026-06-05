@@ -8,8 +8,8 @@ const VIBER_TOKENS: Record<string, string> = {
 }
 
 const CLINIC_NAMES: Record<string, string> = {
-  SBEA: 'Sandbox Clinic East',
-  SBGH: 'Sandbox Clinic Greenhills',
+  SBEA: 'East Branch',
+  SBGH: 'Greenhills Branch',
 }
 
 const CLINIC_PHONES: Record<string, string> = {
@@ -45,7 +45,7 @@ async function sendViberText(viberUserId: string, text: string, token: string) {
 export async function POST(req: NextRequest) {
   const branch = (req.nextUrl.searchParams.get('branch') ?? 'SBEA').toUpperCase()
   const token  = VIBER_TOKENS[branch]
-  const clinic = CLINIC_NAMES[branch] ?? 'Sandbox Clinic'
+  const clinic = CLINIC_NAMES[branch] ?? 'Sapphire Clinics East'
   const phone  = CLINIC_PHONES[branch] ?? ''
 
   // Always respond 200 quickly so Viber doesn't retry

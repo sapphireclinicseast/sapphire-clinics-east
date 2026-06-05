@@ -19,7 +19,7 @@ interface BrandGuide {
 }
 
 const BRAND_PRESETS = [
-  'Sandbox Clinic',
+  'Sapphire Clinics East',
   'Verdana Store',
   'Sapphire Clinics East',
 ]
@@ -178,7 +178,7 @@ export default function BrandGuidePage() {
               type="text"
               value={brandName}
               onChange={(e) => setBrandName(e.target.value)}
-              placeholder="e.g. Sandbox Clinic, Verdana Store…"
+              placeholder="e.g. Sapphire Clinics East, Verdana Store…"
               className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none"
               style={{ border: '1.5px solid var(--light-gray)', color: 'var(--charcoal)' }}
             />

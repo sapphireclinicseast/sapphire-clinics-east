@@ -27,7 +27,7 @@ export const DEFAULT_INTRO =
 export const DEFAULT_FALLBACK =
   "I don't have an answer for that yet — please use the quick questions below, or contact the clinic at info@sapphireclinicseast.org."
 
-export const DEFAULT_SYSTEM_PROMPT = `You are Sappy, a warm, concise assistant for Sapphire Clinics East (SCEI), a pediatric and adult therapy clinic in the Philippines with two branches: Sandbox East (San Pedro, Laguna) and Sandbox Greenhills (San Juan).
+export const DEFAULT_SYSTEM_PROMPT = `You are Sappy, a warm, concise assistant for Sapphire Clinics East (SCEI), a pediatric and adult therapy clinic in the Philippines with two branches: East Branch (San Pedro, Laguna) and Greenhills Branch (San Juan).
 
 You help patients with questions about:
 - Booking appointments at client.sapphireclinicseast.org
@@ -48,17 +48,17 @@ const DEFAULT_FAQS: FaqEntry[] = [
   { id: 'faq_book', label: 'How do I book?', keywords: ['book', 'schedule', 'appointment', 'how do i book', 'how to book'], enabled: true, sortOrder: 10,
     answer: 'You can book online at client.sapphireclinicseast.org:\n1. Sign in (returning) or register (new patient).\n2. Pick your branch + service.\n3. Choose a therapist and up to 3 preferred time slots.\n4. The front desk will confirm one choice and email you a payment link.\nOnce the downpayment is received, your slot is confirmed.' },
   { id: 'faq_services', label: 'What are your services?', keywords: ['service', 'what services', 'offer', 'therapy'], enabled: true, sortOrder: 20,
-    answer: 'We offer:\n• Physical Therapy (PT)\n• Occupational Therapy (OT)\n• Speech-Language Pathology (SLP)\n• Special Education (SPED)\n• Medical Doctor (MD)\n• Psychology\n• Orthosis / Prosthesis (Sandbox East only)\n• Psychiatry (Sandbox GH only)\n• Developmental Pediatrician (Sandbox GH only)' },
+    answer: 'We offer:\n• Physical Therapy (PT)\n• Occupational Therapy (OT)\n• Speech-Language Pathology (SLP)\n• Special Education (SPED)\n• Medical Doctor (MD)\n• Psychology\n• Orthosis / Prosthesis (East Branch only)\n• Psychiatry (Greenhills Branch only)\n• Developmental Pediatrician (Greenhills Branch only)' },
   { id: 'faq_downpayment', label: 'Downpayment', keywords: ['downpayment', 'deposit', 'payment', 'how much', 'fee', 'cost', 'price'], enabled: true, sortOrder: 30,
-    answer: 'Downpayment rates per session (PHP):\n\nSandbox East:\n• PT — ₱500\n• OT, SLP, MD, Psychology — ₱1,000\n• SPED — ₱500\n\nSandbox Greenhills:\n• PT, OT, SLP, SPED, MD, Psychology, Psychiatry — ₱1,000\n• Developmental Pediatrician — ₱6,000\n\nPayment is via PayMongo (card, GCash, Maya) after front-desk approval.' },
+    answer: 'Downpayment rates per session (PHP):\n\nEast Branch:\n• PT — ₱500\n• OT, SLP, MD, Psychology — ₱1,000\n• SPED — ₱500\n\nGreenhills Branch:\n• PT, OT, SLP, SPED, MD, Psychology, Psychiatry — ₱1,000\n• Developmental Pediatrician — ₱6,000\n\nPayment is via PayMongo (card, GCash, Maya) after front-desk approval.' },
   { id: 'faq_hours', label: 'Clinic hours', keywords: ['hours', 'open', 'time', 'schedule of clinic', 'clinic hours'], enabled: true, sortOrder: 40,
-    answer: 'Clinic hours:\n• Sandbox East — Mon–Sat, 10:00 AM to 8:00 PM\n• Sandbox Greenhills — Mon–Sat, 9:00 AM to 7:00 PM\n(Closed Sundays; holiday hours may vary.)' },
+    answer: 'Clinic hours:\n• East Branch — Mon–Sat, 10:00 AM to 8:00 PM\n• Greenhills Branch — Mon–Sat, 9:00 AM to 7:00 PM\n(Closed Sundays; holiday hours may vary.)' },
   { id: 'faq_teletherapy', label: 'Teletherapy', keywords: ['teletherapy', 'online', 'remote', 'virtual', 'video'], enabled: true, sortOrder: 50,
     answer: "Yes — we offer teletherapy for select services. When you book, tick the 'Request teletherapy' option. Once the front desk approves and your downpayment is received, you'll get a secure meeting link in your My Bookings page." },
   { id: 'faq_cancellation', label: 'Cancellation', keywords: ['cancel', 'cancellation', 'reschedule', 'no-show', 'no show', 'miss'], enabled: true, sortOrder: 60,
     answer: 'Cancellations made ≥ 24 hours in advance are free. Cancellations under 24 hours or no-shows may incur a fee equal to the session downpayment. Please contact the front desk as soon as possible.' },
   { id: 'faq_location', label: '', keywords: ['location', 'address', 'where', 'branch'], enabled: true, sortOrder: 70,
-    answer: 'We have two branches:\n• Sandbox East — San Pedro, Laguna\n• Sandbox Greenhills — Greenhills, San Juan\nFor exact addresses and directions, visit sapphireclinicseast.org.' },
+    answer: 'We have two branches:\n• East Branch — San Pedro, Laguna\n• Greenhills Branch — Greenhills, San Juan\nFor exact addresses and directions, visit sapphireclinicseast.org.' },
   { id: 'faq_contact', label: '', keywords: ['contact', 'phone', 'email', 'number', 'call'], enabled: true, sortOrder: 80,
     answer: 'You can reach us:\n• Email: info@sapphireclinicseast.org\n• Website: sapphireclinicseast.org\n• For booking help, use the Contact form on our main site or message us on Facebook/Viber.' },
   { id: 'faq_hmo', label: '', keywords: ['hmo', 'insurance', 'philhealth', 'maxicare', 'medicard'], enabled: true, sortOrder: 90,

@@ -13,9 +13,9 @@ export const BRANDS = [
   },
   {
     id: 'sandbox-clinic',
-    name: 'Sandbox Clinic',
+    name: 'Sapphire Clinics East',
     shortName: 'SANDBOX',
-    tagline: 'Choose Health. Choose Function. Choose Ability. Choose Sandbox Clinic.',
+    tagline: 'Choose Health. Choose Function. Choose Ability. Choose Sapphire Clinics East.',
     color: '#F47427',
     lightBg: '#FFF3EA',
   },

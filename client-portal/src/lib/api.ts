@@ -86,10 +86,34 @@ export function listAvailableSlots(
   return jsonFetch<{ slots: AvailableSlot[] }>(`/available-slots?${qs.toString()}`)
 }
 
+export interface AuthResult {
+  patientId: string
+  firstName: string
+  token: string
+  reused?: boolean
+}
+
 export function lookupPatient(email: string, lastName: string) {
-  return jsonFetch<{ patientId: string; firstName: string; token: string }>(`/patients/lookup`, {
+  return jsonFetch<AuthResult>(`/patients/lookup`, {
     method: 'POST',
     body: JSON.stringify({ email, lastName }),
+  })
+}
+
+// Email + password login for patients who have a portal account.
+export function loginPatient(email: string, password: string) {
+  return jsonFetch<AuthResult>(`/patients/login`, {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  })
+}
+
+// Returning patient already in the CRM, claiming a portal account by setting a
+// password (verified against their email + last name).
+export function setPatientPassword(email: string, lastName: string, password: string) {
+  return jsonFetch<AuthResult>(`/patients/set-password`, {
+    method: 'POST',
+    body: JSON.stringify({ email, lastName, password }),
   })
 }
 
@@ -97,6 +121,7 @@ export function registerPatient(payload: {
   firstName: string
   lastName: string
   email: string
+  password?: string
   phone?: string
   dob?: string
   sex?: string
@@ -110,10 +135,47 @@ export function registerPatient(payload: {
   branch: 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS'
   patientType: 'PEDIATRIC' | 'ADULT'
 }) {
-  return jsonFetch<{ patientId: string; firstName: string; token: string }>(`/patients/register`, {
+  return jsonFetch<AuthResult>(`/patients/register`, {
     method: 'POST',
     body: JSON.stringify(payload),
   })
+}
+
+export interface PatientProfile {
+  fullName: string
+  dob: string | null
+  sex: string | null
+  age: number | null
+  patientType: string
+  diagnosis: string | null
+  city: string | null
+  branch: string | null
+}
+export interface PatientSessionRecord {
+  id: string
+  date: string
+  startTime: string
+  endTime: string
+  clinician: string
+  department: string
+  status: string
+  isTeletherapy: boolean
+  source: 'schedule' | 'booking'
+}
+export interface ActiveSurvey {
+  id: string
+  surveyType: string
+  expiresAt: string
+}
+export interface MeResult {
+  profile: PatientProfile
+  servicesAvailed: string[]
+  sessions: PatientSessionRecord[]
+  surveys: ActiveSurvey[]
+}
+
+export function getMe(token: string) {
+  return jsonFetch<MeResult>(`/patients/me?token=${encodeURIComponent(token)}`)
 }
 
 export interface SlotChoice {

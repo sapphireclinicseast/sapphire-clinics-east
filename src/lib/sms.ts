@@ -26,12 +26,12 @@ const BRANCH_CONFIG: Record<string, { httpSmsKey: string; phone: string; clinicN
   SBEA: {
     httpSmsKey: process.env.HTTPSMS_API_KEY_SBEA ?? '',
     phone:      '+639171189289',
-    clinicName: 'Sandbox Clinic East',
+    clinicName: 'East Branch',
   },
   SBGH: {
     httpSmsKey: process.env.HTTPSMS_API_KEY_SBGH ?? '',
     phone:      '+639177701686',
-    clinicName: 'Sandbox Clinic Greenhills',
+    clinicName: 'Greenhills Branch',
   },
 }
 

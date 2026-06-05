@@ -614,7 +614,7 @@ export default function SurveyClient({ role }: { role: string }) {
                             </span>
                           </td>
                           <td className="py-2.5 px-3" style={{ color: '#64748b' }}>
-                            {s.branch === 'SBEA' ? 'Sandbox East' : s.branch === 'SBGH' ? 'Greenhills' : s.branch}
+                            {s.branch === 'SBEA' ? 'East Branch' : s.branch === 'SBGH' ? 'Greenhills' : s.branch}
                           </td>
                           <td className="py-2.5 px-3">
                             <div className="flex items-center gap-2">
@@ -800,7 +800,7 @@ export default function SurveyClient({ role }: { role: string }) {
                 className="px-3 py-1.5 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }}>
                 <option value="">All Branches</option>
                 {resultsDash?.availableBranches.map(b => (
-                  <option key={b} value={b}>{b === 'SBEA' ? 'Sandbox East' : b === 'SBGH' ? 'Greenhills' : b}</option>
+                  <option key={b} value={b}>{b === 'SBEA' ? 'East Branch' : b === 'SBGH' ? 'Greenhills' : b}</option>
                 ))}
               </select>
             )}
@@ -1349,7 +1349,7 @@ export default function SurveyClient({ role }: { role: string }) {
                       </span>
                     </div>
                     <div className="text-xs" style={{ color: '#64748b' }}>
-                      {p.staffDept} · {p.branch === 'SBEA' ? 'Sandbox East' : p.branch === 'SBGH' ? 'Greenhills' : p.branch}
+                      {p.staffDept} · {p.branch === 'SBEA' ? 'East Branch' : p.branch === 'SBGH' ? 'Greenhills' : p.branch}
                       {p.patientName && ` · Patient: ${p.patientName}`}
                     </div>
                     <div className="flex items-center justify-between mt-2">
@@ -1411,7 +1411,7 @@ function ChartCard({ title, icon: Icon, data }: { title: string; icon: typeof Tr
         <div className="space-y-2">
           {data.map((item, i) => {
             const label = item.month || item.branch || `Item ${i + 1}`
-            const displayLabel = label === 'SBEA' ? 'Sandbox East' : label === 'SBGH' ? 'Greenhills' : label
+            const displayLabel = label === 'SBEA' ? 'East Branch' : label === 'SBGH' ? 'Greenhills' : label
             return (
               <div key={i} className="flex items-center gap-3">
                 <span className="text-xs w-24 truncate" style={{ color: '#64748b' }}>{displayLabel}</span>
@@ -1695,8 +1695,8 @@ function DailyTargetTab({ isAdmin, isFrontDesk, role }: { isAdmin: boolean; isFr
               onChange={e => setBranch(e.target.value)}
               className="border border-gray-300 rounded-md px-2 py-1.5 text-xs"
             >
-              <option value="SBEA">Sandbox East</option>
-              <option value="SBGH">Sandbox Greenhills</option>
+              <option value="SBEA">East Branch</option>
+              <option value="SBGH">Greenhills Branch</option>
             </select>
           )}
           <button

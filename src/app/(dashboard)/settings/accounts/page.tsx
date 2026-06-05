@@ -731,8 +731,8 @@ interface BranchCCRow {
 }
 
 const BRANCH_LABELS: Record<string, string> = {
-  SANDBOX_EAST: 'Sandbox East',
-  SANDBOX_GREENHILLS: 'Sandbox Greenhills',
+  SANDBOX_EAST: 'East Branch',
+  SANDBOX_GREENHILLS: 'Greenhills Branch',
   VERDANA_STORE: 'Verdana Store',
 }
 

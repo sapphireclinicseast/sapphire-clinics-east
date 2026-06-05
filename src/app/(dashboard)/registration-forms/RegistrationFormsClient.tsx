@@ -254,7 +254,7 @@ export default function RegistrationFormsClient({ role }: Props) {
                               : { color: available ? 'var(--text-secondary)' : '#ccc', cursor: available ? 'pointer' : 'not-allowed' }
                           }
                         >
-                          {b === 'SBEA' ? 'Sandbox East' : 'Sandbox Greenhills'}
+                          {b === 'SBEA' ? 'East Branch' : 'Greenhills Branch'}
                           {!available && <span className="ml-1 text-xs opacity-60">(soon)</span>}
                         </button>
                       )
@@ -272,7 +272,7 @@ export default function RegistrationFormsClient({ role }: Props) {
                   />
                 </div>
                 <p className="text-xs font-semibold mb-4" style={{ color: 'var(--text-secondary)' }}>
-                  {qrBranch === 'SBEA' ? 'Sandbox East' : 'Sandbox Greenhills'}
+                  {qrBranch === 'SBEA' ? 'East Branch' : 'Greenhills Branch'}
                 </p>
 
                 {/* Link */}
@@ -375,7 +375,7 @@ export default function RegistrationFormsClient({ role }: Props) {
                                     : { background: 'rgba(234,179,8,0.1)', color: '#92400e' }
                                   }
                                 >
-                                  {item._branch === 'SBEA' ? 'Sandbox East' : 'Sandbox Greenhills'}
+                                  {item._branch === 'SBEA' ? 'East Branch' : 'Greenhills Branch'}
                                 </span>
                               </td>
                             )}
@@ -432,7 +432,7 @@ export default function RegistrationFormsClient({ role }: Props) {
                     {form.title}
                   </p>
                   <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
-                    {form.sbgh ? 'Sandbox East · Sandbox Greenhills' : 'Sandbox East'}
+                    {form.sbgh ? 'East Branch · Greenhills Branch' : 'East Branch'}
                   </p>
                 </div>
                 <ChevronRight size={16} className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--teal)' }} />

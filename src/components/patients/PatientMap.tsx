@@ -70,8 +70,8 @@ interface PatientMapProps {
 }
 
 const CLINICS = [
-  { name: 'Sandbox East (Pasig)', lat: 14.5764, lng: 121.0851 },
-  { name: 'Sandbox Greenhills (San Juan)', lat: 14.601888, lng: 121.049017 },
+  { name: 'East Branch (Pasig)', lat: 14.5764, lng: 121.0851 },
+  { name: 'Greenhills Branch (San Juan)', lat: 14.601888, lng: 121.049017 },
 ]
 
 export default function PatientMap({ cities, locations }: PatientMapProps) {

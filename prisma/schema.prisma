@@ -206,6 +206,7 @@ model Patient {
   lastName    String
   email       String?
   phone       String?
+  passwordHash String?         // optional self-service portal login (bcrypt); null = no portal account yet
   dob         DateTime?
   patientType PatientType
   branch      Branch?          // legacy single-branch (kept for backward compat)

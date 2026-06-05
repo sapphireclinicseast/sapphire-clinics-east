@@ -85,8 +85,8 @@ interface AdminConfig {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const BRANCH_LABELS: Record<string, string> = {
-  SBEA: 'Sandbox East',
-  SBGH: 'Sandbox Greenhills',
+  SBEA: 'East Branch',
+  SBGH: 'Greenhills Branch',
 }
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -183,8 +183,8 @@ function scoreColor(score: number) {
 
 function QrCodeModal({ onClose }: { onClose: () => void }) {
   const forms = [
-    { branch: 'SBEA', label: 'Sandbox East', url: `${FORM_PAGE_URL}?branch=SBEA` },
-    { branch: 'SBGH', label: 'Sandbox Greenhills', url: `${FORM_PAGE_URL}?branch=SBGH` },
+    { branch: 'SBEA', label: 'East Branch', url: `${FORM_PAGE_URL}?branch=SBEA` },
+    { branch: 'SBGH', label: 'Greenhills Branch', url: `${FORM_PAGE_URL}?branch=SBGH` },
   ]
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
 
@@ -710,8 +710,8 @@ function AssignmentsTab({ role }: { role: string }) {
         {!defaultBranch && (
           <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)} style={selectStyle}>
             <option value="">All Branches</option>
-            <option value="SBEA">Sandbox East</option>
-            <option value="SBGH">Sandbox Greenhills</option>
+            <option value="SBEA">East Branch</option>
+            <option value="SBGH">Greenhills Branch</option>
           </select>
         )}
 
@@ -1014,8 +1014,8 @@ function ResultsTab({ role }: { role: string }) {
         {!defaultBranch && (
           <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)} style={selectStyle}>
             <option value="">All Branches</option>
-            <option value="SBEA">Sandbox East</option>
-            <option value="SBGH">Sandbox Greenhills</option>
+            <option value="SBEA">East Branch</option>
+            <option value="SBGH">Greenhills Branch</option>
           </select>
         )}
         <select value={filterYear} onChange={e => setFilterYear(parseInt(e.target.value))} style={selectStyle}>
@@ -1428,8 +1428,8 @@ function SettingsTab({ role }: { role: string }) {
         </div>
         {!defaultBranch && (
           <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)} style={selectStyle}>
-            <option value="SBEA">Sandbox East</option>
-            <option value="SBGH">Sandbox Greenhills</option>
+            <option value="SBEA">East Branch</option>
+            <option value="SBGH">Greenhills Branch</option>
           </select>
         )}
         <button onClick={fetchConfigs} style={{ ...iconBtnStyle }} title="Refresh"><RefreshCw size={15} /></button>
@@ -1881,7 +1881,7 @@ function PeerEvalLeaderboards({
             {branches.map(b => (
               <LeaderboardSection
                 key={b}
-                title={b === 'SBEA' ? 'Sandbox East' : b === 'SBGH' ? 'Sandbox Greenhills' : b}
+                title={b === 'SBEA' ? 'East Branch' : b === 'SBGH' ? 'Greenhills Branch' : b}
                 subtitle="Branch"
                 groups={byBranch[b]}
                 keyPrefix={'branch-' + b}

@@ -38,7 +38,7 @@ export default async function PublicSchedulePage({
 
   if (!branchCode || !deptCode) notFound()
 
-  const branchLabel = branchCode === 'SBEA' ? 'Sandbox East' : 'Sandbox Greenhills'
+  const branchLabel = branchCode === 'SBEA' ? 'East Branch' : 'Greenhills Branch'
   const deptLabel   = DEPT_LABEL[dept.toLowerCase()]
 
   return (

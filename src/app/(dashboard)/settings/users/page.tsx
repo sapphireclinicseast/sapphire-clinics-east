@@ -177,11 +177,11 @@ export default function UsersPage() {
                 >
                   <option value="ADMIN">Admin — all branches, all modules</option>
                   <option value="MARKETING_ADMIN">Marketing Admin — all modules except Clinic Schedule</option>
-                  <option value="SBEA_ADMIN">SBEA Admin — Sandbox East social only</option>
-                  <option value="SBGH_ADMIN">SBGH Admin — Sandbox Greenhills social only</option>
+                  <option value="SBEA_ADMIN">SBEA Admin — East Branch social only</option>
+                  <option value="SBGH_ADMIN">SBGH Admin — Greenhills Branch social only</option>
                   <option value="VERDANA_ADMIN">Verdana Admin — Verdana Store social only</option>
-                  <option value="SBEA_FRONT_DESK">SBEA Front Desk — clinic tools + Sandbox East patients</option>
-                  <option value="SBGH_FRONT_DESK">SBGH Front Desk — clinic tools + Sandbox Greenhills patients</option>
+                  <option value="SBEA_FRONT_DESK">SBEA Front Desk — clinic tools + East Branch patients</option>
+                  <option value="SBGH_FRONT_DESK">SBGH Front Desk — clinic tools + Greenhills Branch patients</option>
                 </select>
               </div>
               <div>
@@ -322,11 +322,11 @@ export default function UsersPage() {
                         >
                           <option value="ADMIN">Admin — all branches, all modules</option>
                           <option value="MARKETING_ADMIN">Marketing Admin — all modules except Clinic Schedule</option>
-                          <option value="SBEA_ADMIN">SBEA Admin — Sandbox East social only</option>
-                          <option value="SBGH_ADMIN">SBGH Admin — Sandbox Greenhills social only</option>
+                          <option value="SBEA_ADMIN">SBEA Admin — East Branch social only</option>
+                          <option value="SBGH_ADMIN">SBGH Admin — Greenhills Branch social only</option>
                           <option value="VERDANA_ADMIN">Verdana Admin — Verdana Store social only</option>
-                          <option value="SBEA_FRONT_DESK">SBEA Front Desk — clinic tools + Sandbox East patients</option>
-                          <option value="SBGH_FRONT_DESK">SBGH Front Desk — clinic tools + Sandbox Greenhills patients</option>
+                          <option value="SBEA_FRONT_DESK">SBEA Front Desk — clinic tools + East Branch patients</option>
+                          <option value="SBGH_FRONT_DESK">SBGH Front Desk — clinic tools + Greenhills Branch patients</option>
                         </select>
                       </div>
                       <div>

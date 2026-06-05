@@ -54,13 +54,13 @@ const SERVICE_LABELS: Record<string, string> = {
 
 const BRANCH_CONTACTS: Record<'SBEA' | 'SBGH', { name: string; phone: string; email: string; facebook: string }> = {
   SBEA: {
-    name: 'Sandbox East',
+    name: 'East Branch',
     phone: '0917 118 9289',
     email: 'east.sandboxclinic@gmail.com',
     facebook: 'https://www.facebook.com/sandboxcliniceast',
   },
   SBGH: {
-    name: 'Sandbox Greenhills',
+    name: 'Greenhills Branch',
     phone: '0917 770 1686',
     email: 'greenhills.sandboxclinic@gmail.com',
     facebook: 'https://www.facebook.com/sandboxclinicgreenhills',
@@ -107,7 +107,7 @@ export default function BookStep1Page() {
                 className={`pill ${branch === b ? 'pill-active' : ''}`}
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70"></span>
-                {b === 'SBEA' ? 'Sandbox East' : 'Sandbox Greenhills'}
+                {b === 'SBEA' ? 'East Branch' : 'Greenhills Branch'}
               </button>
             ))}
           </div>

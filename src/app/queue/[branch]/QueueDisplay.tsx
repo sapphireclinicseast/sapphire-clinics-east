@@ -296,7 +296,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
         position: 'relative',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <Image src="/sandbox-clinic-logo.png" alt="Sandbox Clinic" width={48} height={48}
+          <Image src="/sandbox-clinic-logo.png" alt="Sapphire Clinics East" width={48} height={48}
             style={{ objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
           <div>
             <p style={{
@@ -463,7 +463,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
               alignItems: 'center', justifyContent: 'center', gap: '1rem',
               color: 'rgba(244,236,221,0.4)',
             }}>
-              <Image src="/sandbox-clinic-logo.png" alt="Sandbox Clinic" width={120} height={120}
+              <Image src="/sandbox-clinic-logo.png" alt="Sapphire Clinics East" width={120} height={120}
                 style={{ objectFit: 'contain', opacity: 0.3 }} />
               <p style={{ fontSize: '0.85rem', fontWeight: 600 }}>No ads uploaded</p>
             </div>
@@ -548,7 +548,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                       {lbDept === 'Overall' ? 'Top 5 — Overall' : `Top 5 — ${lbDept}`}
                     </p>
                     <p style={{ fontSize: '0.75rem', color: 'rgba(244,236,221,0.55)', marginTop: '0.25rem' }}>
-                      {leaderboard?.year} — {branch === 'SBEA' ? 'Sandbox East' : branch === 'SBGH' ? 'Greenhills' : branch}
+                      {leaderboard?.year} — {branch === 'SBEA' ? 'East Branch' : branch === 'SBGH' ? 'Greenhills' : branch}
                     </p>
                   </div>
 
@@ -732,7 +732,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <p style={{ fontSize: '0.7rem', color: 'rgba(244,236,221,0.45)', letterSpacing: '0.02em' }}>
-          Sandbox Clinic Patient Queue Display — For internal use only
+          Sapphire Clinics East Patient Queue Display — For internal use only
         </p>
         <p style={{
           fontFamily: 'var(--font-manrope), "Helvetica Neue", system-ui, sans-serif',

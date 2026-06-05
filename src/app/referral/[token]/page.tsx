@@ -91,7 +91,7 @@ export default function ReferralUploadPage() {
         }}>🏥</div>
         <div>
           <p style={{ color: '#fff', fontWeight: 700, fontSize: '0.9rem', margin: 0 }}>
-            Sandbox Clinic
+            Sapphire Clinics East
           </p>
           <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.7rem', margin: 0 }}>
             Doctor&apos;s Referral Upload
@@ -322,7 +322,7 @@ export default function ReferralUploadPage() {
       </div>
 
       <p style={{ color: '#bbb', fontSize: '0.7rem', padding: '0 1rem 2rem', textAlign: 'center' }}>
-        Sandbox Clinics East Inc. · Secure document upload
+        East Branch Inc. · Secure document upload
       </p>
     </div>
   )
