@@ -1,4 +1,4 @@
-// GET /api/public/chat-config — public config for the Sappy chat widget.
+// GET /api/public/chat-config — public config for the Aurora chat widget.
 // Returns the intro greeting and the quick-reply buttons (enabled FAQ entries
 // that have a label). Consumed by the patient-portal Chatbot component.
 

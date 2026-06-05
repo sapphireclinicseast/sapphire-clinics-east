@@ -1,4 +1,4 @@
-// Sappy admin console auth. POST to log in (password → httpOnly cookie),
+// Aurora admin console auth. POST to log in (password → httpOnly cookie),
 // DELETE to log out, GET to check the current session.
 
 import { NextRequest, NextResponse } from 'next/server'

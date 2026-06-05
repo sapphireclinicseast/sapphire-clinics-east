@@ -1,6 +1,6 @@
 'use client'
 
-// Admin console for editing Sappy's template responses. Password-gated; all
+// Admin console for editing Aurora's template responses. Password-gated; all
 // reads/writes go through /api/admin/* which proxies to the marketing DB.
 
 import { useEffect, useState } from 'react'
@@ -21,7 +21,7 @@ interface Settings {
 }
 
 const SETTING_LABELS: Record<keyof Settings, { title: string; hint: string }> = {
-  intro_message: { title: 'Greeting message', hint: 'First thing Sappy says when the chat opens.' },
+  intro_message: { title: 'Greeting message', hint: 'First thing Aurora says when the chat opens.' },
   fallback_message: { title: 'No-answer fallback', hint: "Shown when nothing matches and the AI is unavailable." },
   system_prompt: { title: 'AI system prompt', hint: 'Instructions the AI follows for free-form questions. Advanced.' },
 }
@@ -73,7 +73,7 @@ function LoginGate({ onSuccess }: { onSuccess: () => void }) {
   return (
     <div className="max-w-sm mx-auto mt-16 bg-white rounded-3xl shadow-[0_24px_60px_rgba(46,94,90,0.12)] border border-[color:var(--light-gray)] p-7">
       <h1 className="text-xl font-semibold text-[color:var(--charcoal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>
-        Sappy Admin
+        Aurora Admin
       </h1>
       <p className="text-sm text-[color:var(--mid-gray)] mb-5">Sign in to edit the chatbot responses.</p>
       <form onSubmit={submit} className="space-y-3">
@@ -115,7 +115,7 @@ function Console({ onLogout }: { onLogout: () => void }) {
     setLoading(true)
     setError('')
     try {
-      const res = await fetch('/api/admin/sappy')
+      const res = await fetch('/api/admin/aurora')
       if (res.status === 401) return onLogout()
       const d = await res.json()
       setFaqs(d.faqs ?? [])
@@ -146,7 +146,7 @@ function Console({ onLogout }: { onLogout: () => void }) {
   }
 
   async function saveFaq(f: Faq) {
-    const res = await fetch(`/api/admin/sappy/${f.id}`, {
+    const res = await fetch(`/api/admin/aurora/${f.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ label: f.label, keywords: f.keywords, answer: f.answer, enabled: f.enabled }),
@@ -158,7 +158,7 @@ function Console({ onLogout }: { onLogout: () => void }) {
   async function toggleFaq(f: Faq) {
     const next = !f.enabled
     patchLocal(f.id, { enabled: next })
-    const res = await fetch(`/api/admin/sappy/${f.id}`, {
+    const res = await fetch(`/api/admin/aurora/${f.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ enabled: next }),
@@ -172,7 +172,7 @@ function Console({ onLogout }: { onLogout: () => void }) {
 
   async function deleteFaq(f: Faq) {
     if (!confirm(`Delete "${f.label || f.keywords}"? This can't be undone.`)) return
-    const res = await fetch(`/api/admin/sappy/${f.id}`, { method: 'DELETE' })
+    const res = await fetch(`/api/admin/aurora/${f.id}`, { method: 'DELETE' })
     if (res.ok) {
       setFaqs((list) => list.filter((x) => x.id !== f.id))
       flash('Deleted')
@@ -180,7 +180,7 @@ function Console({ onLogout }: { onLogout: () => void }) {
   }
 
   async function addFaq() {
-    const res = await fetch('/api/admin/sappy', {
+    const res = await fetch('/api/admin/aurora', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ label: 'New question', keywords: 'keyword', answer: 'Type the answer here.' }),
@@ -193,7 +193,7 @@ function Console({ onLogout }: { onLogout: () => void }) {
   }
 
   async function saveSettings() {
-    const res = await fetch('/api/admin/sappy/settings', {
+    const res = await fetch('/api/admin/aurora/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(settings),
@@ -207,9 +207,9 @@ function Console({ onLogout }: { onLogout: () => void }) {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold text-[color:var(--charcoal)]" style={{ fontFamily: 'var(--font-display)' }}>
-            Sappy Assistant — Responses
+            Aurora Assistant — Responses
           </h1>
-          <p className="text-sm text-[color:var(--mid-gray)]">Edit the answers Sappy gives patients in the chat widget.</p>
+          <p className="text-sm text-[color:var(--mid-gray)]">Edit the answers Aurora gives patients in the chat widget.</p>
         </div>
         <button onClick={logout} className="text-sm px-3 py-2 rounded-lg border border-[color:var(--light-gray)] text-[color:var(--mid-gray)] hover:bg-[color:var(--off-white)]">
           Log out

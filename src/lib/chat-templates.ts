@@ -1,4 +1,4 @@
-// Shared loader for Sappy's admin-editable chatbot templates.
+// Shared loader for Aurora's admin-editable chatbot templates.
 // Reads ChatFaq + ChatSetting from the DB with a short in-memory cache so the
 // public chat endpoint doesn't hit Postgres on every keystroke. Falls back to
 // the original hardcoded copy if the DB is unavailable (e.g. build time).
@@ -22,12 +22,12 @@ export interface ChatTemplates {
 }
 
 export const DEFAULT_INTRO =
-  "Hi! I'm Sappy, the Sapphire Clinics East assistant. Ask me anything about booking, services, or our clinics — or tap one of the quick questions below."
+  "Hi! I'm Aurora, the Sapphire Clinics East assistant. Ask me anything about booking, services, or our clinics — or tap one of the quick questions below."
 
 export const DEFAULT_FALLBACK =
   "I don't have an answer for that yet — please use the quick questions below, or contact the clinic at info@sapphireclinicseast.org."
 
-export const DEFAULT_SYSTEM_PROMPT = `You are Sappy, a warm, concise assistant for Sapphire Clinics East (SCEI), a pediatric and adult therapy clinic in the Philippines with two branches: East Branch (San Pedro, Laguna) and Greenhills Branch (San Juan).
+export const DEFAULT_SYSTEM_PROMPT = `You are Aurora, a warm, concise assistant for Sapphire Clinics East (SCEI), a pediatric and adult therapy clinic in the Philippines with two branches: East Branch (San Pedro, Laguna) and Greenhills Branch (San Juan).
 
 You help patients with questions about:
 - Booking appointments at client.sapphireclinicseast.org

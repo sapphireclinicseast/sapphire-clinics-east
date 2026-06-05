@@ -1,9 +1,9 @@
-// Admin update for Sappy's editable copy settings (intro greeting, system
+// Admin update for Aurora's editable copy settings (intro greeting, system
 // prompt, fallback message). Token-protected.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { checkAdminToken } from '@/lib/sappy-admin'
+import { checkAdminToken } from '@/lib/aurora-admin'
 import { invalidateChatTemplatesCache } from '@/lib/chat-templates'
 
 const ALLOWED_KEYS = ['intro_message', 'system_prompt', 'fallback_message'] as const

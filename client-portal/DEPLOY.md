@@ -27,15 +27,15 @@ PATIENT_PORTAL_SECRET=<openssl rand -hex 32>
 MARKETING_URL=https://marketing.sapphireclinicseast.org
 CLIENT_PORTAL_URL=https://client.sapphireclinicseast.org
 
-# Sappy chatbot admin console (client.sapphireclinicseast.org/admin)
-# SAPPY_ADMIN_PASSWORD — the password you type to log into the console.
-# SAPPY_ADMIN_TOKEN     — shared secret the portal sends to the marketing app to
-#                         authorize edits. Must be IDENTICAL in both services.
-SAPPY_ADMIN_PASSWORD=<choose a strong password>
-SAPPY_ADMIN_TOKEN=<openssl rand -hex 32>
+# Aurora chatbot admin console (client.sapphireclinicseast.org/admin)
+# AURORA_ADMIN_PASSWORD — the password you type to log into the console.
+# AURORA_ADMIN_TOKEN     — shared secret the portal sends to the marketing app to
+#                          authorize edits. Must be IDENTICAL in both services.
+AURORA_ADMIN_PASSWORD=<choose a strong password>
+AURORA_ADMIN_TOKEN=<openssl rand -hex 32>
 ```
 
-`SAPPY_ADMIN_TOKEN` must also be present in the marketing `app` service's
+`AURORA_ADMIN_TOKEN` must also be present in the marketing `app` service's
 environment (same value). Until both vars are set, `/admin` shows the login page
 but logins are rejected with "Admin console is not configured on the server."
 

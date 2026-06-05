@@ -12,7 +12,7 @@ interface Msg {
 }
 
 // Fallback copy — used until /chat-config loads, or if it's unreachable. The
-// live values are admin-editable in the Sappy admin console.
+// live values are admin-editable in the Aurora admin console.
 const DEFAULT_QUICK_REPLIES: { label: string; q: string }[] = [
   { label: 'How do I book?', q: 'How do I book an appointment?' },
   { label: 'What are your services?', q: 'What services do you offer?' },
@@ -23,7 +23,7 @@ const DEFAULT_QUICK_REPLIES: { label: string; q: string }[] = [
 ]
 
 const DEFAULT_INTRO =
-  "Hi! I'm Sappy, the Sapphire Clinics East assistant. Ask me anything about booking, services, or our clinics — or tap one of the quick questions below."
+  "Hi! I'm Aurora, the Sapphire Clinics East assistant. Ask me anything about booking, services, or our clinics — or tap one of the quick questions below."
 
 export default function Chatbot() {
   const [open, setOpen] = useState(false)
@@ -120,7 +120,7 @@ export default function Chatbot() {
               💬
             </div>
             <div className="relative z-10 flex-1 min-w-0">
-              <div className="font-semibold text-white leading-tight" style={{ fontFamily: 'var(--font-display)' }}>Sappy · SCEI Assistant</div>
+              <div className="font-semibold text-white leading-tight" style={{ fontFamily: 'var(--font-display)' }}>Aurora · SCEI Assistant</div>
               <div className="text-[11px] text-white/80 flex items-center gap-1.5" style={{ fontFamily: 'var(--font-display)' }}>
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                 Usually replies in seconds
