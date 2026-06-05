@@ -11,7 +11,9 @@ interface Msg {
   isTyping?: boolean
 }
 
-const QUICK_REPLIES: { label: string; q: string }[] = [
+// Fallback copy — used until /chat-config loads, or if it's unreachable. The
+// live values are admin-editable in the Sappy admin console.
+const DEFAULT_QUICK_REPLIES: { label: string; q: string }[] = [
   { label: 'How do I book?', q: 'How do I book an appointment?' },
   { label: 'What are your services?', q: 'What services do you offer?' },
   { label: 'Downpayment', q: 'How much is the downpayment?' },
@@ -20,14 +22,13 @@ const QUICK_REPLIES: { label: string; q: string }[] = [
   { label: 'Cancellation', q: 'What is your cancellation policy?' },
 ]
 
-const INITIAL_MSG: Msg = {
-  role: 'bot',
-  text: "Hi! I'm Sappy, the Sapphire Clinics East assistant. Ask me anything about booking, services, or our clinics — or tap one of the quick questions below.",
-}
+const DEFAULT_INTRO =
+  "Hi! I'm Sappy, the Sapphire Clinics East assistant. Ask me anything about booking, services, or our clinics — or tap one of the quick questions below."
 
 export default function Chatbot() {
   const [open, setOpen] = useState(false)
-  const [msgs, setMsgs] = useState<Msg[]>([INITIAL_MSG])
+  const [msgs, setMsgs] = useState<Msg[]>([{ role: 'bot', text: DEFAULT_INTRO }])
+  const [quickReplies, setQuickReplies] = useState(DEFAULT_QUICK_REPLIES)
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [unread, setUnread] = useState(false)
@@ -36,6 +37,28 @@ export default function Chatbot() {
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [msgs, open])
+
+  // Pull the admin-editable intro + quick replies. Falls back to defaults on
+  // failure so the widget always works.
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/booking-proxy/chat-config')
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return
+        if (Array.isArray(d?.quickReplies) && d.quickReplies.length) {
+          setQuickReplies(d.quickReplies)
+        }
+        if (typeof d?.intro === 'string' && d.intro.trim()) {
+          // Only replace the greeting if the user hasn't started chatting yet.
+          setMsgs((m) => (m.length === 1 ? [{ role: 'bot', text: d.intro }] : m))
+        }
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   async function ask(q: string) {
     if (!q.trim() || busy) return
@@ -121,7 +144,7 @@ export default function Chatbot() {
                 Common questions
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {QUICK_REPLIES.map((q) => (
+                {quickReplies.map((q) => (
                   <button
                     key={q.label}
                     onClick={() => ask(q.q)}

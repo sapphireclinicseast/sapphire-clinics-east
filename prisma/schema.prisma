@@ -1229,3 +1229,30 @@ model ClassPortalFeeSchedule {
   updatedAt               DateTime @updatedAt
   updatedBy               String?
 }
+
+/// Admin-editable FAQ templates for the Sappy patient-portal chatbot.
+/// /api/public/chat checks these (keyword match) before falling back to
+/// Claude. Edited from the client-portal admin console. `label`, when set,
+/// also surfaces the entry as a quick-reply button in the chat widget.
+model ChatFaq {
+  id        String   @id @default(cuid())
+  label     String   @default("") // quick-reply button text ("" = hidden as a button)
+  keywords  String   // comma-separated trigger keywords (matched as substrings)
+  answer    String   // the template response shown to the patient
+  sortOrder Int      @default(0)
+  enabled   Boolean  @default(true)
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([enabled, sortOrder])
+}
+
+/// Key-value store for Sappy's non-FAQ editable copy: the intro greeting,
+/// the Claude system prompt, and the no-answer fallback message.
+model ChatSetting {
+  key       String   @id
+  value     String
+  updatedBy String?
+  updatedAt DateTime @default(now()) @updatedAt
+}
