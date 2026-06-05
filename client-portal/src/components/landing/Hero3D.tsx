@@ -22,9 +22,9 @@ export function Hero3D({ signedInFirstName }: Hero3DProps) {
         // Narra is the brand's deepest green; matches the dark "hero
         // moment" pairing from the brand guide (Narra + Sun).
         background:
-          'radial-gradient(800px 360px at 110% -10%, rgba(198,152,73,0.28), transparent 60%),' +
-          'radial-gradient(700px 320px at -10% 120%, rgba(168,92,61,0.22), transparent 60%),' +
-          'linear-gradient(135deg, #0F1F1D 0%, #194850 55%, #3E6B66 110%)',
+          'radial-gradient(800px 360px at 110% -10%, rgba(198,152,73,0.30), transparent 60%),' +
+          'radial-gradient(700px 320px at -10% 120%, rgba(207,157,136,0.24), transparent 60%),' +
+          'linear-gradient(135deg, #13262B 0%, #244952 55%, #4A8073 110%)',
       }}
     >
       <Spotlight
@@ -47,7 +47,7 @@ export function Hero3D({ signedInFirstName }: Hero3DProps) {
             className="text-[40px] md:text-[52px] leading-[1.04] tracking-[-0.02em] font-bold bg-clip-text text-transparent"
             style={{
               backgroundImage:
-                'linear-gradient(180deg, #F4ECDD 0%, rgba(245,240,232,0.65) 100%)',
+                'linear-gradient(180deg, #EDF3D9 0%, rgba(237,243,217,0.65) 100%)',
             }}
           >
             Care for the<br />whole human.
@@ -156,7 +156,7 @@ function PraiseRotator() {
       </div>
       <div className="min-h-[150px] md:min-h-[200px] flex items-center justify-center">
         <blockquote
-          className="text-[18px] md:text-[22px] leading-[1.4] text-[#F4ECDD] transition-opacity duration-[600ms] ease-in-out"
+          className="text-[18px] md:text-[22px] leading-[1.4] text-[#EDF3D9] transition-opacity duration-[600ms] ease-in-out"
           style={{ opacity: visible ? 1 : 0 }}
         >
           <span className="text-[color:var(--sun)] text-3xl leading-none align-[-0.3em] mr-0.5">“</span>

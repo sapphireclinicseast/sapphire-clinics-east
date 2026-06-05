@@ -5,22 +5,22 @@
    60% Paper + Narra · 25% Moss + Sage · 10% Ink · 5% Clay + Sun
 */
 :root {
-  --narra:  #194850;       /* primary deep teal */
-  --moss:   #3E6B66;       /* secondary mid-teal */
-  --sage:   #7B988A;       /* tertiary soft sage */
-  --clay:   #C68077;       /* accent warm — coral / dusty rose */
-  --sun:    #EDD8A8;       /* accent light — warm sand */
-  --paper:  #F4ECDD;       /* neutral ground — cream */
+  --narra:  #244952;       /* primary deep teal */
+  --moss:   #4A8073;       /* secondary mid-teal */
+  --sage:   #7DA292;       /* tertiary soft sage (derived from moss) */
+  --clay:   #CF9D88;       /* accent warm — clay / terracotta */
+  --sun:    #C69849;       /* accent — brand gold */
+  --paper:  #EDF3D9;       /* neutral ground — pale green cream */
   --ink:    #1A1A1A;       /* near-black — type, fine rules */
 
   /* Tonal helpers for borders, hover wash, and divider lines on paper. */
-  --paper-2:  #EBE0CB;     /* slightly deeper paper for cards */
-  --paper-3:  #D9CDB4;     /* softest divider on paper */
-  --sage-tint: rgba(123, 152, 138, 0.18);
-  --moss-tint: rgba(62, 107, 102, 0.10);
-  --clay-tint: rgba(198, 128, 119, 0.14);
-  --sun-tint:  rgba(237, 216, 168, 0.30);
-  --mid-gray: #6B6357;     /* warm grey on paper, replaces cool slate */
+  --paper-2:  #E2EAC6;     /* slightly deeper paper for cards */
+  --paper-3:  #CFDAAF;     /* softest divider on paper */
+  --sage-tint: rgba(125, 162, 146, 0.18);
+  --moss-tint: rgba(74, 128, 115, 0.10);
+  --clay-tint: rgba(207, 157, 136, 0.14);
+  --sun-tint:  rgba(198, 152, 73, 0.26);
+  --mid-gray: #5E6655;     /* warm grey-green on paper */
 
   --font-display: var(--font-montserrat), 'Helvetica Neue', Arial, sans-serif;
   --font-heading: var(--font-montserrat), 'Helvetica Neue', Arial, sans-serif;
@@ -300,13 +300,13 @@ body {
 .hero-gradient {
   background:
     radial-gradient(1200px 380px at 50% 35%, rgba(244, 236, 221, 0.22), transparent 60%),
-    radial-gradient(820px 380px at 8% 0%, rgba(212, 145, 132, 0.55), transparent 60%),
-    radial-gradient(1100px 440px at 100% 110%, rgba(123, 152, 138, 0.55), transparent 65%),
+    radial-gradient(820px 380px at 8% 0%, rgba(207, 157, 136, 0.55), transparent 60%),
+    radial-gradient(1100px 440px at 100% 110%, rgba(125, 162, 146, 0.55), transparent 65%),
     linear-gradient(135deg,
-      #D49184 0%,
-      #C9A28F 38%,
-      #9CB1A2 72%,
-      #7B988A 100%);
+      #CF9D88 0%,
+      #C0A98F 38%,
+      #7DA292 72%,
+      #4A8073 100%);
   position: relative;
   overflow: hidden;
   color: #fff;
