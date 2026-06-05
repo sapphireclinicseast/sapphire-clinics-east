@@ -1,22 +1,14 @@
 'use client'
 
-// Landing-page hero: dark Narra card with an animated 3D anatomy scene from
-// Spline on the right, and the SCEI booking message + status pill on the
-// left. Designed to live above the existing "Get started" auth card.
-//
-// Drop-in URL for the Spline scene — change via:
-//   NEXT_PUBLIC_SPLINE_HERO_SCENE=https://prod.spline.design/<id>/scene.splinecode
-// in client-portal's runtime env. Default is the public robot scene from
-// the 21st.dev demo as a working placeholder. Swap to an anatomy scene
-// (e.g. a community human-body model from app.spline.design/community).
+// Landing-page hero: dark Narra card with the SCEI booking message + status
+// pill on the left, and a fade-in/fade-out rotator of real, anonymized
+// positive feedback from our client satisfaction surveys on the right.
+// Quotes come from /api/booking-proxy/survey-praise (proxied to the marketing
+// app's /api/public/survey-praise).
 
-import { SplineScene } from '@/components/ui/splite'
+import { useEffect, useState } from 'react'
 import { Card } from '@/components/ui/card'
 import { Spotlight } from '@/components/ui/spotlight'
-
-const DEFAULT_SCENE =
-  process.env.NEXT_PUBLIC_SPLINE_HERO_SCENE ??
-  'https://prod.spline.design/kZDDjO5HuC9GJUM2/scene.splinecode'
 
 interface Hero3DProps {
   signedInFirstName?: string | null
@@ -97,21 +89,96 @@ export function Hero3D({ signedInFirstName }: Hero3DProps) {
           </div>
         </div>
 
-        {/* Right content — Spline scene */}
-        <div className="flex-1 relative min-h-[260px] md:min-h-[520px]">
-          {/* Soft fade between the text column and the 3D canvas on mobile.
-              On desktop the columns sit flush. */}
-          <div
-            className="absolute inset-0 md:hidden pointer-events-none z-10"
-            style={{
-              background:
-                'linear-gradient(180deg, rgba(15,31,29,0.6) 0%, transparent 30%)',
-            }}
-          />
-          <SplineScene scene={DEFAULT_SCENE} className="w-full h-full" />
+        {/* Right content — rotating client praise */}
+        <div className="flex-1 relative min-h-[220px] md:min-h-[520px] flex items-center justify-center p-8 md:p-10 z-10">
+          <PraiseRotator />
         </div>
       </div>
     </Card>
+  )
+}
+
+// Fallback line shown until/if no survey quotes are available. Not a
+// fabricated testimonial — just brand copy.
+const PRAISE_FALLBACK = [
+  'Real words from the people we care for.',
+]
+
+function PraiseRotator() {
+  const [quotes, setQuotes] = useState<string[]>(PRAISE_FALLBACK)
+  const [idx, setIdx] = useState(0)
+  const [visible, setVisible] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/booking-proxy/survey-praise')
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return
+        if (Array.isArray(d?.quotes) && d.quotes.length) {
+          setQuotes(d.quotes)
+          setIdx(0)
+        }
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Cross-fade: hold visible, fade out, advance, fade back in.
+  useEffect(() => {
+    if (quotes.length <= 1) return
+    const HOLD = 5200
+    const FADE = 600
+    let fade: ReturnType<typeof setTimeout>
+    const swap = setInterval(() => {
+      setVisible(false)
+      fade = setTimeout(() => {
+        setIdx((i) => (i + 1) % quotes.length)
+        setVisible(true)
+      }, FADE)
+    }, HOLD)
+    return () => {
+      clearInterval(swap)
+      clearTimeout(fade)
+    }
+  }, [quotes])
+
+  return (
+    <figure className="relative max-w-sm w-full text-center">
+      <div
+        className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--sun)] mb-5 flex items-center justify-center gap-2"
+        style={{ fontFamily: 'var(--font-display)' }}
+      >
+        <span className="w-1.5 h-1.5 rounded-full bg-[color:var(--sun)] animate-pulse-ring"></span>
+        From our randomized client surveys
+      </div>
+      <div className="min-h-[150px] md:min-h-[200px] flex items-center justify-center">
+        <blockquote
+          className="text-[18px] md:text-[22px] leading-[1.4] text-[#F4ECDD] transition-opacity duration-[600ms] ease-in-out"
+          style={{ opacity: visible ? 1 : 0 }}
+        >
+          <span className="text-[color:var(--sun)] text-3xl leading-none align-[-0.3em] mr-0.5">“</span>
+          {quotes[idx]}
+          <span className="text-[color:var(--sun)] text-3xl leading-none align-[-0.3em] ml-0.5">”</span>
+        </blockquote>
+      </div>
+      {quotes.length > 1 && (
+        <div className="mt-6 flex items-center justify-center gap-1.5">
+          {quotes.slice(0, 8).map((_, i) => (
+            <span
+              key={i}
+              className="h-1.5 rounded-full transition-all duration-300"
+              style={{
+                width: i === idx % 8 ? 18 : 6,
+                background: i === idx % 8 ? 'var(--sun)' : 'rgba(244,236,221,0.3)',
+              }}
+            />
+          ))}
+        </div>
+      )}
+    </figure>
   )
 }
 

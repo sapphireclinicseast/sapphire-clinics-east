@@ -77,8 +77,8 @@ function HomeInner() {
         <Hero3D signedInFirstName={signedIn?.firstName ?? null} />
       </section>
 
-      {/* Auth card */}
-      <section className="max-w-2xl mx-auto animate-fade-up stagger-2">
+      {/* Auth card + complaint/concern callout */}
+      <section className="max-w-5xl mx-auto animate-fade-up stagger-2 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] items-start">
         <div className="card-static">
           <div className="flex items-end justify-between mb-5">
             <div>
@@ -189,8 +189,50 @@ function HomeInner() {
             </form>
           )}
         </div>
+
+        <ComplaintCard />
       </section>
     </div>
+  )
+}
+
+const COMPLAINT_FORM_URL = 'https://hr.sapphireclinicseast.org/patient-complaint-form.html'
+
+function ComplaintCard() {
+  return (
+    <aside className="card-static lg:sticky lg:top-6">
+      <h2 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">
+        Have a concern or complaint?
+      </h2>
+      <p className="text-sm text-[color:var(--mid-gray)] mt-1.5">
+        Your feedback is confidential and helps us care better. Submit it now.
+      </p>
+
+      <a
+        href={COMPLAINT_FORM_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="btn-primary w-full mt-4 inline-flex items-center justify-center"
+      >
+        Submit now →
+      </a>
+
+      <div className="mt-5 flex flex-col items-center">
+        <div className="rounded-2xl bg-white p-3 border border-[color:var(--light-gray)] shadow-sm">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/complaint-qr.svg"
+            alt="QR code to the patient complaint form"
+            width={140}
+            height={140}
+            className="w-[140px] h-[140px]"
+          />
+        </div>
+        <p className="text-[11px] text-[color:var(--mid-gray)] mt-2 text-center" style={{ fontFamily: 'var(--font-display)' }}>
+          Or scan to open on your phone
+        </p>
+      </div>
+    </aside>
   )
 }
 
