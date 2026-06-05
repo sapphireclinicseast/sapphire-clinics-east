@@ -1230,6 +1230,21 @@ model ClassPortalFeeSchedule {
   updatedBy               String?
 }
 
+/// Admin-editable tuition discount vouchers. Parents type a code on the
+/// class-portal /pay page; if it's enabled and on/before its validUntil
+/// date, the tuition portion is reduced by discountPercent. Managed from
+/// the main admin account (Fees tab → Voucher codes).
+model ClassPortalVoucher {
+  id              String   @id @default(cuid())
+  code            String   @unique // stored upper-cased
+  discountPercent Int      @default(0) // 0–100
+  validUntil      DateTime // last date the discount applies (inclusive)
+  enabled         Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  updatedBy       String?
+}
+
 /// Admin-editable FAQ templates for the Sappy patient-portal chatbot.
 /// /api/public/chat checks these (keyword match) before falling back to
 /// Claude. Edited from the client-portal admin console. `label`, when set,

@@ -10,10 +10,12 @@ interface CreateCheckoutBody {
   studentName: string
   plan: 'ANNUAL' | 'BIANNUAL' | 'MONTHLY'
   paymentId: string
-  // amounts in PHP centavos
+  // amounts in PHP centavos (tuitionAmount is already net of any voucher)
   tuitionAmount: number
   miscAmount: number
   period: string
+  voucherCode?: string
+  discountPercent?: number
 }
 
 export async function POST(req: NextRequest) {
@@ -24,12 +26,17 @@ export async function POST(req: NextRequest) {
 
   let body: CreateCheckoutBody
   try { body = await req.json() as CreateCheckoutBody } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
-  const { studentId, studentEmail, studentName, plan, paymentId, tuitionAmount, miscAmount, period } = body
+  const { studentId, studentEmail, studentName, plan, paymentId, tuitionAmount, miscAmount, period, voucherCode, discountPercent } = body
+
+  const hasDiscount = !!voucherCode && Number(discountPercent) > 0
+  const tuitionDescription = hasDiscount
+    ? `${studentName} · ${period} · ${discountPercent}% voucher (${voucherCode})`
+    : `${studentName} · ${period}`
 
   const lineItems = [
     {
       name: `SCEI × LBCA Tuition — ${planLabel(plan)}`,
-      description: `${studentName} · ${period}`,
+      description: tuitionDescription,
       amount: tuitionAmount,
       currency: 'PHP',
       quantity: 1,
@@ -74,6 +81,7 @@ export async function POST(req: NextRequest) {
             plan,
             period,
             payment_id: paymentId,
+            ...(hasDiscount ? { voucher_code: voucherCode!, discount_percent: String(discountPercent) } : {}),
           },
         },
       },

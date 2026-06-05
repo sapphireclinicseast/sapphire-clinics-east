@@ -14,7 +14,8 @@ import {
   sendPasswordResetLink, startImpersonation,
   levelLabel, branchLabel, roleLabel, generatePassword,
   getFees, hydrateFees, saveFees, DEFAULT_FEE_VALUES,
-  type StoredUser, type UserRole, type Branch, type FeeSchedule, type FeeExtraItem,
+  getVouchers, hydrateVouchers, saveVouchers,
+  type StoredUser, type UserRole, type Branch, type FeeSchedule, type FeeExtraItem, type Voucher,
 } from '@/lib/session'
 import { listStaff, type StaffMember } from '@/lib/api'
 import StudentListPanel from '@/components/StudentListPanel'
@@ -92,7 +93,12 @@ export default function AdminPage() {
           <PaymentsGrouped canSendReminders senderEmail={adminEmail} senderName={isMainAdmin ? 'Main admin' : 'Branch admin'} senderRole="ADMIN" />
         </div>
       )}
-      {tab === 'FEES'          && <FeesPanel viewerRole={adminRole} viewerBranch={adminBranch} />}
+      {tab === 'FEES'          && (
+        <div className="space-y-6">
+          <FeesPanel viewerRole={adminRole} viewerBranch={adminBranch} />
+          {isMainAdmin && <VouchersPanel adminEmail={adminEmail} />}
+        </div>
+      )}
       {tab === 'ASSIGNMENTS'   && <AssignmentsPanel viewerBranch={isMainAdmin ? undefined : adminBranch} />}
     </div>
   )
@@ -472,8 +478,8 @@ function UsersPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANC
             <span className="label">Branch</span>
             <select className="select" value={staffBranchFilter} onChange={e => setStaffBranchFilter(e.target.value as typeof staffBranchFilter)} style={{ minWidth: 220 }}>
               <option value="">All branches</option>
-              <option value="SBEA">Sandbox East</option>
-              <option value="SBGH">Sandbox Greenhills</option>
+              <option value="SBEA">East Branch</option>
+              <option value="SBGH">Greenhills Branch</option>
             </select>
           </label>
         </div>
@@ -501,7 +507,7 @@ function UsersPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANC
                   <tr key={m.id} className="border-b hover:bg-[color:var(--paper-2)]" style={{ borderColor: 'var(--paper-3)' }}>
                     <td className="py-2.5 px-3 whitespace-nowrap">{m.firstName} {m.lastName}</td>
                     <td className="py-2.5 px-3">{m.jobTitle || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-2.5 px-3 text-[12.5px]">{m.branch === 'SBEA' ? 'Sandbox East' : m.branch === 'SBGH' ? 'Sandbox Greenhills' : m.branch}</td>
+                    <td className="py-2.5 px-3 text-[12.5px]">{m.branch === 'SBEA' ? 'East Branch' : m.branch === 'SBGH' ? 'Greenhills Branch' : m.branch}</td>
                     <td className="py-2.5 px-3 text-[12.5px]">{m.email || <span className="text-[color:var(--mid-gray)]">no email on file</span>}</td>
                     <td className="py-2.5 px-3 text-right whitespace-nowrap">
                       {has ? <span className="badge badge-approved">Account exists</span> : <CreateTeacherInlineForm onCreate={pw => handleCreateFromStaff(m, pw)} disabled={!m.email} />}
@@ -752,5 +758,129 @@ function PesoInput({ label, centavos, onChange }: { label: string; centavos: num
         />
       </div>
     </label>
+  )
+}
+
+/* ─────────────────────── VOUCHERS PANEL ─────────────────────── */
+
+// Local rows hold validUntil as a YYYY-MM-DD string for the date input;
+// the server returns/accepts ISO and applies end-of-day PH time.
+type VoucherRow = { code: string; discountPercent: number; validUntil: string; enabled: boolean }
+
+function toVoucherRow(v: Voucher): VoucherRow {
+  return {
+    code: v.code,
+    discountPercent: v.discountPercent,
+    validUntil: v.validUntil ? v.validUntil.slice(0, 10) : '',
+    enabled: v.enabled,
+  }
+}
+
+function VouchersPanel({ adminEmail }: { adminEmail: string }) {
+  const [rows, setRows] = useState<VoucherRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
+
+  useEffect(() => {
+    setRows(getVouchers().map(toVoucherRow))
+    hydrateVouchers().then(v => { setRows(v.map(toVoucherRow)); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [])
+
+  function patch(idx: number, next: Partial<VoucherRow>) {
+    setRows(curr => curr.map((r, i) => i === idx ? { ...r, ...next } : r))
+  }
+  function addRow() {
+    // Pre-fill the current promo (30% off, ends June 12 2026) so it's one
+    // edit away — the admin just types the code.
+    setRows(curr => [...curr, { code: '', discountPercent: 30, validUntil: '2026-06-12', enabled: true }])
+  }
+  function removeRow(idx: number) {
+    setRows(curr => curr.filter((_, i) => i !== idx))
+  }
+
+  async function handleSave() {
+    setErr(null); setInfo(null)
+    const cleaned = rows.map(r => ({ ...r, code: r.code.trim().toUpperCase() }))
+    for (const r of cleaned) {
+      if (!r.code) { setErr('Every voucher needs a code.'); return }
+      if (!r.validUntil) { setErr(`Voucher ${r.code} needs a "Valid until" date.`); return }
+      if (r.discountPercent < 0 || r.discountPercent > 100) { setErr(`Voucher ${r.code}: discount must be between 0 and 100.`); return }
+    }
+    const codes = cleaned.map(r => r.code)
+    if (new Set(codes).size !== codes.length) { setErr('Voucher codes must be unique.'); return }
+    setSaving(true)
+    try {
+      const saved = await saveVouchers(cleaned.map(r => ({
+        code: r.code,
+        discountPercent: r.discountPercent,
+        validUntil: r.validUntil,
+        enabled: r.enabled,
+      })))
+      setRows(saved.map(toVoucherRow))
+      setInfo('Voucher codes saved. Parents can use them on the Pay portal right away.')
+    } catch (e) { setErr((e as Error).message) }
+    finally { setSaving(false) }
+  }
+
+  function isExpired(validUntil: string): boolean {
+    if (!validUntil) return false
+    // End of that day in PH time (UTC+8) == 15:59:59.999Z.
+    return Date.now() > new Date(`${validUntil}T15:59:59.999Z`).getTime()
+  }
+
+  return (
+    <div className="card-static space-y-5">
+      <div>
+        <h2 className="text-[18px] leading-tight">Voucher codes</h2>
+        <p className="text-sm text-[color:var(--mid-gray)] mt-1">
+          Create promo codes parents can type on the Pay portal to get a percentage off their tuition. The discount applies to the tuition portion (annual / bi-annual / monthly) up to and including the <span className="font-semibold">Valid until</span> date.
+        </p>
+        <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-1" style={{ fontFamily: 'var(--font-display)' }}>
+          Codes are not case-sensitive and apply across both branches. Untick <span className="font-semibold">Active</span> to pause a code without deleting it.
+        </p>
+      </div>
+
+      {err  && <div className="px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
+      {info && <div className="px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-100 text-sm text-emerald-800">{info}</div>}
+
+      {loading && rows.length === 0 ? (
+        <div className="text-[13px] text-[color:var(--mid-gray)]">Loading vouchers…</div>
+      ) : rows.length === 0 ? (
+        <div className="text-[12.5px] text-[color:var(--mid-gray)] italic py-2">No voucher codes yet. Add one below.</div>
+      ) : (
+        <div className="space-y-2">
+          <div className="hidden sm:grid grid-cols-[1fr_120px_160px_90px_auto] gap-2 px-1 text-[11px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+            <span>Code</span><span>Discount %</span><span>Valid until</span><span>Active</span><span />
+          </div>
+          {rows.map((r, idx) => (
+            <div key={idx} className="grid grid-cols-1 sm:grid-cols-[1fr_120px_160px_90px_auto] gap-2 items-center rounded-xl border p-2 sm:p-1.5" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
+              <input className="input uppercase tracking-wide" placeholder="e.g. PROMO30" value={r.code} onChange={e => patch(idx, { code: e.target.value })} />
+              <div className="relative">
+                <input className="input text-right pr-7" inputMode="numeric" value={String(r.discountPercent)} onChange={e => patch(idx, { discountPercent: Math.max(0, Math.min(100, Math.round(Number(e.target.value.replace(/[^\d]/g, '')) || 0))) })} />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[color:var(--mid-gray)] pointer-events-none">%</span>
+              </div>
+              <div>
+                <input type="date" className="input" value={r.validUntil} onChange={e => patch(idx, { validUntil: e.target.value })} />
+                {r.validUntil && isExpired(r.validUntil) && <span className="text-[10.5px] text-[color:var(--clay)]">expired</span>}
+              </div>
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={r.enabled} onChange={e => patch(idx, { enabled: e.target.checked })} />
+                <span className="sm:hidden text-[color:var(--mid-gray)]">Active</span>
+              </label>
+              <button type="button" onClick={() => removeRow(idx)} className="text-xs px-3 py-2 rounded-md text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] justify-self-start sm:justify-self-center">Remove</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <button type="button" onClick={addRow} className="text-sm px-3 py-2 rounded-md text-[color:var(--narra)] hover:bg-[color:var(--paper-2)] border" style={{ borderColor: 'var(--paper-3)' }}>+ Add voucher</button>
+        <button type="button" onClick={handleSave} disabled={saving} className="btn-primary">{saving ? 'Saving…' : 'Save vouchers'}</button>
+      </div>
+      <p className="text-[11px] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>Editing as {adminEmail}.</p>
+    </div>
   )
 }

@@ -893,6 +893,12 @@ export interface PaymentRecord {
   miscAmount: number
   /** Period covered, free text — e.g. "Annual SY 2026–2027", "Aug 2026", "Aug–Jan 2026". */
   period: string
+  /** Voucher applied at checkout, if any. tuitionAmount is already discounted. */
+  voucherCode?: string
+  /** Percent discount applied to tuition via the voucher. */
+  discountPercent?: number
+  /** Tuition before the voucher discount, for audit / receipts. */
+  tuitionBeforeDiscount?: number
   status: PaymentStatus
   /** How the parent chose to pay. Defaults to PAYMONGO for back-compat. */
   method?: PaymentMethod
@@ -2550,6 +2556,83 @@ export async function saveFees(next: FeeSchedule[]): Promise<FeeSchedule[]> {
 export function getFeeFor(branch: Branch | undefined | null): FeeSchedule {
   if (!branch) return defaultFeeForBranch('EAST')
   return getFees().find(f => f.branch === branch) ?? defaultFeeForBranch(branch)
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Tuition discount vouchers — admin-editable, global (not per-branch).
+   Admin sets code / % discount / valid-until in the Fees tab; parents
+   type a code on /pay and the tuition is reduced. Validation is done
+   server-side so codes aren't enumerable by students.
+   ───────────────────────────────────────────────────────────── */
+
+const VOUCHERS_KEY = 'scei_class_vouchers_v1'
+
+export interface Voucher {
+  id?: string
+  code: string
+  discountPercent: number
+  /** ISO datetime — last moment the code applies (end of the chosen day). */
+  validUntil: string
+  enabled: boolean
+  updatedAt?: string | null
+  updatedBy?: string | null
+}
+
+export function getVouchers(): Voucher[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(VOUCHERS_KEY)
+    const parsed = raw ? (JSON.parse(raw) as Voucher[]) : []
+    return Array.isArray(parsed) ? parsed : []
+  } catch { return [] }
+}
+
+function writeVouchers(rows: Voucher[]) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(VOUCHERS_KEY, JSON.stringify(rows))
+}
+
+/** Admin only: pull the full voucher list for management. */
+export async function hydrateVouchers(): Promise<Voucher[]> {
+  if (typeof window === 'undefined') return []
+  if (!getToken()) return getVouchers()
+  try {
+    const { vouchers } = await backendJson<{ vouchers: Voucher[] }>('/api/public/class-portal/vouchers')
+    writeVouchers(vouchers)
+    return vouchers
+  } catch { return getVouchers() }
+}
+
+/** Admin only: replace the full voucher set. */
+export async function saveVouchers(next: Voucher[]): Promise<Voucher[]> {
+  const { vouchers } = await backendJson<{ vouchers: Voucher[] }>('/api/public/class-portal/vouchers', {
+    method: 'PUT',
+    body: JSON.stringify({ vouchers: next }),
+  })
+  writeVouchers(vouchers)
+  return vouchers
+}
+
+export interface VoucherValidation {
+  valid: boolean
+  code?: string
+  discountPercent?: number
+  validUntil?: string
+  reason?: string
+}
+
+/** Validate a single code against the server (authoritative on expiry). */
+export async function validateVoucher(code: string): Promise<VoucherValidation> {
+  const trimmed = code.trim()
+  if (!trimmed) return { valid: false, reason: 'Enter a voucher code.' }
+  try {
+    return await backendJson<VoucherValidation>('/api/public/class-portal/vouchers/validate', {
+      method: 'POST',
+      body: JSON.stringify({ code: trimmed }),
+    })
+  } catch (e) {
+    return { valid: false, reason: (e as Error).message || 'Could not check that code. Please try again.' }
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────────

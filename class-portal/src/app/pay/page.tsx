@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   getAuth, getUsers, getPaymentsForStudent, savePayment, putFile,
-  levelLabel, getFeeFor, hydrateFees, hydrateFrontDeskPayments,
+  levelLabel, getFeeFor, hydrateFees, hydrateFrontDeskPayments, validateVoucher,
   type PaymentPlan, type PaymentMethod, type PaymentRecord, type StoredUser, type FeeSchedule,
 } from '@/lib/session'
 import { backendJson } from '@/lib/backend'
@@ -64,6 +64,12 @@ export default function PayPage() {
 
   const [fee, setFee] = useState<FeeSchedule | null>(null)
 
+  // Voucher / promo-code state
+  const [voucherInput, setVoucherInput] = useState('')
+  const [appliedVoucher, setAppliedVoucher] = useState<{ code: string; discountPercent: number; validUntil?: string } | null>(null)
+  const [voucherBusy, setVoucherBusy] = useState(false)
+  const [voucherErr, setVoucherErr] = useState<string | null>(null)
+
   useEffect(() => {
     const auth = getAuth()
     if (!auth) { router.replace('/sign-in'); return }
@@ -84,6 +90,12 @@ export default function PayPage() {
   const plans = useMemo(() => fee ? plansFor(fee) : [], [fee])
   const plan = useMemo(() => plans.find(p => p.plan === selected) ?? plans[0], [plans, selected])
 
+  // Discount derived from the applied voucher — recomputed against the
+  // currently selected plan's tuition so switching plans keeps it correct.
+  const discountPercent = appliedVoucher?.discountPercent ?? 0
+  const discountAmount = plan ? Math.round((plan.tuition * discountPercent) / 100) : 0
+  const discountedTuition = plan ? Math.max(0, plan.tuition - discountAmount) : 0
+
   /** Build the up-front PENDING record common to every method. */
   function buildPending(paymentId: string): PaymentRecord {
     return {
@@ -91,13 +103,43 @@ export default function PayPage() {
       studentId: user!.id,
       studentEmail: user!.email,
       plan: plan.plan,
-      tuitionAmount: plan.tuition,
+      tuitionAmount: discountedTuition,
       miscAmount: plan.misc,
       period: plan.period,
+      ...(appliedVoucher ? {
+        voucherCode: appliedVoucher.code,
+        discountPercent,
+        tuitionBeforeDiscount: plan.tuition,
+      } : {}),
       status: 'PENDING',
       method,
       createdAt: new Date().toISOString(),
     }
+  }
+
+  async function handleApplyVoucher() {
+    setVoucherErr(null)
+    const code = voucherInput.trim()
+    if (!code) { setVoucherErr('Enter a voucher code.'); return }
+    setVoucherBusy(true)
+    try {
+      const res = await validateVoucher(code)
+      if (res.valid && res.code && typeof res.discountPercent === 'number') {
+        setAppliedVoucher({ code: res.code, discountPercent: res.discountPercent, validUntil: res.validUntil })
+        setVoucherInput(res.code)
+      } else {
+        setAppliedVoucher(null)
+        setVoucherErr(res.reason ?? 'That voucher code is not valid.')
+      }
+    } finally {
+      setVoucherBusy(false)
+    }
+  }
+
+  function handleRemoveVoucher() {
+    setAppliedVoucher(null)
+    setVoucherInput('')
+    setVoucherErr(null)
   }
 
   function pushHistory(rec: PaymentRecord) {
@@ -121,9 +163,11 @@ export default function PayPage() {
           studentName,
           plan: plan.plan,
           paymentId,
-          tuitionAmount: plan.tuition,
+          tuitionAmount: discountedTuition,
           miscAmount: plan.misc,
           period: plan.period,
+          voucherCode: appliedVoucher?.code,
+          discountPercent: appliedVoucher ? discountPercent : undefined,
         }),
       })
       if (!res.ok) {
@@ -162,7 +206,7 @@ export default function PayPage() {
             studentName,
             branch: user.branch ?? 'EAST',
             plan: plan.plan,
-            tuitionCentavos: plan.tuition,
+            tuitionCentavos: discountedTuition,
             miscCentavos: plan.misc,
             period: plan.period,
             method: 'FRONT_DESK_CASH',
@@ -212,7 +256,7 @@ export default function PayPage() {
             studentName,
             branch: user.branch ?? 'EAST',
             plan: plan.plan,
-            tuitionCentavos: plan.tuition,
+            tuitionCentavos: discountedTuition,
             miscCentavos: plan.misc,
             period: plan.period,
             method: 'BANK_DEPOSIT',
@@ -242,7 +286,7 @@ export default function PayPage() {
 
   if (!user || !plan) return null
 
-  const total = plan.tuition + plan.misc
+  const total = discountedTuition + plan.misc
   const studentBranch = user.branch ?? 'EAST'
   const bank = BANK_DETAILS[studentBranch as keyof typeof BANK_DETAILS]
 
@@ -339,11 +383,47 @@ export default function PayPage() {
           </div>
         )}
 
+        {/* Voucher / promo code */}
+        <div className="mt-5 rounded-xl p-4 border" style={{ borderColor: 'var(--paper-3)', background: '#fff' }}>
+          <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>
+            Voucher / promo code
+          </div>
+          {appliedVoucher ? (
+            <div className="flex items-center justify-between gap-3 flex-wrap rounded-lg px-3 py-2.5" style={{ background: 'var(--sage-tint)', border: '1px solid var(--sage)' }}>
+              <span className="text-sm text-[color:var(--ink)]">
+                ✓ Code <span className="font-bold tracking-wide">{appliedVoucher.code}</span> applied — <span className="font-semibold text-[color:var(--narra)]">{appliedVoucher.discountPercent}% off tuition</span>
+              </span>
+              <button type="button" onClick={handleRemoveVoucher} className="text-xs px-2.5 py-1 rounded-md text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] font-semibold">Remove</button>
+            </div>
+          ) : (
+            <div className="flex gap-2 flex-wrap sm:flex-nowrap">
+              <input
+                className="input flex-1 uppercase tracking-wide"
+                placeholder="Enter code"
+                value={voucherInput}
+                onChange={e => { setVoucherInput(e.target.value); setVoucherErr(null) }}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleApplyVoucher() } }}
+                autoCapitalize="characters"
+              />
+              <button type="button" onClick={handleApplyVoucher} disabled={voucherBusy} className="btn-secondary whitespace-nowrap" style={{ padding: '0 18px' }}>
+                {voucherBusy ? 'Checking…' : 'Apply'}
+              </button>
+            </div>
+          )}
+          {voucherErr && (
+            <div className="mt-2 text-[12.5px] text-rose-700">{voucherErr}</div>
+          )}
+        </div>
+
         <div className="mt-5 rounded-xl p-4 border" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
           <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--mid-gray)] font-semibold mb-2" style={{ fontFamily: 'var(--font-display)' }}>Checkout summary</div>
           <dl className="grid grid-cols-2 text-sm gap-y-1">
             <dt className="text-[color:var(--mid-gray)]">{plan.title} tuition</dt>
             <dd className="text-right tabular-nums">{fmt(plan.tuition)}</dd>
+            {appliedVoucher && discountAmount > 0 && <>
+              <dt className="text-[color:var(--moss)]">Discount ({appliedVoucher.code} · {discountPercent}%)</dt>
+              <dd className="text-right tabular-nums text-[color:var(--moss)]">−{fmt(discountAmount)}</dd>
+            </>}
             {plan.misc > 0 && <>
               <dt className="text-[color:var(--mid-gray)]">Miscellaneous</dt>
               <dd className="text-right tabular-nums">{fmt(plan.misc)}</dd>
