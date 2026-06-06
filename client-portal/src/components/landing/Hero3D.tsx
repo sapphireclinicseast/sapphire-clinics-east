@@ -54,8 +54,9 @@ export function Hero3D({ signedInFirstName }: Hero3DProps) {
           </h1>
 
           <p className="mt-5 text-[15px] md:text-[16px] text-white/75 leading-relaxed max-w-md">
-            Sapphire Clinics East — log in, pick a clinician, choose your slot,
-            and the front desk confirms in a single, calm flow.
+            Sapphire Clinics East — log in to book your next session, settle the
+            downpayment, and keep your profile and full session history in one
+            calm place.
           </p>
 
           {signedInFirstName && (
@@ -83,9 +84,9 @@ export function Hero3D({ signedInFirstName }: Hero3DProps) {
             className="mt-7 flex flex-col gap-2 text-[13px] text-white/80 max-w-md"
             style={{ fontFamily: 'var(--font-display)' }}
           >
-            <div className="flex items-center gap-2"><Check /> Pick from real therapist + doctor schedules</div>
-            <div className="flex items-center gap-2"><Check /> Up to 3 preferred slots per request</div>
-            <div className="flex items-center gap-2"><Check /> Secure PayMongo downpayment</div>
+            <div className="flex items-center gap-2"><Check /> View your patient profile at a glance</div>
+            <div className="flex items-center gap-2"><Check /> Book a session and pay securely via PayMongo</div>
+            <div className="flex items-center gap-2"><Check /> Revisit your full session history anytime</div>
           </div>
         </div>
 
