@@ -946,7 +946,7 @@ export interface FrontDeskPaymentRow {
   tuitionCentavos: number
   miscCentavos: number
   period: string
-  method: 'FRONT_DESK_CASH' | 'BANK_DEPOSIT' | null
+  method: 'FRONT_DESK_CASH' | 'BANK_DEPOSIT' | 'PAYMONGO' | null
   status: 'PENDING' | 'CONVERTED' | 'VOIDED'
   createdAt: string
   convertedAt: string | null
@@ -967,6 +967,75 @@ export async function getFrontDeskPaymentsServer(): Promise<FrontDeskPaymentRow[
   } catch (e) {
     console.warn('[getFrontDeskPaymentsServer] failed:', e)
     return []
+  }
+}
+
+/**
+ * Admin/branch-admin/frontdesk records a PayMongo payment that landed
+ * outside the success-redirect flow (e.g. the parent paid on a different
+ * device, cleared their browser, or otherwise never landed back on
+ * /pay/success so no server-side row was ever created).
+ *
+ * Creates a `ClassPortalFrontDeskPayment` row with method='PAYMONGO',
+ * status='PENDING' — which makes it surface in the accounting-hub POS
+ * queue exactly like a bank-deposit row. The cashier then clicks
+ * "Convert to Order" as normal; the order is created, the row flips to
+ * CONVERTED, and the student's profile shows PAID on next hydrate.
+ *
+ * `notes` should carry the PayMongo reference number / receipt no so
+ * the cashier and audit trail can match the row to the actual gateway
+ * transaction.
+ */
+export async function recordPayMongoPayment(args: {
+  studentId: string
+  studentEmail: string
+  studentName: string
+  branch: 'EAST' | 'GREENHILLS'
+  plan: PaymentPlan
+  /** Total amount the parent paid via PayMongo, in PHP centavos. */
+  tuitionCentavos: number
+  miscCentavos?: number
+  /** Free text — e.g. "AY 2026–2027" or "Aug 2026". */
+  period: string
+  notes?: string
+}): Promise<boolean> {
+  if (typeof window === 'undefined') return false
+  if (!getToken()) return false
+  try {
+    const tok = getToken()
+    // Unique dedupe key so the upsert doesn't collide with a real
+    // class-portal-originated payment. cuid-ish: prefix + 20 chars of
+    // base36 randomness. The /pay flow uses different prefixes.
+    const classPortalPaymentId =
+      'pmgr_' + Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 12)
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/frontdesk-payments`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(tok ? { authorization: `Bearer ${tok}` } : {}),
+      },
+      body: JSON.stringify({
+        classPortalPaymentId,
+        studentId: args.studentId,
+        studentEmail: args.studentEmail,
+        studentName: args.studentName,
+        branch: args.branch,
+        plan: args.plan,
+        tuitionCentavos: args.tuitionCentavos,
+        miscCentavos: args.miscCentavos ?? 0,
+        period: args.period,
+        method: 'PAYMONGO',
+        notes: args.notes ?? null,
+      }),
+    })
+    if (!res.ok) {
+      console.warn('[recordPayMongoPayment] failed:', res.status)
+      return false
+    }
+    return true
+  } catch (e) {
+    console.warn('[recordPayMongoPayment] error:', e)
+    return false
   }
 }
 
@@ -1025,7 +1094,7 @@ export async function hydrateFrontDeskPayments(): Promise<PaymentRecord[]> {
         tuitionCentavos: number
         miscCentavos: number
         period: string
-        method: 'FRONT_DESK_CASH' | 'BANK_DEPOSIT' | null
+        method: 'FRONT_DESK_CASH' | 'BANK_DEPOSIT' | 'PAYMONGO' | null
         status: 'PENDING' | 'CONVERTED' | 'VOIDED'
         createdAt: string
         convertedAt: string | null

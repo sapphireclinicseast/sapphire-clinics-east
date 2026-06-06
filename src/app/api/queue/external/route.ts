@@ -87,6 +87,16 @@ export async function GET(req: NextRequest) {
         : []
       const patientIdByEmail = new Map(patients.map(p => [(p.email ?? '').toLowerCase(), p.id]))
 
+      // Method tag so the cashier knows *not* to collect cash for a
+      // PayMongo row — the parent already paid through the gateway, the
+      // cashier just needs to Convert to Order so the receipt + ledger
+      // are correct. Bank-deposit rows still need the cashier to sight
+      // the deposit slip. Empty for cash so the existing UX is unchanged.
+      const methodTag = (m: string | null | undefined): string => {
+        if (m === 'PAYMONGO') return '[PayMongo · pre-paid] '
+        if (m === 'BANK_DEPOSIT') return '[Bank deposit] '
+        return ''
+      }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       tuitionItems = pending.map((p: any) => {
         const total = (p.tuitionCentavos ?? 0) + (p.miscCentavos ?? 0)
@@ -97,7 +107,7 @@ export async function GET(req: NextRequest) {
           id:          `clsp_${p.classPortalPaymentId}`,
           startTime:   '',
           endTime:     '',
-          sessionType: `Tuition (${p.plan}) ₱${peso(total)} — ${p.period}`,
+          sessionType: `${methodTag(p.method)}Tuition (${p.plan}) ₱${peso(total)} — ${p.period}`,
           status:      'CONFIRMED',
           department:  'CLASS_PORTAL',
           branch,

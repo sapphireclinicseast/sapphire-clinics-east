@@ -71,7 +71,20 @@ export async function POST(req: Request) {
       return withCors(NextResponse.json({ error: 'You can only post payment notifications for your own account.' }, { status: 403 }), origin)
     }
 
-    const method = body.method === 'BANK_DEPOSIT' || body.method === 'FRONT_DESK_CASH' ? body.method : null
+    // PAYMONGO rows are minted by an admin/branch-admin/frontdesk via the
+    // "Record PayMongo payment" affordance on the student profile, so the
+    // payment surfaces in the accounting-hub POS queue same as a bank or
+    // cash payment. We don't accept PAYMONGO from STUDENT — only paid-via-
+    // PayMongo records that staff manually log, until the proper
+    // webhook flow lands.
+    const allowed = ['BANK_DEPOSIT', 'FRONT_DESK_CASH', 'PAYMONGO'] as const
+    type AllowedMethod = typeof allowed[number]
+    const method: AllowedMethod | null = (allowed as readonly string[]).includes(body.method ?? '')
+      ? (body.method as AllowedMethod)
+      : null
+    if (method === 'PAYMONGO' && auth.role === 'STUDENT') {
+      return withCors(NextResponse.json({ error: 'Only staff can log a PayMongo payment.' }, { status: 403 }), origin)
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const row = await (prisma.classPortalFrontDeskPayment as any).upsert({
       where: { classPortalPaymentId: body.classPortalPaymentId },

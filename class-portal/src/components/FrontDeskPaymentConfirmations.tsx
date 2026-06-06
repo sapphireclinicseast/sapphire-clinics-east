@@ -15,6 +15,7 @@ function planLabel(p: PaymentPlan) {
 function methodLabel(m: FrontDeskPaymentRow['method']) {
   if (m === 'BANK_DEPOSIT') return 'Bank deposit'
   if (m === 'FRONT_DESK_CASH') return 'Cash at front desk'
+  if (m === 'PAYMONGO') return 'PayMongo'
   return 'Unspecified'
 }
 
