@@ -55,6 +55,10 @@ export async function POST(req: Request) {
     const dbUser = await prisma.classPortalUser.findUnique({
       where: { role_email: { role: 'FRONTDESK', email: email.trim().toLowerCase() } },
     })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (dbUser && (dbUser as any).disabledAt) {
+      return withCors(NextResponse.json({ error: 'This account has been disabled. Contact the main admin to re-enable it.' }, { status: 403 }), origin)
+    }
     if (dbUser && await comparePassword(password, dbUser.passwordHash)) {
       const token = await signToken({
         role: 'FRONTDESK', userId: dbUser.id, email: dbUser.email,
@@ -88,6 +92,14 @@ export async function POST(req: Request) {
   })
   if (!user || !(await comparePassword(password, user.passwordHash))) {
     return withCors(NextResponse.json({ error: 'Email and password do not match a ' + role.toLowerCase().replace('_', ' ') + ' account.' }, { status: 401 }), origin)
+  }
+  // Soft-disabled accounts can't sign in. We check this AFTER the bcrypt
+  // verify so a bad-password attempt still gets the generic 401 — we
+  // don't want an attacker to be able to enumerate which emails belong
+  // to disabled accounts.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if ((user as any).disabledAt) {
+    return withCors(NextResponse.json({ error: 'This account has been disabled. Contact the main admin to re-enable it.' }, { status: 403 }), origin)
   }
   const token = await signToken({
     role: dbRole as ClassPortalRole,

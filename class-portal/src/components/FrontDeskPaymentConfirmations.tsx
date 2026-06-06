@@ -2,9 +2,18 @@
 
 import { useEffect, useState } from 'react'
 import {
-  getFrontDeskPaymentsServer, confirmFrontDeskPayment,
+  getFrontDeskPaymentsServer, confirmFrontDeskPayment, deleteFrontDeskPayment,
   type FrontDeskPaymentRow, type PaymentPlan,
 } from '@/lib/session'
+
+interface FdpProps {
+  /**
+   * Show a Delete button per row. Reserved for main admin viewers so
+   * they can clean up test rows. The endpoint enforces ADMIN role on
+   * the server side too — this prop is just the UI guard.
+   */
+  canDelete?: boolean
+}
 
 function fmt(cents: number) {
   return '₱' + (cents / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -26,7 +35,7 @@ function methodLabel(m: FrontDeskPaymentRow['method']) {
  * payments never appear here — those flip to PAID automatically as soon
  * as the PayMongo success redirect lands on the student's device.
  */
-export default function FrontDeskPaymentConfirmations() {
+export default function FrontDeskPaymentConfirmations({ canDelete = false }: FdpProps = {}) {
   const [rows, setRows] = useState<FrontDeskPaymentRow[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
@@ -59,6 +68,20 @@ export default function FrontDeskPaymentConfirmations() {
         ? { ...r, status: 'CONVERTED', convertedAt: new Date().toISOString() }
         : r,
     ))
+    setBusy(null)
+  }
+
+  async function handleDelete(row: FrontDeskPaymentRow) {
+    if (busy) return
+    if (!confirm(`Delete this PENDING payment row for ${row.studentName}? Use this only for test rows — confirmed (converted) rows can't be deleted here.`)) return
+    setErr(null); setBusy(row.classPortalPaymentId)
+    const ok = await deleteFrontDeskPayment(row.classPortalPaymentId)
+    if (!ok) {
+      setErr(`Could not delete ${row.studentName}'s row. If it's already CONVERTED, void the order in the accounting hub first.`)
+      setBusy(null)
+      return
+    }
+    setRows(prev => prev.filter(r => r.classPortalPaymentId !== row.classPortalPaymentId))
     setBusy(null)
   }
 
@@ -122,14 +145,27 @@ export default function FrontDeskPaymentConfirmations() {
                     <td className="py-2.5 px-3 text-right tabular-nums">{fmt(r.tuitionCentavos + r.miscCentavos)}</td>
                     <td className="py-2.5 px-3 text-[12.5px]">{new Date(r.createdAt).toLocaleString()}</td>
                     <td className="py-2.5 px-3 text-right">
-                      <button
-                        type="button"
-                        className="btn-primary text-xs"
-                        onClick={() => void handleConfirm(r)}
-                        disabled={busy === r.classPortalPaymentId}
-                      >
-                        {busy === r.classPortalPaymentId ? 'Confirming…' : 'Confirm payment'}
-                      </button>
+                      <div className="inline-flex gap-1.5 items-center justify-end">
+                        <button
+                          type="button"
+                          className="btn-primary text-xs"
+                          onClick={() => void handleConfirm(r)}
+                          disabled={busy === r.classPortalPaymentId}
+                        >
+                          {busy === r.classPortalPaymentId ? 'Confirming…' : 'Confirm payment'}
+                        </button>
+                        {canDelete && (
+                          <button
+                            type="button"
+                            className="text-[11px] px-2 py-1 rounded text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] disabled:opacity-40"
+                            onClick={() => void handleDelete(r)}
+                            disabled={busy === r.classPortalPaymentId}
+                            title="Delete this pending row (admin only). Use for test rows."
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

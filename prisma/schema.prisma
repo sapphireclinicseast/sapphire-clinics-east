@@ -773,12 +773,20 @@ model ClassPortalUser {
   /// 2026-05-22" instead of the unhelpful "not on device" placeholder.
   passwordSetAt DateTime?
   passwordSetBy String?
+  /// Soft-disable. When non-null, the user can't sign in and is hidden
+  /// from teacher / front-desk / branch-admin views. Re-enabled by
+  /// setting back to null. Hard delete is intentionally not exposed —
+  /// disabled rows preserve enrollment history and payment audit trail.
+  disabledAt   DateTime?
+  /// Email of the admin who disabled the account. Cleared on re-enable.
+  disabledBy   String?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
   @@unique([role, email])
   @@index([role])
   @@index([branch])
+  @@index([disabledAt])
 }
 
 enum ClassPortalEventType {

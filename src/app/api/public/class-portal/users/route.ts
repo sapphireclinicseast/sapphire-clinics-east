@@ -35,6 +35,13 @@ export async function GET(req: Request) {
         { AND: [{ branch: null }, { role: { in: ['TEACHER'] } }] },
       ]
     }
+    // Disabled accounts are hidden from teachers, branch admins, and
+    // front desk — they shouldn't see students/staff who no longer
+    // attend. Main admin sees everyone so they can re-enable. Students
+    // are filtered by id above, so they only ever see their own row.
+    if (auth.role !== 'ADMIN' && auth.role !== 'STUDENT') {
+      where.disabledAt = null
+    }
     const rows = await prisma.classPortalUser.findMany({
       where,
       orderBy: [{ createdAt: 'desc' }],
@@ -52,6 +59,8 @@ export async function GET(req: Request) {
         enrollment: r.enrollment,
         passwordSetAt: r.passwordSetAt ? r.passwordSetAt.toISOString() : null,
         passwordSetBy: r.passwordSetBy ?? null,
+        disabledAt: r.disabledAt ? r.disabledAt.toISOString() : null,
+        disabledBy: r.disabledBy ?? null,
         createdAt: r.createdAt.toISOString(),
         updatedAt: r.updatedAt.toISOString(),
       })),

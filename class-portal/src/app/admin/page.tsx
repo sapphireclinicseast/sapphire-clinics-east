@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   getAuth, getUsers, hydrateUsers, addUser, updateUser, deleteUser,
+  setUserDisabled,
   sendPasswordResetLink, startImpersonation,
   levelLabel, branchLabel, roleLabel, generatePassword,
   getFees, hydrateFees, saveFees, DEFAULT_FEE_VALUES,
@@ -89,7 +90,10 @@ export default function AdminPage() {
       {tab === 'NOTIFICATIONS' && <NotificationPanel viewer={{ role: 'ADMIN', email: adminEmail, name: isMainAdmin ? 'Main admin' : 'Branch admin' }} />}
       {tab === 'PAYMENTS'      && (
         <div className="space-y-6">
-          <FrontDeskPaymentConfirmations />
+          {/* canDelete restricted to the main admin (not branch admin)
+              because the server endpoint also enforces role === 'ADMIN'.
+              Used to clear test rows that were never real payments. */}
+          <FrontDeskPaymentConfirmations canDelete={isMainAdmin} />
           <PaymentsGrouped canSendReminders senderEmail={adminEmail} senderName={isMainAdmin ? 'Main admin' : 'Branch admin'} senderRole="ADMIN" />
         </div>
       )}
@@ -232,9 +236,24 @@ function UsersPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANC
   }
 
   async function handleDelete(u: StoredUser) {
-    if (!confirm(`Delete ${roleLabel(u.role).toLowerCase()} ${u.email}? This cannot be undone.`)) return
+    if (!confirm(`Delete ${roleLabel(u.role).toLowerCase()} ${u.email}? This cannot be undone.\n\nTip: if the student is just leaving the school but you want to keep their history, use Disable instead.`)) return
     try { await deleteUser(u.id); refresh() }
     catch (e) { setErr((e as Error).message) }
+  }
+
+  async function handleToggleDisabled(u: StoredUser) {
+    const disabling = !u.disabledAt
+    const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email
+    const msg = disabling
+      ? `Disable ${name}'s account?\n\nThey'll no longer be able to sign in and they'll be hidden from teacher and front-desk lists. The account itself is preserved (enrollment + payment history stay intact) and you can re-enable it later.`
+      : `Re-enable ${name}'s account?\n\nThey'll be able to sign in again and they'll reappear in teacher and front-desk lists.`
+    if (!confirm(msg)) return
+    setErr(null); setInfo(null)
+    try {
+      await setUserDisabled(u.id, disabling)
+      refresh()
+      setInfo(disabling ? `${name} disabled.` : `${name} re-enabled.`)
+    } catch (e) { setErr((e as Error).message) }
   }
 
   async function handleSaveEdit(e: React.FormEvent<HTMLFormElement>) {
@@ -349,8 +368,20 @@ function UsersPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANC
             <tbody>
               {filtered.length === 0 && <tr><td colSpan={8} className="py-6 px-3 text-center text-[color:var(--mid-gray)]">No users in this view.</td></tr>}
               {filtered.map(u => (
-                <tr key={u.id} className="border-b hover:bg-[color:var(--paper-2)]" style={{ borderColor: 'var(--paper-3)' }}>
-                  <td className="py-2.5 px-3"><span className={`badge ${ROLE_BADGE_CLASS[u.role] ?? 'badge-pending'}`}>{roleLabel(u.role)}</span></td>
+                <tr
+                  key={u.id}
+                  className={`border-b hover:bg-[color:var(--paper-2)] ${u.disabledAt ? 'opacity-55' : ''}`}
+                  style={{ borderColor: 'var(--paper-3)' }}
+                  title={u.disabledAt ? `Disabled by ${u.disabledBy ?? 'unknown'} on ${new Date(u.disabledAt).toLocaleDateString()}` : undefined}
+                >
+                  <td className="py-2.5 px-3">
+                    <span className={`badge ${ROLE_BADGE_CLASS[u.role] ?? 'badge-pending'}`}>{roleLabel(u.role)}</span>
+                    {u.disabledAt && (
+                      <span className="ml-1.5 inline-block text-[9px] font-bold uppercase tracking-[0.08em] px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-200 align-middle" title="Cannot sign in. Hidden from teacher and front-desk lists.">
+                        Disabled
+                      </span>
+                    )}
+                  </td>
                   <td className="py-2.5 px-3">{[u.firstName, u.lastName].filter(Boolean).join(' ') || '—'}</td>
                   <td className="py-2.5 px-3">{u.email}</td>
                   <td className="py-2.5 px-3 text-[12.5px]">{branchLabel(u.branch)}</td>
@@ -397,6 +428,17 @@ function UsersPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANC
                       title="Email a one-shot reset link — the user picks their own new password."
                       onClick={() => handleSendResetLink(u)}
                     >Email reset link</button>
+                    {viewerRole === 'ADMIN' && (
+                      <button
+                        className={`text-xs px-2 py-1 rounded-md ml-1 ${u.disabledAt
+                          ? 'text-[color:var(--moss)] hover:bg-[color:var(--sage-tint)]'
+                          : 'text-[color:var(--mid-gray)] hover:bg-[color:var(--paper-2)]'}`}
+                        title={u.disabledAt
+                          ? 'Re-enable this account so the user can sign in again.'
+                          : "Disable this account. The user can't sign in and is hidden from teacher / front-desk lists, but their enrollment and payment history are preserved. Reversible."}
+                        onClick={() => handleToggleDisabled(u)}
+                      >{u.disabledAt ? 'Enable' : 'Disable'}</button>
+                    )}
                     {viewerRole === 'ADMIN' && (
                       <button className="text-xs px-2 py-1 rounded-md text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] ml-1" onClick={() => handleDelete(u)}>Delete</button>
                     )}

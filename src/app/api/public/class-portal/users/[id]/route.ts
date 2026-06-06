@@ -33,6 +33,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       level?: string | null
       branch?: 'EAST' | 'GREENHILLS' | null
       enrollment?: Record<string, unknown> | null
+      /**
+       * Soft-disable flag. `true` writes disabledAt = now() + disabledBy =
+       * auth.email; `false` clears both. Only the main admin may set
+       * this; branch admins are blocked at the role check below.
+       */
+      disabled?: boolean
     }
 
     // STUDENT may only update their own row; TEACHER / FRONTDESK cannot edit
@@ -71,6 +77,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (body.level !== undefined) data.level = body.level
     if (body.branch !== undefined) data.branch = body.branch
     if (body.enrollment !== undefined) data.enrollment = body.enrollment
+    // Disable / enable. Restricted to main admin: branch admins can
+    // already edit users in their branch but should NOT be able to
+    // lock other staff out. STUDENT self-edits never carry `disabled`.
+    if (body.disabled !== undefined) {
+      if (auth.role !== 'ADMIN') {
+        return withCors(NextResponse.json({ error: 'Only the main admin can disable or re-enable accounts.' }, { status: 403 }), origin)
+      }
+      data.disabledAt = body.disabled ? new Date() : null
+      data.disabledBy = body.disabled ? auth.email : null
+    }
 
     const updated = await prisma.classPortalUser.update({ where: { id }, data })
 
@@ -104,6 +120,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         enrollment: updated.enrollment,
         passwordSetAt: updated.passwordSetAt ? updated.passwordSetAt.toISOString() : null,
         passwordSetBy: updated.passwordSetBy ?? null,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        disabledAt: (updated as any).disabledAt ? (updated as any).disabledAt.toISOString() : null,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        disabledBy: (updated as any).disabledBy ?? null,
         createdAt: updated.createdAt.toISOString(),
         updatedAt: updated.updatedAt.toISOString(),
       },

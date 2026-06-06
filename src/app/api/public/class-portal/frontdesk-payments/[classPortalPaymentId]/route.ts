@@ -67,3 +67,43 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ cl
     return withCors(NextResponse.json({ error: 'Server error.' }, { status: 500 }), origin)
   }
 }
+
+// DELETE — main-admin-only hard delete of a queued pending row. Used to
+// clean up test rows that were created during system trials. We only
+// allow deletion of PENDING rows so a CONVERTED row (which has an
+// associated accounting-hub Order) can't be removed without first
+// voiding the Order. Hard delete instead of a soft "VOIDED" flip because
+// the existing GET endpoint shows VOIDED rows in the history banner —
+// for a literal test row, the admin just wants it gone.
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ classPortalPaymentId: string }> }) {
+  const origin = req.headers.get('origin')
+  try {
+    const auth = await requireAuth(req)
+    if (auth.role !== 'ADMIN') {
+      return withCors(NextResponse.json({ error: 'Only the main admin can delete a pending payment.' }, { status: 403 }), origin)
+    }
+    const { classPortalPaymentId } = await params
+    if (!classPortalPaymentId) {
+      return withCors(NextResponse.json({ error: 'classPortalPaymentId required.' }, { status: 400 }), origin)
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const existing = await (prisma.classPortalFrontDeskPayment as any).findUnique({ where: { classPortalPaymentId } })
+    if (!existing) {
+      return withCors(NextResponse.json({ error: 'classPortalPaymentId not found.' }, { status: 404 }), origin)
+    }
+    if (existing.status === 'CONVERTED') {
+      return withCors(NextResponse.json({ error: 'This payment has already been converted to an order. Void the order in the accounting hub first.' }, { status: 409 }), origin)
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (prisma.classPortalFrontDeskPayment as any).delete({ where: { classPortalPaymentId } })
+    return withCors(NextResponse.json({ ok: true }), origin)
+  } catch (e) {
+    if (e instanceof Response) {
+      const headers = new Headers(e.headers)
+      for (const [k, v] of Object.entries(corsHeaders(origin))) headers.set(k, v)
+      return new NextResponse(e.body, { status: e.status, headers })
+    }
+    console.error('[public/frontdesk-payments DELETE]', e)
+    return withCors(NextResponse.json({ error: 'Server error.' }, { status: 500 }), origin)
+  }
+}

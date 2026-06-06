@@ -314,6 +314,12 @@ export interface StoredUser {
    *  on YYYY-MM-DD" instead of the unhelpful "not on device" placeholder. */
   passwordSetAt?: string | null
   passwordSetBy?: string | null
+  /** Soft-disable timestamp. Non-null = account locked out. Hidden from
+   *  teacher / front-desk / branch-admin views; main admin still sees
+   *  the row so they can re-enable it. */
+  disabledAt?: string | null
+  /** Email of the admin who disabled the account. Cleared on re-enable. */
+  disabledBy?: string | null
 }
 
 export interface AuthSession {
@@ -357,6 +363,8 @@ interface ApiUser {
   enrollment?: Partial<EnrollmentDraft> | null
   passwordSetAt?: string | null
   passwordSetBy?: string | null
+  disabledAt?: string | null
+  disabledBy?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -374,6 +382,8 @@ function apiToStored(u: ApiUser, password = ''): StoredUser {
     enrollment: u.enrollment ?? undefined,
     passwordSetAt: u.passwordSetAt ?? null,
     passwordSetBy: u.passwordSetBy ?? null,
+    disabledAt: u.disabledAt ?? null,
+    disabledBy: u.disabledBy ?? null,
     createdAt: u.createdAt,
   }
 }
@@ -445,6 +455,26 @@ export async function deleteUser(id: string): Promise<void> {
   await backendJson(`/api/public/class-portal/users/${id}`, { method: 'DELETE' })
   writeUsers(getUsers().filter(u => u.id !== id))
   try { deleteLocalPassword(id) } catch { /* ignore */ }
+}
+
+/**
+ * Soft-disable or re-enable a user. Disabled accounts can't sign in and
+ * are hidden from teacher / front-desk / branch-admin listings; the
+ * main admin still sees them so they can re-enable. Server enforces
+ * role === 'ADMIN' on the PATCH.
+ *
+ * On success, mirrors the updated row into the local users cache so
+ * the admin list re-renders with the new badge/state immediately.
+ */
+export async function setUserDisabled(id: string, disabled: boolean): Promise<StoredUser> {
+  const { user } = await backendJson<{ user: ApiUser }>(`/api/public/class-portal/users/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ disabled }),
+  })
+  const prev = getUsers().find(u => u.id === id)
+  const stored = apiToStored(user, prev?.password ?? '')
+  writeUsers(getUsers().map(u => (u.id === id ? stored : u)))
+  return stored
 }
 
 /**
@@ -1035,6 +1065,32 @@ export async function recordPayMongoPayment(args: {
     return true
   } catch (e) {
     console.warn('[recordPayMongoPayment] error:', e)
+    return false
+  }
+}
+
+/**
+ * Main-admin-only hard delete of a queued PENDING row. Used to clean up
+ * test rows created during system trials. CONVERTED rows refuse to
+ * delete (return false) — void the associated accounting-hub order
+ * first.
+ */
+export async function deleteFrontDeskPayment(classPortalPaymentId: string): Promise<boolean> {
+  if (typeof window === 'undefined') return false
+  if (!getToken()) return false
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/frontdesk-payments/${encodeURIComponent(classPortalPaymentId)}`, {
+      method: 'DELETE',
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) {
+      console.warn('[deleteFrontDeskPayment] failed:', res.status)
+      return false
+    }
+    return true
+  } catch (e) {
+    console.warn('[deleteFrontDeskPayment] error:', e)
     return false
   }
 }
