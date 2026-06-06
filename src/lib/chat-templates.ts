@@ -121,12 +121,29 @@ export async function getChatTemplates(): Promise<ChatTemplates> {
   }
 }
 
-// Keyword match against enabled FAQ entries (substring, case-insensitive).
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+// Keyword match against enabled FAQ entries. A keyword only matches when it
+// begins at a word boundary (start of string or after a non-alphanumeric
+// character), so "therapy" does NOT match inside "teletherapy". The keyword's
+// end is left open so plurals still match ("sped class" → "sped classes").
+// When several FAQs match, the most specific one wins — the longest matching
+// keyword, breaking ties by sortOrder. This lets a dedicated "sped class" FAQ
+// beat a generic "offer" keyword on the services FAQ.
 export function matchFaq(faqs: FaqEntry[], question: string): string | null {
   const s = question.toLowerCase()
+  let best: { answer: string; len: number; sortOrder: number } | null = null
   for (const f of faqs) {
     if (!f.enabled) continue
-    if (f.keywords.some((k) => s.includes(k))) return f.answer
+    for (const k of f.keywords) {
+      if (!k) continue
+      if (!new RegExp('(?:^|[^a-z0-9])' + escapeRegExp(k)).test(s)) continue
+      if (!best || k.length > best.len || (k.length === best.len && f.sortOrder < best.sortOrder)) {
+        best = { answer: f.answer, len: k.length, sortOrder: f.sortOrder }
+      }
+    }
   }
-  return null
+  return best ? best.answer : null
 }

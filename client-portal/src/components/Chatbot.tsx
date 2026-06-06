@@ -137,8 +137,9 @@ export default function Chatbot() {
             <div ref={endRef} />
           </div>
 
-          {/* Quick replies */}
-          {msgs.length <= 2 && (
+          {/* Quick replies — kept available after responses so the client can
+              keep tapping common questions throughout the conversation. */}
+          {quickReplies.length > 0 && (
             <div className="px-3 pb-2 pt-1 border-t border-[color:var(--light-gray)] bg-white">
               <div className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--mid-gray)] px-1 mb-1.5" style={{ fontFamily: 'var(--font-display)' }}>
                 Common questions
