@@ -290,12 +290,12 @@ export async function POST(
     const html = `
       <div style="font-family: 'Gill Sans', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1B3F38;">
         <div style="background: linear-gradient(135deg, #1B3F38, #26554B); padding: 24px; border-radius: 12px 12px 0 0;">
-          <h1 style="color: white; margin: 0; font-size: 20px;">Teletherapy Session Notes</h1>
+          <h1 style="color: white; margin: 0; font-size: 20px;">Session Notes</h1>
           <p style="color: rgba(255,255,255,0.7); margin: 4px 0 0; font-size: 14px;">Sapphire Clinics East, Inc.</p>
         </div>
         <div style="background: white; padding: 24px; border: 1px solid #E0E8E6; border-top: none; border-radius: 0 0 12px 12px;">
           <p>Dear <strong>${escapeHtml(patientName)}</strong>,</p>
-          <p>Here are the notes from your teletherapy session:</p>
+          <p>Here are the notes from your session:</p>
           <div style="background: #F5F0E8; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
             <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
               <tr><td style="padding: 4px 0; color: #7A908C;">Date</td><td>${sessionDate}</td></tr>
@@ -316,7 +316,7 @@ export async function POST(
     await sendEmail({
       to: schedule.patient.email,
       cc: ccEmail ? [ccEmail] : undefined,
-      subject: `Teletherapy Session Notes - ${sessionDate}`,
+      subject: `Session Notes - ${sessionDate}`,
       html,
       attachments: emailAttachments,
     })
