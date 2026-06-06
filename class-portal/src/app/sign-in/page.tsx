@@ -151,7 +151,7 @@ export default function SignInPage() {
             {/* Mobile-only header (the brand panel is hidden on < lg). */}
             <div className="flex items-center gap-3 mb-8 lg:hidden">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/aura-academy-mark.png" alt="Aura Academy" className="w-10 h-10 object-contain" />
+              <img src="/aura-academy-mark-192.png" alt="Aura Academy" className="w-10 h-10 object-contain" />
               <div className="leading-tight">
                 <div className="text-[15px] font-semibold text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>
                   Aura Academy

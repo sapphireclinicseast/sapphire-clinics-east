@@ -85,9 +85,21 @@ export const metadata: Metadata = {
       'max-snippet': -1,
     },
   },
+  // Square arch crops of the brand mark. The old aura-academy-mark.png
+  // was 394×200 (wordmark dimensions) and got squeezed by browsers
+  // into the 16×16 favicon slot, which stretched the arch into a
+  // squashed oval. These files are pre-cropped to a square so the arch
+  // renders at the correct aspect ratio at every size. Next.js also
+  // auto-discovers src/app/icon.png and src/app/apple-icon.png so the
+  // entries here are a belt-and-suspenders for crawlers and older
+  // browsers that prefer explicit sizes.
   icons: {
-    icon: '/aura-academy-mark.png',
-    apple: '/aura-academy-mark.png',
+    icon: [
+      { url: '/aura-academy-mark-32.png',  sizes: '32x32',   type: 'image/png' },
+      { url: '/aura-academy-mark-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/aura-academy-mark-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: '/aura-academy-mark-192.png',
   },
   category: 'education',
 }
@@ -104,7 +116,7 @@ const ORG_JSON_LD = {
   name: SITE_NAME,
   alternateName: 'Aura Academy',
   url: SITE_URL,
-  logo: `${SITE_URL}/aura-academy-logo.png`,
+  logo: `${SITE_URL}/aura-academy-mark-512.png`,
   image: `${SITE_URL}/hero-family.png`,
   description: SITE_TAGLINE,
   inLanguage: 'en',
