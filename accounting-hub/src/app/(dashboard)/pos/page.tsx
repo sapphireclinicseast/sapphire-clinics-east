@@ -3815,6 +3815,21 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     setWalletEditSaving(true)
     setWalletEditError('')
     try {
+      // Detect intentional Approved SOA edits so the API's protection guard
+      // permits the write. Without this flag the PUT silently preserves the
+      // existing value — which made user-driven corrections appear to "reset"
+      // on the next reload.
+      const formGlNum = walletDetail.walletType === 'GL' && walletEditForm.totalGlAmount !== ''
+        ? Number(walletEditForm.totalGlAmount)
+        : null
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const dbGlRaw = (walletDetail as any).totalGlAmount
+      const dbGlNum = dbGlRaw != null ? Number(dbGlRaw) : null
+      const glAmountChanged = walletDetail.walletType === 'GL'
+        && formGlNum !== null
+        && formGlNum > 0
+        && (dbGlNum === null || Math.abs(formGlNum - dbGlNum) > 0.005)
+
       const r = await fetch(`/api/pos/wallets/${walletDetail.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -3834,6 +3849,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
           accountId: walletEditForm.accountId || null,
           ...(['VIP', 'PREPAID_CARD'].includes(walletDetail.walletType) ? { rewardPoints: walletEditForm.rewardPoints } : {}),
           ...(walletDetail.walletType === 'GL' ? { totalGlAmount: walletEditForm.totalGlAmount } : {}),
+          ...(glAmountChanged ? { forceUpdateGlAmount: true } : {}),
           branch: walletEditForm.branch || 'ALL',
         }),
       })

@@ -417,6 +417,15 @@ export default function AccountsReceivablePage() {
   const [changeDateValue, setChangeDateValue] = useState('')
   const [changeDateBusy, setChangeDateBusy] = useState<string | null>(null)
 
+  // Approved-SOA recompute (one-shot data correction for the 2026-04-08
+  // migration that clobbered totalGlAmount with the then-current balance).
+  const [recomputeBusy, setRecomputeBusy] = useState(false)
+  const [recomputeResult, setRecomputeResult] = useState<{
+    updated: number; skipped: number;
+    changes: { patientName: string; currentTotalGlAmount: number | null; derivedTotalGlAmount: number }[];
+  } | null>(null)
+  const canRecomputeSoa = session?.user?.role === 'ADMIN' || session?.user?.role === 'ACCOUNTANT'
+
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
@@ -734,6 +743,18 @@ export default function AccountsReceivablePage() {
         const pctConsumed = totalApproved > 0 ? Math.min(100, (totalConsumed / totalApproved) * 100) : 0
         const pctPaid = totalApproved > 0 ? Math.min(100, (totalPaid / totalApproved) * 100) : 0
 
+        // Active GL wallets: isActive=true (from API) AND remaining balance > 0 (not fully exhausted).
+        // The AR API overrides w.balance with totalGlAmount for GL (approved-amount AR),
+        // so comparing balance vs totalGlAmount would always be equal. Instead use
+        // consumedOutstanding (= totalGlAmount − rawBalance) which the API computes
+        // server-side from the actual DB balance field before the substitution.
+        // A wallet is "active" when it still has remaining balance (whether or not any amount
+        // has been consumed yet — untouched wallets with full balance are also active).
+        const activeGlCount = wallets.filter(w => {
+          const consumed = w.consumedOutstanding ?? 0
+          return toNum(w.totalGlAmount) > consumed + 0.005
+        }).length
+
         // Service type breakdown from approvedServices field on GL wallets
         // Each wallet may approve multiple service types; count applications per type.
         const svcTypeMap = new Map<string, number>()
@@ -807,10 +828,55 @@ export default function AccountsReceivablePage() {
 
         return (
           <div className="rounded-2xl border p-4 space-y-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-            <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>GL Summary</h2>
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>GL Summary</h2>
+              {canRecomputeSoa && (
+                <div className="flex flex-col items-end gap-1">
+                  <button
+                    type="button"
+                    disabled={recomputeBusy}
+                    onClick={async () => {
+                      if (!confirm('Recompute Approved SOA from the ledger for every GL wallet?\n\nThis derives the original starting balance from each wallet\'s deductions and only updates wallets where the stored Approved SOA is lower than the derived value. Wallets with no consumption are left alone.')) return
+                      setRecomputeBusy(true)
+                      setRecomputeResult(null)
+                      try {
+                        const r = await fetch('/api/admin/recompute-gl-soa', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({}),
+                        })
+                        const d = await r.json()
+                        if (!r.ok) { alert(d.error || `Failed (${r.status})`); return }
+                        setRecomputeResult({ updated: d.updated, skipped: d.skipped, changes: d.changes || [] })
+                        await fetchData()
+                      } catch (e) {
+                        alert(`Recompute failed: ${e}`)
+                      } finally {
+                        setRecomputeBusy(false)
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium border disabled:opacity-50"
+                    style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}
+                  >
+                    {recomputeBusy ? 'Recomputing…' : 'Recompute Approved SOA from ledger'}
+                  </button>
+                  {recomputeResult && (
+                    <p className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>
+                      Updated {recomputeResult.updated} · Preserved {recomputeResult.skipped}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* % cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Active GL wallets count — isActive=true and remaining balance > 0 */}
+              <div className="rounded-xl p-4 border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Active GL Wallets</p>
+                <p className="text-3xl font-bold" style={{ color: 'var(--charcoal)' }}>{activeGlCount}</p>
+                <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Active wallets with remaining balance</p>
+              </div>
               {/* Approved */}
               <div className="rounded-xl p-4 border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                 <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Total Approved (SOA)</p>
