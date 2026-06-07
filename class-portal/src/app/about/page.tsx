@@ -229,7 +229,21 @@ function BranchCard({ name, address, email, phones }: { name: string; address: s
       <ul className="space-y-2.5 text-[13.5px] text-[color:var(--ink)]">
         <li className="flex gap-2.5"><span aria-hidden>📍</span><span>{address}</span></li>
         <li className="flex gap-2.5"><span aria-hidden>✉️</span>
-          <a href={`mailto:${email}`} className="text-[color:var(--narra)] hover:underline break-all">{email}</a>
+          {/* Wrap on the @ if the card is too narrow for one line —
+              `<wbr>` gives the browser a preferred break point so we
+              get "east@" / "sapphireclinicseast.org" instead of the
+              previous break-all which orphaned the trailing "g".
+              break-words is the fallback for very narrow containers. */}
+          <a
+            href={`mailto:${email}`}
+            className="text-[color:var(--narra)] hover:underline break-words min-w-0"
+          >
+            {(() => {
+              const at = email.indexOf('@')
+              if (at === -1) return email
+              return <>{email.slice(0, at + 1)}<wbr />{email.slice(at + 1)}</>
+            })()}
+          </a>
         </li>
         <li className="flex gap-2.5"><span aria-hidden>📞</span>
           <span className="flex flex-wrap gap-x-2 gap-y-1">
