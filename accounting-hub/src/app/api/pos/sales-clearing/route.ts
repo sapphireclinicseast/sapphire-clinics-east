@@ -27,13 +27,44 @@ export async function GET(req: Request) {
   return NextResponse.json(records)
 }
 
+// PUT: save draft (actualAmounts + remarks) without marking the day as cleared
+export async function PUT(req: Request) {
+  const session = await auth()
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const body = await req.json()
+  const { date, branch, actualAmounts, remarks } = body
+
+  if (!date || !branch) {
+    return NextResponse.json({ error: 'date and branch are required' }, { status: 400 })
+  }
+
+  const record = await prisma.salesDayClearing.upsert({
+    where: { date_branch: { date, branch } },
+    update: {
+      actualAmounts: actualAmounts ?? null,
+      remarks: remarks ?? null,
+    },
+    create: {
+      date,
+      branch,
+      clearedById: session.user.id as string,
+      isCleared: false,
+      actualAmounts: actualAmounts ?? null,
+      remarks: remarks ?? null,
+    },
+  })
+
+  return NextResponse.json(record)
+}
+
 // POST: mark a day as cleared (upsert)
 export async function POST(req: Request) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { date, branch, remarks } = body
+  const { date, branch, actualAmounts, remarks } = body
 
   if (!date || !branch) {
     return NextResponse.json({ error: 'date and branch are required' }, { status: 400 })
@@ -44,12 +75,16 @@ export async function POST(req: Request) {
     update: {
       clearedById: session.user.id as string,
       clearedAt: new Date(),
+      isCleared: true,
+      actualAmounts: actualAmounts ?? null,
       remarks: remarks ?? null,
     },
     create: {
       date,
       branch,
       clearedById: session.user.id as string,
+      isCleared: true,
+      actualAmounts: actualAmounts ?? null,
       remarks: remarks ?? null,
     },
   })
@@ -57,7 +92,7 @@ export async function POST(req: Request) {
   return NextResponse.json(record)
 }
 
-// DELETE: unmark a cleared day
+// DELETE: unmark a cleared day (preserves saved draft data, just un-clears)
 export async function DELETE(req: Request) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -71,9 +106,13 @@ export async function DELETE(req: Request) {
   }
 
   try {
-    await prisma.salesDayClearing.delete({ where: { date_branch: { date, branch } } })
+    // Set isCleared to false rather than deleting, so saved actualAmounts/remarks are preserved
+    await prisma.salesDayClearing.update({
+      where: { date_branch: { date, branch } },
+      data: { isCleared: false },
+    })
   } catch {
-    // already deleted — ignore
+    // Record doesn't exist — ignore
   }
 
   return NextResponse.json({ ok: true })
