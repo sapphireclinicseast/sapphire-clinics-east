@@ -302,8 +302,9 @@ export async function PUT(
     // GL: balance is set once at wallet creation and auto-managed by orders thereafter
     //     (decremented on order, restored on void) — read-only after creation.
     // VIP / PREPAID_CARD / DOWNPAYMENT / ADVANCE / PACKAGE: user-maintained balances.
-    const existing = await prisma.digitalWallet.findUnique({ where: { id }, select: { walletType: true } })
+    const existing = await prisma.digitalWallet.findUnique({ where: { id }, select: { walletType: true, totalGlAmount: true } })
     const isBalanceReadOnly = existing?.walletType === 'HMO' || existing?.walletType === 'GL'
+    const existingGlAmount = existing?.totalGlAmount != null ? Number(existing.totalGlAmount) : null
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = {}
@@ -327,10 +328,34 @@ export async function PUT(
     }
     if (rewardPoints !== undefined) data.rewardPoints = parseInt(rewardPoints) || 0
     if (totalGlAmount !== undefined) {
-      // Use Number() instead of parseFloat()||null so that valid 0 values are preserved
-      // and non-empty strings are properly coerced.
       const glNum = totalGlAmount !== '' && totalGlAmount !== null ? Number(totalGlAmount) : null
-      data.totalGlAmount = glNum !== null && !isNaN(glNum) ? glNum : null
+      const newGlAmount = glNum !== null && !isNaN(glNum) ? glNum : null
+
+      // DEFINITIVE PROTECTION: once a positive totalGlAmount exists in DB it is
+      // completely immutable through the normal PUT path.  The ONLY way to change it
+      // is to pass forceUpdateGlAmount=true explicitly — which the client only sends
+      // when the user has manually unlocked the "Approved SOA" field AND changed the
+      // value.  This closes the historical "reversion" bug where any save (even one
+      // that didn't touch the GL-amount field) could accidentally overwrite the value:
+      //   • old guard only blocked decreases — same-or-higher values still wrote
+      //   • stale walletDetail after a reload made the client think the value changed
+      //   • any code path that included totalGlAmount in the body would overwrite it
+      // Now the rule is simple: if it is already set, we do not touch it. Period.
+      if (existingGlAmount !== null && existingGlAmount > 0) {
+        if (body.forceUpdateGlAmount === true && newGlAmount !== null && newGlAmount > 0) {
+          // User explicitly unlocked and changed the value — allow the update
+          data.totalGlAmount = newGlAmount
+          console.log(`[wallet PUT] id=${id} totalGlAmount FORCE-updated: ${existingGlAmount} → ${newGlAmount}`)
+        } else {
+          // Silently preserve — do not write anything regardless of incoming value
+          console.log(`[wallet PUT] id=${id} totalGlAmount PROTECTED (existing=${existingGlAmount}, incoming=${JSON.stringify(totalGlAmount)}, force=${!!body.forceUpdateGlAmount})`)
+        }
+      } else if (newGlAmount !== null && newGlAmount > 0) {
+        // First-time initialisation (DB had null/0) — allow setting
+        data.totalGlAmount = newGlAmount
+        console.log(`[wallet PUT] id=${id} totalGlAmount INITIALIZED: ${newGlAmount}`)
+      }
+      // else: both null/0 — nothing to write
     }
     if (branch !== undefined) data.branch = branch || 'ALL'
     if (soaStatus !== undefined) data.soaStatus = soaStatus || 'With GL/No SOA'
