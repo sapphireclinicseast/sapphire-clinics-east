@@ -7249,8 +7249,14 @@ function SalesSection({ branch, canSelectBranch }: { branch: string; canSelectBr
           </button>
         ))}
       </div>
-      {salesTab === 'summary' && <SalesSummarySection branch={branch} canSelectBranch={canSelectBranch} />}
-      {salesTab === 'checking' && <SalesCheckingPanel branch={branch} canSelectBranch={canSelectBranch} />}
+      {/* Keep both panels mounted so SalesCheckingPanel state (unsaved inputs) survives tab switches.
+          Use CSS display instead of conditional rendering to avoid unmount/remount. */}
+      <div style={{ display: salesTab === 'summary' ? 'block' : 'none' }}>
+        <SalesSummarySection branch={branch} canSelectBranch={canSelectBranch} />
+      </div>
+      <div style={{ display: salesTab === 'checking' ? 'block' : 'none' }}>
+        <SalesCheckingPanel branch={branch} canSelectBranch={canSelectBranch} />
+      </div>
     </div>
   )
 }
@@ -7259,7 +7265,8 @@ function SalesSection({ branch, canSelectBranch }: { branch: string; canSelectBr
    SALES CHECKING PANEL
    ══════════════════════════════════════════════════════════════ */
 function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSelectBranch: boolean }) {
-  const [selectedBranch, setSelectedBranch] = useState(canSelectBranch ? '' : branch)
+  // Always default to a specific branch — Sales Checking is per-branch only
+  const [selectedBranch, setSelectedBranch] = useState(canSelectBranch ? 'SANDBOX_EAST' : branch)
   const [dateFrom, setDateFrom] = useState(today())
   const [dateTo, setDateTo] = useState(today())
   const [orders, setOrders] = useState<Order[]>([])
@@ -7271,9 +7278,14 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
   // cleared days: { "YYYY-MM-DD|branch": true }
   const [clearedDays, setClearedDays] = useState<Record<string, { clearedAt: string; clearedById: string }>>({})
   const [clearingInProgress, setClearingInProgress] = useState(false)
+  const [clearingError, setClearingError] = useState<string | null>(null)
+  const [savingDay, setSavingDay] = useState<Record<string, boolean>>({})
+  const [savedDayFeedback, setSavedDayFeedback] = useState<Record<string, boolean>>({})
   // Calendar month for summary
   const [calYear, setCalYear] = useState(new Date().getFullYear())
   const [calMonth, setCalMonth] = useState(new Date().getMonth()) // 0-indexed
+  // Debounce timers: auto-save 800 ms after the user stops typing in any field for a given day
+  const saveDayTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   useEffect(() => {
     fetch('/api/pos/payment-modes').then(r => r.json()).then(d => setModes(Array.isArray(d) ? d : [])).catch(() => {})
@@ -7315,10 +7327,59 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
       const data = await r.json()
       if (Array.isArray(data)) {
         const map: Record<string, { clearedAt: string; clearedById: string }> = {}
+        const dbActualAmounts: Record<string, Record<string, number>> = {}
+        const dbRemarks: Record<string, Record<string, string>> = {}
         for (const rec of data) {
-          map[`${rec.date}|${rec.branch}`] = { clearedAt: rec.clearedAt, clearedById: rec.clearedById }
+          if (rec.isCleared) {
+            map[`${rec.date}|${rec.branch}`] = { clearedAt: rec.clearedAt, clearedById: rec.clearedById }
+          }
+          if (Array.isArray(rec.actualAmounts)) {
+            dbActualAmounts[rec.date] = {}
+            for (const item of rec.actualAmounts as { method: string; amount: number }[]) {
+              dbActualAmounts[rec.date][item.method] = item.amount
+            }
+          }
+          if (Array.isArray(rec.remarks)) {
+            dbRemarks[rec.date] = {}
+            for (const item of rec.remarks as { method: string; remarks: string }[]) {
+              if (item.remarks) dbRemarks[rec.date][item.method] = item.remarks
+            }
+          }
         }
         setClearedDays(map)
+        // Merge DB saved data per method: preserve any field the user has already edited locally,
+        // but fill in DB values for methods the user hasn't touched yet.
+        setActualAmounts(prev => {
+          const merged = { ...prev }
+          for (const [d, methods] of Object.entries(dbActualAmounts)) {
+            if (!merged[d]) {
+              merged[d] = methods
+            } else {
+              // Per-method merge — only load from DB for methods not yet in local state
+              const dayMerged = { ...merged[d] }
+              for (const [method, amount] of Object.entries(methods)) {
+                if (dayMerged[method] === undefined) dayMerged[method] = amount
+              }
+              merged[d] = dayMerged
+            }
+          }
+          return merged
+        })
+        setRemarks(prev => {
+          const merged = { ...prev }
+          for (const [d, methods] of Object.entries(dbRemarks)) {
+            if (!merged[d]) {
+              merged[d] = methods
+            } else {
+              const dayMerged = { ...merged[d] }
+              for (const [method, remark] of Object.entries(methods)) {
+                if (!dayMerged[method]) dayMerged[method] = remark
+              }
+              merged[d] = dayMerged
+            }
+          }
+          return merged
+        })
       }
     } catch { /* ignore */ }
   }, [selectedBranch, dateFrom, dateTo, calYear, calMonth])
@@ -7357,6 +7418,14 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
     setRemarks(prev => ({ ...prev, [day]: { ...prev[day], [method]: val } }))
   }
 
+  // Auto-save 800 ms after the user stops typing — prevents data loss when the user
+  // changes filters or switches tabs without explicitly clicking Save.
+  const debouncedSave = useCallback((day: string) => {
+    if (saveDayTimers.current[day]) clearTimeout(saveDayTimers.current[day])
+    saveDayTimers.current[day] = setTimeout(() => saveDay(day), 800)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // "All cleared" = every method present for that day has OK checked
   const isDayAllCleared = (day: string) => {
     const methods = byDate.get(day)
@@ -7368,22 +7437,69 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
 
   const isClearedInDB = (day: string, br: string) => !!clearedDays[`${day}|${br}`]
 
+  const saveDay = async (day: string) => {
+    const br = selectedBranch || branch
+    if (!br) return
+    setSavingDay(prev => ({ ...prev, [day]: true }))
+    try {
+      // Include all methods present in byDate for this day
+      const dayMethods = byDate.get(day)
+      const allMethodKeys = dayMethods ? Array.from(dayMethods.keys()) : []
+      const amountsList = allMethodKeys
+        .map(m => ({ method: m, amount: (typeof getActual(day, m) === 'number' ? getActual(day, m) as number : 0) }))
+      const remarksList = allMethodKeys
+        .map(m => ({ method: m, remarks: getRemark(day, m) }))
+        .filter(r => r.remarks)
+      await fetch('/api/pos/sales-clearing', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: day,
+          branch: br,
+          actualAmounts: amountsList,
+          remarks: remarksList.length ? remarksList : null,
+        }),
+      })
+      setSavedDayFeedback(prev => ({ ...prev, [day]: true }))
+      setTimeout(() => setSavedDayFeedback(prev => ({ ...prev, [day]: false })), 2500)
+    } catch { /* ignore */ }
+    setSavingDay(prev => ({ ...prev, [day]: false }))
+  }
+
   const clearDay = async (day: string) => {
     const br = selectedBranch || branch
     if (!br) return
     setClearingInProgress(true)
+    setClearingError(null)
     try {
-      const remarksList = sortedMethods
-        .filter(m => byDate.get(day)?.has(m))
+      // Include all methods present in byDate for this day (not just CHECKING_METHODS)
+      const dayMethods = byDate.get(day)
+      const allMethodKeys = dayMethods ? Array.from(dayMethods.keys()) : []
+      const amountsList = allMethodKeys
+        .map(m => ({ method: m, amount: (typeof getActual(day, m) === 'number' ? getActual(day, m) as number : 0) }))
+      const remarksList = allMethodKeys
         .map(m => ({ method: m, remarks: getRemark(day, m) }))
         .filter(r => r.remarks)
-      await fetch('/api/pos/sales-clearing', {
+      const res = await fetch('/api/pos/sales-clearing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: day, branch: br, remarks: remarksList.length ? remarksList : null }),
+        body: JSON.stringify({
+          date: day,
+          branch: br,
+          actualAmounts: amountsList,
+          remarks: remarksList.length ? remarksList : null,
+        }),
       })
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        setClearingError((errData as { error?: string }).error || `Server error (${res.status})`)
+        setClearingInProgress(false)
+        return
+      }
       await fetchClearing()
-    } catch { /* ignore */ }
+    } catch (e) {
+      setClearingError(e instanceof Error ? e.message : 'Network error — please try again')
+    }
     setClearingInProgress(false)
   }
 
@@ -7401,11 +7517,8 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
   const calDaysInMonth = new Date(calYear, calMonth + 1, 0).getDate()
   const calFirstDow = new Date(calYear, calMonth, 1).getDay() // 0=Sun
 
-  const calBranches = selectedBranch
-    ? [selectedBranch]
-    : canSelectBranch
-    ? ['SANDBOX_EAST', 'SANDBOX_GREENHILLS']
-    : [branch]
+  // selectedBranch is always a specific branch (no All Branches option)
+  const calBranches = [selectedBranch || branch]
 
   return (
     <div className="space-y-6">
@@ -7421,9 +7534,8 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
         {canSelectBranch && (
           <select value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)}
             className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
-            <option value="">All Branches</option>
-            <option value="SANDBOX_EAST">Sandbox East</option>
-            <option value="SANDBOX_GREENHILLS">Sandbox Greenhills</option>
+            <option value="SANDBOX_EAST">East Branch</option>
+            <option value="SANDBOX_GREENHILLS">Greenhills Branch</option>
           </select>
         )}
         <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
@@ -7444,7 +7556,6 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
             const dayLabel = new Date(day + 'T00:00:00').toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
             const br = selectedBranch || branch
             const cleared = br ? isClearedInDB(day, br) : false
-            const allOk = isDayAllCleared(day)
             return (
               <div key={day} className="rounded-2xl border overflow-hidden" style={{ borderColor: cleared ? '#16a34a' : 'var(--light-gray)' }}>
                 <div className="px-4 py-2.5 flex items-center justify-between"
@@ -7475,7 +7586,8 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
                           <td className="px-4 py-2 text-right font-mono" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(systemAmt)}</td>
                           <td className="px-4 py-2 text-right">
                             <input type="number" step="0.01" value={getActual(day, method)}
-                              onChange={e => setActual(day, method, parseFloat(e.target.value) || 0)}
+                              onChange={e => { setActual(day, method, parseFloat(e.target.value) || 0); debouncedSave(day) }}
+                              onBlur={() => saveDay(day)}
                               placeholder="0.00"
                               className="w-28 px-2 py-1 rounded-lg border text-xs text-right outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                           </td>
@@ -7494,7 +7606,8 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
                           </td>
                           <td className="px-4 py-2">
                             <input type="text" value={getRemark(day, method)}
-                              onChange={e => setRemark(day, method, e.target.value)}
+                              onChange={e => { setRemark(day, method, e.target.value); debouncedSave(day) }}
+                              onBlur={() => saveDay(day)}
                               placeholder="Optional note..."
                               className="w-full px-2 py-1 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                           </td>
@@ -7505,21 +7618,40 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
                 </table>
                 {/* Cleared for the day button */}
                 {br && (
-                  <div className="px-4 py-3 border-t flex justify-end" style={{ borderColor: 'var(--light-gray)' }}>
-                    {cleared ? (
-                      <button onClick={() => unclearDay(day)}
-                        className="px-4 py-2 rounded-xl text-xs font-medium border"
-                        style={{ borderColor: '#16a34a', color: '#16a34a', background: 'transparent' }}>
-                        Undo Clearing
-                      </button>
-                    ) : (
+                  <div className="px-4 py-3 border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                    <div className="flex items-center justify-between">
+                      {/* Save draft button — always visible */}
                       <button
-                        onClick={() => clearDay(day)}
-                        disabled={!allOk || clearingInProgress}
-                        className="px-4 py-2 rounded-xl text-xs font-semibold text-white transition-opacity"
-                        style={{ background: allOk ? '#16a34a' : '#9ca3af', opacity: clearingInProgress ? 0.7 : 1, cursor: allOk ? 'pointer' : 'not-allowed' }}>
-                        {clearingInProgress ? 'Saving…' : 'Cleared for the Day'}
+                        onClick={() => saveDay(day)}
+                        disabled={savingDay[day] || cleared}
+                        className="px-4 py-2 rounded-xl text-xs font-medium border transition-all"
+                        style={{
+                          borderColor: savedDayFeedback[day] ? '#16a34a' : 'var(--teal)',
+                          color: savedDayFeedback[day] ? '#16a34a' : 'var(--teal)',
+                          background: 'transparent',
+                          opacity: (savingDay[day] || cleared) ? 0.5 : 1,
+                          cursor: (savingDay[day] || cleared) ? 'not-allowed' : 'pointer',
+                        }}>
+                        {savingDay[day] ? 'Saving…' : savedDayFeedback[day] ? '✓ Saved' : 'Save'}
                       </button>
+                      {cleared ? (
+                        <button onClick={() => unclearDay(day)}
+                          className="px-4 py-2 rounded-xl text-xs font-medium border"
+                          style={{ borderColor: '#16a34a', color: '#16a34a', background: 'transparent' }}>
+                          Undo Clearing
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => { setClearingError(null); clearDay(day) }}
+                          disabled={clearingInProgress}
+                          className="px-4 py-2 rounded-xl text-xs font-semibold text-white transition-opacity"
+                          style={{ background: '#16a34a', opacity: clearingInProgress ? 0.7 : 1, cursor: clearingInProgress ? 'not-allowed' : 'pointer' }}>
+                          {clearingInProgress ? 'Saving…' : 'Cleared for the Day'}
+                        </button>
+                      )}
+                    </div>
+                    {clearingError && (
+                      <p className="mt-2 text-xs" style={{ color: '#dc2626' }}>⚠ {clearingError}</p>
                     )}
                   </div>
                 )}
@@ -7544,7 +7676,7 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
         </div>
         <div className="p-4">
           {calBranches.map(br => {
-            const brLabel = br === 'SANDBOX_EAST' ? 'Sandbox East' : br === 'SANDBOX_GREENHILLS' ? 'Sandbox Greenhills' : br
+            const brLabel = br === 'SANDBOX_EAST' ? 'East Branch' : br === 'SANDBOX_GREENHILLS' ? 'Greenhills Branch' : br
             return (
               <div key={br} className={calBranches.length > 1 ? 'mb-6' : ''}>
                 {calBranches.length > 1 && (
