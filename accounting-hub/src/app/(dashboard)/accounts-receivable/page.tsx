@@ -743,16 +743,19 @@ export default function AccountsReceivablePage() {
         const pctConsumed = totalApproved > 0 ? Math.min(100, (totalConsumed / totalApproved) * 100) : 0
         const pctPaid = totalApproved > 0 ? Math.min(100, (totalPaid / totalApproved) * 100) : 0
 
-        // Active GL wallets: isActive=true (from API) AND remaining balance > 0 (not fully exhausted).
-        // The AR API overrides w.balance with totalGlAmount for GL (approved-amount AR),
-        // so comparing balance vs totalGlAmount would always be equal. Instead use
-        // consumedOutstanding (= totalGlAmount − rawBalance) which the API computes
-        // server-side from the actual DB balance field before the substitution.
-        // A wallet is "active" when it still has remaining balance (whether or not any amount
-        // has been consumed yet — untouched wallets with full balance are also active).
+        // Active GL wallet = partially used:
+        //   Approved SOA > Remaining Balance  AND  Remaining Balance ≠ 0.
+        // Inactive = untouched (Approved SOA == Remaining Balance) OR fully used (Remaining == 0).
+        // The AR API overrides w.balance with totalGlAmount for GL (approved-amount AR), so
+        // Remaining Balance is derived as totalGlAmount − consumedOutstanding (consumedOutstanding
+        // = totalGlAmount − rawBalance, computed server-side from the real DB balance).
+        //   Approved SOA > Remaining  ⟺  consumed > 0
+        //   Remaining ≠ 0             ⟺  remaining > 0
         const activeGlCount = wallets.filter(w => {
+          const approved = toNum(w.totalGlAmount)
           const consumed = w.consumedOutstanding ?? 0
-          return toNum(w.totalGlAmount) > consumed + 0.005
+          const remaining = approved - consumed
+          return consumed > 0.005 && remaining > 0.005
         }).length
 
         // Service type breakdown from approvedServices field on GL wallets
@@ -871,11 +874,11 @@ export default function AccountsReceivablePage() {
 
             {/* % cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Active GL wallets count — isActive=true and remaining balance > 0 */}
+              {/* Active GL wallets count — partially used: Approved SOA > Remaining Balance and Remaining ≠ 0 */}
               <div className="rounded-xl p-4 border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                 <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Active GL Wallets</p>
                 <p className="text-3xl font-bold" style={{ color: 'var(--charcoal)' }}>{activeGlCount}</p>
-                <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Active wallets with remaining balance</p>
+                <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Partially used — SOA above a non-zero balance</p>
               </div>
               {/* Approved */}
               <div className="rounded-xl p-4 border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
