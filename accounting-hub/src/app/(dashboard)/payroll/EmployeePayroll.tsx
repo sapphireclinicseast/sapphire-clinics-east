@@ -21,20 +21,20 @@ const EMP_DEPARTMENTS = [
 
 const BRANCHES = [
   { value: '', label: 'All Branches' },
-  { value: 'SBEA', label: 'Sandbox East' },
-  { value: 'SBGH', label: 'Sandbox Greenhills' },
+  { value: 'SBEA', label: 'East Branch' },
+  { value: 'SBGH', label: 'Greenhills Branch' },
   { value: 'VERDANA', label: 'Verdana Store' },
 ]
 
 const BRANCH_INFO: Record<string, { name: string; address: string; phone: string; tin: string }> = {
   SBEA: {
-    name: 'Sandbox Clinic – East Branch',
+    name: 'SCEI – East Branch',
     address: '4th Floor Robinsons Metro East, Marcos Highway, Dela Paz, Pasig City',
     phone: '0917 118 9289 | (02) 5310-4991',
     tin: 'TIN 010-817-642-00000',
   },
   SBGH: {
-    name: 'Sandbox Clinic – Greenhills Branch',
+    name: 'SCEI – Greenhills Branch',
     address: 'Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City',
     phone: '0917 770 1686 | (02) 8529 1590',
     tin: 'TIN 010-817-642-00001',
@@ -2215,7 +2215,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                       )}
                       <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{emp.firstName} {emp.lastName}</td>
                       <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{emp.department}</td>
-                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{emp.branch === 'SBEA' ? 'Sandbox East' : emp.branch === 'SBGH' ? 'Sandbox GH' : emp.branch}</td>
+                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{emp.branch === 'SBEA' ? 'East Branch' : emp.branch === 'SBGH' ? 'Greenhills Branch' : emp.branch}</td>
                       <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{formatJobTitle(emp.jobTitle)}</td>
                       <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{emp.rateType === 'DAILY' ? 'Daily' : 'Monthly'}</td>
                       <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>
@@ -2775,8 +2775,8 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
             <h4 className="text-xs font-bold mb-3" style={{ color: 'var(--charcoal)' }}>Certificate Settings — HR Officer Name (COE/COC Signatory)</h4>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
               {[
-                { key: 'hrOfficerNameSBEA', label: 'Sandbox East' },
-                { key: 'hrOfficerNameSBGH', label: 'Sandbox Greenhills' },
+                { key: 'hrOfficerNameSBEA', label: 'East Branch' },
+                { key: 'hrOfficerNameSBGH', label: 'Greenhills Branch' },
                 { key: 'hrOfficerNameVERDANA', label: 'Verdana Store' },
               ].map(f => (
                 <div key={f.key}>

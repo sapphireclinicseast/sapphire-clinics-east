@@ -422,7 +422,7 @@ function printThermalReceipt(order: {
   const totalPaid = order.payments.reduce((s, p) => s + Number(p.amount), 0)
   const change = totalPaid - Number(order.netAmount)
   const isVerdana = order.branch === 'VERDANA_STORE'
-  const branchName = order.branch === 'SANDBOX_EAST' ? 'Sandbox Clinic \u2013 East' : order.branch === 'SANDBOX_GREENHILLS' ? 'Sandbox Clinic \u2013 Greenhills' : isVerdana ? 'VERDANA STORE' : order.branch || ''
+  const branchName = order.branch === 'SANDBOX_EAST' ? 'SCEI \u2013 East' : order.branch === 'SANDBOX_GREENHILLS' ? 'SCEI \u2013 Greenhills' : isVerdana ? 'VERDANA STORE' : order.branch || ''
   const address = isVerdana ? 'Room 210B, Henry\'s Building, 80 Ortigas Extension, San Juan City' : order.branch === 'SANDBOX_GREENHILLS' ? 'Greenhills Shopping Center, San Juan City' : 'Level 4 Robinsons MetroEast, Brgy. Dela Paz, Pasig City'
   const phone = isVerdana ? '+63 917 173 1368' : '+63 917 118 9289 | (02) 5310 4991'
   const email = isVerdana ? 'verdanatrading@gmail.com' : 'east.sandboxclinic@gmail.com'
@@ -4084,7 +4084,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         </div>
       </div>`
     } else {
-      // PREPAID CARD LAYOUT (Sandbox Clinic style)
+      // PREPAID CARD LAYOUT (SCEI style)
       frontHtml = `<div class="card" style="background:#FFF;border:1px solid #ddd">
         <div style="padding:15px;display:flex;flex-direction:column;justify-content:space-between;width:100%;height:100%;box-sizing:border-box">
           <img src="${logoUrl}" style="height:32px;object-fit:contain;align-self:flex-start" />
@@ -4109,10 +4109,10 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;padding:12px;box-sizing:border-box;text-align:center">
           <img src="${barcodeImg}" style="height:45px;max-width:240px;margin-bottom:6px" />
           <div style="font-size:7px;font-weight:700;color:#E8641B;margin-bottom:4px">
-            Thank you for choosing Sandbox Clinic<br/>for your health and rehabilitation needs!
+            Thank you for choosing SCEI<br/>for your health and rehabilitation needs!
           </div>
           <div style="font-size:5.5px;color:#333;text-align:justify;padding:0 8px;margin-bottom:4px;line-height:1.4">
-            Your reloadable card lets you earn points every time you avail of our services or purchase products. Simply present this card during each visit to collect points and redeem exclusive Sandbox rewards and merchandise.
+            Your reloadable card lets you earn points every time you avail of our services or purchase products. Simply present this card during each visit to collect points and redeem exclusive SCEI rewards and merchandise.
           </div>
           <img src="${logoUrl}" style="height:18px;object-fit:contain" />
         </div>
@@ -4181,7 +4181,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     if (!showSOA) return
     const providerName = showSOA.patientName
     const isHMO = showSOA.walletType === 'HMO'
-    const branchLabel = soaBranch === 'SANDBOX_EAST' ? 'Sandbox Clinic — East' : soaBranch === 'SANDBOX_GREENHILLS' ? 'Sandbox Clinic — Greenhills' : soaBranch === 'VERDANA_STORE' ? 'Verdana Store' : 'All Branches'
+    const branchLabel = soaBranch === 'SANDBOX_EAST' ? 'SCEI — East' : soaBranch === 'SANDBOX_GREENHILLS' ? 'SCEI — Greenhills' : soaBranch === 'VERDANA_STORE' ? 'Verdana Store' : 'All Branches'
     const logoUrl = `${window.location.origin}/brand/sandbox-clinic-logo.png`
     const totalAmount = soaOrders.reduce((s, o) => {
       const hmoPayment = o.payments.find(p => p.method === showSOA.walletType && p.reference?.trim().toLowerCase() === providerName.toLowerCase())
@@ -4337,8 +4337,8 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
             className="text-xs px-2.5 py-1.5 rounded-lg border outline-none bg-white"
             style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
             <option value="">All Branches</option>
-            <option value="SANDBOX_EAST">Sandbox East</option>
-            <option value="SANDBOX_GREENHILLS">Sandbox Greenhills</option>
+            <option value="SANDBOX_EAST">East Branch</option>
+            <option value="SANDBOX_GREENHILLS">Greenhills Branch</option>
             <option value="VERDANA_STORE">Verdana Store</option>
           </select>
         )}
@@ -5052,8 +5052,8 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                 <select value={createForm.branch} onChange={e => setCreateForm({ ...createForm, branch: e.target.value })}
                   className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
                   <option value="ALL">All Branches</option>
-                  <option value="SANDBOX_EAST">Sandbox East</option>
-                  <option value="SANDBOX_GREENHILLS">Sandbox Greenhills</option>
+                  <option value="SANDBOX_EAST">East Branch</option>
+                  <option value="SANDBOX_GREENHILLS">Greenhills Branch</option>
                 </select>
               </div>
               {createError && <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle size={12} />{createError}</p>}
@@ -5288,8 +5288,8 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                     <select value={walletEditForm.branch || 'ALL'} onChange={e => setWalletEditForm(p => ({ ...p, branch: e.target.value }))}
                       className="w-full px-3 py-2 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
                       <option value="ALL">All Branches</option>
-                      <option value="SANDBOX_EAST">Sandbox East</option>
-                      <option value="SANDBOX_GREENHILLS">Sandbox Greenhills</option>
+                      <option value="SANDBOX_EAST">East Branch</option>
+                      <option value="SANDBOX_GREENHILLS">Greenhills Branch</option>
                     </select>
                   </div>
                 </div>
@@ -8500,8 +8500,8 @@ function PaymentModeSettingsPanel() {
                 <select value={form.branch} onChange={e => setForm({ ...form, branch: e.target.value })}
                   className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
                   <option value="">All Branches</option>
-                  <option value="SANDBOX_EAST">Sandbox East</option>
-                  <option value="SANDBOX_GREENHILLS">Sandbox Greenhills</option>
+                  <option value="SANDBOX_EAST">East Branch</option>
+                  <option value="SANDBOX_GREENHILLS">Greenhills Branch</option>
                   <option value="VERDANA_STORE">Verdana Store</option>
                 </select>
               </div>

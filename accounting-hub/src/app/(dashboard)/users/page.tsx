@@ -38,8 +38,8 @@ const ROLE_OPTIONS = [
 
 const BRANCH_OPTIONS = [
   { value: 'ALL', label: 'All Branches' },
-  { value: 'SANDBOX_EAST', label: 'Sandbox East' },
-  { value: 'SANDBOX_GREENHILLS', label: 'Sandbox Greenhills' },
+  { value: 'SANDBOX_EAST', label: 'East Branch' },
+  { value: 'SANDBOX_GREENHILLS', label: 'Greenhills Branch' },
   { value: 'VERDANA_STORE', label: 'Verdana Store' },
 ]
 
@@ -56,8 +56,8 @@ const ROLE_LABELS: Record<string, string> = {
 }
 
 const BRANCH_LABELS: Record<string, string> = {
-  SANDBOX_EAST: 'Sandbox East',
-  SANDBOX_GREENHILLS: 'Sandbox Greenhills',
+  SANDBOX_EAST: 'East Branch',
+  SANDBOX_GREENHILLS: 'Greenhills Branch',
   VERDANA_STORE: 'Verdana Store',
 }
 

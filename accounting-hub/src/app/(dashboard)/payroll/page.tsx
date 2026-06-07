@@ -238,13 +238,13 @@ const POSITION_LABELS: Record<string, string> = {
 
 const BRANCH_INFO: Record<string, { name: string; address: string; phone: string; tin: string }> = {
   SBEA: {
-    name: 'Sandbox Clinic – East Branch',
+    name: 'SCEI – East Branch',
     address: '4th Floor Robinsons Metro East, Marcos Highway, Dela Paz, Pasig City',
     phone: '0917 118 9289 | (02) 5310-4991',
     tin: 'TIN 010-817-642-00000',
   },
   SBGH: {
-    name: 'Sandbox Clinic – Greenhills Branch',
+    name: 'SCEI – Greenhills Branch',
     address: 'Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City',
     phone: '0917 770 1686 | (02) 8529 1590',
     tin: 'TIN 010-817-642-00001',
@@ -256,7 +256,7 @@ const BRANCH_INFO: Record<string, { name: string; address: string; phone: string
     tin: '',
   },
   '': {
-    name: 'Sandbox Clinic',
+    name: 'SCEI',
     address: 'Metro Manila, Philippines',
     phone: '0917 770 1686 | (02) 8529 1590',
     tin: '',
@@ -265,8 +265,8 @@ const BRANCH_INFO: Record<string, { name: string; address: string; phone: string
 
 const BRANCHES = [
   { value: '', label: 'All Branches' },
-  { value: 'SBEA', label: 'Sandbox East' },
-  { value: 'SBGH', label: 'Sandbox Greenhills' },
+  { value: 'SBEA', label: 'East Branch' },
+  { value: 'SBGH', label: 'Greenhills Branch' },
   { value: 'VERDANA', label: 'Verdana Store' },
 ]
 
@@ -3235,8 +3235,8 @@ export default function PayrollPage() {
                         <select value={incForm.branch} onChange={e => setIncForm({ ...incForm, branch: e.target.value })}
                           className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
                           <option value="">All branches</option>
-                          <option value="SBEA">Sandbox East (SBEA)</option>
-                          <option value="SBGH">Sandbox Greenhills (SBGH)</option>
+                          <option value="SBEA">East Branch (SBEA)</option>
+                          <option value="SBGH">Greenhills Branch (SBGH)</option>
                           <option value="VERDANA">Verdana Store</option>
                         </select>
                       </div>

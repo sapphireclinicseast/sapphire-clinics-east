@@ -23,8 +23,8 @@ const DEPT_LABELS: Record<string, string> = {
 }
 
 const BRANCH_LABELS: Record<string, string> = {
-  SBEA: 'Sandbox East', SBGH: 'Sandbox Greenhills', VERDANA_STORE: 'Verdana Store',
-  SANDBOX_EAST: 'Sandbox East', SANDBOX_GREENHILLS: 'Sandbox Greenhills',
+  SBEA: 'East Branch', SBGH: 'Greenhills Branch', VERDANA_STORE: 'Verdana Store',
+  SANDBOX_EAST: 'East Branch', SANDBOX_GREENHILLS: 'Greenhills Branch',
 }
 
 export async function GET(req: Request) {
@@ -70,7 +70,7 @@ export async function GET(req: Request) {
         '2070': 'PPE and Lease Improvements', '2080': 'Therapy Equipment',
         '2090': 'Treatment and Assessment Tools', '2100': 'Vehicles',
       }
-      const DEP_BRANCH_LABELS = { SANDBOX_EAST: 'Sandbox East', SANDBOX_GREENHILLS: 'Sandbox Greenhills', VERDANA_STORE: 'Verdana Store' }
+      const DEP_BRANCH_LABELS = { SANDBOX_EAST: 'East Branch', SANDBOX_GREENHILLS: 'Greenhills Branch', VERDANA_STORE: 'Verdana Store' }
       const items: { date: string; type: string; branch: string; amount: number }[] = []
       for (const asset of assets) {
         const monthlyDep = Number(asset.monthlyDepreciation)
@@ -105,7 +105,7 @@ export async function GET(req: Request) {
         '2070': 'PPE and Lease Improvements', '2080': 'Therapy Equipment',
         '2090': 'Treatment and Assessment Tools', '2100': 'Vehicles',
       }
-      const DEP_BRANCH_LABELS = { SANDBOX_EAST: 'Sandbox East', SANDBOX_GREENHILLS: 'Sandbox Greenhills', VERDANA_STORE: 'Verdana Store' }
+      const DEP_BRANCH_LABELS = { SANDBOX_EAST: 'East Branch', SANDBOX_GREENHILLS: 'Greenhills Branch', VERDANA_STORE: 'Verdana Store' }
       const items: { date: string; type: string; branch: string; amount: number }[] = []
       for (const asset of assets) {
         const monthlyDep = Number(asset.monthlyDepreciation)

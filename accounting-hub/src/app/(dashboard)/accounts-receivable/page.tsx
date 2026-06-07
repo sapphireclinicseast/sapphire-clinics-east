@@ -698,8 +698,8 @@ export default function AccountsReceivablePage() {
         <span className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Branch:</span>
         {([
           { value: '', label: 'All' },
-          { value: 'SANDBOX_EAST', label: 'Sandbox East' },
-          { value: 'SANDBOX_GREENHILLS', label: 'Sandbox Greenhills' },
+          { value: 'SANDBOX_EAST', label: 'East Branch' },
+          { value: 'SANDBOX_GREENHILLS', label: 'Greenhills Branch' },
           { value: 'VERDANA_STORE', label: 'Verdana' },
         ] as const).map(b => (
           <button
@@ -1873,7 +1873,7 @@ export default function AccountsReceivablePage() {
             <div className="space-y-3">
               {[
                 { key: 'companyName', label: 'Company Name', placeholder: 'e.g. SAPPHIRE CLINICS EAST INCORPORATED' },
-                { key: 'tradeName', label: 'Trade Name', placeholder: 'e.g. Sandbox East' },
+                { key: 'tradeName', label: 'Trade Name', placeholder: 'e.g. East Branch' },
                 { key: 'address', label: 'Address', placeholder: 'Street, City' },
                 { key: 'phone', label: 'Contact Number', placeholder: 'e.g. +63 912 345 6789' },
                 { key: 'email', label: 'Email (optional)', placeholder: 'e.g. info@clinic.com' },

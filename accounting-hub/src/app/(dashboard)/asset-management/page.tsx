@@ -55,8 +55,8 @@ interface Asset {
 // ── Constants ─────────────────────────────────────────────────
 
 const BRANCH_OPTIONS = [
-  { value: 'SANDBOX_EAST', label: 'Sandbox East' },
-  { value: 'SANDBOX_GREENHILLS', label: 'Sandbox Greenhills' },
+  { value: 'SANDBOX_EAST', label: 'East Branch' },
+  { value: 'SANDBOX_GREENHILLS', label: 'Greenhills Branch' },
   { value: 'VERDANA_STORE', label: 'Verdana Store' },
 ]
 

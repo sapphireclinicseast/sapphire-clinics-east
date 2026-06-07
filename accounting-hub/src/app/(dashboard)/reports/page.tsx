@@ -107,8 +107,8 @@ const FULL_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'Ju
 
 const BRANCHES = [
   { value: 'ALL', label: 'All Branches' },
-  { value: 'SBEA', label: 'Sandbox East' },
-  { value: 'SBGH', label: 'Sandbox Greenhills' },
+  { value: 'SBEA', label: 'East Branch' },
+  { value: 'SBGH', label: 'Greenhills Branch' },
   { value: 'VERDANA_STORE', label: 'Verdana Store' },
 ]
 
@@ -136,11 +136,11 @@ const DEPT_LABELS: Record<string, string> = {
 }
 
 const BRANCH_LABELS: Record<string, string> = {
-  SBEA: 'Sandbox East',
-  SBGH: 'Sandbox Greenhills',
+  SBEA: 'East Branch',
+  SBGH: 'Greenhills Branch',
   VERDANA_STORE: 'Verdana Store',
-  SANDBOX_EAST: 'Sandbox East',
-  SANDBOX_GREENHILLS: 'Sandbox Greenhills',
+  SANDBOX_EAST: 'East Branch',
+  SANDBOX_GREENHILLS: 'Greenhills Branch',
 }
 
 const SUB_TYPE_LABELS: Record<string, string> = {

@@ -62,8 +62,8 @@ const DEPARTMENTS = [
 const DEPT_LABELS: Record<string, string> = Object.fromEntries(DEPARTMENTS.map(d => [d.value, d.label]))
 
 const BRANCHES = [
-  { value: 'SANDBOX_EAST', label: 'Sandbox East' },
-  { value: 'SANDBOX_GREENHILLS', label: 'Sandbox Greenhills' },
+  { value: 'SANDBOX_EAST', label: 'East Branch' },
+  { value: 'SANDBOX_GREENHILLS', label: 'Greenhills Branch' },
   { value: 'ALL', label: 'All Branches' },
 ]
 
@@ -729,7 +729,7 @@ export default function ServicesPage() {
                     }
                     return (
                       <div key={br} className="mb-2 last:mb-0">
-                        <p className="text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>{br === 'SANDBOX_EAST' ? 'Sandbox East' : 'Sandbox Greenhills'}</p>
+                        <p className="text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>{br === 'SANDBOX_EAST' ? 'East Branch' : 'Greenhills Branch'}</p>
                         <div className="grid grid-cols-3 gap-2">
                           <input type="number" step="0.01" value={bp.price} onChange={(e) => update('price', e.target.value)}
                             placeholder="Price" className="px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />

@@ -1111,8 +1111,8 @@ model EmployeeSettings {
   pagibigEnabled      Boolean  @default(true)
   taxEnabled          Boolean  @default(true)
   benefitDeductionTiming String @default("HALF_HALF") // HALF_HALF, FIRST_CUTOFF, SECOND_CUTOFF
-  hrOfficerNameSBEA    String?  // HR officer name for Sandbox East COE/COC
-  hrOfficerNameSBGH    String?  // HR officer name for Sandbox Greenhills COE/COC
+  hrOfficerNameSBEA    String?  // HR officer name for East Branch COE/COC
+  hrOfficerNameSBGH    String?  // HR officer name for Greenhills Branch COE/COC
   hrOfficerNameVERDANA String?  // HR officer name for Verdana Store COE/COC
   // Employee request approval settings
   requestApprovalExcludedPositions Json? // JSON array of job titles that branch admins cannot approve (requires ADMIN/ACCOUNTANT)

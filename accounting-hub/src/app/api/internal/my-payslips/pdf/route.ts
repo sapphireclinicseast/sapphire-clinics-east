@@ -29,10 +29,10 @@ function verifyKey(req: NextRequest): boolean {
 }
 
 const BRANCH_LABEL: Record<string, string> = {
-  SBEA: 'Sandbox East',
-  SBGH: 'Sandbox Greenhills',
-  SANDBOX_EAST: 'Sandbox East',
-  SANDBOX_GREENHILLS: 'Sandbox Greenhills',
+  SBEA: 'East Branch',
+  SBGH: 'Greenhills Branch',
+  SANDBOX_EAST: 'East Branch',
+  SANDBOX_GREENHILLS: 'Greenhills Branch',
   VERDANA_STORE: 'Verdana Store',
 }
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
