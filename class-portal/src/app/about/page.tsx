@@ -42,10 +42,10 @@ export default function AboutPage() {
 
             <div className="mt-5 pt-5 border-t border-white/15">
               <div className="text-[11px] uppercase tracking-[0.12em] text-white/70 mb-2" style={{ fontFamily: 'var(--font-display)' }}>
-                Is this different from Sandbox Clinic?
+                Is this different from Sapphire Clinics East?
               </div>
               <p className="text-white/80 text-[12.5px] leading-relaxed">
-                <span className="font-semibold text-white">Aura Academy for Learning</span> is still under <span className="font-semibold text-white">Sapphire Clinics East</span>, but is not under the <span className="font-semibold text-white">Sandbox Clinic</span> brand. Classes are hosted in the clinic premises of <span className="font-semibold text-white">Sandbox Clinic East</span> and <span className="font-semibold text-white">Sandbox Clinic Greenhills</span>.
+                <span className="font-semibold text-white">Aura Academy for Learning</span> is still under <span className="font-semibold text-white">Sapphire Clinics East</span>, but is not under the <span className="font-semibold text-white">Sapphire Clinics East</span> brand. Classes are hosted in the clinic premises of <span className="font-semibold text-white">East Branch</span> and <span className="font-semibold text-white">Greenhills Branch</span>.
               </p>
             </div>
           </div>
@@ -204,13 +204,13 @@ export default function AboutPage() {
             <BranchCard
               name="East Branch"
               address="Level 4, Robinsons Metro East, Marcos Highway, Brgy. Dela Paz, Santolan, Pasig"
-              email="east.sandboxclinic@gmail.com"
+              email="east@sapphireclinicseast.org"
               phones={['+63 917 118 9289', '(02) 5310-4991']}
             />
             <BranchCard
               name="Greenhills Branch"
               address="Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City"
-              email="greenhills.sandboxclinic@gmail.com"
+              email="greenhills@sapphireclinicseast.org"
               phones={['+63 917 770 1686', '(02) 8529-1590']}
             />
           </div>
