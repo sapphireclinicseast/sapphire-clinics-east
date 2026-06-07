@@ -3,8 +3,14 @@ CREATE TYPE "TKUploadStatus" AS ENUM ('UPLOADED', 'ACCEPTED', 'FINALIZED');
 ALTER TABLE "TimekeepingUpload" ADD COLUMN IF NOT EXISTS "status" "TKUploadStatus" NOT NULL DEFAULT 'UPLOADED';
 CREATE INDEX IF NOT EXISTS "TimekeepingUpload_status_idx" ON "TimekeepingUpload"("status");
 
--- Mark existing uploads as FINALIZED (backward compatibility)
-UPDATE "TimekeepingUpload" SET "status" = 'FINALIZED';
+-- Mark pre-existing uploads as FINALIZED (backward compatibility).
+-- REPLAY-SAFE: the deploy replays every migration.sql on every deploy. The original
+-- statement was unconditional (`SET "status" = 'FINALIZED'`), so each deploy force-finalized
+-- EVERY upload — clobbering the UPLOADED→ACCEPTED→FINALIZED workflow for uploads created
+-- after this feature shipped. The date guard restricts the backfill to uploads that predate
+-- the workflow (created before 2026-04-08); newer uploads keep their real workflow status.
+UPDATE "TimekeepingUpload" SET "status" = 'FINALIZED'
+  WHERE "createdAt" < '2026-04-08' AND "status" <> 'FINALIZED';
 
 -- CutoffAdjustment table for per-employee per-cutoff allowances/deductions
 CREATE TABLE IF NOT EXISTS "CutoffAdjustment" (
