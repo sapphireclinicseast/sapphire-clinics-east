@@ -76,7 +76,11 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
   void paymentsRev
 
   function refresh() {
-    let pool = getUsers().filter(u => u.role === 'STUDENT')
+    // Disabled accounts (the main admin marked the student as no longer
+    // attending) are hidden from this list across every viewer role.
+    // The row is preserved in the Users tab so the admin can re-enable
+    // it later, but for the active Students view we treat them as gone.
+    let pool = getUsers().filter(u => u.role === 'STUDENT' && !u.disabledAt)
     if (viewer.role === 'TEACHER' && viewer.userId) {
       // Fail-CLOSED branch scoping. We restrict to the teacher's own
       // `branch` field FIRST, regardless of whether their per-grade
