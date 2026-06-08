@@ -234,8 +234,12 @@ export default function AdmissionPage() {
     window.open(url, '_blank', 'noopener')
   }
 
-  /** Build + open the Enrollment Form (Annex 2) PDF from the API data. */
-  function openEnrollmentForm(s: AdmissionStudent) {
+  /** Build + open the Enrollment Form (Annex 2) PDF from the API data.
+   *  The bulk list shipped enrollment WITHOUT the heavy signature; we
+   *  fetch the full record before rendering so the cert block ends up
+   *  signed. Falls back to the trimmed record if the fetch fails so the
+   *  PDF still renders (with a blank signature) rather than hanging. */
+  async function openEnrollmentForm(s: AdmissionStudent) {
     const fakeUser: StoredUser = {
       id: s.id,
       role: 'STUDENT',
@@ -247,13 +251,14 @@ export default function AdmissionPage() {
       branch: s.branch ?? undefined,
       createdAt: s.createdAt,
     }
-    const doc = generateEnrollmentPdf(fakeUser, s.enrollment ?? {})
+    const full = await fetchFullEnrollment(s.id)
+    const doc = generateEnrollmentPdf(fakeUser, full ?? s.enrollment ?? {})
     const blob = doc.output('blob')
     const url = URL.createObjectURL(blob)
     window.open(url, '_blank', 'noopener')
     setTimeout(() => URL.revokeObjectURL(url), 60_000)
   }
-  function downloadEnrollmentForm(s: AdmissionStudent) {
+  async function downloadEnrollmentForm(s: AdmissionStudent) {
     const fakeUser: StoredUser = {
       id: s.id,
       role: 'STUDENT',
@@ -265,7 +270,8 @@ export default function AdmissionPage() {
       branch: s.branch ?? undefined,
       createdAt: s.createdAt,
     }
-    const doc = generateEnrollmentPdf(fakeUser, s.enrollment ?? {})
+    const full = await fetchFullEnrollment(s.id)
+    const doc = generateEnrollmentPdf(fakeUser, full ?? s.enrollment ?? {})
     const safe = `${s.lastName ?? ''}-${s.firstName ?? ''}-enrollment-form`.toLowerCase().replace(/[^a-z0-9-]+/g, '-')
     doc.save(`${safe}.pdf`)
   }
@@ -273,6 +279,29 @@ export default function AdmissionPage() {
   function signOut() {
     localStorage.removeItem(ACCESS_CODE_KEY)
     setCode(null); setStudents([])
+  }
+
+  /**
+   * Fetch the full enrollment JSON (including the base64 signature data
+   * URL) for one student. The bulk /api/public/admission endpoint
+   * strips `certSignatureDataUrl` to keep the list payload small —
+   * this fills it back in just before we generate a PDF so the
+   * certification block ends up signed.
+   */
+  async function fetchFullEnrollment(studentId: string): Promise<EnrollmentDraft | null> {
+    if (!code) return null
+    try {
+      const res = await fetch(
+        `${backendOrigin()}/api/public/admission/enrollment?code=${encodeURIComponent(code)}&studentId=${encodeURIComponent(studentId)}`,
+        { cache: 'no-store' },
+      )
+      if (!res.ok) return null
+      const data = await res.json() as { student: { enrollment: EnrollmentDraft } }
+      return data.student.enrollment ?? null
+    } catch (e) {
+      console.warn('[admission fetchFullEnrollment]', e)
+      return null
+    }
   }
 
   if (!code) {
