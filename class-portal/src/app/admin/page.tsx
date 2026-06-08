@@ -94,7 +94,7 @@ export default function AdminPage() {
               because the server endpoint also enforces role === 'ADMIN'.
               Used to clear test rows that were never real payments. */}
           <FrontDeskPaymentConfirmations canDelete={isMainAdmin} />
-          <PaymentsGrouped canSendReminders senderEmail={adminEmail} senderName={isMainAdmin ? 'Main admin' : 'Branch admin'} senderRole="ADMIN" />
+          <PaymentsGrouped canSendReminders canDelete={isMainAdmin} senderEmail={adminEmail} senderName={isMainAdmin ? 'Main admin' : 'Branch admin'} senderRole="ADMIN" />
         </div>
       )}
       {tab === 'FEES'          && (
