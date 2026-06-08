@@ -47,15 +47,36 @@ export async function GET(req: Request) {
   const branchFilter = url.searchParams.get('branch')?.toUpperCase()
 
   try {
+    // Restrict to STUDENT rows that:
+    //   - aren't soft-disabled (admin disabled the account; they should
+    //     not show up in the partner-school tracker at all), AND
+    //   - have at least one CONVERTED ClassPortalFrontDeskPayment row
+    //     (i.e. the cashier has confirmed tuition payment in the
+    //     accounting hub). Unpaid / pending students are intentionally
+    //     hidden — the partner school only tracks admission for those
+    //     who actually paid.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const where: any = { role: 'STUDENT' }
+    const paidRows = await (prisma.classPortalFrontDeskPayment as any).findMany({
+      where: { status: 'CONVERTED' },
+      distinct: ['studentId'],
+      select: { studentId: true },
+    })
+    const paidStudentIds: string[] = paidRows.map((r: { studentId: string }) => r.studentId)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const where: any = {
+      role: 'STUDENT',
+      disabledAt: null,
+      id: { in: paidStudentIds },
+    }
     if (branchFilter === 'EAST' || branchFilter === 'GREENHILLS') {
       where.branch = branchFilter
     }
-    const rows = await prisma.classPortalUser.findMany({
-      where,
-      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
-    })
+    const rows = paidStudentIds.length === 0
+      ? []
+      : await prisma.classPortalUser.findMany({
+          where,
+          orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+        })
 
     // Pull document-blob keys for every student in one query so the
     // /admission table can render an up/down indicator per slot.

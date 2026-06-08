@@ -87,6 +87,12 @@ export default function AdmissionPage() {
   const [loadErr, setLoadErr] = useState<string | null>(null)
   const [tab, setTab] = useState<'EAST' | 'GREENHILLS'>('EAST')
   const [search, setSearch] = useState('')
+  // Grade-level filter dropdown above the table. '' = all levels.
+  const [levelFilter, setLevelFilter] = useState<EnrollmentLevel | ''>('')
+  // Column sort. Null key = use default (lastName, firstName).
+  // Click a header to cycle: unsorted → asc → desc → unsorted.
+  const [sortKey, setSortKey] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
   // Persist the code so the partner school doesn't re-enter every visit.
   useEffect(() => {
@@ -164,11 +170,43 @@ export default function AdmissionPage() {
   }
 
   const filtered = useMemo(() => {
-    const pool = students.filter(s => s.branch === tab)
+    let pool = students.filter(s => s.branch === tab)
+    if (levelFilter) pool = pool.filter(s => s.level === levelFilter)
     const q = search.trim().toLowerCase()
-    if (!q) return pool
-    return pool.filter(s => `${s.firstName ?? ''} ${s.lastName ?? ''} ${s.email} ${s.lrn ?? ''}`.toLowerCase().includes(q))
-  }, [students, tab, search])
+    if (q) pool = pool.filter(s => `${s.firstName ?? ''} ${s.lastName ?? ''} ${s.email} ${s.lrn ?? ''}`.toLowerCase().includes(q))
+    if (!sortKey) return pool
+    // Sort by the selected column. Strings: locale-compare. Anything
+    // that quacks like a number gets numeric ordering. Nulls always
+    // sort last so a partial dataset doesn't jumble usable rows.
+    const dir = sortDir === 'asc' ? 1 : -1
+    return [...pool].sort((a, b) => {
+      const av = (a as unknown as Record<string, unknown>)[sortKey]
+      const bv = (b as unknown as Record<string, unknown>)[sortKey]
+      const aNull = av === null || av === undefined || av === ''
+      const bNull = bv === null || bv === undefined || bv === ''
+      if (aNull && bNull) return 0
+      if (aNull) return 1
+      if (bNull) return -1
+      const an = typeof av === 'number' ? av : Number(av)
+      const bn = typeof bv === 'number' ? bv : Number(bv)
+      if (!Number.isNaN(an) && !Number.isNaN(bn) && typeof av !== 'string' && typeof bv !== 'string') {
+        return (an - bn) * dir
+      }
+      return String(av).localeCompare(String(bv), undefined, { sensitivity: 'base', numeric: true }) * dir
+    })
+  }, [students, tab, search, levelFilter, sortKey, sortDir])
+
+  /** Click a header to cycle sort. Same key + asc → desc; same key + desc → off; different key → asc. */
+  function cycleSort(key: string) {
+    if (sortKey !== key) { setSortKey(key); setSortDir('asc'); return }
+    if (sortDir === 'asc') { setSortDir('desc'); return }
+    setSortKey(null); setSortDir('asc')
+  }
+  /** Tiny "▲ / ▼ / —" hint next to a header. */
+  function sortIndicator(key: string): string {
+    if (sortKey !== key) return ''
+    return sortDir === 'asc' ? ' ▲' : ' ▼'
+  }
 
   // Map an AdmissionStudent to the export columns. Reuses the same display
   // formatting the table uses so XLSX + PDF read identically to the screen.
@@ -355,7 +393,27 @@ export default function AdmissionPage() {
               </p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <input className="input" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, email, LRN" style={{ width: 260 }} />
+              <input className="input" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, email, LRN" style={{ width: 220 }} />
+              <select
+                className="select"
+                value={levelFilter}
+                onChange={e => setLevelFilter(e.target.value as EnrollmentLevel | '')}
+                style={{ width: 'auto' }}
+                title="Filter by grade level"
+              >
+                <option value="">All grade levels</option>
+                {(['NURSERY','KINDER','GRADE_1','GRADE_2','GRADE_3','GRADE_4','GRADE_5','GRADE_6','GRADE_7','GRADE_8','GRADE_9','GRADE_10','GRADE_11','GRADE_12'] as EnrollmentLevel[]).map(l => (
+                  <option key={l} value={l}>{levelLabel(l)}</option>
+                ))}
+              </select>
+              {(sortKey || levelFilter) && (
+                <button
+                  type="button"
+                  onClick={() => { setSortKey(null); setSortDir('asc'); setLevelFilter('') }}
+                  className="text-xs text-[color:var(--mid-gray)] hover:text-[color:var(--narra)] px-2 py-1"
+                  title="Clear sort + level filter"
+                >Clear</button>
+              )}
               <button onClick={() => void refresh()} className="btn-secondary text-xs" disabled={loading}>{loading ? '…' : 'Refresh'}</button>
               <button onClick={() => exportToXlsx(filtered, exportCols, `admission-${tab.toLowerCase()}`)} className="btn-secondary text-xs">Excel</button>
               <button onClick={signOut} className="text-xs text-[color:var(--mid-gray)] hover:text-[color:var(--clay)] px-2 py-1">Sign out</button>
@@ -381,46 +439,65 @@ export default function AdmissionPage() {
             <table className="text-[11px] w-full" style={{ borderCollapse: 'collapse' }}>
               <thead className="sticky top-0 z-10" style={{ background: 'var(--paper-2)' }}>
                 <tr className="text-left uppercase tracking-[0.06em] text-[10px] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap sticky left-0 z-20" style={{ minWidth: 160, background: 'var(--paper-2)' }}>Full name</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 100 }}>Grade level</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 90 }}>School Year</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 80 }}>LRN status</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 110 }}>LRN</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 130 }}>PSA Birth Cert No.</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 90 }}>Middle name</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 80 }}>Extension</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 90 }}>Date of birth</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 60 }}>Sex</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 60 }}>IP</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 110 }}>IP community</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 100 }}>Mother tongue</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 90 }}>Religion</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 90 }}>Nationality</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 140 }}>Diagnosis</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 220 }}>LSEN classification</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 100 }}>PWD ID No.</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 150 }}>House / Street</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 100 }}>Barangay</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 160 }}>City / Province</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 60 }}>Zip</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 160 }}>Father&apos;s Name</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 130 }}>Father&apos;s occupation</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 160 }}>Mother&apos;s Maiden Name</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 130 }}>Mother&apos;s occupation</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 160 }}>Guardian&apos;s Name</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 100 }}>Telephone</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 110 }}>Cellphone</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 180 }}>Email</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 100 }}>Returning/Transferee</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 100 }}>Last Grade</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 100 }}>Last SY</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 150 }}>Previous School</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 100 }}>Prev School ID</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 170 }}>Prev School Address</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 160 }}>LIS status</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 90 }}>Remittance</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap" style={{ minWidth: 200 }}>Comments / Remarks</th>
-                  {/* Document download columns — server-side blobs */}
+                  {/* Sortable data columns. Click any header to cycle
+                      asc → desc → off. Document download columns at the
+                      end aren't sortable. */}
+                  {([
+                    { key: 'lastName',                label: 'Full name',            minWidth: 160, sticky: true },
+                    { key: 'level',                   label: 'Grade level',          minWidth: 100 },
+                    { key: 'schoolYear',              label: 'School Year',          minWidth: 90 },
+                    { key: 'lrnStatus',               label: 'LRN status',           minWidth: 80 },
+                    { key: 'lrn',                     label: 'LRN',                  minWidth: 110 },
+                    { key: 'psaBirthCertNo',          label: 'PSA Birth Cert No.',   minWidth: 130 },
+                    { key: 'middleName',              label: 'Middle name',          minWidth: 90 },
+                    { key: 'extensionName',           label: 'Extension',            minWidth: 80 },
+                    { key: 'dob',                     label: 'Date of birth',        minWidth: 90 },
+                    { key: 'sex',                     label: 'Sex',                  minWidth: 60 },
+                    { key: 'ipMember',                label: 'IP',                   minWidth: 60 },
+                    { key: 'ipCommunity',             label: 'IP community',         minWidth: 110 },
+                    { key: 'motherTongue',            label: 'Mother tongue',        minWidth: 100 },
+                    { key: 'religion',                label: 'Religion',             minWidth: 90 },
+                    { key: 'nationality',             label: 'Nationality',          minWidth: 90 },
+                    { key: 'diagnosis',               label: 'Diagnosis',            minWidth: 140 },
+                    { key: 'lsenClassification',      label: 'LSEN classification',  minWidth: 220 },
+                    { key: 'pwdIdNumber',             label: 'PWD ID No.',           minWidth: 100 },
+                    { key: 'houseStreet',             label: 'House / Street',       minWidth: 150 },
+                    { key: 'barangay',                label: 'Barangay',             minWidth: 100 },
+                    { key: 'cityProvinceCountry',     label: 'City / Province',      minWidth: 160 },
+                    { key: 'zipCode',                 label: 'Zip',                  minWidth: 60 },
+                    { key: 'fatherName',              label: "Father's Name",        minWidth: 160 },
+                    { key: 'fatherOccupation',        label: "Father's occupation",  minWidth: 130 },
+                    { key: 'motherName',              label: "Mother's Maiden Name", minWidth: 160 },
+                    { key: 'motherOccupation',        label: "Mother's occupation",  minWidth: 130 },
+                    { key: 'guardianName',            label: "Guardian's Name",      minWidth: 160 },
+                    { key: 'telephone',               label: 'Telephone',            minWidth: 100 },
+                    { key: 'cellphone',               label: 'Cellphone',            minWidth: 110 },
+                    { key: 'email',                   label: 'Email',                minWidth: 180 },
+                    { key: 'isReturningOrTransferee', label: 'Returning/Transferee', minWidth: 100 },
+                    { key: 'lastGradeCompleted',      label: 'Last Grade',           minWidth: 100 },
+                    { key: 'lastSchoolYearCompleted', label: 'Last SY',              minWidth: 100 },
+                    { key: 'previousSchoolName',      label: 'Previous School',      minWidth: 150 },
+                    { key: 'previousSchoolId',        label: 'Prev School ID',       minWidth: 100 },
+                    { key: 'previousSchoolAddress',   label: 'Prev School Address',  minWidth: 170 },
+                    { key: 'lisStatus',               label: 'LIS status',           minWidth: 160 },
+                    { key: 'remittanceStatus',        label: 'Remittance',           minWidth: 90 },
+                    { key: 'admissionComments',       label: 'Comments / Remarks',   minWidth: 200 },
+                  ] as Array<{ key: string; label: string; minWidth: number; sticky?: boolean }>).map(col => {
+                    const active = sortKey === col.key
+                    return (
+                      <th
+                        key={col.key}
+                        onClick={() => cycleSort(col.key)}
+                        title={`Sort by ${col.label}`}
+                        className={`py-1 px-1.5 font-semibold whitespace-nowrap cursor-pointer select-none hover:text-[color:var(--narra)] ${col.sticky ? 'sticky left-0 z-20' : ''} ${active ? 'text-[color:var(--narra)]' : ''}`}
+                        style={{ minWidth: col.minWidth, ...(col.sticky ? { background: 'var(--paper-2)' } : null) }}
+                      >
+                        {col.label}{sortIndicator(col.key)}
+                      </th>
+                    )
+                  })}
+                  {/* Document download columns — server-side blobs.
+                      Not sortable: they're action buttons, not data. */}
                   <th className="py-1 px-1.5 font-semibold whitespace-nowrap text-center" style={{ minWidth: 130, background: '#fef3c7' }}>Enrollment Form</th>
                   <th className="py-1 px-1.5 font-semibold whitespace-nowrap text-center" style={{ minWidth: 110, background: '#fef3c7' }}>Parent Waiver</th>
                   <th className="py-1 px-1.5 font-semibold whitespace-nowrap text-center" style={{ minWidth: 110, background: '#fef3c7' }}>DepEd Affidavit</th>

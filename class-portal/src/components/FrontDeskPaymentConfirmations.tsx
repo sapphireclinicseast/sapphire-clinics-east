@@ -73,11 +73,16 @@ export default function FrontDeskPaymentConfirmations({ canDelete = false }: Fdp
 
   async function handleDelete(row: FrontDeskPaymentRow) {
     if (busy) return
-    if (!confirm(`Delete this PENDING payment row for ${row.studentName}? Use this only for test rows — confirmed (converted) rows can't be deleted here.`)) return
+    // Show a different confirm message for CONVERTED rows so the admin
+    // understands the accounting-hub Order isn't auto-voided.
+    const msg = row.status === 'CONVERTED'
+      ? `Delete ${row.studentName}'s CONFIRMED payment?\n\n⚠️ This payment has already been converted to an Order in the accounting hub. Deleting here will NOT void that Order — if the deletion is to reverse the payment, also void the Order in the accounting hub.\n\nProceed?`
+      : `Delete this PENDING payment row for ${row.studentName}?\n\nUse this for test rows or duplicates. The accounting hub will no longer see it in the cashier queue.`
+    if (!confirm(msg)) return
     setErr(null); setBusy(row.classPortalPaymentId)
     const ok = await deleteFrontDeskPayment(row.classPortalPaymentId)
     if (!ok) {
-      setErr(`Could not delete ${row.studentName}'s row. If it's already CONVERTED, void the order in the accounting hub first.`)
+      setErr(`Could not delete ${row.studentName}'s row. Please retry.`)
       setBusy(null)
       return
     }
@@ -205,6 +210,7 @@ export default function FrontDeskPaymentConfirmations({ canDelete = false }: Fdp
                   <th className="py-2 px-3 text-right">Amount</th>
                   <th className="py-2 px-3">Confirmed at</th>
                   <th className="py-2 px-3">Status</th>
+                  {canDelete && <th className="py-2 px-3 text-right">Action</th>}
                 </tr>
               </thead>
               <tbody>
@@ -221,6 +227,19 @@ export default function FrontDeskPaymentConfirmations({ canDelete = false }: Fdp
                     <td className="py-2.5 px-3 text-right tabular-nums">{fmt(r.tuitionCentavos + r.miscCentavos)}</td>
                     <td className="py-2.5 px-3 text-[12.5px]">{r.convertedAt ? new Date(r.convertedAt).toLocaleString() : '—'}</td>
                     <td className="py-2.5 px-3"><span className="badge badge-paid">Paid</span></td>
+                    {canDelete && (
+                      <td className="py-2.5 px-3 text-right">
+                        <button
+                          type="button"
+                          className="text-[11px] px-2 py-1 rounded text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] disabled:opacity-40"
+                          onClick={() => void handleDelete(r)}
+                          disabled={busy === r.classPortalPaymentId}
+                          title="Delete this confirmed payment (main admin only). Does NOT void the accounting-hub Order."
+                        >
+                          {busy === r.classPortalPaymentId ? 'Deleting…' : 'Delete'}
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

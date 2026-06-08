@@ -68,19 +68,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ cl
   }
 }
 
-// DELETE — main-admin-only hard delete of a queued pending row. Used to
-// clean up test rows that were created during system trials. We only
-// allow deletion of PENDING rows so a CONVERTED row (which has an
-// associated accounting-hub Order) can't be removed without first
-// voiding the Order. Hard delete instead of a soft "VOIDED" flip because
-// the existing GET endpoint shows VOIDED rows in the history banner —
-// for a literal test row, the admin just wants it gone.
+// DELETE — main-admin-only hard delete of a payment row. PENDING rows
+// are typically test entries the admin wants gone. CONVERTED rows
+// already have an associated accounting-hub Order — deleting here does
+// NOT void that Order, so the admin should also void it in the
+// accounting hub when needed. The client surfaces this warning in the
+// confirm dialog before the request is sent.
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ classPortalPaymentId: string }> }) {
   const origin = req.headers.get('origin')
   try {
     const auth = await requireAuth(req)
     if (auth.role !== 'ADMIN') {
-      return withCors(NextResponse.json({ error: 'Only the main admin can delete a pending payment.' }, { status: 403 }), origin)
+      return withCors(NextResponse.json({ error: 'Only the main admin can delete a payment row.' }, { status: 403 }), origin)
     }
     const { classPortalPaymentId } = await params
     if (!classPortalPaymentId) {
@@ -91,12 +90,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ c
     if (!existing) {
       return withCors(NextResponse.json({ error: 'classPortalPaymentId not found.' }, { status: 404 }), origin)
     }
-    if (existing.status === 'CONVERTED') {
-      return withCors(NextResponse.json({ error: 'This payment has already been converted to an order. Void the order in the accounting hub first.' }, { status: 409 }), origin)
-    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (prisma.classPortalFrontDeskPayment as any).delete({ where: { classPortalPaymentId } })
-    return withCors(NextResponse.json({ ok: true }), origin)
+    return withCors(NextResponse.json({ ok: true, deletedStatus: existing.status }), origin)
   } catch (e) {
     if (e instanceof Response) {
       const headers = new Headers(e.headers)
