@@ -77,6 +77,21 @@ export async function GET(req: Request) {
       blobsByStudent.set(b.studentId, list)
     }
 
+    // Trim heavy fields from the bulk response. The base64-encoded
+    // `certSignatureDataUrl` is ~400 KB per student — six students
+    // ballooned the payload to 700 KB and made the partner-school
+    // tracker take 6+ seconds to load, with most users perceiving
+    // it as "stuck". The signature is only needed for the per-student
+    // PDF rebuild; the dedicated single-student endpoint below ships
+    // it on demand when the partner clicks "View" / "Download" PDF.
+    function trimEnrollmentForList(e: Record<string, unknown>): Record<string, unknown> {
+      // Shallow copy + delete the heavy keys. Other base64 data URLs
+      // can be added here if they show up in future enrollments.
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { certSignatureDataUrl: _omit, ...rest } = e as { certSignatureDataUrl?: string } & Record<string, unknown>
+      return rest
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const students = rows.map((r: any) => {
       const e = (r.enrollment ?? {}) as Record<string, unknown>
@@ -133,8 +148,9 @@ export async function GET(req: Request) {
         lisStatus: (e.lisStatus as string) ?? null,
         remittanceStatus: (e.remittanceStatus as string) ?? null,
         admissionComments: (e.admissionComments as string) ?? null,
-        // Whole enrollment blob for client-side PDF rebuild:
-        enrollment: e,
+        // Trimmed enrollment blob for the table view. The signature
+        // data URL is fetched on demand via /api/public/admission/enrollment.
+        enrollment: trimEnrollmentForList(e),
         // Server-side document blobs available for download.
         documentBlobs: blobsByStudent.get(r.id) ?? [],
         // Local-only docs metadata (whether the parent uploaded into
