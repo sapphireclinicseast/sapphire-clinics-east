@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   getPayments, getUsers, hydrateUsers, getFile,
-  saveNotification,
+  saveNotification, deleteUser,
   levelLabel,
   type PaymentRecord, type PaymentMethod, type PaymentPlan,
   type StoredUser, type EnrollmentLevel,
@@ -76,21 +76,53 @@ interface Props {
   senderEmail?: string
   senderName?: string
   senderRole?: 'ADMIN' | 'TEACHER'
+  /** When true, each row shows a Delete button (main admin only). */
+  canDelete?: boolean
 }
 
 export default function PaymentsGrouped({
   canSendReminders, senderEmail = 'main@sapphireclinicseast.org', senderName = 'Main admin', senderRole = 'ADMIN',
+  canDelete = false,
 }: Props) {
   const [students, setStudents] = useState<StoredUser[]>([])
   const [payments, setPayments] = useState<PaymentRecord[]>([])
   const [search, setSearch] = useState('')
   const [busyReminder, setBusyReminder] = useState<string | null>(null)
+  const [busyDelete, setBusyDelete] = useState<string | null>(null)
   const [reminderSent, setReminderSent] = useState<Record<string, boolean>>({})
 
+  // Disabled accounts are hidden here on top of any other filtering.
+  // The Users tab still surfaces them so admin can re-enable.
+  function activeStudentsOnly(us: StoredUser[]): StoredUser[] {
+    return us.filter(u => u.role === 'STUDENT' && !u.disabledAt)
+  }
+
   useEffect(() => {
-    hydrateUsers().then(us => setStudents(us.filter(u => u.role === 'STUDENT'))).catch(() => setStudents(getUsers().filter(u => u.role === 'STUDENT')))
+    hydrateUsers().then(us => setStudents(activeStudentsOnly(us))).catch(() => setStudents(activeStudentsOnly(getUsers())))
     setPayments(getPayments())
   }, [])
+
+  /**
+   * Main-admin hard-delete of a student row. Used when the admin wants
+   * to remove a test enrollment or a duplicate from the Payments view.
+   * For students who are just no longer pushing through, prefer Disable
+   * (preserves enrollment + payment history) — the confirm dialog
+   * surfaces that.
+   */
+  async function handleDelete(s: StoredUser) {
+    if (busyDelete) return
+    const name = [s.firstName, s.lastName].filter(Boolean).join(' ') || s.email
+    if (!confirm(`Delete ${name}'s account?\n\nThis hard-deletes the row and removes them from every list. If the student is just no longer pushing through, use Disable in the Users tab instead — that keeps their enrollment + payment history.\n\nProceed with delete?`)) return
+    setBusyDelete(s.id)
+    try {
+      await deleteUser(s.id)
+      setStudents(prev => prev.filter(u => u.id !== s.id))
+    } catch (e) {
+      alert(`Could not delete ${name}. ${(e as Error).message}`)
+    } finally {
+      setBusyDelete(null)
+    }
+  }
 
   /** One row per student. For each, pick the "representative" record:
    *  latest PAID if any, otherwise latest PENDING (with proof preferred). */
@@ -196,6 +228,7 @@ export default function PaymentsGrouped({
                   <th className="py-2 px-3">Method</th>
                   <th className="py-2 px-3">Proof</th>
                   {canSendReminders && <th className="py-2 px-3"></th>}
+                  {canDelete && <th className="py-2 px-3 text-right">Action</th>}
                 </tr>
               </thead>
               <tbody>
@@ -226,6 +259,19 @@ export default function PaymentsGrouped({
                             disabled={busyReminder === r.student.id || !r.student.level}
                           >
                             {reminderSent[r.student.id] ? '✓ Sent' : busyReminder === r.student.id ? 'Sending…' : '🔔 Remind'}
+                          </button>
+                        </td>
+                      )}
+                      {canDelete && (
+                        <td className="py-2.5 px-3 text-right">
+                          <button
+                            type="button"
+                            className="text-[11px] px-2 py-1 rounded text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] disabled:opacity-40"
+                            onClick={() => void handleDelete(r.student)}
+                            disabled={busyDelete === r.student.id}
+                            title="Delete this student account (main admin only)."
+                          >
+                            {busyDelete === r.student.id ? 'Deleting…' : 'Delete'}
                           </button>
                         </td>
                       )}
@@ -286,6 +332,17 @@ export default function PaymentsGrouped({
                                 {reminderSent[r.student.id] ? '✓ Sent' : '🔔'}
                               </button>
                             )}
+                            {canDelete && (
+                              <button
+                                type="button"
+                                className="text-[11px] px-2 py-0.5 rounded text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] disabled:opacity-40"
+                                onClick={() => void handleDelete(r.student)}
+                                disabled={busyDelete === r.student.id}
+                                title="Delete this student account (main admin only)."
+                              >
+                                {busyDelete === r.student.id ? '…' : 'Delete'}
+                              </button>
+                            )}
                           </div>
                         </li>
                       ))}
@@ -310,11 +367,24 @@ export default function PaymentsGrouped({
                   <div className="font-semibold text-[color:var(--narra)] truncate">{[r.student.firstName, r.student.lastName].filter(Boolean).join(' ') || r.student.email}</div>
                   <div className="text-[11.5px] text-[color:var(--mid-gray)] truncate">{r.student.email} · {r.student.level ? levelLabel(r.student.level as EnrollmentLevel) : '—'}</div>
                 </div>
-                {canSendReminders && (
-                  <button type="button" className="btn-cta text-xs" onClick={() => sendReminder(r)} disabled={!r.student.level}>
-                    {reminderSent[r.student.id] ? '✓ Sent' : '🔔 Remind'}
-                  </button>
-                )}
+                <div className="flex items-center gap-2 shrink-0">
+                  {canSendReminders && (
+                    <button type="button" className="btn-cta text-xs" onClick={() => sendReminder(r)} disabled={!r.student.level}>
+                      {reminderSent[r.student.id] ? '✓ Sent' : '🔔 Remind'}
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      type="button"
+                      className="text-[11px] px-2 py-1 rounded text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] disabled:opacity-40"
+                      onClick={() => void handleDelete(r.student)}
+                      disabled={busyDelete === r.student.id}
+                      title="Delete this student account (main admin only)."
+                    >
+                      {busyDelete === r.student.id ? 'Deleting…' : 'Delete'}
+                    </button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
