@@ -474,6 +474,7 @@ enum PaymentMethod {
   CASH
   GCASH
   PAYMAYA
+  PAYMONGO
   DEBIT
   CREDIT_CARD
   VIP_CARD
