@@ -41,11 +41,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       disabled?: boolean
     }
 
-    // STUDENT may only update their own row; TEACHER / FRONTDESK cannot edit
-    // users; BRANCH_ADMIN can edit anything in their branch; ADMIN unrestricted.
-    if (auth.role === 'TEACHER' || auth.role === 'FRONTDESK') {
-      return withCors(NextResponse.json({ error: 'This role cannot edit user accounts.' }, { status: 403 }), origin)
-    }
+    // STUDENT may only update their own row; BRANCH_ADMIN can edit anything
+    // in their branch; ADMIN unrestricted. TEACHER + FRONTDESK can edit a
+    // student's enrollment but ONLY a tight whitelist of fields (LRN +
+    // LSEN classification, plus the Form 137/SF10 and School ID document
+    // metadata entries). The diff check at the end of this block enforces
+    // the whitelist by comparing the incoming payload to the existing row.
     if (auth.role === 'STUDENT' && auth.userId !== id) {
       return withCors(NextResponse.json({ error: 'You can only edit your own record.' }, { status: 403 }), origin)
     }
@@ -60,6 +61,75 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       // Branch admins may only touch users in their branch (or unscoped teachers).
       if (target.branch && auth.branch && target.branch !== auth.branch) {
         return withCors(NextResponse.json({ error: 'Out of branch scope.' }, { status: 403 }), origin)
+      }
+    }
+    if (auth.role === 'TEACHER' || auth.role === 'FRONTDESK') {
+      const target = await prisma.classPortalUser.findUnique({ where: { id } })
+      if (!target) {
+        return withCors(NextResponse.json({ error: 'User not found.' }, { status: 404 }), origin)
+      }
+      if (target.role !== 'STUDENT') {
+        return withCors(NextResponse.json({ error: 'This role can only edit student records.' }, { status: 403 }), origin)
+      }
+      // FRONTDESK is also branch-scoped when their token carries a branch.
+      if (auth.role === 'FRONTDESK' && auth.branch && target.branch && target.branch !== auth.branch) {
+        return withCors(NextResponse.json({ error: 'Out of branch scope.' }, { status: 403 }), origin)
+      }
+      // Block the categorically-off-limits operations up front so the
+      // error message is specific instead of "field N changed".
+      if (body.password !== undefined && body.password) {
+        return withCors(NextResponse.json({ error: 'This role cannot reset passwords. Ask the main admin.' }, { status: 403 }), origin)
+      }
+      if (body.disabled !== undefined) {
+        return withCors(NextResponse.json({ error: 'This role cannot disable accounts.' }, { status: 403 }), origin)
+      }
+      // Reject identity-field changes by comparing against the stored row.
+      // Sending the same value is fine (the client's updateUserEnrollment
+      // helper always sends every identity field for round-trip safety),
+      // so we compare instead of rejecting on presence.
+      const normEmail = (v: unknown) => typeof v === 'string' ? v.trim().toLowerCase() : v
+      if (body.email !== undefined && normEmail(body.email) !== target.email) {
+        return withCors(NextResponse.json({ error: 'This role cannot change the email.' }, { status: 403 }), origin)
+      }
+      if (body.firstName !== undefined && (body.firstName ?? null) !== (target.firstName ?? null)) {
+        return withCors(NextResponse.json({ error: 'This role cannot change the first name.' }, { status: 403 }), origin)
+      }
+      if (body.lastName !== undefined && (body.lastName ?? null) !== (target.lastName ?? null)) {
+        return withCors(NextResponse.json({ error: 'This role cannot change the last name.' }, { status: 403 }), origin)
+      }
+      if (body.level !== undefined && (body.level ?? null) !== (target.level ?? null)) {
+        return withCors(NextResponse.json({ error: 'This role cannot change the grade level.' }, { status: 403 }), origin)
+      }
+      if (body.branch !== undefined && (body.branch ?? null) !== (target.branch ?? null)) {
+        return withCors(NextResponse.json({ error: 'This role cannot change the branch.' }, { status: 403 }), origin)
+      }
+      // Enrollment field-level diff: walk the incoming enrollment vs.
+      // the stored one. Any key whose JSON-serialised value differs and
+      // ISN'T in ALLOWED_ENROLLMENT_KEYS is rejected. `documents` gets
+      // a sub-key whitelist of just form_137_sf10 + school_id.
+      if (body.enrollment !== undefined && body.enrollment !== null) {
+        const existing = (target.enrollment ?? {}) as Record<string, unknown>
+        const incoming = body.enrollment as Record<string, unknown>
+        const ALLOWED_ENROLLMENT_KEYS = new Set(['lrn', 'lrnStatus', 'lsenClassification', 'documents'])
+        const ALLOWED_DOC_KEYS = new Set(['form_137_sf10', 'school_id'])
+        const allKeys = new Set([...Object.keys(existing), ...Object.keys(incoming)])
+        for (const k of allKeys) {
+          if (JSON.stringify(existing[k]) === JSON.stringify(incoming[k])) continue
+          if (!ALLOWED_ENROLLMENT_KEYS.has(k)) {
+            return withCors(NextResponse.json({ error: `This role cannot change enrollment.${k}.` }, { status: 403 }), origin)
+          }
+          if (k === 'documents') {
+            const beforeDocs = (existing.documents ?? {}) as Record<string, unknown>
+            const afterDocs = (incoming.documents ?? {}) as Record<string, unknown>
+            const docKeys = new Set([...Object.keys(beforeDocs), ...Object.keys(afterDocs)])
+            for (const dk of docKeys) {
+              if (JSON.stringify(beforeDocs[dk]) === JSON.stringify(afterDocs[dk])) continue
+              if (!ALLOWED_DOC_KEYS.has(dk)) {
+                return withCors(NextResponse.json({ error: `This role can only upload Form 137/SF10 and School ID. Asked to change documents.${dk}.` }, { status: 403 }), origin)
+              }
+            }
+          }
+        }
       }
     }
 
