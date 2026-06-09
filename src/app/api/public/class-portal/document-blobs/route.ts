@@ -91,8 +91,14 @@ export async function POST(req: Request) {
     if (auth.role === 'STUDENT' && auth.userId !== studentId) {
       return withCors(NextResponse.json({ error: 'Students can only upload their own documents.' }, { status: 403 }), origin)
     }
+    // Teachers may upload Form 137/SF10 and School ID only — the two
+    // documents schools obtain on behalf of the student. Anything else
+    // still requires admin / branch-admin / front-desk / the parent.
     if (auth.role === 'TEACHER') {
-      return withCors(NextResponse.json({ error: 'Teachers cannot upload documents.' }, { status: 403 }), origin)
+      const TEACHER_ALLOWED_DOC_KEYS = new Set(['form_137_sf10', 'school_id'])
+      if (!TEACHER_ALLOWED_DOC_KEYS.has(docKey)) {
+        return withCors(NextResponse.json({ error: 'Teachers can only upload Form 137/SF10 and School ID.' }, { status: 403 }), origin)
+      }
     }
 
     const buf = Buffer.from(await f.arrayBuffer())
