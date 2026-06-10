@@ -396,6 +396,9 @@ jobs:
               grep "^GMAIL_FROM_EMAIL" "$MENV" >> .env 2>/dev/null || true
               echo "UPLOAD_DIR=./uploads" >> .env
               echo "TELETHERAPY_HR_API_KEY=scei-teletherapy-hr-2026" >> .env
+              # Manual chatbot (Phase 2) — key lives in the marketing .env.production
+              grep "^ANTHROPIC_API_KEY" "$MENV" >> .env 2>/dev/null || true
+              grep "^ANTHROPIC_MODEL" "$MENV" >> .env 2>/dev/null || true
             else
               echo "DATABASE_URL=postgresql://sapphire:sapphire@localhost:5433/sapphire_marketing" > .env
               echo "NEXTAUTH_URL=https://teletherapy.sapphireclinicseast.org" >> .env
