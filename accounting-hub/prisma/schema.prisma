@@ -1239,6 +1239,7 @@ model EmployeePayslip {
   branch           String
   // Earnings
   basicPay         Decimal      @default(0)
+  leavePay         Decimal      @default(0)
   overtimePay      Decimal      @default(0)
   holidayPay       Decimal      @default(0)
   nightDiffPay     Decimal      @default(0)

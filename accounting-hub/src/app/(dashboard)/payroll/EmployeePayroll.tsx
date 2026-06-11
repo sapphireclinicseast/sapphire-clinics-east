@@ -255,6 +255,7 @@ interface Payslip {
   cutoffPeriod: string
   branch: string
   basicPay: number | string
+  leavePay: number | string
   overtimePay: number | string
   holidayPay: number | string
   nightDiffPay: number | string
@@ -1000,11 +1001,14 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
         const wtax      = r(toNum(p.taxDeduction))
         const netPay    = r(toNum(p.netPay))
         const basicPay  = r(toNum(p.basicPay))
+        const leavePay  = r(toNum(p.leavePay))
 
-        const grossTaxable   = r(basicPay + ot + rh + wrd + r(taxableAdj))
+        // Leave is now stored separately from basicPay but is still part of basic salary
+        // for taxable-income and 13th-month purposes, so add it back here (net-neutral).
+        const grossTaxable   = r(basicPay + leavePay + ot + rh + wrd + r(taxableAdj))
         const netBeforeTax   = r(grossTaxable - sss - phic - hdmf)
         const netAfterTax    = r(netBeforeTax - wtax)
-        const thirteenthMonth = r(basicPay / 12)
+        const thirteenthMonth = r((basicPay + leavePay) / 12)
 
         totWRD += wrd; totVL += vlPay; totSL += slPay; totSIL += silPay
         totBDAY += bdayPay; totTRAINING += trainingPay
@@ -4561,6 +4565,13 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                                     <span className="font-mono">{formatCurrency(toNum(item.value))}</span>
                                   </div>
                                 ))}
+                                {/* Leave (paid leave reflected as a separate earnings line) */}
+                                {toNum(p.leavePay) > 0 && (
+                                  <div className="flex justify-between items-center">
+                                    <span>Leave</span>
+                                    <span className="font-mono">{formatCurrency(toNum(p.leavePay))}</span>
+                                  </div>
+                                )}
                                 {/* Allowance/Deduction adjustments */}
                                 {(() => {
                                   const adjs = (p.details?.adjustments || []) as { allowanceLabel?: string | null; allowanceType?: string; allowanceAmount?: number; deductionLabel?: string | null; deductionAmount?: number }[]

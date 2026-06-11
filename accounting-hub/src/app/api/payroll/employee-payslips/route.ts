@@ -306,6 +306,7 @@ export async function POST(req: Request) {
     const hourlyRate = dailyRate / standardHours
 
     let basicPay = 0
+    let leavePay = 0
     let overtimePay = 0
     let holidayPay = 0
     let restDayPay = 0
@@ -482,7 +483,7 @@ export async function POST(req: Request) {
               : isWeekend
             if (!isRest) {
               const leaveAmount = leaveReq.isHalfDay ? dailyRate / 2 : dailyRate
-              basicPay += leaveAmount
+              leavePay += leaveAmount
               daysWorked += leaveReq.isHalfDay ? 0.5 : 1
               dailyBreakdown.leavePay.push({
                 date: dateStr,
@@ -543,7 +544,7 @@ export async function POST(req: Request) {
       adjDetails.push({ allowanceLabel: adj.allowanceLabel, allowanceType: adj.allowanceType, allowanceAmount: allowAmt, deductionLabel: adj.deductionLabel, deductionType: dedType, deductionAmount: dedAmt })
     }
 
-    const grossPay = basicPay + overtimePay + holidayOvertimePay + holidayPay + restDayPay + nightDiffPay + allowanceAmount
+    const grossPay = basicPay + leavePay + overtimePay + holidayOvertimePay + holidayPay + restDayPay + nightDiffPay + allowanceAmount
 
     // TRAIN Law withholding tax (Philippines, 2023 onwards) — monthly basis.
     // Tax is computed on the combined month (cutoff 1 + cutoff 2 taxable incomes) and
@@ -584,6 +585,7 @@ export async function POST(req: Request) {
         where: { employeeId_cutoffPeriod_branch: { employeeId: emp.id, cutoffPeriod, branch: qBranch } },
         update: {
           basicPay,
+          leavePay,
           overtimePay,
           holidayPay,
           nightDiffPay,
@@ -617,6 +619,7 @@ export async function POST(req: Request) {
           cutoffPeriod,
           branch: qBranch,
           basicPay,
+          leavePay,
           overtimePay,
           holidayPay,
           nightDiffPay,
@@ -788,6 +791,7 @@ export async function PATCH(req: Request) {
     const hourlyRate = dailyRate / standardHours
 
     let basicPay = 0, overtimePay = 0, holidayPay = 0, restDayPay = 0
+    let leavePay = 0
     let nightDiffPay = 0, daysWorked = 0, totalHoursWorked = 0
     let totalOTHours = 0, totalLateMinutes = 0, totalUndertimeMinutes = 0
     let holidayOvertimePay = 0, totalHolidayOTHours = 0
@@ -915,7 +919,7 @@ export async function PATCH(req: Request) {
               : isWeekend
             if (!isRest) {
               const leaveAmount = leaveReq.isHalfDay ? dailyRate / 2 : dailyRate
-              basicPay += leaveAmount
+              leavePay += leaveAmount
               daysWorked += leaveReq.isHalfDay ? 0.5 : 1
               dailyBreakdown.leavePay.push({
                 date: dateStr,
@@ -964,7 +968,7 @@ export async function PATCH(req: Request) {
       adjDetails.push({ allowanceLabel: adj.allowanceLabel, allowanceType: adj.allowanceType, allowanceAmount: allowAmt, deductionLabel: adj.deductionLabel, deductionType: dedType, deductionAmount: dedAmt })
     }
 
-    const grossPay = basicPay + overtimePay + holidayOvertimePay + holidayPay + restDayPay + nightDiffPay + allowanceAmount
+    const grossPay = basicPay + leavePay + overtimePay + holidayOvertimePay + holidayPay + restDayPay + nightDiffPay + allowanceAmount
     const preTaxDeductions = sssDeduction + philhealthDeduction + pagibigDeduction
     const taxablePerCutoff = grossPay - preTaxDeductions - nonTaxableAllowance - taxableAdjDeduction
 
@@ -1005,7 +1009,7 @@ export async function PATCH(req: Request) {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const upsertFields: any = {
-      basicPay, overtimePay, holidayPay, nightDiffPay, restDayPay,
+      basicPay, leavePay, overtimePay, holidayPay, nightDiffPay, restDayPay,
       allowances: allowanceAmount, grossPay,
       sssDeduction, philhealthDeduction, pagibigDeduction,
       sssEmployerShare, philhealthEmployerShare, pagibigEmployerShare,

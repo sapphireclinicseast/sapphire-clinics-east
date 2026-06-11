@@ -55,7 +55,7 @@ const fmtPHP = (n: number) =>
 export interface EmployeePayslipInput {
   cutoffPeriod: string
   branch: string
-  basicPay: unknown; overtimePay: unknown; holidayPay: unknown; nightDiffPay: unknown
+  basicPay: unknown; leavePay: unknown; overtimePay: unknown; holidayPay: unknown; nightDiffPay: unknown
   restDayPay: unknown; allowances: unknown; grossPay: unknown
   sssDeduction: unknown; philhealthDeduction: unknown; pagibigDeduction: unknown
   taxDeduction: unknown; lateDeduction: unknown; undertimeDeduction: unknown
@@ -99,6 +99,7 @@ export async function buildEmployeePayslipPdf(slip: EmployeePayslipInput): Promi
   const num = (v: unknown) => Number(v ?? 0)
   const earningsRows: [string, string][] = [
     ['Basic Pay', fmtPHP(num(slip.basicPay))],
+    ['Leave', fmtPHP(num(slip.leavePay))],
     ['Overtime Pay', fmtPHP(num(slip.overtimePay))],
     ['Holiday Pay', fmtPHP(num(slip.holidayPay))],
     ['Night Differential', fmtPHP(num(slip.nightDiffPay))],
