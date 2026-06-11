@@ -63,7 +63,7 @@ export async function POST(req: Request) {
       .filter((adj: { employeeId?: string; allowance?: number; deduction?: number }) =>
         adj.employeeId && ((adj.allowance && Number(adj.allowance) > 0) || (adj.deduction && Number(adj.deduction) > 0))
       )
-      .map((adj: { employeeId: string; allowance?: number; allowanceType?: string; allowanceLabel?: string; deduction?: number; deductionLabel?: string }) => ({
+      .map((adj: { employeeId: string; allowance?: number; allowanceType?: string; allowanceLabel?: string; deduction?: number; deductionType?: string; deductionLabel?: string }) => ({
         employeeId: adj.employeeId,
         cutoffPeriod,
         branch,
@@ -71,10 +71,11 @@ export async function POST(req: Request) {
         allowanceType: adj.allowanceType || 'NON_TAXABLE',
         allowanceLabel: adj.allowanceLabel || null,
         deduction: Number(adj.deduction) || 0,
+        deductionType: adj.deductionType || 'NON_TAXABLE',
         deductionLabel: adj.deductionLabel || null,
       }))
 
-    type AdjRow = { employeeId: string; cutoffPeriod: string; branch: string; allowance: number; allowanceType: string; allowanceLabel: string | null; deduction: number; deductionLabel: string | null }
+    type AdjRow = { employeeId: string; cutoffPeriod: string; branch: string; allowance: number; allowanceType: string; allowanceLabel: string | null; deduction: number; deductionType: string; deductionLabel: string | null }
 
     // Helper: merge multiple rows per employee into one (sums amounts, concatenates labels).
     // Used as fallback while the DB still has the legacy unique constraint on

@@ -1301,6 +1301,7 @@ model CutoffAdjustment {
   allowanceType   String   @default("NON_TAXABLE") // TAXABLE or NON_TAXABLE
   allowanceLabel  String?  // e.g. "De Minimis", "Transportation"
   deduction       Decimal  @default(0)
+  deductionType   String   @default("NON_TAXABLE") // TAXABLE (pre-tax, reduces taxable income) or NON_TAXABLE
   deductionLabel  String?  // e.g. "Cash Advance", "Loan"
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

@@ -271,6 +271,22 @@ export async function POST(req: Request) {
     for (const p of c1Payslips) c1PayslipsByEmpId.set(p.employeeId, p)
   }
 
+  // Pre-fetch cutoff 1 adjustments so c1TaxableIncome can be computed live
+  // instead of reading from potentially stale details.taxableIncome
+  // (stale if deductionType was changed after the c1 payslip was generated).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const c1AdjByEmp = new Map<string, any[]>()
+  if (cutoffNum === '2') {
+    const c1Period = `${yearStr}-${monthStr}-1`
+    const c1Adjs = await prisma.cutoffAdjustment.findMany({
+      where: { cutoffPeriod: c1Period, branch: qBranch },
+    })
+    for (const a of c1Adjs) {
+      if (!c1AdjByEmp.has(a.employeeId)) c1AdjByEmp.set(a.employeeId, [])
+      c1AdjByEmp.get(a.employeeId)!.push(a)
+    }
+  }
+
   const standardHours = Number(settings.standardHoursPerDay)
   const otMultiplier = Number(settings.overtimeMultiplier)
   const nightDiffMult = Number(settings.nightDiffMultiplier)
@@ -514,14 +530,17 @@ export async function POST(req: Request) {
     let allowanceAmount = 0
     let adjDeductionAmount = 0
     let nonTaxableAllowance = 0
-    const adjDetails: { allowanceLabel?: string | null; allowanceType?: string; allowanceAmount?: number; deductionLabel?: string | null; deductionAmount?: number }[] = []
+    const adjDetails: { allowanceLabel?: string | null; allowanceType?: string; allowanceAmount?: number; deductionLabel?: string | null; deductionType?: string; deductionAmount?: number }[] = []
+    let taxableAdjDeduction = 0
     for (const adj of empAdjs) {
       const allowAmt = Number(adj.allowance) || 0
       const dedAmt = Number(adj.deduction) || 0
+      const dedType = (adj as any).deductionType || 'NON_TAXABLE'
       allowanceAmount += allowAmt
       adjDeductionAmount += dedAmt
       if (adj.allowanceType !== 'TAXABLE') nonTaxableAllowance += allowAmt
-      adjDetails.push({ allowanceLabel: adj.allowanceLabel, allowanceType: adj.allowanceType, allowanceAmount: allowAmt, deductionLabel: adj.deductionLabel, deductionAmount: dedAmt })
+      if (dedType === 'TAXABLE') taxableAdjDeduction += dedAmt
+      adjDetails.push({ allowanceLabel: adj.allowanceLabel, allowanceType: adj.allowanceType, allowanceAmount: allowAmt, deductionLabel: adj.deductionLabel, deductionType: dedType, deductionAmount: dedAmt })
     }
 
     const grossPay = basicPay + overtimePay + holidayOvertimePay + holidayPay + restDayPay + nightDiffPay + allowanceAmount
@@ -530,18 +549,25 @@ export async function POST(req: Request) {
     // Tax is computed on the combined month (cutoff 1 + cutoff 2 taxable incomes) and
     // deducted only on cutoff 2. On cutoff 1, tax is ₱0 unless computeTaxNow is set
     // (used for employees who resign before cutoff 2).
+    // TAXABLE-type adjustment deductions (e.g. voluntary pre-tax deductions) reduce
+    // taxable income in the same way as SSS/PHIC/Pag-IBIG contributions.
     const preTaxDeductions = sssDeduction + philhealthDeduction + pagibigDeduction
-    const taxablePerCutoff = grossPay - preTaxDeductions - nonTaxableAllowance
+    const taxablePerCutoff = grossPay - preTaxDeductions - nonTaxableAllowance - taxableAdjDeduction
     let taxDeduction = 0
     const empComputeNow = cutoffNum === '1' && computeTaxNowSet.has(emp.id)
     if (cutoffNum === '2') {
       const c1 = c1PayslipsByEmpId.get(emp.id)
       let c1TaxableIncome = 0
       if (c1) {
-        const c1Det = c1.details as Record<string, unknown> | null
-        c1TaxableIncome = typeof c1Det?.taxableIncome === 'number'
-          ? c1Det.taxableIncome
-          : Math.max(0, Number(c1.grossPay) - Number(c1.sssDeduction) - Number(c1.philhealthDeduction) - Number(c1.pagibigDeduction))
+        // Compute live from current c1 adjustments — avoids stale details.taxableIncome
+        // (stale when deductionType was changed after the c1 payslip was generated)
+        const c1Adjs = c1AdjByEmp.get(emp.id) || []
+        let c1NonTaxableAllowance = 0, c1TaxableAdjDed = 0
+        for (const a of c1Adjs) {
+          if (a.allowanceType !== 'TAXABLE') c1NonTaxableAllowance += Number(a.allowance) || 0
+          if (a.deductionType === 'TAXABLE') c1TaxableAdjDed += Number(a.deduction) || 0
+        }
+        c1TaxableIncome = Math.max(0, Number(c1.grossPay) - Number(c1.sssDeduction) - Number(c1.philhealthDeduction) - Number(c1.pagibigDeduction) - c1NonTaxableAllowance - c1TaxableAdjDed)
       }
       const monthlyTaxable = c1TaxableIncome + taxablePerCutoff
       const c1TaxPaid = c1 ? Number(c1.taxDeduction) : 0
@@ -926,19 +952,21 @@ export async function PATCH(req: Request) {
     const lateDeduction = 0
     const undertimeDeduction = (totalUndertimeMinutes / 60) * hourlyRate
 
-    let allowanceAmount = 0, adjDeductionAmount = 0, nonTaxableAllowance = 0
-    const adjDetails: { allowanceLabel?: string | null; allowanceType?: string; allowanceAmount?: number; deductionLabel?: string | null; deductionAmount?: number }[] = []
+    let allowanceAmount = 0, adjDeductionAmount = 0, nonTaxableAllowance = 0, taxableAdjDeduction = 0
+    const adjDetails: { allowanceLabel?: string | null; allowanceType?: string; allowanceAmount?: number; deductionLabel?: string | null; deductionType?: string; deductionAmount?: number }[] = []
     for (const adj of empAdjs) {
       const allowAmt = Number(adj.allowance) || 0
       const dedAmt = Number(adj.deduction) || 0
+      const dedType = (adj as any).deductionType || 'NON_TAXABLE'
       allowanceAmount += allowAmt; adjDeductionAmount += dedAmt
       if (adj.allowanceType !== 'TAXABLE') nonTaxableAllowance += allowAmt
-      adjDetails.push({ allowanceLabel: adj.allowanceLabel, allowanceType: adj.allowanceType, allowanceAmount: allowAmt, deductionLabel: adj.deductionLabel, deductionAmount: dedAmt })
+      if (dedType === 'TAXABLE') taxableAdjDeduction += dedAmt
+      adjDetails.push({ allowanceLabel: adj.allowanceLabel, allowanceType: adj.allowanceType, allowanceAmount: allowAmt, deductionLabel: adj.deductionLabel, deductionType: dedType, deductionAmount: dedAmt })
     }
 
     const grossPay = basicPay + overtimePay + holidayOvertimePay + holidayPay + restDayPay + nightDiffPay + allowanceAmount
     const preTaxDeductions = sssDeduction + philhealthDeduction + pagibigDeduction
-    const taxablePerCutoff = grossPay - preTaxDeductions - nonTaxableAllowance
+    const taxablePerCutoff = grossPay - preTaxDeductions - nonTaxableAllowance - taxableAdjDeduction
 
     // TRAIN Law withholding tax — monthly basis (same logic as POST)
     let taxDeduction = 0
@@ -952,10 +980,18 @@ export async function PATCH(req: Request) {
       })
       let c1TaxableIncome = 0
       if (c1Payslip) {
-        const c1Det = c1Payslip.details as Record<string, unknown> | null
-        c1TaxableIncome = typeof c1Det?.taxableIncome === 'number'
-          ? c1Det.taxableIncome
-          : Math.max(0, Number(c1Payslip.grossPay) - Number(c1Payslip.sssDeduction) - Number(c1Payslip.philhealthDeduction) - Number(c1Payslip.pagibigDeduction))
+        // Compute live from current c1 adjustments — avoids stale details.taxableIncome
+        // (stale when deductionType was changed after the c1 payslip was generated)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const c1Adjs: any[] = await prisma.cutoffAdjustment.findMany({
+          where: { cutoffPeriod: c1Period, employeeId, branch: qBranch },
+        })
+        let c1NonTaxableAllowance = 0, c1TaxableAdjDed = 0
+        for (const a of c1Adjs) {
+          if (a.allowanceType !== 'TAXABLE') c1NonTaxableAllowance += Number(a.allowance) || 0
+          if (a.deductionType === 'TAXABLE') c1TaxableAdjDed += Number(a.deduction) || 0
+        }
+        c1TaxableIncome = Math.max(0, Number(c1Payslip.grossPay) - Number(c1Payslip.sssDeduction) - Number(c1Payslip.philhealthDeduction) - Number(c1Payslip.pagibigDeduction) - c1NonTaxableAllowance - c1TaxableAdjDed)
       }
       const monthlyTaxable = c1TaxableIncome + taxablePerCutoff
       const c1TaxPaid = c1Payslip ? Number(c1Payslip.taxDeduction) : 0

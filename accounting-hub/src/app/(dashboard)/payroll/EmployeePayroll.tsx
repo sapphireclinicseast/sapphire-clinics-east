@@ -410,7 +410,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
   const [leaveSaved, setLeaveSaved] = useState(false)
 
   /* ── Cutoff Adjustments ── */
-  interface AdjustmentRow { employeeId: string; employeeName?: string; allowance: number; allowanceType: string; allowanceLabel: string; deduction: number; deductionLabel: string; rowKey: string }
+  interface AdjustmentRow { employeeId: string; employeeName?: string; allowance: number; allowanceType: string; allowanceLabel: string; deduction: number; deductionType: string; deductionLabel: string; rowKey: string }
   const adjCutoffMonth = parentCutoffMonth
   const adjCutoffYear = parentCutoffYear
   const adjCutoffHalf = parentCutoffHalf
@@ -600,7 +600,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
       const allBranchEmps: Employee[] = await empsRes.json()
       const adjData = await adjRes.json()
       const existing = Array.isArray(adjData) ? adjData : []
-      const existByEmp = new Map<string, { allowance: number; allowanceType: string; allowanceLabel: string; deduction: number; deductionLabel: string }[]>()
+      const existByEmp = new Map<string, { allowance: number; allowanceType: string; allowanceLabel: string; deduction: number; deductionType: string; deductionLabel: string }[]>()
       for (const a of existing) {
         if (!existByEmp.has(a.employeeId)) existByEmp.set(a.employeeId, [])
         existByEmp.get(a.employeeId)!.push(a)
@@ -611,10 +611,10 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
         const empAdjs = existByEmp.get(emp.id)
         if (empAdjs && empAdjs.length > 0) {
           for (const ex of empAdjs) {
-            rows.push({ employeeId: emp.id, employeeName: `${emp.firstName} ${emp.lastName}`, allowance: toNum(ex.allowance), allowanceType: ex.allowanceType || 'NON_TAXABLE', allowanceLabel: ex.allowanceLabel || '', deduction: toNum(ex.deduction), deductionLabel: ex.deductionLabel || '', rowKey: `r${rk++}` })
+            rows.push({ employeeId: emp.id, employeeName: `${emp.firstName} ${emp.lastName}`, allowance: toNum(ex.allowance), allowanceType: ex.allowanceType || 'NON_TAXABLE', allowanceLabel: ex.allowanceLabel || '', deduction: toNum(ex.deduction), deductionType: (ex as any).deductionType || 'NON_TAXABLE', deductionLabel: ex.deductionLabel || '', rowKey: `r${rk++}` })
           }
         } else {
-          rows.push({ employeeId: emp.id, employeeName: `${emp.firstName} ${emp.lastName}`, allowance: 0, allowanceType: 'NON_TAXABLE', allowanceLabel: '', deduction: 0, deductionLabel: '', rowKey: `r${rk++}` })
+          rows.push({ employeeId: emp.id, employeeName: `${emp.firstName} ${emp.lastName}`, allowance: 0, allowanceType: 'NON_TAXABLE', allowanceLabel: '', deduction: 0, deductionType: 'NON_TAXABLE', deductionLabel: '', rowKey: `r${rk++}` })
         }
       }
       setAdjRows(rows)
@@ -3864,7 +3864,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                 const allBranchEmps: Employee[] = await (await fetch(`/api/payroll/employees?branch=${branch}`)).json()
                 const r = await fetch(`/api/payroll/cutoff-adjustments?cutoffPeriod=${cp}&branch=${branch}`, { method: 'PUT' })
                 const data = await r.json()
-                const prevByEmp = new Map<string, { allowance: number; allowanceType: string; allowanceLabel: string; deduction: number; deductionLabel: string }[]>()
+                const prevByEmp = new Map<string, { allowance: number; allowanceType: string; allowanceLabel: string; deduction: number; deductionType: string; deductionLabel: string }[]>()
                 for (const a of (data.adjustments || [])) {
                   if (!prevByEmp.has(a.employeeId)) prevByEmp.set(a.employeeId, [])
                   prevByEmp.get(a.employeeId)!.push(a)
@@ -3882,6 +3882,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                         allowanceType: ex.allowanceType || 'NON_TAXABLE',
                         allowanceLabel: ex.allowanceLabel || '',
                         deduction: toNum(ex.deduction),
+                        deductionType: (ex as any).deductionType || 'NON_TAXABLE',
                         deductionLabel: ex.deductionLabel || '',
                         rowKey: `r${rk++}`,
                       })
@@ -3891,7 +3892,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                       employeeId: emp.id,
                       employeeName: `${emp.firstName} ${emp.lastName}`,
                       allowance: 0, allowanceType: 'NON_TAXABLE', allowanceLabel: '',
-                      deduction: 0, deductionLabel: '',
+                      deduction: 0, deductionType: 'NON_TAXABLE', deductionLabel: '',
                       rowKey: `r${rk++}`,
                     })
                   }
@@ -3938,6 +3939,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                       <SortTh field="adjType" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Type</SortTh>
                       <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Allowance Label</th>
                       <SortTh field="adjDed" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Deduction</SortTh>
+                      <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Ded. Type</th>
                       <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Deduction Label</th>
                       {canWrite && <th className="px-2 py-2.5 w-8"></th>}
                     </tr>
@@ -4000,6 +4002,13 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                                 className="w-24 px-2 py-1.5 rounded border text-xs text-right" style={{ borderColor: 'var(--light-gray)' }} />
                             </td>
                             <td className="px-2 py-1">
+                              <select value={row.deductionType || 'NON_TAXABLE'} onChange={e => updateRow('deductionType', e.target.value)}
+                                className="px-2 py-1.5 rounded border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+                                <option value="NON_TAXABLE">Non-Taxable</option>
+                                <option value="TAXABLE">Pre-Tax</option>
+                              </select>
+                            </td>
+                            <td className="px-2 py-1">
                               <input type="text" value={row.deductionLabel} onChange={e => updateRow('deductionLabel', e.target.value)}
                                 placeholder="e.g. Cash Advance"
                                 className="w-28 px-2 py-1.5 rounded border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
@@ -4013,7 +4022,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                                         employeeId: row.employeeId,
                                         employeeName: row.employeeName,
                                         allowance: 0, allowanceType: 'NON_TAXABLE', allowanceLabel: '',
-                                        deduction: 0, deductionLabel: '',
+                                        deduction: 0, deductionType: 'NON_TAXABLE', deductionLabel: '',
                                         rowKey: `r${Date.now()}`,
                                       }
                                       // Insert after last row of this employee
@@ -4123,6 +4132,14 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                       className="w-full px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                   <div>
+                    <label className="font-medium mb-1 block">Deduction Type</label>
+                    <select value={(bulkAdj as any).deductionType || 'NON_TAXABLE'} onChange={e => setBulkAdj(prev => ({ ...prev, deductionType: e.target.value }))}
+                      className="w-full px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
+                      <option value="NON_TAXABLE">Non-Taxable (reduces net pay only)</option>
+                      <option value="TAXABLE">Pre-Tax (reduces taxable income)</option>
+                    </select>
+                  </div>
+                  <div>
                     <label className="font-medium mb-1 block">Deduction Label</label>
                     <input type="text" value={bulkAdj.deductionLabel || ''} onChange={e => setBulkAdj(prev => ({ ...prev, deductionLabel: e.target.value }))}
                       placeholder="e.g. Cash Advance"
@@ -4138,6 +4155,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                       allowanceType: bulkAdj.allowanceType || r.allowanceType,
                       allowanceLabel: bulkAdj.allowanceLabel ?? r.allowanceLabel,
                       deduction: bulkAdj.deduction ?? r.deduction,
+                      deductionType: (bulkAdj as any).deductionType || r.deductionType,
                       deductionLabel: bulkAdj.deductionLabel ?? r.deductionLabel,
                     } : r))
                     setAdjSaved(false)
@@ -4587,12 +4605,17 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                                 <div className="flex justify-between"><span>Undertime</span><span className="font-mono">{formatCurrency(toNum(p.undertimeDeduction))}</span></div>
                                 {/* Adjustment deductions */}
                                 {(() => {
-                                  const adjs = (p.details?.adjustments || []) as { allowanceLabel?: string | null; allowanceType?: string; allowanceAmount?: number; deductionLabel?: string | null; deductionAmount?: number }[]
+                                  const adjs = (p.details?.adjustments || []) as { allowanceLabel?: string | null; allowanceType?: string; allowanceAmount?: number; deductionLabel?: string | null; deductionType?: string; deductionAmount?: number }[]
                                   const deductionItems = adjs.filter(a => (a.deductionAmount ?? 0) > 0)
                                   if (deductionItems.length > 0) {
                                     return deductionItems.map((a, i) => (
                                       <div key={`adj-ded-${i}`} className="flex justify-between items-center">
-                                        <span>{a.deductionLabel || 'Other Deduction'}</span>
+                                        <span>
+                                          {a.deductionLabel || 'Other Deduction'}
+                                          {a.deductionType === 'TAXABLE' && (
+                                            <span className="ml-1 text-[9px] px-1 rounded" style={{ background: '#fef3c7', color: '#b45309' }}>pre-tax</span>
+                                          )}
+                                        </span>
                                         <span className="font-mono">{formatCurrency(a.deductionAmount ?? 0)}</span>
                                       </div>
                                     ))
