@@ -33,7 +33,11 @@ ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-COPY --from=builder /app/public ./public
+# Copy public directly from build context (not builder stage) so all files
+# — including newly-added static assets — are reliably included.
+# BuildKit's multi-stage COPY from builder can silently omit files added
+# after the previous layer-cache snapshot; direct context COPY is immune.
+COPY public/ ./public/
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
