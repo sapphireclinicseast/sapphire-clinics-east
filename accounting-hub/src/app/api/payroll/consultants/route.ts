@@ -63,8 +63,8 @@ export async function GET(req: Request) {
           const name = formatName(`${s.firstName} ${s.lastName}`)
           const dept = s.department || ''
           const br = s.branch || ''
-          // Only sync clinical departments (not admin/front desk)
-          if (['FRONT_DESK', 'ADMINISTRATION'].includes(dept)) continue
+          // Skip front desk only — ADMINISTRATION consultants (e.g. admin staff who are also clinicians) should still sync
+          if (dept === 'FRONT_DESK') continue
 
           syncedExternalIds.add(s.id)
 
@@ -84,7 +84,9 @@ export async function GET(req: Request) {
             }
           }
 
-          const syncData: Record<string, unknown> = { name, department: dept, branch: br }
+          // Always re-activate: if marketing hub returns this person, they should be active.
+          // Omitting isActive here would leave previously deactivated consultants frozen as inactive.
+          const syncData: Record<string, unknown> = { name, department: dept, branch: br, isActive: true }
 
           // Sync contact info
           if (s.email) syncData.email = s.email

@@ -138,7 +138,8 @@ export async function POST(req: Request) {
             hasDoctorFee, doctorFee, clinicFee, pwdDiscountClinicOnly, noPwdDiscount, description,
             revenueAccountId, unitPayId, unitPayEnabled, issuedOfficialInvoice, eligibleServices, branchPrices } = body
 
-    if (!name?.trim() || !department || !branch || price == null) {
+    const hasBranchPrices = Array.isArray(branchPrices) && branchPrices.some((bp: { price?: unknown }) => bp.price != null && bp.price !== '')
+    if (!name?.trim() || !department || !branch || (price == null && !hasBranchPrices)) {
       return NextResponse.json({ error: 'Name, department, branch, and price are required' }, { status: 400 })
     }
 
@@ -150,12 +151,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid branch' }, { status: 400 })
     }
 
+    const priceNum = price != null && price !== '' ? parseFloat(price) : 0
+
     const service = await prisma.service.create({
       data: {
         name: name.trim(),
         department,
         branch,
-        price: parseFloat(price),
+        price: isNaN(priceNum) ? 0 : priceNum,
         newPrice: newPrice ? parseFloat(newPrice) : null,
         newPriceEffectiveDate: newPriceEffectiveDate ? new Date(newPriceEffectiveDate) : null,
         priceType: priceType && VALID_PRICE_TYPES.includes(priceType) ? priceType : 'FIXED',
@@ -243,7 +246,7 @@ export async function PUT(req: Request) {
     if (name !== undefined) data.name = name.trim()
     if (department !== undefined) data.department = department
     if (branch !== undefined) data.branch = branch
-    if (price !== undefined) data.price = parseFloat(price)
+    if (price !== undefined) { const p = parseFloat(price); if (!isNaN(p)) data.price = p }
     if (newPrice !== undefined) data.newPrice = newPrice ? parseFloat(newPrice) : null
     if (newPriceEffectiveDate !== undefined) data.newPriceEffectiveDate = newPriceEffectiveDate ? new Date(newPriceEffectiveDate) : null
     if (priceType !== undefined) data.priceType = priceType

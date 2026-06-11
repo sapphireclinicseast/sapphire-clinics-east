@@ -66,7 +66,7 @@ export async function GET(req: Request) {
         status: { not: 'VOIDED' },
         payments: { some: { walletId: { in: walletIds }, method: type } },
         arPaymentItems: { none: {} },
-        ...(branch ? { branch } : {}),
+        ...(branch ? { branch: { in: [branch, 'ALL'] } } : {}),
       },
       select: {
         id: true,
@@ -85,7 +85,7 @@ export async function GET(req: Request) {
         order: {
           status: 'COMPLETED',
           transactionDate: { gte: periodStart, lte: now },
-          ...(branch ? { branch } : {}),
+          ...(branch ? { branch: { in: [branch, 'ALL'] } } : {}),
         },
       },
       select: { walletId: true, amount: true, orderId: true },
@@ -110,7 +110,7 @@ export async function GET(req: Request) {
         where: {
           status: 'COMPLETED',
           transactionDate: { gte: periodStart, lte: now },
-          ...(branch ? { branch } : {}),
+          ...(branch ? { branch: { in: [branch, 'ALL'] } } : {}),
           items: { some: { service: { department: { in: Array.from(hmoDepts) } } } },
         },
         select: { netAmount: true },

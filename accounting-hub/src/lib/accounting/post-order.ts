@@ -24,7 +24,7 @@
 import type { PrismaClient } from '@prisma/client'
 import { postJournalEntry, UnbalancedJournalEntryError, type PostingLine } from './posting'
 
-const CASH_METHODS = new Set(['CASH', 'GCASH', 'PAYMAYA', 'DEBIT', 'CREDIT_CARD', 'SHOPEE', 'LAZADA', 'TIKTOK'])
+const CASH_METHODS = new Set(['CASH', 'GCASH', 'PAYMAYA', 'PAYMONGO', 'DEBIT', 'CREDIT_CARD', 'SHOPEE', 'LAZADA', 'TIKTOK'])
 const AR_METHODS   = new Set(['HMO', 'GL'])
 
 export interface PostOrderResult {

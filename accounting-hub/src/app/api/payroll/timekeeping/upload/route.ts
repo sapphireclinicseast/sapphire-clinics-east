@@ -138,6 +138,34 @@ export async function POST(req: Request) {
     }
   }
 
+  // Fetch approved CHANGE_SCHEDULE requests in the date range.
+  // These override the static rest-day schedule — a rest day changed to a working day
+  // must not be re-stamped as isRestDay=true when timekeeping data is (re-)uploaded.
+  const changeScheduleRequests = await prisma.employeeRequest.findMany({
+    where: {
+      status: 'APPROVED',
+      requestType: 'CHANGE_SCHEDULE',
+      startDate: { lte: maxDate },
+      OR: [
+        { endDate: { gte: minDate } },
+        { endDate: null, startDate: { gte: minDate } },
+      ],
+    },
+    select: { employeeId: true, startDate: true, endDate: true, changeToWorkingDay: true },
+  })
+
+  // Build a map of "employeeId|YYYY-MM-DD" -> changeToWorkingDay (true = was rest, now working)
+  const changeScheduleMap = new Map<string, boolean>()
+  for (const cs of changeScheduleRequests) {
+    if (!cs.startDate) continue
+    const start = new Date(cs.startDate)
+    const end = cs.endDate ? new Date(cs.endDate) : new Date(cs.startDate)
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const dateKey = d.toISOString().split('T')[0]
+      changeScheduleMap.set(`${cs.employeeId}|${dateKey}`, cs.changeToWorkingDay ?? true)
+    }
+  }
+
   let created = 0
   let updated = 0
   const conflicts: { employeeId: string; employeeName?: string; date: string; insCount: number; outsCount: number }[] = []
@@ -155,7 +183,12 @@ export async function POST(req: Request) {
     const dateObj = new Date(g.date + 'T00:00:00Z')
     const dayOfWeek = DAYS[dateObj.getUTCDay()]
     const restDays = (emp.restDay || '').split(',').map(d => d.trim())
-    const isRestDay = restDays.includes(dayOfWeek)
+    let isRestDay = restDays.includes(dayOfWeek)
+    // Override with approved Change Schedule request if one exists for this employee+date
+    const csKey = `${emp.id}|${g.date}`
+    if (changeScheduleMap.has(csKey)) {
+      isRestDay = !(changeScheduleMap.get(csKey)) // changeToWorkingDay=true → isRestDay=false
+    }
 
     const holiday = holidayMap.get(g.date)
     const isHoliday = !!holiday

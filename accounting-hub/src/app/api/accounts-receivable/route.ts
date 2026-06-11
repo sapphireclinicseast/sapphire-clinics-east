@@ -37,7 +37,7 @@ export async function GET(req: Request) {
       status: { not: 'VOIDED' },
       payments: { some: paymentFilter },
     }
-    if (branch) orderWhere.branch = branch
+    if (branch) orderWhere.branch = { in: [branch, 'ALL'] }
     if (dateFrom || dateTo) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rangeFilter: any = {}

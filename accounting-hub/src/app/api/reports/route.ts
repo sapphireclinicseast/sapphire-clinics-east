@@ -31,11 +31,12 @@ export async function GET(req: Request) {
   const branchFilter: any = branch !== 'ALL' ? { branch: orderBranch } : {}
 
   try {
-    const [accounts, orders, inventoryItems, wallets, paymentModes, arPayments, journalLines, discountSettings, allServices, allInventory, assets, beginningBalances] = await Promise.all([
+    const [accounts, orders, inventoryItems, wallets, paymentModes, arPayments, journalLines, discountSettings, allServices, allInventory, assets, beginningBalances, payrollCOAMappingRaw, payrollEntriesRaw, employeePayslipsRaw] = await Promise.all([
       // Chart of Accounts — structure for report line items
       prisma.account.findMany({
         where: { isActive: true },
         select: {
+          id: true,
           accountNumber: true,
           accountTitle: true,
           accountType: true,
@@ -70,9 +71,9 @@ export async function GET(req: Request) {
               inventoryItemId: true,
               quantity: true,
               lineTotal: true,
-              service: { select: { department: true, revenueAccount: { select: { accountNumber: true, accountTitle: true } } } },
+              service: { select: { department: true, revenueAccount: { select: { accountNumber: true, accountTitle: true, accountType: true } } } },
               cogsCost: true,
-              inventoryItem: { select: { unitCost: true, skuDepartment: true, revenueAccount: { select: { accountNumber: true, accountTitle: true } }, expenseAccount: { select: { accountNumber: true, accountTitle: true } } } },
+              inventoryItem: { select: { unitCost: true, skuDepartment: true, revenueAccount: { select: { accountNumber: true, accountTitle: true, accountType: true } }, expenseAccount: { select: { accountNumber: true, accountTitle: true } } } },
             },
           },
           payments: {
@@ -124,11 +125,31 @@ export async function GET(req: Request) {
       }),
 
       // Journal entry lines — for payroll payables, benefit payments, salary payments, etc.
+      // Two windows are unioned via OR:
+      //   1. All non-payroll entries whose entryDate falls within the calendar year.
+      //   2. Payroll entries (PAYROLL_EMPLOYEE / PAYROLL_CONSULTANT) whose cutoff
+      //      period (referenceId prefix) belongs to this year but whose entryDate may
+      //      fall in Jan–Feb of the *following* year (e.g. Dec payroll finalized in Jan).
+      //      The existing loop at line ~566 already re-maps these to the correct month
+      //      using the cutoff period; the only problem was they were never fetched.
       prisma.journalEntryLine.findMany({
         where: {
           journalEntry: {
-            entryDate: { gte: startDate, lt: endDate },
-            ...(branch !== 'ALL' ? { branch } : {}),
+            OR: [
+              // Standard window: any entry (payroll or not) dated within the year
+              {
+                entryDate: { gte: startDate, lt: endDate },
+                ...(branch !== 'ALL' ? { branch } : {}),
+              },
+              // Extended window: payroll entries finalized in Jan–Feb of the next year
+              // but whose cutoff period belongs to this report year
+              {
+                referenceType: { in: ['PAYROLL_EMPLOYEE', 'PAYROLL_CONSULTANT'] },
+                referenceId: { startsWith: `${year}-` },
+                entryDate: { gte: endDate, lt: new Date(`${year + 1}-03-01T00:00:00.000Z`) },
+                ...(branch !== 'ALL' ? { branch } : {}),
+              },
+            ],
           },
         },
         select: {
@@ -136,7 +157,7 @@ export async function GET(req: Request) {
           credit: true,
           description: true,
           account: { select: { id: true, accountNumber: true, accountTitle: true, accountType: true } },
-          journalEntry: { select: { id: true, entryDate: true, description: true, referenceType: true } },
+          journalEntry: { select: { id: true, entryDate: true, description: true, referenceType: true, referenceId: true } },
         },
       }),
 
@@ -194,6 +215,38 @@ export async function GET(req: Request) {
           account: { select: { accountNumber: true, accountTitle: true, accountType: true } },
         },
       }),
+
+      // Payroll COA mapping — used to identify which expense accounts to override with
+      // direct payslip sums (bypassing journal entry amounts for accuracy).
+      prisma.payrollCOAMapping.findFirst(),
+
+      // Consultant payroll entries — LOCKED only (same gate as journal entry creation).
+      // Grouped by cutoff period to populate income statement by month.
+      prisma.payrollEntry.findMany({
+        where: {
+          status: 'LOCKED',
+          cutoffPeriod: { startsWith: String(year) },
+          ...(branch !== 'ALL' ? { branch } : {}),
+        },
+        select: { cutoffPeriod: true, grossPay: true },
+      }),
+
+      // Employee payslips — LOCKED only.
+      // grossPay → salary expense; ER shares → individual benefit expense accounts.
+      prisma.employeePayslip.findMany({
+        where: {
+          status: 'LOCKED',
+          cutoffPeriod: { startsWith: String(year) },
+          ...(branch !== 'ALL' ? { branch } : {}),
+        },
+        select: {
+          cutoffPeriod: true,
+          grossPay: true,
+          sssEmployerShare: true,
+          philhealthEmployerShare: true,
+          pagibigEmployerShare: true,
+        },
+      }),
     ])
 
     // Build deduction rate map: paymentModeId → total deduction %
@@ -214,6 +267,24 @@ export async function GET(req: Request) {
         modeAccountKey[pm.id] = `${pm.account.accountNumber} ${pm.account.accountTitle}`
       }
     }
+
+    // Build account ID → "accountNumber accountTitle" key map (used for payroll COA mapping lookup)
+    const accountIdToKey = new Map<string, string>()
+    for (const a of accounts) {
+      if (a.id) accountIdToKey.set(a.id, `${a.accountNumber} ${a.accountTitle}`)
+    }
+
+    // Resolve payroll expense account keys from the COA mapping
+    const consultantExpenseKey = payrollCOAMappingRaw?.professionalFeesAccountId
+      ? accountIdToKey.get(payrollCOAMappingRaw.professionalFeesAccountId) : undefined
+    const empSalaryKey = payrollCOAMappingRaw?.salaryExpenseAccountId
+      ? accountIdToKey.get(payrollCOAMappingRaw.salaryExpenseAccountId) : undefined
+    const empSssERKey = payrollCOAMappingRaw?.sssERAccountId
+      ? accountIdToKey.get(payrollCOAMappingRaw.sssERAccountId) : undefined
+    const empPhilERKey = payrollCOAMappingRaw?.philhealthERAccountId
+      ? accountIdToKey.get(payrollCOAMappingRaw.philhealthERAccountId) : undefined
+    const empHdmfERKey = payrollCOAMappingRaw?.hdmfERAccountId
+      ? accountIdToKey.get(payrollCOAMappingRaw.hdmfERAccountId) : undefined
 
     // Build discount label → COA account key map from DiscountSettings
     const discountLabelToAccount: Record<string, string> = {}
@@ -276,7 +347,7 @@ export async function GET(req: Request) {
 
     /* ── Aggregate monthly data ────────────────────────────────── */
 
-    const CASH_METHODS = new Set(['CASH', 'GCASH', 'PAYMAYA', 'DEBIT', 'CREDIT_CARD', 'SHOPEE', 'LAZADA', 'TIKTOK'])
+    const CASH_METHODS = new Set(['CASH', 'GCASH', 'PAYMAYA', 'PAYMONGO', 'DEBIT', 'CREDIT_CARD', 'SHOPEE', 'LAZADA', 'TIKTOK'])
 
     interface MonthData {
       serviceRevenue: number
@@ -344,9 +415,16 @@ export async function GET(req: Request) {
         m.revenueByDept[dept] = (m.revenueByDept[dept] || 0) + lineAmt
 
         // Group by assigned COA revenue account (skip unearned — they go to liabilities, not IS)
+        // Also skip items whose revenue account is a LIABILITY type (e.g. 4050 Unearned Revenue)
+        // even if the order itself is mis-flagged as EARNED — liability accounts must never
+        // appear in the income statement.
         if (order.revenueType !== 'UNEARNED') {
-          const acctKey = resolveItemAccount(item)
-          m.revenueByAccount[acctKey] = (m.revenueByAccount[acctKey] || 0) + lineAmt
+          const itemRevenueAcctType = item.service?.revenueAccount?.accountType
+            || item.inventoryItem?.revenueAccount?.accountType
+          if (itemRevenueAcctType !== 'LIABILITY') {
+            const acctKey = resolveItemAccount(item)
+            m.revenueByAccount[acctKey] = (m.revenueByAccount[acctKey] || 0) + lineAmt
+          }
         }
 
         // COGS: prefer direct relation, fall back to name lookup for unlinked inventory items
@@ -558,15 +636,61 @@ export async function GET(req: Request) {
     }
 
     /* ── Feed journal-entry EXPENSE into monthly expenseByAccount ── */
+    // Note: PAYROLL_CONSULTANT and PAYROLL_EMPLOYEE lines are intentionally skipped here.
+    // Payroll expense accounts are populated below directly from PayrollEntry/EmployeePayslip
+    // so the income statement always reflects actual payslip totals rather than JE amounts
+    // (which can drift if payslips are corrected after finalization without re-finalizing).
     for (const line of journalLines) {
       if (!line.account || line.account.accountType !== 'EXPENSE') continue
+      if (
+        line.journalEntry.referenceType === 'PAYROLL_CONSULTANT' ||
+        line.journalEntry.referenceType === 'PAYROLL_EMPLOYEE'
+      ) continue
       const key = `${line.account.accountNumber} ${line.account.accountTitle}`
-      const month = new Date(line.journalEntry.entryDate).getMonth() + 1
+      const month = new Date(line.journalEntry.entryDate).getUTCMonth() + 1
       const debit = Number(line.debit) || 0
       const credit = Number(line.credit) || 0
       const amt = debit - credit // EXPENSE: debit increases
       if (amt !== 0 && monthly[month]) {
         monthly[month].expenseByAccount[key] = (monthly[month].expenseByAccount[key] || 0) + amt
+      }
+    }
+
+    /* ── Payroll expense from direct payslip sums ───────────────
+       Consultant grossPay → professionalFeesAccount
+       Employee grossPay  → salaryExpenseAccount
+       Employee ER shares → sssERAccount / philhealthERAccount / hdmfERAccount
+       cutoffPeriod format: "YYYY-MM-N" — month is always parts[1]              */
+    // Sum consultant payroll by cutoff month
+    if (consultantExpenseKey) {
+      for (const e of payrollEntriesRaw) {
+        const m = parseInt(e.cutoffPeriod.split('-')[1] ?? '0', 10)
+        if (m >= 1 && m <= 12 && monthly[m]) {
+          monthly[m].expenseByAccount[consultantExpenseKey] =
+            (monthly[m].expenseByAccount[consultantExpenseKey] || 0) + Number(e.grossPay)
+        }
+      }
+    }
+
+    // Sum employee payroll by cutoff month
+    for (const p of employeePayslipsRaw) {
+      const m = parseInt(p.cutoffPeriod.split('-')[1] ?? '0', 10)
+      if (m < 1 || m > 12 || !monthly[m]) continue
+      if (empSalaryKey) {
+        monthly[m].expenseByAccount[empSalaryKey] =
+          (monthly[m].expenseByAccount[empSalaryKey] || 0) + Number(p.grossPay)
+      }
+      if (empSssERKey) {
+        monthly[m].expenseByAccount[empSssERKey] =
+          (monthly[m].expenseByAccount[empSssERKey] || 0) + Number(p.sssEmployerShare)
+      }
+      if (empPhilERKey) {
+        monthly[m].expenseByAccount[empPhilERKey] =
+          (monthly[m].expenseByAccount[empPhilERKey] || 0) + Number(p.philhealthEmployerShare)
+      }
+      if (empHdmfERKey) {
+        monthly[m].expenseByAccount[empHdmfERKey] =
+          (monthly[m].expenseByAccount[empHdmfERKey] || 0) + Number(p.pagibigEmployerShare)
       }
     }
 

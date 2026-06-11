@@ -385,6 +385,32 @@ export async function POST(req: Request) {
       },
     })
 
+    // PatientBooking queue items use a queueItemId prefixed `pbk_<bookingId>`.
+    // (Patient booked a session via client.sapphireclinicseast.org, paid the
+    // downpayment through PayMongo, and the booking surfaced in the cashier
+    // appointment queue.) When the cashier converts one to an order, the
+    // existing POS flow auto-creates the downpayment DigitalWallet on the
+    // accounting side — no wallet creation lives on the marketing hub. Call
+    // back marketing-hub here to flip PatientBooking.accountingRecorded=true
+    // so the row drops off the Decking nagging list and the cashier queue.
+    // Fire-and-forget — a failed webhook must not block the order from saving.
+    if (typeof queueItemId === 'string' && queueItemId.startsWith('pbk_')) {
+      const bookingId = queueItemId.slice('pbk_'.length)
+      const marketingUrl = process.env.MARKETING_HUB_URL || 'https://marketing.sapphireclinicseast.org'
+      const apiKey = process.env.EXTERNAL_API_KEY || ''
+      if (apiKey && bookingId) {
+        void fetch(`${marketingUrl}/api/decking/bookings/${encodeURIComponent(bookingId)}/mark-accounted-external`, {
+          method: 'POST',
+          headers: {
+            'authorization': `Bearer ${apiKey}`,
+            'content-type': 'application/json',
+          },
+        }).catch(err => {
+          console.warn('[orders.POST] patient-booking callback failed:', err)
+        })
+      }
+    }
+
     // Class-portal tuition queue items use a queueItemId prefixed `clsp_<classPortalPaymentId>`.
     // When the cashier converts one to an order, callback the marketing hub
     // so the class-portal student's payment record flips PENDING → PAID on

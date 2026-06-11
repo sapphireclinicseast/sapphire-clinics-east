@@ -214,58 +214,68 @@ export async function PUT(req: Request) {
     }
   }
 
-  // On APPROVED Change Schedule: update timekeeping record for that date
+  // On APPROVED Change Schedule: update timekeeping records for all dates in the range
   if (status === 'APPROVED' && existing.employeeId && existing.startDate &&
       existing.requestType === 'CHANGE_SCHEDULE' && existing.changeToWorkingDay != null) {
     try {
-      const dateOnly = new Date(existing.startDate)
-      dateOnly.setHours(0, 0, 0, 0)
-
       const isNowWorkingDay = existing.changeToWorkingDay
       const schedIn = isNowWorkingDay ? (existing.requestedScheduleIn || '08:00') : null
       const schedOut = isNowWorkingDay ? (existing.requestedScheduleOut || '17:00') : null
-
-      const tkRecord = await prisma.timekeepingRecord.findUnique({
-        where: { employeeId_date: { employeeId: existing.employeeId, date: dateOnly } },
-      })
-
       const schedLabel = isNowWorkingDay
         ? `Changed to Working Day (${schedIn}–${schedOut})`
         : 'Changed to Rest Day'
 
-      if (tkRecord) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const updateData: any = {
-          isRestDay: !isNowWorkingDay,
-          source: 'FILING',
-          remarks: `Schedule change via employee request: ${schedLabel}`,
-        }
+      // Build list of all dates covered by this request (startDate to endDate inclusive).
+      // Use setUTCHours to keep dates at midnight UTC regardless of server timezone,
+      // matching how TimekeepingRecord.date is stored.
+      const rangeStart = new Date(existing.startDate)
+      rangeStart.setUTCHours(0, 0, 0, 0)
+      const rangeEnd = existing.endDate ? new Date(existing.endDate) : new Date(rangeStart)
+      rangeEnd.setUTCHours(0, 0, 0, 0)
 
-        // Recalculate late/undertime against new schedule if it's now a working day
-        if (isNowWorkingDay && schedIn && schedOut && tkRecord.timeIn && tkRecord.timeOut) {
-          const [sInH, sInM] = schedIn.split(':').map(Number)
-          const [sOutH, sOutM] = schedOut.split(':').map(Number)
-          const actualInMin = tkRecord.timeIn.getHours() * 60 + tkRecord.timeIn.getMinutes()
-          const actualOutMin = tkRecord.timeOut.getHours() * 60 + tkRecord.timeOut.getMinutes()
-          updateData.lateMinutes = Math.max(0, actualInMin - (sInH * 60 + sInM))
-          updateData.undertimeMinutes = Math.max(0, (sOutH * 60 + sOutM) - actualOutMin)
-        }
+      for (let cur = new Date(rangeStart); cur <= rangeEnd; cur.setUTCDate(cur.getUTCDate() + 1)) {
+        const dateOnly = new Date(cur)
 
-        await prisma.timekeepingRecord.update({
+        const tkRecord = await prisma.timekeepingRecord.findUnique({
           where: { employeeId_date: { employeeId: existing.employeeId, date: dateOnly } },
-          data: updateData,
         })
-      } else {
-        // No existing record — create one
-        await prisma.timekeepingRecord.create({
-          data: {
-            employeeId: existing.employeeId,
-            date: dateOnly,
+
+        if (tkRecord) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const updateData: any = {
             isRestDay: !isNowWorkingDay,
             source: 'FILING',
             remarks: `Schedule change via employee request: ${schedLabel}`,
-          },
-        })
+          }
+          // Recalculate late/undertime against new schedule if it's now a working day.
+          // timeIn/timeOut are stored as UTC; convert to Philippine Time (UTC+8) before
+          // comparing against the schedule which is expressed in local (PHT) hours.
+          if (isNowWorkingDay && schedIn && schedOut && tkRecord.timeIn && tkRecord.timeOut) {
+            const [sInH, sInM] = schedIn.split(':').map(Number)
+            const [sOutH, sOutM] = schedOut.split(':').map(Number)
+            const phtIn = new Date(tkRecord.timeIn.getTime() + 8 * 60 * 60 * 1000)
+            const phtOut = new Date(tkRecord.timeOut.getTime() + 8 * 60 * 60 * 1000)
+            const actualInMin = phtIn.getUTCHours() * 60 + phtIn.getUTCMinutes()
+            const actualOutMin = phtOut.getUTCHours() * 60 + phtOut.getUTCMinutes()
+            updateData.lateMinutes = Math.max(0, actualInMin - (sInH * 60 + sInM))
+            updateData.undertimeMinutes = Math.max(0, (sOutH * 60 + sOutM) - actualOutMin)
+          }
+          await prisma.timekeepingRecord.update({
+            where: { employeeId_date: { employeeId: existing.employeeId, date: dateOnly } },
+            data: updateData,
+          })
+        } else {
+          // No existing record — create one
+          await prisma.timekeepingRecord.create({
+            data: {
+              employeeId: existing.employeeId,
+              date: dateOnly,
+              isRestDay: !isNowWorkingDay,
+              source: 'FILING',
+              remarks: `Schedule change via employee request: ${schedLabel}`,
+            },
+          })
+        }
       }
     } catch (e) {
       console.error('Failed to apply schedule change:', e)
