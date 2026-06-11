@@ -1,35 +1,35 @@
 @import "tailwindcss";
 
 :root {
-  /* ─── Brand palette (2026.05 — Aura Academy refresh) ──────────
-   * Matches seminars / teletherapy / hiring / queue / client-portal /
-   * hr platform. Distribution target:
-   *   60% Paper / Narra      — default surfaces
-   *   25% Moss / Sage        — secondary surfaces, quiet hierarchy
-   *   10% Ink                — type, fine rules, monochrome photography
-   *    5% Clay / Sun         — accents, links, CTAs, single-point emphasis
+  /* ─── Brand palette (2026.06 — Sapphire Clinics East Inc.) ────
+   * Official SCEI brand colors.
+   * Distribution target:
+   *   60% Paper (sage white)  — default surfaces
+   *   25% Moss / Sage         — secondary surfaces, quiet hierarchy
+   *   10% Ink (deep teal)     — type, headers, fine rules
+   *    5% Clay / Gold         — accents, links, CTAs, single-point emphasis
    */
-  --narra: #194850;   /* Primary — deep teal */
-  --moss:  #3E6B66;   /* Secondary — mid-teal */
-  --sage:  #7B988A;   /* Tertiary — soft sage */
-  --clay:  #C68077;   /* Warm accent — coral / dusty rose */
-  --sun:   #EDD8A8;   /* Light accent — warm sand */
-  --paper: #F4ECDD;   /* Neutral, dominant surface — cream */
+  --narra: #244952;   /* Primary — deep teal (was #194850) */
+  --moss:  #4a8073;   /* Secondary — mid-teal (was #3E6B66) */
+  --sage:  #7a9e94;   /* Tertiary — soft sage (derived between moss & paper) */
+  --clay:  #cf9d88;   /* Warm accent — terracotta (was #C68077) */
+  --sun:   #c69849;   /* Gold accent (was #EDD8A8 warm sand) */
+  --paper: #edf3d9;   /* Neutral, dominant surface — sage white (was #F4ECDD cream) */
   --ink:   #1A1A1A;   /* Neutral, type + fine rules */
 
   /* ─── Legacy aliases (so existing components keep working) ─── */
-  --teal:        var(--narra);
-  --deep-teal:   #0F3138;
-  --bright-teal: var(--clay);
-  --pale-teal:   var(--paper);
-  --gold:        var(--moss);
-  --gold-light:  var(--sage);
+  --teal:        var(--narra);   /* #244952 */
+  --deep-teal:   #244952;        /* matches narra */
+  --bright-teal: var(--moss);    /* #4a8073 — mid teal for highlights */
+  --pale-teal:   var(--paper);   /* #edf3d9 */
+  --gold:        var(--sun);     /* #c69849 */
+  --gold-light:  var(--clay);    /* #cf9d88 terracotta as warm light accent */
 
   /* Neutrals (ink + paper-derived) */
   --charcoal:    var(--ink);
   --near-black:  var(--ink);
   --off-white:   var(--paper);
-  --light-gray:  #D9CDB4;   /* Paper, slightly darker for borders */
+  --light-gray:  #c8dbd5;   /* Teal-derived border / divider (was #D9CDB4) */
   --mid-gray:    var(--sage);
 
   /* ─── Fonts ───────────────────────────────────────────────────
@@ -64,6 +64,12 @@ h4, h5, h6 {
 ::-webkit-scrollbar-track { background: var(--light-gray); }
 ::-webkit-scrollbar-thumb { background: var(--mid-gray); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--teal); }
+
+/* Login card entrance */
+@keyframes login-enter {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
 /* Toast animations */
 @keyframes slide-in {

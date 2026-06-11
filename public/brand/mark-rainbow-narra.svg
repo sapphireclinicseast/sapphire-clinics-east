@@ -1,14 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 56" width="100" height="56" role="img" aria-label="SAPPHIRE Operations Hub mark">
-  <!-- Outer ring: Narra -->
-  <path d="M 2 54 A 48 48 0 0 1 98 54 Z" fill="#1B3F38"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 56" width="100" height="56" role="img" aria-label="Aura Health Rehab rainbow mark">
+  <!-- Outer ring: Deep forest teal -->
+  <path d="M 2 54 A 48 48 0 0 1 98 54 Z" fill="#2F6B57"/>
   <!-- Gap -->
   <path d="M 9 54 A 41 41 0 0 1 91 54 Z" fill="#FFFFFF"/>
-  <!-- Middle ring: Sage -->
-  <path d="M 15 54 A 35 35 0 0 1 85 54 Z" fill="#4A8073"/>
+  <!-- Middle ring: Sage green -->
+  <path d="M 15 54 A 35 35 0 0 1 85 54 Z" fill="#7FAA68"/>
   <!-- Gap -->
   <path d="M 22 54 A 28 28 0 0 1 78 54 Z" fill="#FFFFFF"/>
-  <!-- Inner ring: Clay -->
-  <path d="M 27 54 A 23 23 0 0 1 73 54 Z" fill="#A85C3D"/>
+  <!-- Inner ring: Steel blue-gray -->
+  <path d="M 27 54 A 23 23 0 0 1 73 54 Z" fill="#7293A2"/>
   <!-- Center cutout -->
   <path d="M 38 54 A 12 12 0 0 1 62 54 Z" fill="#FFFFFF"/>
 </svg>

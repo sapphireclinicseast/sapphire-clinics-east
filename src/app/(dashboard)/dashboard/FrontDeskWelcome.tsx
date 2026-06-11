@@ -3,7 +3,6 @@
 import React from 'react'
 
 import { useEffect, useState } from 'react'
-import Image from 'next/image'
 
 type BirthdayPatient = { id: string; firstName: string; lastName: string; birthday: string; hasPhone: boolean }
 type SmsState = 'idle' | 'sending' | 'sent' | 'error'
@@ -426,8 +425,8 @@ export default function FrontDeskWelcome({
   }, [branch])
 
   const branchLabel =
-    branch === 'SBEA' ? 'Sandbox Clinic East'
-    : branch === 'SBGH' ? 'Sandbox Clinic Greenhills'
+    branch === 'SBEA' ? 'East Branch'
+    : branch === 'SBGH' ? 'Greenhills Branch'
     : undefined
 
   return (
@@ -437,7 +436,7 @@ export default function FrontDeskWelcome({
         width: '100%',
         minHeight: 'calc(100vh - 60px)',
         overflowX: 'hidden',
-        background: 'linear-gradient(155deg, #FFFAF4 0%, #FFF5E8 55%, #FFFCF6 100%)',
+        background: 'linear-gradient(155deg, #f4f8ef 0%, #edf3d9 55%, #f4f8ef 100%)',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -447,20 +446,11 @@ export default function FrontDeskWelcome({
     >
       <style>{ALPACA_CSS}</style>
 
-      {/* ── Logo ── */}
-      <Image
-        src="/sandbox-clinic-logo.png"
-        alt="Sandbox Clinic"
-        width={72}
-        height={72}
-        style={{ objectFit: 'contain' }}
-      />
-
       {/* ── Greeting ── */}
       <div style={{ textAlign: 'center', maxWidth: '560px', padding: '0 2rem' }}>
         <p style={{
           fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.18em',
-          textTransform: 'uppercase', color: '#ED6823', marginBottom: '0.4rem',
+          textTransform: 'uppercase', color: '#4a8073', marginBottom: '0.4rem',
         }}>
           Welcome back
         </p>
@@ -470,25 +460,25 @@ export default function FrontDeskWelcome({
           fontFamily: 'var(--font-display, system-ui)',
         }}>
           Good {getGreeting()},{' '}
-          <span style={{ color: '#ED6823' }}>{name ?? 'there'}</span>! 👋
+          <span style={{ color: '#4a8073' }}>{name ?? 'there'}</span>! 👋
         </h1>
 
         {/* Daily quote — renders only after JS sets day-of-year */}
         {quote && (
           <div style={{
-            background: 'rgba(237,104,35,0.07)',
-            border: '1px solid rgba(237,104,35,0.18)',
+            background: 'rgba(74,128,115,0.07)',
+            border: '1px solid rgba(74,128,115,0.22)',
             borderRadius: '0.875rem',
             padding: '1rem 1.4rem',
           }}>
             <p style={{
               fontSize: '1rem', fontWeight: 500, lineHeight: 1.7,
-              color: '#4A3018', fontStyle: 'italic', margin: 0,
+              color: '#1a3540', fontStyle: 'italic', margin: 0,
             }}>
               &ldquo;{quote.text}&rdquo;
             </p>
             <p style={{
-              fontSize: '0.78rem', fontWeight: 600, color: '#ED6823',
+              fontSize: '0.78rem', fontWeight: 600, color: '#4a8073',
               marginTop: '0.5rem', marginBottom: 0,
             }}>
               — {quote.author}
@@ -501,7 +491,7 @@ export default function FrontDeskWelcome({
       {branchLabel && (
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: '0.45rem',
-          background: '#ED6823', color: '#fff',
+          background: '#244952', color: '#fff',
           fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.07em',
           padding: '0.3rem 1rem', borderRadius: '99px',
         }}>
@@ -543,7 +533,7 @@ export default function FrontDeskWelcome({
         }}>
           {/* Header */}
           <div style={{
-            background: 'linear-gradient(135deg, #ED6823, #F5A030)',
+            background: 'linear-gradient(135deg, #4a8073, #244952)',
             padding: '0.7rem 1.1rem',
             display: 'flex', alignItems: 'center', gap: '0.5rem',
           }}>
@@ -580,11 +570,7 @@ export default function FrontDeskWelcome({
                 const dayLabel = isToday
                   ? 'Today! 🎉'
                   : dobDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
-                const clinicName =
-                  branch === 'SBEA' ? 'Sandbox Clinic East'
-                  : branch === 'SBGH' ? 'Sandbox Clinic Greenhills'
-                  : 'Sandbox Clinic'
-                const msg = `Happy Birthday, ${p.firstName}! 🎂 Wishing you a wonderful day filled with joy and good health! From all of us at ${clinicName}. 🧡`
+                const msg = `Happy Birthday, ${p.firstName}! 🎂 Wishing you a wonderful day filled with joy and good health! From all of us at Sapphire Clinics East Inc. 🌿`
                 const sms = smsState[p.id] ?? 'idle'
                 const email = emailState[p.id] ?? 'idle'
                 const alreadySent = sentEmailIds.has(p.id)
@@ -653,8 +639,8 @@ export default function FrontDeskWelcome({
                 return (
                   <div key={p.id} style={{
                     display: 'flex', alignItems: 'center', gap: '0.65rem',
-                    background: isToday ? '#FFF7F0' : '#FAFAFA',
-                    border: `1px solid ${isToday ? '#F5B48A' : '#EDE5D8'}`,
+                    background: isToday ? '#e8f2ef' : '#FAFAFA',
+                    border: `1px solid ${isToday ? 'rgba(74,128,115,0.45)' : '#dde8e5'}`,
                     borderRadius: '0.6rem',
                     padding: '0.55rem 0.8rem',
                   }}>
@@ -662,7 +648,7 @@ export default function FrontDeskWelcome({
                       <p style={{ fontWeight: 700, fontSize: '0.8rem', color: '#1A1A1A', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {p.firstName} {p.lastName}
                       </p>
-                      <p style={{ fontSize: '0.67rem', color: isToday ? '#ED6823' : '#999', margin: 0, fontWeight: isToday ? 600 : 400 }}>
+                      <p style={{ fontSize: '0.67rem', color: isToday ? '#4a8073' : '#999', margin: 0, fontWeight: isToday ? 600 : 400 }}>
                         {dayLabel}
                       </p>
                     </div>
@@ -677,8 +663,8 @@ export default function FrontDeskWelcome({
                       }
                       style={{
                         background: (alreadySent || email === 'sent') ? '#22C55E' : email === 'error' ? '#EF4444' : '#fff',
-                        color: (alreadySent || email === 'sent') ? '#fff' : email === 'error' ? '#fff' : '#ED6823',
-                        border: `1px solid ${(alreadySent || email === 'sent') ? '#22C55E' : email === 'error' ? '#EF4444' : '#ED6823'}`,
+                        color: (alreadySent || email === 'sent') ? '#fff' : email === 'error' ? '#fff' : '#4a8073',
+                        border: `1px solid ${(alreadySent || email === 'sent') ? '#22C55E' : email === 'error' ? '#EF4444' : '#4a8073'}`,
                         borderRadius: '0.4rem',
                         padding: '0.32rem 0.7rem', fontSize: '0.67rem', fontWeight: 600,
                         cursor: email === 'sending' ? 'wait' : 'pointer',
@@ -702,7 +688,7 @@ export default function FrontDeskWelcome({
                           background:
                             (alreadySentSms || sms === 'sent') ? '#22C55E'
                             : sms === 'error' ? '#EF4444'
-                            : '#ED6823',
+                            : '#4a8073',
                           color: '#fff', border: 'none', borderRadius: '0.4rem',
                           padding: '0.32rem 0.7rem', fontSize: '0.67rem', fontWeight: 600,
                           cursor: (sms === 'sending' || sms === 'sent' || alreadySentSms) ? 'default' : 'pointer',
@@ -726,7 +712,7 @@ export default function FrontDeskWelcome({
           {/* Text prompt hint */}
           {birthdayPatients.length > 0 && (
             <div style={{
-              borderTop: '1px solid #F0E8DC',
+              borderTop: '1px solid rgba(74,128,115,0.18)',
               padding: '0.5rem 0.875rem',
               fontSize: '0.65rem', color: '#AAA', fontStyle: 'italic',
             }}>
@@ -787,11 +773,8 @@ export default function FrontDeskWelcome({
             ))}
           </div>
 
-          {/* Progress Reports — pending PRs awaiting Paid + Email */}
-          <PendingProgressReports />
-
-          {/* Past Progress Reports — searchable history */}
-          <PastProgressReports />
+          {/* Progress Reports — wired so Email PR immediately populates Past list */}
+          <ProgressReportsSection />
         </div>
 
       </div>{/* end side-by-side wrapper */}
@@ -808,7 +791,7 @@ export default function FrontDeskWelcome({
           left: '50%',
           transform: 'translateX(-50%)',
           background: '#fff',
-          border: '2px solid #ED6823',
+          border: '2px solid #4a8073',
           borderRadius: '0.875rem',
           padding: '0.55rem 1.1rem',
           fontSize: '0.72rem',
@@ -832,7 +815,7 @@ export default function FrontDeskWelcome({
           width: 0, height: 0,
           borderLeft: '10px solid transparent',
           borderRight: '10px solid transparent',
-          borderTop: '14px solid #ED6823',
+          borderTop: '14px solid #4a8073',
         }} />
         {/* bubble tail inner */}
         <span style={{
@@ -865,7 +848,7 @@ export default function FrontDeskWelcome({
         {/* Ground line */}
         <div style={{
           position: 'absolute', bottom: '6px', left: 0, right: 0, height: '2px',
-          background: 'linear-gradient(90deg, transparent, rgba(237,104,35,0.15) 20%, rgba(237,104,35,0.15) 80%, transparent)',
+          background: 'linear-gradient(90deg, transparent, rgba(74,128,115,0.18) 20%, rgba(74,128,115,0.18) 80%, transparent)',
         }} />
 
         {/* X movement → flip direction → behavior (bob / jump / hide) */}
@@ -896,7 +879,17 @@ interface PRDoc {
   patient: { id: string; firstName: string; lastName: string; email: string | null }
 }
 
-function PendingProgressReports() {
+function ProgressReportsSection() {
+  const [pastTick, setPastTick] = React.useState(0)
+  return (
+    <>
+      <PendingProgressReports onEmailSent={() => setPastTick(t => t + 1)} />
+      <PastProgressReports refreshTick={pastTick} />
+    </>
+  )
+}
+
+function PendingProgressReports({ onEmailSent }: { onEmailSent?: () => void }) {
   const [docs, setDocs] = useState<PRDoc[]>([])
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -938,6 +931,7 @@ function PendingProgressReports() {
       const r = await fetch(`/api/progress-reports/${d.id}/email`, { method: 'POST' })
       if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Failed') }
       alert('Email sent.')
+      onEmailSent?.()   // tell Past list to refresh
       await load()
     } catch (e) { alert('Error: ' + (e as Error).message) }
     finally { setBusyId(null) }
@@ -957,20 +951,24 @@ function PendingProgressReports() {
           {docs.map(d => {
             const informed = d.informedFrontDeskAt ? new Date(d.informedFrontDeskAt).toLocaleDateString() : '—'
             return (
-              <div key={d.id} style={{ background: '#fff', border: '1px solid #FED7AA', borderRadius: '0.6rem', padding: '0.6rem 0.75rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#7C2D12' }}>
-                      {d.patient.lastName}, {d.patient.firstName}
-                    </div>
-                    <div style={{ fontSize: '0.7rem', color: '#9A3412', marginTop: 1 }}>
-                      <a href={`/api/progress-reports/${d.id}/file`} target="_blank" rel="noreferrer" style={{ color: '#C2410C', textDecoration: 'underline' }}>
-                        {d.fileName}
-                      </a>
-                      {' · '}{d.department}
-                      {' · '}<span style={{ background: '#FFEDD5', color: '#9A3412', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.62rem', textTransform: 'uppercase' }}>Informed {informed}</span>
-                    </div>
+              <div key={d.id} style={{ background: '#fff', border: '1px solid #FED7AA', borderRadius: '0.6rem', padding: '0.6rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {/* ── Top: patient info ── */}
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#7C2D12' }}>
+                    {d.patient.lastName}, {d.patient.firstName}
                   </div>
+                  <div style={{ fontSize: '0.7rem', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <a href={`/api/progress-reports/${d.id}/file`} target="_blank" rel="noreferrer" title={d.fileName} style={{ color: '#C2410C', textDecoration: 'underline' }}>
+                      {d.fileName}
+                    </a>
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#9A3412', marginTop: 2, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span>·{d.department}·</span>
+                    <span style={{ background: '#FFEDD5', color: '#9A3412', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.62rem', textTransform: 'uppercase' }}>Informed {informed}</span>
+                  </div>
+                </div>
+                {/* ── Bottom: controls on their own row, never overlapping the filename ── */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', borderTop: '1px solid #FED7AA', paddingTop: '0.4rem' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', fontWeight: 600, color: '#7C2D12', cursor: 'pointer' }}>
                     <input
                       type="checkbox"
@@ -990,6 +988,7 @@ function PendingProgressReports() {
                       background: d.paid && d.patient.email ? '#059669' : '#E2E8F0',
                       color: d.paid && d.patient.email ? '#fff' : '#94A3B8',
                       fontSize: '0.78rem', fontWeight: 700,
+                      whiteSpace: 'nowrap',
                       cursor: d.paid && d.patient.email && busyId !== d.id ? 'pointer' : 'not-allowed',
                     }}
                   >
@@ -1006,7 +1005,7 @@ function PendingProgressReports() {
 }
 
 // ── Past Progress Reports (green — already sent, searchable history) ─────────
-function PastProgressReports() {
+function PastProgressReports({ refreshTick }: { refreshTick?: number }) {
   const [docs, setDocs] = useState<PRDoc[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
@@ -1023,7 +1022,8 @@ function PastProgressReports() {
     } finally { setLoading(false) }
   }
 
-  React.useEffect(() => { load() }, [])
+  // Initial load + re-fetch whenever parent signals a new email was sent
+  React.useEffect(() => { load() }, [refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debounced search
   React.useEffect(() => {
