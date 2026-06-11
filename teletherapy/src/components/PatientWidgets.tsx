@@ -477,7 +477,7 @@ function DocumentSection({
                   className={`mt-2 w-full flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-semibold transition-all ${
                     informedAt
                       ? 'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100'
-                      : 'bg-[#C68077] text-white hover:bg-[#EDD8A8]'
+                      : 'bg-[#cf9d88] text-white hover:bg-[#c69849]'
                   } disabled:opacity-50`}
                 >
                   {actioningId === doc.id ? (

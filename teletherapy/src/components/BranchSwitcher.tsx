@@ -87,7 +87,7 @@ export default function BranchSwitcher({
             }`}
             style={{ fontFamily: 'var(--font-display)' }}
           >
-            <MapPin size={13} className={active ? 'text-[#C68077]' : ''} />
+            <MapPin size={13} className={active ? 'text-[#cf9d88]' : ''} />
             {branchLabel(b.branch)}
             <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${active ? 'bg-[var(--pale-teal)] text-[var(--teal)]' : 'bg-gray-100 text-gray-400'}`}>
               {b.department}

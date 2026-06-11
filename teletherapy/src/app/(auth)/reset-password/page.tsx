@@ -156,7 +156,7 @@ export default function ResetPasswordPage() {
         'radial-gradient(1200px 380px at 50% 35%, rgba(244, 236, 221, 0.22), transparent 60%)',
         'radial-gradient(820px 380px at 8% 0%, rgba(212, 145, 132, 0.55), transparent 60%)',
         'radial-gradient(1100px 440px at 100% 110%, rgba(123, 152, 138, 0.55), transparent 65%)',
-        'linear-gradient(135deg, #D49184 0%, #C9A28F 38%, #9CB1A2 72%, #7B988A 100%)',
+        'linear-gradient(135deg, #cf9d88 0%, #c69849 38%, #8aa99d 72%, #4a8073 100%)',
       ].join(', '),
     }}>
       <div className="absolute top-[-260px] right-[-180px] w-[560px] h-[560px] rounded-full pointer-events-none"

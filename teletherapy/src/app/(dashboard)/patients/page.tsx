@@ -167,7 +167,7 @@ export default function PatientsPage() {
                 title={ro ? 'Read-only — view past notes for continuity of care' : undefined}
               >
                 <div className="flex items-center gap-4">
-                  <div className={`w-11 h-11 rounded-full ${ro ? 'bg-[var(--paper-3)]' : 'bg-gradient-to-br from-[#C68077] to-[#EDD8A8]'} flex items-center justify-center font-bold text-[13px] shrink-0 ${ro ? 'text-[var(--mid-gray)]' : 'text-white'}`}>
+                  <div className={`w-11 h-11 rounded-full ${ro ? 'bg-[var(--paper-3)]' : 'bg-gradient-to-br from-[#cf9d88] to-[#c69849]'} flex items-center justify-center font-bold text-[13px] shrink-0 ${ro ? 'text-[var(--mid-gray)]' : 'text-white'}`}>
                     {patient.firstName[0]}{patient.lastName[0]}
                   </div>
                   <div className="flex-1 min-w-0">

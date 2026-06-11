@@ -1158,9 +1158,9 @@ export default function SessionDetailPage() {
             </button>
             <button
               onClick={() => setIEMode('INITIAL_EVAL')}
-              className="flex flex-col items-start gap-2 p-4 rounded-xl border-2 border-[#C68077]/30 bg-[#C68077]/5 hover:border-[#C68077] hover:bg-[#C68077]/10 transition-all text-left"
+              className="flex flex-col items-start gap-2 p-4 rounded-xl border-2 border-[#cf9d88]/30 bg-[#cf9d88]/5 hover:border-[#cf9d88] hover:bg-[#cf9d88]/10 transition-all text-left"
             >
-              <ClipboardList size={20} style={{ color: '#C68077' }} />
+              <ClipboardList size={20} style={{ color: '#cf9d88' }} />
               <span className="font-bold text-[14px] text-[var(--charcoal)]" style={{ fontFamily: 'var(--font-display)' }}>
                 ✓ This session is Initial Evaluation
               </span>
@@ -1183,7 +1183,7 @@ export default function SessionDetailPage() {
       {actionMode === 'complete' && supportsIEFlag && ieMode === 'INITIAL_EVAL' && session.patient && (
         <div className="card-static animate-gate mb-6">
           <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
-            <ClipboardList size={20} style={{ color: '#C68077' }} />
+            <ClipboardList size={20} style={{ color: '#cf9d88' }} />
             Upload Initial Evaluation Report
           </h2>
 
@@ -1263,7 +1263,7 @@ export default function SessionDetailPage() {
                 setSubmitting(false)
               }}
               disabled={submitting || !ieFile}
-              className="btn-primary flex-1 py-3 rounded-xl !bg-gradient-to-r !from-[#C68077] !to-[#EDD8A8]"
+              className="btn-primary flex-1 py-3 rounded-xl !bg-gradient-to-r !from-[#cf9d88] !to-[#c69849]"
             >
               {submitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
               Save IE & Complete Session
@@ -1292,14 +1292,14 @@ export default function SessionDetailPage() {
 
       {/* IE toggle banner — shown above daily-notes form so user can switch to IE upload if they misclicked */}
       {actionMode === 'complete' && supportsIEFlag && ieMode === 'DAILY_NOTES' && session.patient && (
-        <div className="mb-3 rounded-xl border-2 border-[#EDD8A8]/30 bg-[#EDD8A8]/5 px-4 py-3 flex items-center gap-3 animate-fade-up">
-          <ClipboardList size={16} style={{ color: '#C68077' }} className="shrink-0" />
+        <div className="mb-3 rounded-xl border-2 border-[#c69849]/30 bg-[#c69849]/5 px-4 py-3 flex items-center gap-3 animate-fade-up">
+          <ClipboardList size={16} style={{ color: '#cf9d88' }} className="shrink-0" />
           <p className="flex-1 text-[12px] text-[var(--charcoal)] leading-snug">
             Was this an <strong>Initial Evaluation</strong> instead?
           </p>
           <button
             onClick={() => { setIEMode('INITIAL_EVAL'); setNotes(''); setFiles([]) }}
-            className="text-[12px] font-semibold whitespace-nowrap px-3 py-1.5 rounded-lg bg-[#C68077] text-white hover:bg-[#EDD8A8] transition-colors"
+            className="text-[12px] font-semibold whitespace-nowrap px-3 py-1.5 rounded-lg bg-[#cf9d88] text-white hover:bg-[#c69849] transition-colors"
           >
             Switch to IE upload
           </button>

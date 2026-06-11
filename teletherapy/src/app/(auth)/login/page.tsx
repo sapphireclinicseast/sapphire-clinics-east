@@ -57,7 +57,7 @@ function LoginForm() {
         // sage settle in the bottom-right
         'radial-gradient(1100px 440px at 100% 110%, rgba(123, 152, 138, 0.55), transparent 65%)',
         // underlying Aura diagonal — coral → sand → sage
-        'linear-gradient(135deg, #D49184 0%, #C9A28F 38%, #9CB1A2 72%, #7B988A 100%)',
+        'linear-gradient(135deg, #cf9d88 0%, #c69849 38%, #8aa99d 72%, #4a8073 100%)',
       ].join(', '),
     }}>
       {/* Sand-outlined orbital rings — echoing the Aura creative */}

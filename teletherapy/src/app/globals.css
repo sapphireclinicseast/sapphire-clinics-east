@@ -9,20 +9,20 @@
    Moss + Clay   — editorial accents, sparingly
 */
 :root {
-  --narra:  #194850;       /* primary deep teal */
-  --moss:   #3E6B66;       /* secondary mid-teal */
-  --sage:   #7B988A;       /* tertiary soft sage */
-  --clay:   #C68077;       /* accent warm — coral / dusty rose */
-  --sun:    #EDD8A8;       /* accent light — warm sand */
-  --paper:  #F4ECDD;       /* neutral ground — cream */
+  --narra:  #244952;       /* primary deep teal */
+  --moss:   #4a8073;       /* secondary mid-teal */
+  --sage:   #8aa99d;       /* tertiary soft sage */
+  --clay:   #cf9d88;       /* accent warm — coral / dusty rose */
+  --sun:    #c69849;       /* accent light — warm sand */
+  --paper:  #edf3d9;       /* neutral ground — cream */
   --ink:    #1A1A1A;       /* near-black — type */
 
-  --paper-2:  #EBE0CB;
-  --paper-3:  #D9CDB4;
-  --sage-tint: rgba(123, 152, 138, 0.18);
-  --moss-tint: rgba(62, 107, 102, 0.10);
-  --clay-tint: rgba(198, 128, 119, 0.14);
-  --sun-tint:  rgba(237, 216, 168, 0.30);
+  --paper-2:  #e0e8cd;
+  --paper-3:  #d2deba;
+  --sage-tint: rgba(74, 128, 115, 0.16);
+  --moss-tint: rgba(36, 73, 82, 0.10);
+  --clay-tint: rgba(207, 157, 136, 0.16);
+  --sun-tint:  rgba(198, 152, 73, 0.20);
   --mid-gray: #6B6357;
 
   --font-display: var(--font-montserrat), 'Helvetica Neue', Arial, sans-serif;
@@ -118,20 +118,20 @@ body {
   border-radius: 14px;
   border: 1px solid var(--paper-3);
   padding: 24px;
-  box-shadow: 0 2px 12px rgba(25, 72, 80, 0.06);
+  box-shadow: 0 2px 12px rgba(36, 73, 82, 0.06);
   transition: transform 0.25s ease-out, box-shadow 0.25s ease-out, border-color 0.25s ease-out;
 }
 .card:hover {
   transform: translateY(-3px);
-  box-shadow: 0 8px 28px rgba(25, 72, 80, 0.12);
-  border-color: rgba(123, 152, 138, 0.4);
+  box-shadow: 0 8px 28px rgba(36, 73, 82, 0.12);
+  border-color: rgba(138, 169, 157, 0.4);
 }
 .card-static {
   background: #fff;
   border-radius: 14px;
   border: 1px solid var(--paper-3);
   padding: 24px;
-  box-shadow: 0 2px 12px rgba(25, 72, 80, 0.06);
+  box-shadow: 0 2px 12px rgba(36, 73, 82, 0.06);
 }
 
 /* ─── Button system ──────────────────────────────────────────── */
@@ -151,9 +151,9 @@ body {
   border: none;
   cursor: pointer;
   transition: all 0.2s ease-out;
-  box-shadow: 0 2px 8px rgba(25, 72, 80, 0.25);
+  box-shadow: 0 2px 8px rgba(36, 73, 82, 0.25);
 }
-.btn-primary:hover { background: var(--moss); box-shadow: 0 4px 16px rgba(25, 72, 80, 0.35); transform: translateY(-1px); }
+.btn-primary:hover { background: var(--moss); box-shadow: 0 4px 16px rgba(36, 73, 82, 0.35); transform: translateY(-1px); }
 .btn-primary:active { transform: scale(0.97); }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
@@ -191,9 +191,9 @@ body {
   border: none;
   cursor: pointer;
   transition: all 0.2s ease-out;
-  box-shadow: 0 2px 8px rgba(198, 128, 119, 0.30);
+  box-shadow: 0 2px 8px rgba(207, 157, 136, 0.30);
 }
-.btn-cta:hover { background: #944D32; box-shadow: 0 4px 16px rgba(198, 128, 119, 0.40); transform: translateY(-1px); }
+.btn-cta:hover { background: #a96f57; box-shadow: 0 4px 16px rgba(207, 157, 136, 0.40); transform: translateY(-1px); }
 .btn-cta:active { transform: scale(0.97); }
 .btn-cta:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
@@ -235,9 +235,9 @@ body {
   background: var(--clay);
   color: #fff;
 }
-.badge-pending     { background: var(--sun-tint);  color: #8a6a1f; border: 1px solid rgba(237, 216, 168, 0.4); }
-.badge-confirmed   { background: var(--sage-tint); color: var(--moss); border: 1px solid rgba(123, 152, 138, 0.3); }
-.badge-cancelled   { background: var(--clay-tint); color: var(--clay); border: 1px solid rgba(198, 128, 119, 0.28); }
+.badge-pending     { background: var(--sun-tint);  color: #8a6a1f; border: 1px solid rgba(198, 152, 73, 0.4); }
+.badge-confirmed   { background: var(--sage-tint); color: var(--moss); border: 1px solid rgba(138, 169, 157, 0.3); }
+.badge-cancelled   { background: var(--clay-tint); color: var(--clay); border: 1px solid rgba(207, 157, 136, 0.28); }
 .badge-rescheduled { background: var(--paper-2);   color: var(--mid-gray); border: 1px solid var(--paper-3); }
 
 /* ─── Input system ───────────────────────────────────────────── */
@@ -255,7 +255,7 @@ body {
 }
 .input:focus {
   border-color: var(--sage);
-  box-shadow: 0 0 0 3px rgba(123, 152, 138, 0.18);
+  box-shadow: 0 0 0 3px rgba(138, 169, 157, 0.18);
 }
 .input::placeholder { color: var(--mid-gray); }
 
@@ -282,17 +282,17 @@ body {
 .hero-gradient {
   background:
     /* warm cream halo through the centre */
-    radial-gradient(1200px 380px at 50% 35%, rgba(244, 236, 221, 0.22), transparent 60%),
+    radial-gradient(1200px 380px at 50% 35%, rgba(237, 243, 217, 0.22), transparent 60%),
     /* coral lift in the top-left */
-    radial-gradient(820px 380px at 8% 0%, rgba(212, 145, 132, 0.55), transparent 60%),
+    radial-gradient(820px 380px at 8% 0%, rgba(207, 157, 136, 0.55), transparent 60%),
     /* sage settle in the bottom-right */
-    radial-gradient(1100px 440px at 100% 110%, rgba(123, 152, 138, 0.55), transparent 65%),
+    radial-gradient(1100px 440px at 100% 110%, rgba(138, 169, 157, 0.55), transparent 65%),
     /* underlying coral → sand → sage diagonal */
     linear-gradient(135deg,
-      #D49184 0%,
-      #C9A28F 38%,
-      #9CB1A2 72%,
-      #7B988A 100%);
+      #cf9d88 0%,
+      #c69849 38%,
+      #8aa99d 72%,
+      #4a8073 100%);
   position: relative;
   overflow: hidden;
   color: #fff;
@@ -305,7 +305,7 @@ body {
   right: -180px;
   width: 560px;
   height: 560px;
-  border: 1px solid rgba(244, 236, 221, 0.28);
+  border: 1px solid rgba(237, 243, 217, 0.28);
   border-radius: 50%;
   pointer-events: none;
 }
@@ -316,7 +316,7 @@ body {
   right: -300px;
   width: 760px;
   height: 760px;
-  border: 1px solid rgba(244, 236, 221, 0.18);
+  border: 1px solid rgba(237, 243, 217, 0.18);
   border-radius: 50%;
   pointer-events: none;
 }
