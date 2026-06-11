@@ -389,8 +389,10 @@ async function _legacyBuildPayslipPdf_REMOVED_OLD(
     : getCutoffLabel(cutoffPeriod)
 
   // Brand colors
-  const ORANGE: [number, number, number] = [168, 92, 61]   // #A85C3D Clay
-  const NET_GREEN: [number, number, number] = [226, 239, 217] // #E2EFD9
+  const ORANGE: [number, number, number] = [74, 128, 115]    // #4A8073 teal (heads/lines/title)
+  const NET_GREEN: [number, number, number] = [237, 243, 217] // #EDF3D9 pale green (net-pay band)
+  const GOLD: [number, number, number] = [198, 152, 73]      // #C69849 gold (head rule)
+  const CLAY_ACCENT: [number, number, number] = [207, 157, 136] // #CF9D88 clay (gross-pay band)
   const WHITE: [number, number, number] = [255, 255, 255]
   const DARK: [number, number, number] = [30, 30, 30]
   const MID: [number, number, number] = [80, 80, 80]
@@ -459,8 +461,8 @@ async function _legacyBuildPayslipPdf_REMOVED_OLD(
     textColor: WHITE,
     fontStyle: 'bold' as const,
     fontSize: 9,
-    lineColor: ORANGE,
-    lineWidth: 0,
+    lineColor: GOLD,
+    lineWidth: 0.5,
   }
   const tableBodyStyles = {
     fontSize: 9,
@@ -625,6 +627,8 @@ async function _legacyBuildPayslipPdf_REMOVED_OLD(
         data.cell.styles.fontSize = 10
         data.cell.styles.textColor = [30, 30, 30]
       } else if (row.bold) {
+        data.cell.styles.fillColor = CLAY_ACCENT
+        data.cell.styles.textColor = [36, 73, 82]
         data.cell.styles.fontStyle = 'bold'
       } else if (row.red) {
         data.cell.styles.textColor = [160, 30, 30]

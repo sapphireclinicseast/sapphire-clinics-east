@@ -80,9 +80,9 @@ async function buildEmployeePdf(slip: {
 }): Promise<Buffer> {
   const { jsPDF } = await import('jspdf')
   const autoTable = (await import('jspdf-autotable')).default
-  const NARRA: [number, number, number] = [27, 63, 56]
-  const CLAY: [number, number, number] = [168, 92, 61]
-  const NET_GREEN: [number, number, number] = [226, 239, 217]
+  const NARRA: [number, number, number] = [36, 73, 82]
+  const CLAY: [number, number, number] = [74, 128, 115]
+  const NET_GREEN: [number, number, number] = [237, 243, 217]
   const MID: [number, number, number] = [80, 80, 80]
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })

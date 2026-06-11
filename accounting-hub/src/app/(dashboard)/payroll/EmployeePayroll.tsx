@@ -1057,8 +1057,8 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
   const buildEmployeePayslipPdf = async (p: Payslip) => {
     const { jsPDF } = await import('jspdf')
     const { default: autoTable } = await import('jspdf-autotable')
-    const ORANGE: [number, number, number] = [168, 92, 61]
-    const NET_GREEN: [number, number, number] = [226, 239, 217]
+    const ORANGE: [number, number, number] = [74, 128, 115]
+    const NET_GREEN: [number, number, number] = [237, 243, 217]
     const WHITE: [number, number, number] = [255, 255, 255]
     const DARK: [number, number, number] = [30, 30, 30]
     const MID: [number, number, number] = [80, 80, 80]
@@ -1215,7 +1215,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
       margin: { left: margin, right: margin },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       didParseCell: (data: any) => {
-        if (data.row.index === 2) { data.cell.styles.fillColor = NET_GREEN; data.cell.styles.fontStyle = 'bold'; data.cell.styles.textColor = [0, 80, 40] }
+        if (data.row.index === 2) { data.cell.styles.fillColor = NET_GREEN; data.cell.styles.fontStyle = 'bold'; data.cell.styles.textColor = [36, 73, 82] }
         if (data.row.index === 1) { data.cell.styles.textColor = [180, 40, 40] }
       },
     })

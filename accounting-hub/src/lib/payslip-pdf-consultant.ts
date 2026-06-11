@@ -202,8 +202,10 @@ export async function buildConsultantPayslipPdf(
     ? `${fmtDate(dateRange.start)} \u2013 ${fmtDate(dateRange.end)}`
     : getCutoffLabel(cutoffPeriod)
 
-  const ORANGE: [number, number, number] = [168, 92, 61]
-  const NET_GREEN: [number, number, number] = [226, 239, 217]
+  const ORANGE: [number, number, number] = [74, 128, 115]
+  const NET_GREEN: [number, number, number] = [237, 243, 217]
+  const GOLD: [number, number, number] = [198, 152, 73]
+  const CLAY_ACCENT: [number, number, number] = [207, 157, 136]
   const WHITE: [number, number, number] = [255, 255, 255]
   const DARK: [number, number, number] = [30, 30, 30]
   const MID: [number, number, number] = [80, 80, 80]
@@ -250,7 +252,7 @@ export async function buildConsultantPayslipPdf(
   }
   y += 4
 
-  const tableHeadStyles = { fillColor: ORANGE, textColor: WHITE, fontStyle: 'bold' as const, fontSize: 9, lineColor: ORANGE, lineWidth: 0 }
+  const tableHeadStyles = { fillColor: ORANGE, textColor: WHITE, fontStyle: 'bold' as const, fontSize: 9, lineColor: GOLD, lineWidth: 0.5 }
   const tableBodyStyles = { fontSize: 9, textColor: DARK, lineColor: LIGHT_BORDER, lineWidth: 0.3 }
 
   const earningsBody: string[][] = []
@@ -379,6 +381,8 @@ export async function buildConsultantPayslipPdf(
         data.cell.styles.fontSize = 10
         data.cell.styles.textColor = [30, 30, 30]
       } else if (row.bold) {
+        data.cell.styles.fillColor = CLAY_ACCENT
+        data.cell.styles.textColor = [36, 73, 82]
         data.cell.styles.fontStyle = 'bold'
       } else if (row.red) {
         data.cell.styles.textColor = [160, 30, 30]
