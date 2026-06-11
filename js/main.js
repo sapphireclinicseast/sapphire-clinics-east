@@ -24,8 +24,11 @@ const SITE_CONFIG = {
   heroSlides: [
     'WEBSITE BACKGROUND/1.png',
     'WEBSITE BACKGROUND/2.png',
-    'WEBSITE BACKGROUND/3.png',
-    'WEBSITE BACKGROUND/16.png',
+    'WEBSITE BACKGROUND/4.png',
+    'WEBSITE BACKGROUND/5.png',
+    'WEBSITE BACKGROUND/7.png',
+    'WEBSITE BACKGROUND/8.png',
+    'WEBSITE BACKGROUND/9.png',
     'WEBSITE BACKGROUND/17.png',
     'WEBSITE BACKGROUND/20.png',
     'WEBSITE BACKGROUND/21.png',
@@ -76,7 +79,6 @@ const SITE_CONFIG = {
     { name: 'Xavier School',                  imgSrc: 'PARTNERS/XAVIER SCHOOL.png' },
     { name: 'Bomba Pilipinas',                imgSrc: 'PARTNERS/BOMBA PILIPINAS.png' },
     { name: 'Light Bearer Christian Academy', imgSrc: 'PARTNERS/LIGHT BEARER CHRISTIAN ACADEMY.png' },
-    { name: 'Aura Health Rehab',              imgSrc: 'PARTNERS/AURA HEALTH REHAB.png' },
   ],
 
   /* ── Branches ── */
