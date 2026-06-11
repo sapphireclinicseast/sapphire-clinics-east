@@ -209,7 +209,8 @@ function buildHeroSlides() {
   SITE_CONFIG.heroSlides.forEach((src, i) => {
     const div = document.createElement('div');
     div.className = 'hero-slide' + (i === 0 ? ' active' : '');
-    div.style.backgroundImage = `url('${src}')`;
+    // ?v cache-buster so refreshed background photos aren't served stale
+    div.style.backgroundImage = `url('${src}?v=17')`;
     wrap.appendChild(div);
   });
 }
