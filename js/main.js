@@ -33,12 +33,18 @@ const SITE_CONFIG = {
   ],
   heroSlideInterval: 5000,   // ms between slides
 
+  /* ── Brands operated under the corporation (shown in hero) ── */
+  brands: [
+    { name: 'Aura Health Rehab Clinic', imgSrc: 'BRANDS/AURA HEALTH REHAB.png' },
+    { name: 'Verdana Store',            imgSrc: 'BRANDS/VERDANA STORE.png' },
+  ],
+
   /* ── Key Statistics (shown in hero) ── */
   stats: [
-    { num: '2',    lbl: 'Branches' },
-    { num: '400+', lbl: 'Patients Served' },
-    { num: '14,800+', lbl: 'Sessions (2025)' },
-    { num: '4.58★', lbl: 'Satisfaction Score' },
+    { num: '2',       lbl: 'Branches' },
+    { num: '2,400+',  lbl: 'Patients Served' },
+    { num: '4,300+',  lbl: 'Confirmed Sessions' },
+    { num: '4.58★',   lbl: 'Satisfaction Score' },
   ],
 
   /* ── HMO Partners ── */
@@ -69,12 +75,14 @@ const SITE_CONFIG = {
     { name: "The Abba's Orchard",             imgSrc: "PARTNERS/THE ABBA'S ORCHARD.png" },
     { name: 'Xavier School',                  imgSrc: 'PARTNERS/XAVIER SCHOOL.png' },
     { name: 'Bomba Pilipinas',                imgSrc: 'PARTNERS/BOMBA PILIPINAS.png' },
+    { name: 'Light Bearer Christian Academy', imgSrc: 'PARTNERS/LIGHT BEARER CHRISTIAN ACADEMY.png' },
+    { name: 'Aura Health Rehab',              imgSrc: 'PARTNERS/AURA HEALTH REHAB.png' },
   ],
 
   /* ── Branches ── */
   branches: {
     east: {
-      name:    'Sandbox Clinic – East Branch',
+      name:    'East Branch',
       address: 'Level 4, Robinsons Metro East, Marcos Highway, Brgy. Dela Paz, Santolan, Pasig',
       email:   'east.sandboxclinic@gmail.com',
       hrEmail: 'hr.sandboxcliniceast@gmail.com',
@@ -112,7 +120,7 @@ const SITE_CONFIG = {
       linkedin:  'https://www.linkedin.com/company/sandbox-clinic-east/',
     },
     greenhills: {
-      name:    'Sandbox Clinic – Greenhills Branch',
+      name:    'Greenhills Branch',
       address: 'Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City',
       email:   'greenhills.sandboxclinic@gmail.com',
       hrEmail: 'hr.sandboxclinicgh@gmail.com',
@@ -184,6 +192,7 @@ document.addEventListener('DOMContentLoaded', () => {
 /* ── Dynamic Content Builders ──────────────────────────────────── */
 function buildDynamicContent() {
   buildHeroSlides();
+  buildHeroBrands();
   buildHeroStats();
   buildHMOs();
   buildPartners();
@@ -201,6 +210,20 @@ function buildHeroSlides() {
     div.style.backgroundImage = `url('${src}')`;
     wrap.appendChild(div);
   });
+}
+
+function buildHeroBrands() {
+  const wrap = document.getElementById('heroBrands');
+  if (!wrap) return;
+  if (!SITE_CONFIG.brands || SITE_CONFIG.brands.length === 0) { wrap.innerHTML = ''; return; }
+  wrap.innerHTML =
+    `<span class="hero-brands-label">Our Brands</span>` +
+    SITE_CONFIG.brands.map(b => `
+    <div class="hero-brand-chip">
+      ${b.imgSrc ? `<img src="${b.imgSrc}" alt="${b.name}" loading="lazy">` : ''}
+      <span>${b.name}</span>
+    </div>
+  `).join('');
 }
 
 function buildHeroStats() {
