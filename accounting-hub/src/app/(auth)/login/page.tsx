@@ -87,7 +87,7 @@ export default function LoginPage() {
   return (
     <div
       className="min-h-screen flex items-center justify-center px-4"
-      style={{ background: 'linear-gradient(135deg, var(--deep-teal) 0%, var(--teal) 50%, var(--bright-teal) 100%)' }}
+      style={{ background: 'radial-gradient(1200px 380px at 50% 35%, rgba(244, 236, 221, 0.22), transparent 60%), radial-gradient(820px 380px at 8% 0%, rgba(212, 145, 132, 0.55), transparent 60%), radial-gradient(1100px 440px at 100% 110%, rgba(123, 152, 138, 0.55), transparent 65%), linear-gradient(135deg, #D49184 0%, #C9A28F 38%, #9CB1A2 72%, #7B988A 100%)' }}
     >
       <div
         className="w-full max-w-md rounded-2xl p-8 shadow-2xl"

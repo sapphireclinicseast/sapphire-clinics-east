@@ -10,12 +10,12 @@
      Neutral   Paper   #F5F0E8   Warm off-white     (60 % ground)
      Neutral   Ink     #1A1A1A   Near-black         (10 % type)
   ─────────────────────────────────────────────────────────────── */
-  --teal:       #26554B;   /* Moss   — secondary */
-  --deep-teal:  #1B3F38;   /* Narra  — primary   */
-  --bright-teal:#4A8073;   /* Sage   — tertiary  */
-  --pale-teal:  #E2EDEA;   /* light Sage tint — active states, badges */
-  --gold:       #A85C3D;   /* Clay  — accent warm */
-  --gold-light: #C69849;   /* Sun   — accent light */
+  --teal:       #244952;   /* Aura deep teal — primary interactive (buttons) */
+  --deep-teal:  #244952;   /* Aura deep teal — darkest surfaces / headers */
+  --bright-teal:#4A8073;   /* Aura teal — accents / hover / icons */
+  --pale-teal:  #EDF3D9;   /* Aura pale green — active states, badges, tints */
+  --gold:       #CF9D88;   /* Aura clay — warm accent */
+  --gold-light: #C69849;   /* Aura gold — accent light */
   --charcoal:   #1A1A1A;   /* Ink   — primary type */
   --near-black: #0F110F;   /* deeper Ink */
   --off-white:  #F5F0E8;   /* Paper — main surface */
