@@ -20,8 +20,8 @@ const manrope = Manrope({
 })
 
 export const metadata: Metadata = {
-  title: 'SCEI Staff Portal',
-  description: 'Sapphire Clinics East - Staff Portal',
+  title: 'STAFF',
+  description: 'Aura Health Rehab - Staff Portal',
 }
 
 export default function RootLayout({
