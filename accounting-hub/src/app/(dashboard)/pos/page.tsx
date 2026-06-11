@@ -422,7 +422,7 @@ function printThermalReceipt(order: {
   const totalPaid = order.payments.reduce((s, p) => s + Number(p.amount), 0)
   const change = totalPaid - Number(order.netAmount)
   const isVerdana = order.branch === 'VERDANA_STORE'
-  const branchName = order.branch === 'SANDBOX_EAST' ? 'SCEI \u2013 East' : order.branch === 'SANDBOX_GREENHILLS' ? 'SCEI \u2013 Greenhills' : isVerdana ? 'VERDANA STORE' : order.branch || ''
+  const branchName = order.branch === 'SANDBOX_EAST' ? 'Aura Health Rehab Clinic \u2013 East' : order.branch === 'SANDBOX_GREENHILLS' ? 'Aura Health Rehab Clinic \u2013 Greenhills' : isVerdana ? 'VERDANA STORE' : order.branch || ''
   const address = isVerdana ? 'Room 210B, Henry\'s Building, 80 Ortigas Extension, San Juan City' : order.branch === 'SANDBOX_GREENHILLS' ? 'Greenhills Shopping Center, San Juan City' : 'Level 4 Robinsons MetroEast, Brgy. Dela Paz, Pasig City'
   const phone = isVerdana ? '+63 917 173 1368' : '+63 917 118 9289 | (02) 5310 4991'
   const email = isVerdana ? 'verdanatrading@gmail.com' : 'east.sandboxclinic@gmail.com'
@@ -4181,7 +4181,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     if (!showSOA) return
     const providerName = showSOA.patientName
     const isHMO = showSOA.walletType === 'HMO'
-    const branchLabel = soaBranch === 'SANDBOX_EAST' ? 'SCEI — East' : soaBranch === 'SANDBOX_GREENHILLS' ? 'SCEI — Greenhills' : soaBranch === 'VERDANA_STORE' ? 'Verdana Store' : 'All Branches'
+    const branchLabel = soaBranch === 'SANDBOX_EAST' ? 'Aura Health Rehab Clinic — East' : soaBranch === 'SANDBOX_GREENHILLS' ? 'Aura Health Rehab Clinic — Greenhills' : soaBranch === 'VERDANA_STORE' ? 'Verdana Store' : 'All Branches'
     const logoUrl = `${window.location.origin}/brand/sandbox-clinic-logo.png`
     const totalAmount = soaOrders.reduce((s, o) => {
       const hmoPayment = o.payments.find(p => p.method === showSOA.walletType && p.reference?.trim().toLowerCase() === providerName.toLowerCase())
