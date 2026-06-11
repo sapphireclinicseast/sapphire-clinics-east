@@ -15,6 +15,7 @@
  * Auth: Authorization: Bearer ${TELETHERAPY_INTERNAL_API_KEY}
  */
 import { NextRequest, NextResponse } from 'next/server'
+import { SCEI_LOGO_DATA_URI, SCEI_LOGO_W, SCEI_LOGO_H } from '@/lib/scei-logo'
 import { prisma } from '@/lib/prisma'
 import { existsSync } from 'fs'
 import { readFile } from 'fs/promises'
@@ -90,6 +91,7 @@ async function buildEmployeePdf(slip: {
   let y = margin
 
   doc.setFont('helvetica', 'bold').setFontSize(16).setTextColor(...CLAY)
+  doc.addImage(SCEI_LOGO_DATA_URI, 'PNG', margin, 10, SCEI_LOGO_W, SCEI_LOGO_H)
   doc.text('SAPPHIRE CLINICS EAST INC.', pageW / 2, y + 8, { align: 'center' })
   y += 12
   doc.setFontSize(11).setTextColor(...NARRA).text('Payslip', pageW / 2, y, { align: 'center' })

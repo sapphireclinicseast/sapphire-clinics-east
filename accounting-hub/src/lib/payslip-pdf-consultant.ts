@@ -10,6 +10,8 @@
  * URL.createObjectURL, etc.).
  */
 
+import { SCEI_LOGO_DATA_URI, SCEI_LOGO_W, SCEI_LOGO_H } from './scei-logo'
+
 export interface ConsultantPayslipPreview {
   consultantId: string
   consultantName: string
@@ -87,13 +89,13 @@ const POSITION_LABELS: Record<string, string> = {
 
 const BRANCH_INFO: Record<string, { name: string; address: string; phone: string; tin: string }> = {
   SBEA: {
-    name: 'Aura Health Rehab Clinic – East Branch',
+    name: 'Sapphire Clinics East Inc. – East Branch',
     address: '4th Floor Robinsons Metro East, Marcos Highway, Dela Paz, Pasig City',
     phone: '0917 118 9289 | (02) 5310-4991',
     tin: 'TIN 010-817-642-00000',
   },
   SBGH: {
-    name: 'Aura Health Rehab Clinic – Greenhills Branch',
+    name: 'Sapphire Clinics East Inc. – Greenhills Branch',
     address: 'Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City',
     phone: '0917 770 1686 | (02) 8529 1590',
     tin: 'TIN 010-817-642-00001',
@@ -105,7 +107,7 @@ const BRANCH_INFO: Record<string, { name: string; address: string; phone: string
     tin: '',
   },
   '': {
-    name: 'Aura Health Rehab Clinic',
+    name: 'Sapphire Clinics East Inc.',
     address: 'Metro Manila, Philippines',
     phone: '0917 770 1686 | (02) 8529 1590',
     tin: '',
@@ -214,6 +216,7 @@ export async function buildConsultantPayslipPdf(
   let y = margin
 
   doc.setFont('helvetica', 'bold').setFontSize(16).setTextColor(...ORANGE)
+  doc.addImage(SCEI_LOGO_DATA_URI, 'PNG', margin, 10, SCEI_LOGO_W, SCEI_LOGO_H)
   doc.text('SAPPHIRE CLINICS EAST INC.', pageW / 2, y + 8, { align: 'center' })
   y += 14
 

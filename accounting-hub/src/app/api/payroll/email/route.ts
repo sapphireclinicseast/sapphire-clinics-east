@@ -27,7 +27,7 @@ function buildEmailHtml(firstName: string, periodLabel: string, branch: string) 
     <!-- Header -->
     <div style="background:linear-gradient(135deg,#c44b00,#e8650a,#f4832a);padding:40px 40px 30px;text-align:center;">
       <p style="color:rgba(255,255,255,0.85);font-size:13px;margin:0;letter-spacing:2px;text-transform:uppercase;">
-        ${branch || 'Aura Health Rehab Clinic'}
+        ${branch || 'Sapphire Clinics East Inc.'}
       </p>
     </div>
 
@@ -40,11 +40,11 @@ function buildEmailHtml(firstName: string, periodLabel: string, branch: string) 
       <p style="color:#3d2200;line-height:1.8;font-size:15px;margin:0 0 18px;">
         As another cutoff draws to a close, we want to take a moment to
         <strong style="color:#c44b00;">genuinely thank you</strong> for the incredible work you bring
-        to Aura Health Rehab Clinic every single day.
+        to Sapphire Clinics East Inc. every single day.
       </p>
 
       <p style="color:#3d2200;line-height:1.8;font-size:15px;margin:0 0 18px;">
-        Your dedication to Aura Health Rehab Clinic — the hard work, the attention to detail, and the
+        Your dedication to Sapphire Clinics East Inc. — the hard work, the attention to detail, and the
         commitment you bring every day — does not go unnoticed. The success of our clinic is a direct
         reflection of the effort and care you pour into your work. We are proud and grateful to
         have you on our team.
@@ -83,10 +83,10 @@ function buildEmailHtml(firstName: string, periodLabel: string, branch: string) 
         With gratitude and appreciation,
       </p>
       <p style="color:#c44b00;font-weight:700;font-size:16px;margin:0 0 4px;">
-        The Aura Health Rehab Clinic Administration Team
+        The Sapphire Clinics East Inc. Administration Team
       </p>
       <p style="color:#888;font-size:13px;margin:0;">
-        ${branch || 'Aura Health Rehab Clinic'}
+        ${branch || 'Sapphire Clinics East Inc.'}
       </p>
     </div>
 
@@ -140,9 +140,9 @@ export async function POST(req: Request) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'Aura Health Rehab Clinic Payroll <noreply@do-not-reply.sapphireclinicseast.org>',
+        from: 'Sapphire Clinics East Inc. Payroll <noreply@do-not-reply.sapphireclinicseast.org>',
         to: [email],
-        subject: `Your Payslip — ${periodLabel} | Aura Health Rehab Clinic`,
+        subject: `Your Payslip — ${periodLabel} | Sapphire Clinics East Inc.`,
         html: buildEmailHtml(displayName, periodLabel, branch || ''),
         attachments: [
           {

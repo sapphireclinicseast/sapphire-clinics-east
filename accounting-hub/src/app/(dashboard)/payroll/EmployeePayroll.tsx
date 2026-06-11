@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { SCEI_LOGO_DATA_URI, SCEI_LOGO_W, SCEI_LOGO_H } from '@/lib/scei-logo'
 import {
   Users, Settings, FileText, Plus, Pencil, Save, Search, X, AlertCircle,
   RefreshCw, Loader2, Upload, Download, Calendar, Clock, CheckCircle2,
@@ -28,13 +29,13 @@ const BRANCHES = [
 
 const BRANCH_INFO: Record<string, { name: string; address: string; phone: string; tin: string }> = {
   SBEA: {
-    name: 'Aura Health Rehab Clinic – East Branch',
+    name: 'Sapphire Clinics East Inc. – East Branch',
     address: '4th Floor Robinsons Metro East, Marcos Highway, Dela Paz, Pasig City',
     phone: '0917 118 9289 | (02) 5310-4991',
     tin: 'TIN 010-817-642-00000',
   },
   SBGH: {
-    name: 'Aura Health Rehab Clinic – Greenhills Branch',
+    name: 'Sapphire Clinics East Inc. – Greenhills Branch',
     address: 'Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City',
     phone: '0917 770 1686 | (02) 8529 1590',
     tin: 'TIN 010-817-642-00001',
@@ -1092,6 +1093,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(16)
     doc.setTextColor(...ORANGE)
+    doc.addImage(SCEI_LOGO_DATA_URI, 'PNG', margin, 10, SCEI_LOGO_W, SCEI_LOGO_H)
     doc.text('SAPPHIRE CLINICS EAST INC.', pageW / 2, y + 8, { align: 'center' })
     y += 14
     doc.setFontSize(9)
