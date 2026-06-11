@@ -474,6 +474,9 @@ document.addEventListener('keydown', e => {
 
 /* Load all three news sections from generated JSON files */
 function loadNewsSection() {
+  // News & Updates section was removed from the page — nothing to populate.
+  if (!document.getElementById('news-posts-blog')) return;
+
   const sections = ['blog', 'events', 'announcements'];
 
   // Show "no posts yet" immediately — tabs are always clickable from the start
@@ -570,10 +573,12 @@ function openPostModal(post) {
 
 /* Close post modal */
 function closePostModal(e) {
+  const modal = document.getElementById('postModal');
+  if (!modal) return;   // News section (and its modal) was removed
   // Only close if clicking overlay background or the × button
-  if (e && e.target !== document.getElementById('postModal') &&
+  if (e && e.target !== modal &&
       !e.target.classList.contains('post-modal-close')) return;
-  document.getElementById('postModal').classList.remove('active');
+  modal.classList.remove('active');
   document.body.style.overflow = '';
 }
 
