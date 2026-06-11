@@ -207,7 +207,7 @@ function generateTransmittalPDF(data: TransmittalData) {
 <body>
   <!-- Header -->
   <div class="header">
-    <img src="${logoUrl}" alt="SCEI Logo" />
+    <img src="${logoUrl}" alt="Aura Health Rehab Clinic Logo" />
     <div class="header-text">
       <div class="company-name">Sapphire Clinics East Incorporated</div>
       <div class="company-name">Multi-Specialty Clinic and Rehabilitation Center</div>
@@ -231,7 +231,7 @@ function generateTransmittalPDF(data: TransmittalData) {
   <!-- From section -->
   <div class="section-label">From:</div>
   <table class="info-table">
-    <tr><td class="field-label">SCEI Branch</td><td>${data.fromBranch}</td></tr>
+    <tr><td class="field-label">Aura Health Rehab Clinic Branch</td><td>${data.fromBranch}</td></tr>
     <tr><td class="field-label">Staff Name</td><td>${data.fromStaff || data.requestedBy}</td></tr>
     <tr><td class="field-label">Position & Contact No.</td><td>${[data.fromPosition, data.fromContact].filter(Boolean).join(' — ')}</td></tr>
   </table>

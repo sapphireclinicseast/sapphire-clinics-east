@@ -87,13 +87,13 @@ const POSITION_LABELS: Record<string, string> = {
 
 const BRANCH_INFO: Record<string, { name: string; address: string; phone: string; tin: string }> = {
   SBEA: {
-    name: 'SCEI – East Branch',
+    name: 'Aura Health Rehab Clinic – East Branch',
     address: '4th Floor Robinsons Metro East, Marcos Highway, Dela Paz, Pasig City',
     phone: '0917 118 9289 | (02) 5310-4991',
     tin: 'TIN 010-817-642-00000',
   },
   SBGH: {
-    name: 'SCEI – Greenhills Branch',
+    name: 'Aura Health Rehab Clinic – Greenhills Branch',
     address: 'Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City',
     phone: '0917 770 1686 | (02) 8529 1590',
     tin: 'TIN 010-817-642-00001',
@@ -105,7 +105,7 @@ const BRANCH_INFO: Record<string, { name: string; address: string; phone: string
     tin: '',
   },
   '': {
-    name: 'SCEI',
+    name: 'Aura Health Rehab Clinic',
     address: 'Metro Manila, Philippines',
     phone: '0917 770 1686 | (02) 8529 1590',
     tin: '',

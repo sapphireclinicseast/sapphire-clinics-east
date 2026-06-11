@@ -4109,10 +4109,10 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;padding:12px;box-sizing:border-box;text-align:center">
           <img src="${barcodeImg}" style="height:45px;max-width:240px;margin-bottom:6px" />
           <div style="font-size:7px;font-weight:700;color:#E8641B;margin-bottom:4px">
-            Thank you for choosing SCEI<br/>for your health and rehabilitation needs!
+            Thank you for choosing Aura Health Rehab Clinic<br/>for your health and rehabilitation needs!
           </div>
           <div style="font-size:5.5px;color:#333;text-align:justify;padding:0 8px;margin-bottom:4px;line-height:1.4">
-            Your reloadable card lets you earn points every time you avail of our services or purchase products. Simply present this card during each visit to collect points and redeem exclusive SCEI rewards and merchandise.
+            Your reloadable card lets you earn points every time you avail of our services or purchase products. Simply present this card during each visit to collect points and redeem exclusive Aura Health Rehab Clinic rewards and merchandise.
           </div>
           <img src="${logoUrl}" style="height:18px;object-fit:contain" />
         </div>
