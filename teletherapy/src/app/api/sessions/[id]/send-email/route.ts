@@ -24,11 +24,11 @@ function renderNotesHtml(notesStr: string): string {
     // OT Daily Notes
     if (data.formType === 'OT_DAILY_NOTES') {
       const s = (label: string, content: string) => `
-        <h3 style="font-size: 13px; color: #1B3F38; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 0.5px;">${label}</h3>
-        <div style="background: #F5F0E8; padding: 10px; border-radius: 6px; font-size: 13px; margin-bottom: 8px;">${content}</div>`
-      const pills = (items: string[]) => items.map(i => `<span style="display:inline-block;background:#FFF3E0;color:#E65100;padding:2px 8px;border-radius:4px;font-size:11px;margin:2px;">${escapeHtml(i)}</span>`).join(' ')
+        <h3 style="font-size: 13px; color: #4a8073; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 0.5px;">${label}</h3>
+        <div style="background: #edf3d9; border-left: 3px solid #cf9d88; padding: 10px; border-radius: 6px; font-size: 13px; margin-bottom: 8px;">${content}</div>`
+      const pills = (items: string[]) => items.map(i => `<span style="display:inline-block;background:#c69849;color:#ffffff;padding:2px 8px;border-radius:4px;font-size:11px;margin:2px;">${escapeHtml(i)}</span>`).join(' ')
 
-      let html = '<h3 style="font-size: 14px; color: #7A908C; margin-bottom: 8px;">OT Daily Notes</h3>'
+      let html = '<h3 style="font-size: 14px; color: #4a8073; margin-bottom: 8px;">OT Daily Notes</h3>'
       if (data.subjective?.sessionType?.length) html += s('Subjective — Session Type', pills(data.subjective.sessionType) + (data.subjective.sessionTypeOther ? `<br/>Other: ${escapeHtml(data.subjective.sessionTypeOther)}` : ''))
       if (data.objective?.targets?.length) html += s('Objective — Targeted Areas', pills(data.objective.targets) + (data.objective.targetsOther ? `<br/>Other: ${escapeHtml(data.objective.targetsOther)}` : ''))
       if (data.activitiesAndPerformance) html += s('Activities and Performance', escapeHtml(data.activitiesAndPerformance))
@@ -59,11 +59,11 @@ function renderNotesHtml(notesStr: string): string {
     // Psychology notes
     if (data.formType?.startsWith('PSYCH_')) {
       const s = (label: string, content: string) => `
-        <h3 style="font-size: 13px; color: #1a6b5a; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 0.5px;">${label}</h3>
-        <div style="background: #F5F0E8; padding: 10px; border-radius: 6px; font-size: 13px; margin-bottom: 8px;">${content}</div>`
-      const pills = (items: string[]) => items.map(i => `<span style="display:inline-block;background:#E0F2F1;color:#00695C;padding:2px 8px;border-radius:4px;font-size:11px;margin:2px;">${escapeHtml(i)}</span>`).join(' ')
+        <h3 style="font-size: 13px; color: #4a8073; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 0.5px;">${label}</h3>
+        <div style="background: #edf3d9; border-left: 3px solid #cf9d88; padding: 10px; border-radius: 6px; font-size: 13px; margin-bottom: 8px;">${content}</div>`
+      const pills = (items: string[]) => items.map(i => `<span style="display:inline-block;background:#c69849;color:#ffffff;padding:2px 8px;border-radius:4px;font-size:11px;margin:2px;">${escapeHtml(i)}</span>`).join(' ')
 
-      let html = `<h3 style="font-size: 14px; color: #7A908C; margin-bottom: 8px;">${data.formType === 'PSYCH_INITIAL' ? 'Initial Assessment' : 'Progress Notes'}</h3>`
+      let html = `<h3 style="font-size: 14px; color: #4a8073; margin-bottom: 8px;">${data.formType === 'PSYCH_INITIAL' ? 'Initial Assessment' : 'Progress Notes'}</h3>`
       if (data.section1) {
         let info = ''
         if (data.section1.modality) info += `<strong>Modality:</strong> ${escapeHtml(data.section1.modality)}<br/>`
@@ -87,12 +87,12 @@ function renderNotesHtml(notesStr: string): string {
     // SLP Daily Notes
     if (data.formType === 'SLP_DAILY_NOTES') {
       const s = (label: string, content: string) => `
-        <h3 style="font-size: 13px; color: #1565C0; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 0.5px;">${label}</h3>
-        <div style="background: #F5F0E8; padding: 10px; border-radius: 6px; font-size: 13px; margin-bottom: 8px;">${content}</div>`
-      const pills = (items: string[]) => items.map(i => `<span style="display:inline-block;background:#E3F2FD;color:#1565C0;padding:2px 8px;border-radius:4px;font-size:11px;margin:2px;">${escapeHtml(i)}</span>`).join(' ')
+        <h3 style="font-size: 13px; color: #4a8073; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 0.5px;">${label}</h3>
+        <div style="background: #edf3d9; border-left: 3px solid #cf9d88; padding: 10px; border-radius: 6px; font-size: 13px; margin-bottom: 8px;">${content}</div>`
+      const pills = (items: string[]) => items.map(i => `<span style="display:inline-block;background:#c69849;color:#ffffff;padding:2px 8px;border-radius:4px;font-size:11px;margin:2px;">${escapeHtml(i)}</span>`).join(' ')
 
-      let html = '<h3 style="font-size: 14px; color: #7A908C; margin-bottom: 8px;">SLP Daily Notes</h3>'
-      if (data.subjective?.branch) html += `<p style="font-size:12px;color:#666;margin-bottom:8px;">Branch: <strong>${escapeHtml(data.subjective.branch)}</strong></p>`
+      let html = '<h3 style="font-size: 14px; color: #4a8073; margin-bottom: 8px;">SLP Daily Notes</h3>'
+      if (data.subjective?.branch) html += `<p style="font-size:12px;color:#4a8073;margin-bottom:8px;">Branch: <strong>${escapeHtml(data.subjective.branch)}</strong></p>`
       if (data.subjective?.sessionType?.length) html += s('Subjective (S) — Session Type', pills(data.subjective.sessionType) + (data.subjective.sessionTypeOther ? `<br/>Other: ${escapeHtml(data.subjective.sessionTypeOther)}` : ''))
       if (data.subjective?.additionalNotes) html += s('Subjective Notes', escapeHtml(data.subjective.additionalNotes))
       if (data.objective?.targets?.length) html += s('Objective (O) — Targeted Areas', pills(data.objective.targets) + (data.objective.targetsOther ? `<br/>Other: ${escapeHtml(data.objective.targetsOther)}` : ''))
@@ -116,11 +116,11 @@ function renderNotesHtml(notesStr: string): string {
     // SPED16 / SPED18
     if (data.formType === 'SPED16' || data.formType === 'SPED18') {
       const s = (label: string, content: string) => `
-        <h3 style="font-size: 13px; color: #7B1FA2; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 0.5px;">${label}</h3>
-        <div style="background: #F5F0E8; padding: 10px; border-radius: 6px; font-size: 13px; margin-bottom: 8px;">${content}</div>`
-      const pills = (items: string[]) => items.map(i => `<span style="display:inline-block;background:#F3E5F5;color:#7B1FA2;padding:2px 8px;border-radius:4px;font-size:11px;margin:2px;">${escapeHtml(i)}</span>`).join(' ')
+        <h3 style="font-size: 13px; color: #4a8073; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 0.5px;">${label}</h3>
+        <div style="background: #edf3d9; border-left: 3px solid #cf9d88; padding: 10px; border-radius: 6px; font-size: 13px; margin-bottom: 8px;">${content}</div>`
+      const pills = (items: string[]) => items.map(i => `<span style="display:inline-block;background:#c69849;color:#ffffff;padding:2px 8px;border-radius:4px;font-size:11px;margin:2px;">${escapeHtml(i)}</span>`).join(' ')
 
-      let html = `<h3 style="font-size: 14px; color: #7A908C; margin-bottom: 8px;">${data.formType === 'SPED16' ? 'SPED16' : 'SPED18'} — Daily Notes</h3>`
+      let html = `<h3 style="font-size: 14px; color: #4a8073; margin-bottom: 8px;">${data.formType === 'SPED16' ? 'SPED16' : 'SPED18'} — Daily Notes</h3>`
       const d = data.data
       if (d.sessionType?.length) html += s('Subjective — Session Type', pills(d.sessionType) + (d.sessionTypeOther ? `<br/>Other: ${escapeHtml(d.sessionTypeOther)}` : ''))
 
@@ -159,11 +159,11 @@ function renderNotesHtml(notesStr: string): string {
     // PT Session Notes
     if (data.formType === 'PT_SESSION_NOTES') {
       const s = (label: string, content: string) => `
-        <h3 style="font-size: 13px; color: #1565C0; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 0.5px;">${label}</h3>
-        <div style="background: #F5F0E8; padding: 10px; border-radius: 6px; font-size: 13px; margin-bottom: 8px;">${content}</div>`
+        <h3 style="font-size: 13px; color: #4a8073; margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 0.5px;">${label}</h3>
+        <div style="background: #edf3d9; border-left: 3px solid #cf9d88; padding: 10px; border-radius: 6px; font-size: 13px; margin-bottom: 8px;">${content}</div>`
 
-      let html = `<h3 style="font-size: 14px; color: #7A908C; margin-bottom: 8px;">PT Session Notes</h3>`
-      if (data.branch) html += `<p style="font-size:12px;color:#666;margin-bottom:8px;">Branch: <strong>${escapeHtml(data.branch)}</strong></p>`
+      let html = `<h3 style="font-size: 14px; color: #4a8073; margin-bottom: 8px;">PT Session Notes</h3>`
+      if (data.branch) html += `<p style="font-size:12px;color:#4a8073;margin-bottom:8px;">Branch: <strong>${escapeHtml(data.branch)}</strong></p>`
 
       // Patient info
       let patientInfo = ''
@@ -212,8 +212,8 @@ function renderNotesHtml(notesStr: string): string {
 
   // Fallback: plain text notes
   return `
-    <h3 style="font-size: 14px; color: #7A908C;">Session Notes</h3>
-    <div style="background: #F5F0E8; padding: 12px; border-radius: 8px; font-size: 14px; white-space: pre-wrap;">${escapeHtml(notesStr)}</div>
+    <h3 style="font-size: 14px; color: #4a8073;">Session Notes</h3>
+    <div style="background: #edf3d9; padding: 12px; border-radius: 8px; font-size: 14px; white-space: pre-wrap;">${escapeHtml(notesStr)}</div>
   `
 }
 
@@ -283,30 +283,30 @@ export async function POST(
     }
 
     const attachmentListHtml = emailAttachments.length > 0 ? `
-      <h3 style="font-size: 14px; color: #7A908C; margin-top: 16px;">Attachments</h3>
-      <p style="font-size: 13px; color: #1B3F38;">${emailAttachments.length} file(s) attached to this email.</p>
+      <h3 style="font-size: 14px; color: #4a8073; margin-top: 16px;">Attachments</h3>
+      <p style="font-size: 13px; color: #244952;">${emailAttachments.length} file(s) attached to this email.</p>
     ` : ''
 
     const html = `
-      <div style="font-family: 'Gill Sans', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1B3F38;">
-        <div style="background: linear-gradient(135deg, #1B3F38, #26554B); padding: 24px; border-radius: 12px 12px 0 0;">
+      <div style="font-family: 'Montserrat', 'Arimo', Verdana, sans-serif; max-width: 600px; margin: 0 auto; color: #244952;">
+        <div style="background: linear-gradient(135deg, #244952, #4a8073); padding: 24px; border-radius: 12px 12px 0 0;">
           <h1 style="color: white; margin: 0; font-size: 20px;">Session Notes</h1>
           <p style="color: rgba(255,255,255,0.7); margin: 4px 0 0; font-size: 14px;">Sapphire Clinics East, Inc.</p>
         </div>
-        <div style="background: white; padding: 24px; border: 1px solid #E0E8E6; border-top: none; border-radius: 0 0 12px 12px;">
+        <div style="background: white; padding: 24px; border: 1px solid #d9e3c6; border-top: none; border-radius: 0 0 12px 12px;">
           <p>Dear <strong>${escapeHtml(patientName)}</strong>,</p>
           <p>Here are the notes from your session:</p>
-          <div style="background: #F5F0E8; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+          <div style="background: #edf3d9; border-left: 4px solid #c69849; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
             <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
-              <tr><td style="padding: 4px 0; color: #7A908C;">Date</td><td>${sessionDate}</td></tr>
-              <tr><td style="padding: 4px 0; color: #7A908C;">Time</td><td>${schedule.startTime} - ${schedule.endTime}</td></tr>
-              <tr><td style="padding: 4px 0; color: #7A908C;">Session Type</td><td>${schedule.sessionType}</td></tr>
-              <tr><td style="padding: 4px 0; color: #7A908C;">Clinician</td><td>${therapistName} (${schedule.staff.department})</td></tr>
+              <tr><td style="padding: 4px 0; color: #4a8073;">Date</td><td>${sessionDate}</td></tr>
+              <tr><td style="padding: 4px 0; color: #4a8073;">Time</td><td>${schedule.startTime} - ${schedule.endTime}</td></tr>
+              <tr><td style="padding: 4px 0; color: #4a8073;">Session Type</td><td>${schedule.sessionType}</td></tr>
+              <tr><td style="padding: 4px 0; color: #4a8073;">Clinician</td><td>${therapistName} (${schedule.staff.department})</td></tr>
             </table>
           </div>
           ${schedule.sessionNote.notes ? renderNotesHtml(schedule.sessionNote.notes) : ''}
           ${attachmentListHtml}
-          <p style="font-size: 13px; color: #7A908C; margin-top: 24px;">
+          <p style="font-size: 13px; color: #4a8073; margin-top: 24px;">
             This is an automated message from SCEI Staff Portal. Please contact your clinician directly if you have questions.
           </p>
         </div>
