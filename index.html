@@ -32,7 +32,7 @@
   <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
 
   <!-- Stylesheet -->
-  <link rel="stylesheet" href="css/style.css?v=13">
+  <link rel="stylesheet" href="css/style.css?v=14">
 </head>
 <body>
 
@@ -177,7 +177,6 @@
       <a class="nav-link" href="/hiring">Careers</a>
       <a class="nav-link" href="/seminars">Trainings</a>
       <button class="nav-link" onclick="scrollToSection('faqs')">FAQs</button>
-      <button class="nav-link" onclick="scrollToSection('news')">News</button>
     </div>
 
     <!-- Book CTA -->
@@ -202,7 +201,6 @@
   <a class="mobile-nav-link" href="/hiring">Careers</a>
   <a class="mobile-nav-link" href="/seminars">Trainings</a>
   <button class="mobile-nav-link" onclick="scrollToSection('faqs')">FAQs</button>
-  <button class="mobile-nav-link" onclick="scrollToSection('news')">News</button>
   <a class="mobile-nav-link" href="/stafflogin/?callbackUrl=https%3A%2F%2Fteletherapy.sapphireclinicseast.org%2F" style="margin-top: 12px;">Staff Log In →</a>
   <a class="mobile-nav-link" href="/booking" style="color: var(--accent);">Book a Session →</a>
 </div>
@@ -250,6 +248,27 @@
   <!-- Slide Dots -->
   <div class="hero-dots" id="heroDots" aria-label="Hero image navigation"></div>
 
+</section>
+
+
+<!-- ================================================================
+  VERDANA REHAB (sister initiative — top banner)
+================================================================ -->
+<section class="verdana-section">
+  <div class="container">
+    <a href="https://verdanarehab.com/" target="_blank" rel="noopener" class="verdana-banner reveal">
+      <div class="verdana-icon">
+        <img src="BRANDS/VERDANA STORE.png" alt="Verdana Rehab" loading="lazy">
+      </div>
+      <div>
+        <h3>Verdana Rehab</h3>
+        <p>A sister initiative expanding accessible rehabilitation services. Visit Verdana Rehab to learn more about their programs and how they complement our mission.</p>
+        <div class="btn btn-white btn-sm" style="display:inline-flex; margin-top:12px;">
+          Visit verdanarehab.com →
+        </div>
+      </div>
+    </a>
+  </div>
 </section>
 
 
@@ -832,65 +851,6 @@
 
 
 <!-- ================================================================
-  NEWS & UPDATES
-================================================================ -->
-<section id="news" class="news-section">
-  <div class="container">
-
-    <div class="section-header reveal">
-      <span class="section-tag">Latest Updates</span>
-      <h2 class="section-title">News &amp; Updates</h2>
-      <p class="section-subtitle">Stay up to date with the latest from Sapphire Clinics East Inc.</p>
-    </div>
-
-    <!-- Tab Buttons -->
-    <div class="news-tabs reveal">
-      <button class="news-tab-btn active" data-tab="blog" onclick="switchNewsTab('blog')">
-        <i data-lucide="newspaper" style="width:15px;height:15px"></i>
-        Blog Posts &amp; News
-      </button>
-      <button class="news-tab-btn" data-tab="events" onclick="switchNewsTab('events')">
-        <i data-lucide="calendar" style="width:15px;height:15px"></i>
-        Events
-      </button>
-      <button class="news-tab-btn" data-tab="announcements" onclick="switchNewsTab('announcements')">
-        <i data-lucide="megaphone" style="width:15px;height:15px"></i>
-        Branch Announcements
-      </button>
-    </div>
-
-    <!-- Tab Panels -->
-    <div class="news-tab-panel active" id="news-panel-blog">
-      <div class="news-posts" id="news-posts-blog">
-        <div class="news-loading"><div class="news-spinner"></div><span>Loading posts…</span></div>
-      </div>
-    </div>
-    <div class="news-tab-panel" id="news-panel-events">
-      <div class="news-posts" id="news-posts-events">
-        <div class="news-loading"><div class="news-spinner"></div><span>Loading events…</span></div>
-      </div>
-    </div>
-    <div class="news-tab-panel" id="news-panel-announcements">
-      <div class="news-posts" id="news-posts-announcements">
-        <div class="news-loading"><div class="news-spinner"></div><span>Loading announcements…</span></div>
-      </div>
-    </div>
-
-  </div>
-</section>
-
-<!-- ── Post / Announcement Modal ── -->
-<div class="post-modal-overlay" id="postModal" onclick="closePostModal(event)">
-  <div class="post-modal" role="dialog" aria-modal="true">
-    <button class="post-modal-close" onclick="closePostModal()" aria-label="Close">&times;</button>
-    <div class="post-modal-meta" id="postModalMeta"></div>
-    <h2 class="post-modal-title" id="postModalTitle"></h2>
-    <div class="post-modal-body" id="postModalBody"></div>
-  </div>
-</div>
-
-
-<!-- ================================================================
   CONTACT
 ================================================================ -->
 <section id="contact" class="contact-section">
@@ -989,18 +949,6 @@
       </div>
     </div>
 
-    <!-- Verdana Rehab -->
-    <a href="https://verdanarehab.com/" target="_blank" rel="noopener" class="verdana-banner reveal" style="margin-top:40px;">
-      <div class="verdana-icon">🌿</div>
-      <div>
-        <h3>Verdana Rehab</h3>
-        <p>A sister initiative expanding accessible rehabilitation services. Visit Verdana Rehab to learn more about their programs and how they complement our mission.</p>
-        <div class="btn btn-white btn-sm" style="display:inline-flex; margin-top:12px;">
-          Visit verdanarehab.com →
-        </div>
-      </div>
-    </a>
-
   </div>
 </section>
 
@@ -1079,7 +1027,7 @@
 
 
 <!-- JavaScript -->
-<script src="js/main.js?v=13"></script>
+<script src="js/main.js?v=14"></script>
 
 </body>
 </html>
