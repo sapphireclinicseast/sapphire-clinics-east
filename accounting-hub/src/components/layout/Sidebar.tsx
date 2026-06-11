@@ -13,7 +13,6 @@ import {
   BarChart3,
   Target,
   Users,
-  Calculator,
   Stethoscope,
   FileCheck,
   Receipt,
@@ -119,12 +118,15 @@ export default function Sidebar({ userRole, open, onClose }: SidebarProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-5 border-b border-white/10">
           <div className="flex items-center gap-3">
-            <div
-              className="w-9 h-9 rounded-lg flex items-center justify-center"
-              style={{ background: 'var(--teal)' }}
-            >
-              <Calculator size={20} className="text-white" />
-            </div>
+            {/* Aura Health Rehab arch logomark */}
+            <svg width="46" height="25" viewBox="0 0 220 116" role="img" aria-label="Aura Health Rehab" className="shrink-0">
+              <path d="M10,110 A100,100 0 0 1 210,110 L188,110 A78,78 0 0 0 32,110 Z" fill="#296354"/>
+              <path d="M32,110 A78,78 0 0 1 188,110 L182,110 A72,72 0 0 0 38,110 Z" fill="#ffffff"/>
+              <path d="M38,110 A72,72 0 0 1 182,110 L160,110 A50,50 0 0 0 60,110 Z" fill="#8EAF74"/>
+              <path d="M60,110 A50,50 0 0 1 160,110 L154,110 A44,44 0 0 0 66,110 Z" fill="#ffffff"/>
+              <path d="M66,110 A44,44 0 0 1 154,110 L132,110 A22,22 0 0 0 88,110 Z" fill="#6E8E8E"/>
+              <path d="M88,110 A22,22 0 0 1 132,110 Z" fill="#ffffff"/>
+            </svg>
             <div>
               <h1
                 className="text-sm text-white tracking-wider"
