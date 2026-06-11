@@ -1,7 +1,6 @@
 'use client'
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { SCEI_LOGO_DATA_URI, SCEI_LOGO_W, SCEI_LOGO_H } from '@/lib/scei-logo'
 import {
   Users, Settings, FileText, Plus, Pencil, Save, Search, X, AlertCircle,
   RefreshCw, Loader2, Upload, Download, Calendar, Clock, CheckCircle2,
@@ -1055,190 +1054,32 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
   }
 
   const buildEmployeePayslipPdf = async (p: Payslip) => {
-    const { jsPDF } = await import('jspdf')
     const { default: autoTable } = await import('jspdf-autotable')
     const ORANGE: [number, number, number] = [74, 128, 115]
-    const NET_GREEN: [number, number, number] = [237, 243, 217]
     const WHITE: [number, number, number] = [255, 255, 255]
     const DARK: [number, number, number] = [30, 30, 30]
     const MID: [number, number, number] = [80, 80, 80]
     const LIGHT_BORDER: [number, number, number] = [210, 210, 210]
     const LIGHT_GRAY_BG: [number, number, number] = [245, 245, 245]
 
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-    const pageW = doc.internal.pageSize.getWidth()
-    const margin = 25.4
-    let y = margin
-
-    // Pull derived data from the details JSON
+    // Derived attendance data for the Page-2 daily breakdown
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const pDet = (p.details || {}) as Record<string, any>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const bd = (pDet.dailyBreakdown || {}) as Record<string, any[]>
-    const holidayOTPay = typeof pDet.holidayOvertimePay === 'number' ? pDet.holidayOvertimePay : 0
     const cutoffStartStr: string | undefined = pDet.cutoffStart
     const cutoffEndStr: string | undefined = pDet.cutoffEnd
-
-    // Detect fixed-salary (no timekeeping)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const basicPayBd: any[] = bd.basicPay || []
     const isFixedSalary = basicPayBd.length === 1 && typeof basicPayBd[0]?.note === 'string' && basicPayBd[0].note.includes('Fixed salary')
+    const cutoffLabel = `${MONTHS[parseInt(p.cutoffPeriod.split('-')[1]) - 1]} ${p.cutoffPeriod.split('-')[0]} \u2014 ${p.cutoffPeriod.endsWith('-1') ? '1st Half' : '2nd Half'}`
 
-    const branchInfo = BRANCH_INFO[p.branch] || BRANCH_INFO['']
-    const branchLabel = BRANCHES.find(b => b.value === p.branch)?.label || p.branch
-    const cutoffLabel = `${MONTHS[parseInt(p.cutoffPeriod.split('-')[1]) - 1]} ${p.cutoffPeriod.split('-')[0]} — ${p.cutoffPeriod.endsWith('-1') ? '1st Half' : '2nd Half'}`
-    const fmtPHP = (n: number) => `PHP ${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-
-    // ── Header ──────────────────────────────────────────────────────────────
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(16)
-    doc.setTextColor(...ORANGE)
-    doc.addImage(SCEI_LOGO_DATA_URI, 'PNG', margin, 10, SCEI_LOGO_W, SCEI_LOGO_H)
-    doc.text('SAPPHIRE CLINICS EAST INC.', pageW / 2, y + 8, { align: 'center' })
-    y += 14
-    doc.setFontSize(9)
-    doc.setTextColor(...MID)
-    doc.text(branchInfo.address, pageW / 2, y, { align: 'center' })
-    y += 5
-    if (branchInfo.phone) { doc.text(branchInfo.phone, pageW / 2, y, { align: 'center' }); y += 5 }
-    if (branchInfo.tin)   { doc.text(branchInfo.tin,   pageW / 2, y, { align: 'center' }); y += 5 }
-    y += 3
-
-    doc.setFontSize(16)
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(...DARK)
-    doc.text('EMPLOYEE PAYSLIP', pageW / 2, y, { align: 'center' })
-    y += 10
-
-    // ── Employee details ─────────────────────────────────────────────────────
-    const empInfoRows: [string, string][] = [
-      ['Name',        `${p.employee.firstName} ${p.employee.lastName}`],
-      ['Job Title',   formatJobTitle(p.employee.jobTitle) || '—'],
-      ['Department',  p.employee.department],
-      ['Branch',      branchLabel],
-      ['Rate Type',   p.employee.rateType === 'DAILY' ? 'Daily' : 'Monthly'],
-      ['Rate',        fmtPHP(toNum(p.employee.rateType === 'DAILY' ? p.employee.dailyRate : p.employee.monthlyRate))],
-      ['Cutoff Period', cutoffLabel],
-    ]
-    for (const [label, value] of empInfoRows) {
-      doc.setFontSize(9)
-      doc.setFont('helvetica', 'bold')
-      doc.setTextColor(...MID)
-      doc.text(`${label}:`, margin, y)
-      doc.setFont('helvetica', 'normal')
-      doc.setTextColor(...DARK)
-      doc.text(value, margin + 42, y)
-      y += 6
-    }
-    y += 4
-
-    const tableHeadStyles = { fillColor: ORANGE, textColor: WHITE, fontStyle: 'bold' as const, fontSize: 9, lineColor: ORANGE, lineWidth: 0 }
-    const tableBodyStyles = { fontSize: 9, textColor: DARK, lineColor: LIGHT_BORDER, lineWidth: 0.3 }
-
-    // ── Earnings ─────────────────────────────────────────────────────────────
-    doc.setFontSize(9)
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(...DARK)
-    doc.text('EARNINGS', margin, y)
-    y += 2
-    autoTable(doc, {
-      startY: y,
-      head: [['Description', 'Amount']],
-      body: [
-        ['Basic Pay',             fmtPHP(toNum(p.basicPay))],
-        ['Overtime Pay',          fmtPHP(toNum(p.overtimePay))],
-        ['Holiday Overtime Pay',  fmtPHP(holidayOTPay)],
-        ['Holiday Pay',           fmtPHP(toNum(p.holidayPay))],
-        ['Night Differential',    fmtPHP(toNum(p.nightDiffPay))],
-        ['Rest Day Pay',          fmtPHP(toNum(p.restDayPay))],
-        ['Allowances',            fmtPHP(toNum(p.allowances))],
-      ].filter(r => parseFloat(r[1].replace(/[^0-9.-]/g, '')) > 0),
-      theme: 'grid',
-      headStyles: tableHeadStyles,
-      bodyStyles: tableBodyStyles,
-      columnStyles: { 0: { cellWidth: 'auto' }, 1: { halign: 'right', cellWidth: 50 } },
-      margin: { left: margin, right: margin },
-    })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    y = (doc as any).lastAutoTable?.finalY ?? y
-    y += 6
-
-    // ── Deductions (only rendered when at least one deduction exists) ────────
-    const deductionRows = [
-      ['SSS',                    fmtPHP(toNum(p.sssDeduction))],
-      ['PhilHealth',             fmtPHP(toNum(p.philhealthDeduction))],
-      ['Pag-IBIG',               fmtPHP(toNum(p.pagibigDeduction))],
-      ['Tax',                    fmtPHP(toNum(p.taxDeduction))],
-      ['Late / Undertime',       fmtPHP(toNum(p.undertimeDeduction))],
-      ['Other Deductions',       fmtPHP(toNum(p.otherDeductions))],
-    ].filter(r => parseFloat(r[1].replace(/[^0-9.-]/g, '')) > 0)
-
-    if (deductionRows.length > 0) {
-      doc.setFontSize(9)
-      doc.setFont('helvetica', 'bold')
-      doc.setTextColor(...DARK)
-      doc.text('DEDUCTIONS', margin, y)
-      y += 2
-      autoTable(doc, {
-        startY: y,
-        head: [['Description', 'Amount']],
-        body: deductionRows,
-        theme: 'grid',
-        headStyles: { ...tableHeadStyles, fillColor: [180, 40, 40] as [number, number, number] },
-        bodyStyles: tableBodyStyles,
-        columnStyles: { 0: { cellWidth: 'auto' }, 1: { halign: 'right', cellWidth: 50 } },
-        margin: { left: margin, right: margin },
-      })
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      y = (doc as any).lastAutoTable?.finalY ?? y
-      y += 6
-    }
-
-    // ── Summary ───────────────────────────────────────────────────────────────
-    doc.setFontSize(9)
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(...DARK)
-    doc.text('SUMMARY', margin, y)
-    y += 2
-    autoTable(doc, {
-      startY: y,
-      head: [['', 'Amount']],
-      body: [
-        ['Gross Pay',        fmtPHP(toNum(p.grossPay))],
-        ['Total Deductions', `(${fmtPHP(toNum(p.totalDeductions))})`],
-        ['NET PAY',          fmtPHP(toNum(p.netPay))],
-      ],
-      theme: 'grid',
-      headStyles: tableHeadStyles,
-      bodyStyles: tableBodyStyles,
-      columnStyles: { 0: { cellWidth: 'auto', fontStyle: 'bold' }, 1: { halign: 'right', cellWidth: 50 } },
-      margin: { left: margin, right: margin },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      didParseCell: (data: any) => {
-        if (data.row.index === 2) { data.cell.styles.fillColor = NET_GREEN; data.cell.styles.fontStyle = 'bold'; data.cell.styles.textColor = [36, 73, 82] }
-        if (data.row.index === 1) { data.cell.styles.textColor = [180, 40, 40] }
-      },
-    })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    y = (doc as any).lastAutoTable?.finalY ?? y
-    y += 10
-
-    // ── Attendance summary line ───────────────────────────────────────────────
-    doc.setFontSize(8)
-    doc.setFont('helvetica', 'normal')
-    doc.setTextColor(...MID)
-    const hotHrs = typeof pDet.holidayOTHours === 'number' ? pDet.holidayOTHours : 0
-    doc.text(
-      `Days Worked: ${toNum(p.daysWorked).toFixed(1)}  |  Hours: ${toNum(p.hoursWorked).toFixed(1)}  |  OT Hours: ${toNum(p.overtimeHours).toFixed(2)}  |  Hol. OT Hrs: ${hotHrs.toFixed(2)}  |  Late+UT: ${p.undertimeMinutes} min`,
-      margin, y
-    )
-    y += 10
-
-    doc.setFontSize(7)
-    doc.setTextColor(150, 150, 150)
-    doc.text('Computer-generated payslip. No signature required.', pageW / 2, y, { align: 'center' })
-    y += 4
-    doc.text(`Generated: ${new Date().toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}`, pageW / 2, y, { align: 'center' })
+    // ── Page 1: shared reference design — identical to the teletherapy payslip ──
+    const { buildEmployeePayslipPdf: buildEmployeePage1 } = await import('@/lib/payslip-pdf-employee')
+    const doc = await buildEmployeePage1(p)
+    const pageW = doc.internal.pageSize.getWidth()
+    const margin = 25.4
+    let y = margin
 
     // ── Page 2: Daily timelog (only for biometrics-based employees) ───────────
     if (!isFixedSalary && cutoffStartStr && cutoffEndStr) {
