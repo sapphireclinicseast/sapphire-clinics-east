@@ -47,7 +47,7 @@ const SITE_CONFIG = {
     { num: '2',       lbl: 'Branches' },
     { num: '2,400+',  lbl: 'Patients Served' },
     { num: '4,300+',  lbl: 'Confirmed Sessions' },
-    { num: '4.58★',   lbl: 'Satisfaction Score' },
+    { num: '4.64/5★', lbl: 'Satisfaction Score' },
   ],
 
   /* ── HMO Partners ── */
