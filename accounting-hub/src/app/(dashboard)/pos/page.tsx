@@ -686,6 +686,11 @@ function CashierPanel({
   const [prefill, setPrefill] = useState<Partial<QueueItem> | null>(null)
 
   const fetchQueue = useCallback(async () => {
+    // Verdana Store is a retail / seminars branch — it has no clinical appointment queue.
+    if (selectedBranch === 'VERDANA_STORE') {
+      setQueue([]); setQueueError(''); setQueueLoading(false)
+      return
+    }
     setQueueLoading(true)
     setQueueError('')
     try {
@@ -746,7 +751,8 @@ function CashierPanel({
         </button>
       </div>
 
-      {/* Queue */}
+      {/* Queue — hidden for Verdana (retail/seminars branch has no appointment queue) */}
+      {selectedBranch !== 'VERDANA_STORE' && (
       <div className="rounded-2xl border bg-white" style={{ borderColor: 'var(--light-gray)' }}>
         <div className="px-5 py-4 border-b flex items-center justify-between" style={{ borderColor: 'var(--light-gray)' }}>
           <h3 className="text-sm font-semibold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
@@ -809,6 +815,7 @@ function CashierPanel({
           )}
         </div>
       </div>
+      )}
 
       {/* Order Form Modal */}
       {showOrderForm && (
