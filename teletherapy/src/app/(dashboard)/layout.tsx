@@ -21,6 +21,7 @@ import {
   FileText,
   HeartPulse,
   BookOpen,
+  Contact,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -40,6 +41,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
     { href: '/seminars', label: 'Seminars & Trainings', icon: GraduationCap },
     { href: '/templates', label: 'Templates & Forms', icon: FileText },
     { href: '/manuals', label: 'Manuals', icon: BookOpen },
+    { href: '/directory', label: 'Directory', icon: Contact },
     { href: '/wellness-check', label: 'Wellness Check', icon: HeartPulse },
     { href: '/payroll', label: 'Payroll', icon: Wallet },
     { href: '/settings', label: 'Settings', icon: Settings },

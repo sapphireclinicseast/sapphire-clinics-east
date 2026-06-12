@@ -169,6 +169,18 @@ model BranchCCEmail {
   updatedAt DateTime @updatedAt
 }
 
+// Staff directory — admin-managed contact list shown to everyone.
+// `departments` holds one or more StaffDepartment values (multi-select).
+model DirectoryEntry {
+  id          String   @id @default(cuid())
+  departments String[] // e.g. ["OT", "SPED"] — multiple allowed
+  email       String
+  description String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 model Schedule {
   id          String         @id @default(cuid())
   staffId     String
