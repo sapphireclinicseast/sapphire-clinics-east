@@ -17,6 +17,7 @@ import {
   FileCheck,
   Receipt,
   Building2,
+  PackageSearch,
   X,
 } from 'lucide-react'
 
@@ -77,6 +78,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/reports', icon: BarChart3, label: 'Reports', roles: FULL_ACCESS },
       { href: '/reports/v2', icon: BarChart3, label: 'Reports (v2 / GL)', roles: FULL_ACCESS },
       { href: '/sales-summary', icon: Receipt, label: 'Sales Summary', roles: FULL_ACCESS },
+      { href: '/products-analysis', icon: PackageSearch, label: 'Products Analysis', roles: FULL_ACCESS },
     ],
   },
   {
