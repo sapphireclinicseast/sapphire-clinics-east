@@ -8,6 +8,9 @@ const DEPARTMENTS = [
   'PSYCHOLOGY', 'ORTHOSIS', 'FRONT_DESK', 'ADMINISTRATION',
 ] as const
 
+// Branch identifiers offered as tick-boxes (an entry may serve several).
+const BRANCHES = ['EAST', 'GREENHILLS', 'VERDANA', 'CORPORATE'] as const
+
 function isAdmin(role?: string) {
   return role === 'ADMIN'
 }
@@ -27,7 +30,7 @@ export async function GET() {
   const entries = await prisma.directoryEntry.findMany({
     orderBy: { createdAt: 'asc' },
   })
-  return NextResponse.json({ entries, departments: DEPARTMENTS })
+  return NextResponse.json({ entries, departments: DEPARTMENTS, branches: BRANCHES })
 }
 
 // POST — create a directory entry (admin only).
@@ -41,11 +44,17 @@ export async function POST(req: NextRequest) {
   const departments: string[] = Array.isArray(body.departments)
     ? body.departments.filter((d: unknown): d is string => typeof d === 'string' && (DEPARTMENTS as readonly string[]).includes(d))
     : []
+  const branches: string[] = Array.isArray(body.branches)
+    ? body.branches.filter((b: unknown): b is string => typeof b === 'string' && (BRANCHES as readonly string[]).includes(b))
+    : []
   const email = typeof body.email === 'string' ? body.email.trim() : ''
   const description = typeof body.description === 'string' ? body.description.trim() : ''
 
   if (departments.length === 0) {
     return NextResponse.json({ error: 'Select at least one department' }, { status: 400 })
+  }
+  if (branches.length === 0) {
+    return NextResponse.json({ error: 'Select at least one branch' }, { status: 400 })
   }
   if (!email || !isValidEmail(email)) {
     return NextResponse.json({ error: 'A valid email is required' }, { status: 400 })
@@ -55,6 +64,7 @@ export async function POST(req: NextRequest) {
   const entry = await prisma.directoryEntry.create({
     data: {
       departments,
+      branches,
       email,
       description: description || null,
       createdById: session.user.id,

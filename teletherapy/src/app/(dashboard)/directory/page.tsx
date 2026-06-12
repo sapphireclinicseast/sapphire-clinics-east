@@ -7,6 +7,7 @@ import { Contact, Plus, Trash2, Loader2, X, Mail } from 'lucide-react'
 interface DirectoryEntry {
   id: string
   departments: string[]
+  branches: string[]
   email: string
   description: string | null
 }
@@ -25,6 +26,15 @@ const DEPT_LABELS: Record<string, string> = {
 }
 const DEPT_ORDER = ['OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS', 'FRONT_DESK', 'ADMINISTRATION']
 
+// Branch codes → friendly labels.
+const BRANCH_LABELS: Record<string, string> = {
+  EAST: 'East',
+  GREENHILLS: 'Greenhills',
+  VERDANA: 'Verdana',
+  CORPORATE: 'Corporate',
+}
+const BRANCH_ORDER = ['EAST', 'GREENHILLS', 'VERDANA', 'CORPORATE']
+
 export default function DirectoryPage() {
   const { data: session } = useSession()
   const isAdmin = session?.user?.role === 'ADMIN'
@@ -36,6 +46,7 @@ export default function DirectoryPage() {
   // Create form state
   const [showForm, setShowForm] = useState(false)
   const [depts, setDepts] = useState<string[]>([])
+  const [branchSel, setBranchSel] = useState<string[]>([])
   const [email, setEmail] = useState('')
   const [description, setDescription] = useState('')
   const [saving, setSaving] = useState(false)
@@ -61,19 +72,24 @@ export default function DirectoryPage() {
     setDepts((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]))
   }
 
+  function toggleBranch(b: string) {
+    setBranchSel((prev) => (prev.includes(b) ? prev.filter((x) => x !== b) : [...prev, b]))
+  }
+
   function resetForm() {
-    setDepts([]); setEmail(''); setDescription(''); setShowForm(false)
+    setDepts([]); setBranchSel([]); setEmail(''); setDescription(''); setShowForm(false)
   }
 
   async function create() {
     if (depts.length === 0) { flash('Select at least one department'); return }
+    if (branchSel.length === 0) { flash('Select at least one branch'); return }
     if (!email) { flash('Email is required'); return }
     setSaving(true)
     try {
       const res = await fetch('/api/directory', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ departments: depts, email, description }),
+        body: JSON.stringify({ departments: depts, branches: branchSel, email, description }),
       })
       const data = await res.json()
       if (res.ok) { flash('Directory entry added'); resetForm(); load() }
@@ -89,6 +105,7 @@ export default function DirectoryPage() {
   }
 
   const sortDepts = (ds: string[]) => [...ds].sort((a, b) => DEPT_ORDER.indexOf(a) - DEPT_ORDER.indexOf(b))
+  const sortBranches = (bs: string[]) => [...bs].sort((a, b) => BRANCH_ORDER.indexOf(a) - BRANCH_ORDER.indexOf(b))
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -142,6 +159,27 @@ export default function DirectoryPage() {
             })}
           </div>
 
+          {/* Branch tick-boxes (multi-select) */}
+          <label className="block text-[11px] font-semibold text-[var(--charcoal)] uppercase tracking-wider mb-2">Branch(es)</label>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+            {BRANCH_ORDER.map((b) => {
+              const on = branchSel.includes(b)
+              return (
+                <button key={b} type="button" onClick={() => toggleBranch(b)}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg border text-left text-[13px] transition-colors"
+                  style={on
+                    ? { background: 'var(--sun-tint)', borderColor: 'var(--gold)', color: 'var(--deep-teal)' }
+                    : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                  <span className="w-4 h-4 rounded flex items-center justify-center shrink-0 text-white text-[11px] font-bold"
+                    style={{ background: on ? 'var(--gold)' : 'transparent', border: on ? 'none' : '1.5px solid var(--light-gray)' }}>
+                    {on ? '✓' : ''}
+                  </span>
+                  {BRANCH_LABELS[b] ?? b}
+                </button>
+              )
+            })}
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
             <div>
               <label className="block text-[11px] font-semibold text-[var(--charcoal)] uppercase tracking-wider mb-1">Email</label>
@@ -156,7 +194,7 @@ export default function DirectoryPage() {
           </div>
 
           <div className="flex gap-2">
-            <button onClick={create} disabled={saving || depts.length === 0 || !email}
+            <button onClick={create} disabled={saving || depts.length === 0 || branchSel.length === 0 || !email}
               className="btn-primary !py-2 !px-5 !text-[13px] !rounded-lg">
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Add Entry
             </button>
@@ -180,6 +218,7 @@ export default function DirectoryPage() {
               <thead>
                 <tr className="text-[11px] uppercase tracking-wider text-[var(--mid-gray)]" style={{ background: 'var(--off-white)' }}>
                   <th className="px-5 py-3 font-semibold">Department</th>
+                  <th className="px-5 py-3 font-semibold">Branch</th>
                   <th className="px-5 py-3 font-semibold">Email</th>
                   <th className="px-5 py-3 font-semibold">Description</th>
                   {isAdmin && <th className="px-5 py-3 font-semibold w-12"></th>}
@@ -194,6 +233,16 @@ export default function DirectoryPage() {
                           <span key={d} className="px-2 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider"
                             style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
                             {DEPT_LABELS[d] ?? d}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex flex-wrap gap-1.5">
+                        {sortBranches(e.branches ?? []).map((b) => (
+                          <span key={b} className="px-2 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider"
+                            style={{ background: 'var(--sun-tint)', color: '#8a6a1f' }}>
+                            {BRANCH_LABELS[b] ?? b}
                           </span>
                         ))}
                       </div>
