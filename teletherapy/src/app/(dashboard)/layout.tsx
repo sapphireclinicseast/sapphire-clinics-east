@@ -23,15 +23,24 @@ import {
   BookOpen,
   Contact,
   HeartHandshake,
+  User,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { allowedSections } from '@/lib/section-access'
 
 function DashboardContent({ children }: { children: React.ReactNode }) {
-  const { data: session } = useSession()
+  const { data: session, status } = useSession()
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  // User-card display, with robust fallbacks so it never renders a bare "?".
+  const fullName = session?.user?.name?.trim()
+  const userEmail = session?.user?.email ?? undefined
+  const initials = fullName
+    ? fullName.split(' ').filter(Boolean).map((n) => n[0]).join('').slice(0, 2).toUpperCase()
+    : (userEmail?.[0]?.toUpperCase() ?? '')
+  const metaLine = [session?.user?.department, session?.user?.branch].filter(Boolean).join(' · ')
 
   const isAdmin = session?.user?.role === 'ADMIN'
 
@@ -145,15 +154,25 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
         {/* User card */}
         <div className="mx-3 mb-4 p-4 rounded-xl bg-white/5 border border-white/8">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-[12px] font-bold shrink-0" style={{ background: 'linear-gradient(135deg, #cf9d88, #c69849)' }}>
-              {session?.user?.name?.split(' ').map(n => n[0]).join('').slice(0, 2) ?? '?'}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-medium text-white/90 truncate">{session?.user?.name}</p>
-              <p className="text-[11px] text-white/40">
-                {session?.user?.department} &middot; {session?.user?.branch}
-              </p>
-            </div>
+            {status === 'loading' ? (
+              <>
+                <div className="w-9 h-9 rounded-full bg-white/10 animate-pulse shrink-0" />
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  <div className="h-3 w-24 rounded bg-white/10 animate-pulse" />
+                  <div className="h-2 w-16 rounded bg-white/10 animate-pulse" />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-[12px] font-bold shrink-0" style={{ background: 'linear-gradient(135deg, #cf9d88, #c69849)' }}>
+                  {initials || <User size={16} />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-medium text-white/90 truncate">{fullName || userEmail || 'Account'}</p>
+                  <p className="text-[11px] text-white/40 truncate">{metaLine || ' '}</p>
+                </div>
+              </>
+            )}
           </div>
           <button
             onClick={() => signOut({ callbackUrl: '/login' })}
