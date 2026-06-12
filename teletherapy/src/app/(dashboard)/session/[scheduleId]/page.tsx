@@ -63,6 +63,7 @@ interface SessionDetail {
     discontinuedRemarks: string | null
     emailSentAt: string | null
     emailSentTo: string | null
+    isInitialEvaluation: boolean
   } | null
 }
 
@@ -709,8 +710,21 @@ export default function SessionDetailPage() {
             </div>
           )}
 
-          {/* Send email — hidden for Psychology (internal monitoring only) */}
-          {session.sessionNote!.status === 'COMPLETED' && session.patient?.email && !isPsychDept && (
+          {/* For Initial Evaluations the notes email is suppressed: the IE is
+              delivered to the patient via "Send Email to Patient" on the
+              uploaded IE document, which attaches the actual report. The notes
+              email here has no attachment, so we direct the consultant instead. */}
+          {session.sessionNote!.status === 'COMPLETED' && session.patient?.email && !isPsychDept && session.sessionNote!.isInitialEvaluation && (
+            <div className="pt-4 border-t border-[var(--light-gray)]">
+              <p className="text-sm text-[var(--mid-gray)] flex items-start gap-2">
+                <Mail size={15} className="mt-0.5 shrink-0" />
+                <span>This is an Initial Evaluation. To send it to the patient, use <strong>“Send Email to Patient”</strong> on the uploaded IE document — that email includes the report as an attachment.</span>
+              </p>
+            </div>
+          )}
+
+          {/* Send notes email — hidden for Psychology (internal only) and for IE (see above) */}
+          {session.sessionNote!.status === 'COMPLETED' && session.patient?.email && !isPsychDept && !session.sessionNote!.isInitialEvaluation && (
             <div className="pt-4 border-t border-[var(--light-gray)]">
               {session.sessionNote!.emailSentAt && (
                 <p className="text-sm text-green-600 flex items-center gap-2 font-medium mb-3">

@@ -240,6 +240,17 @@ export async function POST(
   if (!schedule) return NextResponse.json({ error: 'Session not found' }, { status: 404 })
   if (!schedule.sessionNote) return NextResponse.json({ error: 'No session note to send' }, { status: 400 })
   if (!schedule.patient?.email) return NextResponse.json({ error: 'Patient has no email address' }, { status: 400 })
+  // Initial Evaluations are NOT sent via this notes email (it has no
+  // attachment and only references "see uploaded IE report"). The patient
+  // must receive the IE through "Send Email to Patient" on the uploaded IE
+  // document, which attaches the actual report. Block here so the notes
+  // email can never go out for an IE session, regardless of caller.
+  if (schedule.sessionNote.isInitialEvaluation) {
+    return NextResponse.json(
+      { error: 'Initial Evaluations are sent via "Send Email to Patient" on the uploaded IE document (which includes the report attachment). The notes email is disabled for IE sessions.' },
+      { status: 400 },
+    )
+  }
   // Allow resending — no longer block if already sent
 
   // Resolve branch-specific CC from BranchCCEmail (same pattern as IE send-to-patient).
