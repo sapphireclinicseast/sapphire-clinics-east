@@ -58,9 +58,10 @@ export async function POST(req: Request) {
         deductions: {
           create: deductions
             .filter((d: { name: string; rate: number; accountId?: string }) => d.name && d.rate > 0)
-            .map((d: { name: string; rate: number; accountId?: string }) => ({
+            .map((d: { name: string; rate: number; valueType?: string; accountId?: string }) => ({
               name: d.name.trim(),
               rate: d.rate,
+              valueType: d.valueType === 'FIXED' ? 'FIXED' : 'PERCENTAGE',
               accountId: d.accountId || null,
             })),
         },
@@ -109,9 +110,10 @@ export async function PUT(req: Request) {
         deductions: {
           create: deductions
             .filter((d: { name: string; rate: number; accountId?: string }) => d.name && d.rate > 0)
-            .map((d: { name: string; rate: number; accountId?: string }) => ({
+            .map((d: { name: string; rate: number; valueType?: string; accountId?: string }) => ({
               name: d.name.trim(),
               rate: d.rate,
+              valueType: d.valueType === 'FIXED' ? 'FIXED' : 'PERCENTAGE',
               accountId: d.accountId || null,
             })),
         },

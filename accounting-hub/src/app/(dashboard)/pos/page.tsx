@@ -166,6 +166,7 @@ interface PaymentModeDeductionType {
   id: string
   name: string
   rate: number
+  valueType?: string  // 'PERCENTAGE' | 'FIXED'
   accountId?: string | null
   account?: { id: string; accountNumber: string; accountTitle: string } | null
 }
@@ -1890,20 +1891,21 @@ function OrderFormModal({
                 const cm = configuredModes.find(m => m.id === p.paymentModeId)
                 if (!cm || cm.deductions.length === 0) return null
                 const base = toNum(p.amount)
+                const dedAmt = (d: { rate: number; valueType?: string }) => d.valueType === 'FIXED' ? Number(d.rate) : base * (Number(d.rate) / 100)
                 return (
                   <div className="ml-1 pl-3 border-l-2 space-y-0.5" style={{ borderColor: 'var(--light-gray)' }}>
                     {cm.deductions.map(d => {
-                      const amt = base * (Number(d.rate) / 100)
+                      const amt = dedAmt(d)
                       return (
                         <div key={d.id} className="flex justify-between text-xs" style={{ color: 'var(--mid-gray)' }}>
-                          <span>{d.name} ({Number(d.rate)}%){d.account ? ` → ${d.account.accountNumber}` : ''}</span>
+                          <span>{d.name} ({d.valueType === 'FIXED' ? formatCurrency(Number(d.rate)) : `${Number(d.rate)}%`}){d.account ? ` → ${d.account.accountNumber}` : ''}</span>
                           <span className="font-medium text-red-500">-{formatCurrency(amt)}</span>
                         </div>
                       )
                     })}
                     <div className="flex justify-between text-xs font-semibold pt-0.5" style={{ color: 'var(--teal)' }}>
                       <span>Net to {cm.account ? cm.account.accountNumber : 'account'}</span>
-                      <span>{formatCurrency(base - cm.deductions.reduce((s, d) => s + base * (Number(d.rate) / 100), 0))}</span>
+                      <span>{formatCurrency(base - cm.deductions.reduce((s, d) => s + dedAmt(d), 0))}</span>
                     </div>
                   </div>
                 )
@@ -8315,7 +8317,7 @@ function PaymentModeSettingsPanel() {
   const [form, setForm] = useState({ name: '', paymentMethod: '', branch: '', accountId: '', isActive: true })
   const [accountSearch, setAccountSearch] = useState('')
   const [allAccounts, setAllAccounts] = useState<{ id: string; accountNumber: string; accountTitle: string; accountType: string }[]>([])
-  const [deductions, setDeductions] = useState<{ name: string; rate: number; accountId: string; accountSearch: string }[]>([])
+  const [deductions, setDeductions] = useState<{ name: string; rate: number; valueType: string; accountId: string; accountSearch: string }[]>([])
   const [error, setError] = useState('')
 
   const fetchModes = useCallback(async () => {
@@ -8359,6 +8361,7 @@ function PaymentModeSettingsPanel() {
     setDeductions((m.deductions || []).map(d => ({
       name: d.name,
       rate: Number(d.rate),
+      valueType: d.valueType === 'FIXED' ? 'FIXED' : 'PERCENTAGE',
       accountId: d.accountId || '',
       accountSearch: d.account ? `${d.account.accountNumber} ${d.account.accountTitle}` : '',
     })))
@@ -8366,7 +8369,7 @@ function PaymentModeSettingsPanel() {
     setShowForm(true)
   }
 
-  const addDeduction = () => setDeductions(prev => [...prev, { name: '', rate: 0, accountId: '', accountSearch: '' }])
+  const addDeduction = () => setDeductions(prev => [...prev, { name: '', rate: 0, valueType: 'PERCENTAGE', accountId: '', accountSearch: '' }])
   const removeDeduction = (i: number) => setDeductions(prev => prev.filter((_, idx) => idx !== i))
   const updateDeduction = (i: number, updates: Record<string, string | number>) =>
     setDeductions(prev => prev.map((d, idx) => idx === i ? { ...d, ...updates } : d))
@@ -8384,6 +8387,7 @@ function PaymentModeSettingsPanel() {
       deductions: deductions.filter(d => d.name.trim() && d.rate > 0).map(d => ({
         name: d.name.trim(),
         rate: d.rate,
+        valueType: d.valueType || 'PERCENTAGE',
         accountId: d.accountId || null,
       })),
     }
@@ -8457,7 +8461,7 @@ function PaymentModeSettingsPanel() {
                         {m.deductions.map(d => (
                           <div key={d.id} className="text-xs" style={{ color: 'var(--charcoal)' }}>
                             <span className="font-medium">{d.name}</span>
-                            <span className="ml-1" style={{ color: 'var(--mid-gray)' }}>{Number(d.rate)}%</span>
+                            <span className="ml-1" style={{ color: 'var(--mid-gray)' }}>{d.valueType === 'FIXED' ? formatCurrency(Number(d.rate)) : `${Number(d.rate)}%`}</span>
                             {d.account && <span className="ml-1 font-mono text-xs" style={{ color: 'var(--teal)' }}>→ {d.account.accountNumber}</span>}
                           </div>
                         ))}
@@ -8583,10 +8587,16 @@ function PaymentModeSettingsPanel() {
                           placeholder="e.g. Merchant Discount Rate"
                           className="flex-1 px-2.5 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                         <div className="flex items-center gap-1">
-                          <input type="number" value={d.rate} min={0} max={100} step={0.01}
+                          <input type="number" value={d.rate} min={0} max={d.valueType === 'FIXED' ? undefined : 100} step={0.01}
                             onChange={e => updateDeduction(i, { rate: parseFloat(e.target.value) || 0 })}
                             className="w-16 px-2 py-1.5 rounded-lg border text-xs outline-none text-right" style={{ borderColor: 'var(--light-gray)' }} />
-                          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>%</span>
+                          <select value={d.valueType || 'PERCENTAGE'}
+                            onChange={e => updateDeduction(i, { valueType: e.target.value })}
+                            className="px-1.5 py-1.5 rounded-lg border text-xs outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}
+                            title="Percentage of gross, or a fixed peso amount">
+                            <option value="PERCENTAGE">%</option>
+                            <option value="FIXED">₱ Fixed</option>
+                          </select>
                         </div>
                         <button type="button" onClick={() => removeDeduction(i)} className="p-1 rounded hover:bg-red-50">
                           <X size={13} className="text-red-400" />

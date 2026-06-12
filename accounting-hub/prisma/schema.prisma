@@ -766,7 +766,8 @@ model PaymentModeDeduction {
   paymentModeId String
   paymentMode   PaymentMode @relation(fields: [paymentModeId], references: [id], onDelete: Cascade)
   name          String      // "Merchant Discount Rate", "Creditable Withholding Tax"
-  rate          Decimal     // percentage — e.g. 2.2 means 2.2%
+  rate          Decimal     // value — interpreted by valueType: PERCENTAGE → % of gross; FIXED → peso amount
+  valueType     String      @default("PERCENTAGE") // "PERCENTAGE" | "FIXED"
   accountId     String?     // COA where this deduction is lodged (expense or liability)
   account       Account?    @relation("DeductionAccount", fields: [accountId], references: [id], onDelete: SetNull)
   createdAt     DateTime    @default(now())

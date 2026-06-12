@@ -175,14 +175,16 @@ export async function postOrderJournal(
       if (!cashAcct) {
         return { posted: false, reason: `cash payment ${p.method} ${gross} has no payment-mode account configured` }
       }
-      const totalDeductionRate = (pm?.deductions || []).reduce((s, d) => s + Number(d.rate), 0)
-      const deductionAmt = gross * (totalDeductionRate / 100)
+      // Each deduction is either a percentage of gross or a fixed peso amount (valueType).
+      const dedAmt = (d: { rate: unknown; valueType?: string | null }) =>
+        d.valueType === 'FIXED' ? Number(d.rate) : gross * (Number(d.rate) / 100)
+      const deductionAmt = (pm?.deductions || []).reduce((s, d) => s + dedAmt(d), 0)
       const netCash = gross - deductionAmt
 
       addLine(cashAcct.id, 'debit', netCash, `Cash receipt — ${p.method}`)
 
       for (const d of pm?.deductions || []) {
-        const amt = gross * (Number(d.rate) / 100)
+        const amt = dedAmt(d)
         if (amt <= 0) continue
         if (!d.account) {
           return { posted: false, reason: `deduction "${d.name}" on payment mode "${pm?.id}" has no account` }
