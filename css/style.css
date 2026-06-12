@@ -401,13 +401,26 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading); line-height: 1.25; }
   margin-bottom: 24px;
   backdrop-filter: blur(8px);
 }
-/* NPC Data Privacy Seal (replaces the eyebrow chip, above Our Brands) */
-.hero-seal {
-  height: 128px; width: auto; display: block;
+/* NPC Data Privacy Seal + caption (replaces the eyebrow chip, above Our Brands) */
+.hero-seal-block {
+  display: flex; align-items: center; gap: 16px;
   margin-bottom: 20px;
+}
+.hero-seal {
+  height: 128px; width: auto; display: block; flex-shrink: 0;
   filter: drop-shadow(0 4px 16px rgba(0,0,0,.4));
 }
-@media (max-width: 640px) { .hero-seal { height: 100px; } }
+.hero-seal-text {
+  max-width: 300px;
+  font-size: 13px; line-height: 1.5;
+  color: rgba(255,255,255,.92);
+  text-shadow: 0 1px 10px rgba(18,40,38,.55);
+}
+.hero-seal-text strong { color: #fff; font-weight: 700; }
+@media (max-width: 640px) {
+  .hero-seal { height: 100px; }
+  .hero-seal-text { font-size: 12px; max-width: 220px; }
+}
 /* Brands operated under the corporation */
 .hero-brands {
   display: flex; flex-wrap: wrap; align-items: center;
