@@ -64,6 +64,7 @@ const DEPT_LABELS: Record<string, string> = Object.fromEntries(DEPARTMENTS.map(d
 const BRANCHES = [
   { value: 'SANDBOX_EAST', label: 'East Branch' },
   { value: 'SANDBOX_GREENHILLS', label: 'Greenhills Branch' },
+  { value: 'VERDANA_STORE', label: 'Verdana Store' },
   { value: 'ALL', label: 'All Branches' },
 ]
 
