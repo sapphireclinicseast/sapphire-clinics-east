@@ -24,8 +24,8 @@
 </head>
 <body>
   <iframe
+    id="bookingFrame"
     class="embed-frame"
-    src="https://client.sapphireclinicseast.org/"
     title="Sapphire Clinics East — Book a Session"
     allow="clipboard-write; fullscreen"
     referrerpolicy="strict-origin-when-cross-origin"></iframe>
@@ -41,5 +41,13 @@
     <p>If the booking portal does not load below, open it directly:</p>
     <a href="https://client.sapphireclinicseast.org/" target="_blank" rel="noopener">Open Client Portal →</a>
   </div>
+  <script>
+    // Cache-bust the embed so /booking/ always loads the LATEST client-portal
+    // build (e.g. live survey feedback) instead of a stale cached version.
+    (function () {
+      var f = document.getElementById('bookingFrame');
+      if (f) f.src = 'https://client.sapphireclinicseast.org/?embedded=1&t=' + Date.now();
+    })();
+  </script>
 </body>
 </html>
