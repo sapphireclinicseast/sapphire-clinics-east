@@ -94,7 +94,12 @@ export default function FrontdeskPage() {
         // PaymentRecord) was showing stale "still pending" rows because
         // the local cache didn't have visibility into other devices'
         // PayMongo / front-desk confirmations.
-        <FrontDeskPaymentConfirmations />
+        //
+        // canDelete enables the per-row Delete action so the front desk
+        // can clear test rows and obvious duplicates from their own
+        // branch. The server-side DELETE endpoint enforces branch
+        // scoping on the FRONTDESK role separately.
+        <FrontDeskPaymentConfirmations canDelete />
       )}
 
       {tab === 'SPREADSHEET' && (
