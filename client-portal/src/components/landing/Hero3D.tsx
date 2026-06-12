@@ -153,7 +153,7 @@ function PraiseRotator() {
         style={{ fontFamily: 'var(--font-display)' }}
       >
         <span className="w-1.5 h-1.5 rounded-full bg-[color:var(--sun)] animate-pulse-ring"></span>
-        From our randomized client surveys
+        From our random client surveys
       </div>
       <div className="min-h-[150px] md:min-h-[200px] flex items-center justify-center">
         <blockquote
