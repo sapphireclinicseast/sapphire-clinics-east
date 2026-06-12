@@ -727,6 +727,7 @@ function CashierPanel({
           >
             <option value="SANDBOX_EAST">SBEA</option>
             <option value="SANDBOX_GREENHILLS">SBGH</option>
+            <option value="VERDANA_STORE">Verdana</option>
           </select>
         )}
         <input
