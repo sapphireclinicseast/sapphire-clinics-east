@@ -32,7 +32,7 @@ const SITE_CONFIG = {
 
   /* ── Brands operated under the corporation (shown in hero) ── */
   brands: [
-    { name: 'Aura Health Rehab Clinic', imgSrc: 'BRANDS/AURA HEALTH REHAB.png' },
+    { name: 'Aura Health Clinic', imgSrc: 'BRANDS/AURA HEALTH REHAB.png' },
     { name: 'Verdana Rehab Solutions',  imgSrc: 'BRANDS/VERDANA STORE.png' },
   ],
 
