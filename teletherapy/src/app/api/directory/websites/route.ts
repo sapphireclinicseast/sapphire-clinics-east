@@ -52,7 +52,8 @@ export async function GET() {
     return {
       id: w.id,
       description: w.description,
-      visibleBranches: Array.isArray(w.visibleBranches) ? w.visibleBranches : [],
+      // "Visible To" column is admin-only — don't send the list to others.
+      visibleBranches: admin ? (Array.isArray(w.visibleBranches) ? w.visibleBranches : []) : undefined,
       restricted,
       link: allowed ? w.link : null,
       linkHidden: !allowed,

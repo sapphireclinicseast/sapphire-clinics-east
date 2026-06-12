@@ -344,7 +344,7 @@ export default function DirectoryPage() {
                           <th className="px-5 py-3 font-semibold">Branch</th>
                           <th className="px-5 py-3 font-semibold">Email</th>
                           <th className="px-5 py-3 font-semibold">Description</th>
-                          <th className="px-5 py-3 font-semibold">Visible To</th>
+                          {isAdmin && <th className="px-5 py-3 font-semibold">Visible To</th>}
                           {isAdmin && <th className="px-5 py-3 font-semibold w-20"></th>}
                         </tr>
                       </thead>
@@ -361,7 +361,7 @@ export default function DirectoryPage() {
                               )}
                             </td>
                             <td className="px-5 py-3 text-[13px] text-[var(--charcoal)]">{e.description || <span className="text-[var(--mid-gray)]">—</span>}</td>
-                            <td className="px-5 py-3"><VisibleTo visibleBranches={e.visibleBranches} /></td>
+                            {isAdmin && <td className="px-5 py-3"><VisibleTo visibleBranches={e.visibleBranches} /></td>}
                             {isAdmin && (
                               <td className="px-5 py-3">
                                 <div className="flex items-center gap-1">
@@ -432,7 +432,7 @@ export default function DirectoryPage() {
                         <tr className="text-[11px] uppercase tracking-wider text-[var(--mid-gray)]" style={{ background: 'var(--off-white)' }}>
                           <th className="px-5 py-3 font-semibold">Link</th>
                           <th className="px-5 py-3 font-semibold">Description</th>
-                          <th className="px-5 py-3 font-semibold">Visible To</th>
+                          {isAdmin && <th className="px-5 py-3 font-semibold">Visible To</th>}
                           {isAdmin && <th className="px-5 py-3 font-semibold w-20"></th>}
                         </tr>
                       </thead>
@@ -447,7 +447,7 @@ export default function DirectoryPage() {
                               )}
                             </td>
                             <td className="px-5 py-3 text-[13px] text-[var(--charcoal)]">{w.description || <span className="text-[var(--mid-gray)]">—</span>}</td>
-                            <td className="px-5 py-3"><VisibleTo visibleBranches={w.visibleBranches} /></td>
+                            {isAdmin && <td className="px-5 py-3"><VisibleTo visibleBranches={w.visibleBranches} /></td>}
                             {isAdmin && (
                               <td className="px-5 py-3">
                                 <div className="flex items-center gap-1">

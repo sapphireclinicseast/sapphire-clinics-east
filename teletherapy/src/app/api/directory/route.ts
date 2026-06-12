@@ -79,9 +79,8 @@ export async function GET() {
       branches: e.branches,
       description: e.description,
       restricted,
-      // Shown in the "Visible To" column (not sensitive — it's who may see
-      // the email, while the email itself stays masked server-side).
-      visibleBranches: Array.isArray(e.visibleBranches) ? e.visibleBranches : [],
+      // "Visible To" column is admin-only — don't send the list to others.
+      visibleBranches: admin ? (Array.isArray(e.visibleBranches) ? e.visibleBranches : []) : undefined,
       // Mask the email entirely when the viewer isn't allowed to see it.
       email: allowed ? e.email : null,
       emailHidden: !allowed,
