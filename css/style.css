@@ -401,6 +401,13 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading); line-height: 1.25; }
   margin-bottom: 24px;
   backdrop-filter: blur(8px);
 }
+/* NPC Data Privacy Seal (replaces the eyebrow chip, above Our Brands) */
+.hero-seal {
+  height: 128px; width: auto; display: block;
+  margin-bottom: 20px;
+  filter: drop-shadow(0 4px 16px rgba(0,0,0,.4));
+}
+@media (max-width: 640px) { .hero-seal { height: 100px; } }
 /* Brands operated under the corporation */
 .hero-brands {
   display: flex; flex-wrap: wrap; align-items: center;
