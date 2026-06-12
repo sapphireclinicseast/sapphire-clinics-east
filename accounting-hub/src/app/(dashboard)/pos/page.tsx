@@ -678,7 +678,11 @@ function CashierPanel({
   canSelectBranch: boolean
   session: { user?: Record<string, unknown> } | null
 }) {
-  const [selectedBranch, setSelectedBranch] = useState(branch)
+  // An admin's resolved branch can be 'ALL' (or unset). The cashier must ring up under a
+  // CONCRETE branch so that branch's configured payment modes load (modes are branch-specific,
+  // none are tagged 'ALL') — otherwise it falls back to the plain hardcoded methods.
+  const CASHIER_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE']
+  const [selectedBranch, setSelectedBranch] = useState(CASHIER_BRANCHES.includes(branch) ? branch : 'SANDBOX_EAST')
   const [date, setDate] = useState(today())
   const [queue, setQueue] = useState<QueueItem[]>([])
   const [queueLoading, setQueueLoading] = useState(false)
