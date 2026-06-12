@@ -411,15 +411,16 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading); line-height: 1.25; }
   filter: drop-shadow(0 4px 16px rgba(0,0,0,.4));
 }
 .hero-seal-text {
-  max-width: 300px;
-  font-size: 13px; line-height: 1.5;
-  color: rgba(255,255,255,.92);
-  text-shadow: 0 1px 10px rgba(18,40,38,.55);
+  max-width: 330px;
+  font-size: 14px; line-height: 1.5; font-weight: 500;
+  color: #fff;
+  /* tight dark outline + soft glow so it reads on light OR dark photos */
+  text-shadow: 0 1px 2px rgba(0,0,0,.8), 0 2px 16px rgba(0,0,0,.55);
 }
-.hero-seal-text strong { color: #fff; font-weight: 700; }
+.hero-seal-text strong { color: #fff; font-weight: 800; }
 @media (max-width: 640px) {
-  .hero-seal { height: 100px; }
-  .hero-seal-text { font-size: 12px; max-width: 220px; }
+  .hero-seal { height: 92px; }
+  .hero-seal-text { font-size: 12.5px; max-width: 230px; }
 }
 /* Brands operated under the corporation */
 .hero-brands {
