@@ -274,6 +274,7 @@ export default function DirectoryPage() {
                   <th className="px-5 py-3 font-semibold">Branch</th>
                   <th className="px-5 py-3 font-semibold">Email</th>
                   <th className="px-5 py-3 font-semibold">Description</th>
+                  <th className="px-5 py-3 font-semibold">Visible To</th>
                   {isAdmin && <th className="px-5 py-3 font-semibold w-12"></th>}
                 </tr>
               </thead>
@@ -306,19 +307,27 @@ export default function DirectoryPage() {
                           <Lock size={13} className="shrink-0" /> Restricted
                         </span>
                       ) : (
-                        <div className="flex flex-col gap-0.5">
-                          <a href={`mailto:${e.email}`} className="text-[13px] font-medium text-[var(--teal)] hover:underline inline-flex items-center gap-1.5">
-                            <Mail size={13} className="shrink-0" />{e.email}
-                          </a>
-                          {isAdmin && e.restricted && (
-                            <span className="text-[10px] text-[var(--mid-gray)] inline-flex items-center gap-1">
-                              <Lock size={10} className="shrink-0" /> Visible to: {sortBranches(e.visibleBranches ?? []).map((b) => BRANCH_LABELS[b] ?? b).join(', ')}
-                            </span>
-                          )}
-                        </div>
+                        <a href={`mailto:${e.email}`} className="text-[13px] font-medium text-[var(--teal)] hover:underline inline-flex items-center gap-1.5">
+                          <Mail size={13} className="shrink-0" />{e.email}
+                        </a>
                       )}
                     </td>
                     <td className="px-5 py-3 text-[13px] text-[var(--charcoal)]">{e.description || <span className="text-[var(--mid-gray)]">—</span>}</td>
+                    <td className="px-5 py-3">
+                      {(e.visibleBranches ?? []).length === 0 ? (
+                        <span className="text-[12px] text-[var(--mid-gray)]">Everyone</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5 items-center">
+                          <Lock size={12} className="text-[var(--mid-gray)] shrink-0" />
+                          {sortBranches(e.visibleBranches ?? []).map((b) => (
+                            <span key={b} className="px-2 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider"
+                              style={{ background: 'var(--sage-tint)', color: 'var(--deep-teal)' }}>
+                              {BRANCH_LABELS[b] ?? b}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </td>
                     {isAdmin && (
                       <td className="px-5 py-3">
                         <button onClick={() => remove(e.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-md transition-colors" title="Remove">
