@@ -59,6 +59,14 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const { branches, isMultiBranch, activeStaffId, switchBranch } = useBranchSwitcher()
 
+  // Limited staff accounts (Front Desk / Admin Staff) don't have the clinical
+  // dashboard in their preset — send them to their first allowed section.
+  const acctType = session?.user?.accountType
+  useEffect(() => {
+    if (acctType === 'FRONT_DESK') router.replace('/patients-love')
+    else if (acctType === 'ADMIN_STAFF') router.replace('/peers-love')
+  }, [acctType, router])
+
   useEffect(() => {
     if (activeStaffId) fetchSessions()
   }, [date, activeStaffId])

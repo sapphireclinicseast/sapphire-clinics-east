@@ -19,6 +19,7 @@ declare module 'next-auth' {
       image?: string | null
       staffId: string
       role: string
+      accountType?: string
       department?: string
       branch?: string
       branches?: BranchInfo[]
@@ -27,6 +28,7 @@ declare module 'next-auth' {
   interface User {
     staffId: string
     role: string
+    accountType?: string
     department?: string
     branch?: string
     branches?: BranchInfo[]
@@ -126,6 +128,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           email: account.email,
           staffId: account.staffId,
           role: account.role,
+          accountType: (account as { accountType?: string }).accountType ?? 'CLINICIAN',
           department: account.staff.department,
           branch: account.staff.branch,
           branches,
@@ -139,6 +142,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.id = user.id
         token.staffId = user.staffId
         token.role = user.role
+        token.accountType = user.accountType
         token.department = user.department
         token.branch = user.branch
         token.branches = user.branches
@@ -168,6 +172,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.id = token.id as string
         session.user.staffId = token.staffId as string
         session.user.role = token.role as string
+        session.user.accountType = (token.accountType as string) ?? 'CLINICIAN'
         session.user.department = token.department as string
         session.user.branch = token.branch as string
         session.user.branches = (token.branches as BranchInfo[]) ?? []

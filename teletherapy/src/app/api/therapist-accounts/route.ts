@@ -14,6 +14,7 @@ export async function GET() {
       id: true,
       email: true,
       role: true,
+      accountType: true,
       isActive: true,
       lastLoginAt: true,
       lastPlainPassword: true,
@@ -40,7 +41,14 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json()
-  const { staffId, email, password, role } = body
+  const { staffId, email, password } = body
+  // accountType is the access preset; it also determines the role.
+  // CLINICIAN/FRONT_DESK/ADMIN_STAFF -> THERAPIST role; ADMIN -> ADMIN role.
+  const VALID_TYPES = ['CLINICIAN', 'FRONT_DESK', 'ADMIN_STAFF', 'ADMIN']
+  const accountType: string = VALID_TYPES.includes(body.accountType)
+    ? body.accountType
+    : (body.role === 'ADMIN' ? 'ADMIN' : 'CLINICIAN')
+  const role = accountType === 'ADMIN' ? 'ADMIN' : 'THERAPIST'
 
   if (!staffId || !email || !password) {
     return NextResponse.json({ error: 'Staff member, email, and password are required' }, { status: 400 })
@@ -75,7 +83,8 @@ export async function POST(req: NextRequest) {
       email,
       passwordHash,
       lastPlainPassword: password,
-      role: role === 'ADMIN' ? 'ADMIN' : 'THERAPIST',
+      role,
+      accountType,
     },
     include: {
       staff: {
@@ -99,7 +108,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   const body = await req.json()
-  const { id, isActive, newPassword, newEmail } = body
+  const { id, isActive, newPassword, newEmail, accountType } = body
 
   if (!id) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
@@ -109,6 +118,12 @@ export async function PATCH(req: NextRequest) {
 
   if (typeof isActive === 'boolean') {
     updateData.isActive = isActive
+  }
+
+  // Change the access preset (and keep role in sync).
+  if (typeof accountType === 'string' && ['CLINICIAN', 'FRONT_DESK', 'ADMIN_STAFF', 'ADMIN'].includes(accountType)) {
+    updateData.accountType = accountType
+    updateData.role = accountType === 'ADMIN' ? 'ADMIN' : 'THERAPIST'
   }
 
   if (newPassword) {

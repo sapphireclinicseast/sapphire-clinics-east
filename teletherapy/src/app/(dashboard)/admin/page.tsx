@@ -42,6 +42,7 @@ interface TherapistAccountItem {
   id: string
   email: string
   role: string
+  accountType?: string
   isActive: boolean
   lastLoginAt: string | null
   lastPlainPassword: string | null
@@ -67,7 +68,7 @@ export default function AdminPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [role, setRole] = useState<'THERAPIST' | 'ADMIN'>('THERAPIST')
+  const [accountType, setAccountType] = useState<'CLINICIAN' | 'FRONT_DESK' | 'ADMIN_STAFF' | 'ADMIN'>('CLINICIAN')
   const [toast, setToast] = useState<string | null>(null)
   const [changingPasswordId, setChangingPasswordId] = useState<string | null>(null)
   const [newPassword, setNewPassword] = useState('')
@@ -162,11 +163,11 @@ export default function AdminPage() {
       const res = await fetch('/api/therapist-accounts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ staffId: selectedStaffId, email, password, role }),
+        body: JSON.stringify({ staffId: selectedStaffId, email, password, accountType }),
       })
       if (res.ok) {
         showToast('Account created successfully')
-        setSelectedStaffId(''); setEmail(''); setPassword(''); setRole('THERAPIST')
+        setSelectedStaffId(''); setEmail(''); setPassword(''); setAccountType('CLINICIAN')
         fetchData()
       } else {
         showToast((await res.json()).error ?? 'Failed')
@@ -271,7 +272,7 @@ export default function AdminPage() {
       <div className="card-static mb-8 animate-fade-up stagger-1">
         <h2 className="font-bold text-[var(--charcoal)] mb-5 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
           <UserPlus size={18} className="text-[var(--teal)]" />
-          Create Clinician Account
+          Create Account
         </h2>
 
         <form onSubmit={handleCreate} className="space-y-5">
@@ -310,11 +311,19 @@ export default function AdminPage() {
             </div>
 
             <div>
-              <label className="block text-[13px] font-semibold text-[var(--charcoal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>Role</label>
-              <select value={role} onChange={(e) => setRole(e.target.value as 'THERAPIST' | 'ADMIN')} className="input bg-white">
-                <option value="THERAPIST">Clinician</option>
-                <option value="ADMIN">Admin</option>
+              <label className="block text-[13px] font-semibold text-[var(--charcoal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>Account Type</label>
+              <select value={accountType} onChange={(e) => setAccountType(e.target.value as typeof accountType)} className="input bg-white">
+                <option value="CLINICIAN">Clinician — full clinical access</option>
+                <option value="FRONT_DESK">Front Desk — limited sections (incl. Patients Love)</option>
+                <option value="ADMIN_STAFF">Admin Staff — limited sections</option>
+                <option value="ADMIN">Admin — full access + Admin Panel</option>
               </select>
+              <p className="text-[11px] text-[var(--mid-gray)] mt-1">
+                {accountType === 'CLINICIAN' && 'Sees all clinical pages plus Peers Love.'}
+                {accountType === 'FRONT_DESK' && 'Sees: Patients Love, Peers Love, Seminars, Templates (all depts), Manuals, Directory, Wellness Check, Payroll.'}
+                {accountType === 'ADMIN_STAFF' && 'Sees: Peers Love, Seminars, Templates (all depts), Manuals, Directory, Wellness Check, Payroll.'}
+                {accountType === 'ADMIN' && 'Full access including the Admin Panel.'}
+              </p>
             </div>
           </div>
 
@@ -329,7 +338,7 @@ export default function AdminPage() {
       <div className="card-static animate-fade-up stagger-2 mb-8">
         <h2 className="font-bold text-[var(--charcoal)] mb-5 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
           <Users size={18} className="text-[var(--teal)]" />
-          Clinician Accounts
+          Staff Accounts
           <span className="badge badge-teal ml-1">{accounts.length}</span>
         </h2>
 
@@ -397,9 +406,16 @@ export default function AdminPage() {
                     <div className="flex items-center gap-2">
                       <p className="font-semibold text-[14px] text-[var(--charcoal)]">{acct.staff.lastName}, {acct.staff.firstName}</p>
                       <span className="badge badge-teal !text-[9px] !py-0 !px-1.5">{acct.staff.department}</span>
-                      {acct.role === 'ADMIN' && (
-                        <span className="badge !text-[9px] !py-0 !px-1.5 bg-amber-50 text-amber-700 border border-amber-200">Admin</span>
-                      )}
+                      {(() => {
+                        const t = acct.accountType ?? (acct.role === 'ADMIN' ? 'ADMIN' : 'CLINICIAN')
+                        const label: Record<string, string> = { CLINICIAN: 'Clinician', FRONT_DESK: 'Front Desk', ADMIN_STAFF: 'Admin Staff', ADMIN: 'Admin' }
+                        const cls = t === 'ADMIN'
+                          ? 'bg-amber-50 text-amber-700 border-amber-200'
+                          : t === 'CLINICIAN'
+                            ? 'bg-[var(--pale-teal)] text-[var(--deep-teal)] border-[var(--light-gray)]'
+                            : 'bg-sky-50 text-sky-700 border-sky-200'
+                        return <span className={`badge !text-[9px] !py-0 !px-1.5 border ${cls}`}>{label[t] ?? t}</span>
+                      })()}
                     </div>
                     <p className="text-[12px] text-[var(--mid-gray)]">{acct.email}</p>
                     {acct.lastPlainPassword ? (

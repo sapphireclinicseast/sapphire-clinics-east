@@ -32,8 +32,12 @@ export async function GET() {
 
   const myRole = (session.user as { role?: string }).role ?? ''
   const myDept = normaliseDept((session.user as { department?: string }).department ?? '')
+  const myAccountType = (session.user as { accountType?: string }).accountType ?? ''
   const isAdmin = myRole === 'ADMIN'
-  const allowed = allowedDeptsFor(myRole, (session.user as { department?: string }).department ?? '')
+  // Front-desk / admin-staff accounts see all-department manuals (null scope).
+  const allowed = (myAccountType === 'FRONT_DESK' || myAccountType === 'ADMIN_STAFF')
+    ? null
+    : allowedDeptsFor(myRole, (session.user as { department?: string }).department ?? '')
 
   let res: Response
   try {

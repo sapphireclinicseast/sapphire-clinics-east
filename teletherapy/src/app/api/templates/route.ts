@@ -79,10 +79,13 @@ export async function GET() {
   const myRole = (session.user as { role?: string }).role ?? ''
   const myDeptRaw = (session.user as { department?: string }).department ?? ''
   const myDept = normaliseDept(myDeptRaw)
+  const myAccountType = (session.user as { accountType?: string }).accountType ?? ''
   const isAdmin = myRole === 'ADMIN'
+  // Front-desk / admin-staff accounts get "All Departments" templates.
+  const seesAllDepts = isAdmin || myAccountType === 'FRONT_DESK' || myAccountType === 'ADMIN_STAFF'
 
-  // Clinicians see only their scope; admins see everything.
-  const allowedDepts: string[] | null = isAdmin
+  // Clinicians see only their scope; admins and all-department staff see everything.
+  const allowedDepts: string[] | null = seesAllDepts
     ? null
     : SCOPE_ALLOWED[myDept] ?? null
 

@@ -22,9 +22,11 @@ import {
   HeartPulse,
   BookOpen,
   Contact,
+  HeartHandshake,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
+import { allowedSections } from '@/lib/section-access'
 
 function DashboardContent({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession()
@@ -33,11 +35,15 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
 
   const isAdmin = session?.user?.role === 'ADMIN'
 
-  const navItems = [
+  // Which sections this account is allowed to see (by access preset).
+  const allowed = allowedSections(session?.user?.role, session?.user?.accountType)
+
+  const allNavItems = [
     { href: '/', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/clinic-schedule', label: 'Clinic Schedule', icon: CalendarDays },
     { href: '/patients', label: 'Patients', icon: Users },
     { href: '/patients-love', label: 'What Patients Love About You', icon: Heart },
+    { href: '/peers-love', label: 'What your Peers Love About You', icon: HeartHandshake },
     { href: '/seminars', label: 'Seminars & Trainings', icon: GraduationCap },
     { href: '/templates', label: 'Templates & Forms', icon: FileText },
     { href: '/manuals', label: 'Manuals', icon: BookOpen },
@@ -45,6 +51,10 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
     { href: '/wellness-check', label: 'Wellness Check', icon: HeartPulse },
     { href: '/payroll', label: 'Payroll', icon: Wallet },
     { href: '/settings', label: 'Settings', icon: Settings },
+  ]
+
+  const navItems = [
+    ...allNavItems.filter((item) => allowed.includes(item.href)),
     ...(isAdmin
       ? [{ href: '/admin', label: 'Admin Panel', icon: Shield }]
       : []),

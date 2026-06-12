@@ -211,6 +211,30 @@ model Schedule {
   @@index([patientId, status])
 }
 
+// Peer Evaluation responses (owned by the Marketing Hub; table already exists
+// in the shared DB). Read-only here — used for the "What your Peers Love About
+// You" wall, which surfaces only the free-text `strengths` for the assessee.
+enum PeerEvalType {
+  HR08_ADMIN
+  HR08_PEER
+  HR09
+}
+
+model PeerEvalResponse {
+  id           String       @id @default(cuid())
+  assignmentId String       @unique
+  assessorId   String
+  assesseeId   String
+  formType     PeerEvalType
+  branch       String
+  scores       Json
+  strengths    String?
+  improvements String?
+  submittedAt  DateTime     @default(now())
+
+  @@index([assesseeId])
+}
+
 // ── Gmail account (read from marketing DB for email sending) ──────────────────
 
 model GmailAccount {
@@ -242,6 +266,10 @@ model TherapistAccount {
   passwordHash      String
   lastPlainPassword String?
   role         TherapistRole @default(THERAPIST)
+  // Access preset that drives which sidebar sections the account sees.
+  // CLINICIAN (default) keeps full clinical access; FRONT_DESK / ADMIN_STAFF
+  // are limited staff presets; ADMIN-role accounts always see everything.
+  accountType  String        @default("CLINICIAN") // CLINICIAN | FRONT_DESK | ADMIN_STAFF | ADMIN
   isActive         Boolean       @default(true)
   lastLoginAt      DateTime?
   resetToken       String?
