@@ -570,11 +570,7 @@ export default function FrontDeskWelcome({
                 const dayLabel = isToday
                   ? 'Today! 🎉'
                   : dobDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
-                const clinicLabel =
-                  branch === 'SBEA' ? 'Sapphire Clinics East'
-                  : branch === 'SBGH' ? 'Sapphire Clinics Greenhills'
-                  : 'Sapphire Clinics East Inc.'
-                const msg = `Happy Birthday, ${p.firstName}! 🎂 Wishing you a wonderful day filled with joy and good health! From all of us at ${clinicLabel}. 🌿`
+                const msg = `Happy Birthday, ${p.firstName}! 🎂 Wishing you a wonderful day filled with joy and good health! From all of us at Sapphire Clinics East Inc. 🌿`
                 const sms = smsState[p.id] ?? 'idle'
                 const email = emailState[p.id] ?? 'idle'
                 const alreadySent = sentEmailIds.has(p.id)

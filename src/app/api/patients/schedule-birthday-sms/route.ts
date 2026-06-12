@@ -3,8 +3,8 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
 const BRANCH_CONFIG: Record<string, { httpSmsKey: string; phone: string; label: string }> = {
-  SANDBOX_EAST:       { httpSmsKey: process.env.HTTPSMS_API_KEY_SBEA ?? '', phone: '+639171189289', label: 'Sapphire Clinics East' },
-  SANDBOX_GREENHILLS: { httpSmsKey: process.env.HTTPSMS_API_KEY_SBGH ?? '', phone: '+639177701686', label: 'Sapphire Clinics Greenhills' },
+  SANDBOX_EAST:       { httpSmsKey: process.env.HTTPSMS_API_KEY_SBEA ?? '', phone: '+639171189289', label: 'Sapphire Clinics East Inc.' },
+  SANDBOX_GREENHILLS: { httpSmsKey: process.env.HTTPSMS_API_KEY_SBGH ?? '', phone: '+639177701686', label: 'Sapphire Clinics East Inc.' },
 }
 
 function toE164(phone: string): string {
