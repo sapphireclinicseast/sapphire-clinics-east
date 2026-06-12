@@ -481,13 +481,15 @@ a.hero-brand-chip:hover {
 .hero-stat-num {
   font-family: var(--font-heading);
   font-size: 28px; font-weight: 800;
-  color: var(--primary-light);
+  color: #fff;
+  text-shadow: 0 1px 12px rgba(18,40,38,.5);
   line-height: 1;
 }
 .hero-stat-lbl {
-  font-size: 11px; color: rgba(255,255,255,.6);
+  font-size: 11px; color: rgba(255,255,255,.92);
   text-transform: uppercase; letter-spacing: 1px;
   margin-top: 4px;
+  text-shadow: 0 1px 10px rgba(18,40,38,.5);
 }
 /* Slide dots */
 .hero-dots {
@@ -547,7 +549,9 @@ a.hero-brand-chip:hover {
   font-size: 13px; font-weight: 600; color: var(--text-muted);
   text-align: center;
 }
-.hmo-logo-card img { max-height: 72px; object-fit: contain; margin: 0 auto; }
+/* mix-blend-mode multiply makes the logos' baked-in white backgrounds blend
+   into the pale-green card, so only the green shows (no white rectangle). */
+.hmo-logo-card img { max-height: 72px; object-fit: contain; margin: 0 auto; mix-blend-mode: multiply; }
 .hmo-logo-card:hover { box-shadow: var(--shadow-md); border-color: var(--primary-light); transform: translateY(-2px); }
 .hmo-placeholder-text { font-size: 13px; color: var(--text-muted); text-align: center; margin-top: 16px; font-style: italic; }
 
