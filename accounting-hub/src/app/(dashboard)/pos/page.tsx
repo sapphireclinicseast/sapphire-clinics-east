@@ -1591,16 +1591,19 @@ function OrderFormModal({
             )}
           </div>
 
-          {/* Patient Name */}
+          {/* Patient Name — disabled for Verdana (seminars/trainings have no patient) */}
           <div className="relative">
-            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Patient Name</label>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
+              Patient Name {branch === 'VERDANA_STORE' && <span className="text-xs font-normal">(disabled — seminar / training)</span>}
+            </label>
             <input
-              value={patientName}
+              value={branch === 'VERDANA_STORE' ? '' : patientName}
               onChange={e => { setPatientName(e.target.value); setPatientSearch(e.target.value) }}
               onFocus={() => patientSearch.length >= 2 && setShowPatientDrop(true)}
               onBlur={() => setTimeout(() => setShowPatientDrop(false), 200)}
-              placeholder="Search patient..."
-              className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}
+              placeholder={branch === 'VERDANA_STORE' ? 'N/A — Seminar / Training' : 'Search patient...'}
+              disabled={branch === 'VERDANA_STORE'}
+              className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none disabled:bg-gray-100 disabled:text-gray-400" style={{ borderColor: 'var(--light-gray)' }}
             />
             {showPatientDrop && patients.length > 0 && (
               <div className="absolute z-10 w-full mt-1 bg-white border rounded-xl shadow-lg max-h-48 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
@@ -1619,15 +1622,17 @@ function OrderFormModal({
           {orderType === 'SERVICE' && (
             <div className="relative">
               <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
-                Clinician Name {(isAdvancePayment || hasUnearnedItems) && <span className="text-xs font-normal">(disabled — unearned revenue)</span>}
+                Clinician Name {branch === 'VERDANA_STORE'
+                  ? <span className="text-xs font-normal">(disabled — seminar / training)</span>
+                  : (isAdvancePayment || hasUnearnedItems) && <span className="text-xs font-normal">(disabled — unearned revenue)</span>}
               </label>
               <input
-                value={(isAdvancePayment || hasUnearnedItems) ? '' : clinicianName}
+                value={(isAdvancePayment || hasUnearnedItems || branch === 'VERDANA_STORE') ? '' : clinicianName}
                 onChange={e => { setClinicianName(e.target.value); setClinicianSearch(e.target.value) }}
                 onFocus={() => clinicianSearch.length >= 2 && setShowClinicianDrop(true)}
                 onBlur={() => setTimeout(() => setShowClinicianDrop(false), 200)}
-                placeholder={(isAdvancePayment || hasUnearnedItems) ? 'N/A — Unearned Revenue' : 'Search clinician...'}
-                disabled={isAdvancePayment || hasUnearnedItems}
+                placeholder={branch === 'VERDANA_STORE' ? 'N/A — Seminar / Training' : (isAdvancePayment || hasUnearnedItems) ? 'N/A — Unearned Revenue' : 'Search clinician...'}
+                disabled={isAdvancePayment || hasUnearnedItems || branch === 'VERDANA_STORE'}
                 className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none disabled:bg-gray-100 disabled:text-gray-400"
                 style={{ borderColor: 'var(--light-gray)' }}
               />
