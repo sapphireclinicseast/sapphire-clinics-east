@@ -518,7 +518,8 @@ model SurveySettings {
 enum PeerEvalType {
   HR08_ADMIN
   HR08_PEER
-  HR09
+  HR09_CLINICAL  // Clinical staff assess each admin staff member (≥10 assessors)
+  HR09_ADMIN     // Admin peers assess each admin staff member (≥5 assessors)
 }
 
 enum PeerEvalStatus {
@@ -534,7 +535,7 @@ model PeerEvalAssignment {
   assesseeId  String
   branch      String
   periodYear  Int
-  periodMonth Int            // 0 = full-year (HR08); 1-12 for monthly (HR09)
+  periodMonth Int            // 0 = full-year (HR08/HR09); 1-12 for monthly
   status      PeerEvalStatus @default(PENDING)
   notes       String?
   completedAt DateTime?

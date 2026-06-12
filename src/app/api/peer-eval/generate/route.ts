@@ -101,26 +101,55 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  else if (formType === 'HR09') {
-    // HR09 is annual — no month required, periodMonth is always 0
-    const allAdminStaffHr09 = await prisma.staff.findMany({ where: { branch, department: { in: ADMIN_DEPTS as any } } })
-    const adminStaff = allAdminStaffHr09.filter(s => !EXCLUDED_TITLES.has(s.jobTitle ?? ''))
+  else if (formType === 'HR09_CLINICAL') {
+    // HR09 CLINICAL — annual; each admin staff member assessed by ≥10 randomly selected clinical staff
+    const allAdminStaff09c = await prisma.staff.findMany({ where: { branch, department: { in: ADMIN_DEPTS as any } } })
+    const adminStaff = allAdminStaff09c.filter(s => !EXCLUDED_TITLES.has(s.jobTitle ?? ''))
     const clinicalStaff = await prisma.staff.findMany({ where: { branch, department: { in: CLINICAL_DEPTS as any } } })
 
     if (adminStaff.length === 0) return NextResponse.json({ error: 'No admin staff found for this branch' }, { status: 400 })
     if (clinicalStaff.length === 0) return NextResponse.json({ error: 'No clinical staff found for this branch' }, { status: 400 })
 
-    const MIN_ASSESSORS = 10
+    const MIN_ASSESSORS_CLINICAL = 10
 
     for (const assessee of adminStaff) {
       const seed = year * 10000 + assessee.id.charCodeAt(0)
       const shuffled = seededShuffle(clinicalStaff, seed)
-      const assessors = shuffled.slice(0, Math.max(MIN_ASSESSORS, shuffled.length))
+      const assessors = shuffled.slice(0, Math.max(MIN_ASSESSORS_CLINICAL, shuffled.length))
 
       for (const assessor of assessors) {
         try {
           await prisma.peerEvalAssignment.create({
-            data: { formType: 'HR09', assessorId: assessor.id, assesseeId: assessee.id, branch, periodYear: year, periodMonth: 0 }
+            data: { formType: 'HR09_CLINICAL', assessorId: assessor.id, assesseeId: assessee.id, branch, periodYear: year, periodMonth: 0 }
+          })
+          created++
+        } catch { skipped++ }
+      }
+    }
+  }
+
+  else if (formType === 'HR09_ADMIN') {
+    // HR09 ADMIN — annual; each admin staff member assessed by ≥5 randomly selected admin peers
+    const allAdminStaff09a = await prisma.staff.findMany({ where: { branch, department: { in: ADMIN_DEPTS as any } } })
+    const adminStaff = allAdminStaff09a.filter(s => !EXCLUDED_TITLES.has(s.jobTitle ?? ''))
+
+    if (adminStaff.length === 0) return NextResponse.json({ error: 'No admin staff found for this branch' }, { status: 400 })
+
+    const MIN_ASSESSORS_ADMIN = 5
+
+    for (const assessee of adminStaff) {
+      // Peers = all admin staff except the assessee themselves
+      const peers = adminStaff.filter(s => s.id !== assessee.id)
+      if (peers.length === 0) { skipped++; continue }
+
+      const seed = year * 20000 + assessee.id.charCodeAt(0)
+      const shuffled = seededShuffle(peers, seed)
+      const assessors = shuffled.slice(0, Math.max(MIN_ASSESSORS_ADMIN, shuffled.length))
+
+      for (const assessor of assessors) {
+        try {
+          await prisma.peerEvalAssignment.create({
+            data: { formType: 'HR09_ADMIN', assessorId: assessor.id, assesseeId: assessee.id, branch, periodYear: year, periodMonth: 0 }
           })
           created++
         } catch { skipped++ }

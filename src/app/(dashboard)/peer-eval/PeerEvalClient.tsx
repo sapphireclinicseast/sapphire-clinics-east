@@ -10,7 +10,7 @@ import { generatePeerEvalResultPDF } from '@/lib/pdf-results'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type PeerEvalType = 'HR08_ADMIN' | 'HR08_PEER' | 'HR09'
+type PeerEvalType = 'HR08_ADMIN' | 'HR08_PEER' | 'HR09_CLINICAL' | 'HR09_ADMIN'
 type PeerEvalStatus = 'PENDING' | 'COMPLETED' | 'EXPIRED'
 
 interface StaffMini {
@@ -97,9 +97,10 @@ const DAYS_OF_WEEK = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
 const FORM_PAGE_URL = '/peereval'
 
 const FORM_LABELS: Record<PeerEvalType, string> = {
-  HR08_ADMIN: 'HR08 — Admin evaluates clinical staff (annual)',
-  HR08_PEER:  'HR08 — Peer evaluation among clinical staff (annual)',
-  HR09:       'HR09 — Clinical staff evaluates admin staff (annual)',
+  HR08_ADMIN:    'HR08 — Admin evaluates clinical staff (annual)',
+  HR08_PEER:     'HR08 — Peer evaluation among clinical staff (annual)',
+  HR09_CLINICAL: 'HR09 — Clinical staff evaluates admin staff (annual)',
+  HR09_ADMIN:    'HR09 — Admin peers evaluate admin staff (annual)',
 }
 
 const HR08_QUESTIONS: Record<string, string> = {
@@ -124,7 +125,7 @@ const HR09_QUESTIONS: Record<string, string> = {
 }
 
 function getQuestions(formType: PeerEvalType) {
-  return formType === 'HR09' ? HR09_QUESTIONS : HR08_QUESTIONS
+  return (formType === 'HR09_CLINICAL' || formType === 'HR09_ADMIN') ? HR09_QUESTIONS : HR08_QUESTIONS
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -152,9 +153,10 @@ function statusBadge(status: PeerEvalStatus) {
 
 function typeBadge(formType: PeerEvalType) {
   const map: Record<PeerEvalType, { bg: string; color: string; label: string }> = {
-    HR08_ADMIN: { bg: '#ede9fe', color: '#5b21b6', label: 'HR08 Admin' },
-    HR08_PEER:  { bg: '#dbeafe', color: '#1e40af', label: 'HR08 Peer' },
-    HR09:       { bg: '#fce7f3', color: '#9d174d', label: 'HR09' },
+    HR08_ADMIN:    { bg: '#ede9fe', color: '#5b21b6', label: 'HR08 Admin' },
+    HR08_PEER:     { bg: '#dbeafe', color: '#1e40af', label: 'HR08 Peer' },
+    HR09_CLINICAL: { bg: '#fce7f3', color: '#9d174d', label: 'HR09 Clinical' },
+    HR09_ADMIN:    { bg: '#fff0f6', color: '#c2185b', label: 'HR09 Admin' },
   }
   const t = map[formType]
   return (
@@ -704,7 +706,8 @@ function AssignmentsTab({ role }: { role: string }) {
           <option value="">All Types</option>
           <option value="HR08_ADMIN">HR08 Admin</option>
           <option value="HR08_PEER">HR08 Peer</option>
-          <option value="HR09">HR09</option>
+          <option value="HR09_CLINICAL">HR09 Clinical</option>
+          <option value="HR09_ADMIN">HR09 Admin</option>
         </select>
 
         {!defaultBranch && (
@@ -1009,7 +1012,8 @@ function ResultsTab({ role }: { role: string }) {
           <option value="">All Types</option>
           <option value="HR08_ADMIN">HR08 Admin</option>
           <option value="HR08_PEER">HR08 Peer</option>
-          <option value="HR09">HR09</option>
+          <option value="HR09_CLINICAL">HR09 Clinical</option>
+          <option value="HR09_ADMIN">HR09 Admin</option>
         </select>
         {!defaultBranch && (
           <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)} style={selectStyle}>
@@ -1259,9 +1263,10 @@ function GenerateTab({ role }: { role: string }) {
   }
 
   const descMap: Record<PeerEvalType, string> = {
-    HR08_ADMIN: 'Administration staff will assess ALL clinical staff in the selected branch. Annual.',
-    HR08_PEER:  'Clinical staff are paired with same-department, same-work-day peers. Each assessee receives 2–3 assessors. Annual.',
-    HR09:       'Each admin staff member is assessed by at least 10 randomly selected clinical staff. Annual.',
+    HR08_ADMIN:    'Administration staff will assess ALL clinical staff in the selected branch. Annual.',
+    HR08_PEER:     'Clinical staff are paired with same-department, same-work-day peers. Each assessee receives 2–3 assessors. Annual.',
+    HR09_CLINICAL: 'Each admin staff member is assessed by at least 10 randomly selected clinical staff. Annual.',
+    HR09_ADMIN:    'Each admin staff member is assessed by at least 5 randomly selected admin peers. Annual.',
   }
 
   return (
@@ -1270,7 +1275,7 @@ function GenerateTab({ role }: { role: string }) {
         <div style={cardStyle}>
           <div style={cardLabelStyle}>Evaluation Type</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {(['HR08_ADMIN', 'HR08_PEER', 'HR09'] as PeerEvalType[]).map(t => (
+            {(['HR08_ADMIN', 'HR08_PEER', 'HR09_CLINICAL', 'HR09_ADMIN'] as PeerEvalType[]).map(t => (
               <label key={t} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', padding: '10px 12px', borderRadius: 8, border: `1.5px solid ${formType === t ? '#1a7b8a' : '#e5e7eb'}`, background: formType === t ? '#f0f9ff' : '#fff' }}>
                 <input type="radio" name="formType" value={t} checked={formType === t} onChange={() => setFormType(t)} style={{ marginTop: 2, accentColor: '#1a7b8a' }} />
                 <div>
@@ -1341,7 +1346,8 @@ function GenerateTab({ role }: { role: string }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.76rem', color: '#6b7280', lineHeight: 1.6 }}>
           <div><span style={{ fontWeight: 600, color: '#5b21b6' }}>HR08 Admin:</span> Each Administration staff → assesses all clinical staff in same branch. Annual.</div>
           <div><span style={{ fontWeight: 600, color: '#1e40af' }}>HR08 Peer:</span> Clinical staff → same-department peers sharing at least 1 work day. 2–3 assessors per assessee. Annual.</div>
-          <div><span style={{ fontWeight: 600, color: '#9d174d' }}>HR09:</span> Each admin staff member is assessed by at least 10 randomly selected clinical staff in the branch. Annual.</div>
+          <div><span style={{ fontWeight: 600, color: '#9d174d' }}>HR09 Clinical:</span> Each admin staff member is assessed by at least 10 randomly selected clinical staff in the branch. Annual.</div>
+          <div><span style={{ fontWeight: 600, color: '#c2185b' }}>HR09 Admin:</span> Each admin staff member is assessed by at least 5 randomly selected admin peers in the branch. Annual.</div>
         </div>
         <div style={{ marginTop: 10, fontSize: '0.75rem', color: '#9ca3af' }}>
           Staff fill out evaluations via the internal form at <strong>/peereval</strong> (accessible by QR code, no login required).
@@ -1591,7 +1597,7 @@ export default function PeerEvalClient({ role }: { role: string }) {
           <span style={{ padding: '2px 8px', borderRadius: 99, background: '#fef3c7', color: '#92400e', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.08em' }}>BETA</span>
         </div>
         <p style={{ fontSize: '0.83rem', color: '#6b7280', margin: 0 }}>
-          Manage HR08 and HR09 peer evaluation assignments and responses.
+          Manage HR08, HR09 Clinical, and HR09 Admin peer evaluation assignments and responses.
         </p>
       </div>
 

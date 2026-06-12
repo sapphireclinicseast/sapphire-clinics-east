@@ -21,7 +21,7 @@ const B = {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type FormType = 'HR08_ADMIN' | 'HR08_PEER' | 'HR09'
+type FormType = 'HR08_ADMIN' | 'HR08_PEER' | 'HR09_CLINICAL' | 'HR09_ADMIN'
 
 interface StaffMini {
   id: string
@@ -70,14 +70,15 @@ const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December']
 
 function getQuestions(formType: FormType) {
-  return formType === 'HR09' ? HR09_QUESTIONS : HR08_QUESTIONS
+  return (formType === 'HR09_CLINICAL' || formType === 'HR09_ADMIN') ? HR09_QUESTIONS : HR08_QUESTIONS
 }
 
 function getFormLabel(formType: FormType) {
   const map: Record<FormType, string> = {
-    HR08_ADMIN: 'HR08 — Technical Staff Evaluation (Admin perspective)',
-    HR08_PEER:  'HR08 — Technical Staff Peer Evaluation',
-    HR09:       'HR09 — Admin Staff Evaluation',
+    HR08_ADMIN:   'HR08 — Technical Staff Evaluation (Admin perspective)',
+    HR08_PEER:    'HR08 — Technical Staff Peer Evaluation',
+    HR09_CLINICAL: 'HR09 — Admin Staff Evaluation (by Clinical Staff)',
+    HR09_ADMIN:   'HR09 — Admin Staff Evaluation (by Admin Peers)',
   }
   return map[formType]
 }
