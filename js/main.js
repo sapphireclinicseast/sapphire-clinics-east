@@ -32,8 +32,8 @@ const SITE_CONFIG = {
 
   /* ── Brands operated under the corporation (shown in hero) ── */
   brands: [
-    { name: 'Aura Health Clinic', imgSrc: 'BRANDS/AURA HEALTH REHAB.png' },
-    { name: 'Verdana Rehab Solutions',  imgSrc: 'BRANDS/VERDANA STORE.png' },
+    { name: 'Aura Health Clinic',      imgSrc: 'BRANDS/AURA HEALTH REHAB.png', link: 'branches' },
+    { name: 'Verdana Rehab Solutions', imgSrc: 'BRANDS/VERDANA STORE.png',     link: 'verdana' },
   ],
 
   /* ── Key Statistics (shown in hero) ── */
@@ -215,12 +215,12 @@ function buildHeroBrands() {
   if (!SITE_CONFIG.brands || SITE_CONFIG.brands.length === 0) { wrap.innerHTML = ''; return; }
   wrap.innerHTML =
     `<span class="hero-brands-label">Our Brands</span>` +
-    SITE_CONFIG.brands.map(b => `
-    <div class="hero-brand-chip">
-      ${b.imgSrc ? `<img src="${b.imgSrc}" alt="${b.name}" loading="lazy">` : ''}
-      <span>${b.name}</span>
-    </div>
-  `).join('');
+    SITE_CONFIG.brands.map(b => {
+      const inner = `${b.imgSrc ? `<img src="${b.imgSrc}" alt="${b.name}" loading="lazy">` : ''}<span>${b.name}</span>`;
+      return b.link
+        ? `<a class="hero-brand-chip" href="#${b.link}" onclick="scrollToSection('${b.link}'); return false;" aria-label="${b.name} — learn more">${inner}</a>`
+        : `<div class="hero-brand-chip">${inner}</div>`;
+    }).join('');
 }
 
 function buildHeroStats() {
