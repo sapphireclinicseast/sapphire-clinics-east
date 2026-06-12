@@ -2627,7 +2627,9 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
         payments: editPayments.filter(p => p.amount > 0).map(p => ({
           method: p.method,
           amount: p.amount,
+          paymentModeId: p.paymentModeId || null,
           walletId: p.walletId || null,
+          reference: p.reference || null,
         })),
         issuedOfficialInvoice: editIssuedOfficialInvoice,
         salesInvoiceNumber: editIssuedOfficialInvoice ? editSalesInvoiceNumber.trim() : null,

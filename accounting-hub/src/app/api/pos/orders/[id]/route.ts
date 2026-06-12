@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { restoreFifoLots, recalcWeightedUnitCost } from '@/lib/fifo'
+import { postOrderJournal } from '@/lib/accounting/post-order'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN', 'SBEA_FRONTDESK', 'SBGH_FRONTDESK']
 
@@ -366,12 +367,14 @@ export async function PUT(
           data: payments.map((p: {
             method: string
             amount: number
+            paymentModeId?: string
             walletId?: string
             reference?: string
           }) => ({
             orderId: id,
             method: p.method,
             amount: Number(p.amount),
+            paymentModeId: p.paymentModeId || null,
             walletId: p.walletId || null,
             reference: p.reference || null,
           })),
@@ -416,6 +419,15 @@ export async function PUT(
         },
       },
     })
+
+    // Keep the GL in sync: order creation auto-posts a journal entry, so re-post after
+    // item/payment edits — e.g. assigning a configured payment mode now adds its
+    // merchant-discount deduction. Delete the old POS_ORDER entry first so the idempotent
+    // helper writes a fresh, correct one. Non-fatal (gated by ENABLE_GL_POSTING).
+    if ((items || payments) && updated.status !== 'VOIDED') {
+      await prisma.journalEntry.deleteMany({ where: { referenceType: 'POS_ORDER', referenceId: id } })
+      try { await postOrderJournal(prisma, id, session.user.id) } catch (e) { console.error('Order re-post after edit failed:', e) }
+    }
 
     return NextResponse.json(updated)
   } catch {
