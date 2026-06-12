@@ -24,14 +24,8 @@ const SITE_CONFIG = {
   heroSlides: [
     'WEBSITE BACKGROUND/1.png',
     'WEBSITE BACKGROUND/2.png',
-    'WEBSITE BACKGROUND/4.png',
-    'WEBSITE BACKGROUND/5.png',
-    'WEBSITE BACKGROUND/7.png',
     'WEBSITE BACKGROUND/8.png',
-    'WEBSITE BACKGROUND/9.png',
     'WEBSITE BACKGROUND/17.png',
-    'WEBSITE BACKGROUND/20.png',
-    'WEBSITE BACKGROUND/21.png',
     'WEBSITE BACKGROUND/22.png',
   ],
   heroSlideInterval: 5000,   // ms between slides
@@ -210,7 +204,7 @@ function buildHeroSlides() {
     const div = document.createElement('div');
     div.className = 'hero-slide' + (i === 0 ? ' active' : '');
     // ?v cache-buster so refreshed background photos aren't served stale
-    div.style.backgroundImage = `url('${src}?v=17')`;
+    div.style.backgroundImage = `url('${src}?v=19')`;
     wrap.appendChild(div);
   });
 }

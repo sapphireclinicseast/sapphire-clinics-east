@@ -1203,7 +1203,7 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading); line-height: 1.25; }
   to   { opacity: 0; visibility: hidden; pointer-events: none; }
 }
 
-/* Scene — full-viewport dark background (exact from scei-logo-intro.html) */
+/* Scene — full-viewport light cream background (airy, not grim) */
 #logo-intro-overlay .scene {
   position: relative;
   width: 100%;
@@ -1212,9 +1212,9 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading); line-height: 1.25; }
   align-items: center;
   justify-content: center;
   background: radial-gradient(ellipse 60% 55% at 50% 50%,
-    #2c5a51 0%,
-    #244952 45%,
-    #122a2f 100%);
+    #fdfaf2 0%,
+    #f4efdd 55%,
+    #e9e1c9 100%);
 }
 
 /* Background particle glow */
@@ -1362,7 +1362,7 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading); line-height: 1.25; }
 
 #logo-intro-overlay .wordmark-primary {
   display: block;
-  color: #FFFFFF;
+  color: #244952;
   font-size: 2.4rem;
   font-weight: 800;
   letter-spacing: 0.35em;
@@ -1378,7 +1378,7 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading); line-height: 1.25; }
 }
 #logo-intro-overlay .wordmark-secondary {
   display: block;
-  color: rgba(255,255,255,0.75);
+  color: rgba(36,73,82,0.8);
   font-size: 0.72rem;
   font-weight: 300;
   letter-spacing: 0.28em;
@@ -1455,7 +1455,7 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading); line-height: 1.25; }
   bottom: 32px;
   left: 32px;
   font-size: 0.6rem;
-  color: rgba(255,255,255,0.2);
+  color: rgba(36,73,82,0.4);
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
