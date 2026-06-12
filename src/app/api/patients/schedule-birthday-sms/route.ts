@@ -3,8 +3,8 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
 const BRANCH_CONFIG: Record<string, { httpSmsKey: string; phone: string; label: string }> = {
-  SANDBOX_EAST:       { httpSmsKey: process.env.HTTPSMS_API_KEY_SBEA ?? '', phone: '+639171189289', label: 'East' },
-  SANDBOX_GREENHILLS: { httpSmsKey: process.env.HTTPSMS_API_KEY_SBGH ?? '', phone: '+639177701686', label: 'GH' },
+  SANDBOX_EAST:       { httpSmsKey: process.env.HTTPSMS_API_KEY_SBEA ?? '', phone: '+639171189289', label: 'Sapphire Clinics East' },
+  SANDBOX_GREENHILLS: { httpSmsKey: process.env.HTTPSMS_API_KEY_SBGH ?? '', phone: '+639177701686', label: 'Sapphire Clinics Greenhills' },
 }
 
 function toE164(phone: string): string {
@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
 
     const message =
       `Happy Birthday, ${p.firstName}! Wishing you good health and happiness today. ` +
-      `With love, Sandbox ${cfg.label}.`
+      `With love, ${cfg.label} Family.`
 
     const sendAt = birthdaySendAt(match.dateStr)
 
