@@ -15,6 +15,39 @@ function isAdmin(role?: string) {
   return role === 'ADMIN'
 }
 
+// Map a staff branch code (Staff.branch) → directory branch identifier.
+// Corporate has no physical staff branch, so only admins resolve to it.
+function staffBranchToDirectory(code?: string): string | null {
+  switch (code) {
+    case 'SANDBOX_EAST':
+    case 'SBEA':
+      return 'EAST'
+    case 'SANDBOX_GREENHILLS':
+    case 'SBGH':
+      return 'GREENHILLS'
+    case 'VERDANA_STORE':
+    case 'VERDANA':
+      return 'VERDANA'
+    default:
+      return null
+  }
+}
+
+// All directory branches a viewer belongs to (across interbranch records).
+function viewerDirectoryBranches(user: {
+  role?: string
+  branch?: string
+  branches?: { branch: string }[]
+}): string[] {
+  const set = new Set<string>()
+  const add = (c?: string) => { const d = staffBranchToDirectory(c); if (d) set.add(d) }
+  add(user.branch)
+  ;(user.branches ?? []).forEach((b) => add(b.branch))
+  // Admins are corporate-level and can see everything.
+  if (isAdmin(user.role)) set.add('CORPORATE')
+  return [...set]
+}
+
 function isValidEmail(s: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)
 }
@@ -26,11 +59,35 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  const admin = isAdmin(session.user.role)
+  const viewerBranches = viewerDirectoryBranches(session.user)
+
   // @ts-ignore — directoryEntry not in PrismaClient typings until generate
-  const entries = await prisma.directoryEntry.findMany({
+  const rows = await prisma.directoryEntry.findMany({
     orderBy: { createdAt: 'asc' },
   })
-  return NextResponse.json({ entries, departments: DEPARTMENTS, branches: BRANCHES })
+
+  // Enforce per-entry email visibility SERVER-SIDE. A restricted email is
+  // never sent to a viewer who isn't in an allowed branch (admins excepted).
+  const entries = rows.map((e: any) => {
+    const restricted = Array.isArray(e.visibleBranches) && e.visibleBranches.length > 0
+    const allowed =
+      admin || !restricted || e.visibleBranches.some((b: string) => viewerBranches.includes(b))
+    return {
+      id: e.id,
+      departments: e.departments,
+      branches: e.branches,
+      description: e.description,
+      restricted,
+      // Only admins get the raw visibleBranches list (for management UI).
+      visibleBranches: admin ? e.visibleBranches : undefined,
+      // Mask the email entirely when the viewer isn't allowed to see it.
+      email: allowed ? e.email : null,
+      emailHidden: !allowed,
+    }
+  })
+
+  return NextResponse.json({ entries, departments: DEPARTMENTS, branches: BRANCHES, isAdmin: admin })
 }
 
 // POST — create a directory entry (admin only).
@@ -46,6 +103,10 @@ export async function POST(req: NextRequest) {
     : []
   const branches: string[] = Array.isArray(body.branches)
     ? body.branches.filter((b: unknown): b is string => typeof b === 'string' && (BRANCHES as readonly string[]).includes(b))
+    : []
+  // Visibility allow-list (empty = visible to everyone).
+  const visibleBranches: string[] = Array.isArray(body.visibleBranches)
+    ? body.visibleBranches.filter((b: unknown): b is string => typeof b === 'string' && (BRANCHES as readonly string[]).includes(b))
     : []
   const email = typeof body.email === 'string' ? body.email.trim() : ''
   const description = typeof body.description === 'string' ? body.description.trim() : ''
@@ -65,6 +126,7 @@ export async function POST(req: NextRequest) {
     data: {
       departments,
       branches,
+      visibleBranches,
       email,
       description: description || null,
       createdById: session.user.id,

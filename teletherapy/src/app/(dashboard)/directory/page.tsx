@@ -2,14 +2,17 @@
 
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Contact, Plus, Trash2, Loader2, X, Mail } from 'lucide-react'
+import { Contact, Plus, Trash2, Loader2, X, Mail, Lock } from 'lucide-react'
 
 interface DirectoryEntry {
   id: string
   departments: string[]
   branches: string[]
-  email: string
+  email: string | null
   description: string | null
+  restricted?: boolean
+  visibleBranches?: string[]
+  emailHidden?: boolean
 }
 
 // StaffDepartment codes → friendly labels for display + tick-boxes.
@@ -49,6 +52,8 @@ export default function DirectoryPage() {
   const [branchSel, setBranchSel] = useState<string[]>([])
   const [email, setEmail] = useState('')
   const [description, setDescription] = useState('')
+  const [restrictView, setRestrictView] = useState(false)
+  const [viewSel, setViewSel] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
 
   function flash(msg: string) {
@@ -76,20 +81,32 @@ export default function DirectoryPage() {
     setBranchSel((prev) => (prev.includes(b) ? prev.filter((x) => x !== b) : [...prev, b]))
   }
 
+  function toggleView(b: string) {
+    setViewSel((prev) => (prev.includes(b) ? prev.filter((x) => x !== b) : [...prev, b]))
+  }
+
   function resetForm() {
-    setDepts([]); setBranchSel([]); setEmail(''); setDescription(''); setShowForm(false)
+    setDepts([]); setBranchSel([]); setEmail(''); setDescription('')
+    setRestrictView(false); setViewSel([]); setShowForm(false)
   }
 
   async function create() {
     if (depts.length === 0) { flash('Select at least one department'); return }
     if (branchSel.length === 0) { flash('Select at least one branch'); return }
     if (!email) { flash('Email is required'); return }
+    if (restrictView && viewSel.length === 0) { flash('Pick the branches that can view this email'); return }
     setSaving(true)
     try {
       const res = await fetch('/api/directory', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ departments: depts, branches: branchSel, email, description }),
+        body: JSON.stringify({
+          departments: depts,
+          branches: branchSel,
+          email,
+          description,
+          visibleBranches: restrictView ? viewSel : [],
+        }),
       })
       const data = await res.json()
       if (res.ok) { flash('Directory entry added'); resetForm(); load() }
@@ -193,6 +210,42 @@ export default function DirectoryPage() {
             </div>
           </div>
 
+          {/* Email visibility */}
+          <label className="block text-[11px] font-semibold text-[var(--charcoal)] uppercase tracking-wider mb-2">Who can view this email?</label>
+          <div className="flex flex-col gap-2 mb-4">
+            <label className="flex items-center gap-2 text-[13px] cursor-pointer text-[var(--charcoal)]">
+              <input type="radio" name="emailVisibility" checked={!restrictView} onChange={() => { setRestrictView(false); setViewSel([]) }} />
+              Everyone
+            </label>
+            <label className="flex items-center gap-2 text-[13px] cursor-pointer text-[var(--charcoal)]">
+              <input type="radio" name="emailVisibility" checked={restrictView} onChange={() => setRestrictView(true)} />
+              Only staff from specific branches
+            </label>
+            {restrictView && (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1 sm:pl-6">
+                  {BRANCH_ORDER.map((b) => {
+                    const on = viewSel.includes(b)
+                    return (
+                      <button key={b} type="button" onClick={() => toggleView(b)}
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg border text-left text-[13px] transition-colors"
+                        style={on
+                          ? { background: 'var(--sage-tint)', borderColor: 'var(--moss)', color: 'var(--deep-teal)' }
+                          : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                        <span className="w-4 h-4 rounded flex items-center justify-center shrink-0 text-white text-[11px] font-bold"
+                          style={{ background: on ? 'var(--moss)' : 'transparent', border: on ? 'none' : '1.5px solid var(--light-gray)' }}>
+                          {on ? '✓' : ''}
+                        </span>
+                        {BRANCH_LABELS[b] ?? b}
+                      </button>
+                    )
+                  })}
+                </div>
+                <p className="text-[11px] text-[var(--mid-gray)] sm:pl-6">Admins always see every email. “Corporate” covers admin accounts.</p>
+              </>
+            )}
+          </div>
+
           <div className="flex gap-2">
             <button onClick={create} disabled={saving || depts.length === 0 || branchSel.length === 0 || !email}
               className="btn-primary !py-2 !px-5 !text-[13px] !rounded-lg">
@@ -248,9 +301,22 @@ export default function DirectoryPage() {
                       </div>
                     </td>
                     <td className="px-5 py-3">
-                      <a href={`mailto:${e.email}`} className="text-[13px] font-medium text-[var(--teal)] hover:underline inline-flex items-center gap-1.5">
-                        <Mail size={13} className="shrink-0" />{e.email}
-                      </a>
+                      {e.emailHidden ? (
+                        <span className="text-[13px] text-[var(--mid-gray)] inline-flex items-center gap-1.5" title="Restricted to certain branches">
+                          <Lock size={13} className="shrink-0" /> Restricted
+                        </span>
+                      ) : (
+                        <div className="flex flex-col gap-0.5">
+                          <a href={`mailto:${e.email}`} className="text-[13px] font-medium text-[var(--teal)] hover:underline inline-flex items-center gap-1.5">
+                            <Mail size={13} className="shrink-0" />{e.email}
+                          </a>
+                          {isAdmin && e.restricted && (
+                            <span className="text-[10px] text-[var(--mid-gray)] inline-flex items-center gap-1">
+                              <Lock size={10} className="shrink-0" /> Visible to: {sortBranches(e.visibleBranches ?? []).map((b) => BRANCH_LABELS[b] ?? b).join(', ')}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td className="px-5 py-3 text-[13px] text-[var(--charcoal)]">{e.description || <span className="text-[var(--mid-gray)]">—</span>}</td>
                     {isAdmin && (

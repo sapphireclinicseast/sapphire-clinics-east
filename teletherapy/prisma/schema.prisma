@@ -176,6 +176,9 @@ model DirectoryEntry {
   departments String[] // e.g. ["OT", "SPED"] — multiple allowed
   branches    String[] // e.g. ["EAST", "CORPORATE"] — multiple allowed
   email       String
+  // Branches whose staff may view `email`. Empty = visible to everyone.
+  // Admins always see it regardless.
+  visibleBranches String[]
   description String?
   createdById String?
   createdAt   DateTime @default(now())
