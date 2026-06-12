@@ -158,6 +158,7 @@ export async function POST(req: Request) {
       issuedOfficialInvoice,
       salesInvoiceNumber,
       referenceNumber,
+      platform,
     } = body
 
     if (!orderType || !branch || !items?.length) {
@@ -197,6 +198,7 @@ export async function POST(req: Request) {
         discountLabel: discountLabel || null,
         netAmount,
         revenueType,
+        platform: platform || null,
         queueItemId: queueItemId || null,
         referrerId: referrerId || null,
         notes: notes || null,

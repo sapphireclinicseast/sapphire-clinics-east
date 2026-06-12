@@ -6389,6 +6389,7 @@ function ProductsSection({
   const [newDiscountAmtType, setNewDiscountAmtType] = useState<'PERCENTAGE' | 'FIXED'>('FIXED')
   const [newDiscountRemarks, setNewDiscountRemarks] = useState('')
   const [payments, setPayments] = useState<PaymentLine[]>([{ method: 'CASH', amount: 0 }])
+  const [platform, setPlatform] = useState('Clinic')
   const [configuredModes, setConfiguredModes] = useState<PaymentModeType[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -6609,6 +6610,7 @@ function ProductsSection({
       const body = {
         orderType: 'PRODUCT',
         branch: 'VERDANA_STORE',
+        platform,
         transactionDate: txDate,
         items: cart.map(c => ({
           inventoryItemId: c.inventoryItemId || null,
@@ -7063,6 +7065,21 @@ function ProductsSection({
               )}
             </div>
           )}
+
+          {/* Platform (sales channel for this product order) */}
+          <div className="rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)' }}>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Platform</label>
+            <select
+              value={platform}
+              onChange={e => setPlatform(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none bg-white"
+              style={{ borderColor: 'var(--light-gray)' }}
+            >
+              {['Website', 'Shopee', 'Lazada', 'Tiktok', 'Clinic'].map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+          </div>
 
           {/* Official Sales Invoice */}
           <div className="rounded-xl p-3 border" style={{ borderColor: 'var(--light-gray)' }}>

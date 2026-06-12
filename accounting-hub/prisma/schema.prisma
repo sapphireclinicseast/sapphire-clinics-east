@@ -621,6 +621,7 @@ model Order {
   orderNumber     Int         @unique @default(autoincrement())
   orderType       OrderType
   branch          String
+  platform        String?     // Sales channel for product orders: Website | Shopee | Lazada | Tiktok | Clinic
   patientId       String?
   patientName     String?
   clinicianName   String?

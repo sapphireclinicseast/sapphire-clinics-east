@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import {
   PackageSearch, Filter, Loader2, BarChart3, TrendingUp, TrendingDown,
-  PackageX, Gift, Sparkles, CreditCard,
+  PackageX, Gift, Sparkles, CreditCard, Globe,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
@@ -12,6 +12,7 @@ import { formatCurrency } from '@/lib/utils'
 interface ProductRow { name: string; sku: string; units: number; gross: number; net: number }
 interface NamedQty { name: string; qty: number }
 interface PayMode { method: string; label: string; amount: number; count: number }
+interface PlatformRow { platform: string; qty: number }
 interface AnalysisData {
   summary: {
     unitsSold: number
@@ -27,6 +28,7 @@ interface AnalysisData {
   freeSamples: NamedQty[]
   rewardPoints: NamedQty[]
   paymentModes: PayMode[]
+  topPlatforms: PlatformRow[]
 }
 
 const BRANCHES = [
@@ -255,6 +257,28 @@ export default function ProductsAnalysisPage() {
                         <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{m.label}</td>
                         <td className="px-3 py-2 text-right" style={{ color: 'var(--mid-gray)' }}>{m.count.toLocaleString()}</td>
                         <td className="px-3 py-2 text-right font-semibold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(m.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </Section>
+
+            {/* Top platforms */}
+            <Section icon={<Globe size={16} />} title="Top 5 Platforms (by Qty Purchased)" count={data.topPlatforms.length}>
+              {data.topPlatforms.length === 0 ? <Empty text="No product sales in this period." /> : (
+                <table className="w-full text-sm">
+                  <thead><tr style={{ color: 'var(--mid-gray)' }}>
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase">#</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Platform</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Qty Purchased</th>
+                  </tr></thead>
+                  <tbody>
+                    {data.topPlatforms.map((p, i) => (
+                      <tr key={i} style={{ borderTop: '1px solid var(--light-gray)' }}>
+                        <td className="px-3 py-2 font-mono text-xs" style={{ color: 'var(--mid-gray)' }}>{i + 1}</td>
+                        <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{p.platform}</td>
+                        <td className="px-3 py-2 text-right font-bold" style={{ color: 'var(--charcoal)' }}>{p.qty.toLocaleString()}</td>
                       </tr>
                     ))}
                   </tbody>

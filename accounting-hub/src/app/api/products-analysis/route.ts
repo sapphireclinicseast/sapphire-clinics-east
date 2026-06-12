@@ -38,6 +38,7 @@ export async function GET(req: Request) {
         id: true,
         subtotal: true,
         discountAmount: true,
+        platform: true,
         items: {
           where: { inventoryItemId: { not: null } },
           select: { inventoryItemId: true, name: true, quantity: true, lineTotal: true, isFreeSample: true },
@@ -51,12 +52,14 @@ export async function GET(req: Request) {
     const freeSamples = new Map<string, { name: string; qty: number }>()
     const rewardBuys = new Map<string, { name: string; qty: number }>()
     const payModes = new Map<string, { amount: number; count: number }>()
+    const platformUnits = new Map<string, number>()   // product units purchased per sales channel
 
     for (const order of orders) {
       const orderGross = Number(order.subtotal)
       const discountRatio = orderGross > 0 ? Number(order.discountAmount) / orderGross : 0
       const hasProduct = order.items.length > 0
       const usesRewardPoints = order.payments.some(p => p.method === 'REWARD_POINTS')
+      const platformKey = (order.platform && order.platform.trim()) || 'Unspecified'
 
       for (const item of order.items) {
         const id = item.inventoryItemId as string
@@ -74,6 +77,7 @@ export async function GET(req: Request) {
         const s = sold.get(id) || { id, name: item.name, units: 0, gross: 0, net: 0 }
         s.units += qty; s.gross += itemGross; s.net += itemNet; s.name = item.name
         sold.set(id, s)
+        platformUnits.set(platformKey, (platformUnits.get(platformKey) || 0) + qty)
 
         if (usesRewardPoints) {
           const r = rewardBuys.get(id) || { name: item.name, qty: 0 }
@@ -113,7 +117,23 @@ export async function GET(req: Request) {
 
     const fastMoving = [...soldList].sort((a, b) => b.units - a.units || b.gross - a.gross).slice(0, 5).map(withSku)
     const slowMoving = [...soldList].sort((a, b) => a.units - b.units || a.gross - b.gross).slice(0, 10).map(withSku)
-    const noPurchase = catalog.filter(c => !sold.has(c.id)).map(c => ({ name: c.name, sku: c.sku }))
+
+    // No-purchase list: one row per distinct product NAME (a product can have multiple catalog
+    // rows — e.g. per branch/variant — which previously showed as duplicates). Exclude any name
+    // that was sold under ANY of its rows.
+    const soldNames = new Set(soldList.map(s => s.name.trim().toLowerCase()))
+    const seenNames = new Set<string>()
+    const noPurchase = catalog.filter(c => {
+      const key = c.name.trim().toLowerCase()
+      if (soldNames.has(key) || seenNames.has(key)) return false
+      seenNames.add(key)
+      return true
+    }).map(c => ({ name: c.name, sku: c.sku }))
+
+    const topPlatforms = [...platformUnits.entries()]
+      .map(([platform, qty]) => ({ platform, qty }))
+      .sort((a, b) => b.qty - a.qty)
+      .slice(0, 5)
 
     return NextResponse.json({
       summary: {
@@ -127,6 +147,7 @@ export async function GET(req: Request) {
       fastMoving,
       slowMoving,
       noPurchase,
+      topPlatforms,
       freeSamples: [...freeSamples.values()].sort((a, b) => b.qty - a.qty),
       rewardPoints: [...rewardBuys.values()].sort((a, b) => b.qty - a.qty),
       paymentModes: [...payModes.entries()]
