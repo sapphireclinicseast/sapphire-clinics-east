@@ -384,7 +384,7 @@ function MonthlyRow({
               fontSize: ROW_FONT_MONO,
               paddingRight: '4px',
               color: isNeg ? '#dc2626' : (onClickCell && v !== 0 ? '#0d9488' : v === 0 && !isTotal && !isGrandTotal ? '#c4c9d0' : '#111827'),
-              cursor: onClickCell && v !== 0 ? 'pointer' : undefined,
+              cursor: onClickCell ? 'pointer' : undefined,
             }}
             onClick={() => onClickCell?.(i + 1)}
           >
@@ -399,7 +399,7 @@ function MonthlyRow({
           fontSize: ROW_FONT_MONO,
           fontWeight: 600,
           color: (negative && total < 0) ? '#dc2626' : (onClickCell && total !== 0 ? '#0d9488' : '#111827'),
-          cursor: onClickCell && total !== 0 ? 'pointer' : undefined,
+          cursor: onClickCell ? 'pointer' : undefined,
         }}
         onClick={() => onClickCell?.(null)}
       >
@@ -474,6 +474,30 @@ function DrillDownPanel({
 
   const monthLabel = target.month > 0 ? FULL_MONTHS[target.month - 1] : String(year)
 
+  const handleDownloadCsv = () => {
+    if (items.length === 0) return
+    const safeLabel = target.label.replace(/[/\\?%*:|"<>]/g, '-')
+    const filename = `${safeLabel} — ${monthLabel} — ${branch === 'ALL' ? 'All Branches' : branch}`
+    const rows = [
+      ['Date', 'Type of Transaction', 'Branch', 'Amount'],
+      ...items.map(item => [item.date, item.type, item.branch, item.amount.toFixed(2)]),
+      ['', '', 'TOTAL', total.toFixed(2)],
+    ]
+    const csv = rows.map(row =>
+      row.map(cell => {
+        const s = String(cell)
+        return (s.includes(',') || s.includes('"') || s.includes('\n')) ? `"${s.replace(/"/g, '""')}"` : s
+      }).join(',')
+    ).join('\r\n')
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${filename}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-stretch justify-end print:hidden"
@@ -491,9 +515,22 @@ function DrillDownPanel({
               {monthLabel} &bull; {branch === 'ALL' ? 'All Branches' : branch}
             </p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100">
-            <X size={18} style={{ color: 'var(--mid-gray)' }} />
-          </button>
+          <div className="flex items-center gap-2">
+            {!loading && items.length > 0 && (
+              <button
+                onClick={handleDownloadCsv}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold hover:opacity-80 transition-opacity"
+                style={{ background: 'var(--teal)', color: 'white' }}
+                title="Download as Excel/CSV"
+              >
+                <Download size={13} />
+                Download Excel
+              </button>
+            )}
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100">
+              <X size={18} style={{ color: 'var(--mid-gray)' }} />
+            </button>
+          </div>
         </div>
 
         {/* Table */}
@@ -668,8 +705,13 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
   const sourceAccountTotal = liabilitySourceAccounts.reduce((s, a) => s + a.amount, 0) + unclassifiedAP
 
   // Payroll payable balances from journal entries (4040, 4060, 4070, etc.)
+  // 4050 Unearned Revenue is intentionally excluded: its liability is tracked directly via
+  // wallets.total (DigitalWallet balances) rather than cumulative JE credits, so including
+  // its JE balance here would double-count it in Total Current Liabilities.
   const payrollPayableAccounts = journalBalances.filter(jb => jb.accountType === 'LIABILITY' && jb.balance > 0)
-  const payrollPayableTotal = payrollPayableAccounts.reduce((s, a) => s + a.balance, 0)
+  const payrollPayableTotal = payrollPayableAccounts
+    .filter(a => a.accountNumber !== '4050')
+    .reduce((s, a) => s + a.balance, 0)
 
   // Tier 2.3: Unearned Revenue accrued by HMO/GL UNEARNED orders this year.
   // Mirrors the AR booked on the asset side so A = L + E even when business uses
@@ -788,8 +830,10 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
         {/* LIABILITIES */}
         <SectionHeader label="Liabilities" />
         <SubSectionHeader label="Current Liabilities" />
-        {/* Payroll payable accounts from journal entries (4040, 4060, 4070, etc.) */}
-        {payrollPayableAccounts.map((a) => {
+        {/* Payroll payable accounts from journal entries (4040, 4060, 4070, etc.)
+            4050 is intentionally excluded here — it is handled below by the dedicated
+            Unearned Revenue (wallets) section so it never renders twice. */}
+        {payrollPayableAccounts.filter(a => a.accountNumber !== '4050').map((a) => {
           const acctKey = `${a.accountNumber} ${a.accountTitle}`
           const drillCategory = a.accountNumber === '4060' ? 'SALARY_PAYABLE_DETAIL'
             : a.accountNumber === '4070' ? 'TAX_PAYABLE_DETAIL'
@@ -889,8 +933,7 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
    ═══════════════════════════════════════════════════════════════ */
 
 function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; viewMode: ViewMode; onDrillDown: OnDrillDown }) {
-  const { monthly, accounts, journalRevenueKeys = [] } = data
-  const journalRevenueSet = new Set(journalRevenueKeys)
+  const { monthly, accounts } = data
   const [col, setCol] = useState<Record<string, boolean>>({})
   const tog = (k: string) => setCol(p => ({ ...p, [k]: !p[k] }))
 
@@ -968,10 +1011,9 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
           <>
             {grossRevenueAccts.map((a) => {
               const acctKey = `${a.accountNumber} ${a.accountTitle}`
-              const isJournalSourced = journalRevenueSet.has(acctKey)
               return (
                 <AnnualRow key={a.accountNumber} label={acctKey} amount={acctAmount(a.accountNumber, a.accountTitle)} indent={1}
-                  onDrillDown={() => onDrillDown(a.accountTitle, isJournalSourced ? 'JOURNAL_ACCOUNT' : 'REVENUE', 0, acctKey)} />
+                  onDrillDown={() => onDrillDown(a.accountTitle, 'REVENUE', 0, acctKey)} />
               )
             })}
             {unmatchedRevenueKeys.map((key) => {
@@ -1012,10 +1054,10 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
             {directExpenseAccts.map((a) => {
               const amt = expenseAmount(a.accountNumber, a.accountTitle)
               const acctKey = `${a.accountNumber} ${a.accountTitle}`
-              return amt > 0 ? (
+              return (
                 <AnnualRow key={a.accountNumber} label={acctKey} amount={amt} indent={1}
                   onDrillDown={() => onDrillDown(acctKey, 'PAYROLL_EXPENSE_DETAIL', 0, acctKey)} />
-              ) : null
+              )
             })}
             {Object.keys(cogsByAcctAnnual).length === 0 && totalDirectExpJournal === 0 && sumMonths(monthly, m => m.cogs) === 0 && (
               <AnnualRow label="(No cost of sales recorded)" amount={0} indent={1} />
@@ -1034,9 +1076,15 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
             {indirectExpenseAccts.map((a) => {
               const amt = expenseAmount(a.accountNumber, a.accountTitle)
               const acctKey = `${a.accountNumber} ${a.accountTitle}`
+              const lc = a.accountTitle.toLowerCase()
+              const drillCat = (lc.includes('professional fee') || lc.includes('consultant'))
+                ? 'PAYROLL_EXPENSE_DETAIL'
+                : (lc.includes('salari') || lc.includes('wages') || lc.includes('salary'))
+                ? 'EMPLOYEE_PAYROLL_EXPENSE_DETAIL'
+                : 'JOURNAL_ACCOUNT'
               return (
                 <AnnualRow key={a.accountNumber} label={acctKey} amount={amt} indent={1}
-                  onDrillDown={amt > 0 ? () => onDrillDown(acctKey, 'JOURNAL_ACCOUNT', 0, acctKey) : undefined} />
+                  onDrillDown={() => onDrillDown(acctKey, drillCat, 0, acctKey)} />
               )
             })}
             {indirectExpenseAccts.length === 0 && (
@@ -1086,12 +1134,11 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
         <>
           {grossRevenueAccts.map((a) => {
             const acctKey = `${a.accountNumber} ${a.accountTitle}`
-            const isJournalSourced = journalRevenueSet.has(acctKey)
             return (
               <MonthlyRow key={a.accountNumber} label={acctKey}
                 values={acctMonthly(a.accountNumber, a.accountTitle)}
                 total={acctAmount(a.accountNumber, a.accountTitle)} indent={1}
-                onClickCell={(m) => onDrillDown(a.accountTitle, isJournalSourced ? 'JOURNAL_ACCOUNT' : 'REVENUE', m ?? 0, acctKey)} />
+                onClickCell={(m) => onDrillDown(a.accountTitle, 'REVENUE', m ?? 0, acctKey)} />
             )
           })}
           {unmatchedRevenueKeys.map((key) => {
@@ -1151,12 +1198,14 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
                     onClickCell={(m) => onDrillDown(key, 'COGS', m ?? 0)} />
                 ))}
                 {directExpenseAccts.map((a) => {
+                  const acctKey = `${a.accountNumber} ${a.accountTitle}`
                   const amt = expenseAmount(a.accountNumber, a.accountTitle)
-                  return amt > 0 ? (
-                    <MonthlyRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`}
-                      values={getMonthlyArray(monthly, (m) => (m.expenseByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0)}
-                      total={amt} indent={1} />
-                  ) : null
+                  return (
+                    <MonthlyRow key={a.accountNumber} label={acctKey}
+                      values={getMonthlyArray(monthly, (m) => (m.expenseByAccount || {})[acctKey] || 0)}
+                      total={amt} indent={1}
+                      onClickCell={(m) => onDrillDown(acctKey, 'PAYROLL_EXPENSE_DETAIL', m ?? 0, acctKey)} />
+                  )
                 })}
               </>
             )}
@@ -1173,11 +1222,22 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
 
       {/* EXPENSES */}
       <SectionHeader label="Expenses" collapsed={!!col['exp']} onToggle={() => tog('exp')} />
-      {!col['exp'] && indirectExpenseAccts.map((a) => (
-        <MonthlyRow key={a.accountNumber} label={`${a.accountNumber} ${a.accountTitle}`}
-          values={getMonthlyArray(monthly, (m) => (m.expenseByAccount || {})[`${a.accountNumber} ${a.accountTitle}`] || 0)}
-          total={expenseAmount(a.accountNumber, a.accountTitle)} indent={1} />
-      ))}
+      {!col['exp'] && indirectExpenseAccts.map((a) => {
+        const acctKey = `${a.accountNumber} ${a.accountTitle}`
+        const amt = expenseAmount(a.accountNumber, a.accountTitle)
+        const lc = a.accountTitle.toLowerCase()
+        const drillCat = (lc.includes('professional fee') || lc.includes('consultant'))
+          ? 'PAYROLL_EXPENSE_DETAIL'
+          : (lc.includes('salari') || lc.includes('wages') || lc.includes('salary'))
+          ? 'EMPLOYEE_PAYROLL_EXPENSE_DETAIL'
+          : 'JOURNAL_ACCOUNT'
+        return (
+          <MonthlyRow key={a.accountNumber} label={acctKey}
+            values={getMonthlyArray(monthly, (m) => (m.expenseByAccount || {})[acctKey] || 0)}
+            total={amt} indent={1}
+            onClickCell={(m) => onDrillDown(acctKey, drillCat, m ?? 0, acctKey)} />
+        )
+      })}
       <MonthlyRow label="Total for Expenses"
         values={getMonthlyArray(monthly, (m) => indirectExpForMonth(m))}
         total={totalOpex} bold isTotal />

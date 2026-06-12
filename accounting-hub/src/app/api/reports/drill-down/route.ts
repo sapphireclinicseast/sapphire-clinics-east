@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { WalletType } from '@prisma/client'
 
 const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
-const CASH_METHODS = ['CASH', 'GCASH', 'PAYMAYA', 'DEBIT', 'CREDIT_CARD', 'SHOPEE', 'LAZADA', 'TIKTOK']
+const CASH_METHODS = ['CASH', 'GCASH', 'PAYMAYA', 'PAYMONGO', 'DEBIT', 'CREDIT_CARD', 'SHOPEE', 'LAZADA', 'TIKTOK']
 
 const PAYMENT_LABELS: Record<string, string> = {
-  CASH: 'Cash', GCASH: 'GCash', PAYMAYA: 'PayMaya', DEBIT: 'Debit Card',
+  CASH: 'Cash', GCASH: 'GCash', PAYMAYA: 'PayMaya', PAYMONGO: 'PayMongo', DEBIT: 'Debit Card',
   CREDIT_CARD: 'Credit Card', VIP_CARD: 'VIP Card', PREPAID_CARD: 'Prepaid Card',
   REWARD_POINTS: 'Reward Points', SHOPEE: 'Shopee', LAZADA: 'Lazada',
   TIKTOK: 'TikTok', DOWNPAYMENT: 'Downpayment', PACKAGE: 'Package', HMO: 'HMO',
@@ -25,6 +26,18 @@ const DEPT_LABELS: Record<string, string> = {
 const BRANCH_LABELS: Record<string, string> = {
   SBEA: 'East Branch', SBGH: 'Greenhills Branch', VERDANA_STORE: 'Verdana Store',
   SANDBOX_EAST: 'East Branch', SANDBOX_GREENHILLS: 'Greenhills Branch',
+}
+
+const MONTH_NAMES = ['January','February','March','April','May','June',
+                     'July','August','September','October','November','December']
+
+function formatCutoffLabel(period: string): string {
+  // period format: "2026-05-2" (year-month-cutoffNum) or "2026-05-1"
+  const parts = period.split('-')
+  if (parts.length < 3) return period
+  const monthName = MONTH_NAMES[parseInt(parts[1], 10) - 1] || parts[1]
+  const cutoffLabel = parts[2] === '1' ? 'First Cutoff' : 'Second Cutoff'
+  return `${monthName} ${parts[0]} ${cutoffLabel}`
 }
 
 export async function GET(req: Request) {
@@ -144,10 +157,37 @@ export async function GET(req: Request) {
       })
 
       const items = entries.map(e => ({
-        date: e.cutoffPeriod,
+        date: formatCutoffLabel(e.cutoffPeriod),
         type: `${e.consultant?.name || '—'}${e.consultant?.department ? ` · ${DEPT_LABELS[e.consultant.department] || e.consultant.department}` : ''}`,
         branch: BRANCH_LABELS[e.branch] || e.branch,
         amount: Number(e.grossPay),
+      }))
+      return NextResponse.json({ items, total: items.reduce((s, i) => s + i.amount, 0) })
+    }
+
+    // ── Employee salary expense detail (8232 Salaries — per-employee payslip rows) ──
+    if (category === 'EMPLOYEE_PAYROLL_EXPENSE_DETAIL') {
+      const cutoffPrefix = month > 0
+        ? `${year}-${String(month).padStart(2, '0')}`
+        : String(year)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const where: any = {
+        status: { in: ['FINAL', 'LOCKED'] },
+        cutoffPeriod: { startsWith: cutoffPrefix },
+      }
+      if (branch !== 'ALL') where.branch = branch
+
+      const payslips = await prisma.employeePayslip.findMany({
+        where,
+        include: { employee: { select: { firstName: true, lastName: true, department: true } } },
+        orderBy: [{ cutoffPeriod: 'asc' }, { branch: 'asc' }],
+      })
+
+      const items = payslips.map(p => ({
+        date: formatCutoffLabel(p.cutoffPeriod),
+        type: `${p.employee.firstName} ${p.employee.lastName}${p.employee.department ? ` · ${DEPT_LABELS[p.employee.department] || p.employee.department}` : ''}`,
+        branch: BRANCH_LABELS[p.branch] || p.branch,
+        amount: Number(p.grossPay),
       }))
       return NextResponse.json({ items, total: items.reduce((s, i) => s + i.amount, 0) })
     }
@@ -244,19 +284,41 @@ export async function GET(req: Request) {
       const [acctNum, ...titleParts] = accountKey.split(' ')
       const acctTitle = titleParts.join(' ')
 
+      // For payroll entries, entryDate is when payroll was finalized (may be a later month),
+      // so we filter by cutoff period (referenceId) instead of entryDate.
+      // Non-payroll entries continue to be filtered by entryDate as usual.
+      const cutoffPrefix = (month >= 1 && month <= 12)
+        ? `${year}-${String(month).padStart(2, '0')}-`
+        : `${year}-`
+
       const lines = await prisma.journalEntryLine.findMany({
         where: {
           account: { accountNumber: acctNum, accountTitle: acctTitle },
-          journalEntry: {
-            entryDate: { gte: startDate, lt: endDate },
-          },
+          OR: [
+            // Non-payroll entries: filter by entry date range
+            {
+              journalEntry: {
+                entryDate: { gte: startDate, lt: endDate },
+                referenceType: { notIn: ['PAYROLL_EMPLOYEE', 'PAYROLL_CONSULTANT'] },
+                ...(branch !== 'ALL' ? { branch } : {}),
+              },
+            },
+            // Payroll entries: filter by cutoff period, not by entry date
+            {
+              journalEntry: {
+                referenceType: { in: ['PAYROLL_EMPLOYEE', 'PAYROLL_CONSULTANT'] },
+                referenceId: { startsWith: cutoffPrefix },
+                ...(branch !== 'ALL' ? { branch } : {}),
+              },
+            },
+          ],
         },
         select: {
           debit: true,
           credit: true,
           description: true,
           account: { select: { accountType: true } },
-          journalEntry: { select: { entryDate: true, description: true, referenceType: true } },
+          journalEntry: { select: { entryDate: true, description: true, referenceType: true, referenceId: true } },
         },
         orderBy: { journalEntry: { entryDate: 'asc' } },
       })
@@ -266,8 +328,33 @@ export async function GET(req: Request) {
         const debit = Number(line.debit) || 0
         const isLiability = line.account?.accountType === 'LIABILITY' || line.account?.accountType === 'REVENUE' || line.account?.accountType === 'EQUITY'
         const amount = isLiability ? (credit - debit) : (debit - credit)
+
+        // For payroll entries, show the cutoff period end date rather than the processing date
+        let displayDate = line.journalEntry.entryDate.toISOString().split('T')[0]
+        if (
+          (line.journalEntry.referenceType === 'PAYROLL_EMPLOYEE' || line.journalEntry.referenceType === 'PAYROLL_CONSULTANT') &&
+          line.journalEntry.referenceId
+        ) {
+          const cutoffStr = line.journalEntry.referenceId.split('|')[0] // e.g. '2026-04-2'
+          const cutoffParts = cutoffStr.split('-')
+          if (cutoffParts.length >= 3) {
+            const cy = parseInt(cutoffParts[0], 10)
+            const cm = parseInt(cutoffParts[1], 10)
+            const cn = parseInt(cutoffParts[2], 10) // 1 = first half, 2 = second half
+            if (!isNaN(cy) && !isNaN(cm)) {
+              const mm = String(cm).padStart(2, '0')
+              if (cn === 1) {
+                displayDate = `${cy}-${mm}-15` // 1st cutoff ends on the 15th
+              } else {
+                const lastDay = new Date(Date.UTC(cy, cm, 0)).getUTCDate()
+                displayDate = `${cy}-${mm}-${String(lastDay).padStart(2, '0')}` // 2nd cutoff ends on last day
+              }
+            }
+          }
+        }
+
         return {
-          date: line.journalEntry.entryDate.toISOString().split('T')[0],
+          date: displayDate,
           type: `${line.journalEntry.description}${line.description ? ` — ${line.description}` : ''}`,
           branch: line.journalEntry.referenceType || '—',
           amount,
@@ -278,9 +365,12 @@ export async function GET(req: Request) {
     }
 
     // Wallet balances drill-down (unearned revenue)
+    // HMO and GL wallet types are excluded here to match `wallets.total` on the balance sheet
+    // (those are tracked as Accounts Receivable, not Unearned Revenue liability).
     if (category === 'WALLET_BALANCE') {
+      const AR_WALLET_TYPES: WalletType[] = [WalletType.HMO, WalletType.GL]
       const wallets = await prisma.digitalWallet.findMany({
-        where: { isActive: true, balance: { gt: 0 } },
+        where: { isActive: true, balance: { gt: 0 }, walletType: { notIn: AR_WALLET_TYPES } },
         select: { patientName: true, walletType: true, balance: true, createdAt: true },
         orderBy: { walletType: 'asc' },
       })
@@ -692,6 +782,38 @@ export async function GET(req: Request) {
             amount: Number(item.lineTotal),
           })
         }
+      }
+
+      // Also include any journal entry credits to this revenue account
+      // (handles accounts fed by both POS orders and manual journal entries)
+      const [jeAcctNum, ...jeTitleParts] = accountKey.split(' ')
+      const jeAcctTitle = jeTitleParts.join(' ')
+      const jeLines = await prisma.journalEntryLine.findMany({
+        where: {
+          account: { accountNumber: jeAcctNum, accountTitle: jeAcctTitle },
+          journalEntry: {
+            entryDate: { gte: startDate, lt: endDate },
+            ...(branch !== 'ALL' ? { branch } : {}),
+          },
+        },
+        select: {
+          debit: true,
+          credit: true,
+          journalEntry: { select: { entryDate: true, description: true, branch: true } },
+        },
+        orderBy: { journalEntry: { entryDate: 'asc' } },
+      })
+      for (const line of jeLines) {
+        const credit = Number(line.credit) || 0
+        const debit = Number(line.debit) || 0
+        const amt = credit - debit // REVENUE: credit increases
+        if (amt === 0) continue
+        items.push({
+          date: line.journalEntry.entryDate.toISOString().split('T')[0],
+          type: `JE: ${line.journalEntry.description}`,
+          branch: BRANCH_LABELS[line.journalEntry.branch] || line.journalEntry.branch,
+          amount: amt,
+        })
       }
 
       return NextResponse.json({ items, total: items.reduce((s, i) => s + i.amount, 0) })
