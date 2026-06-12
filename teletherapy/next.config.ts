@@ -2,6 +2,10 @@ import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ['bcryptjs'],
+  // Allow building into a staging dir (e.g. .next.new) via NEXT_DIST_DIR so
+  // self-heal/deploy rebuilds never overwrite the live .next in place. At
+  // runtime the env var is unset, so `next start` serves from `.next`.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   turbopack: {
     root: __dirname,
   },
