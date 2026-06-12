@@ -37,12 +37,24 @@ const newBucket = (): BackfillBucket => ({ scanned: 0, posted: 0, alreadyPosted:
 
 export async function POST(req: Request) {
   const session = await auth()
-  if (!session?.user || !RUN_ROLES.includes(session.user.role as string)) {
+  // Internal ops trigger: same access tier as DB/VPS access (server-only secret), so the
+  // backfill can be run server-side without a browser session. Posting is idempotent.
+  const internalSecret = process.env.NEXTAUTH_SECRET
+  const isInternal = !!internalSecret && req.headers.get('x-internal-secret') === internalSecret
+  if (!isInternal && (!session?.user || !RUN_ROLES.includes(session.user.role as string))) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
+  // Actor for createdById on posted entries: the session user, or an admin when internal.
+  let actorId = session?.user?.id as string | undefined
+  if (!actorId) {
+    const admin = await prisma.user.findFirst({ where: { role: 'ADMIN' }, select: { id: true } })
+    actorId = admin?.id
+    if (!actorId) return NextResponse.json({ error: 'no admin user for internal backfill' }, { status: 500 })
+  }
 
-  const body = await req.json().catch(() => ({})) as { year?: number; branch?: string; only?: string[] }
+  const body = await req.json().catch(() => ({})) as { year?: number; branch?: string; only?: string[]; orderIds?: string[] }
   const branch = body.branch || 'ALL'
+  const orderIds = Array.isArray(body.orderIds) && body.orderIds.length ? body.orderIds : undefined
   const only = new Set(body.only?.length ? body.only : ['orders', 'ar', 'inventory', 'assets'])
 
   const dateFilter: { gte?: Date; lt?: Date } = {}
@@ -63,18 +75,20 @@ export async function POST(req: Request) {
   /* ── Orders ─────────────────────────────────────────────────── */
   if (only.has('orders')) {
     const orders = await prisma.order.findMany({
-      where: {
-        status: 'COMPLETED',
-        ...(Object.keys(dateFilter).length ? { transactionDate: dateFilter } : {}),
-        ...(branch !== 'ALL' ? { branch: branch as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | 'VERDANA_STORE' } : {}),
-      },
+      where: orderIds
+        ? { id: { in: orderIds }, status: { not: 'VOIDED' } }
+        : {
+            status: 'COMPLETED',
+            ...(Object.keys(dateFilter).length ? { transactionDate: dateFilter } : {}),
+            ...(branch !== 'ALL' ? { branch: branch as 'SANDBOX_EAST' | 'SANDBOX_GREENHILLS' | 'VERDANA_STORE' } : {}),
+          },
       select: { id: true },
       orderBy: { transactionDate: 'asc' },
     })
     result.orders.scanned = orders.length
     for (const o of orders) {
       try {
-        const r = await postOrderJournal(prisma, o.id, session.user.id)
+        const r = await postOrderJournal(prisma, o.id, actorId)
         if (r.posted)               result.orders.posted++
         else if (r.alreadyPosted)   result.orders.alreadyPosted++
         else {
@@ -101,7 +115,7 @@ export async function POST(req: Request) {
     result.ar.scanned = payments.length
     for (const p of payments) {
       try {
-        const r = await postARPaymentJournal(prisma, p.id, session.user.id)
+        const r = await postARPaymentJournal(prisma, p.id, actorId)
         if (r.posted)               result.ar.posted++
         else if (r.alreadyPosted)   result.ar.alreadyPosted++
         else {
@@ -128,7 +142,7 @@ export async function POST(req: Request) {
     result.inventory.scanned = adjustments.length
     for (const adj of adjustments) {
       try {
-        const r = await postInventoryAdjustmentJournal(prisma, adj.id, session.user.id)
+        const r = await postInventoryAdjustmentJournal(prisma, adj.id, actorId)
         if (r.posted)               result.inventory.posted++
         else if (r.alreadyPosted)   result.inventory.alreadyPosted++
         else {
@@ -155,7 +169,7 @@ export async function POST(req: Request) {
     result.assets.scanned = assets.length
     for (const a of assets) {
       try {
-        const r = await postAssetJournal(prisma, a.id, session.user.id)
+        const r = await postAssetJournal(prisma, a.id, actorId)
         if (r.posted)               result.assets.posted++
         else if (r.alreadyPosted)   result.assets.alreadyPosted++
         else {
@@ -171,7 +185,7 @@ export async function POST(req: Request) {
 
   await prisma.auditLog.create({
     data: {
-      userId: session.user.id,
+      userId: actorId,
       action: 'BACKFILL_GL',
       entity: 'journalEntry',
       details: {
