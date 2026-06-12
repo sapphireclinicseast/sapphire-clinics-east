@@ -420,6 +420,13 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading); line-height: 1.25; }
   border-radius: 100px;
   padding: 6px 16px 6px 8px;
   box-shadow: 0 2px 12px rgba(0,0,0,.18);
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform var(--transition), box-shadow var(--transition);
+}
+a.hero-brand-chip:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0,0,0,.26);
 }
 .hero-brand-chip img {
   height: 30px; width: auto; display: block;
