@@ -558,7 +558,7 @@ export default function FrontDeskWelcome({
           <div style={{ padding: '0.65rem 0.875rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             {birthdayPatients.length === 0 ? (
               <p style={{ textAlign: 'center', fontSize: '0.75rem', color: '#AAA', padding: '0.6rem 0', margin: 0 }}>
-                No patient birthdays this week 🌿
+                No patient birthdays this week 💚
               </p>
             ) : (
               birthdayPatients.map(p => {
@@ -570,7 +570,7 @@ export default function FrontDeskWelcome({
                 const dayLabel = isToday
                   ? 'Today! 🎉'
                   : dobDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
-                const msg = `Happy Birthday, ${p.firstName}! 🎂 Wishing you a wonderful day filled with joy and good health! From all of us at Sapphire Clinics East Inc. 🌿`
+                const msg = `Happy Birthday, ${p.firstName}! 🎂 Wishing you a wonderful day filled with joy and good health! From all of us at Sapphire Clinics East Inc. 💚`
                 const sms = smsState[p.id] ?? 'idle'
                 const email = emailState[p.id] ?? 'idle'
                 const alreadySent = sentEmailIds.has(p.id)

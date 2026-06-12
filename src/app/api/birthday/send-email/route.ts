@@ -40,7 +40,7 @@ function buildBirthdayEmailHtml(firstName: string, clinicName: string): string {
                 Happy Birthday, ${firstName}!
               </h1>
               <p style="color:rgba(237,243,217,0.82);margin:8px 0 0;font-size:14px;font-weight:500;">
-                Wishing you a wonderful day! 🌿
+                Wishing you a wonderful day! 💚
               </p>
             </td>
           </tr>
@@ -75,7 +75,7 @@ function buildBirthdayEmailHtml(firstName: string, clinicName: string): string {
                 With warmest wishes,
               </p>
               <p style="color:#c69849;font-size:16px;font-weight:700;margin:0;">
-                The ${clinicName} Team 🌿
+                The ${clinicName} Team 💚
               </p>
             </td>
           </tr>
