@@ -290,6 +290,22 @@ h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading); line-height: 1.25; }
 
 .nav-cta { margin-left: 8px; }
 
+/* Over the transparent hero, the photos vary (and are now lighter), so the
+   outline "Staff Log In" needs a frosted dark pill to stay legible on any
+   background. On the scrolled white navbar it reverts to the sage outline. */
+.navbar.hero-top .nav-cta .btn-outline {
+  color: #fff;
+  border-color: rgba(255,255,255,.55);
+  background: rgba(36,73,82,.62);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.navbar.hero-top .nav-cta .btn-outline:hover {
+  background: rgba(36,73,82,.85);
+  border-color: #fff;
+  color: #fff;
+}
+
 /* Mobile nav */
 .hamburger {
   display: none;
