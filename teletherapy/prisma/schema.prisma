@@ -185,6 +185,29 @@ model DirectoryEntry {
   updatedAt   DateTime @updatedAt
 }
 
+// Per-branch free-text "Branch Information" shown in the Directory.
+// One row per branch code (EAST / GREENHILLS / VERDANA / CORPORATE).
+model DirectoryBranchInfo {
+  id          String   @id @default(cuid())
+  branch      String   @unique
+  info        String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Directory websites — link + description, with the same per-entry branch
+// visibility as emails (empty visibleBranches = visible to everyone).
+model DirectoryWebsite {
+  id              String   @id @default(cuid())
+  link            String
+  description     String?
+  visibleBranches String[]
+  createdById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
 model Schedule {
   id          String         @id @default(cuid())
   staffId     String

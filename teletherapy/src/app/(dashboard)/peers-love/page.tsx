@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import { HeartHandshake, Loader2, MessageCircle, Sparkles, Info } from 'lucide-react'
-import BranchSwitcher, { useBranchSwitcher } from '@/components/BranchSwitcher'
 
 interface StrengthItem {
   id: string
@@ -66,17 +65,15 @@ function SpeechBubble({ text, index, formType }: { text: string; index: number; 
 export default function PeersLovePage() {
   const [strengths, setStrengths] = useState<StrengthItem[]>([])
   const [loading, setLoading] = useState(true)
-  const { branches, isMultiBranch, activeStaffId, switchBranch } = useBranchSwitcher()
-
+  // Aggregate across ALL of this clinician's branches (e.g. East + Greenhills).
   useEffect(() => {
-    if (activeStaffId || !isMultiBranch) fetchStrengths()
-  }, [activeStaffId, isMultiBranch])
+    fetchStrengths()
+  }, [])
 
   async function fetchStrengths() {
     setLoading(true)
     try {
-      const staffParam = isMultiBranch && activeStaffId ? `?staffId=${activeStaffId}` : ''
-      const res = await fetch(`/api/peers-love${staffParam}`)
+      const res = await fetch(`/api/peers-love`)
       if (res.ok) {
         const data = await res.json()
         setStrengths(data.strengths ?? [])
@@ -87,12 +84,6 @@ export default function PeersLovePage() {
 
   return (
     <div className="max-w-5xl mx-auto">
-      {isMultiBranch && (
-        <div className="mb-4 animate-fade-up">
-          <BranchSwitcher branches={branches} activeStaffId={activeStaffId} onSwitch={switchBranch} />
-        </div>
-      )}
-
       {/* Hero header */}
       <div className="relative rounded-3xl px-8 py-8 mb-6 overflow-hidden animate-fade-up"
         style={{ background: 'linear-gradient(135deg, #244952 0%, #4a8073 100%)' }}>

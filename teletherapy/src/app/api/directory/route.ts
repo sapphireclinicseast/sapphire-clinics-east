@@ -136,6 +136,42 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ entry }, { status: 201 })
 }
 
+// PUT — edit an existing directory entry (admin only).
+export async function PUT(req: NextRequest) {
+  const session = await auth()
+  if (!session?.user || !isAdmin(session.user.role)) {
+    return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
+  }
+
+  const body = await req.json()
+  const id = typeof body.id === 'string' ? body.id : ''
+  if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+
+  const departments: string[] = Array.isArray(body.departments)
+    ? body.departments.filter((d: unknown): d is string => typeof d === 'string' && (DEPARTMENTS as readonly string[]).includes(d))
+    : []
+  const branches: string[] = Array.isArray(body.branches)
+    ? body.branches.filter((b: unknown): b is string => typeof b === 'string' && (BRANCHES as readonly string[]).includes(b))
+    : []
+  const visibleBranches: string[] = Array.isArray(body.visibleBranches)
+    ? body.visibleBranches.filter((b: unknown): b is string => typeof b === 'string' && (BRANCHES as readonly string[]).includes(b))
+    : []
+  const email = typeof body.email === 'string' ? body.email.trim() : ''
+  const description = typeof body.description === 'string' ? body.description.trim() : ''
+
+  if (departments.length === 0) return NextResponse.json({ error: 'Select at least one department' }, { status: 400 })
+  if (branches.length === 0) return NextResponse.json({ error: 'Select at least one branch' }, { status: 400 })
+  if (!email || !isValidEmail(email)) return NextResponse.json({ error: 'A valid email is required' }, { status: 400 })
+
+  // @ts-ignore
+  const entry = await prisma.directoryEntry.update({
+    where: { id },
+    data: { departments, branches, visibleBranches, email, description: description || null },
+  }).catch(() => null)
+  if (!entry) return NextResponse.json({ error: 'Entry not found' }, { status: 404 })
+  return NextResponse.json({ entry })
+}
+
 // DELETE — remove a directory entry by id (admin only).
 export async function DELETE(req: NextRequest) {
   const session = await auth()
