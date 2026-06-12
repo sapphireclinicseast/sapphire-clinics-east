@@ -68,18 +68,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ cl
   }
 }
 
-// DELETE — main-admin-only hard delete of a payment row. PENDING rows
-// are typically test entries the admin wants gone. CONVERTED rows
-// already have an associated accounting-hub Order — deleting here does
-// NOT void that Order, so the admin should also void it in the
-// accounting hub when needed. The client surfaces this warning in the
-// confirm dialog before the request is sent.
+// DELETE — main admin OR branch-scoped front desk can hard-delete a
+// payment row. PENDING rows are typically test entries the staff wants
+// gone. CONVERTED rows already have an associated accounting-hub Order —
+// deleting here does NOT void that Order, so whoever deletes it should
+// also void in the accounting hub when needed. The client confirm dialog
+// surfaces this warning before the request is sent.
+//
+// FRONTDESK is restricted to rows whose `branch` matches the token's
+// branch claim, so East front-desk can't delete a Greenhills row. Main
+// admin is unscoped.
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ classPortalPaymentId: string }> }) {
   const origin = req.headers.get('origin')
   try {
     const auth = await requireAuth(req)
-    if (auth.role !== 'ADMIN') {
-      return withCors(NextResponse.json({ error: 'Only the main admin can delete a payment row.' }, { status: 403 }), origin)
+    if (auth.role !== 'ADMIN' && auth.role !== 'FRONTDESK') {
+      return withCors(NextResponse.json({ error: 'Only the main admin or front desk can delete a payment row.' }, { status: 403 }), origin)
     }
     const { classPortalPaymentId } = await params
     if (!classPortalPaymentId) {
@@ -89,6 +93,12 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ c
     const existing = await (prisma.classPortalFrontDeskPayment as any).findUnique({ where: { classPortalPaymentId } })
     if (!existing) {
       return withCors(NextResponse.json({ error: 'classPortalPaymentId not found.' }, { status: 404 }), origin)
+    }
+    // Branch scoping for front desk. Legacy shared-hardcoded frontdesk
+    // tokens have no branch claim — those keep their old unscoped view,
+    // same back-compat we use for the users list filter.
+    if (auth.role === 'FRONTDESK' && auth.branch && existing.branch !== auth.branch) {
+      return withCors(NextResponse.json({ error: 'You can only delete payments for your own branch.' }, { status: 403 }), origin)
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (prisma.classPortalFrontDeskPayment as any).delete({ where: { classPortalPaymentId } })
