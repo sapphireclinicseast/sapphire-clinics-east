@@ -22,6 +22,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/class-portal-auth'
+import { auditEnrollment } from '@/lib/class-portal-audit'
 import { withCors, corsHeaders } from '../../_cors'
 
 const MAX_BYTES = 15 * 1024 * 1024 // 15MB cap
@@ -70,25 +71,35 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: Request) {
   const origin = req.headers.get('origin')
+  let studentId = ''
+  let docKey = ''
+  let auditEmail: string | null = null
+  let auditRole: string | undefined
   try {
     const auth = await requireAuth(req)
+    auditEmail = auth.email ?? null
+    auditRole = auth.role
     const form = await req.formData()
     const f = form.get('file')
-    const studentId = String(form.get('studentId') ?? '').trim()
-    const docKey = String(form.get('docKey') ?? '').trim()
+    studentId = String(form.get('studentId') ?? '').trim()
+    docKey = String(form.get('docKey') ?? '').trim()
 
     if (!studentId || !docKey) {
+      void auditEnrollment({ kind: 'upload_blob', email: auditEmail, studentId, docKey, outcome: 'error', error: 'studentId or docKey missing', req, metadata: { role: auditRole } })
       return withCors(NextResponse.json({ error: 'studentId and docKey are required.' }, { status: 400 }), origin)
     }
     if (!f || !(f instanceof File)) {
+      void auditEnrollment({ kind: 'upload_blob', email: auditEmail, studentId, docKey, outcome: 'error', error: 'missing file field', req, metadata: { role: auditRole } })
       return withCors(NextResponse.json({ error: 'Missing file field.' }, { status: 400 }), origin)
     }
     if (f.size > MAX_BYTES) {
+      void auditEnrollment({ kind: 'upload_blob', email: auditEmail, studentId, docKey, outcome: 'error', error: `file too large: ${f.size}B`, req, metadata: { role: auditRole, fileSize: f.size } })
       return withCors(NextResponse.json({ error: `File too large (${(f.size / 1024 / 1024).toFixed(1)}MB > 15MB).` }, { status: 413 }), origin)
     }
 
     // Students can only write to their own row.
     if (auth.role === 'STUDENT' && auth.userId !== studentId) {
+      void auditEnrollment({ kind: 'upload_blob', email: auditEmail, studentId, docKey, outcome: 'error', error: 'student-cross-write forbidden', req, metadata: { role: auditRole } })
       return withCors(NextResponse.json({ error: 'Students can only upload their own documents.' }, { status: 403 }), origin)
     }
     // Teachers may upload Form 137/SF10 and School ID only — the two
@@ -97,6 +108,7 @@ export async function POST(req: Request) {
     if (auth.role === 'TEACHER') {
       const TEACHER_ALLOWED_DOC_KEYS = new Set(['form_137_sf10', 'school_id'])
       if (!TEACHER_ALLOWED_DOC_KEYS.has(docKey)) {
+        void auditEnrollment({ kind: 'upload_blob', email: auditEmail, studentId, docKey, outcome: 'error', error: 'teacher docKey not whitelisted', req, metadata: { role: auditRole } })
         return withCors(NextResponse.json({ error: 'Teachers can only upload Form 137/SF10 and School ID.' }, { status: 403 }), origin)
       }
     }
@@ -125,6 +137,15 @@ export async function POST(req: Request) {
       },
     })
 
+    void auditEnrollment({
+      kind: 'upload_blob',
+      email: auditEmail,
+      studentId,
+      docKey,
+      outcome: 'ok',
+      req,
+      metadata: { role: auditRole, fileName: row.fileName, fileSize: row.fileSize, fileType: row.fileType },
+    })
     return withCors(NextResponse.json({
       blob: {
         id: row.id,
@@ -139,11 +160,16 @@ export async function POST(req: Request) {
     }), origin)
   } catch (e) {
     if (e instanceof Response) {
+      // requireAuth throws a 401 Response if the bearer token is missing/
+      // bad. Audit that too so a parent hitting the endpoint without a
+      // session leaves a trace.
+      void auditEnrollment({ kind: 'upload_blob', email: auditEmail, studentId, docKey, outcome: 'error', error: `auth ${e.status}`, req, metadata: { role: auditRole } })
       const headers = new Headers(e.headers)
       for (const [k, v] of Object.entries(corsHeaders(origin))) headers.set(k, v)
       return new NextResponse(e.body, { status: e.status, headers })
     }
     console.error('[document-blobs.POST]', e)
+    void auditEnrollment({ kind: 'upload_blob', email: auditEmail, studentId, docKey, outcome: 'error', error: (e as Error).message, req, metadata: { role: auditRole } })
     return withCors(NextResponse.json({ error: 'Server error.' }, { status: 500 }), origin)
   }
 }

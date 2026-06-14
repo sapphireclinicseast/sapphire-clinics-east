@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { auditEnrollment } from '@/lib/class-portal-audit'
 import { withCors, corsHeaders } from '../../../../_cors'
 
 const MAX_BYTES = 15 * 1024 * 1024 // 15MB cap
@@ -21,23 +22,36 @@ export async function OPTIONS(req: Request) {
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const origin = req.headers.get('origin')
+  let tokenForAudit = ''
+  let auditMeta: Record<string, unknown> = {}
   try {
     const { token } = await params
-    if (!token) return withCors(NextResponse.json({ error: 'token required' }, { status: 400 }), origin)
+    tokenForAudit = token
+    if (!token) {
+      void auditEnrollment({ kind: 'upload_token_complete', outcome: 'error', error: 'token missing', req })
+      return withCors(NextResponse.json({ error: 'token required' }, { status: 400 }), origin)
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const row = await (prisma.classPortalUploadToken as any).findUnique({ where: { token } })
-    if (!row) return withCors(NextResponse.json({ error: 'Token not found.' }, { status: 404 }), origin)
+    if (!row) {
+      void auditEnrollment({ kind: 'upload_token_complete', outcome: 'error', error: 'token not found', req, metadata: { token } })
+      return withCors(NextResponse.json({ error: 'Token not found.' }, { status: 404 }), origin)
+    }
+    auditMeta = { token, studentId: row.studentId, studentEmail: row.studentEmail, docKey: row.docKey }
     if (new Date(row.expiresAt).getTime() < Date.now()) {
+      void auditEnrollment({ kind: 'upload_token_complete', email: row.studentEmail, studentId: row.studentId, docKey: row.docKey, outcome: 'error', error: 'token expired', req, metadata: auditMeta })
       return withCors(NextResponse.json({ error: 'Token expired.' }, { status: 410 }), origin)
     }
 
     const form = await req.formData()
     const f = form.get('file')
     if (!f || !(f instanceof File)) {
+      void auditEnrollment({ kind: 'upload_token_complete', email: row.studentEmail, studentId: row.studentId, docKey: row.docKey, outcome: 'error', error: 'missing file field', req, metadata: auditMeta })
       return withCors(NextResponse.json({ error: 'Missing file field.' }, { status: 400 }), origin)
     }
     if (f.size > MAX_BYTES) {
+      void auditEnrollment({ kind: 'upload_token_complete', email: row.studentEmail, studentId: row.studentId, docKey: row.docKey, outcome: 'error', error: `file too large: ${f.size}B`, req, metadata: { ...auditMeta, fileSize: f.size } })
       return withCors(NextResponse.json({ error: `File too large (${(f.size / 1024 / 1024).toFixed(1)}MB > 15MB).` }, { status: 413 }), origin)
     }
     const buf = Buffer.from(await f.arrayBuffer())
@@ -54,6 +68,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       },
     })
 
+    void auditEnrollment({
+      kind: 'upload_token_complete',
+      email: row.studentEmail,
+      studentId: row.studentId,
+      docKey: row.docKey,
+      outcome: 'ok',
+      req,
+      metadata: { ...auditMeta, fileName: f.name, fileSize: f.size, fileType: f.type },
+    })
     return withCors(NextResponse.json({
       ok: true,
       fileName: f.name,
@@ -62,6 +85,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     }), origin)
   } catch (e) {
     console.error('[upload-tokens/file.POST]', e)
+    void auditEnrollment({ kind: 'upload_token_complete', outcome: 'error', error: (e as Error).message, req, metadata: { token: tokenForAudit, ...auditMeta } })
     return withCors(NextResponse.json({ error: 'Server error.' }, { status: 500 }), origin)
   }
 }
