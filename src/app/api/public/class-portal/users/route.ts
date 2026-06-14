@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, hashPassword } from '@/lib/class-portal-auth'
 import { syncStudentToPatientCrm } from '@/lib/class-portal-patient-sync'
+import { auditEnrollment } from '@/lib/class-portal-audit'
 import { withCors, corsHeaders } from '../../_cors'
 
 export async function OPTIONS(req: Request) {
@@ -77,6 +78,11 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const origin = req.headers.get('origin')
+  // Captured up top so the catch handler at the bottom can audit the
+  // attempt even if body parsing fails mid-flow.
+  let auditEmail: string | undefined
+  let auditRole: string | undefined
+  let auditBranch: string | null | undefined
   try {
     const body = await req.json() as {
       role: 'STUDENT' | 'TEACHER' | 'FRONTDESK' | 'BRANCH_ADMIN'
@@ -88,11 +94,25 @@ export async function POST(req: Request) {
       branch?: 'EAST' | 'GREENHILLS' | null
       enrollment?: Record<string, unknown>
     }
+    auditEmail = body.email
+    auditRole = body.role
+    auditBranch = body.branch ?? null
+    // Every account-create attempt is recorded so the admin can trace
+    // "the parent says they tried to sign up" by searching by email.
+    void auditEnrollment({
+      kind: 'account_create_attempt',
+      email: auditEmail,
+      outcome: 'ok',
+      req,
+      metadata: { role: auditRole, branch: auditBranch, firstName: body.firstName, lastName: body.lastName, level: body.level },
+    })
     if (!body.role || !body.email || !body.password) {
+      void auditEnrollment({ kind: 'account_create_failure', email: auditEmail, outcome: 'error', error: 'missing role / email / password', req, metadata: { role: auditRole } })
       return withCors(NextResponse.json({ error: 'role, email, and password are required.' }, { status: 400 }), origin)
     }
     const validRoles: Array<typeof body.role> = ['STUDENT', 'TEACHER', 'FRONTDESK', 'BRANCH_ADMIN']
     if (!validRoles.includes(body.role)) {
+      void auditEnrollment({ kind: 'account_create_failure', email: auditEmail, outcome: 'error', error: `invalid role: ${body.role}`, req })
       return withCors(NextResponse.json({ error: 'Invalid role.' }, { status: 400 }), origin)
     }
     // STUDENT registration is public (parent enrolling their child via /enroll).
@@ -116,6 +136,7 @@ export async function POST(req: Request) {
       where: { role_email: { role: body.role as any, email } },
     })
     if (existing) {
+      void auditEnrollment({ kind: 'account_create_failure', email: auditEmail, studentId: existing.id, outcome: 'error', error: 'duplicate role+email', req, metadata: { role: auditRole } })
       return withCors(NextResponse.json({ error: 'A user with this email already exists for this role.' }, { status: 409 }), origin)
     }
     // Record who set the password initially. For self-signup students this is
@@ -164,6 +185,14 @@ export async function POST(req: Request) {
         console.warn('[users.POST] Patient CRM sync failed (non-fatal):', e)
       }
     }
+    void auditEnrollment({
+      kind: 'account_create_success',
+      email: created.email,
+      studentId: created.id,
+      outcome: 'ok',
+      req,
+      metadata: { role: created.role, branch: created.branch, level: created.level },
+    })
     return withCors(NextResponse.json({
       user: {
         id: created.id,
@@ -182,10 +211,12 @@ export async function POST(req: Request) {
     }), origin)
   } catch (e) {
     if (e instanceof Response) {
+      void auditEnrollment({ kind: 'account_create_failure', email: auditEmail, outcome: 'error', error: `auth ${e.status}`, req, metadata: { role: auditRole, branch: auditBranch } })
       const headers = new Headers(e.headers)
       for (const [k, v] of Object.entries(corsHeaders(origin))) headers.set(k, v)
       return new NextResponse(e.body, { status: e.status, headers })
     }
+    void auditEnrollment({ kind: 'account_create_failure', email: auditEmail, outcome: 'error', error: (e as Error).message, req, metadata: { role: auditRole, branch: auditBranch } })
     return withCors(NextResponse.json({ error: 'Server error.' }, { status: 500 }), origin)
   }
 }

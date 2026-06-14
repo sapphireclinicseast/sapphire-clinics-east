@@ -13,6 +13,7 @@
 
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { auditEnrollment } from '@/lib/class-portal-audit'
 import { withCors, corsHeaders } from '../../_cors'
 
 const TOKEN_TTL_MS = 30 * 60 * 1000 // 30 minutes
@@ -33,9 +34,11 @@ function randomToken(): string {
 
 export async function POST(req: Request) {
   const origin = req.headers.get('origin')
+  let body: { studentId?: string; studentEmail?: string; docKey?: string } = {}
   try {
-    const body = await req.json() as { studentId?: string; studentEmail?: string; docKey?: string }
+    body = await req.json() as typeof body
     if (!body.docKey) {
+      void auditEnrollment({ kind: 'upload_token_init', email: body.studentEmail, studentId: body.studentId, outcome: 'error', error: 'docKey missing', req })
       return withCors(NextResponse.json({ error: 'docKey is required.' }, { status: 400 }), origin)
     }
 
@@ -52,9 +55,26 @@ export async function POST(req: Request) {
       },
     })
 
+    void auditEnrollment({
+      kind: 'upload_token_init',
+      email: body.studentEmail,
+      studentId: body.studentId,
+      docKey: body.docKey,
+      outcome: 'ok',
+      req,
+    })
     return withCors(NextResponse.json({ token, expiresAt: expiresAt.toISOString() }), origin)
   } catch (e) {
     console.error('[upload-tokens.POST]', e)
+    void auditEnrollment({
+      kind: 'upload_token_init',
+      email: body.studentEmail,
+      studentId: body.studentId,
+      docKey: body.docKey,
+      outcome: 'error',
+      error: (e as Error).message,
+      req,
+    })
     return withCors(NextResponse.json({ error: 'Server error.' }, { status: 500 }), origin)
   }
 }
