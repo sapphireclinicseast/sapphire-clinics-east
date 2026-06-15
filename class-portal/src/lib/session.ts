@@ -1430,6 +1430,116 @@ export function notificationsForTeacher(teacherEmail: string): NotificationRecor
 }
 
 /* ─────────────────────────────────────────────────────────────────
+   Server-backed school announcements (with optional poster image)
+   The legacy NotificationRecord/localStorage helpers above are kept
+   for back-compat with code paths that still reference them; the
+   NotificationPanel UI now uses these server-backed helpers.
+   ───────────────────────────────────────────────────────────── */
+
+export interface AnnouncementRecord {
+  id: string
+  title: string
+  body: string
+  levels: EnrollmentLevel[]
+  includeTeachers: boolean
+  authorRole: NotifAuthor
+  authorEmail: string
+  authorName: string
+  /** True when there's a server-side poster image. Bytes are NOT
+   *  shipped here — fetch via /announcements/{id}/poster on demand. */
+  hasPoster: boolean
+  posterFileName: string | null
+  posterFileType: string | null
+  posterFileSize: number | null
+  createdAt: string
+}
+
+/** Pull the full list visible to the caller — server applies the
+ *  role-based filter; the client just renders what comes back. */
+export async function listAnnouncements(): Promise<AnnouncementRecord[]> {
+  if (typeof window === 'undefined') return []
+  if (!getToken()) return []
+  try {
+    const { announcements } = await backendJson<{ announcements: AnnouncementRecord[] }>(
+      '/api/public/class-portal/announcements',
+    )
+    return announcements
+  } catch (e) {
+    console.warn('[listAnnouncements]', e)
+    return []
+  }
+}
+
+/** Create one. `poster` is the optional File picked in the composer. */
+export async function createAnnouncement(args: {
+  title: string
+  body: string
+  levels: EnrollmentLevel[]
+  includeTeachers: boolean
+  authorName: string
+  poster?: File | null
+}): Promise<AnnouncementRecord | null> {
+  if (typeof window === 'undefined') return null
+  if (!getToken()) return null
+  try {
+    const fd = new FormData()
+    fd.append('title', args.title)
+    fd.append('body', args.body)
+    fd.append('levels', JSON.stringify(args.levels))
+    fd.append('includeTeachers', args.includeTeachers ? 'true' : 'false')
+    fd.append('authorName', args.authorName)
+    if (args.poster) fd.append('poster', args.poster)
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/announcements`, {
+      method: 'POST', body: fd,
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) {
+      let body = ''
+      try { body = await res.text() } catch { /* ignore */ }
+      console.warn(`[createAnnouncement] ${res.status} ${body.slice(0, 200)}`)
+      return null
+    }
+    const j = await res.json() as { announcement: AnnouncementRecord }
+    return j.announcement
+  } catch (e) {
+    console.warn('[createAnnouncement]', e)
+    return null
+  }
+}
+
+export async function deleteAnnouncementServer(id: string): Promise<boolean> {
+  if (typeof window === 'undefined') return false
+  if (!getToken()) return false
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/announcements/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    return res.ok
+  } catch (e) {
+    console.warn('[deleteAnnouncementServer]', e)
+    return false
+  }
+}
+
+/** Fetch a poster image blob for inline display. Returns null if the
+ *  announcement has no poster (HTTP 404) or any other failure. */
+export async function fetchAnnouncementPosterBlob(id: string): Promise<Blob | null> {
+  if (typeof window === 'undefined') return null
+  if (!getToken()) return null
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/announcements/${encodeURIComponent(id)}/poster`, {
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) return null
+    return await res.blob()
+  } catch { return null }
+}
+
+/* ─────────────────────────────────────────────────────────────────
    Grades — per-student quarterly averages + proof doc reference
    ───────────────────────────────────────────────────────────── */
 
