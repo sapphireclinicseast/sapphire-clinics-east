@@ -4,6 +4,17 @@ import { prisma } from '@/lib/prisma'
 
 const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
+const MARKETING_HUB_URL = process.env.MARKETING_HUB_URL || 'https://marketing.sapphireclinicseast.org'
+const EXTERNAL_API_KEY = process.env.EXTERNAL_API_KEY || ''
+
+// Whole-years age at a given date.
+function ageYearsAt(dob: Date, at: Date): number {
+  let age = at.getFullYear() - dob.getFullYear()
+  const m = at.getMonth() - dob.getMonth()
+  if (m < 0 || (m === 0 && at.getDate() < dob.getDate())) age--
+  return age
+}
+
 const PAYMENT_LABELS: Record<string, string> = {
   CASH: 'Cash', GCASH: 'GCash', PAYMAYA: 'PayMaya', PAYMONGO: 'PayMongo', DEBIT: 'Debit Card',
   CREDIT_CARD: 'Credit Card', VIP_CARD: 'VIP Card', PREPAID_CARD: 'Prepaid Card',
@@ -48,6 +59,8 @@ export async function GET(req: Request) {
       select: {
         subtotal: true,
         netAmount: true,
+        patientId: true,
+        transactionDate: true,
         items: {
           select: {
             lineTotal: true,
@@ -59,13 +72,40 @@ export async function GET(req: Request) {
       },
     })
 
+    // Patient DOB map from the marketing hub (for age-at-order classification). One bulk
+    // fetch of the full patient list; degrades gracefully (Unknown bucket) if unavailable.
+    const dobById = new Map<string, Date>()
+    let ageDataAvailable = true
+    try {
+      const res = await fetch(`${MARKETING_HUB_URL}/api/patients/external`, {
+        headers: { Authorization: `Bearer ${EXTERNAL_API_KEY}` },
+        cache: 'no-store',
+      })
+      if (res.ok) {
+        const data = await res.json()
+        for (const p of (data.patients || []) as { id?: string; dob?: string }[]) {
+          if (p.id && p.dob) dobById.set(p.id, new Date(p.dob))
+        }
+      } else { ageDataAvailable = false }
+    } catch { ageDataAvailable = false }
+
     let grossSales = 0, netSales = 0
     const deptGross = new Map<string, number>()
     const payAmt = new Map<string, number>()
+    const accGross = { pediatric: 0, adult: 0, unknown: 0 }
+    const accNet = { pediatric: 0, adult: 0, unknown: 0 }
 
     for (const o of orders) {
-      grossSales += Number(o.subtotal)
-      netSales += Number(o.netAmount)
+      const g = Number(o.subtotal), n = Number(o.netAmount)
+      grossSales += g
+      netSales += n
+      // Age-at-order bucket
+      const dob = o.patientId ? dobById.get(o.patientId) : undefined
+      const bucket: 'pediatric' | 'adult' | 'unknown' = dob
+        ? (ageYearsAt(dob, new Date(o.transactionDate)) >= 18 ? 'adult' : 'pediatric')
+        : 'unknown'
+      accGross[bucket] += g
+      accNet[bucket] += n
       for (const it of o.items) {
         const dept = it.service?.department || it.inventoryItem?.skuDepartment || 'OTHER'
         deptGross.set(dept, (deptGross.get(dept) || 0) + Number(it.lineTotal))
@@ -110,12 +150,25 @@ export async function GET(req: Request) {
       amount: round2(w.amount), pct: pct(w.amount, totalUnearned),
     })).sort((a, b) => b.amount - a.amount)
 
+    // Age-at-order breakdown (Pediatric 0–17, Adult 18+, Unknown = no matched patient/DOB)
+    const ageRows = (acc: { pediatric: number; adult: number; unknown: number }) => {
+      const total = acc.pediatric + acc.adult + acc.unknown
+      return [
+        { key: 'pediatric', label: 'Pediatric (0–17)', amount: round2(acc.pediatric), pct: pct(acc.pediatric, total) },
+        { key: 'adult', label: 'Adult (18+)', amount: round2(acc.adult), pct: pct(acc.adult, total) },
+        { key: 'unknown', label: 'Unknown (no patient / DOB)', amount: round2(acc.unknown), pct: pct(acc.unknown, total) },
+      ]
+    }
+
     return NextResponse.json({
       summary: { grossSales: round2(grossSales), netSales: round2(netSales), orderCount: orders.length },
       byDepartment,
       byPayment,
       unearnedRevenue,
       totalUnearned: round2(totalUnearned),
+      ageGross: ageRows(accGross),
+      ageNet: ageRows(accNet),
+      ageDataAvailable,
     })
   } catch (err) {
     console.error('Sales analysis error:', err)

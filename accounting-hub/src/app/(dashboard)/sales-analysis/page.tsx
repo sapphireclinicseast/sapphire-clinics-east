@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
-import { TrendingUp, Filter, Loader2, BarChart3, Building2, CreditCard, Wallet, ChevronUp, ChevronDown } from 'lucide-react'
+import { TrendingUp, Filter, Loader2, BarChart3, Building2, CreditCard, Wallet, Users, ChevronUp, ChevronDown } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
 /* ── types ── */
@@ -13,6 +13,9 @@ interface AnalysisData {
   byPayment: { method: string; label: string; amount: number; pct: number }[]
   unearnedRevenue: { walletType: string; label: string; amount: number; pct: number }[]
   totalUnearned: number
+  ageGross: { key: string; label: string; amount: number; pct: number }[]
+  ageNet: { key: string; label: string; amount: number; pct: number }[]
+  ageDataAvailable: boolean
 }
 
 const BRANCHES = [
@@ -267,8 +270,39 @@ export default function SalesAnalysisPage() {
                 totalCols={{ amount: formatCurrency(data.totalUnearned), pct: '100.0%' }}
               />
             </Section>
+
+            {/* Gross Sales by Age */}
+            <Section icon={<Users size={16} />} title="Gross Sales by Age (at time of order)">
+              <SortableTable
+                rows={data.ageGross as unknown as Row[]}
+                initialKey="amount"
+                columns={[
+                  { key: 'label', label: 'Age Group' },
+                  { key: 'amount', label: 'Gross', align: 'right', numeric: true, fmt: moneyCol },
+                  { key: 'pct', label: '%', align: 'right', numeric: true, fmt: pctCol },
+                ]}
+                totalLabel="TOTAL"
+                totalCols={{ amount: formatCurrency(data.summary.grossSales), pct: '100.0%' }}
+              />
+            </Section>
+
+            {/* Net Sales by Age */}
+            <Section icon={<Users size={16} />} title="Net Sales by Age (at time of order)">
+              <SortableTable
+                rows={data.ageNet as unknown as Row[]}
+                initialKey="amount"
+                columns={[
+                  { key: 'label', label: 'Age Group' },
+                  { key: 'amount', label: 'Net', align: 'right', numeric: true, fmt: moneyCol },
+                  { key: 'pct', label: '%', align: 'right', numeric: true, fmt: pctCol },
+                ]}
+                totalLabel="TOTAL"
+                totalCols={{ amount: formatCurrency(data.summary.netSales), pct: '100.0%' }}
+              />
+            </Section>
           </div>
           <p className="text-[10px] mt-2" style={{ color: 'var(--mid-gray)' }}>Unearned revenue is a current wallet-balance snapshot (date range not applied); HMO &amp; GL wallets are excluded as they are Accounts Receivable.</p>
+          <p className="text-[10px] mt-1" style={{ color: 'var(--mid-gray)' }}>Age is computed from the patient&apos;s date of birth (marketing hub) at the order date. &quot;Unknown&quot; = orders with no linked patient or no recorded DOB (e.g. walk-in product sales).{!data.ageDataAvailable && ' ⚠ Patient data was unavailable — ages may be incomplete.'}</p>
         </>
       )}
     </div>
