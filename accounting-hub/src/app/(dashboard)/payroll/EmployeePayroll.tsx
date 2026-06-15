@@ -4434,7 +4434,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-50"
                 style={{ background: '#7c3aed' }}>
                 {emailingAll ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />}
-                {emailingAll ? 'Sending...' : 'Email All'}
+                {emailingAll ? 'Sending...' : 'Email All Employees'}
               </button>
             )}
             {payslips.length > 0 && (

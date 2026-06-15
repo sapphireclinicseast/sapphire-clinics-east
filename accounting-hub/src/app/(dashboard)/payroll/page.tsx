@@ -4004,7 +4004,7 @@ export default function PayrollPage() {
                       className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
                       style={{ background: '#c44b00' }}>
                       {emailingAll ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
-                      {emailingAll ? 'Sending...' : 'Email All'}
+                      {emailingAll ? 'Sending...' : 'Email All Consultants'}
                     </button>
                   )}
                 </div>
