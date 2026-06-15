@@ -48,7 +48,10 @@ export async function GET(req: Request) {
   const dateTo = searchParams.get('dateTo') || ''
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const where: any = { status: { in: ['COMPLETED', 'REOPENED'] } }
+  // EARNED only: exclude unearned-revenue orders (VIP cards, prepaid reloads, downpayments,
+  // packages, advances) — those are unearned revenue, reported in the Unearned Revenue table,
+  // not earned sales.
+  const where: any = { status: { in: ['COMPLETED', 'REOPENED'] }, revenueType: 'EARNED' }
   if (branch && branch !== 'ALL') where.branch = branch
   if (dateFrom) where.transactionDate = { ...where.transactionDate, gte: new Date(`${dateFrom}T00:00:00+08:00`) }
   if (dateTo) where.transactionDate = { ...where.transactionDate, lte: new Date(`${dateTo}T23:59:59.999+08:00`) }

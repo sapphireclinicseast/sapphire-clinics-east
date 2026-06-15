@@ -223,7 +223,7 @@ export default function SalesAnalysisPage() {
             <Kpi label="Gross Sales" value={formatCurrency(data.summary.grossSales)} sub={`${data.summary.orderCount.toLocaleString()} order${data.summary.orderCount !== 1 ? 's' : ''}`} />
             <Kpi label="Net Sales" value={formatCurrency(data.summary.netSales)} sub="Gross less discounts" accent />
           </div>
-          <p className="text-xs mb-6" style={{ color: 'var(--mid-gray)' }}>{dateFrom} to {dateTo}{branchLabel}. Excludes voided / returned orders.</p>
+          <p className="text-xs mb-6" style={{ color: 'var(--mid-gray)' }}>{dateFrom} to {dateTo}{branchLabel}. Earned sales only — excludes voided/returned and unearned-revenue orders (VIP cards, prepaid reloads, downpayments, packages, advances).</p>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* Per department */}
