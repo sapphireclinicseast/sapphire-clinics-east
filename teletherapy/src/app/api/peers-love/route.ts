@@ -11,19 +11,23 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Every staffId this person owns (interbranch), so feedback from any branch
-  // they work in shows up. Falls back to the primary staffId.
+  const isAdmin = session.user.role === 'ADMIN'
+
+  // Admins see ALL strengths (parity with "What Patients Love About You").
+  // Everyone else sees only their own — across every staffId they own
+  // (interbranch). Falls back to the primary staffId.
   const ownStaffIds = (session.user.branches ?? []).map((b) => b.staffId)
   if (ownStaffIds.length === 0 && session.user.staffId) ownStaffIds.push(session.user.staffId)
-
-  // Optional branch-switch param — must be one of the user's own staffIds.
   const requested = req.nextUrl.searchParams.get('staffId')
   const assesseeFilter =
     requested && ownStaffIds.includes(requested) ? [requested] : ownStaffIds
 
-  if (assesseeFilter.length === 0) {
+  if (!isAdmin && assesseeFilter.length === 0) {
     return NextResponse.json({ strengths: [] })
   }
+
+  // No assesseeId filter for admins → every entry.
+  const where: { assesseeId?: { in: string[] } } = isAdmin ? {} : { assesseeId: { in: assesseeFilter } }
 
   try {
     // @ts-ignore — PeerEvalResponse table is owned by the Marketing Hub
@@ -33,7 +37,7 @@ export async function GET(req: NextRequest) {
     // makes Prisma throw on deserialization and the whole query fails (→ no
     // strengths shown — the exact bug this fixes). We only need the text.
     const responses = await prisma.peerEvalResponse.findMany({
-      where: { assesseeId: { in: assesseeFilter } },
+      where,
       select: { id: true, strengths: true, branch: true, submittedAt: true },
       orderBy: { submittedAt: 'desc' },
       take: 200,
