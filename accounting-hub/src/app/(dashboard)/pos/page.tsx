@@ -4045,7 +4045,6 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     const expiry = new Date(created)
     expiry.setFullYear(expiry.getFullYear() + 3)
     const expStr = `${String(expiry.getMonth() + 1).padStart(2, '0')}/${String(expiry.getFullYear()).slice(-2)}`
-    const logoUrl = `${window.location.origin}/brand/sandbox-clinic-logo.png`
 
     // SCEI diamond mark logos (actual PNGs)
     const sceiMarkWhite = `${window.location.origin}/brand/scei-mark-white.png`
@@ -4105,37 +4104,62 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         </div>
       </div>`
     } else {
-      // PREPAID CARD LAYOUT (SCEI style)
-      frontHtml = `<div class="card" style="background:#FFF;border:1px solid #ddd">
-        <div style="padding:15px;display:flex;flex-direction:column;justify-content:space-between;width:100%;height:100%;box-sizing:border-box">
-          <img src="${logoUrl}" style="height:32px;object-fit:contain;align-self:flex-start" />
-          <div>
-            <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:#222;font-family:monospace;margin-bottom:6px">${cardNum}</div>
+      // PREPAID CARD LAYOUT — Aura Health Rehab Clinic. White (ink-saving) with brand-colour
+      // accents and an inline arch logo, designed to feel like a premium upgrade.
+      const DEEP = '#244952', TEAL = '#4A8073', PALE = '#EDF3D9', GOLD = '#C69849', CLAY = '#CF9D88'
+      // Aura arch mark (3 concentric bands), inline SVG so it stays crisp & recolourable.
+      const auraArch = (h: number) => `<svg height="${h}" viewBox="0 0 200 104" style="display:block">
+        <path d="M10,100 A90,90 0 0,1 190,100 L166,100 A66,66 0 0,0 34,100 Z" fill="#296354"/>
+        <path d="M40,100 A60,60 0 0,1 160,100 L140,100 A40,40 0 0,0 60,100 Z" fill="#8EAF74"/>
+        <path d="M66,100 A34,34 0 0,1 134,100 L116,100 A16,16 0 0,0 84,100 Z" fill="#6E8E8E"/>
+      </svg>`
+      frontHtml = `<div class="card" style="background:#FFFFFF;border:1px solid #e5e7eb;position:relative;overflow:hidden">
+        <div style="position:absolute;top:0;right:0;bottom:0;width:48%;background:linear-gradient(125deg, #FFFFFF 52%, ${PALE} 100%)"></div>
+        <div style="position:absolute;left:0;right:0;bottom:0;height:2.5px;background:linear-gradient(90deg, ${GOLD}, ${CLAY}, ${GOLD})"></div>
+        <div style="position:relative;padding:13px 16px;display:flex;flex-direction:column;justify-content:space-between;width:100%;height:100%;box-sizing:border-box">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div style="display:flex;align-items:center;gap:7px">
+              ${auraArch(26)}
+              <div style="line-height:1.1">
+                <div style="font-size:9px;font-weight:800;letter-spacing:1.5px;color:${DEEP};font-family:Arial,Helvetica,sans-serif">AURA HEALTH</div>
+                <div style="font-size:5.5px;font-weight:700;letter-spacing:3.5px;color:${TEAL};font-family:Arial,Helvetica,sans-serif">REHAB CLINIC</div>
+              </div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:6.5px;font-weight:800;letter-spacing:1.5px;color:${DEEP}">RELOADABLE</div>
+              <div style="font-size:12px;font-weight:900;letter-spacing:0.5px;color:${GOLD};font-family:Arial Black,Arial,sans-serif;line-height:1.05">PREPAID</div>
+              <div style="font-size:12px;font-weight:900;letter-spacing:0.5px;color:${GOLD};font-family:Arial Black,Arial,sans-serif;line-height:1.05">CARD</div>
+            </div>
+          </div>
+          <div style="position:relative">
+            <div style="font-size:13px;font-weight:700;letter-spacing:3px;color:${DEEP};font-family:'Courier New',monospace;margin-bottom:7px">${cardNum}</div>
             <div style="display:flex;justify-content:space-between;align-items:flex-end">
               <div>
-                <div style="font-size:6px;color:#E8641B;font-weight:700">EXP DATE</div>
-                <div style="font-size:9px;font-weight:600;color:#333;font-family:monospace">${expStr}</div>
-                <div style="font-size:8px;color:#E8641B;font-weight:700;margin-top:4px">${w.patientName}</div>
+                <div style="font-size:5px;color:${TEAL};font-weight:800;letter-spacing:1.5px">CARDHOLDER</div>
+                <div style="font-size:9px;font-weight:800;color:${DEEP};letter-spacing:0.3px">${w.patientName}</div>
               </div>
               <div style="text-align:right">
-                <div style="font-size:9px;font-weight:900;color:#222">RELOADABLE</div>
-                <div style="font-size:11px;font-weight:900;color:#E8641B">PREPAID</div>
-                <div style="font-size:11px;font-weight:900;color:#E8641B">CARD</div>
+                <div style="font-size:5px;color:${TEAL};font-weight:800;letter-spacing:1.5px">VALID THRU</div>
+                <div style="font-size:9px;font-weight:700;color:${DEEP};font-family:'Courier New',monospace">${expStr}</div>
               </div>
             </div>
           </div>
         </div>
       </div>`
-      backHtml = `<div class="card" style="background:#FFF;border:1px solid #ddd">
+      backHtml = `<div class="card" style="background:#FFFFFF;border:1px solid #e5e7eb;position:relative;overflow:hidden">
+        <div style="position:absolute;left:0;right:0;top:0;height:2.5px;background:linear-gradient(90deg, ${GOLD}, ${TEAL}, ${GOLD})"></div>
         <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;padding:12px;box-sizing:border-box;text-align:center">
-          <img src="${barcodeImg}" style="height:45px;max-width:240px;margin-bottom:6px" />
-          <div style="font-size:7px;font-weight:700;color:#E8641B;margin-bottom:4px">
+          <img src="${barcodeImg}" style="height:42px;max-width:240px;margin-bottom:6px" />
+          <div style="font-size:7px;font-weight:800;color:${DEEP};margin-bottom:4px">
             Thank you for choosing Aura Health Rehab Clinic<br/>for your health and rehabilitation needs!
           </div>
-          <div style="font-size:5.5px;color:#333;text-align:justify;padding:0 8px;margin-bottom:4px;line-height:1.4">
+          <div style="font-size:5.5px;color:#555;text-align:justify;padding:0 10px;margin-bottom:7px;line-height:1.45">
             Your reloadable card lets you earn points every time you avail of our services or purchase products. Simply present this card during each visit to collect points and redeem exclusive Aura Health Rehab Clinic rewards and merchandise.
           </div>
-          <img src="${logoUrl}" style="height:18px;object-fit:contain" />
+          <div style="display:flex;align-items:center;gap:5px">
+            ${auraArch(15)}
+            <div style="font-size:7px;font-weight:800;letter-spacing:1px;color:${DEEP}">AURA HEALTH REHAB CLINIC</div>
+          </div>
         </div>
       </div>`
     }
