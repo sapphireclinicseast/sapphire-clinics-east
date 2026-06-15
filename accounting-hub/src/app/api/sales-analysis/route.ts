@@ -60,6 +60,7 @@ export async function GET(req: Request) {
         subtotal: true,
         netAmount: true,
         patientId: true,
+        patientName: true,
         transactionDate: true,
         items: {
           select: {
@@ -72,9 +73,12 @@ export async function GET(req: Request) {
       },
     })
 
-    // Patient DOB map from the marketing hub (for age-at-order classification). One bulk
-    // fetch of the full patient list; degrades gracefully (Unknown bucket) if unavailable.
+    // Patient DOB maps from the marketing-hub Patient CRM (for age-at-order classification).
+    // One bulk fetch of the full patient list; matched to orders by patientId first, then by
+    // name (Patient CRM birthdate) as the user requested. Degrades gracefully if unavailable.
+    const normName = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ')
     const dobById = new Map<string, Date>()
+    const dobByName = new Map<string, Date>()
     let ageDataAvailable = true
     try {
       const res = await fetch(`${MARKETING_HUB_URL}/api/patients/external`, {
@@ -83,8 +87,12 @@ export async function GET(req: Request) {
       })
       if (res.ok) {
         const data = await res.json()
-        for (const p of (data.patients || []) as { id?: string; dob?: string }[]) {
-          if (p.id && p.dob) dobById.set(p.id, new Date(p.dob))
+        for (const p of (data.patients || []) as { id?: string; firstName?: string; lastName?: string; dob?: string }[]) {
+          if (!p.dob) continue
+          const d = new Date(p.dob)
+          if (p.id) dobById.set(p.id, d)
+          const nm = normName(`${p.firstName || ''} ${p.lastName || ''}`)
+          if (nm && !dobByName.has(nm)) dobByName.set(nm, d) // first match wins on rare name collisions
         }
       } else { ageDataAvailable = false }
     } catch { ageDataAvailable = false }
@@ -99,8 +107,9 @@ export async function GET(req: Request) {
       const g = Number(o.subtotal), n = Number(o.netAmount)
       grossSales += g
       netSales += n
-      // Age-at-order bucket
-      const dob = o.patientId ? dobById.get(o.patientId) : undefined
+      // Age-at-order bucket — match by patientId first, then by patient name (Patient CRM)
+      const dob = (o.patientId ? dobById.get(o.patientId) : undefined)
+        || (o.patientName ? dobByName.get(normName(o.patientName)) : undefined)
       const bucket: 'pediatric' | 'adult' | 'unknown' = dob
         ? (ageYearsAt(dob, new Date(o.transactionDate)) >= 18 ? 'adult' : 'pediatric')
         : 'unknown'
