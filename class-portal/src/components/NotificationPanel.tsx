@@ -328,12 +328,21 @@ function AnnouncementModal({ announcement: a, viewer, onClose, onDelete }: {
     || (viewer.role === 'TEACHER' && a.authorEmail === viewer.email)
 
   return (
+    // Lighter, non-blurred backdrop. The previous bg-black/40 +
+    // backdrop-blur-sm fought the modal for attention and made the
+    // poster image and surrounding body text feel cramped. A very
+    // soft tint is enough to signal "modal on top" without competing.
     <div
-      className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm overflow-y-auto p-2 sm:p-4"
+      className="fixed inset-0 z-50 bg-black/15 overflow-y-auto p-2 sm:p-4"
       onClick={onClose}
     >
+      {/* max-w-5xl gives posters real breathing room on tablet + desktop.
+          When a poster is attached we render poster + body side-by-side
+          so the parent can read the message without scrolling past the
+          image — the old layout stacked them vertically, which forced
+          a scroll the moment the poster was larger than ~half-viewport. */}
       <div
-        className="max-w-2xl mx-auto my-2 sm:my-4 card-static"
+        className="max-w-5xl mx-auto my-2 sm:my-4 card-static"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3 mb-3">
@@ -346,7 +355,7 @@ function AnnouncementModal({ announcement: a, viewer, onClose, onDelete }: {
               {a.authorName} · <span className="uppercase tracking-[0.08em]">{a.authorRole}</span> · {new Date(a.createdAt).toLocaleString()}
             </div>
           </div>
-          <button className="btn-secondary text-xs" onClick={onClose}>Close</button>
+          <button className="btn-secondary text-xs whitespace-nowrap" onClick={onClose}>Close</button>
         </div>
 
         <div className="flex flex-wrap gap-1.5 mb-4">
@@ -357,20 +366,29 @@ function AnnouncementModal({ announcement: a, viewer, onClose, onDelete }: {
           {a.includeTeachers && <span className="badge badge-pending">+ Teachers</span>}
         </div>
 
-        {a.hasPoster && (
-          <div className="mb-4 rounded-xl overflow-hidden border" style={{ borderColor: 'var(--paper-3)' }}>
-            {posterUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={posterUrl} alt={a.posterFileName ?? 'Poster'} className="w-full h-auto block" />
-            ) : (
-              <div className="aspect-[16/9] flex items-center justify-center text-[12px] text-[color:var(--mid-gray)]">
-                Loading poster…
-              </div>
-            )}
-          </div>
-        )}
+        <div className={`grid gap-5 ${a.hasPoster ? 'md:grid-cols-2' : ''}`}>
+          {a.hasPoster && (
+            <div className="rounded-xl overflow-hidden border self-start" style={{ borderColor: 'var(--paper-3)' }}>
+              {posterUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={posterUrl}
+                  alt={a.posterFileName ?? 'Poster'}
+                  // Cap the poster height so the body text is always
+                  // visible next to it. object-contain preserves the
+                  // aspect ratio even on tall portrait posters.
+                  className="w-full h-auto block max-h-[75vh] object-contain bg-[color:var(--paper-2)]"
+                />
+              ) : (
+                <div className="aspect-[16/9] flex items-center justify-center text-[12px] text-[color:var(--mid-gray)]">
+                  Loading poster…
+                </div>
+              )}
+            </div>
+          )}
 
-        <p className="text-[14px] text-[color:var(--ink)] whitespace-pre-wrap leading-relaxed">{a.body}</p>
+          <p className="text-[14.5px] text-[color:var(--ink)] whitespace-pre-wrap leading-relaxed">{a.body}</p>
+        </div>
 
         {canDelete && (
           <div className="mt-5 pt-4 border-t flex justify-end" style={{ borderColor: 'var(--paper-3)' }}>
