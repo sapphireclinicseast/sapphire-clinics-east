@@ -336,17 +336,13 @@ function AnnouncementModal({ announcement: a, viewer, onClose, onDelete }: {
       className="fixed inset-0 z-50 bg-black/15 overflow-y-auto p-2 sm:p-4"
       onClick={onClose}
     >
-      {/* Modal fills 95vw on any screen with a 1600px cap so very wide
-          monitors don't end up with absurd line lengths. The wrapper's
-          padding already gives the breathing margin; we used to layer
-          max-w-5xl on top of that which left a third of the viewport
-          empty on typical laptop + 4K displays.
-          When a poster is attached we render poster + body side-by-side
-          so the parent can read the message without scrolling past the
-          image — the old layout stacked them vertically, which forced
-          a scroll the moment the poster was larger than ~half-viewport. */}
+      {/* No max-width cap — the modal fills the entire viewport minus
+          the wrapper's small padding. When a poster is attached we
+          render poster + body side-by-side so the message text is
+          visible immediately next to the image, no scroll needed for
+          most content. */}
       <div
-        className="w-[95vw] max-w-[1600px] mx-auto my-2 sm:my-4 card-static"
+        className="w-full mx-auto my-2 sm:my-4 card-static"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3 mb-3">
