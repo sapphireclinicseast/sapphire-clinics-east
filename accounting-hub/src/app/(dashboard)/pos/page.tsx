@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react'
 import {
   ShoppingCart, Search, Plus, X, Trash2, ChevronDown, ChevronUp,
   CreditCard, Wallet, FileText, Download, Printer,
-  RefreshCw, Ban, Star, Filter,
+  RefreshCw, Ban, Star, Filter, Undo2,
   Loader2, AlertCircle, ScanLine, UserPlus,
   Pencil, PlusCircle, ToggleLeft, ToggleRight, Eye, CheckCircle, Gift,
   Globe, Truck, Phone, MapPin, Package, Clock,
@@ -87,6 +87,7 @@ interface Order {
   referenceNumber?: string | null
   notes?: string | null
   status: string
+  returnedByBuyer?: boolean
   items: { id: string; name: string; quantity: number; unitPrice: string | number; lineTotal: string | number; serviceId?: string; inventoryItemId?: string; service?: { department?: string; revenueType?: string } | null }[]
   payments: { id: string; method: string; amount: string | number; walletId?: string; reference?: string }[]
   arPaymentItems?: { paymentId: string }[]
@@ -2518,7 +2519,7 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
 
   useEffect(() => { fetchOrders() }, [fetchOrders])
 
-  const handleAction = async (id: string, action: 'reopen' | 'void') => {
+  const handleAction = async (id: string, action: 'reopen' | 'void' | 'returnByBuyer') => {
     if (action === 'void') {
       const reason = window.prompt('Reason for voiding this order:')
       if (!reason) return
@@ -2526,6 +2527,13 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, reason }),
+      })
+    } else if (action === 'returnByBuyer') {
+      if (!window.confirm('Mark this order as RETURNED BY BUYER?\n\nThis restocks the returned product(s) into inventory (with a "RETURNED BY BUYER" reference) and reverses the sale.')) return
+      await fetch(`/api/pos/orders/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
       })
     } else {
       await fetch(`/api/pos/orders/${id}`, {
@@ -2782,8 +2790,8 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                       {o.payments.map(p => p.method).join(', ')}
                     </td>
                     <td className="px-4 py-3">
-                      <span className="px-2 py-1 rounded-full text-xs font-semibold" style={{ background: badge.bg, color: badge.color }}>
-                        {o.status}
+                      <span className="px-2 py-1 rounded-full text-xs font-semibold" style={{ background: o.returnedByBuyer ? '#d1fae5' : badge.bg, color: o.returnedByBuyer ? '#065f46' : badge.color }}>
+                        {o.returnedByBuyer ? 'RETURNED' : o.status}
                       </span>
                     </td>
                     <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
@@ -2811,6 +2819,11 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                             <button onClick={() => openEditOrder(o)} className="p-1.5 rounded-lg hover:bg-blue-50" title="Edit">
                               <FileText size={13} className="text-blue-600" />
                             </button>
+                            {o.orderType === 'PRODUCT' && (
+                              <button onClick={() => handleAction(o.id, 'returnByBuyer')} className="p-1.5 rounded-lg hover:bg-emerald-50" title="Returned by Buyer (restock)">
+                                <Undo2 size={13} className="text-emerald-600" />
+                              </button>
+                            )}
                             <button onClick={() => handleAction(o.id, 'void')} className="p-1.5 rounded-lg hover:bg-red-50" title="Void">
                               <Ban size={13} className="text-red-500" />
                             </button>

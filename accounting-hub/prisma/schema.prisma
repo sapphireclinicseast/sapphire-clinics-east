@@ -642,6 +642,7 @@ model Order {
   arProofUrl             String?  // Per-transaction AR proof attachment (PDF or image)
   arCustomDate           DateTime? // Manually overridden transaction date for AR Invoice / SOA
   status          OrderStatus @default(COMPLETED)
+  returnedByBuyer Boolean     @default(false) // product order returned by buyer (stock restocked, sale reversed)
   transactionDate DateTime
   createdById     String
   createdBy       User        @relation("OrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)

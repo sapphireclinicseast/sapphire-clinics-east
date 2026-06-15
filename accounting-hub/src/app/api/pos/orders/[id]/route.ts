@@ -65,18 +65,20 @@ export async function PUT(
       return NextResponse.json({ error: 'Order not found' }, { status: 404 })
     }
 
-    // Handle status change actions (reopen / void)
-    if (body.action === 'reopen' || body.action === 'void') {
+    // Handle status change actions (reopen / void / returnByBuyer)
+    if (body.action === 'reopen' || body.action === 'void' || body.action === 'returnByBuyer') {
+      const isReturn = body.action === 'returnByBuyer'
+      // A buyer return reverses the sale (VOIDED) and is also flagged returnedByBuyer.
       const newStatus = body.action === 'reopen' ? 'REOPENED' : 'VOIDED'
 
       const updated = await prisma.order.update({
         where: { id },
-        data: { status: newStatus },
+        data: { status: newStatus, ...(isReturn ? { returnedByBuyer: true } : {}) },
         include: { items: true, payments: true },
       })
 
-      // When voiding, reverse ALL wallet changes
-      if (body.action === 'void') {
+      // When voiding or returning, reverse ALL wallet changes
+      if (body.action === 'void' || isReturn) {
         for (const p of updated.payments) {
           if (!p.walletId) continue
           // Allow PACKAGE through even at amount=0 — session still needs to be restored
@@ -214,6 +216,54 @@ export async function PUT(
             await prisma.journalEntry.deleteMany({
               where: { referenceType: 'FREE_SAMPLE', referenceId: orderItem.id },
             })
+          }
+        }
+      }
+
+      // ── Returned by buyer: restock each product line via an INCREASE inventory
+      //    adjustment so it appears in the item's Qty history with a clear reference.
+      //    (Uses the adjustment mechanism, NOT restoreFifoLots — that would double-restock.)
+      if (isReturn && updated.orderType === 'PRODUCT') {
+        const refLabel = `Order #${updated.orderNumber} RETURNED BY BUYER · ${updated.branch}`
+        const restock = async (itemId: string, addQty: number, unitCost: number | null) => {
+          const it = await prisma.inventoryItem.findUnique({ where: { id: itemId } })
+          if (!it || addQty <= 0) return
+          const prev = it.quantity
+          const next = prev + addQty
+          await prisma.inventoryAdjustment.create({
+            data: {
+              itemId,
+              type: 'INCREASE',
+              quantityChange: addQty,
+              remainingQuantity: addQty,
+              previousQuantity: prev,
+              newQuantity: next,
+              adjustmentDate: new Date(),
+              remarks: refLabel,
+              adjustedById: session.user.id,
+              ...(unitCost && unitCost > 0 ? { localCost: unitCost, totalLandedCost: unitCost * addQty } : {}),
+            },
+          })
+          await prisma.inventoryItem.update({ where: { id: itemId }, data: { quantity: next } })
+          const newCost = await recalcWeightedUnitCost(prisma, itemId)
+          if (newCost > 0) await prisma.inventoryItem.update({ where: { id: itemId }, data: { unitCost: newCost } })
+        }
+        for (const orderItem of updated.items) {
+          if (!orderItem.inventoryItemId || orderItem.isFreeSample) continue
+          const invItem = await prisma.inventoryItem.findUnique({
+            where: { id: orderItem.inventoryItemId },
+            include: { bundleComponents: true },
+          })
+          if (!invItem) continue
+          const qty = orderItem.quantity
+          const perUnitCost = orderItem.cogsCost && qty > 0 ? Number(orderItem.cogsCost) / qty : null
+          if (invItem.isBundle && invItem.bundleComponents.length > 0) {
+            for (const bc of invItem.bundleComponents) await restock(bc.componentId, bc.quantity * qty, null)
+          } else {
+            await restock(orderItem.inventoryItemId, qty, perUnitCost)
+            if (orderItem.variantId) {
+              await prisma.inventoryVariant.update({ where: { id: orderItem.variantId }, data: { quantity: { increment: qty } } })
+            }
           }
         }
       }
