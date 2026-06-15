@@ -240,7 +240,8 @@ model Schedule {
 enum PeerEvalType {
   HR08_ADMIN
   HR08_PEER
-  HR09
+  HR09_CLINICAL
+  HR09_ADMIN
 }
 
 model PeerEvalResponse {

@@ -27,19 +27,23 @@ export async function GET(req: NextRequest) {
 
   try {
     // @ts-ignore — PeerEvalResponse table is owned by the Marketing Hub
+    // NOTE: do NOT select `formType` — it's a Postgres enum OWNED by the
+    // Marketing Hub (HR08_ADMIN / HR08_PEER / HR09_CLINICAL / HR09_ADMIN). If
+    // that enum gains a value our generated client doesn't know, selecting it
+    // makes Prisma throw on deserialization and the whole query fails (→ no
+    // strengths shown — the exact bug this fixes). We only need the text.
     const responses = await prisma.peerEvalResponse.findMany({
       where: { assesseeId: { in: assesseeFilter } },
-      select: { id: true, strengths: true, formType: true, branch: true, submittedAt: true },
+      select: { id: true, strengths: true, branch: true, submittedAt: true },
       orderBy: { submittedAt: 'desc' },
       take: 200,
     })
 
     const strengths = responses
       .filter((r: { strengths: string | null }) => typeof r.strengths === 'string' && r.strengths.trim().length > 3)
-      .map((r: { id: string; strengths: string | null; formType: string; branch: string; submittedAt: Date }) => ({
+      .map((r: { id: string; strengths: string | null; branch: string; submittedAt: Date }) => ({
         id: r.id,
         text: (r.strengths as string).trim(),
-        formType: r.formType,
         branch: r.branch,
         submittedAt: r.submittedAt,
       }))

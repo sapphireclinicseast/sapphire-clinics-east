@@ -6,7 +6,6 @@ import { HeartHandshake, Loader2, MessageCircle, Sparkles, Info } from 'lucide-r
 interface StrengthItem {
   id: string
   text: string
-  formType: string
   branch: string
   submittedAt: string
 }
@@ -32,17 +31,11 @@ function cleanComment(s: string): string {
     .trim()
 }
 
-function SpeechBubble({ text, index, formType }: { text: string; index: number; formType: string }) {
+function SpeechBubble({ text, index }: { text: string; index: number }) {
   const style = BUBBLE_STYLES[index % BUBBLE_STYLES.length]
   const emoji = EMOJIS[index % EMOJIS.length]
   const rotation = [-2, 1, -1, 2, 0, -1.5, 1.5][index % 7]
   const cleanedText = cleanComment(text)
-
-  const typeLabel: Record<string, string> = {
-    HR08_ADMIN: 'Supervisor Review',
-    HR08_PEER: 'Peer',
-    HR09: 'Colleague',
-  }
 
   return (
     <div className="relative animate-fade-up" style={{ transform: `rotate(${rotation}deg)`, animationDelay: `${index * 80}ms` }}>
@@ -54,7 +47,7 @@ function SpeechBubble({ text, index, formType }: { text: string; index: number; 
         </p>
         <div className="flex items-center justify-between mt-3 pt-3 border-t border-dashed border-current opacity-50">
           <span className={`${style.text} text-[11px] font-semibold`}>— A Colleague</span>
-          <span className={`${style.text} text-[10px] opacity-70`}>{typeLabel[formType] ?? 'Peer Evaluation'}</span>
+          <span className={`${style.text} text-[10px] opacity-70`}>Peer Evaluation</span>
         </div>
         <div className={`absolute ${style.tail} border-b-2 border-r-2 w-4 h-4 -bottom-2 left-8`} style={{ transform: 'rotate(45deg)' }} />
       </div>
@@ -125,7 +118,7 @@ export default function PeersLovePage() {
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
             {strengths.map((s, i) => (
-              <SpeechBubble key={s.id} text={s.text} index={i} formType={s.formType} />
+              <SpeechBubble key={s.id} text={s.text} index={i} />
             ))}
           </div>
           <div className="text-center mb-4">
