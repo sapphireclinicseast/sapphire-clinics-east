@@ -932,7 +932,7 @@ function BalanceSheet({ data, viewMode, onDrillDown }: { data: ReportData; viewM
    INCOME STATEMENT
    ═══════════════════════════════════════════════════════════════ */
 
-function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; viewMode: ViewMode; onDrillDown: OnDrillDown }) {
+function IncomeStatement({ data, viewMode, onDrillDown, revenueOnly = false }: { data: ReportData; viewMode: ViewMode; onDrillDown: OnDrillDown; revenueOnly?: boolean }) {
   const { monthly, accounts } = data
   const [col, setCol] = useState<Record<string, boolean>>({})
   const tog = (k: string) => setCol(p => ({ ...p, [k]: !p[k] }))
@@ -1157,6 +1157,8 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
         total={effectiveGrossRevenue} bold isTotal
         onClickCell={(m) => onDrillDown('Total Gross Revenue', 'REVENUE', m ?? 0)} />
 
+      {/* Med-rep view stops at Total Gross Revenue — everything below is hidden for them */}
+      {!revenueOnly && (<>
       {/* 7002 DISCOUNTS AND REFUNDS */}
       <SectionHeader label="7002 Discounts and Refunds" collapsed={!!col['disc']} onToggle={() => tog('disc')} />
       {!col['disc'] && discountAccts.map((a) => {
@@ -1275,6 +1277,7 @@ function IncomeStatement({ data, viewMode, onDrillDown }: { data: ReportData; vi
           return netSalesForMonth(m) - m.cogs - directExpForMonth(m) - indirectExpForMonth(m) - (depByMonth[i + 1] || 0)
         })}
         total={netIncome} isGrandTotal />
+      </>)}
     </div>
   )
 }
@@ -1542,6 +1545,14 @@ export default function ReportsPage() {
     setDrillDown({ label, category, month, accountKey })
   }
 
+  // Med-rep: read-only, Income Statement / monthly / gross-revenue only, no drill-down. Branch
+  // filter still applies. These "effective" values override the (hidden) tab/view controls.
+  const role = (session?.user as { role?: string })?.role || ''
+  const isMedrep = role === 'MEDREP'
+  const effTab: ReportTab = isMedrep ? 'income-statement' : activeTab
+  const effView: ViewMode = isMedrep ? 'monthly' : viewMode
+  const effDrill: OnDrillDown = isMedrep ? () => {} : handleDrillDown
+
   const currentYear = new Date().getFullYear()
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i)
 
@@ -1742,7 +1753,7 @@ export default function ReportsPage() {
             Generate and review financial statements for Sapphire Clinics East Incorporated
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2" style={{ display: isMedrep ? 'none' : undefined }}>
           <button
             onClick={handleDownloadCSV}
             disabled={!data}
@@ -1764,6 +1775,7 @@ export default function ReportsPage() {
       </div>
 
       {/* ── Tab Navigation ─────────────────────────────────────── */}
+      {!isMedrep && (
       <div className="flex gap-1 mb-4 p-1 rounded-xl print:hidden" style={{ background: 'var(--light-gray)' }}>
         {TABS.map((tab) => {
           const Icon = tab.icon
@@ -1786,6 +1798,7 @@ export default function ReportsPage() {
           )
         })}
       </div>
+      )}
 
       {/* ── Filters ────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-3 mb-5 print:hidden">
@@ -1808,6 +1821,7 @@ export default function ReportsPage() {
         </div>
 
         {/* View Mode */}
+        {!isMedrep && (
         <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
           {(['annual', 'monthly'] as ViewMode[]).map((mode) => (
             <button
@@ -1823,6 +1837,7 @@ export default function ReportsPage() {
             </button>
           ))}
         </div>
+        )}
 
         {/* Branch */}
         <div className="flex items-center gap-2">
@@ -1878,14 +1893,14 @@ export default function ReportsPage() {
         {/* Report content */}
         {!loading && data && (
           <div className="py-2">
-            {activeTab === 'balance-sheet' && (
-              <BalanceSheet data={data} viewMode={viewMode} onDrillDown={handleDrillDown} />
+            {effTab === 'balance-sheet' && (
+              <BalanceSheet data={data} viewMode={effView} onDrillDown={effDrill} />
             )}
-            {activeTab === 'income-statement' && (
-              <IncomeStatement data={data} viewMode={viewMode} onDrillDown={handleDrillDown} />
+            {effTab === 'income-statement' && (
+              <IncomeStatement data={data} viewMode={effView} onDrillDown={effDrill} revenueOnly={isMedrep} />
             )}
-            {activeTab === 'cash-flow' && (
-              <CashFlowStatement data={data} viewMode={viewMode} onDrillDown={handleDrillDown} />
+            {effTab === 'cash-flow' && (
+              <CashFlowStatement data={data} viewMode={effView} onDrillDown={effDrill} />
             )}
           </div>
         )}
@@ -1914,7 +1929,7 @@ export default function ReportsPage() {
         @media print {
           body { background: white !important; }
           .print\\:hidden { display: none !important; }
-          @page { margin: 0.75in; size: ${viewMode === 'monthly' ? 'landscape' : 'portrait'}; }
+          @page { margin: 0.75in; size: ${effView === 'monthly' ? 'landscape' : 'portrait'}; }
         }
       `}</style>
     </div>
