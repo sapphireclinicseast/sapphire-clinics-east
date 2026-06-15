@@ -133,13 +133,15 @@ export async function POST(req: NextRequest) {
   const html = buildBirthdayEmailHtml(patient.firstName, clinicName)
 
   const subjectText = `Happy Birthday, ${patient.firstName}! — ${clinicName}`
-  // RFC 2047 encoded-word so non-ASCII/emoji in Subject is safe
-  const subjectEncoded = `=?UTF-8?B?${Buffer.from(subjectText, 'utf-8').toString('base64')}?=`
+  // RFC 2047 encoded-word so non-ASCII/emoji in Subject and From display name render correctly
+  const encode2047 = (s: string) => `=?UTF-8?B?${Buffer.from(s, 'utf-8').toString('base64')}?=`
+  const subjectEncoded = encode2047(subjectText)
+  const fromNameEncoded = encode2047(clinicName)
   // Base64-encode the HTML body to avoid encoding issues with emojis
   const bodyBase64 = Buffer.from(html, 'utf-8').toString('base64')
 
   const rawLines = [
-    `From: ${clinicName} <${senderEmail}>`,
+    `From: ${fromNameEncoded} <${senderEmail}>`,
     `To: ${patient.email}`,
     `Subject: ${subjectEncoded}`,
     'MIME-Version: 1.0',
