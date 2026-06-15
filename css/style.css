@@ -1150,6 +1150,35 @@ a.hero-brand-chip:hover {
 .verdana-banner p { opacity: .8; font-size: 15px; line-height: 1.6; }
 .verdana-banner .btn { margin-top: 16px; }
 
+/* ── DepEd-ACCREDITED SPED CLASSES (Aura Academy) ──────────────── */
+.sped-section { padding: 8px 24px 8px; }
+.sped-banner {
+  background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+  border-radius: var(--radius); padding: 32px;
+  color: #fff;
+  display: flex; align-items: center; gap: 24px;
+  position: relative; overflow: hidden;
+  transition: all var(--transition);
+}
+.sped-banner:hover { transform: translateY(-3px); box-shadow: var(--shadow-xl); }
+.sped-icon {
+  width: 150px; height: 96px; flex-shrink: 0;
+  background: #fff;
+  border-radius: 16px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 12px 16px;
+}
+.sped-icon img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+.sped-tag {
+  display: inline-block; margin-bottom: 8px;
+  font-size: 12px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
+  background: rgba(255,255,255,.18); color: #fff;
+  padding: 4px 12px; border-radius: 999px;
+}
+.sped-banner h3 { font-size: 22px; font-weight: 800; margin-bottom: 6px; }
+.sped-banner p { opacity: .85; font-size: 15px; line-height: 1.6; }
+.sped-banner .btn { margin-top: 16px; }
+
 /* ── FOOTER ────────────────────────────────────────────────────── */
 .footer {
   background: var(--primary-darker);
@@ -1226,6 +1255,7 @@ a.hero-brand-chip:hover {
   .hero-stat { min-width: 100px; padding: 16px 18px; }
   .hero-stat-num { font-size: 22px; }
   .verdana-banner { flex-direction: column; text-align: center; }
+  .sped-banner { flex-direction: column; text-align: center; }
   .footer-bottom { flex-direction: column; text-align: center; }
 }
 @media (max-width: 600px) {
