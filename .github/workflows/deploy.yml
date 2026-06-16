@@ -878,14 +878,14 @@ jobs:
             fi
 
             # ── Rotation ──
-            # Online: 30-day retention
-            find "$ONLINE_DIR" -name "sapphire_marketing_*.sql.gz*" -mtime +30 -delete 2>/dev/null || true
-            find "$ONLINE_DIR" -name "uploads_*.tar.gz*" -mtime +30 -delete 2>/dev/null || true
-            find "$MIRROR_DIR" -name "sapphire_marketing_*.sql.gz*" -mtime +30 -delete 2>/dev/null || true
-            find "$MIRROR_DIR" -name "uploads_*.tar.gz*" -mtime +30 -delete 2>/dev/null || true
+            # Local retention: 7 days (true off-site copies live in GitHub + Google Drive).
+            find "$ONLINE_DIR" -name "sapphire_marketing_*.sql.gz*" -mtime +7 -delete 2>/dev/null || true
+            find "$ONLINE_DIR" -name "uploads_*.tar.gz*" -mtime +7 -delete 2>/dev/null || true
+            find "$MIRROR_DIR" -name "sapphire_marketing_*.sql.gz*" -mtime +7 -delete 2>/dev/null || true
+            find "$MIRROR_DIR" -name "uploads_*.tar.gz*" -mtime +7 -delete 2>/dev/null || true
 
-            # Offline: 90-day retention (need to remove immutable bit first)
-            for f in $(find "$OFFLINE_DIR" -name "*.enc" -mtime +90 2>/dev/null); do
+            # Offline: 7-day retention (need to remove immutable bit first)
+            for f in $(find "$OFFLINE_DIR" -name "*.enc" -mtime +7 2>/dev/null); do
               chattr -i "$f" 2>/dev/null || true
               rm -f "$f" "$f.sha256" 2>/dev/null || true
             done
@@ -929,9 +929,15 @@ jobs:
             echo "$NEW_CRON" | sed '/^$/d' | crontab -
             echo "✅ Backup cron jobs installed (daily 2 AM + hourly uploads mirror)"
 
-            # Run an immediate backup now
-            echo "→ Running immediate backup..."
-            /usr/local/bin/sapphire-db-backup.sh 2>&1
+            # Run an immediate backup only if the most recent one is >20h old, so
+            # frequent deploys don't pile up full backups (cron still runs daily 2 AM).
+            LATEST_BK=$(ls -t /var/backups/sapphire-db/uploads_*.tar.gz 2>/dev/null | head -1)
+            if [ -z "$LATEST_BK" ] || [ -n "$(find "$LATEST_BK" -mmin +1200 2>/dev/null)" ]; then
+              echo "→ Running immediate backup..."
+              /usr/local/bin/sapphire-db-backup.sh 2>&1
+            else
+              echo "→ Skipping immediate backup — a recent one (<20h) already exists."
+            fi
             echo "✅ Backup setup complete (encrypted permissions, SHA256 checksums, hourly mirror)."
 
       # ── 9. Configure UFW Firewall ──
