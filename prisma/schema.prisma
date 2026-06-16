@@ -1004,6 +1004,11 @@ model ClassPortalAnnouncement {
   posterFileType  String?
   posterFileSize  Int?
   posterFileData  Bytes?
+  /// Tracks who blasted this announcement to recipients' emails and when.
+  /// `emailedCount` is the number of successful sends. Null = never emailed.
+  emailedAt       DateTime?
+  emailedBy       String?
+  emailedCount    Int?
   createdAt       DateTime @default(now())
 
   @@index([createdAt])

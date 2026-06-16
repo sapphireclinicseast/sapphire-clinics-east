@@ -1451,7 +1451,23 @@ export interface AnnouncementRecord {
   posterFileName: string | null
   posterFileType: string | null
   posterFileSize: number | null
+  /** When the announcement was last blasted to recipients' emails.
+   *  Null if it has never been emailed. */
+  emailedAt: string | null
+  emailedBy: string | null
+  emailedCount: number | null
   createdAt: string
+}
+
+/** Result returned by the email-blast endpoint. */
+export interface AnnouncementEmailResult {
+  ok: boolean
+  sent: number
+  failed: number
+  errors: Array<{ email: string; error: string }>
+  emailedAt?: string
+  emailedBy?: string
+  note?: string
 }
 
 /** Pull the full list visible to the caller — server applies the
@@ -1521,6 +1537,34 @@ export async function deleteAnnouncementServer(id: string): Promise<boolean> {
   } catch (e) {
     console.warn('[deleteAnnouncementServer]', e)
     return false
+  }
+}
+
+/**
+ * Trigger the server-side blast that emails this announcement to every
+ * recipient (students in target levels + optionally teachers, scoped by
+ * branch for FRONTDESK). Returns the {sent, failed} summary so the UI
+ * can show how it went.
+ */
+export async function emailAnnouncement(id: string): Promise<AnnouncementEmailResult | null> {
+  if (typeof window === 'undefined') return null
+  if (!getToken()) return null
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/announcements/${encodeURIComponent(id)}/email`, {
+      method: 'POST',
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) {
+      let body = ''
+      try { body = await res.text() } catch { /* ignore */ }
+      console.warn(`[emailAnnouncement] ${res.status} ${body.slice(0, 200)}`)
+      return null
+    }
+    return await res.json() as AnnouncementEmailResult
+  } catch (e) {
+    console.warn('[emailAnnouncement]', e)
+    return null
   }
 }
 

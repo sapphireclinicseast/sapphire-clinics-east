@@ -41,6 +41,9 @@ export async function GET(req: Request) {
         posterFileName: true,
         posterFileType: true,
         posterFileSize: true,
+        emailedAt: true,
+        emailedBy: true,
+        emailedCount: true,
         createdAt: true,
       },
     })
@@ -78,6 +81,9 @@ export async function GET(req: Request) {
         posterFileName: r.posterFileName,
         posterFileType: r.posterFileType,
         posterFileSize: r.posterFileSize,
+        emailedAt: r.emailedAt ? (r.emailedAt instanceof Date ? r.emailedAt.toISOString() : String(r.emailedAt)) : null,
+        emailedBy: r.emailedBy ?? null,
+        emailedCount: r.emailedCount ?? null,
         createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
       })),
     }), origin)
