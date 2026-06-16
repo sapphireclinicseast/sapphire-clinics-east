@@ -102,11 +102,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const recipients = await prisma.classPortalUser.findMany({
       where,
-      select: { email: true, firstName: true, lastName: true, role: true },
+      // `level` + `branch` come back so we can per-recipient verify the
+      // level filter and surface a breakdown in the response. Belt and
+      // suspenders: even if a future regression broke the Prisma `where`
+      // clause, the loop below would still skip students whose level
+      // doesn't actually match the announcement target.
+      select: { email: true, firstName: true, lastName: true, role: true, level: true, branch: true },
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
     })
 
-    if (recipients.length === 0) {
+    // Defensive secondary filter — never trust the DB query alone for
+    // anything addressing real people's inboxes.
+    const allowedLevels = new Set<string>(announcement.levels)
+    const filteredRecipients = recipients.filter((r: { role: string; level: string | null }) => {
+      if (r.role === 'TEACHER') return announcement.includeTeachers
+      if (r.role !== 'STUDENT') return false
+      if (announcement.levels.length === 0) return true
+      if (!r.level) return false
+      return allowedLevels.has(r.level)
+    })
+    const droppedByLevel = recipients.length - filteredRecipients.length
+
+    if (filteredRecipients.length === 0) {
       return withCors(NextResponse.json({ ok: true, sent: 0, failed: 0, errors: [], note: 'No recipients matched.' }), origin)
     }
 
@@ -149,10 +166,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const subject = '[Aura Academy] ' + announcement.title
 
+    // Build a recipient breakdown so the caller (and the admin) can
+    // verify exactly which grades got the blast.
+    const byLevel: Record<string, number> = {}
+    const byRole: Record<string, number> = {}
+    for (const r of filteredRecipients) {
+      byRole[r.role] = (byRole[r.role] ?? 0) + 1
+      const key = r.level ?? '(none)'
+      byLevel[key] = (byLevel[key] ?? 0) + 1
+    }
+
     let sent = 0
     let failed = 0
     const errors: Array<{ email: string; error: string }> = []
-    for (const r of recipients) {
+    for (const r of filteredRecipients) {
       try {
         await sendTransactionalEmail({ to: r.email, subject, html })
         sent += 1
@@ -184,6 +211,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       errors: errors.slice(0, 50), // cap so we don't ship an enormous array
       emailedAt: new Date().toISOString(),
       emailedBy: auth.email,
+      // Surface exactly who got the blast so the admin can verify the
+      // level filter at a glance. droppedByLevel will be 0 in normal
+      // operation — non-zero means the secondary filter caught
+      // something the DB query let through.
+      recipientBreakdown: { byLevel, byRole },
+      allowedLevels: announcement.levels,
+      droppedByLevel,
     }), origin)
   } catch (e) {
     if (e instanceof Response) {

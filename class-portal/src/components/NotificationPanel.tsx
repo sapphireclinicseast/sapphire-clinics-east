@@ -369,7 +369,24 @@ function AnnouncementModal({ announcement: a, viewer, onClose, onDelete, onSent 
       }
       const note = result.note ? `\n\n${result.note}` : ''
       const failures = result.failed > 0 ? `\n\nFailed: ${result.failed}.` : ''
-      alert(`Email sent to ${result.sent} recipient(s).${failures}${note}`)
+      // Show the per-grade breakdown so the sender can verify the
+      // recipient set matched the announcement's level targeting.
+      let breakdown = ''
+      if (result.recipientBreakdown) {
+        const byRole = result.recipientBreakdown.byRole
+        const byLevel = result.recipientBreakdown.byLevel
+        const studentCount = byRole.STUDENT ?? 0
+        const teacherCount = byRole.TEACHER ?? 0
+        const levelLines = Object.entries(byLevel)
+          .filter(([k]) => k !== '(none)')
+          .map(([level, count]) => `  • ${levelLabel(level as EnrollmentLevel)}: ${count}`)
+          .join('\n')
+        breakdown = '\n\nBreakdown:'
+        if (studentCount > 0) breakdown += `\n${studentCount} student${studentCount === 1 ? '' : 's'}`
+        if (levelLines) breakdown += `\n${levelLines}`
+        if (teacherCount > 0) breakdown += `\n${teacherCount} teacher${teacherCount === 1 ? '' : 's'}`
+      }
+      alert(`Email sent to ${result.sent} recipient(s).${failures}${breakdown}${note}`)
       onSent({ sent: result.sent, emailedAt: result.emailedAt, emailedBy: result.emailedBy })
     } finally {
       setSending(false)

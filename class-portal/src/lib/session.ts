@@ -1468,6 +1468,17 @@ export interface AnnouncementEmailResult {
   emailedAt?: string
   emailedBy?: string
   note?: string
+  /** Per-grade-level and per-role recipient counts. Surfaces who
+   *  actually got the blast so the admin can verify the level filter. */
+  recipientBreakdown?: {
+    byLevel: Record<string, number>
+    byRole: Record<string, number>
+  }
+  /** The level whitelist the server enforced for this blast. */
+  allowedLevels?: string[]
+  /** Number of DB-returned rows the defensive secondary filter dropped.
+   *  Should always be 0 in normal operation. */
+  droppedByLevel?: number
 }
 
 /** Pull the full list visible to the caller — server applies the
