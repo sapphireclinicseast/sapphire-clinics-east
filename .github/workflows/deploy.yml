@@ -13,8 +13,18 @@
 name: Deploy to Netcup VPS
 
 on:
+  # Re-enabled 2026-05-05 — origin/main has been brought to parity with
+  # /opt/sapphire-marketing-hub/ (commits b604089, 4b7a740, 9be830a,
+  # 0b62fab, 56482e8, 555fdbd). All marketing-hub source now lives in
+  # git, so auto-deploys will no longer revert UI to a pre-rebrand state.
+  #
+  # OPERATIONAL RULE: do NOT edit /opt/sapphire-marketing-hub/ on the VPS
+  # directly. Every change must go through git so the next deploy preserves
+  # it instead of overwriting it. Hot-fix on the VPS only as an emergency,
+  # and in that case immediately commit + push the same change to git.
   push:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -58,10 +68,62 @@ jobs:
             --exclude='COMPANY LOGO/package*.json' \
             --exclude='COMPANY LOGO/capture-intro.mjs' \
             --exclude='api/node_modules' \
-            --exclude='data/' \
+            --exclude='/data/' \
+            --exclude='teletherapy/node_modules' \
+            --exclude='teletherapy/.next' \
+            --exclude='teletherapy/.env' \
+            --exclude='teletherapy/uploads' \
             ./ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/sapphireclinicseast.org/
 
-      # ── 5. Update Nginx config & reload ─────────────────────────
+          # Stamp the deploy with the commit SHA. The Dockerfile's `COPY . .`
+          # picks this up, so every distinct commit forces a real rebuild of
+          # the source layer (and everything that depends on it) without
+          # having to disable the rest of the BuildKit cache. Stops the
+          # silent "1.7-second build" stale-image regressions cold.
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            "echo '${{ github.sha }}' > /var/www/sapphireclinicseast.org/.deploy-sha && \
+             echo 'deploy-sha now: '$(cat /var/www/sapphireclinicseast.org/.deploy-sha)"
+
+      # ── 5. Provision SSL for teletherapy subdomain (if needed) ──
+      - name: Setup teletherapy SSL
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            'if [ ! -d /etc/letsencrypt/live/teletherapy.sapphireclinicseast.org ]; then
+               echo "→ Provisioning SSL for teletherapy.sapphireclinicseast.org..."
+               certbot certonly --standalone --preferred-challenges http \
+                 -d teletherapy.sapphireclinicseast.org \
+                 --non-interactive --agree-tos \
+                 -m admin@sapphireclinicseast.org \
+                 --pre-hook "systemctl stop nginx" \
+                 --post-hook "systemctl start nginx" \
+                 && echo "✅ SSL cert obtained." \
+                 || echo "⚠ SSL cert failed — will retry next deploy."
+             else
+               echo "✅ SSL cert already exists."
+             fi'
+
+      # ── 6. Provision SSL for accounting subdomain (if needed) ───
+      - name: Setup accounting SSL
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            'if [ ! -d /etc/letsencrypt/live/accounting.sapphireclinicseast.org ]; then
+               echo "→ Provisioning SSL for accounting.sapphireclinicseast.org..."
+               certbot certonly --standalone --preferred-challenges http \
+                 -d accounting.sapphireclinicseast.org \
+                 --non-interactive --agree-tos \
+                 -m admin@sapphireclinicseast.org \
+                 --pre-hook "systemctl stop nginx" \
+                 --post-hook "systemctl start nginx" \
+                 && echo "✅ SSL cert obtained." \
+                 || echo "⚠ SSL cert failed — will retry next deploy."
+             else
+               echo "✅ SSL cert already exists for accounting."
+             fi'
+
+      # ── 6. Update Nginx config & reload ─────────────────────────
       - name: Update Nginx config
         run: |
           scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
@@ -69,7 +131,149 @@ jobs:
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/etc/nginx/sites-available/sapphireclinicseast.org
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
-            "ln -sf /etc/nginx/sites-available/sapphireclinicseast.org /etc/nginx/sites-enabled/ && nginx -t && systemctl reload nginx"
+            "ln -sf /etc/nginx/sites-available/sapphireclinicseast.org /etc/nginx/sites-enabled/ && \
+             rm -f /etc/nginx/sites-enabled/accounting.sapphireclinicseast.org && \
+             rm -f /etc/nginx/sites-enabled/accounting && \
+             nginx -t && systemctl reload nginx && echo '✅ Nginx reloaded.'"
+
+      # ── 6b. Rebuild & restart the Marketing Hub Next.js container ────
+      # Without this step, rsync-only deploys leave the running sapphire_app
+      # image stale — file changes hit /var/www/... but the container keeps
+      # serving the previously-baked image. This step rebuilds from the
+      # freshly-synced source and recreates the container.
+      - name: Rebuild & Restart Marketing Hub
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 30m
+          script: |
+            # Deliberately NOT using `set -e` so we can capture build exit
+            # codes and print diagnostics before bailing.
+            DOCKER_DIR="/var/www/sapphireclinicseast.org/docker"
+            ENV_FILE="/opt/sapphire/docker/.env.production"
+
+            if [ ! -d "$DOCKER_DIR" ]; then
+              echo "❌ Marketing hub docker dir not found at $DOCKER_DIR"
+              exit 1
+            fi
+            if [ ! -f "$ENV_FILE" ]; then
+              echo "❌ Marketing hub .env.production not found at $ENV_FILE"
+              exit 1
+            fi
+
+            cd "$DOCKER_DIR"
+
+            echo "→ Currently running marketing-hub container:"
+            docker ps --filter "name=sapphire_app" --format "  {{.Names}}  image={{.Image}}  status={{.Status}}" || true
+
+            # ─── Build-context fingerprint ──────────────────────────────
+            # Sanity-check that the freshly rsync'd source on the VPS
+            # actually contains the latest commit. If somebody (a backup
+            # cron, a hand-edit, etc.) clobbered files between the rsync
+            # and this point, the build below would happily bake the
+            # stale content. Print the schedules layout sha so a
+            # mismatch is visible in the run log.
+            cd /var/www/sapphireclinicseast.org
+            echo "→ Source-tree fingerprint (post-rsync):"
+            echo "   src/app/schedules/layout.tsx:                   $(sha256sum 'src/app/schedules/layout.tsx' 2>/dev/null | awk '{print $1}' | cut -c1-16) ($(wc -c < 'src/app/schedules/layout.tsx' 2>/dev/null) bytes)"
+            echo "   src/app/schedules/page.tsx:                     $(sha256sum 'src/app/schedules/page.tsx' 2>/dev/null | awk '{print $1}' | cut -c1-16)"
+            echo "   src/app/schedules/[branch]/[dept]/page.tsx:     $(sha256sum 'src/app/schedules/[branch]/[dept]/page.tsx' 2>/dev/null | awk '{print $1}' | cut -c1-16)"
+            echo "   src/middleware.ts:                              $(sha256sum 'src/middleware.ts' 2>/dev/null | awk '{print $1}' | cut -c1-16)"
+            cd "$DOCKER_DIR"
+
+            echo "→ Tagging current image as :rollback (best-effort)..."
+            docker tag sapphire_app:latest sapphire_app:rollback 2>/dev/null || true
+
+            echo "→ Building sapphire_app from /var/www/sapphireclinicseast.org..."
+            # The .deploy-sha file written during rsync (one line, the
+            # current commit SHA) is part of the build context. Each new
+            # commit changes its content, which invalidates BuildKit's
+            # cache for the COPY layer and everything downstream — so we
+            # get a real rebuild without paying the full --no-cache tax
+            # on layers that genuinely haven't changed (base image,
+            # node_modules install, etc.).
+            docker compose --env-file "$ENV_FILE" build --pull app
+            BUILD_RC=$?
+            echo "   Build exit code: $BUILD_RC"
+            if [ "$BUILD_RC" != "0" ]; then
+              echo "❌ Build failed — leaving previous container untouched."
+              exit 1
+            fi
+            echo "   ✅ Image built."
+
+            echo "→ Pre-flight: ensuring sapphire_db is healthy before recreating app..."
+            DB_OK="no"
+            for i in 1 2 3 4 5 6; do
+              if docker exec sapphire_db pg_isready -U sapphire -d sapphire_marketing >/dev/null 2>&1; then
+                DB_OK="yes"; break
+              fi
+              echo "   sapphire_db not ready (attempt $i/6) — waiting 5s..."
+              sleep 5
+            done
+            if [ "$DB_OK" != "yes" ]; then
+              echo "   sapphire_db still unhealthy — restarting it..."
+              docker compose --env-file "$ENV_FILE" up -d postgres 2>&1 || true
+              sleep 12
+            fi
+
+            echo "→ Recreating sapphire_app container (--no-deps, skip dep wait)..."
+            # --no-deps avoids tearing down or waiting on postgres/redis when only
+            # the app changed. If postgres is briefly unhealthy mid-deploy, this
+            # keeps the rebuild from leaving sapphire_app DOWN (502 on nginx).
+            docker compose --env-file "$ENV_FILE" up -d --force-recreate --no-deps app
+            UP_RC=$?
+            if [ "$UP_RC" != "0" ]; then
+              echo "❌ Container recreate failed (exit $UP_RC)."
+              echo "→ Attempting fallback: start app with previous image..."
+              docker compose --env-file "$ENV_FILE" up -d --no-deps app 2>&1 || true
+              exit 1
+            fi
+
+            echo "→ Waiting 25s for app to stabilize..."
+            sleep 25
+
+            echo "→ Health check on http://localhost:3000/..."
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/ 2>&1 || echo "000")
+            echo "   HTTP $HTTP_CODE"
+
+            echo "→ Container logs (last 30 lines):"
+            docker logs sapphire_app --tail 30 2>&1 || true
+
+            if [ "$HTTP_CODE" = "000" ]; then
+              echo "❌ Marketing Hub did not come up on port 3000"
+              exit 1
+            fi
+
+            # ─── Post-deploy verification ───────────────────────────────
+            # Fetch the schedules gate from the running container and check
+            # that the rebrand markers are present (no orange palette, no
+            # broken sandbox-clinic logo). If a stale image somehow ended
+            # up running, fail the workflow loudly here rather than letting
+            # a silent regression reach end users.
+            echo "→ Verifying rebrand markers on rendered /schedules..."
+            BODY=$(curl -s -L --max-time 10 -H 'Host: schedules.sapphireclinicseast.org' \
+              http://localhost:3000/schedules 2>/dev/null || echo '')
+            HAS_NARRA=$(echo "$BODY" | grep -c '#1B3F38' || true)
+            HAS_PAPER=$(echo "$BODY" | grep -c '#F5F0E8' || true)
+            HAS_ORANGE=$(echo "$BODY" | grep -c '#ED6823' || true)
+            HAS_LOGO=$(echo "$BODY" | grep -c 'sandbox-clinic-logo' || true)
+            echo "   #1B3F38 (Narra):           $HAS_NARRA hits"
+            echo "   #F5F0E8 (Paper):           $HAS_PAPER hits"
+            echo "   #ED6823 (legacy orange):   $HAS_ORANGE hits   (must be 0)"
+            echo "   sandbox-clinic-logo:       $HAS_LOGO hits     (must be 0)"
+            if [ "$HAS_ORANGE" != "0" ] || [ "$HAS_LOGO" != "0" ]; then
+              echo "❌ Stale image detected — running container still serves the orange/logo layout."
+              echo "   This usually means the docker build cache short-circuited the rebuild."
+              echo "   Image-layer history of running container:"
+              docker inspect --format '{{.Image}}' sapphire_app | xargs -I{} docker history --no-trunc {} 2>&1 | head -20 || true
+              exit 1
+            fi
+            echo "   ✅ Rebrand markers present — running image is fresh."
+
+            echo ""
+            echo "✅ Marketing Hub rebuilt & restarted (HTTP $HTTP_CODE)."
 
       # ── 6. Install survey API deps & start/restart ─────────────────
       - name: Setup & Restart Survey API
@@ -87,3 +291,564 @@ jobs:
              if [ ! -f /var/www/sapphireclinicseast.org/data/surveys.db ]; then \
                node seed-data.js; \
              fi'
+
+      # ── 8. Deploy Teletherapy app ──────────────────────────────
+      - name: Deploy Teletherapy
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} 'bash -s' << 'REMOTE_SCRIPT'
+          set -e
+          TELE_DIR="/var/www/sapphireclinicseast.org/teletherapy"
+          if [ ! -d "$TELE_DIR" ]; then echo "⚠ Teletherapy dir not found, skipping."; exit 0; fi
+          cd "$TELE_DIR"
+
+          # Always recreate .env to ensure correct DATABASE_URL
+          if true; then
+            echo "→ Creating teletherapy .env..."
+            MENV="/opt/sapphire/docker/.env.production"
+            if [ -f "$MENV" ]; then
+              PG_PASS=$(grep "^POSTGRES_PASSWORD" "$MENV" | cut -d= -f2-)
+              DB_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' sapphire_db 2>/dev/null || echo "localhost")
+              echo "DATABASE_URL=postgresql://sapphire:${PG_PASS}@${DB_IP}:5432/sapphire_marketing" > .env
+              echo "→ DB host: ${DB_IP}"
+              grep "^NEXTAUTH_SECRET" "$MENV" >> .env
+              echo "NEXTAUTH_URL=https://teletherapy.sapphireclinicseast.org" >> .env
+              echo "AUTH_TRUST_HOST=true" >> .env
+              grep "^GOOGLE_CLIENT_ID" "$MENV" >> .env 2>/dev/null || true
+              grep "^GOOGLE_CLIENT_SECRET" "$MENV" >> .env 2>/dev/null || true
+              grep "^GOOGLE_REDIRECT_URI" "$MENV" >> .env 2>/dev/null || true
+              echo "UPLOAD_DIR=./uploads" >> .env
+              echo "RESEND_API_KEY=re_CbH3Pirt_JqAd3RJ3TXwaFNmxckQ7GVwK" >> .env
+              echo 'RESEND_FROM_EMAIL="SCEI Teletherapy <noreply@do-not-reply.sapphireclinicseast.org>"' >> .env
+              echo "TELETHERAPY_HR_API_KEY=scei-teletherapy-hr-2026" >> .env
+            else
+              echo "DATABASE_URL=postgresql://sapphire:sapphire@localhost:5433/sapphire_marketing" > .env
+              echo "NEXTAUTH_URL=https://teletherapy.sapphireclinicseast.org" >> .env
+              echo "NEXTAUTH_SECRET=$(openssl rand -base64 32)" >> .env
+              echo "AUTH_TRUST_HOST=true" >> .env
+              echo "UPLOAD_DIR=./uploads" >> .env
+              echo "RESEND_API_KEY=re_CbH3Pirt_JqAd3RJ3TXwaFNmxckQ7GVwK" >> .env
+              echo 'RESEND_FROM_EMAIL="SCEI Teletherapy <noreply@do-not-reply.sapphireclinicseast.org>"' >> .env
+              echo "TELETHERAPY_HR_API_KEY=scei-teletherapy-hr-2026" >> .env
+            fi
+            echo "✅ .env created."
+          fi
+
+          mkdir -p uploads/session-notes
+
+          echo "→ Installing dependencies..."
+          npm ci --production=false 2>&1 | tail -3
+
+          echo "→ Generating Prisma client..."
+          npx prisma generate 2>&1 | tail -2
+
+          echo "→ Creating teletherapy tables..."
+          cat prisma/setup.sql | docker exec -i sapphire_db psql -U sapphire -d sapphire_marketing 2>&1 || true
+
+          echo "→ Building Next.js app..."
+          npm run build 2>&1
+
+          echo "→ Updating docker-compose and restarting postgres with port exposed..."
+          cp /var/www/sapphireclinicseast.org/docker/docker-compose.yml /opt/sapphire/docker/docker-compose.yml 2>/dev/null || true
+          cd /opt/sapphire/docker && docker compose --env-file .env.production up -d --force-recreate postgres 2>&1 | tail -3 || true
+          sleep 5
+          echo "→ Verifying postgres port..."
+          pg_isready -h localhost -p 5432 2>&1 || echo "⚠ pg_isready not available, checking with docker..."
+          docker exec sapphire_db pg_isready -U sapphire 2>&1 | tail -1
+
+          echo "→ Seeding main admin account..."
+          docker exec sapphire_db psql -U sapphire -d sapphire_marketing -c "
+            ALTER TABLE \"TherapistAccount\" ADD COLUMN IF NOT EXISTS \"resetToken\" TEXT;
+            ALTER TABLE \"TherapistAccount\" ADD COLUMN IF NOT EXISTS \"resetTokenExpiry\" TIMESTAMP(3);
+            ALTER TABLE \"TherapistAccount\" ADD COLUMN IF NOT EXISTS \"lastPlainPassword\" TEXT;
+
+            -- Add isInitialEvaluation flag to SessionNote
+            ALTER TABLE \"SessionNote\" ADD COLUMN IF NOT EXISTS \"isInitialEvaluation\" BOOLEAN NOT NULL DEFAULT false;
+
+            -- Create PatientDocumentType enum + PatientDocument table
+            DO \$\$ BEGIN
+              CREATE TYPE \"PatientDocumentType\" AS ENUM ('INITIAL_EVALUATION', 'PROGRESS_REPORT', 'OTHER_DOCUMENT');
+            EXCEPTION WHEN duplicate_object THEN null;
+            END \$\$;
+            CREATE TABLE IF NOT EXISTS \"PatientDocument\" (
+              id TEXT PRIMARY KEY,
+              \"patientId\" TEXT NOT NULL,
+              \"uploadedById\" TEXT NOT NULL,
+              department TEXT NOT NULL,
+              \"documentType\" \"PatientDocumentType\" NOT NULL,
+              \"fileName\" TEXT NOT NULL,
+              \"filePath\" TEXT NOT NULL,
+              \"mimeType\" TEXT NOT NULL,
+              description TEXT,
+              \"scheduleId\" TEXT,
+              \"createdAt\" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              \"updatedAt\" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS \"PatientDocument_patientId_department_idx\" ON \"PatientDocument\"(\"patientId\", department);
+            CREATE INDEX IF NOT EXISTS \"PatientDocument_documentType_idx\" ON \"PatientDocument\"(\"documentType\");
+
+            -- IE/PR workflow tracking columns on PatientDocument
+            ALTER TABLE \"PatientDocument\" ADD COLUMN IF NOT EXISTS \"sentToPatientAt\" TIMESTAMP(3);
+            ALTER TABLE \"PatientDocument\" ADD COLUMN IF NOT EXISTS \"sentToPatientBy\" TEXT;
+            ALTER TABLE \"PatientDocument\" ADD COLUMN IF NOT EXISTS \"sentToPatientCc\" TEXT;
+            ALTER TABLE \"PatientDocument\" ADD COLUMN IF NOT EXISTS \"informedFrontDeskAt\" TIMESTAMP(3);
+            ALTER TABLE \"PatientDocument\" ADD COLUMN IF NOT EXISTS \"informedById\" TEXT;
+            ALTER TABLE \"PatientDocument\" ADD COLUMN IF NOT EXISTS \"paidForAt\" TIMESTAMP(3);
+            ALTER TABLE \"PatientDocument\" ADD COLUMN IF NOT EXISTS \"paidById\" TEXT;
+            ALTER TABLE \"PatientDocument\" ADD COLUMN IF NOT EXISTS \"emailedToPatientAt\" TIMESTAMP(3);
+            ALTER TABLE \"PatientDocument\" ADD COLUMN IF NOT EXISTS \"emailedById\" TEXT;
+            CREATE INDEX IF NOT EXISTS \"PatientDocument_informedFrontDeskAt_idx\" ON \"PatientDocument\"(\"informedFrontDeskAt\");
+            CREATE INDEX IF NOT EXISTS \"PatientDocument_emailedToPatientAt_idx\" ON \"PatientDocument\"(\"emailedToPatientAt\");
+
+            -- BranchCCEmail table for per-branch IE cc emails
+            CREATE TABLE IF NOT EXISTS \"BranchCCEmail\" (
+              id TEXT PRIMARY KEY,
+              branch TEXT NOT NULL UNIQUE,
+              email TEXT NOT NULL,
+              notes TEXT,
+              \"updatedById\" TEXT,
+              \"createdAt\" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              \"updatedAt\" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- Create a system admin staff record if it doesn't exist
+            INSERT INTO \"Staff\" (id, \"firstName\", \"lastName\", department, branch, \"createdAt\", \"updatedAt\")
+            VALUES ('system-admin-staff', 'System', 'Administrator', 'ADMINISTRATION', 'SBEA', NOW(), NOW())
+            ON CONFLICT (id) DO NOTHING;
+
+            -- Free Hannah Jara's staffId if the admin was previously linked to her
+            UPDATE \"TherapistAccount\" SET \"staffId\" = 'system-admin-staff'
+            WHERE id = 'clmainadmin01' AND \"staffId\" != 'system-admin-staff';
+
+            -- Create admin account if it doesn't exist (preserve password if already set)
+            INSERT INTO \"TherapistAccount\" (id, \"staffId\", email, \"passwordHash\", \"lastPlainPassword\", role, \"isActive\", \"createdAt\", \"updatedAt\")
+            VALUES ('clmainadmin01', 'system-admin-staff', 'main@sapphireclinicseast.org',
+                   '\$2b\$12\$fwLq6pRpTGyAYKxAVijFx.6xlKsvqdWDPAoWwQFMLWUCvcpOlUewW',
+                   'teletherapy2026',
+                   'ADMIN', true, NOW(), NOW())
+            ON CONFLICT (id) DO UPDATE SET
+              email = EXCLUDED.email,
+              \"passwordHash\" = EXCLUDED.\"passwordHash\",
+              \"lastPlainPassword\" = EXCLUDED.\"lastPlainPassword\",
+              role = 'ADMIN',
+              \"isActive\" = true;
+          " && echo "✅ Main admin seeded." || echo "⚠ Admin seed failed."
+
+          cd /var/www/sapphireclinicseast.org/teletherapy
+
+          echo "→ Starting teletherapy app..."
+          pm2 delete scei-teletherapy 2>/dev/null || true
+          PORT=3002 HOSTNAME=0.0.0.0 pm2 start npm --name scei-teletherapy -- start && pm2 save
+
+          echo "→ Waiting 10s for app to stabilize..."
+          sleep 10
+
+          echo "→ PM2 status:"
+          pm2 list 2>&1
+
+          echo "→ PM2 logs (last 30 lines):"
+          pm2 logs scei-teletherapy --lines 30 --nostream 2>&1 || true
+
+          echo "→ Checking port 3002:"
+          curl -s -o /dev/null -w "%{http_code}" http://localhost:3002/ 2>&1 || echo "curl failed"
+
+          echo ""
+          echo "✅ Teletherapy deployed."
+          REMOTE_SCRIPT
+
+      # ── 8. Deploy Accounting Hub (Docker) ────────────────────────
+      # ── 8. Deploy Accounting Hub (Docker) ────────────────────────
+      - name: Deploy Accounting Hub
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -eo pipefail
+            ACCT_DIR="/opt/sapphire-marketing-hub"
+            # DEPLOY_DIR is the AUTHORITATIVE location for the running accounting hub.
+            # All docker compose operations MUST use this path and its .env file.
+            # NEVER run docker compose from $ACCT_DIR/accounting-hub/docker — that
+            # directory uses .env.production and a different compose project name,
+            # which causes container hijacking and credential mismatches.
+            DEPLOY_DIR="/opt/accounting"
+            DOCKER_DIR="$DEPLOY_DIR/docker"
+
+            echo "→ Pulling latest accounting-hub code into git mirror..."
+            cd "$ACCT_DIR"
+            git fetch origin main
+            # Only update the accounting-hub/ subtree; preserve any in-flight edits
+            # to the marketing hub (src/, prisma/, etc.) living at the repo root.
+            git checkout origin/main -- accounting-hub/
+            # Also sync client-portal/ and teletherapy/ source so the daily
+            # snapshot of this directory captures the rebrand + any UI updates.
+            git checkout origin/main -- client-portal/ 2>/dev/null || true
+            git checkout origin/main -- teletherapy/   2>/dev/null || true
+            git checkout origin/main -- .github/ scripts/ 2>/dev/null || true
+            echo "   accounting-hub/ synced to: $(git log -1 --oneline origin/main -- accounting-hub/)"
+            echo "   client-portal/  synced to: $(git log -1 --oneline origin/main -- client-portal/)"
+            echo "   teletherapy/    synced to: $(git log -1 --oneline origin/main -- teletherapy/)"
+
+            echo "→ Syncing git mirror to live deploy directory ($DEPLOY_DIR)..."
+            # Excludes: .env files (authoritative versions live in DEPLOY_DIR/docker/),
+            # build artifacts, and user-uploaded files.
+            rsync -a --delete \
+              --exclude='docker/.env' \
+              --exclude='docker/.env.production' \
+              --exclude='node_modules' \
+              --exclude='.next' \
+              --exclude='uploads' \
+              "$ACCT_DIR/accounting-hub/" "$DEPLOY_DIR/"
+            echo "   Source synced OK."
+
+            echo "→ Running DB migrations on accounting_db..."
+            MIGRATION_DIR="$DEPLOY_DIR/prisma/migrations"
+            for sql_file in "$MIGRATION_DIR"/*/migration.sql; do
+              [ -f "$sql_file" ] && docker exec -i accounting_db psql -U sapphire -d sapphire_accounting < "$sql_file" 2>&1 || true
+            done
+
+            echo "→ Ensuring admin password is set correctly (password: SCEI)..."
+            docker exec accounting_db psql -U sapphire -d sapphire_accounting -c "
+              UPDATE \"User\"
+              SET \"passwordHash\" = '\$2b\$12\$pvRG7Pt7vNui/r5QQGTn7uZfaqlqNBUloSe8NSKBhqXHOr423JRcO',
+                  \"updatedAt\" = NOW()
+              WHERE email IN ('main@sapphireclinicseast.org', 'admin@sapphireclinicseast.org');
+            " 2>&1 && echo "   Password updated OK (SCEI)" || echo "   Password update failed"
+
+            echo "→ Enabling GL auto-posting flag..."
+            if grep -q "^ENABLE_GL_POSTING=" "$DOCKER_DIR/.env" 2>/dev/null; then
+              sed -i 's|^ENABLE_GL_POSTING=.*|ENABLE_GL_POSTING=true|' "$DOCKER_DIR/.env"
+              echo "   ENABLE_GL_POSTING set to true."
+            else
+              echo "ENABLE_GL_POSTING=true" >> "$DOCKER_DIR/.env"
+              echo "   ENABLE_GL_POSTING=true appended."
+            fi
+
+            echo "→ Syncing postgres password to match $DOCKER_DIR/.env..."
+            PG_PASS=$(grep "^POSTGRES_PASSWORD" "$DOCKER_DIR/.env" 2>/dev/null | cut -d= -f2-)
+            echo "   POSTGRES_PASSWORD length: ${#PG_PASS}"
+            if [ -n "$PG_PASS" ]; then
+              docker exec accounting_db psql -U sapphire -d sapphire_accounting \
+                -c "ALTER USER sapphire WITH PASSWORD '${PG_PASS}';" 2>&1 \
+                && echo "   Postgres password synced OK" \
+                || echo "   ⚠ Postgres password sync failed (non-fatal)"
+            else
+              echo "   ⚠ POSTGRES_PASSWORD not found in $DOCKER_DIR/.env"
+            fi
+
+            echo "→ Rebuilding and restarting via docker compose (from $DOCKER_DIR)..."
+            cd "$DOCKER_DIR"
+            docker compose build app 2>&1
+            echo "   Image built successfully."
+            docker compose up -d --force-recreate app 2>&1
+            echo "   Container started."
+
+            echo "→ Waiting 20s for app to stabilize..."
+            sleep 20
+
+            echo "→ Checking accounting-hub health..."
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/ 2>&1 || echo "000")
+            echo "   HTTP $HTTP_CODE"
+
+            echo "→ Testing DB connectivity via app API..."
+            CSRF_JSON=$(curl -s http://localhost:3001/api/auth/csrf 2>/dev/null || echo '{}')
+            CSRF=$(echo "$CSRF_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('csrfToken',''))" 2>/dev/null || echo "")
+            if [ -n "$CSRF" ]; then
+              LOGIN_RESULT=$(curl -s -X POST http://localhost:3001/api/auth/callback/credentials \
+                -H "Content-Type: application/x-www-form-urlencoded" \
+                -b <(echo "") \
+                -c /tmp/acct_test_cookie \
+                -d "email=main%40sapphireclinicseast.org&password=SCEI&csrfToken=$CSRF" \
+                -w "%{redirect_url}" -o /dev/null 2>&1 || echo "FAIL")
+              if echo "$LOGIN_RESULT" | grep -q "error="; then
+                echo "   ⚠ Login test FAILED — redirect: $LOGIN_RESULT"
+                echo "   → App container DATABASE_URL:"
+                docker exec accounting_app env 2>/dev/null | grep DATABASE_URL | sed "s|://[^:]*:[^@]*@|://USER:PASS@|g"
+              else
+                echo "   ✅ Login test passed — redirect: $LOGIN_RESULT"
+              fi
+            else
+              echo "   ⚠ Could not get CSRF token"
+            fi
+
+            echo "→ Container logs (last 40 lines):"
+            docker logs accounting_app --tail 40 2>&1 || true
+
+
+            echo "→ Container env (auth-related, masked):"
+            docker exec accounting_app env 2>/dev/null | grep -E "NEXTAUTH_URL|AUTH_TRUST|NODE_ENV" || true
+
+            if [ "$HTTP_CODE" = "000" ]; then
+              echo "❌ Health check failed"
+              exit 1
+            fi
+
+            echo ""
+            echo "✅ Accounting Hub deployed."
+
+      # ── 9. Setup automated database backups ──
+      - name: Setup Database Backups
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            BACKUP_DIR="/var/backups/sapphire-db"
+            mkdir -p "$BACKUP_DIR"
+
+            echo "→ Locking down upload directory permissions..."
+            UPLOAD_ROOT="/var/www/sapphireclinicseast.org/teletherapy/uploads"
+            mkdir -p "$UPLOAD_ROOT"
+            # Restrict to root + www-data only — no world-readable files
+            chown -R root:www-data "$UPLOAD_ROOT" 2>/dev/null || true
+            chmod -R 750 "$UPLOAD_ROOT" 2>/dev/null || true
+
+            echo "→ Setting up daily ONLINE + OFFLINE backup script..."
+            # Generate a backup encryption key on first run (root-only, persistent)
+            BACKUP_KEY_FILE="/etc/sapphire-backup.key"
+            if [ ! -f "$BACKUP_KEY_FILE" ]; then
+              openssl rand -base64 64 | tr -d '\n' > "$BACKUP_KEY_FILE"
+              chmod 400 "$BACKUP_KEY_FILE"
+              chown root:root "$BACKUP_KEY_FILE"
+              echo "→ Generated new backup encryption key at $BACKUP_KEY_FILE (root-only)"
+            fi
+
+            cat > /usr/local/bin/sapphire-db-backup.sh << 'BACKUP_SCRIPT'
+            #!/bin/bash
+            set -e
+
+            # ── Paths ──
+            ONLINE_DIR="/var/backups/sapphire-db"               # Hot — fast recovery from VPS
+            MIRROR_DIR="/var/backups/sapphire-mirror"           # Hot mirror on VPS
+            OFFLINE_DIR="/var/backups/sapphire-offline"         # Cold encrypted, write-once, root-only
+            UPLOADS_LIVE_MIRROR="/var/backups/sapphire-uploads-live"  # Live uploads mirror
+            KEY_FILE="/etc/sapphire-backup.key"
+            TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+            mkdir -p "$ONLINE_DIR" "$MIRROR_DIR" "$OFFLINE_DIR" "$UPLOADS_LIVE_MIRROR"
+            chmod 700 "$ONLINE_DIR" "$MIRROR_DIR" "$UPLOADS_LIVE_MIRROR"
+            chmod 700 "$OFFLINE_DIR"
+            chown -R root:root "$OFFLINE_DIR"
+
+            BACKUP_FILE="$ONLINE_DIR/sapphire_marketing_$TIMESTAMP.sql.gz"
+
+            # ── DB dump ──
+            docker exec sapphire_db pg_dump -U sapphire -d sapphire_marketing --no-owner --no-acl 2>/dev/null | gzip > "$BACKUP_FILE"
+
+            if [ ! -s "$BACKUP_FILE" ]; then
+              echo "$(date): ERROR - DB backup file is empty!"
+              rm -f "$BACKUP_FILE"
+              exit 1
+            fi
+
+            echo "$(date): ONLINE DB backup: $BACKUP_FILE ($(du -h "$BACKUP_FILE" | cut -f1))"
+            sha256sum "$BACKUP_FILE" > "$BACKUP_FILE.sha256"
+
+            # ── Uploads tar ──
+            UPLOADS_BACKUP="$ONLINE_DIR/uploads_$TIMESTAMP.tar.gz"
+            if [ -d "/var/www/sapphireclinicseast.org/teletherapy/uploads" ]; then
+              tar -czf "$UPLOADS_BACKUP" -C /var/www/sapphireclinicseast.org/teletherapy uploads/ 2>/dev/null || true
+              if [ -s "$UPLOADS_BACKUP" ]; then
+                sha256sum "$UPLOADS_BACKUP" > "$UPLOADS_BACKUP.sha256"
+                echo "$(date): ONLINE uploads backup: $UPLOADS_BACKUP ($(du -h "$UPLOADS_BACKUP" | cut -f1))"
+              fi
+            fi
+
+            # ── Hot mirror (still ONLINE, second VPS location) ──
+            rsync -a --delete "$ONLINE_DIR/" "$MIRROR_DIR/" 2>&1 | tail -3 || true
+            echo "$(date): Hot mirror updated → $MIRROR_DIR"
+
+            # ── Live uploads mirror ──
+            rsync -a --delete /var/www/sapphireclinicseast.org/teletherapy/uploads/ "$UPLOADS_LIVE_MIRROR/" 2>&1 | tail -1 || true
+
+            # ── OFFLINE encrypted backup (cold storage) ──
+            # Encrypts the daily DB + uploads with AES-256, stores in write-once dir.
+            # Even if the app server is fully compromised, these encrypted blobs
+            # are useless without the root-only key in /etc/sapphire-backup.key.
+            if [ -f "$KEY_FILE" ]; then
+              KEY_PASS=$(cat "$KEY_FILE")
+
+              # Encrypt DB dump
+              OFFLINE_DB="$OFFLINE_DIR/db_$TIMESTAMP.sql.gz.enc"
+              openssl enc -aes-256-cbc -salt -pbkdf2 -iter 100000 \
+                -in "$BACKUP_FILE" -out "$OFFLINE_DB" \
+                -pass "pass:$KEY_PASS" 2>/dev/null
+              sha256sum "$OFFLINE_DB" > "$OFFLINE_DB.sha256"
+
+              # Encrypt uploads tar
+              if [ -s "$UPLOADS_BACKUP" ]; then
+                OFFLINE_UP="$OFFLINE_DIR/uploads_$TIMESTAMP.tar.gz.enc"
+                openssl enc -aes-256-cbc -salt -pbkdf2 -iter 100000 \
+                  -in "$UPLOADS_BACKUP" -out "$OFFLINE_UP" \
+                  -pass "pass:$KEY_PASS" 2>/dev/null
+                sha256sum "$OFFLINE_UP" > "$OFFLINE_UP.sha256"
+              fi
+
+              # Make offline backups WRITE-ONCE (root can read, no one can modify)
+              chmod -R 400 "$OFFLINE_DIR"/*.enc "$OFFLINE_DIR"/*.sha256 2>/dev/null || true
+              chmod 700 "$OFFLINE_DIR"
+              chattr +i "$OFFLINE_DIR"/*.enc 2>/dev/null || true   # immutable bit (best-effort)
+
+              echo "$(date): OFFLINE encrypted cold backup written → $OFFLINE_DIR"
+              echo "$(date):   - $(ls "$OFFLINE_DIR"/*_$TIMESTAMP.* 2>/dev/null | wc -l) file(s) created"
+            else
+              echo "$(date): ⚠ Offline encryption skipped — key file missing at $KEY_FILE"
+            fi
+
+            # ── Rotation ──
+            # Local retention: 7 days (true off-site copies live in GitHub + Google Drive).
+            find "$ONLINE_DIR" -name "sapphire_marketing_*.sql.gz*" -mtime +7 -delete 2>/dev/null || true
+            find "$ONLINE_DIR" -name "uploads_*.tar.gz*" -mtime +7 -delete 2>/dev/null || true
+            find "$MIRROR_DIR" -name "sapphire_marketing_*.sql.gz*" -mtime +7 -delete 2>/dev/null || true
+            find "$MIRROR_DIR" -name "uploads_*.tar.gz*" -mtime +7 -delete 2>/dev/null || true
+
+            # Offline: 7-day retention (need to remove immutable bit first)
+            for f in $(find "$OFFLINE_DIR" -name "*.enc" -mtime +7 2>/dev/null); do
+              chattr -i "$f" 2>/dev/null || true
+              rm -f "$f" "$f.sha256" 2>/dev/null || true
+            done
+
+            # Permissions tightening
+            chmod 600 "$ONLINE_DIR"/*.gz "$ONLINE_DIR"/*.sha256 2>/dev/null || true
+
+            echo "$(date): ✅ Backup complete:"
+            echo "  ONLINE  (hot, on VPS):    $(ls -1 "$ONLINE_DIR"/*.gz 2>/dev/null | wc -l) files in $ONLINE_DIR"
+            echo "  MIRROR  (hot, on VPS):    $(ls -1 "$MIRROR_DIR"/*.gz 2>/dev/null | wc -l) files in $MIRROR_DIR"
+            echo "  OFFLINE (cold, encrypted): $(ls -1 "$OFFLINE_DIR"/*.enc 2>/dev/null | wc -l) files in $OFFLINE_DIR"
+            BACKUP_SCRIPT
+
+            chmod +x /usr/local/bin/sapphire-db-backup.sh
+
+            # ── Hourly uploads-only mirror script ──
+            cat > /usr/local/bin/sapphire-uploads-mirror.sh << 'MIRROR_SCRIPT'
+            #!/bin/bash
+            # Continuously mirror uploads dir for fast recovery if files are deleted
+            UPLOADS_LIVE_MIRROR="/var/backups/sapphire-uploads-live"
+            mkdir -p "$UPLOADS_LIVE_MIRROR"
+            chmod 700 "$UPLOADS_LIVE_MIRROR"
+            rsync -a --delete /var/www/sapphireclinicseast.org/teletherapy/uploads/ "$UPLOADS_LIVE_MIRROR/" 2>&1 | tail -1
+            MIRROR_SCRIPT
+            chmod +x /usr/local/bin/sapphire-uploads-mirror.sh
+
+            # Cron jobs:
+            # - Daily full backup at 2:00 AM
+            # - Hourly uploads mirror (clinical files uploaded throughout the day)
+            CRON_DAILY="0 2 * * * /usr/local/bin/sapphire-db-backup.sh >> /var/log/sapphire-backup.log 2>&1"
+            CRON_HOURLY="15 * * * * /usr/local/bin/sapphire-uploads-mirror.sh >> /var/log/sapphire-uploads-mirror.log 2>&1"
+
+            CURRENT_CRON=$(crontab -l 2>/dev/null || true)
+            NEW_CRON="$CURRENT_CRON"
+            if ! echo "$CURRENT_CRON" | grep -q "sapphire-db-backup"; then
+              NEW_CRON=$(printf "%s\n%s" "$NEW_CRON" "$CRON_DAILY")
+            fi
+            if ! echo "$CURRENT_CRON" | grep -q "sapphire-uploads-mirror"; then
+              NEW_CRON=$(printf "%s\n%s" "$NEW_CRON" "$CRON_HOURLY")
+            fi
+            echo "$NEW_CRON" | sed '/^$/d' | crontab -
+            echo "✅ Backup cron jobs installed (daily 2 AM + hourly uploads mirror)"
+
+            # Run an immediate backup only if the most recent one is >20h old, so
+            # frequent deploys don't pile up full backups (cron still runs daily 2 AM).
+            LATEST_BK=$(ls -t /var/backups/sapphire-db/uploads_*.tar.gz 2>/dev/null | head -1)
+            if [ -z "$LATEST_BK" ] || [ -n "$(find "$LATEST_BK" -mmin +1200 2>/dev/null)" ]; then
+              echo "→ Running immediate backup..."
+              /usr/local/bin/sapphire-db-backup.sh 2>&1
+            else
+              echo "→ Skipping immediate backup — a recent one (<20h) already exists."
+            fi
+            echo "✅ Backup setup complete (encrypted permissions, SHA256 checksums, hourly mirror)."
+
+      # ── 9. Configure UFW Firewall ──
+      - name: Configure Firewall
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            echo "→ Configuring UFW firewall..."
+
+            # Install ufw if not present
+            which ufw >/dev/null 2>&1 || apt-get install -y ufw >/dev/null 2>&1
+
+            # Reset to defaults (deny incoming, allow outgoing)
+            ufw default deny incoming 2>/dev/null || true
+            ufw default allow outgoing 2>/dev/null || true
+
+            # Allow SSH (critical — don't lock yourself out)
+            ufw allow 22/tcp comment "SSH"
+
+            # Allow HTTP/HTTPS for web traffic
+            ufw allow 80/tcp comment "HTTP"
+            ufw allow 443/tcp comment "HTTPS"
+
+            # Block direct access to app ports from outside (only nginx should reach them)
+            # Port 3000 (marketing hub), 3001 (accounting), 3002 (teletherapy), 5432 (postgres)
+            # These are NOT allowed through UFW — only accessible via localhost/Docker network
+            ufw deny 3000/tcp comment "Block direct marketing-hub access" 2>/dev/null || true
+            ufw deny 3001/tcp comment "Block direct accounting-hub access" 2>/dev/null || true
+            ufw deny 3002/tcp comment "Block direct teletherapy access" 2>/dev/null || true
+            ufw deny 5432/tcp comment "Block direct PostgreSQL access" 2>/dev/null || true
+
+            # Enable UFW (non-interactive)
+            echo "y" | ufw enable 2>/dev/null || true
+
+            # Rate limit SSH to prevent brute force
+            ufw limit 22/tcp comment "Rate limit SSH" 2>/dev/null || true
+
+            echo "→ Firewall status:"
+            ufw status verbose 2>&1
+
+            echo "✅ Firewall configured."
+
+  # ── Diagnostic: accounting-hub logs ──────────────────────────
+  check-accounting-logs:
+    name: Check Accounting Hub Logs
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: always()
+    steps:
+      - name: Set up SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+      - name: Fetch container logs and env check
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} '
+            echo "=== accounting_app last 80 lines ==="
+            docker logs accounting_app --tail 80 2>&1
+
+            echo "=== env vars (masked) ==="
+            docker exec accounting_app env 2>/dev/null | grep -E "NEXTAUTH|AUTH_TRUST|DATABASE_URL|NODE_ENV" | sed "s|postgresql://[^@]*@|postgresql://***@|g"
+
+            echo "=== Users in accounting DB (with passwordHash prefix) ==="
+            docker exec accounting_db psql -U sapphire -d sapphire_accounting -c "SELECT id, email, role, LEFT(\"passwordHash\", 10) AS hash_prefix, \"lastLoginAt\", \"updatedAt\" FROM \"User\" ORDER BY \"createdAt\" LIMIT 10;" 2>&1 || echo "DB query failed"
+
+            echo "=== DB column check: lastLoginAt exists ==="
+            docker exec accounting_db psql -U sapphire -d sapphire_accounting -c "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '"'"'User'"'"' AND column_name IN ('"'"'lastLoginAt'"'"', '"'"'resetToken'"'"', '"'"'passwordHash'"'"');" 2>&1
+
+            echo "=== Test login attempt (triggers [auth] logs) ==="
+            CSRF=$(curl -s http://localhost:3001/api/auth/csrf | grep -o '"token":"[^"]*"' | cut -d'"' -f4 || echo "NO_CSRF")
+            echo "CSRF token: $CSRF"
+            if [ "$CSRF" != "NO_CSRF" ] && [ -n "$CSRF" ]; then
+              curl -s -X POST http://localhost:3001/api/auth/callback/credentials \
+                -H "Content-Type: application/x-www-form-urlencoded" \
+                -d "email=main%40sapphireclinicseast.org&password=SCEIAccounting2026%21&csrfToken=${CSRF}&callbackUrl=http%3A%2F%2Flocalhost%3A3001%2Fdashboard&redirect=false" \
+                -o /dev/null -w "HTTP %{http_code}" 2>&1 || true
+            fi
+
+            echo ""
+            echo "=== accounting_app logs AFTER test login ==="
+            sleep 2
+            docker logs accounting_app --tail 30 2>&1
+
+            echo "=== Recent auth errors (nginx) ==="
+            tail -20 /var/log/nginx/error.log 2>/dev/null | grep -i "accounting" || echo "no nginx errors"
+          '
