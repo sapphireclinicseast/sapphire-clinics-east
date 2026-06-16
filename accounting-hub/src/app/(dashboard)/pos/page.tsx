@@ -4144,6 +4144,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
               <div style="font-size:12px;font-weight:900;letter-spacing:0.5px;color:${GOLD};font-family:Arial Black,Arial,sans-serif;line-height:1.05">CARD</div>
             </div>
           </div>
+          <div style="text-align:center;font-size:10px;font-style:italic;letter-spacing:0.3px;color:${TEAL};padding:0 12px">&ldquo;Recovery is a season, not a sprint&rdquo;</div>
           <div style="position:relative">
             <div style="font-size:13px;font-weight:700;letter-spacing:3px;color:${DEEP};font-family:'Courier New',monospace;margin-bottom:7px">${cardNum}</div>
             <div style="display:flex;justify-content:space-between;align-items:flex-end">
