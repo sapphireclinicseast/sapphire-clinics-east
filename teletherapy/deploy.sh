@@ -59,21 +59,37 @@ rsync -avz \
   "$LOCAL/postcss.config.mjs" \
   "$VPS:$REMOTE/"
 
-echo "==> Building on VPS (ATOMIC — into .next.new, live .next untouched)..."
-# Build to a staging dir so the running app keeps serving the OLD build the
-# whole time. An in-place `npm run build` overwrites .next mid-build and the
-# live app 502s ("Could not find a production build" / missing build-manifest)
-# until it finishes. NEXT_DIST_DIR is honoured by next.config.
-ssh "$VPS" "cd $REMOTE && npm ci --prefer-offline 2>&1 | tail -5 && npx prisma generate && rm -rf .next.new && NEXT_DIST_DIR=.next.new npm run build"
-
-echo "==> Verifying new build, then atomic-swapping it in..."
-ssh "$VPS" "cd $REMOTE && if [ -f .next.new/BUILD_ID ]; then rm -rf .next.old; [ -d .next ] && mv .next .next.old; mv .next.new .next; rm -rf .next.old; echo 'swapped in new .next'; else echo 'ERROR: .next.new incomplete — keeping current .next, NOT swapping'; rm -rf .next.new; exit 1; fi"
-
 echo "==> Ensuring INTERNAL_API_KEY is set in .env..."
 ssh "$VPS" "grep -q '^INTERNAL_API_KEY=' $REMOTE/.env || echo 'WARNING: INTERNAL_API_KEY missing from .env — add it manually before the app will work'"
 
-echo "==> Restarting PM2 process..."
-ssh "$VPS" "pm2 restart scei-teletherapy --update-env"
+echo "==> Building + swapping + restarting on VPS (atomic + serialized)..."
+# Hold the source-guard's lock for the WHOLE build->swap->restart so this
+# deploy can't run concurrently with the guard's self-heal OR another agent's
+# deploy. Multiple agents share one SSH key and sometimes deploy at the same
+# time; two concurrent `npm ci`/builds corrupt node_modules/.next. -w 900 waits
+# up to 15 min for an in-flight build to finish. The build is atomic (.next.new)
+# so the live app serves the old build until the sub-second swap + restart.
+ssh "$VPS" "flock -w 900 /var/run/teletherapy-source-guard.lock bash -s" <<DEPLOY_EOF
+set -eo pipefail
+cd "$REMOTE"
+echo "  (lock acquired) npm ci ..."
+npm ci --prefer-offline 2>&1 | tail -5
+npx prisma generate
+rm -rf .next.new
+NEXT_DIST_DIR=.next.new NEXT_TELEMETRY_DISABLED=1 npm run build
+if [ ! -f .next.new/BUILD_ID ]; then
+  echo "  ERROR: .next.new incomplete — keeping current .next, NOT swapping/restarting"
+  rm -rf .next.new
+  exit 1
+fi
+rm -rf .next.old
+[ -d .next ] && mv .next .next.old
+mv .next.new .next
+rm -rf .next.old
+echo "  swapped in new .next"
+pm2 restart scei-teletherapy --update-env
+echo "  pm2 restarted"
+DEPLOY_EOF
 
 echo ""
 echo "Deploy complete."
