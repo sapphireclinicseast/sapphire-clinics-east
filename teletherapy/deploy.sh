@@ -59,8 +59,15 @@ rsync -avz \
   "$LOCAL/postcss.config.mjs" \
   "$VPS:$REMOTE/"
 
-echo "==> Building on VPS..."
-ssh "$VPS" "cd $REMOTE && npm ci --prefer-offline 2>&1 | tail -5 && npx prisma generate && npm run build"
+echo "==> Building on VPS (ATOMIC — into .next.new, live .next untouched)..."
+# Build to a staging dir so the running app keeps serving the OLD build the
+# whole time. An in-place `npm run build` overwrites .next mid-build and the
+# live app 502s ("Could not find a production build" / missing build-manifest)
+# until it finishes. NEXT_DIST_DIR is honoured by next.config.
+ssh "$VPS" "cd $REMOTE && npm ci --prefer-offline 2>&1 | tail -5 && npx prisma generate && rm -rf .next.new && NEXT_DIST_DIR=.next.new npm run build"
+
+echo "==> Verifying new build, then atomic-swapping it in..."
+ssh "$VPS" "cd $REMOTE && if [ -f .next.new/BUILD_ID ]; then rm -rf .next.old; [ -d .next ] && mv .next .next.old; mv .next.new .next; rm -rf .next.old; echo 'swapped in new .next'; else echo 'ERROR: .next.new incomplete — keeping current .next, NOT swapping'; rm -rf .next.new; exit 1; fi"
 
 echo "==> Ensuring INTERNAL_API_KEY is set in .env..."
 ssh "$VPS" "grep -q '^INTERNAL_API_KEY=' $REMOTE/.env || echo 'WARNING: INTERNAL_API_KEY missing from .env — add it manually before the app will work'"
