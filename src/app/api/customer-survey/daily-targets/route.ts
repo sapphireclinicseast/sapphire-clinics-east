@@ -268,6 +268,94 @@ export async function GET(req: NextRequest) {
     })
   }
 
+  // ── HR12: Front desk officers assessed by random patients today ──────────────
+  // For each Front Desk Officer at this branch, deterministically pick
+  // HR12_PATIENTS_PER_OFFICER unique patients from today's full schedule pool
+  // and create HR12 SurveyAssignment records so QR codes are ready.
+  // Only staff with jobTitle = 'Front Desk Officer' are included — not all admin.
+  const HR12_PATIENTS_PER_OFFICER = 3
+
+  const frontDeskStaff = await prisma.staff.findMany({
+    where: { branch: authedBranch, jobTitle: 'Front Desk Officer' },
+    select: { id: true, firstName: true, lastName: true, department: true, branch: true },
+  })
+
+  // Build de-duplicated pool of unique patients from today's schedules
+  const patientPool = [
+    ...new Map(
+      schedules
+        .filter(s => s.patient)
+        .map(s => [s.patient!.id, {
+          id:   s.patient!.id,
+          name: `${s.patient!.firstName} ${s.patient!.lastName}`,
+          age:  s.patient!.dob
+            ? Math.floor((phNow.getTime() - new Date(s.patient!.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
+            : null,
+        }])
+    ).values(),
+  ]
+
+  for (const officer of frontDeskStaff) {
+    if (patientPool.length === 0) break
+
+    // Check how many HR12 surveys this officer has received year-to-date
+    const t = targetMap.get(officer.id)
+    const completed = t?.completed ?? 0
+    const targetCount = t?.targetCount ?? 60
+    if (completed >= targetCount) continue
+
+    // Deterministic pick of N patients without repeats
+    const selected: typeof patientPool = []
+    const remaining = [...patientPool]
+    for (let i = 0; i < HR12_PATIENTS_PER_OFFICER && remaining.length > 0; i++) {
+      const seed = `${todayStr}-${officer.id}-hr12-${i}`
+      const idx = Math.floor(seededRandom(seed) * remaining.length)
+      selected.push(remaining.splice(idx, 1)[0])
+    }
+
+    for (const patient of selected) {
+      // Re-use any existing non-expired HR12 assignment for this officer/patient today
+      const existing = await prisma.surveyAssignment.findFirst({
+        where: {
+          staffId:   officer.id,
+          patientId: patient.id,
+          surveyType: 'HR12',
+          createdAt: { gte: todayStart },
+          status:    { not: 'EXPIRED' },
+        },
+      })
+
+      const assignment = existing ?? await prisma.surveyAssignment.create({
+        data: {
+          staffId:     officer.id,
+          patientId:   patient.id,
+          patientName: patient.name,
+          patientAge:  patient.age,
+          branch:      authedBranch,
+          surveyType:  'HR12',
+          status:      'PENDING',
+          expiresAt:   todayEnd,
+        },
+      })
+
+      targetsOut.push({
+        assignmentId: assignment.id,
+        staffId:      officer.id,
+        staffName:    `${officer.firstName} ${officer.lastName}`,
+        department:   officer.department,
+        branch:       authedBranch,
+        patientId:    patient.id,
+        patientName:  patient.name,
+        patientAge:   patient.age,
+        startTime:    '08:00',
+        endTime:      '17:00',
+        sessionType:  'front-desk',
+        status:       assignment.status,
+        surveyUrl:    `https://survey.sapphireclinicseast.org?id=${assignment.id}`,
+      })
+    }
+  }
+
   // Sort by startTime
   targetsOut.sort((a, b) => a.startTime.localeCompare(b.startTime))
 
