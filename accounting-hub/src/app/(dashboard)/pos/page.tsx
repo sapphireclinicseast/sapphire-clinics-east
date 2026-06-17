@@ -4119,7 +4119,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
     } else {
       // PREPAID CARD LAYOUT — Aura Health Rehab Clinic. White (ink-saving) with brand-colour
       // accents and an inline arch logo, designed to feel like a premium upgrade.
-      const DEEP = '#244952', TEAL = '#4A8073', PALE = '#EDF3D9', GOLD = '#C69849', CLAY = '#CF9D88'
+      const DEEP = '#244952', TEAL = '#4A8073', GOLD = '#C69849', CLAY = '#CF9D88'
       // Aura arch mark (3 concentric bands), inline SVG so it stays crisp & recolourable.
       const auraArch = (h: number) => `<svg height="${h}" viewBox="0 0 200 104" style="display:block">
         <path d="M10,100 A90,90 0 0,1 190,100 L166,100 A66,66 0 0,0 34,100 Z" fill="#296354"/>
@@ -4127,7 +4127,6 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         <path d="M66,100 A34,34 0 0,1 134,100 L116,100 A16,16 0 0,0 84,100 Z" fill="#6E8E8E"/>
       </svg>`
       frontHtml = `<div class="card" style="background:#FFFFFF;border:1px solid #e5e7eb;position:relative;overflow:hidden">
-        <div style="position:absolute;top:0;right:0;bottom:0;width:48%;background:linear-gradient(125deg, #FFFFFF 52%, ${PALE} 100%)"></div>
         <div style="position:absolute;left:0;right:0;bottom:0;height:2.5px;background:linear-gradient(90deg, ${GOLD}, ${CLAY}, ${GOLD})"></div>
         <div style="position:relative;padding:13px 16px;display:flex;flex-direction:column;justify-content:space-between;width:100%;height:100%;box-sizing:border-box">
           <div style="display:flex;justify-content:space-between;align-items:flex-start">
