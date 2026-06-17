@@ -6,8 +6,8 @@ import { getAuth } from '@/lib/session'
 import {
   listEvents, createEvent, updateEvent, deleteEvent,
   getCalendarPdfMeta, fetchCalendarPdfBlob, uploadCalendarPdf, deleteCalendarPdf,
-  eventTypeLabel, eventTypeColor,
-  type CalendarEvent, type CalendarEventType, type CalendarPdfMeta,
+  eventTypeLabel, eventTypeColor, branchShortLabel,
+  type CalendarEvent, type CalendarEventType, type CalendarPdfMeta, type CalendarBranch,
 } from '@/lib/calendar'
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
@@ -23,13 +23,15 @@ function daysInMonth(year: number, month: number): number {
   return new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
 }
 
+type Role = 'ADMIN' | 'BRANCH_ADMIN' | 'TEACHER' | 'FRONTDESK' | 'STUDENT'
+
 export default function CalendarPage() {
   const router = useRouter()
   const [ready, setReady] = useState(false)
-  const [role, setRole] = useState<'ADMIN' | 'TEACHER' | 'STUDENT' | null>(null)
+  const [role, setRole] = useState<Role | null>(null)
   const today = useMemo(() => new Date(), [])
   const [year, setYear] = useState(today.getFullYear())
-  const [month, setMonth] = useState(today.getMonth()) // 0-indexed
+  const [month, setMonth] = useState(today.getMonth())
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [loadingEvents, setLoadingEvents] = useState(true)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
@@ -37,34 +39,47 @@ export default function CalendarPage() {
   const [pdfMeta, setPdfMeta] = useState<CalendarPdfMeta | null>(null)
   const [pdfBusy, setPdfBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  // The branch this view is showing. For ADMIN/TEACHER this is driven
+  // by the toggle (defaults to EAST). For BRANCH_ADMIN/FRONTDESK/STUDENT
+  // it's resolved from the server (auth.branch on the token, or
+  // user.branch on the row for students) and locked.
+  const [activeBranch, setActiveBranch] = useState<CalendarBranch>('EAST')
 
   useEffect(() => {
     const auth = getAuth()
     if (!auth) { router.replace('/sign-in'); return }
-    setRole(auth.role as 'ADMIN' | 'TEACHER' | 'STUDENT')
+    setRole(auth.role as Role)
     setReady(true)
   }, [router])
 
   const canEdit = role === 'ADMIN' || role === 'TEACHER'
+  // Only ADMIN/TEACHER can flip between branches — others are scoped on
+  // the server regardless of what's in the dropdown, but we still lock
+  // the UI so the active branch always reflects what they actually see.
+  const canSwitchBranch = role === 'ADMIN' || role === 'TEACHER'
 
-  // Load events when month changes (one-month window — keeps it light).
   useEffect(() => {
     if (!ready) return
     setLoadingEvents(true)
     const from = ymd(startOfMonth(year, month))
     const lastDay = daysInMonth(year, month)
     const to = ymd(new Date(Date.UTC(year, month, lastDay)))
-    listEvents(from, to)
-      .then(setEvents)
+    listEvents(from, to, canSwitchBranch ? activeBranch : undefined)
+      .then(res => {
+        setEvents(res.events)
+        // For scoped roles, trust the server's resolved branch.
+        if (!canSwitchBranch && res.branch) setActiveBranch(res.branch)
+      })
       .catch(e => setErr((e as Error).message))
       .finally(() => setLoadingEvents(false))
-  }, [ready, year, month])
+  }, [ready, year, month, activeBranch, canSwitchBranch])
 
-  // Load current PDF metadata once on mount.
   useEffect(() => {
     if (!ready) return
-    getCalendarPdfMeta().then(setPdfMeta).catch(() => { /* ignore */ })
-  }, [ready])
+    getCalendarPdfMeta(canSwitchBranch ? activeBranch : undefined)
+      .then(setPdfMeta)
+      .catch(() => { /* ignore */ })
+  }, [ready, activeBranch, canSwitchBranch])
 
   function eventsOnDate(dateStr: string): CalendarEvent[] {
     return events.filter(e => {
@@ -87,7 +102,7 @@ export default function CalendarPage() {
     if (!f) return
     setErr(null); setPdfBusy(true)
     try {
-      const meta = await uploadCalendarPdf(f)
+      const meta = await uploadCalendarPdf(f, activeBranch)
       setPdfMeta(meta)
     } catch (err) {
       setErr((err as Error).message)
@@ -100,7 +115,7 @@ export default function CalendarPage() {
   async function handlePdfView() {
     setErr(null)
     try {
-      const blob = await fetchCalendarPdfBlob()
+      const blob = await fetchCalendarPdfBlob(canSwitchBranch ? activeBranch : undefined)
       if (!blob) { setErr('No calendar PDF uploaded yet.'); return }
       const url = URL.createObjectURL(blob)
       window.open(url, '_blank', 'noopener')
@@ -111,10 +126,10 @@ export default function CalendarPage() {
   }
 
   async function handlePdfRemove() {
-    if (!confirm('Remove the current academic calendar PDF?')) return
+    if (!confirm(`Remove the ${branchShortLabel(activeBranch)} academic calendar PDF?`)) return
     setErr(null)
     try {
-      await deleteCalendarPdf()
+      await deleteCalendarPdf(activeBranch)
       setPdfMeta(null)
     } catch (e) {
       setErr((e as Error).message)
@@ -125,7 +140,9 @@ export default function CalendarPage() {
     const from = ymd(startOfMonth(year, month))
     const lastDay = daysInMonth(year, month)
     const to = ymd(new Date(Date.UTC(year, month, lastDay)))
-    listEvents(from, to).then(setEvents).catch(e => setErr((e as Error).message))
+    listEvents(from, to, canSwitchBranch ? activeBranch : undefined)
+      .then(res => setEvents(res.events))
+      .catch(e => setErr((e as Error).message))
   }
 
   if (!ready) return null
@@ -136,14 +153,17 @@ export default function CalendarPage() {
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
-              Academic calendar
+              Academic calendar · {branchShortLabel(activeBranch)}
             </div>
             <h1 className="text-[26px] leading-tight text-[color:var(--deep-teal)]">{MONTH_NAMES[month]} {year}</h1>
             <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1">
               {canEdit ? 'Click a date to add an event, mark classes cancelled, or schedule activities.' : 'View the school year schedule, holidays, and any cancelled-class days.'}
             </p>
           </div>
-          <div className="flex gap-2 items-center">
+          <div className="flex gap-2 items-center flex-wrap">
+            {canSwitchBranch && (
+              <BranchToggle value={activeBranch} onChange={setActiveBranch} />
+            )}
             <button type="button" className="btn-secondary text-xs" onClick={prevMonth}>← Prev</button>
             <button
               type="button"
@@ -158,10 +178,11 @@ export default function CalendarPage() {
           <div className="mt-3 px-4 py-2 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>
         )}
 
-        {/* PDF upload / view block */}
         <div className="mt-4 rounded-xl p-3 border flex items-center justify-between gap-3 flex-wrap" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
           <div className="text-[12.5px] text-[color:var(--ink)]">
-            <span className="font-semibold text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>Calendar PDF:</span>{' '}
+            <span className="font-semibold text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>
+              {branchShortLabel(activeBranch)} calendar PDF:
+            </span>{' '}
             {pdfMeta ? (
               <>
                 <span>{pdfMeta.fileName}</span>{' '}
@@ -188,7 +209,6 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* Month grid */}
       <div className="card-static">
         <MonthGrid
           year={year}
@@ -202,7 +222,6 @@ export default function CalendarPage() {
         <Legend />
       </div>
 
-      {/* Selected-day events panel */}
       {selectedDate && (
         <div className="card-static">
           <DayEventsPanel
@@ -223,12 +242,39 @@ export default function CalendarPage() {
 
       {composer.open && (
         <EventComposer
+          branch={activeBranch}
           defaultDate={selectedDate ?? ymd(today)}
           editing={composer.editing}
           onClose={() => setComposer({ open: false, editing: null })}
           onSaved={() => { setComposer({ open: false, editing: null }); refreshEvents() }}
         />
       )}
+    </div>
+  )
+}
+
+/* ─────────── Branch toggle ─────────── */
+
+function BranchToggle({ value, onChange }: { value: CalendarBranch; onChange: (v: CalendarBranch) => void }) {
+  return (
+    <div className="inline-flex rounded-full border overflow-hidden text-[11.5px] font-semibold" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
+      {(['EAST', 'GREENHILLS'] as const).map(b => {
+        const active = value === b
+        return (
+          <button
+            key={b}
+            type="button"
+            onClick={() => onChange(b)}
+            className="px-3 py-1.5 transition-colors"
+            style={{
+              background: active ? 'var(--narra)' : 'transparent',
+              color: active ? 'white' : 'var(--ink)',
+            }}
+          >
+            {branchShortLabel(b)}
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -246,11 +292,10 @@ function MonthGrid({
   onSelect: (d: string) => void
   selected: string | null
 }) {
-  const firstDay = new Date(Date.UTC(year, month, 1)).getUTCDay() // 0 = Sun
+  const firstDay = new Date(Date.UTC(year, month, 1)).getUTCDay()
   const totalDays = daysInMonth(year, month)
   const todayStr = ymd(today)
 
-  // Pre-bucket events by date string for fast cell rendering.
   const byDate: Record<string, CalendarEvent[]> = {}
   for (const ev of events) {
     if (ev.endDate) {
@@ -412,8 +457,9 @@ function DayEventsPanel({
 /* ─────────── Event composer modal ─────────── */
 
 function EventComposer({
-  defaultDate, editing, onClose, onSaved,
+  branch, defaultDate, editing, onClose, onSaved,
 }: {
+  branch: CalendarBranch
   defaultDate: string
   editing: CalendarEvent | null
   onClose: () => void
@@ -426,6 +472,7 @@ function EventComposer({
   const [type, setType] = useState<CalendarEventType>(editing?.type ?? 'EVENT')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const targetBranch = editing?.branch ?? branch
 
   async function handleSave() {
     if (!title.trim()) { setErr('Title is required.'); return }
@@ -438,6 +485,7 @@ function EventComposer({
         })
       } else {
         await createEvent({
+          branch: targetBranch,
           date, endDate: endDate || null, title: title.trim(), description: description.trim() || null, type,
         })
       }
@@ -455,7 +503,7 @@ function EventComposer({
         <div className="flex items-start justify-between gap-3 mb-3">
           <div>
             <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
-              {editing ? 'Edit event' : 'New event'}
+              {editing ? `Edit event · ${branchShortLabel(targetBranch)}` : `New event · ${branchShortLabel(targetBranch)}`}
             </div>
             <h2 className="text-[18px] leading-tight">{editing ? editing.title : 'Add a calendar event'}</h2>
           </div>
