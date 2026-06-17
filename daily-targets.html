@@ -58,6 +58,28 @@
   .empty { text-align: center; padding: 60px 20px; color: var(--gray-500); font-size: 14px; }
   .error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }
 
+  /* Section dividers inside the grid */
+  .section-heading {
+    grid-column: 1 / -1;
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--gray-500); padding-bottom: 8px;
+    border-bottom: 2px solid var(--gray-200); margin-top: 8px;
+  }
+  .section-heading:first-child { margin-top: 0; }
+  .section-heading .sh-count {
+    margin-left: auto; font-size: 10px; font-weight: 600;
+    background: var(--gray-100); color: var(--gray-500);
+    padding: 2px 8px; border-radius: 99px;
+  }
+
+  /* Front-desk card variant (HR12) */
+  .card.front-desk .card-head { background: #eff6ff; }
+  .card.front-desk.done .card-head { background: #f0fdf4; }
+  .card.front-desk { border-color: #bfdbfe; }
+  .card.front-desk.done { border-color: #bbf7d0; }
+  .badge.front-desk { background: #dbeafe; color: #1e40af; }
+
   .hidden { display: none !important; }
 
   @media print {
@@ -79,8 +101,8 @@
     <div class="field">
       <label>Branch</label>
       <select id="branch-input">
-        <option value="SBEA">Sandbox East</option>
-        <option value="SBGH">Sandbox Greenhills</option>
+        <option value="SBEA">East Branch</option>
+        <option value="SBGH">Greenhills Branch</option>
       </select>
     </div>
     <div class="field">
@@ -121,6 +143,7 @@
         <li>No confirmed appointments today for this branch.</li>
         <li>Today's confirmed patients have already been picked once this year for these therapists (each patient is asked at most once per therapist per year).</li>
         <li>All therapists with sessions today have already met their yearly assessment target.</li>
+        <li>No Front Desk Officers are on record for this branch, or all have met their yearly target.</li>
       </ul>
       <div style="margin-top:14px;font-size:12px;color:var(--gray-500);">Append <code>&debug=1</code> to the API URL to see exactly why each schedule was filtered.</div>
     </div>
@@ -145,7 +168,7 @@ function showMain() {
   document.getElementById('setup').classList.add('hidden');
   document.getElementById('main').classList.remove('hidden');
   const branch = localStorage.getItem(LS_BRANCH);
-  document.getElementById('branch-label').textContent = branch === 'SBGH' ? 'Sandbox Greenhills' : 'Sandbox East';
+  document.getElementById('branch-label').textContent = branch === 'SBGH' ? 'Greenhills Branch' : 'East Branch';
   load();
   if (refreshTimer) clearInterval(refreshTimer);
   refreshTimer = setInterval(load, 3 * 60 * 1000); // auto-refresh every 3 min
@@ -210,11 +233,62 @@ async function load() {
   }
 }
 
+function makeCard(t, isFrontDesk) {
+  const isDone = t.status === 'COMPLETED';
+  const card = document.createElement('div');
+  card.className = 'card' + (isFrontDesk ? ' front-desk' : '') + (isDone ? ' done' : '');
+
+  const badgeClass = isDone ? 'done' : (isFrontDesk ? 'front-desk' : 'pending');
+  const badgeText  = isDone ? '✓ COMPLETED' : 'PENDING';
+
+  if (isFrontDesk) {
+    // Front desk: officer is the subject being assessed; patient is the evaluator
+    card.innerHTML = `
+      <div class="card-head">
+        <div class="card-meta">${escapeHtml(t.department)} · Front Desk</div>
+        <div class="card-name">${escapeHtml(t.staffName)}</div>
+        <div class="card-staff">Evaluated by: ${escapeHtml(t.patientName)}</div>
+        <span class="badge ${badgeClass}" style="margin-top:6px;display:inline-block;">${badgeText}</span>
+      </div>
+      <div class="qr-wrap"><div class="qr" id="qr-${t.assignmentId}"></div></div>
+      <div class="card-actions">
+        <button class="btn-sm" onclick="copyText('${t.surveyUrl}')">Copy link</button>
+        <a class="btn-sm" href="${t.surveyUrl}" target="_blank" rel="noreferrer" style="text-align:center;text-decoration:none;">Open ↗</a>
+      </div>
+    `;
+  } else {
+    // Clinical: patient is the main subject; therapist is listed below
+    card.innerHTML = `
+      <div class="card-head">
+        <div class="card-meta">${escapeHtml(t.department)} · ${t.startTime}–${t.endTime}</div>
+        <div class="card-name">${escapeHtml(t.patientName)}</div>
+        <div class="card-staff">w/ ${escapeHtml(t.staffName)}</div>
+        <span class="badge ${badgeClass}" style="margin-top:6px;display:inline-block;">${badgeText}</span>
+      </div>
+      <div class="qr-wrap"><div class="qr" id="qr-${t.assignmentId}"></div></div>
+      <div class="card-actions">
+        <button class="btn-sm" onclick="copyText('${t.surveyUrl}')">Copy link</button>
+        <a class="btn-sm" href="${t.surveyUrl}" target="_blank" rel="noreferrer" style="text-align:center;text-decoration:none;">Open ↗</a>
+      </div>
+    `;
+  }
+  return card;
+}
+
+function addSectionHeading(grid, label, count) {
+  const h = document.createElement('div');
+  h.className = 'section-heading';
+  h.innerHTML = `${label}<span class="sh-count">${count}</span>`;
+  grid.appendChild(h);
+}
+
 function renderTargets(data) {
   const targets = data.targets || [];
-  const total = targets.length;
+  const clinical   = targets.filter(t => t.sessionType !== 'front-desk');
+  const frontDesk  = targets.filter(t => t.sessionType === 'front-desk');
+  const total   = targets.length;
   const pending = targets.filter(t => t.status === 'PENDING').length;
-  const done = targets.filter(t => t.status === 'COMPLETED').length;
+  const done    = targets.filter(t => t.status === 'COMPLETED').length;
 
   document.getElementById('stat-total').textContent = total;
   document.getElementById('stat-pending').textContent = pending;
@@ -232,33 +306,29 @@ function renderTargets(data) {
   }
   emptyEl.classList.add('hidden');
 
-  targets.forEach(t => {
-    const card = document.createElement('div');
-    card.className = 'card' + (t.status === 'COMPLETED' ? ' done' : '');
-    card.innerHTML = `
-      <div class="card-head">
-        <div class="card-meta">${t.department} · ${t.startTime}–${t.endTime}</div>
-        <div class="card-name">${escapeHtml(t.patientName)}</div>
-        <div class="card-staff">w/ ${escapeHtml(t.staffName)}</div>
-        <span class="badge ${t.status === 'COMPLETED' ? 'done' : 'pending'}" style="margin-top:6px;display:inline-block;">
-          ${t.status === 'COMPLETED' ? '✓ COMPLETED' : 'PENDING'}
-        </span>
-      </div>
-      <div class="qr-wrap"><div class="qr" id="qr-${t.assignmentId}"></div></div>
-      <div class="card-actions">
-        <button class="btn-sm" onclick="copyText('${t.surveyUrl}')">Copy link</button>
-        <a class="btn-sm" href="${t.surveyUrl}" target="_blank" rel="noreferrer" style="text-align:center;text-decoration:none;">Open ↗</a>
-      </div>
-    `;
-    grid.appendChild(card);
-
-    // Generate QR
-    new QRCode(document.getElementById('qr-' + t.assignmentId), {
-      text: t.surveyUrl,
-      width: 140, height: 140,
-      colorDark: '#0f766e', colorLight: '#ffffff',
+  if (clinical.length > 0) {
+    addSectionHeading(grid, '🧑‍⚕️ Clinical Staff — Patient Evaluations', clinical.length);
+    clinical.forEach(t => {
+      const card = makeCard(t, false);
+      grid.appendChild(card);
+      new QRCode(document.getElementById('qr-' + t.assignmentId), {
+        text: t.surveyUrl, width: 140, height: 140,
+        colorDark: '#0f766e', colorLight: '#ffffff',
+      });
     });
-  });
+  }
+
+  if (frontDesk.length > 0) {
+    addSectionHeading(grid, '🗂️ Front Desk — Customer Evaluations', frontDesk.length);
+    frontDesk.forEach(t => {
+      const card = makeCard(t, true);
+      grid.appendChild(card);
+      new QRCode(document.getElementById('qr-' + t.assignmentId), {
+        text: t.surveyUrl, width: 140, height: 140,
+        colorDark: '#1e40af', colorLight: '#ffffff',
+      });
+    });
+  }
 }
 
 function copyText(text) {
