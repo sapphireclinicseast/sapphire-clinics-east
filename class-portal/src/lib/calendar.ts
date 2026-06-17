@@ -3,9 +3,11 @@
 import { backendFetch, backendJson, backendOrigin, getToken } from './backend'
 
 export type CalendarEventType = 'CLASS_CANCELLED' | 'HOLIDAY' | 'FIELD_TRIP' | 'IEP_REVIEW' | 'EVENT'
+export type CalendarBranch = 'EAST' | 'GREENHILLS'
 
 export interface CalendarEvent {
   id: string
+  branch: CalendarBranch
   date: string         // YYYY-MM-DD
   endDate: string | null
   title: string
@@ -18,6 +20,7 @@ export interface CalendarEvent {
 
 export interface CalendarPdfMeta {
   id: string
+  branch: CalendarBranch
   fileName: string
   mimeType: string
   uploadedBy: string
@@ -25,11 +28,13 @@ export interface CalendarPdfMeta {
   size: number
 }
 
-/** Pull events in a date range. Caller supplies inclusive YYYY-MM-DD bounds. */
-export async function listEvents(from: string, to: string): Promise<CalendarEvent[]> {
-  const url = `/api/public/class-portal/calendar/events?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
-  const { events } = await backendJson<{ events: CalendarEvent[] }>(url)
-  return events
+/** Pull events in a date range for a branch. STUDENT/BRANCH_ADMIN/FRONTDESK
+ *  callers may pass any value — the server scopes them to their own branch. */
+export async function listEvents(from: string, to: string, branch?: CalendarBranch): Promise<{ events: CalendarEvent[]; branch: CalendarBranch | null }> {
+  const params = new URLSearchParams({ from, to })
+  if (branch) params.set('branch', branch)
+  const data = await backendJson<{ events: CalendarEvent[]; branch: CalendarBranch | null }>(`/api/public/class-portal/calendar/events?${params.toString()}`)
+  return { events: data.events, branch: data.branch ?? null }
 }
 
 export async function createEvent(input: Omit<CalendarEvent, 'id' | 'createdBy' | 'createdAt' | 'updatedAt'>): Promise<CalendarEvent> {
@@ -40,7 +45,7 @@ export async function createEvent(input: Omit<CalendarEvent, 'id' | 'createdBy' 
   return event
 }
 
-export async function updateEvent(id: string, patch: Partial<Omit<CalendarEvent, 'id' | 'createdBy' | 'createdAt' | 'updatedAt'>>): Promise<CalendarEvent> {
+export async function updateEvent(id: string, patch: Partial<Omit<CalendarEvent, 'id' | 'branch' | 'createdBy' | 'createdAt' | 'updatedAt'>>): Promise<CalendarEvent> {
   const { event } = await backendJson<{ event: CalendarEvent }>(`/api/public/class-portal/calendar/events/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(patch),
@@ -52,26 +57,28 @@ export async function deleteEvent(id: string): Promise<void> {
   await backendJson(`/api/public/class-portal/calendar/events/${id}`, { method: 'DELETE' })
 }
 
-/** Returns null when no PDF is uploaded yet (the API responds 204). */
-export async function getCalendarPdfMeta(): Promise<CalendarPdfMeta | null> {
-  const res = await backendFetch('/api/public/class-portal/calendar/pdf?meta=1')
+/** Returns null when no PDF is uploaded yet for that branch (server: 204). */
+export async function getCalendarPdfMeta(branch?: CalendarBranch): Promise<CalendarPdfMeta | null> {
+  const qs = branch ? `?branch=${branch}&meta=1` : '?meta=1'
+  const res = await backendFetch(`/api/public/class-portal/calendar/pdf${qs}`)
   if (res.status === 204) return null
   if (!res.ok) throw new Error(`Failed to load calendar metadata (${res.status})`)
   const { meta } = await res.json()
   return meta
 }
 
-/** Build a viewable URL for the current PDF, authenticated via a one-time blob fetch. */
-export async function fetchCalendarPdfBlob(): Promise<Blob | null> {
-  const res = await backendFetch('/api/public/class-portal/calendar/pdf')
+export async function fetchCalendarPdfBlob(branch?: CalendarBranch): Promise<Blob | null> {
+  const qs = branch ? `?branch=${branch}` : ''
+  const res = await backendFetch(`/api/public/class-portal/calendar/pdf${qs}`)
   if (res.status === 204) return null
   if (!res.ok) throw new Error(`Failed to load calendar PDF (${res.status})`)
   return await res.blob()
 }
 
-export async function uploadCalendarPdf(file: File): Promise<CalendarPdfMeta> {
+export async function uploadCalendarPdf(file: File, branch: CalendarBranch): Promise<CalendarPdfMeta> {
   const fd = new FormData()
   fd.append('file', file)
+  fd.append('branch', branch)
   const tok = getToken()
   const res = await fetch(backendOrigin() + '/api/public/class-portal/calendar/pdf', {
     method: 'POST',
@@ -83,11 +90,18 @@ export async function uploadCalendarPdf(file: File): Promise<CalendarPdfMeta> {
   return data.meta as CalendarPdfMeta
 }
 
-export async function deleteCalendarPdf(): Promise<void> {
-  await backendJson('/api/public/class-portal/calendar/pdf', { method: 'DELETE' })
+export async function deleteCalendarPdf(branch: CalendarBranch): Promise<void> {
+  await backendJson(`/api/public/class-portal/calendar/pdf?branch=${branch}`, { method: 'DELETE' })
 }
 
-/** Human-readable label for an event type. */
+export function branchLabel(b: CalendarBranch): string {
+  return b === 'EAST' ? 'Sapphire Clinics East' : 'Sapphire Clinics Greenhills'
+}
+
+export function branchShortLabel(b: CalendarBranch): string {
+  return b === 'EAST' ? 'East' : 'Greenhills'
+}
+
 export function eventTypeLabel(t: CalendarEventType): string {
   switch (t) {
     case 'CLASS_CANCELLED': return 'Classes cancelled'
@@ -98,7 +112,6 @@ export function eventTypeLabel(t: CalendarEventType): string {
   }
 }
 
-/** Brand-coloured swatches for each event type. */
 export function eventTypeColor(t: CalendarEventType): { bg: string; fg: string; border: string } {
   switch (t) {
     case 'CLASS_CANCELLED': return { bg: '#fee2e2', fg: '#991b1b', border: '#fca5a5' }

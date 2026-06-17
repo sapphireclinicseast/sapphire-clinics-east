@@ -42,6 +42,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return withCors(NextResponse.json({
       event: {
         id: updated.id,
+        branch: updated.branch,
         date: updated.date.toISOString().slice(0, 10),
         endDate: updated.endDate ? updated.endDate.toISOString().slice(0, 10) : null,
         title: updated.title,
