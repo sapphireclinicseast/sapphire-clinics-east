@@ -192,20 +192,26 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
       </div>
 
       {/* Submitted documents — viewable + downloadable; the student can also
-          re-upload any row (e.g. the original was blurry or the wrong file).
-          Admin + teacher can upload school-endorsed records (Form 137 / SF10)
-          and re-upload any row on behalf of the student. */}
-      {(e.documents && Object.keys(e.documents).length > 0) || viewerRole === 'ADMIN' || viewerRole === 'TEACHER' ? (
+          re-upload any row (e.g. the original was blurry or the wrong file)
+          and upload any missing required document from the picker below.
+          Admin + teacher can do the same on behalf of the student. */}
+      {(
         <div className="card-static">
           <h2 className="text-[18px] leading-tight mb-1">Submitted documents</h2>
           {viewerRole === 'STUDENT' && (
             <p className="text-[12.5px] text-[color:var(--mid-gray)] mb-3">
               Need to replace a file? Click <span className="font-semibold">Re-upload</span> on the row.
+              Missing a required document? Use the picker at the bottom of this card to upload it.
             </p>
           )}
           {(viewerRole === 'ADMIN' || viewerRole === 'TEACHER') && (
             <p className="text-[12.5px] text-[color:var(--mid-gray)] mb-3">
               Re-upload any row, or upload school-endorsed records like Form 137 / SF10 from the picker below.
+            </p>
+          )}
+          {viewerRole === 'STUDENT' && (!e.documents || Object.keys(e.documents).length === 0) && (
+            <p className="text-[12.5px] italic text-[color:var(--mid-gray)] mb-3">
+              No documents on file yet. Upload your required documents from the picker below.
             </p>
           )}
           <div className="space-y-2.5">
@@ -245,8 +251,9 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
             ))}
           </div>
 
-          {(viewerRole === 'ADMIN' || viewerRole === 'TEACHER') && (
+          {(viewerRole === 'ADMIN' || viewerRole === 'TEACHER' || viewerRole === 'STUDENT') && (
             <StaffDocUploader
+              viewerRole={viewerRole}
               existing={e.documents ?? {}}
               onUpload={async (key, file) => {
                 const fileId = 'doc_' + Math.random().toString(36).slice(2, 12)
@@ -257,11 +264,16 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
                 const updated = await updateUserEnrollment(student.id, { documents: nextDocs })
                 setStudent(updated)
                 onChange?.()
+                if (key === 'child_photo_1x1') {
+                  const dataUrl = await downscaleToDataUrl(file, 500, 0.85)
+                  if (dataUrl) saveHeadshot({ studentId: student.id, dataUrl, uploadedAt: new Date().toISOString() })
+                  setStudent(prev => ({ ...prev }))
+                }
               }}
             />
           )}
         </div>
-      ) : null}
+      )}
 
       {/* Other Documents — auto-generated PDFs + school-issued docs */}
       <div className="card-static">
@@ -566,29 +578,42 @@ function nameOf(n?: { lastName: string; firstName: string; middleName: string })
  * school. Picker only lists doc keys that aren't already on the student.
  */
 function StaffDocUploader({
-  existing, onUpload,
+  viewerRole, existing, onUpload,
 }: {
+  viewerRole: 'STUDENT' | 'TEACHER' | 'ADMIN'
   existing: Record<string, { name: string; size: number; type?: string; fileId?: string }>
   onUpload: (key: string, file: File) => Promise<void>
 }) {
-  const STAFF_DOC_OPTIONS: Array<{ key: string; title: string; hint: string }> = [
-    { key: 'form_137_sf10',  title: 'Form 137 / SF10',                   hint: 'School-endorsed permanent record from the prior school.' },
-    { key: 'report_card_sf9', title: 'Report Card / SF9',                 hint: 'If parent did not upload it during enrollment.' },
-    { key: 'good_moral',     title: 'Certificate of Good Moral Character', hint: 'If parent did not upload it during enrollment.' },
-    { key: 'psa_birth_cert', title: 'PSA Birth Certificate',              hint: 'If parent did not upload it during enrollment.' },
-    { key: 'parent_valid_id', title: 'Parent/Guardian Valid ID',          hint: 'For the main signatory and contact person.' },
-    { key: 'pwd_id',         title: 'PWD ID',                              hint: 'If the child has a PWD ID — helps with discount eligibility.' },
-    { key: 'affidavit_undertaking', title: 'DepEd Affidavit of Undertaking', hint: 'Signed Annex 3 if collected on paper.' },
-    { key: 'medical_reports', title: 'Medical / therapy reports',          hint: 'If new reports come in after enrollment.' },
+  const STAFF_DOC_OPTIONS: Array<{ key: string; title: string; hint: string; studentHint?: string }> = [
+    { key: 'form_137_sf10',  title: 'Form 137 / SF10',                   hint: 'School-endorsed permanent record from the prior school.',
+      studentHint: 'School-endorsed permanent record from your prior school. Upload only if you already have a copy.' },
+    { key: 'report_card_sf9', title: 'Report Card / SF9',                 hint: 'If parent did not upload it during enrollment.',
+      studentHint: 'Your most recent report card.' },
+    { key: 'good_moral',     title: 'Certificate of Good Moral Character', hint: 'If parent did not upload it during enrollment.',
+      studentHint: 'Certificate of Good Moral Character from your prior school.' },
+    { key: 'psa_birth_cert', title: 'PSA Birth Certificate',              hint: 'If parent did not upload it during enrollment.',
+      studentHint: 'PSA-issued birth certificate (photocopy is fine).' },
+    { key: 'child_photo_1x1', title: 'Child’s 1x1 Photo (for student ID)', hint: 'Used for the student ID and headshot.',
+      studentHint: 'A clear 1x1 photo. This also becomes your headshot on the portal.' },
+    { key: 'parent_valid_id', title: 'Parent/Guardian Valid ID',          hint: 'For the main signatory and contact person.',
+      studentHint: 'A government-issued ID of your parent or guardian.' },
+    { key: 'pwd_id',         title: 'PWD ID',                              hint: 'If the child has a PWD ID — helps with discount eligibility.',
+      studentHint: 'PWD ID, if applicable.' },
+    { key: 'affidavit_undertaking', title: 'DepEd Affidavit of Undertaking', hint: 'Signed Annex 3 if collected on paper.',
+      studentHint: 'Signed Annex 3 (DepEd Affidavit of Undertaking), if you have a hard copy.' },
+    { key: 'medical_reports', title: 'Medical / therapy reports',          hint: 'If new reports come in after enrollment.',
+      studentHint: 'Medical, developmental, or therapy reports (optional).' },
   ]
-  // Default to the first slot the student doesn't yet have; falls back to Form 137.
-  const firstMissing = STAFF_DOC_OPTIONS.find(o => !existing[o.key])?.key ?? 'form_137_sf10'
+  const firstMissing = STAFF_DOC_OPTIONS.find(o => !existing[o.key])?.key ?? STAFF_DOC_OPTIONS[0].key
   const [selectedKey, setSelectedKey] = useState<string>(firstMissing)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
   const opt = STAFF_DOC_OPTIONS.find(o => o.key === selectedKey) ?? STAFF_DOC_OPTIONS[0]
   const alreadyOnFile = !!existing[selectedKey]
+  const isStudent = viewerRole === 'STUDENT'
+  const heading = isStudent ? 'Upload a document' : 'Upload on the student’s behalf'
+  const hint = isStudent ? (opt.studentHint ?? opt.hint) : opt.hint
 
   async function handlePick(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]
@@ -607,7 +632,7 @@ function StaffDocUploader({
       style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}
     >
       <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--mid-gray)] font-semibold mb-2" style={{ fontFamily: 'var(--font-display)' }}>
-        Upload on the student&apos;s behalf
+        {heading}
       </div>
       <div className="flex items-center gap-2 flex-wrap">
         <select
@@ -627,7 +652,7 @@ function StaffDocUploader({
           <input type="file" className="sr-only" accept=".pdf,image/*,.doc,.docx" onChange={handlePick} disabled={busy} />
         </label>
       </div>
-      <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-2">{opt.hint}</p>
+      <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-2">{hint}</p>
       {err && <div className="mt-2 text-[12px] text-rose-700">{err}</div>}
     </div>
   )
