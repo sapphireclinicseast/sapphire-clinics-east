@@ -139,15 +139,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     let posterImgTag = ''
     if (announcement.posterFileData && announcement.posterFileType) {
-      // Inline as a data URL. Most modern clients (Gmail / Outlook web /
-      // Apple Mail) render these fine; on the rare client that strips
-      // them, the rest of the message is unaffected.
-      const buf = announcement.posterFileData instanceof Buffer
-        ? announcement.posterFileData
-        : Buffer.from(announcement.posterFileData)
-      const b64 = buf.toString('base64')
-      posterImgTag = '<div style="margin:16px 0"><img src="data:' + announcement.posterFileType + ';base64,' + b64 +
-        '" alt="Poster" style="max-width:100%;height:auto;border-radius:12px;display:block"></div>'
+      const isImage = announcement.posterFileType.startsWith('image/')
+      if (isImage) {
+        // Inline images as a data URL. Most modern clients (Gmail /
+        // Outlook web / Apple Mail) render these fine; on the rare
+        // client that strips them, the rest of the message is
+        // unaffected.
+        const buf = announcement.posterFileData instanceof Buffer
+          ? announcement.posterFileData
+          : Buffer.from(announcement.posterFileData)
+        const b64 = buf.toString('base64')
+        posterImgTag = '<div style="margin:16px 0"><img src="data:' + announcement.posterFileType + ';base64,' + b64 +
+          '" alt="Poster" style="max-width:100%;height:auto;border-radius:12px;display:block"></div>'
+      } else {
+        // Non-image attachments (typically PDF parent-orientation
+        // slides) can't be reliably inlined in HTML email. Show a chip
+        // pointing back to the portal where the parent can view it
+        // after signing in.
+        const fileLabel = escapeHtml(announcement.posterFileName ?? 'attachment')
+        const fileKind  = announcement.posterFileType === 'application/pdf' ? 'PDF' : 'Attachment'
+        posterImgTag =
+          '<div style="margin:16px 0;padding:14px 16px;border:1px solid #cbd5e1;border-radius:12px;background:#f8fafc">' +
+            `<div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:#475569;margin-bottom:4px">Attached ${fileKind}</div>` +
+            `<div style="font-size:14px;color:#0f172a;font-weight:600;margin-bottom:6px">${fileLabel}</div>` +
+            '<a href="https://class.sapphireclinicseast.org" style="font-size:13px;color:#16a34a">Sign in to view →</a>' +
+          '</div>'
+      }
     }
 
     const html =
