@@ -110,7 +110,7 @@ export default function UsersPage() {
     setFormEmail('')
     setFormPassword('')
     setFormRole('VIEWER')
-    setFormBranch('')
+    setFormBranch('ALL')
     setError('')
     setModalOpen(true)
   }
@@ -121,7 +121,7 @@ export default function UsersPage() {
     setFormEmail(user.email)
     setFormPassword('')
     setFormRole(user.role)
-    setFormBranch(user.branch || '')
+    setFormBranch(user.branch || 'ALL')
     setError('')
     setModalOpen(true)
   }

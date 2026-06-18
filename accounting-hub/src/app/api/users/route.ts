@@ -127,7 +127,7 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
     }
 
-    if (branch !== undefined && branch !== null && !VALID_BRANCHES.includes(branch)) {
+    if (branch && !VALID_BRANCHES.includes(branch)) {
       return NextResponse.json({ error: 'Invalid branch' }, { status: 400 })
     }
 
