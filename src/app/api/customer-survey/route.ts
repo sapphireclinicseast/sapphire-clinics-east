@@ -243,7 +243,7 @@ export async function GET(req: NextRequest) {
     // Build staff list with composite score
     const staffList = Array.from(staffMap.values()).map(s => {
       const avgRating = s.ratingCount > 0 ? s.totalRating / s.ratingCount : 0
-      // Normalize: rating out of 6 (max scale) → 0-1, sessions normalized against max in dataset
+      // Normalize: rating out of 5 (scale 0–5) → 0-1, sessions normalized against max in dataset
       return { ...s, avgRating: parseFloat(avgRating.toFixed(2)) }
     })
 
@@ -254,7 +254,7 @@ export async function GET(req: NextRequest) {
 
     // Compute composite score using configurable weights
     const scored = staffList.map(s => {
-      const satisfactionNorm = s.avgRating / 6 // max scale is 6
+      const satisfactionNorm = s.avgRating / 5 // max scale is 5 (ratings 0–5)
       const confirmedNorm = s.sessionsTotal / maxConfirmed
       // Rescheduled & cancelled are inverted: fewer = higher score
       const rescheduledNorm = 1 - (s.sessionsRescheduled / maxRescheduled)

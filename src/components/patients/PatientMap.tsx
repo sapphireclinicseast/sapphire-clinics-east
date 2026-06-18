@@ -111,19 +111,67 @@ export default function PatientMap({ cities }: PatientMapProps) {
       const geojson = await loadGeoJSON()
 
       if (geojson) {
+        // Build a set of province names so we can skip features that are named after
+        // a province — patients who write just "Rizal" mean the province, not the
+        // Rizal municipality in Laguna (or 6 other Rizal municipalities nationwide).
+        const provinceNames = new Set<string>(
+          geojson.features.map((f: any) => normName(f.properties?.province ?? ''))
+        )
+
+        // Region priority: prefer features geographically near our Metro Manila clinics.
+        // When the same city name appears in multiple regions, only shade the best-ranked one.
+        const REGION_PRI: Record<string, number> = {
+          'Metropolitan Manila':        0,
+          'CALABARZON (Region IV-A)':   1,
+          'Central Luzon (Region III)': 2,
+          'MIMAROPA (Region IV-B)':     3,
+          'Ilocos Region (Region I)':   10,
+        }
+        const bestRegion: Record<string, string> = {}
+        for (const feat of geojson.features) {
+          const props  = feat.properties ?? {}
+          const name   = geoName(props)
+          const key    = normName(name)
+          const region = props.region ?? ''
+          if (!key || provinceNames.has(key)) continue
+          if (lookupCount(name) === null) continue
+          const existing = bestRegion[key]
+          if (!existing || (REGION_PRI[region] ?? 99) < (REGION_PRI[existing] ?? 99)) {
+            bestRegion[key] = region
+          }
+        }
+
+        const noData = { weight: 0.4, color: '#94a3b8', fillColor: '#eef2f5', fillOpacity: 0.25 }
+
         const geoLayer = L.geoJSON(geojson as any, {
           style: (feature: any) => {
-            const c = lookupCount(geoName(feature?.properties ?? {}))
+            const props = feature?.properties ?? {}
+            const name  = geoName(props)
+            const key   = normName(name)
+            // Skip features named after a province (ambiguous patient data)
+            if (provinceNames.has(key)) return noData
+            const c = lookupCount(name)
+            if (!c) return noData
+            // Skip lower-priority duplicates (e.g. "San Mateo" in Isabela when
+            // the same name exists in Rizal Province, which is closer to the clinic)
+            const region = props.region ?? ''
+            if (bestRegion[key] && bestRegion[key] !== region) return noData
             return {
               weight:      0.4,
               color:       '#94a3b8',
-              fillColor:   colorFor(c ? c.n : 0, max),
-              fillOpacity: c ? 0.85 : 0.25,
+              fillColor:   colorFor(c.n, max),
+              fillOpacity: 0.85,
             }
           },
           onEachFeature: (feature: any, layer: any) => {
-            const name = geoName(feature?.properties ?? {})
-            const c    = lookupCount(name)
+            const props  = feature?.properties ?? {}
+            const name   = geoName(props)
+            const key    = normName(name)
+            const region = props.region ?? ''
+            const active = !provinceNames.has(key)
+                        && !!lookupCount(name)
+                        && (!bestRegion[key] || bestRegion[key] === region)
+            const c = active ? lookupCount(name) : null
             layer.bindTooltip(
               `${name}: ${c ? `${c.n} patient${c.n !== 1 ? 's' : ''}` : '0 patients'}`,
               { sticky: true }

@@ -1001,7 +1001,7 @@ export default function SurveyClient({ role }: { role: string }) {
                               </div>
                               <div className="flex items-end gap-1.5 h-16">
                                 {s.monthlyRatings.map(mr => {
-                                  const pct = (mr.avgRating / 6) * 100
+                                  const pct = (mr.avgRating / 5) * 100
                                   const monthName = new Date(2025, parseInt(mr.month) - 1).toLocaleString('en', { month: 'short' })
                                   return (
                                     <div key={mr.month} className="flex-1 flex flex-col items-center gap-0.5">
@@ -1211,7 +1211,7 @@ export default function SurveyClient({ role }: { role: string }) {
                           <span>{h.branch === 'SBEA' ? 'East' : h.branch === 'SBGH' ? 'GH' : h.branch}</span>
                           {h.avgRating !== null && (
                             <span className="flex items-center gap-0.5">
-                              <Star size={10} style={{ color: '#f59e0b' }} /> {h.avgRating.toFixed(1)}/6
+                              <Star size={10} style={{ color: '#f59e0b' }} /> {h.avgRating.toFixed(1)}/5
                             </span>
                           )}
                           <span>{new Date(h.submittedAt).toLocaleDateString('en-PH', { month: 'short', year: 'numeric' })}</span>
@@ -1269,7 +1269,7 @@ export default function SurveyClient({ role }: { role: string }) {
                       { key: 'weightConfirmed' as const, label: 'Confirmed Sessions', desc: 'Sessions with CONFIRMED status (positive effect)' },
                       { key: 'weightRescheduled' as const, label: 'Rescheduled Sessions', desc: 'Sessions with RESCHEDULED status (negative effect)' },
                       { key: 'weightCancelled' as const, label: 'Cancelled Sessions', desc: 'Fewer cancellations = higher score (negative effect)' },
-                      { key: 'weightSatisfaction' as const, label: 'Avg Satisfaction Score', desc: 'Average patient satisfaction rating out of 6 (positive effect)' },
+                      { key: 'weightSatisfaction' as const, label: 'Avg Satisfaction Score', desc: 'Average patient satisfaction rating out of 5 (positive effect)' },
                     ]).map(({ key, label, desc }) => (
                       <div key={key} className="flex items-center gap-4">
                         <div className="flex-1">
