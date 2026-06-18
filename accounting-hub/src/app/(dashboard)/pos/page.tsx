@@ -4127,33 +4127,33 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
         <path d="M66,100 A34,34 0 0,1 134,100 L116,100 A16,16 0 0,0 84,100 Z" fill="#6E8E8E"/>
       </svg>`
       frontHtml = `<div class="card" style="background:#FFFFFF;border:1px solid #e5e7eb;position:relative;overflow:hidden">
-        <div style="position:absolute;left:0;right:0;bottom:0;height:2.5px;background:linear-gradient(90deg, ${GOLD}, ${CLAY}, ${GOLD})"></div>
-        <div style="position:relative;padding:13px 16px;display:flex;flex-direction:column;justify-content:space-between;width:100%;height:100%;box-sizing:border-box">
+        <div style="position:absolute;left:0;right:0;bottom:0;height:3px;background:linear-gradient(90deg, ${GOLD}, ${CLAY}, ${GOLD})"></div>
+        <div style="position:relative;padding:14px 18px;display:flex;flex-direction:column;justify-content:space-between;width:100%;height:100%;box-sizing:border-box">
           <div style="display:flex;justify-content:space-between;align-items:flex-start">
-            <div style="display:flex;align-items:center;gap:7px">
-              ${auraArch(26)}
+            <div style="display:flex;align-items:center;gap:8px">
+              ${auraArch(34)}
               <div style="line-height:1.1">
-                <div style="font-size:9px;font-weight:800;letter-spacing:1.5px;color:${DEEP};font-family:Arial,Helvetica,sans-serif">AURA HEALTH</div>
-                <div style="font-size:5.5px;font-weight:700;letter-spacing:3.5px;color:${TEAL};font-family:Arial,Helvetica,sans-serif">REHAB CLINIC</div>
+                <div style="font-size:13px;font-weight:800;letter-spacing:1.5px;color:${DEEP};font-family:Arial,Helvetica,sans-serif">AURA HEALTH</div>
+                <div style="font-size:7.5px;font-weight:700;letter-spacing:3.5px;color:${TEAL};font-family:Arial,Helvetica,sans-serif">REHAB CLINIC</div>
               </div>
             </div>
             <div style="text-align:right">
-              <div style="font-size:6.5px;font-weight:800;letter-spacing:1.5px;color:${DEEP}">RELOADABLE</div>
-              <div style="font-size:12px;font-weight:900;letter-spacing:0.5px;color:${GOLD};font-family:Arial Black,Arial,sans-serif;line-height:1.05">PREPAID</div>
-              <div style="font-size:12px;font-weight:900;letter-spacing:0.5px;color:${GOLD};font-family:Arial Black,Arial,sans-serif;line-height:1.05">CARD</div>
+              <div style="font-size:9px;font-weight:800;letter-spacing:1.5px;color:${DEEP}">RELOADABLE</div>
+              <div style="font-size:16px;font-weight:900;letter-spacing:0.5px;color:${GOLD};font-family:Arial Black,Arial,sans-serif;line-height:1.05">PREPAID</div>
+              <div style="font-size:16px;font-weight:900;letter-spacing:0.5px;color:${GOLD};font-family:Arial Black,Arial,sans-serif;line-height:1.05">CARD</div>
             </div>
           </div>
-          <div style="text-align:center;font-size:10px;font-style:italic;letter-spacing:0.5px;line-height:1.5;color:${TEAL};padding:0 12px">Feeling Seen.<br/>Finding Footing.<br/>Moving Forward.</div>
+          <div style="text-align:center;font-size:13px;font-style:italic;letter-spacing:0.5px;line-height:1.55;color:${TEAL};padding:0 12px">Feeling Seen.<br/>Finding Footing.<br/>Moving Forward.</div>
           <div style="position:relative">
-            <div style="font-size:13px;font-weight:700;letter-spacing:3px;color:${DEEP};font-family:'Courier New',monospace;margin-bottom:7px">${cardNum}</div>
+            <div style="font-size:17px;font-weight:700;letter-spacing:2.5px;color:${DEEP};font-family:'Courier New',monospace;margin-bottom:8px">${cardNum}</div>
             <div style="display:flex;justify-content:space-between;align-items:flex-end">
               <div>
-                <div style="font-size:5px;color:${TEAL};font-weight:800;letter-spacing:1.5px">CARDHOLDER</div>
-                <div style="font-size:9px;font-weight:800;color:${DEEP};letter-spacing:0.3px">${w.patientName}</div>
+                <div style="font-size:7px;color:${TEAL};font-weight:800;letter-spacing:1.5px">CARDHOLDER</div>
+                <div style="font-size:12px;font-weight:800;color:${DEEP};letter-spacing:0.3px">${w.patientName}</div>
               </div>
               <div style="text-align:right">
-                <div style="font-size:5px;color:${TEAL};font-weight:800;letter-spacing:1.5px">VALID THRU</div>
-                <div style="font-size:9px;font-weight:700;color:${DEEP};font-family:'Courier New',monospace">${expStr}</div>
+                <div style="font-size:7px;color:${TEAL};font-weight:800;letter-spacing:1.5px">VALID THRU</div>
+                <div style="font-size:12px;font-weight:700;color:${DEEP};font-family:'Courier New',monospace">${expStr}</div>
               </div>
             </div>
           </div>
@@ -4162,16 +4162,16 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
       backHtml = `<div class="card" style="background:#FFFFFF;border:1px solid #e5e7eb;position:relative;overflow:hidden">
         <div style="position:absolute;left:0;right:0;top:0;height:2.5px;background:linear-gradient(90deg, ${GOLD}, ${TEAL}, ${GOLD})"></div>
         <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;padding:12px;box-sizing:border-box;text-align:center">
-          <img src="${barcodeImg}" style="height:42px;max-width:240px;margin-bottom:6px" />
-          <div style="font-size:7px;font-weight:800;color:${DEEP};margin-bottom:4px">
+          <img src="${barcodeImg}" style="height:48px;max-width:250px;margin-bottom:7px" />
+          <div style="font-size:9.5px;font-weight:800;color:${DEEP};margin-bottom:5px">
             Thank you for choosing Aura Health Rehab Clinic<br/>for your health and rehabilitation needs!
           </div>
-          <div style="font-size:5.5px;color:#555;text-align:justify;padding:0 10px;margin-bottom:7px;line-height:1.45">
+          <div style="font-size:7px;color:#555;text-align:justify;padding:0 12px;margin-bottom:8px;line-height:1.45">
             Your reloadable card lets you earn points every time you avail of our services or purchase products. Simply present this card during each visit to collect points and redeem exclusive Aura Health Rehab Clinic rewards and merchandise.
           </div>
-          <div style="display:flex;align-items:center;gap:5px">
-            ${auraArch(15)}
-            <div style="font-size:7px;font-weight:800;letter-spacing:1px;color:${DEEP}">AURA HEALTH REHAB CLINIC</div>
+          <div style="display:flex;align-items:center;gap:6px">
+            ${auraArch(19)}
+            <div style="font-size:9.5px;font-weight:800;letter-spacing:1px;color:${DEEP}">AURA HEALTH REHAB CLINIC</div>
           </div>
         </div>
       </div>`
