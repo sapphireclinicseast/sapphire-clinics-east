@@ -198,7 +198,7 @@ export async function GET(req: NextRequest) {
       const maxCancelled = Math.max(1, ...staffList.map(s => s.sessionsCancelled))
 
       const scored = staffList.map(s => {
-        const satisfactionNorm = s.avgRating / 6
+        const satisfactionNorm = s.avgRating / 5  // survey items are rated 0–5
         const confirmedNorm = s.sessionsTotal / maxConfirmed
         const rescheduledNorm = 1 - (s.sessionsRescheduled / maxRescheduled)
         const cancelledNorm = 1 - (s.sessionsCancelled / maxCancelled)
