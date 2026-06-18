@@ -888,6 +888,208 @@ function AssignmentsTab({ role }: { role: string }) {
   )
 }
 
+// ─── By-Assessee Tab ──────────────────────────────────────────────────────────
+
+function ByAssesseeTab({ role }: { role: string }) {
+  const defaultBranch = role === 'SBEA_ADMIN' ? 'SBEA' : role === 'SBGH_ADMIN' ? 'SBGH' : ''
+
+  const [filterFormType, setFilterFormType] = useState('')
+  const [filterBranch, setFilterBranch]     = useState(defaultBranch)
+  const [filterYear, setFilterYear]         = useState(new Date().getFullYear())
+  const [filterMonth, setFilterMonth]       = useState(0)
+  const [filterStatus, setFilterStatus]     = useState('')
+
+  const [assignments, setAssignments] = useState<Assignment[]>([])
+  const [loading, setLoading]         = useState(false)
+  const [error, setError]             = useState('')
+  const [expandedId, setExpandedId]   = useState<string | null>(null)
+
+  const fetchAssignments = useCallback(async () => {
+    setLoading(true); setError('')
+    try {
+      const params = new URLSearchParams()
+      if (filterFormType) params.set('formType', filterFormType)
+      if (filterBranch)   params.set('branch', filterBranch)
+      if (filterYear)     params.set('year', String(filterYear))
+      if (filterMonth)    params.set('month', String(filterMonth))
+      if (filterStatus)   params.set('status', filterStatus)
+      const res = await fetch(`/api/peer-eval/assignments?${params}`)
+      if (!res.ok) throw new Error('Failed to load assignments')
+      setAssignments(await res.json())
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }, [filterFormType, filterBranch, filterYear, filterMonth, filterStatus])
+
+  useEffect(() => { fetchAssignments() }, [fetchAssignments])
+
+  const total     = assignments.length
+  const completed = assignments.filter(a => a.status === 'COMPLETED').length
+  const pct       = total > 0 ? Math.round((completed / total) * 100) : 0
+
+  // Group by assessee
+  const byAssesseeMap = new Map<string, { assessee: StaffMini; items: Assignment[] }>()
+  for (const a of assignments) {
+    if (!byAssesseeMap.has(a.assesseeId)) byAssesseeMap.set(a.assesseeId, { assessee: a.assessee, items: [] })
+    byAssesseeMap.get(a.assesseeId)!.items.push(a)
+  }
+  const groups = Array.from(byAssesseeMap.values()).sort((a, b) =>
+    a.assessee.firstName.localeCompare(b.assessee.firstName)
+  )
+
+  return (
+    <div>
+      {/* Filter bar */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+        <select value={filterFormType} onChange={e => setFilterFormType(e.target.value)} style={selectStyle}>
+          <option value="">All Types</option>
+          <option value="HR08_ADMIN">HR08 Admin</option>
+          <option value="HR08_PEER">HR08 Peer</option>
+          <option value="HR09">HR09</option>
+        </select>
+
+        {!defaultBranch && (
+          <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)} style={selectStyle}>
+            <option value="">All Branches</option>
+            <option value="SBEA">East Branch</option>
+            <option value="SBGH">Greenhills Branch</option>
+          </select>
+        )}
+
+        <select value={filterYear} onChange={e => setFilterYear(parseInt(e.target.value))} style={selectStyle}>
+          {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+
+        <select value={filterMonth} onChange={e => setFilterMonth(parseInt(e.target.value))} style={selectStyle}>
+          <option value={0}>All Months</option>
+          {MONTH_NAMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+        </select>
+
+        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={selectStyle}>
+          <option value="">All Statuses</option>
+          <option value="PENDING">Pending</option>
+          <option value="COMPLETED">Completed</option>
+          <option value="EXPIRED">Expired</option>
+        </select>
+
+        <button onClick={fetchAssignments} style={{ ...iconBtnStyle, marginLeft: 'auto' }} title="Refresh">
+          <RefreshCw size={15} />
+        </button>
+      </div>
+
+      {/* Completion stats bar */}
+      {!loading && total > 0 && (
+        <div style={{ marginBottom: 16, padding: '12px 16px', background: '#f9fafb', borderRadius: 10, border: '1px solid #e5e7eb' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              {(['PENDING', 'COMPLETED', 'EXPIRED'] as PeerEvalStatus[]).map(s => {
+                const count = assignments.filter(a => a.status === s).length
+                return count > 0 ? (
+                  <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#6b7280' }}>
+                    {statusBadge(s)}
+                    <span style={{ fontWeight: 600, color: '#374151' }}>{count}</span>
+                  </div>
+                ) : null
+              })}
+            </div>
+            <div style={{ fontWeight: 700, fontSize: '0.9rem', color: pct >= 80 ? '#059669' : pct >= 50 ? '#d97706' : '#dc2626' }}>
+              {pct}% complete
+            </div>
+          </div>
+          <div style={{ height: 6, background: '#e5e7eb', borderRadius: 99, overflow: 'hidden' }}>
+            <div style={{ width: `${pct}%`, height: '100%', background: pct >= 80 ? '#10b981' : pct >= 50 ? '#f59e0b' : '#ef4444', borderRadius: 99, transition: 'width 0.3s' }} />
+          </div>
+          <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 4 }}>{completed} of {total} assignments completed</div>
+        </div>
+      )}
+
+      {error && (
+        <div style={{ padding: '10px 14px', background: '#fef2f2', borderRadius: 8, color: '#b91c1c', fontSize: '0.82rem', marginBottom: 12, display: 'flex', gap: 8 }}>
+          <AlertCircle size={15} style={{ flexShrink: 0 }} /> {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '40px 0', color: '#9ca3af', fontSize: '0.85rem' }}>Loading…</div>
+      ) : groups.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '48px 0', color: '#9ca3af', fontSize: '0.85rem' }}>
+          No assignments found. Use the Generate tab to create assignments.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {groups.map(({ assessee, items }) => {
+            const isExpanded    = expandedId === assessee.id
+            const pendingCount  = items.filter(i => i.status === 'PENDING').length
+            const completedCount = items.filter(i => i.status === 'COMPLETED').length
+            return (
+              <div key={assessee.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
+                <button
+                  onClick={() => setExpandedId(isExpanded ? null : assessee.id)}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px',
+                    background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
+                  }}
+                >
+                  <div style={{
+                    width: 34, height: 34, borderRadius: '50%', background: '#f0fdf4',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontWeight: 700, fontSize: '0.78rem', color: '#4a8073', flexShrink: 0,
+                  }}>
+                    {assessee.firstName[0]}{assessee.lastName[0]}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#111827' }}>{fullName(assessee)}</div>
+                    <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>{assessee.department} · {items.length} evaluator{items.length !== 1 ? 's' : ''} assigned</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                    {pendingCount > 0 && (
+                      <span style={{ padding: '2px 8px', borderRadius: 99, background: '#fef3c7', color: '#92400e', fontSize: '0.68rem', fontWeight: 600 }}>
+                        {pendingCount} pending
+                      </span>
+                    )}
+                    {completedCount > 0 && (
+                      <span style={{ padding: '2px 8px', borderRadius: 99, background: '#d1fae5', color: '#065f46', fontSize: '0.68rem', fontWeight: 600 }}>
+                        {completedCount} done
+                      </span>
+                    )}
+                  </div>
+                  {isExpanded
+                    ? <ChevronUp size={16} style={{ color: '#9ca3af', flexShrink: 0 }} />
+                    : <ChevronDown size={16} style={{ color: '#9ca3af', flexShrink: 0 }} />
+                  }
+                </button>
+
+                {isExpanded && (
+                  <div style={{ borderTop: '1px solid #f3f4f6', padding: '8px 12px' }}>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '4px 6px 8px' }}>
+                      Assessed by:
+                    </div>
+                    {items.map(a => (
+                      <div key={a.id} style={{
+                        display: 'flex', alignItems: 'center', gap: 10, padding: '8px 6px',
+                        borderBottom: '1px solid #f3f4f6', fontSize: '0.82rem',
+                      }}>
+                        {typeBadge(a.formType)}
+                        <div style={{ flex: 1 }}>
+                          <span style={{ fontWeight: 500, color: '#111827' }}>{fullName(a.assessor)}</span>
+                          <span style={{ color: '#9ca3af', marginLeft: 6, fontSize: '0.7rem' }}>{a.assessor.department}</span>
+                        </div>
+                        {statusBadge(a.status)}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ExpandedRow({ assignment }: { assignment: Assignment }) {
   const questions = getQuestions(assignment.formType)
 
@@ -1038,8 +1240,8 @@ function ResultsTab({ role }: { role: string }) {
             style={{
               padding: '8px 16px', background: 'none', border: 'none', cursor: 'pointer',
               fontSize: '0.82rem', fontWeight: 600,
-              color: subTab === t.id ? '#ED6823' : '#6b7280',
-              borderBottom: subTab === t.id ? '2px solid #ED6823' : '2px solid transparent',
+              color: subTab === t.id ? '#4a8073' : '#6b7280',
+              borderBottom: subTab === t.id ? '2px solid #4a8073' : '2px solid transparent',
               marginBottom: -1,
             }}
           >
@@ -1152,7 +1354,7 @@ function ResultsTab({ role }: { role: string }) {
                         })),
                       })
                     }}
-                    style={{ padding: '4px 8px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', fontWeight: 600, color: '#ED6823', border: '1px solid #FDE4CC', background: '#fff', cursor: 'pointer' }}
+                    style={{ padding: '4px 8px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', fontWeight: 600, color: '#4a8073', border: '1px solid #c8dcd8', background: '#fff', cursor: 'pointer' }}
                   >
                     <Download size={12} /> PDF
                   </span>
@@ -1562,7 +1764,7 @@ const cardLabelStyle: React.CSSProperties = {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-type Tab = 'assignments' | 'results' | 'generate' | 'settings'
+type Tab = 'assignments' | 'by-assessee' | 'results' | 'generate' | 'settings'
 
 export default function PeerEvalClient({ role }: { role: string }) {
   const isFrontDesk = ['SBEA_FRONT_DESK', 'SBGH_FRONT_DESK'].includes(role)
@@ -1575,10 +1777,11 @@ export default function PeerEvalClient({ role }: { role: string }) {
   const [activeTab, setActiveTab] = useState<Tab>('assignments')
 
   const allTabs: { id: Tab; label: string; icon: React.ReactNode; visible: boolean }[] = [
-    { id: 'assignments', label: 'Assignments', icon: <ClipboardList size={15} />, visible: true },
-    { id: 'results',     label: 'Results',     icon: <BarChart3 size={15} />,     visible: isMainAdmin },
-    { id: 'generate',    label: 'Generate',    icon: <Zap size={15} />,           visible: !isFrontDesk },
-    { id: 'settings',    label: 'Settings',    icon: <Settings size={15} />,      visible: isMainAdmin },
+    { id: 'assignments',  label: 'Assignments',  icon: <ClipboardList size={15} />, visible: true },
+    { id: 'by-assessee',  label: 'By Assessee',  icon: <Users size={15} />,         visible: isMainAdmin },
+    { id: 'results',      label: 'Results',      icon: <BarChart3 size={15} />,     visible: isMainAdmin },
+    { id: 'generate',     label: 'Generate',     icon: <Zap size={15} />,           visible: !isFrontDesk },
+    { id: 'settings',     label: 'Settings',     icon: <Settings size={15} />,      visible: isMainAdmin },
   ]
   const tabs = allTabs.filter(t => t.visible)
 
@@ -1619,7 +1822,8 @@ export default function PeerEvalClient({ role }: { role: string }) {
       </div>
 
       <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '20px' }}>
-        {activeTab === 'assignments' && (isFrontDesk ? <FrontDeskPendingView role={role} /> : <AssignmentsTab role={role} />)}
+        {activeTab === 'assignments'  && (isFrontDesk ? <FrontDeskPendingView role={role} /> : <AssignmentsTab role={role} />)}
+        {activeTab === 'by-assessee' && isMainAdmin   && <ByAssesseeTab role={role} />}
         {activeTab === 'results'     && isMainAdmin   && <ResultsTab role={role} />}
         {activeTab === 'generate'    && !isFrontDesk  && <GenerateTab role={role} />}
         {activeTab === 'settings'    && isMainAdmin   && <SettingsTab role={role} />}
@@ -1992,7 +2196,7 @@ function LeaderboardSection({
                       {names}
                     </div>
                     {tied ? (
-                      <div style={{ fontSize: '0.68rem', color: '#ED6823', fontWeight: 600, marginTop: 2 }}>
+                      <div style={{ fontSize: '0.68rem', color: '#c69849', fontWeight: 600, marginTop: 2 }}>
                         {expanded ? '▾ Hide' : '▸ Tap'} · {g.members.length} tied
                       </div>
                     ) : (

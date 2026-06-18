@@ -61,14 +61,14 @@ export async function generatePeerEvalResultPDF(input: PeerEvalPDFInput): Promis
     if (y + n > H - 18) { doc.addPage(); y = margin }
   }
 
-  // Header bar
-  doc.setFillColor(237, 104, 35) // orange
+  // Header bar — #244952 (narra/dark teal)
+  doc.setFillColor(36, 73, 82)
   doc.rect(0, 0, W, 24, 'F')
-  doc.setTextColor(255, 255, 255)
+  doc.setTextColor(237, 243, 217) // #edf3d9 paper-green on dark
   doc.setFontSize(14); doc.setFont('helvetica', 'bold')
   doc.text('Peer Evaluation Results', margin, 11)
   doc.setFontSize(9); doc.setFont('helvetica', 'normal')
-  doc.text('SAPPHIRE Clinics', margin, 18)
+  doc.text('Sapphire Clinics East Inc.', margin, 18)
 
   y = 32
 
@@ -224,7 +224,7 @@ export async function generatePeerEvalResultPDF(input: PeerEvalPDFInput): Promis
   for (let i = 1; i <= pages; i++) {
     doc.setPage(i)
     doc.setFontSize(7); doc.setFont('helvetica', 'normal'); doc.setTextColor(156, 163, 175)
-    doc.text(`Generated ${new Date().toLocaleDateString()} — SAPPHIRE Clinics`, margin, H - 8)
+    doc.text(`Generated ${new Date().toLocaleDateString()} — Sapphire Clinics East Inc.`, margin, H - 8)
     doc.text(`Page ${i} of ${pages}`, W - margin, H - 8, { align: 'right' })
   }
 
@@ -244,14 +244,14 @@ export async function generateSurveyResultPDF(input: SurveyPDFInput): Promise<vo
     if (y + n > H - 18) { doc.addPage(); y = margin }
   }
 
-  // Header bar
-  doc.setFillColor(15, 118, 110) // teal
+  // Header bar — #244952 (narra/dark teal)
+  doc.setFillColor(36, 73, 82)
   doc.rect(0, 0, W, 24, 'F')
-  doc.setTextColor(255, 255, 255)
+  doc.setTextColor(237, 243, 217) // #edf3d9 paper-green
   doc.setFontSize(14); doc.setFont('helvetica', 'bold')
   doc.text('Customer Satisfaction Results', margin, 11)
   doc.setFontSize(9); doc.setFont('helvetica', 'normal')
-  doc.text('SAPPHIRE Clinics', margin, 18)
+  doc.text('Sapphire Clinics East Inc.', margin, 18)
   y = 32
 
   // Staff info
@@ -263,7 +263,7 @@ export async function generateSurveyResultPDF(input: SurveyPDFInput): Promise<vo
   y += 3
 
   // Composite score top-right
-  doc.setFontSize(18); doc.setFont('helvetica', 'bold'); doc.setTextColor(15, 118, 110)
+  doc.setFontSize(18); doc.setFont('helvetica', 'bold'); doc.setTextColor(74, 128, 115) // #4a8073
   doc.text(String(input.compositeScore), W - margin, 32, { align: 'right' })
   doc.setFontSize(7); doc.setFont('helvetica', 'normal'); doc.setTextColor(156, 163, 175)
   doc.text('COMPOSITE SCORE', W - margin, 37, { align: 'right' })
@@ -274,7 +274,7 @@ export async function generateSurveyResultPDF(input: SurveyPDFInput): Promise<vo
   // KPI grid (5 cells)
   const kpis: [string, string, [number, number, number]][] = [
     ['AVG RATING', `${input.avgRating.toFixed(2)} / 5`, [245, 158, 11]],
-    ['SESSIONS', String(input.sessionsTotal), [15, 118, 110]],
+    ['SESSIONS', String(input.sessionsTotal), [74, 128, 115]],
     ['RESCHEDULED', String(input.sessionsRescheduled), [245, 158, 11]],
     ['CANCELLED', String(input.sessionsCancelled), [239, 68, 68]],
     ['SURVEYS', String(input.surveyCount), [99, 102, 241]],
@@ -343,7 +343,7 @@ export async function generateSurveyResultPDF(input: SurveyPDFInput): Promise<vo
   for (let i = 1; i <= pages; i++) {
     doc.setPage(i)
     doc.setFontSize(7); doc.setFont('helvetica', 'normal'); doc.setTextColor(156, 163, 175)
-    doc.text(`Generated ${new Date().toLocaleDateString()} — SAPPHIRE Clinics`, margin, H - 8)
+    doc.text(`Generated ${new Date().toLocaleDateString()} — Sapphire Clinics East Inc.`, margin, H - 8)
     doc.text(`Page ${i} of ${pages}`, W - margin, H - 8, { align: 'right' })
   }
 
