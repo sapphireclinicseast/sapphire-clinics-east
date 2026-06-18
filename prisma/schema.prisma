@@ -944,6 +944,27 @@ model ClassPortalFrontDeskPayment {
   @@index([createdAt])
 }
 
+/// One row per payment-reminder email actually sent. Lets the daily cron
+/// dedupe so a given student receives at most one email per (period,
+/// reason) — never spammed. `reason` is one of WINDOW_OPEN / DUE_SOON /
+/// PAST_DUE; `period` matches the format used elsewhere ("August 2026"
+/// for MONTHLY, "First half SY 2026–2027" for BIANNUAL).
+model ClassPortalPaymentReminderLog {
+  id        String   @id @default(cuid())
+  studentId String
+  email     String
+  plan      String   // MONTHLY | BIANNUAL | ANNUAL
+  period    String
+  dueOn     DateTime @db.Date
+  reason    String   // WINDOW_OPEN | DUE_SOON | PAST_DUE
+  severity  String   // INFO | WARNING
+  sentAt    DateTime @default(now())
+
+  @@unique([studentId, period, reason])
+  @@index([sentAt])
+  @@index([studentId])
+}
+
 /// Defensive audit log for the enrollment funnel. One row per server-
 /// visible event in the upload-token / document-blob / account-create
 /// pipeline. Lets the admin trace cases like "the parent says they
