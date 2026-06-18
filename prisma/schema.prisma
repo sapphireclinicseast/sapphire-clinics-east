@@ -501,6 +501,26 @@ model DeckingSlot {
   patientBookings PatientBooking[]
 }
 
+// ── Clinic Capacity Settings (max daily sessions per dept per branch) ────────
+model ClinicCapSettings {
+  id           String   @id @default("default")
+  seaOt        Int      @default(8)
+  seaPt        Int      @default(8)
+  seaSlp       Int      @default(8)
+  seaSped      Int      @default(8)
+  seaMd        Int      @default(8)
+  seaPsych     Int      @default(8)
+  seaOrthosis  Int      @default(8)
+  sghOt        Int      @default(8)
+  sghPt        Int      @default(8)
+  sghSlp       Int      @default(8)
+  sghSped      Int      @default(8)
+  sghMd        Int      @default(8)
+  sghPsych     Int      @default(8)
+  sghOrthosis  Int      @default(8)
+  updatedAt    DateTime @updatedAt
+}
+
 // ── Survey Settings (leaderboard metric weights) ─────────────────────────────
 model SurveySettings {
   id                    String   @id @default("default")

@@ -109,16 +109,30 @@ function DashboardContent() {
   // ── Settings state ──
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [maxSessions, setMaxSessions] = useState<MaxSessions>(() => {
+    // Seed from localStorage cache for instant render; DB fetch runs in useEffect below
     if (typeof window !== 'undefined') {
       try {
-        const saved = localStorage.getItem('sched_dash_max_sessions_hub')
-        if (saved) return JSON.parse(saved)
+        const cached = localStorage.getItem('sched_dash_max_sessions_hub')
+        if (cached) return JSON.parse(cached)
       } catch { /* ignore */ }
     }
     const def: MaxSessions = {}
     BRANCHES.forEach(b => { def[b] = {}; DEPARTMENTS.forEach(d => { def[b][d] = 8 }) })
     return def
   })
+
+  // Load persisted settings from DB on mount (source of truth)
+  useEffect(() => {
+    fetch('/api/scheduling-dashboard/cap-settings')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data && Object.keys(data).length) {
+          setMaxSessions(data)
+          localStorage.setItem('sched_dash_max_sessions_hub', JSON.stringify(data))
+        }
+      })
+      .catch(() => { /* keep localStorage/default */ })
+  }, [])
 
   // ── Top therapists tab ──
   const [therapistTab, setTherapistTab] = useState('all')
@@ -285,9 +299,20 @@ function DashboardContent() {
   }, [schedules, therapistTab])
 
   // ── Settings save ──
-  function saveSettings() {
-    localStorage.setItem('sched_dash_max_sessions_hub', JSON.stringify(maxSessions))
+  async function saveSettings() {
     setSettingsOpen(false)
+    try {
+      const res = await fetch('/api/scheduling-dashboard/cap-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(maxSessions),
+      })
+      if (res.ok) {
+        const saved = await res.json()
+        setMaxSessions(saved)
+        localStorage.setItem('sched_dash_max_sessions_hub', JSON.stringify(saved))
+      }
+    } catch { /* best-effort; state already updated locally */ }
   }
 
   // ── Styles ──
