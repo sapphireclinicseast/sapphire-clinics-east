@@ -14,10 +14,17 @@ const CLINICS = [
 let _geoCache: any | null = null
 let _geoCachePromise: Promise<any> | null = null
 
-function normCity(s: string): string {
-  return s.toUpperCase()
-    .replace(/CITY OF/g, ' ').replace(/\bCITY\b/g, ' ')
-    .replace(/[^A-Z ]/g, ' ').replace(/\s+/g, ' ').trim()
+// Normalize to uppercase ASCII — does NOT strip "CITY" so "Quezon City" stays distinct from "Quezon"
+function normName(s: string): string {
+  return (s || '').toUpperCase()
+    .replace(/Ñ/g, 'N').replace(/[ÀÁÂÃÄ]/g, 'A').replace(/[ÈÉÊË]/g, 'E')
+    .replace(/[^A-Z ]/g, ' ')
+    .replace(/\s+/g, ' ').trim()
+}
+
+// Strip "CITY OF …" prefix and trailing "CITY" — used only on the GeoJSON side as a fallback
+function stripCityWord(s: string): string {
+  return s.replace(/\bCITY OF\b/g, '').replace(/\bCITY\b/g, '').replace(/\s+/g, ' ').trim()
 }
 
 function geoName(props: Record<string, any>): string {
@@ -71,15 +78,34 @@ export default function PatientMap({ cities }: PatientMapProps) {
       }).setView([12.8, 121.8], 6)
       instanceRef.current = mapInstance
 
-      // Build count lookup
+      // Build count lookup — keep "CITY" in keys so "Quezon City" ≠ "Quezon"
       const countMap: Record<string, { name: string; n: number }> = {}
       for (const c of cities) {
-        const key = normCity(c.name)
+        const key = normName(c.name)
         if (!key) continue
-        countMap[key] = (countMap[key] ?? { name: c.name, n: 0 })
+        if (!countMap[key]) countMap[key] = { name: c.name, n: 0 }
         countMap[key].n += c.count
       }
       const max = Math.max(1, ...Object.values(countMap).map(c => c.n))
+
+      // Look up a GeoJSON feature in countMap.
+      // For features whose name contains "CITY" (e.g. "Marikina City"), combine:
+      //   • strict match (patients who wrote "Marikina City")
+      //   • loose match (patients who wrote just "Marikina")
+      // For features WITHOUT "CITY" (e.g. municipality "Quezon"), only exact match —
+      // this prevents Quezon City patient data from bleeding into Quezon Province.
+      function lookupCount(featureName: string): { n: number; label: string } | null {
+        const strict = normName(featureName)
+        const loose  = stripCityWord(strict)
+        if (strict === loose) {
+          const c = countMap[strict]
+          return c ? { n: c.n, label: c.name } : null
+        }
+        const nStrict = countMap[strict]?.n ?? 0
+        const nLoose  = countMap[loose]?.n  ?? 0
+        const total   = nStrict + nLoose
+        return total ? { n: total, label: countMap[strict]?.name ?? countMap[loose]?.name ?? featureName } : null
+      }
 
       // ── GeoJSON choropleth ────────────────────────────────────────────────
       const geojson = await loadGeoJSON()
@@ -87,8 +113,7 @@ export default function PatientMap({ cities }: PatientMapProps) {
       if (geojson) {
         const geoLayer = L.geoJSON(geojson as any, {
           style: (feature: any) => {
-            const key = normCity(geoName(feature?.properties ?? {}))
-            const c = countMap[key]
+            const c = lookupCount(geoName(feature?.properties ?? {}))
             return {
               weight:      0.4,
               color:       '#94a3b8',
@@ -98,7 +123,7 @@ export default function PatientMap({ cities }: PatientMapProps) {
           },
           onEachFeature: (feature: any, layer: any) => {
             const name = geoName(feature?.properties ?? {})
-            const c    = countMap[normCity(name)]
+            const c    = lookupCount(name)
             layer.bindTooltip(
               `${name}: ${c ? `${c.n} patient${c.n !== 1 ? 's' : ''}` : '0 patients'}`,
               { sticky: true }
