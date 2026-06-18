@@ -16,7 +16,9 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/class-portal-auth'
 import { withCors, corsHeaders } from '../../_cors'
 
-const MAX_POSTER_BYTES = 8 * 1024 * 1024 // 8 MB cap for posters
+// 20 MB cap. Images stay well under this; the bump is for parent-
+// orientation PDFs which routinely run 5–15 MB.
+const MAX_POSTER_BYTES = 20 * 1024 * 1024
 
 export async function OPTIONS(req: Request) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(req.headers.get('origin')) })

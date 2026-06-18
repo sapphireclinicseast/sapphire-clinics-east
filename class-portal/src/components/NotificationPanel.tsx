@@ -135,14 +135,14 @@ export default function NotificationPanel({ viewer }: Props) {
               </label>
 
               <div>
-                <span className="label">Poster image (optional)</span>
+                <span className="label">Poster image or PDF (optional)</span>
                 <div className="flex items-center gap-3 flex-wrap mt-1">
                   <label className="btn-secondary text-xs cursor-pointer inline-flex items-center" style={{ width: 'auto' }}>
-                    {poster ? 'Replace poster' : '+ Add poster'}
+                    {poster ? 'Replace attachment' : '+ Add poster or PDF'}
                     <input
                       type="file"
                       className="sr-only"
-                      accept="image/*"
+                      accept="image/*,application/pdf,.pdf"
                       onChange={e => {
                         const picked = e.target.files ? Array.from(e.target.files) : []
                         e.target.value = ''
@@ -165,11 +165,20 @@ export default function NotificationPanel({ viewer }: Props) {
                     </>
                   )}
                 </div>
-                {posterPreviewUrl && (
-                  <div className="mt-3 rounded-lg overflow-hidden border max-w-[280px]" style={{ borderColor: 'var(--paper-3)' }}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={posterPreviewUrl} alt="Poster preview" className="w-full h-auto block" />
-                  </div>
+                {posterPreviewUrl && poster && (
+                  poster.type.startsWith('image/') ? (
+                    <div className="mt-3 rounded-lg overflow-hidden border max-w-[280px]" style={{ borderColor: 'var(--paper-3)' }}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={posterPreviewUrl} alt="Poster preview" className="w-full h-auto block" />
+                    </div>
+                  ) : (
+                    <div className="mt-3 rounded-lg border px-3 py-2 flex items-center gap-2 max-w-[320px] text-[12px] text-[color:var(--ink)]" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
+                      <span className="font-semibold uppercase tracking-[0.08em] text-[10.5px] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+                        {poster.type === 'application/pdf' ? 'PDF' : 'File'}
+                      </span>
+                      <span className="truncate">{poster.name}</span>
+                    </div>
+                  )
                 )}
               </div>
 
@@ -436,18 +445,43 @@ function AnnouncementModal({ announcement: a, viewer, onClose, onDelete, onSent 
           {a.hasPoster && (
             <div className="rounded-xl overflow-hidden border self-start" style={{ borderColor: 'var(--paper-3)' }}>
               {posterUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={posterUrl}
-                  alt={a.posterFileName ?? 'Poster'}
-                  // Cap the poster height so the body text is always
-                  // visible next to it. object-contain preserves the
-                  // aspect ratio even on tall portrait posters.
-                  className="w-full h-auto block max-h-[75vh] object-contain bg-[color:var(--paper-2)]"
-                />
+                a.posterFileType?.startsWith('image/') ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={posterUrl}
+                    alt={a.posterFileName ?? 'Poster'}
+                    // Cap the poster height so the body text is always
+                    // visible next to it. object-contain preserves the
+                    // aspect ratio even on tall portrait posters.
+                    className="w-full h-auto block max-h-[75vh] object-contain bg-[color:var(--paper-2)]"
+                  />
+                ) : (
+                  // PDF (typically parent-orientation slides). Render
+                  // inline via iframe so parents can scroll/zoom
+                  // without leaving the modal; provide an explicit
+                  // "Open in new tab" link as a fallback for clients
+                  // that block in-frame PDF rendering.
+                  <div className="flex flex-col">
+                    <iframe
+                      src={posterUrl}
+                      title={a.posterFileName ?? 'Attached PDF'}
+                      className="w-full block bg-[color:var(--paper-2)]"
+                      style={{ height: '75vh', border: 'none' }}
+                    />
+                    <div className="px-3 py-2 border-t flex items-center justify-between gap-2 text-[11.5px] text-[color:var(--mid-gray)]" style={{ borderColor: 'var(--paper-3)' }}>
+                      <span className="truncate">{a.posterFileName ?? 'Attached PDF'}</span>
+                      <a
+                        href={posterUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-semibold text-[color:var(--narra)] whitespace-nowrap"
+                      >Open in new tab →</a>
+                    </div>
+                  </div>
+                )
               ) : (
                 <div className="aspect-[16/9] flex items-center justify-center text-[12px] text-[color:var(--mid-gray)]">
-                  Loading poster…
+                  Loading attachment…
                 </div>
               )}
             </div>
