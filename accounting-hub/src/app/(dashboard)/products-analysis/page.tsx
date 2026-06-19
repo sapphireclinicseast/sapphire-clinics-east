@@ -179,7 +179,7 @@ export default function ProductsAnalysisPage() {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* Fast moving */}
-            <Section icon={<TrendingUp size={16} />} title="Top 5 Products Sold (Fast Moving)" count={data.fastMoving.length}>
+            <Section icon={<TrendingUp size={16} />} title="Top 10 Products Sold (Fast Moving)" count={data.fastMoving.length}>
               {data.fastMoving.length === 0 ? <Empty text="No product sales in this period." /> : (
                 <table className="w-full text-sm">
                   <thead><tr style={{ color: 'var(--mid-gray)' }}>
