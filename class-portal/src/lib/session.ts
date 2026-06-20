@@ -1208,6 +1208,39 @@ export async function confirmFrontDeskPayment(classPortalPaymentId: string): Pro
 }
 
 /**
+ * Change the recorded payment method on a front-desk-payment row.
+ * Use case: a row was logged under the wrong method (e.g. PAYMONGO
+ * but the parent actually deposited at the bank). Admin and front-
+ * desk (branch-scoped) can correct this without deleting the row.
+ */
+export async function changeFrontDeskPaymentMethod(
+  classPortalPaymentId: string,
+  method: 'PAYMONGO' | 'BANK_DEPOSIT' | 'FRONT_DESK_CASH',
+): Promise<boolean> {
+  if (typeof window === 'undefined') return false
+  if (!getToken()) return false
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/frontdesk-payments/${encodeURIComponent(classPortalPaymentId)}`, {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+        ...(tok ? { authorization: `Bearer ${tok}` } : {}),
+      },
+      body: JSON.stringify({ method }),
+    })
+    if (!res.ok) {
+      console.warn('[changeFrontDeskPaymentMethod] failed:', res.status)
+      return false
+    }
+    return true
+  } catch (e) {
+    console.warn('[changeFrontDeskPaymentMethod] error:', e)
+    return false
+  }
+}
+
+/**
  * Pull the marketing-hub view of class-portal front-desk payments and
  * reconcile this device's local PaymentRecord cache against the server's
  * truth. Two-way:

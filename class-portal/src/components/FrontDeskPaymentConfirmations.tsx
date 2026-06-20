@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   getFrontDeskPaymentsServer, confirmFrontDeskPayment, deleteFrontDeskPayment,
   recordPaymentOnBehalfOf, hydrateUsers, getAuth,
+  changeFrontDeskPaymentMethod,
   type FrontDeskPaymentRow, type PaymentPlan, type StoredUser, type Branch,
 } from '@/lib/session'
 
@@ -78,6 +79,25 @@ export default function FrontDeskPaymentConfirmations({ canDelete = false }: Fdp
         ? { ...r, status: 'CONVERTED', convertedAt: new Date().toISOString() }
         : r,
     ))
+    setBusy(null)
+  }
+
+  // Inline edit for the recorded method. Admin + front desk (branch-
+  // scoped) can correct a row that was logged under the wrong method —
+  // e.g. PAYMONGO recorded but the parent actually deposited at the
+  // bank. We optimistically swap the row in-place; on failure we revert
+  // and surface the error so the staff knows to retry.
+  async function handleChangeMethod(row: FrontDeskPaymentRow, next: NonNullable<FrontDeskPaymentRow['method']>) {
+    if (busy) return
+    if (next === row.method) return
+    const prev = row.method
+    setErr(null); setBusy(row.classPortalPaymentId)
+    setRows(rs => rs.map(r => r.classPortalPaymentId === row.classPortalPaymentId ? { ...r, method: next } : r))
+    const ok = await changeFrontDeskPaymentMethod(row.classPortalPaymentId, next)
+    if (!ok) {
+      setRows(rs => rs.map(r => r.classPortalPaymentId === row.classPortalPaymentId ? { ...r, method: prev } : r))
+      setErr(`Could not change ${row.studentName}'s method. Please retry.`)
+    }
     setBusy(null)
   }
 
@@ -171,7 +191,25 @@ export default function FrontDeskPaymentConfirmations({ canDelete = false }: Fdp
                     </td>
                     <td className="py-2.5 px-3 text-[12.5px]">{planLabel(r.plan)}</td>
                     <td className="py-2.5 px-3 text-[12.5px]">{r.period}</td>
-                    <td className="py-2.5 px-3 text-[12.5px]">{methodLabel(r.method)}</td>
+                    <td className="py-2.5 px-3 text-[12.5px]">
+                      <select
+                        className="select text-[12.5px] py-1"
+                        value={r.method ?? ''}
+                        onChange={e => {
+                          const v = e.target.value
+                          if (v === 'BANK_DEPOSIT' || v === 'FRONT_DESK_CASH' || v === 'PAYMONGO') {
+                            void handleChangeMethod(r, v)
+                          }
+                        }}
+                        disabled={busy === r.classPortalPaymentId}
+                        title="Change the recorded method if it was logged under the wrong type (e.g. PayMongo but actually a bank deposit)."
+                      >
+                        {!r.method && <option value="">— Unspecified —</option>}
+                        <option value="FRONT_DESK_CASH">Cash at front desk</option>
+                        <option value="BANK_DEPOSIT">Bank deposit</option>
+                        <option value="PAYMONGO">PayMongo</option>
+                      </select>
+                    </td>
                     <td className="py-2.5 px-3 text-[12.5px]">{r.branch}</td>
                     <td className="py-2.5 px-3 text-right tabular-nums">{fmt(r.tuitionCentavos + r.miscCentavos)}</td>
                     <td className="py-2.5 px-3 text-[12.5px]">{new Date(r.createdAt).toLocaleString()}</td>
@@ -248,7 +286,25 @@ export default function FrontDeskPaymentConfirmations({ canDelete = false }: Fdp
                     </td>
                     <td className="py-2.5 px-3 text-[12.5px]">{planLabel(r.plan)}</td>
                     <td className="py-2.5 px-3 text-[12.5px]">{r.period}</td>
-                    <td className="py-2.5 px-3 text-[12.5px]">{methodLabel(r.method)}</td>
+                    <td className="py-2.5 px-3 text-[12.5px]">
+                      <select
+                        className="select text-[12.5px] py-1"
+                        value={r.method ?? ''}
+                        onChange={e => {
+                          const v = e.target.value
+                          if (v === 'BANK_DEPOSIT' || v === 'FRONT_DESK_CASH' || v === 'PAYMONGO') {
+                            void handleChangeMethod(r, v)
+                          }
+                        }}
+                        disabled={busy === r.classPortalPaymentId}
+                        title="Change the recorded method if it was logged under the wrong type (e.g. PayMongo but actually a bank deposit)."
+                      >
+                        {!r.method && <option value="">— Unspecified —</option>}
+                        <option value="FRONT_DESK_CASH">Cash at front desk</option>
+                        <option value="BANK_DEPOSIT">Bank deposit</option>
+                        <option value="PAYMONGO">PayMongo</option>
+                      </select>
+                    </td>
                     <td className="py-2.5 px-3 text-[12.5px]">{r.branch}</td>
                     <td className="py-2.5 px-3 text-right tabular-nums">{fmt(r.tuitionCentavos + r.miscCentavos)}</td>
                     <td className="py-2.5 px-3 text-[12.5px]">{r.convertedAt ? new Date(r.convertedAt).toLocaleString() : '—'}</td>
