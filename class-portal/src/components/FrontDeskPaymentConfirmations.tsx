@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   getFrontDeskPaymentsServer, confirmFrontDeskPayment, deleteFrontDeskPayment,
-  type FrontDeskPaymentRow, type PaymentPlan,
+  recordPaymentOnBehalfOf, hydrateUsers, getAuth,
+  type FrontDeskPaymentRow, type PaymentPlan, type StoredUser, type Branch,
 } from '@/lib/session'
 
 interface FdpProps {
@@ -40,6 +41,15 @@ export default function FrontDeskPaymentConfirmations({ canDelete = false }: Fdp
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  // Record-on-behalf-of state. `users` is the in-branch student roster
+  // for the picker; hydrated lazily on first modal-open so the page
+  // doesn't pay the fetch unless staff actually clicks "+ Record".
+  const [recordOpen, setRecordOpen] = useState(false)
+  const [users, setUsers] = useState<StoredUser[]>([])
+  const viewerBranch: Branch | undefined = useMemo(() => {
+    if (typeof window === 'undefined') return undefined
+    return getAuth()?.branch
+  }, [])
 
   async function load() {
     setLoading(true)
@@ -110,9 +120,25 @@ export default function FrontDeskPaymentConfirmations({ canDelete = false }: Fdp
               PayMongo payments are auto-confirmed when the parent finishes checkout — they don&apos;t appear here.
             </p>
           </div>
-          <button onClick={() => void load()} className="btn-secondary text-xs" disabled={loading}>
-            {loading ? '…' : 'Refresh'}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                // Lazy-hydrate the user roster the first time the staff
+                // opens the modal. Subsequent opens skip the fetch.
+                if (users.length === 0) void hydrateUsers().then(setUsers)
+                setRecordOpen(true)
+              }}
+              className="btn-cta text-xs"
+              disabled={loading}
+              title="Record a tuition payment for a student who didn't submit one on their portal."
+            >
+              + Record payment
+            </button>
+            <button onClick={() => void load()} className="btn-secondary text-xs" disabled={loading}>
+              {loading ? '…' : 'Refresh'}
+            </button>
+          </div>
         </div>
 
         {err && <div className="mb-3 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
@@ -246,6 +272,223 @@ export default function FrontDeskPaymentConfirmations({ canDelete = false }: Fdp
             </table>
           </div>
         )}
+      </div>
+
+      {recordOpen && (
+        <RecordPaymentModal
+          users={users}
+          viewerBranch={viewerBranch}
+          onClose={() => setRecordOpen(false)}
+          onRecorded={async () => {
+            // Re-hydrate the queue so the freshly-recorded PENDING row
+            // shows up in the table. Closing the modal first feels
+            // snappier than waiting on the network round-trip.
+            setRecordOpen(false)
+            await load()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+/* ─────────── Record-payment-on-behalf modal ─────────── */
+
+function RecordPaymentModal({
+  users, viewerBranch, onClose, onRecorded,
+}: {
+  users: StoredUser[]
+  viewerBranch: Branch | undefined
+  onClose: () => void
+  onRecorded: () => void | Promise<void>
+}) {
+  // Per-row state. Defaults pick the most common shape: monthly cash.
+  const [studentId, setStudentId] = useState('')
+  const [method, setMethod] = useState<'FRONT_DESK_CASH' | 'BANK_DEPOSIT' | 'PAYMONGO'>('FRONT_DESK_CASH')
+  const [plan, setPlan] = useState<PaymentPlan>('MONTHLY')
+  const [amount, setAmount] = useState('')
+  const [period, setPeriod] = useState('')
+  const [reference, setReference] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  // Filter the picker to in-branch active students. When the staff
+  // account is "global" (no branch on the token) we fall through to
+  // all students — matches the legacy global-frontdesk behaviour.
+  const eligible = useMemo(() => {
+    return users
+      .filter(u => u.role === 'STUDENT' && !u.disabledAt)
+      .filter(u => !viewerBranch || !u.branch || u.branch === viewerBranch)
+      .sort((a, b) => {
+        const an = [a.lastName, a.firstName].filter(Boolean).join(', ') || a.email
+        const bn = [b.lastName, b.firstName].filter(Boolean).join(', ') || b.email
+        return an.localeCompare(bn)
+      })
+  }, [users, viewerBranch])
+
+  const selected = eligible.find(u => u.id === studentId) ?? null
+  const selectedBranch = (selected?.branch ?? viewerBranch ?? null) as 'EAST' | 'GREENHILLS' | null
+
+  async function handleSubmit() {
+    setErr(null)
+    if (!selected) { setErr('Pick a student.'); return }
+    if (!selectedBranch) { setErr('Student has no branch on file — set the branch on their profile first.'); return }
+    const peso = Number(amount.replace(/,/g, ''))
+    if (!Number.isFinite(peso) || peso <= 0) { setErr('Enter the amount paid (in PHP).'); return }
+    if (!period.trim()) { setErr('Period covered is required (e.g. "AY 2026–2027" or "Aug 2026").'); return }
+
+    setBusy(true)
+    try {
+      const studentName = [selected.firstName, selected.lastName].filter(Boolean).join(' ') || selected.email
+      const id = await recordPaymentOnBehalfOf({
+        studentId: selected.id,
+        studentEmail: selected.email,
+        studentName,
+        branch: selectedBranch,
+        plan,
+        method,
+        tuitionCentavos: Math.round(peso * 100),
+        miscCentavos: 0,
+        period: period.trim(),
+        reference: reference.trim() || undefined,
+      })
+      if (!id) {
+        setErr('Could not record the payment. Retry?')
+        return
+      }
+      await onRecorded()
+      alert(
+        `Recorded ${studentName}'s payment in the Pending queue. ` +
+        `Click "Confirm payment" once the ${method === 'PAYMONGO' ? 'PayMongo receipt is verified' : method === 'BANK_DEPOSIT' ? 'deposit slip is reconciled' : 'cash is in hand'} ` +
+        `— the row will move to Confirmed Payments and the student's portal will flip to PAID.`
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm overflow-y-auto p-3 sm:p-4 flex items-start justify-center"
+      onClick={() => !busy && onClose()}
+    >
+      <div className="card-static w-full max-w-md mt-6 sm:mt-12" onClick={e => e.stopPropagation()}>
+        <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>
+          Record payment on behalf of student
+        </div>
+        <h3 className="text-[18px] leading-tight mb-2">Front-desk override</h3>
+        <p className="text-[12px] text-[color:var(--mid-gray)] mb-4">
+          Use this when the parent never opened <span className="font-semibold">/pay</span> on their portal — staff is logging
+          the payment themselves. A pending row is created in the queue below; click <span className="font-semibold">Confirm payment</span> on
+          it once the cash / deposit / PayMongo receipt is in hand.
+        </p>
+
+        {err && (
+          <div className="mb-3 px-3 py-2 rounded-lg bg-rose-50 border border-rose-100 text-[12.5px] text-rose-800">{err}</div>
+        )}
+
+        <label className="block mb-3">
+          <span className="label">Student</span>
+          <select
+            className="select"
+            value={studentId}
+            onChange={e => setStudentId(e.target.value)}
+            disabled={busy}
+          >
+            <option value="">— Pick a student —</option>
+            {eligible.map(u => {
+              const name = [u.lastName, u.firstName].filter(Boolean).join(', ') || u.email
+              return (
+                <option key={u.id} value={u.id}>
+                  {name}{u.branch ? ` · ${u.branch}` : ''}{u.level ? ` · ${u.level}` : ''}
+                </option>
+              )
+            })}
+          </select>
+          {eligible.length === 0 && (
+            <span className="text-[11px] text-[color:var(--mid-gray)] mt-1 block italic">
+              No active students loaded yet. Try closing + re-opening this modal.
+            </span>
+          )}
+        </label>
+
+        <label className="block mb-3">
+          <span className="label">Payment method</span>
+          <select
+            className="select"
+            value={method}
+            onChange={e => setMethod(e.target.value as 'FRONT_DESK_CASH' | 'BANK_DEPOSIT' | 'PAYMONGO')}
+            disabled={busy}
+          >
+            <option value="FRONT_DESK_CASH">Cash at front desk</option>
+            <option value="BANK_DEPOSIT">Bank deposit</option>
+            <option value="PAYMONGO">PayMongo</option>
+          </select>
+        </label>
+
+        <label className="block mb-3">
+          <span className="label">Plan</span>
+          <select
+            className="select"
+            value={plan}
+            onChange={e => setPlan(e.target.value as PaymentPlan)}
+            disabled={busy}
+          >
+            <option value="MONTHLY">Monthly</option>
+            <option value="BIANNUAL">Bi-annual</option>
+            <option value="ANNUAL">Annual</option>
+          </select>
+        </label>
+
+        <label className="block mb-3">
+          <span className="label">Amount paid (PHP)</span>
+          <input
+            type="number"
+            inputMode="decimal"
+            min={0}
+            step="0.01"
+            className="input"
+            value={amount}
+            onChange={e => setAmount(e.target.value)}
+            placeholder="e.g. 5000"
+            disabled={busy}
+          />
+        </label>
+
+        <label className="block mb-3">
+          <span className="label">Period covered</span>
+          <input
+            type="text"
+            className="input"
+            value={period}
+            onChange={e => setPeriod(e.target.value)}
+            placeholder='e.g. "AY 2026–2027" or "Aug 2026"'
+            disabled={busy}
+          />
+        </label>
+
+        <label className="block mb-4">
+          <span className="label">
+            {method === 'PAYMONGO' ? 'PayMongo reference / receipt no. (optional)'
+              : method === 'BANK_DEPOSIT' ? 'Deposit slip reference (optional)'
+              : 'Receipt no. (optional)'}
+          </span>
+          <input
+            type="text"
+            className="input"
+            value={reference}
+            onChange={e => setReference(e.target.value)}
+            placeholder={method === 'PAYMONGO' ? 'Paste from the PayMongo email' : ''}
+            disabled={busy}
+          />
+        </label>
+
+        <div className="flex gap-2 justify-end">
+          <button className="btn-secondary text-xs" onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="btn-primary text-xs" onClick={() => void handleSubmit()} disabled={busy || !studentId}>
+            {busy ? 'Recording…' : 'Record payment'}
+          </button>
+        </div>
       </div>
     </div>
   )
