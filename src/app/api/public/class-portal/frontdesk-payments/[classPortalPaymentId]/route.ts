@@ -27,8 +27,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ cl
     if (!classPortalPaymentId) {
       return withCors(NextResponse.json({ error: 'classPortalPaymentId required.' }, { status: 400 }), origin)
     }
-    const body = await req.json().catch(() => ({})) as { status?: 'PENDING' | 'CONVERTED'; notes?: string }
-    const status: 'PENDING' | 'CONVERTED' = body.status === 'PENDING' ? 'PENDING' : 'CONVERTED'
+    const body = await req.json().catch(() => ({})) as {
+      status?: 'PENDING' | 'CONVERTED'
+      notes?: string
+      /** Optional method correction. Use case: a row was logged as
+       *  PAYMONGO but the parent actually paid by bank deposit. Same
+       *  auth rules as status flips (branch-scoped for non-admin). */
+      method?: 'PAYMONGO' | 'BANK_DEPOSIT' | 'FRONT_DESK_CASH' | null
+    }
 
     // Branch scoping for non-main-admin roles.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -37,23 +43,47 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ cl
       return withCors(NextResponse.json({ error: 'classPortalPaymentId not found.' }, { status: 404 }), origin)
     }
     if ((auth.role === 'FRONTDESK' || auth.role === 'BRANCH_ADMIN') && auth.branch && existing.branch !== auth.branch) {
-      return withCors(NextResponse.json({ error: 'You can only confirm payments for your own branch.' }, { status: 403 }), origin)
+      return withCors(NextResponse.json({ error: 'You can only edit payments for your own branch.' }, { status: 403 }), origin)
+    }
+
+    // Decide what's actually changing.
+    //   - If body.status was sent (explicit string), treat it as a
+    //     status flip. Default-existing behaviour: any non-PENDING
+    //     value flips to CONVERTED.
+    //   - If body.method was sent (defined, including null to clear),
+    //     update the method too. Method-only edits leave status alone.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data: Record<string, any> = {}
+    const statusSent = typeof body.status === 'string'
+    if (statusSent) {
+      const status: 'PENDING' | 'CONVERTED' = body.status === 'PENDING' ? 'PENDING' : 'CONVERTED'
+      data.status = status
+      data.convertedAt = status === 'CONVERTED' ? new Date() : null
+    }
+    if (body.method !== undefined) {
+      const allowed = ['PAYMONGO', 'BANK_DEPOSIT', 'FRONT_DESK_CASH'] as const
+      type AllowedMethod = typeof allowed[number]
+      if (body.method !== null && !(allowed as readonly string[]).includes(body.method)) {
+        return withCors(NextResponse.json({ error: 'Invalid method.' }, { status: 400 }), origin)
+      }
+      data.method = (body.method as AllowedMethod | null)
+    }
+    if (body.notes !== undefined) data.notes = body.notes ?? null
+    if (Object.keys(data).length === 0) {
+      return withCors(NextResponse.json({ error: 'No editable fields supplied.' }, { status: 400 }), origin)
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const updated = await (prisma.classPortalFrontDeskPayment as any).update({
       where: { classPortalPaymentId },
-      data: {
-        status,
-        convertedAt: status === 'CONVERTED' ? new Date() : null,
-        notes: body.notes ?? undefined,
-      },
+      data,
     })
     return withCors(NextResponse.json({
       payment: {
         id: updated.id,
         classPortalPaymentId: updated.classPortalPaymentId,
         status: updated.status,
+        method: updated.method ?? null,
         convertedAt: updated.convertedAt?.toISOString() ?? null,
       },
     }), origin)
