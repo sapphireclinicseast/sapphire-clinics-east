@@ -162,14 +162,15 @@ export async function GET() {
       compilation: t.compilation ?? '',
       templateSize: t.templateSize ?? '',
       // Surface internalOnly so the UI can render those rows muted.
-      // Clinicians see the row but cannot download — only admins
-      // get usable docx/pdf/link/formLink for internal-only items.
+      // Clinicians see the row but cannot download. Admins AND all-department
+      // staff (front-desk / administration) DO get usable download links for
+      // internal-only items.
       internalOnly: !!t.internalOnly,
       pinned: pinnedSet.has(t.id),
-      docxUrl: t.internalOnly && !isAdmin ? '' : abs(t.docxUrl),
-      pdfUrl:  t.internalOnly && !isAdmin ? '' : abs(t.pdfUrl),
-      link:    t.internalOnly && !isAdmin ? '' : (t.link ?? ''),
-      formLink:t.internalOnly && !isAdmin ? '' : (t.formLink ?? ''),
+      docxUrl: t.internalOnly && !seesAllDepts ? '' : abs(t.docxUrl),
+      pdfUrl:  t.internalOnly && !seesAllDepts ? '' : abs(t.pdfUrl),
+      link:    t.internalOnly && !seesAllDepts ? '' : (t.link ?? ''),
+      formLink:t.internalOnly && !seesAllDepts ? '' : (t.formLink ?? ''),
     })),
     standardizedTests: filteredTests.map((t) => ({
       id: t.id,
