@@ -10,8 +10,10 @@ export async function GET() {
 
   const staff = await prisma.staff.findMany({
     where: {
+      // Clinical depts + non-clinical staff (Front Desk / Administration) so the
+      // admin can also create limited accounts for them.
       department: {
-        in: ['OT', 'PT', 'SLP', 'SPED', 'PSYCHOLOGY', 'MD'],
+        in: ['OT', 'PT', 'SLP', 'SPED', 'PSYCHOLOGY', 'MD', 'ORTHOSIS', 'FRONT_DESK', 'ADMINISTRATION'],
       },
     },
     select: {
