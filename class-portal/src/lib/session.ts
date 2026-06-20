@@ -1070,6 +1070,89 @@ export async function recordPayMongoPayment(args: {
 }
 
 /**
+ * Generic "record a payment on behalf of a student" helper for the
+ * front desk. Used when the parent never opened /pay themselves —
+ * staff already has the cash, the bank slip, or the PayMongo receipt
+ * in hand and needs to log it into the system so it lands on the
+ * accounting-hub POS queue same as any other front-desk payment.
+ *
+ * Returns the new PENDING row's classPortalPaymentId on success so the
+ * caller can optionally one-click Confirm it right after; returns null
+ * on any failure (network, auth, validation).
+ */
+export async function recordPaymentOnBehalfOf(args: {
+  studentId: string
+  studentEmail: string
+  studentName: string
+  branch: 'EAST' | 'GREENHILLS'
+  plan: PaymentPlan
+  method: 'FRONT_DESK_CASH' | 'BANK_DEPOSIT' | 'PAYMONGO'
+  /** Tuition amount in PHP centavos. */
+  tuitionCentavos: number
+  miscCentavos?: number
+  /** Free text — e.g. "AY 2026–2027" or "Aug 2026". */
+  period: string
+  /** Optional reference number / receipt no. — surfaced as a notes line. */
+  reference?: string
+  /** Optional extra context appended to the auto-generated notes. */
+  extraNotes?: string
+}): Promise<string | null> {
+  if (typeof window === 'undefined') return null
+  const tok = getToken()
+  if (!tok) return null
+  try {
+    // Per-method prefix on the dedupe key keeps these distinct from
+    // student-originated /pay rows in any future audit.
+    const prefix =
+      args.method === 'PAYMONGO'         ? 'pmgr_' :
+      args.method === 'BANK_DEPOSIT'     ? 'bnks_' :
+                                            'cshs_'
+    const classPortalPaymentId =
+      prefix + Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 12)
+
+    // Compose a readable notes line — the front-desk staff sees this on
+    // the queue row and the cashier sees it on the Convert-to-Order
+    // screen, so it's worth being descriptive.
+    const methodLabel =
+      args.method === 'PAYMONGO'         ? 'PayMongo' :
+      args.method === 'BANK_DEPOSIT'     ? 'Bank deposit' :
+                                            'Cash at front desk'
+    let notes = `${methodLabel} · logged by front desk on behalf of student`
+    if (args.reference?.trim()) notes += ` · ref ${args.reference.trim()}`
+    if (args.extraNotes?.trim()) notes += ` · ${args.extraNotes.trim()}`
+
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/frontdesk-payments`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${tok}`,
+      },
+      body: JSON.stringify({
+        classPortalPaymentId,
+        studentId: args.studentId,
+        studentEmail: args.studentEmail,
+        studentName: args.studentName,
+        branch: args.branch,
+        plan: args.plan,
+        tuitionCentavos: args.tuitionCentavos,
+        miscCentavos: args.miscCentavos ?? 0,
+        period: args.period,
+        method: args.method,
+        notes,
+      }),
+    })
+    if (!res.ok) {
+      console.warn('[recordPaymentOnBehalfOf] failed:', res.status)
+      return null
+    }
+    return classPortalPaymentId
+  } catch (e) {
+    console.warn('[recordPaymentOnBehalfOf] error:', e)
+    return null
+  }
+}
+
+/**
  * Main-admin-only hard delete of a queued PENDING row. Used to clean up
  * test rows created during system trials. CONVERTED rows refuse to
  * delete (return false) — void the associated accounting-hub order
