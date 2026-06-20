@@ -44,5 +44,26 @@ export async function GET() {
       { status: 502 }
     )
   }
+  // Collapse duplicate payslips for the same cutoff + branch. Some people
+  // exist in BOTH the Employee and Consultant rosters with the same email, and
+  // a few carry a leftover ₱0 LOCKED consultant entry alongside their real
+  // employee payslip — which would otherwise show up as two identical-looking
+  // cards for the same period. Keep the one with the highest net pay (the real
+  // one) per cutoff+branch; different branches are kept (interbranch is legit).
+  if (data && Array.isArray(data.payslips)) {
+    const byKey = new Map<string, any[]>()
+    for (const p of data.payslips) {
+      const key = `${p?.cutoffPeriod ?? ''}|${p?.branch ?? ''}`
+      const arr = byKey.get(key)
+      if (arr) arr.push(p)
+      else byKey.set(key, [p])
+    }
+    data.payslips = [...byKey.values()].map((arr) =>
+      arr.length === 1
+        ? arr[0]
+        : arr.reduce((a, b) => (Number(b?.netPay ?? 0) > Number(a?.netPay ?? 0) ? b : a)),
+    )
+  }
+
   return NextResponse.json(data)
 }
