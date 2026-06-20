@@ -143,6 +143,24 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Email already in use by another account' }, { status: 400 })
     }
     updateData.email = newEmail
+
+    // Also revise the underlying Staff record's email so everything that
+    // matches by email (interbranch login, payroll, customer/peer surveys)
+    // stays in sync. Update every Staff row that shares this person's current
+    // email (interbranch staff carry the same email across branches).
+    const acct = await prisma.therapistAccount.findUnique({
+      where: { id },
+      select: { staffId: true, staff: { select: { email: true } } },
+    })
+    if (acct) {
+      const oldEmail = acct.staff?.email
+      if (oldEmail && oldEmail !== newEmail) {
+        await prisma.staff.updateMany({ where: { email: oldEmail }, data: { email: newEmail } })
+      }
+      // Ensure this account's own Staff record is updated even if its email was
+      // empty or didn't match the old value.
+      await prisma.staff.update({ where: { id: acct.staffId }, data: { email: newEmail } }).catch(() => null)
+    }
   }
 
   const updated = await prisma.therapistAccount.update({

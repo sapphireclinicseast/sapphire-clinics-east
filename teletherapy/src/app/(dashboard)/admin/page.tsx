@@ -468,24 +468,29 @@ export default function AdminPage() {
               {/* Change password inline form */}
               {/* Edit email inline form */}
               {editingEmailId === acct.id && (
-                <div className="mt-3 p-3 bg-[var(--off-white)] rounded-xl border border-[var(--light-gray)] flex items-center gap-3">
-                  <Mail size={16} className="text-[var(--sand-dark)] shrink-0" />
-                  <input
-                    type="email"
-                    value={newEmail}
-                    onChange={(e) => setNewEmail(e.target.value)}
-                    placeholder="New email address"
-                    className="input !rounded-lg !py-2 text-[13px] flex-1"
-                    autoFocus
-                  />
-                  <button onClick={() => handleChangeEmail(acct.id)} disabled={savingEmail || !newEmail.includes('@')}
-                    className="btn-primary !py-2 !px-4 !text-[12px] !rounded-lg">
-                    {savingEmail ? <Loader2 size={14} className="animate-spin" /> : 'Save'}
-                  </button>
-                  <button onClick={() => { setEditingEmailId(null); setNewEmail('') }}
-                    className="text-[var(--mid-gray)] hover:text-[var(--charcoal)] text-[12px] font-medium">
-                    Cancel
-                  </button>
+                <div className="mt-3 p-3 bg-[var(--off-white)] rounded-xl border border-[var(--light-gray)]">
+                  <div className="flex items-center gap-3">
+                    <Mail size={16} className="text-[var(--sand-dark)] shrink-0" />
+                    <input
+                      type="email"
+                      value={newEmail}
+                      onChange={(e) => setNewEmail(e.target.value)}
+                      placeholder="New email address"
+                      className="input !rounded-lg !py-2 text-[13px] flex-1"
+                      autoFocus
+                    />
+                    <button onClick={() => handleChangeEmail(acct.id)} disabled={savingEmail || !newEmail.includes('@')}
+                      className="btn-primary !py-2 !px-4 !text-[12px] !rounded-lg">
+                      {savingEmail ? <Loader2 size={14} className="animate-spin" /> : 'Save'}
+                    </button>
+                    <button onClick={() => { setEditingEmailId(null); setNewEmail('') }}
+                      className="text-[var(--mid-gray)] hover:text-[var(--charcoal)] text-[12px] font-medium">
+                      Cancel
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-[var(--mid-gray)] mt-2 ml-7">
+                    Updates the login email <strong>and</strong> the staff record&rsquo;s email (across all branches), so payroll and survey matching stay in sync.
+                  </p>
                 </div>
               )}
 
