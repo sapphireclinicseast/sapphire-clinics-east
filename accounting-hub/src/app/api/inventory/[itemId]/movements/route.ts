@@ -50,7 +50,8 @@ export async function GET(
     prisma.orderItem.findMany({
       where: {
         inventoryItemId: itemId,
-        order: { status: { not: 'VOIDED' } },
+        // VOIDED orders are included: they show the original sale PLUS a
+        // matching "Order voided" stock-return entry (added below).
       },
       select: {
         id: true,
@@ -67,6 +68,8 @@ export async function GET(
             transactionDate: true,
             orderType: true,
             branch: true,
+            status: true,
+            updatedAt: true,
           },
         },
       },
@@ -77,7 +80,7 @@ export async function GET(
 
   type RawEntry = {
     date: Date
-    type: 'STOCK_IN' | 'SHRINKAGE' | 'SALE' | 'FREE_SAMPLE'
+    type: 'STOCK_IN' | 'SHRINKAGE' | 'SALE' | 'FREE_SAMPLE' | 'ORDER_VOID'
     qty: number
     direction: 1 | -1
     costPerUnit: number | null
@@ -129,6 +132,22 @@ export async function GET(
         : oi.order.id,
       remarks: oi.isFreeSample ? 'Free sample (marketing)' : `Sold at ${Number(oi.unitPrice).toFixed(2)} each`,
     })
+
+    // Voided order: the deduction was reversed (stock returned). Show it as a
+    // matching "+N Order voided" entry so the history reflects the reversal.
+    if (oi.order.status === 'VOIDED') {
+      entries.push({
+        date: oi.order.updatedAt,
+        type: 'ORDER_VOID',
+        qty: oi.quantity,
+        direction: 1,
+        costPerUnit,
+        reference: oi.order.orderNumber
+          ? `Order #${oi.order.orderNumber} · ${oi.order.branch}`
+          : oi.order.id,
+        remarks: 'Order voided — stock returned',
+      })
+    }
   }
 
   // ── Sort chronologically ─────────────────────────────────────────

@@ -603,7 +603,7 @@ export default function InventoryPage() {
     startingQty: number
     movements: {
       date: string
-      type: 'STOCK_IN' | 'SHRINKAGE' | 'SALE' | 'FREE_SAMPLE'
+      type: 'STOCK_IN' | 'SHRINKAGE' | 'SALE' | 'FREE_SAMPLE' | 'ORDER_VOID'
       qty: number
       direction: number
       balance: number
@@ -1886,6 +1886,7 @@ setTimeout(()=>window.print(),500);
                               SHRINKAGE:   { label: 'Write-off',   bg: '#fff7ed', color: '#c2410c', icon: <TrendingDown size={10} /> },
                               SALE:        { label: 'Sale',        bg: '#fee2e2', color: '#991b1b', icon: <TrendingDown size={10} /> },
                               FREE_SAMPLE: { label: 'Free Sample', bg: '#fef3c7', color: '#92400e', icon: <Gift size={10} /> },
+                              ORDER_VOID:  { label: 'Order Voided', bg: '#dbeafe', color: '#1e40af', icon: <TrendingUp size={10} /> },
                             }[m.type]
 
                             return (
