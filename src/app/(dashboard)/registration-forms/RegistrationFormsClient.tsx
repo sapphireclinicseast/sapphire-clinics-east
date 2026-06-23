@@ -7,11 +7,18 @@ import {
 } from 'lucide-react'
 
 // ── Form definitions ─────────────────────────────────────────────────────────
-const FORM_TYPES = [
-  { key: 'registration',   title: 'Registration Form',           sbea: 'GULaVBpI', sbgh: 'VaCB1bkE' },
-  { key: 'group-therapy',  title: 'Group Therapy Registration',  sbea: 'ChrSrsBF', sbgh: null },
-  { key: 'alaga',          title: 'ALAGA Program Registration',  sbea: 'SGWVxqcW', sbgh: 'i8rFr7P6' },
-  { key: 'psych',          title: 'Psych Registration Form',     sbea: 'X2YDKTaH', sbgh: 'KVp8gH3N' },
+const FORM_TYPES: Array<{ key: string; title: string; sbea: string; sbgh: string | null; subtitle?: string; intro?: string }> = [
+  { key: 'registration',  title: 'Registration Form',          sbea: 'GULaVBpI', sbgh: 'VaCB1bkE' },
+  { key: 'group-therapy', title: 'Group Therapy Registration', sbea: 'ChrSrsBF', sbgh: null },
+  {
+    key:      'sip',
+    title:    'ALAGA Program Registration',
+    subtitle: 'Allied Learners Advancing Genuine Access',
+    intro:    'The ALAGA Program pairs patients with student therapists who are completing their clinical internship hours — all sessions are directly supervised by our licensed clinicians. Because sessions are conducted under supervised training, they are offered at a significantly lower fee than our regular therapy rates, making quality rehabilitation more accessible to families.',
+    sbea:     'SGWVxqcW',
+    sbgh:     'i8rFr7P6',
+  },
+  { key: 'psych',         title: 'Psych Registration Form',    sbea: 'X2YDKTaH', sbgh: null },
 ]
 
 const HR_FORM_BASE = 'https://hr.sapphireclinicseast.org/forms/fill/'
@@ -188,7 +195,7 @@ export default function RegistrationFormsClient({ role }: Props) {
     <div className="p-6 max-w-6xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(46,94,90,0.1)' }}>
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(26,123,138,0.1)' }}>
           <FileText size={20} style={{ color: 'var(--teal)' }} />
         </div>
         <div>
@@ -213,9 +220,30 @@ export default function RegistrationFormsClient({ role }: Props) {
           </button>
 
           <div className="rounded-xl p-6" style={{ background: '#fff', border: '1px solid var(--border)' }}>
-            <h2 className="text-lg font-bold mb-4" style={{ fontFamily: 'var(--font-display)' }}>
-              {selectedForm.title}
-            </h2>
+            <div className="mb-4">
+              <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)' }}>
+                {selectedForm.title}
+              </h2>
+              {selectedForm.subtitle && (
+                <p className="text-sm font-medium italic mt-0.5" style={{ color: 'var(--teal)' }}>
+                  {selectedForm.subtitle}
+                </p>
+              )}
+            </div>
+
+            {selectedForm.intro && (
+              <div className="mb-5 rounded-xl p-4" style={{ background: 'rgba(26,123,138,0.07)', border: '1px solid rgba(26,123,138,0.2)' }}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--teal)' }}>About this program</span>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: 'rgba(26,123,138,0.15)', color: 'var(--teal)' }}>
+                    Lower fee than regular sessions
+                  </span>
+                </div>
+                <p className="text-sm leading-relaxed" style={{ color: 'var(--near-black)' }}>
+                  {selectedForm.intro}
+                </p>
+              </div>
+            )}
 
             {/* Sub-tabs */}
             <div className="flex gap-1 mb-5 p-1 rounded-lg" style={{ background: 'var(--bg-secondary, #f5f5f5)' }}>
@@ -254,7 +282,7 @@ export default function RegistrationFormsClient({ role }: Props) {
                               : { color: available ? 'var(--text-secondary)' : '#ccc', cursor: available ? 'pointer' : 'not-allowed' }
                           }
                         >
-                          {b === 'SBEA' ? 'Sandbox East' : 'Sandbox Greenhills'}
+                          {b === 'SBEA' ? 'East Branch' : 'Greenhills Branch'}
                           {!available && <span className="ml-1 text-xs opacity-60">(soon)</span>}
                         </button>
                       )
@@ -272,7 +300,7 @@ export default function RegistrationFormsClient({ role }: Props) {
                   />
                 </div>
                 <p className="text-xs font-semibold mb-4" style={{ color: 'var(--text-secondary)' }}>
-                  {qrBranch === 'SBEA' ? 'Sandbox East' : 'Sandbox Greenhills'}
+                  {qrBranch === 'SBEA' ? 'East Branch' : 'Greenhills Branch'}
                 </p>
 
                 {/* Link */}
@@ -371,11 +399,11 @@ export default function RegistrationFormsClient({ role }: Props) {
                                 <span
                                   className="text-xs font-semibold px-2 py-0.5 rounded-full"
                                   style={item._branch === 'SBEA'
-                                    ? { background: 'rgba(46,94,90,0.1)', color: 'var(--teal)' }
+                                    ? { background: 'rgba(26,123,138,0.1)', color: 'var(--teal)' }
                                     : { background: 'rgba(234,179,8,0.1)', color: '#92400e' }
                                   }
                                 >
-                                  {item._branch === 'SBEA' ? 'Sandbox East' : 'Sandbox Greenhills'}
+                                  {item._branch === 'SBEA' ? 'East Branch' : 'Greenhills Branch'}
                                 </span>
                               </td>
                             )}
@@ -427,15 +455,25 @@ export default function RegistrationFormsClient({ role }: Props) {
               style={{ background: '#fff', border: '1px solid var(--border)' }}
             >
               <div className="flex items-start justify-between">
-                <div>
+                <div className="flex-1 min-w-0 pr-2">
                   <p className="font-semibold text-sm" style={{ fontFamily: 'var(--font-display)', color: 'var(--near-black)' }}>
                     {form.title}
                   </p>
+                  {form.subtitle && (
+                    <p className="text-xs mt-0.5 font-medium italic" style={{ color: 'var(--teal)' }}>
+                      {form.subtitle}
+                    </p>
+                  )}
                   <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
-                    {form.sbgh ? 'Sandbox East · Sandbox Greenhills' : 'Sandbox East'}
+                    {form.sbgh ? 'East Branch · Greenhills Branch' : 'East Branch'}
                   </p>
+                  {form.intro && (
+                    <span className="inline-flex items-center mt-2 px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: 'rgba(26,123,138,0.1)', color: 'var(--teal)' }}>
+                      Lower fee available
+                    </span>
+                  )}
                 </div>
-                <ChevronRight size={16} className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--teal)' }} />
+                <ChevronRight size={16} className="mt-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--teal)' }} />
               </div>
             </button>
           ))}
