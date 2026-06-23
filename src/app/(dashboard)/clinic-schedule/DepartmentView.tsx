@@ -922,8 +922,8 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
         <div className="grid gap-4" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(300px, 360px)' }}>
           {/* Left — clinicians working tomorrow (+ make-up sessions) */}
           <div className="flex flex-col gap-4">
-            <div className="rounded-xl p-4" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-              <div className="flex items-baseline justify-between mb-3 flex-wrap gap-1">
+            <div>
+              <div className="flex items-baseline justify-between mb-2 flex-wrap gap-1">
                 <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
                   Clinicians tomorrow · {fmtDateShort(tomorrowDate)}
                 </h3>
@@ -932,20 +932,17 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
                 </span>
               </div>
               {tomorrowClinicians.length === 0 ? (
-                <p className="text-sm py-8 text-center" style={{ color: 'var(--mid-gray)' }}>
-                  No clinicians have a {WEEKDAY_FULL[tomorrowCode]} schedule for {activeBranch} in the Decking Module.
-                </p>
+                <div className="rounded-xl py-12 flex flex-col items-center gap-2"
+                  style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+                  <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>No clinicians scheduled tomorrow</p>
+                  <p className="text-xs text-center px-4" style={{ color: 'var(--mid-gray)' }}>
+                    No {activeBranch} clinician has a {WEEKDAY_FULL[tomorrowCode]} in the Decking Module. Add a make-up session on the right if needed.
+                  </p>
+                </div>
               ) : (
-                <div className="flex flex-col divide-y" style={{ borderColor: 'var(--light-gray)' }}>
-                  {tomorrowClinicians.map(({ cfg, staff: s }) => (
-                    <div key={s.id} className="flex items-center justify-between gap-3 py-2">
-                      <span className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>
-                        {s.firstName} {s.lastName}
-                      </span>
-                      <span className="text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
-                        {s.department} · {cfg.startTime}–{cfg.endTime}
-                      </span>
-                    </div>
+                <div className="space-y-2">
+                  {tomorrowClinicians.map(({ staff: s }) => (
+                    <StaffCard key={s.id} staff={s} selectedDate={tomorrowDate} />
                   ))}
                 </div>
               )}
