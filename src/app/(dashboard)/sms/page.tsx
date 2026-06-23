@@ -1,9 +1,15 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { MessageSquare, Send, Trash2, Play, Eye, Clock, Zap } from 'lucide-react'
+import { MessageSquare, Send, Trash2, Play, Eye, Clock, Zap, Calendar, CheckCircle2 } from 'lucide-react'
 
 const MAX_LEN = 160
+
+// Format a Date to "YYYY-MM-DDTHH:MM" for a datetime-local input (local tz).
+function toDatetimeLocal(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
 
 const RECIPIENT_GROUPS: Array<{ value: string; label: string; group: 'general' | 'active' }> = [
   { value: 'pediatric', label: 'Pediatric patients',                   group: 'general' },
@@ -74,6 +80,14 @@ function NewCampaign({ branch }: { branch: 'BOTH' | 'SBEA' | 'SBGH' }) {
   const [count, setCount] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
   const [info, setInfo] = useState<string | null>(null)
+  const [sendMode, setSendMode] = useState<'now' | 'schedule'>('now')
+  const [scheduledAt, setScheduledAt] = useState<string>(() => {
+    // Default to tomorrow 09:00 local — matches the SMS tranche send hour.
+    const t = new Date()
+    t.setDate(t.getDate() + 1)
+    t.setHours(9, 0, 0, 0)
+    return toDatetimeLocal(t)
+  })
 
   // Live preview of recipient count
   useEffect(() => {
@@ -95,19 +109,35 @@ function NewCampaign({ branch }: { branch: 'BOTH' | 'SBEA' | 'SBGH' }) {
     if (!message.trim()) { alert('Message is required.'); return }
     if (message.length > MAX_LEN) { alert(`Message exceeds ${MAX_LEN} characters.`); return }
     if (!count) { alert('No recipients in the selected group.'); return }
-    if (!confirm(`Send "${subject}" to ${count} recipient${count === 1 ? '' : 's'}?`)) return
+
+    const scheduling = sendMode === 'schedule'
+    if (scheduling) {
+      if (!scheduledAt) { alert('Pick a date & time to schedule.'); return }
+      if (new Date(scheduledAt).getTime() <= Date.now()) { alert('Scheduled time must be in the future.'); return }
+    }
+    const when = scheduling
+      ? new Date(scheduledAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
+      : null
+    const confirmMsg = scheduling
+      ? `Schedule "${subject}" to ${count} recipient${count === 1 ? '' : 's'} on ${when}?`
+      : `Send "${subject}" to ${count} recipient${count === 1 ? '' : 's'} now?`
+    if (!confirm(confirmMsg)) return
 
     setBusy(true)
     setInfo(null)
     try {
+      const payload: Record<string, unknown> = { subject, message, recipientGroup, branch }
+      if (scheduling) payload.scheduledAt = new Date(scheduledAt).toISOString()
       const r = await fetch('/api/sms/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subject, message, recipientGroup, branch }),
+        body: JSON.stringify(payload),
       })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'Send failed')
-      setInfo(`Campaign queued — first batch is sending now (capped at 400/day; the system auto-resumes the rest each morning).`)
+      setInfo(scheduling
+        ? `Campaign scheduled for ${when}. It will send automatically${branch === 'BOTH' ? ' from each branch’s own phone' : ''} (capped at 400/day per branch; the system auto-resumes the rest each morning).`
+        : `Campaign queued — first batch is sending now (capped at 400/day per branch; the system auto-resumes the rest each morning).`)
       setSubject('')
       setMessage('')
     } catch (e) { alert((e as Error).message) }
@@ -153,6 +183,13 @@ function NewCampaign({ branch }: { branch: 'BOTH' | 'SBEA' | 'SBGH' }) {
             <> &nbsp;·&nbsp; <strong style={{ color: 'var(--narra)' }}>{count}</strong> patient{count === 1 ? '' : 's'} match this group.</>
           )}
         </p>
+        <p className="mt-1 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+          {branch === 'BOTH'
+            ? 'Sends from each branch’s own phone — East patients via the East SIM, Greenhills patients via the Greenhills SIM.'
+            : branch === 'SBEA'
+              ? 'Sends from the East Branch phone (+639171189289).'
+              : 'Sends from the Greenhills Branch phone (+639177701686).'}
+        </p>
       </div>
 
       <div>
@@ -174,6 +211,44 @@ function NewCampaign({ branch }: { branch: 'BOTH' | 'SBEA' | 'SBGH' }) {
         </p>
       </div>
 
+      {/* When to send */}
+      <div>
+        <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--mid-gray)' }}>
+          When to send
+        </label>
+        <div className="flex gap-2">
+          {(['now', 'schedule'] as const).map((mode) => (
+            <button key={mode} type="button" onClick={() => setSendMode(mode)}
+              className="flex items-center gap-2 px-4 py-2 rounded text-sm font-semibold flex-1 justify-center transition-colors"
+              style={{
+                border: `1.5px solid ${sendMode === mode ? 'var(--narra)' : 'var(--light-gray)'}`,
+                background: sendMode === mode ? 'rgba(155,44,44,0.06)' : 'transparent',
+                color: sendMode === mode ? 'var(--narra)' : 'var(--mid-gray)',
+              }}>
+              {mode === 'now' ? <><Send size={14} /> Send now</> : <><Calendar size={14} /> Schedule</>}
+            </button>
+          ))}
+        </div>
+        {sendMode === 'schedule' && (
+          <div className="mt-3">
+            <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--mid-gray)' }}>
+              Scheduled date &amp; time
+            </label>
+            <input type="datetime-local" value={scheduledAt}
+              onChange={(e) => setScheduledAt(e.target.value)}
+              min={toDatetimeLocal(new Date(Date.now() + 60000))}
+              className="w-full px-3 py-2 rounded border text-sm"
+              style={{ borderColor: 'var(--light-gray)', background: '#fff', color: 'var(--ink)' }} />
+            {scheduledAt && (
+              <p className="mt-1.5 text-xs flex items-center gap-1" style={{ color: 'var(--narra)' }}>
+                <CheckCircle2 size={11} />
+                Will send {new Date(scheduledAt).toLocaleString('en-PH', { dateStyle: 'full', timeStyle: 'short' })}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
       {info && (
         <div className="text-xs px-3 py-2 rounded" style={{ background: '#ECFDF5', color: '#065F46' }}>
           {info}
@@ -184,8 +259,12 @@ function NewCampaign({ branch }: { branch: 'BOTH' | 'SBEA' | 'SBGH' }) {
         <button onClick={handleSend} disabled={busy || overLimit || !count}
           className="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold rounded transition-opacity disabled:opacity-50"
           style={{ background: 'var(--narra)', color: '#fff' }}>
-          <Send size={14} />
-          {busy ? 'Sending…' : `Send to ${count ?? '…'} recipient${count === 1 ? '' : 's'}`}
+          {sendMode === 'schedule' ? <Calendar size={14} /> : <Send size={14} />}
+          {busy
+            ? (sendMode === 'schedule' ? 'Scheduling…' : 'Sending…')
+            : sendMode === 'schedule'
+              ? `Schedule for ${count ?? '…'} recipient${count === 1 ? '' : 's'}`
+              : `Send to ${count ?? '…'} recipient${count === 1 ? '' : 's'}`}
         </button>
       </div>
     </div>

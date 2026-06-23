@@ -124,19 +124,27 @@ export default function EmailPage() {
       })
   }, [])
 
-  useEffect(() => { fetchCount() }, [recipientGroup, branchFilter])
+  useEffect(() => {
+    const controller = new AbortController()
+    fetchCount(controller.signal)
+    return () => controller.abort()
+  }, [recipientGroup, branchFilter])
 
-  async function fetchCount() {
+  async function fetchCount(signal?: AbortSignal) {
+    setRecipientCount(null)
     const params = new URLSearchParams()
     if (recipientGroup === 'pediatric') params.set('type', 'PEDIATRIC')
     if (recipientGroup === 'adult')     params.set('type', 'ADULT')
-    // Pass branches as comma-separated if any selected
     if (branchFilter.size > 0) params.set('branches', Array.from(branchFilter).join(','))
-    const res = await fetch(`/api/patients?${params}`)
-    const data = await res.json()
-    // Count only patients who have an email
-    const withEmail = (data.patients ?? []).filter((p: any) => !!p.email).length
-    setRecipientCount(withEmail)
+    try {
+      const res = await fetch(`/api/patients?${params}`, { signal })
+      if (!res.ok) return
+      const data = await res.json()
+      const withEmail = (data.patients ?? []).filter((p: any) => !!p.email).length
+      setRecipientCount(withEmail)
+    } catch (e: any) {
+      if (e?.name !== 'AbortError') throw e
+    }
   }
 
   async function generateEmail() {

@@ -825,6 +825,7 @@ export default function FrontDeskWelcome({
             width={180}
             height={101}
             style={{ objectFit: 'contain' }}
+            unoptimized
           />
 
           {/* Greeting */}
