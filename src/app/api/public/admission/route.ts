@@ -194,7 +194,7 @@ export async function PATCH(req: Request) {
   if (!checkCode(req)) {
     return withCors(NextResponse.json({ error: 'Invalid access code.' }, { status: 401 }), origin)
   }
-  let body: { studentId?: string; lisStatus?: string | null; remittanceStatus?: string | null; admissionComments?: string | null; lsenClassification?: string | null }
+  let body: { studentId?: string; lisStatus?: string | null; remittanceStatus?: string | null; admissionComments?: string | null; lsenClassification?: string | null; lrn?: string | null }
   try { body = await req.json() } catch {
     return withCors(NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 }), origin)
   }
@@ -204,6 +204,19 @@ export async function PATCH(req: Request) {
 
   // Whitelist the admission columns; anything else is silently dropped.
   const patch: Record<string, string | null> = {}
+  // LRN — only writable when the prior status is NO_LRN. Setting an LRN
+  // auto-flips lrnStatus to WITH_LRN so the cell becomes read-only in
+  // the admission table (matches the UI expectation).
+  if (body.lrn !== undefined) {
+    if (body.lrn === null || body.lrn === '') {
+      patch.lrn = null
+    } else if (typeof body.lrn === 'string' && /^\d{12}$/.test(body.lrn.trim())) {
+      patch.lrn = body.lrn.trim()
+      patch.lrnStatus = 'WITH_LRN'
+    } else {
+      return withCors(NextResponse.json({ error: 'LRN must be exactly 12 digits.' }, { status: 400 }), origin)
+    }
+  }
   if (body.lisStatus === null || (typeof body.lisStatus === 'string' && (LIS_VALUES as readonly string[]).includes(body.lisStatus))) {
     patch.lisStatus = body.lisStatus
   } else if (body.lisStatus !== undefined) {
@@ -251,6 +264,8 @@ export async function PATCH(req: Request) {
         remittanceStatus: (e.remittanceStatus as string) ?? null,
         admissionComments: (e.admissionComments as string) ?? null,
         lsenClassification: (e.lsenClassification as string) ?? null,
+        lrn: (e.lrn as string) ?? null,
+        lrnStatus: (e.lrnStatus as string) ?? null,
       },
     }), origin)
   } catch (e) {
