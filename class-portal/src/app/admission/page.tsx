@@ -148,7 +148,7 @@ export default function AdmissionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code])
 
-  async function patchField(studentId: string, patch: Partial<Pick<AdmissionStudent, 'lisStatus' | 'remittanceStatus' | 'admissionComments' | 'lsenClassification'>>) {
+  async function patchField(studentId: string, patch: Partial<Pick<AdmissionStudent, 'lisStatus' | 'remittanceStatus' | 'admissionComments' | 'lsenClassification' | 'lrn' | 'lrnStatus'>>) {
     if (!code) return
     // Optimistic update so the dropdown feels instant.
     setStudents(prev => prev.map(s => s.id === studentId ? { ...s, ...patch } : s))
@@ -516,7 +516,38 @@ export default function AdmissionPage() {
                     <td className="py-1 px-1.5 whitespace-nowrap">{s.level ? levelLabel(s.level) : <span className="text-[color:var(--mid-gray)]">—</span>}</td>
                     <td className="py-1 px-1.5 whitespace-nowrap">{s.schoolYear || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
                     <td className="py-1 px-1.5 whitespace-nowrap">{s.lrnStatus === 'NO_LRN' ? 'NO LRN' : s.lrnStatus === 'WITH_LRN' ? 'WITH LRN' : s.lrnStatus === 'RETURNING' ? 'RETURNING' : <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5 whitespace-nowrap">{s.lrn || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
+                    <td className="py-1 px-1.5 whitespace-nowrap">
+                      {s.lrnStatus === 'NO_LRN' ? (
+                        // NO_LRN row: inline 12-digit input. Save fires
+                        // on blur when the digits resolve to a valid
+                        // LRN; the server auto-flips lrnStatus to
+                        // WITH_LRN so this cell becomes read-only on
+                        // next render.
+                        <input
+                          key={s.id + '-' + (s.lrn ?? '')}
+                          defaultValue={s.lrn ?? ''}
+                          inputMode="numeric"
+                          maxLength={12}
+                          placeholder="12 digits"
+                          className="w-full bg-transparent text-[11px] outline-none border-b border-transparent focus:border-[color:var(--narra)] py-0"
+                          onBlur={e => {
+                            const v = e.currentTarget.value.replace(/\D/g, '').slice(0, 12)
+                            const prev = (s.lrn ?? '')
+                            if (v === prev) return
+                            if (!v) return // empty → no-op
+                            if (!/^\d{12}$/.test(v)) {
+                              alert('LRN must be exactly 12 digits.')
+                              e.currentTarget.value = prev
+                              return
+                            }
+                            void patchField(s.id, { lrn: v, lrnStatus: 'WITH_LRN' })
+                          }}
+                          title="DepEd-issued LRN. Type the 12 digits then click outside to save. The cell locks once an LRN is on file."
+                        />
+                      ) : (
+                        s.lrn || <span className="text-[color:var(--mid-gray)]">—</span>
+                      )}
+                    </td>
                     <td className="py-1 px-1.5 whitespace-nowrap">{s.psaBirthCertNo || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
                     <td className="py-1 px-1.5 whitespace-nowrap">{s.middleName || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
                     <td className="py-1 px-1.5 whitespace-nowrap">{s.extensionName || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
