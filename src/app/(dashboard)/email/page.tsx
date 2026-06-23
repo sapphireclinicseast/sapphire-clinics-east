@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Mail, Sparkles, Send, Users, ChevronDown, Clock, Calendar, CheckCircle2, CheckSquare, Square, FileText, Trash2, Eye, X, RotateCw, Zap, Code, Monitor } from 'lucide-react'
+import { Mail, Sparkles, Send, Users, ChevronDown, Clock, Calendar, CheckCircle2, CheckSquare, Square, FileText, Trash2, Eye, X, RotateCw, Zap, Code, Monitor, FlaskConical, Check } from 'lucide-react'
 
 const BRANCH_FILTERS = [
   { value: 'SANDBOX_EAST',       label: 'East Branch' },
@@ -97,6 +97,8 @@ export default function EmailPage() {
   const [generating, setGenerating] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
   const [htmlCopied, setHtmlCopied] = useState(false)
+  const [testSending, setTestSending] = useState(false)
+  const [testSent, setTestSent] = useState(false)
   const [aiPrompt, setAiPrompt] = useState('')
   const [sent, setSent] = useState(false)
   const [scheduled, setScheduled] = useState(false)
@@ -246,6 +248,31 @@ export default function EmailPage() {
     navigator.clipboard.writeText(buildEmailHtml(subject, body))
     setHtmlCopied(true)
     setTimeout(() => setHtmlCopied(false), 2500)
+  }
+
+  async function sendTestEmail() {
+    if (!subject || !body) return alert('Fill in subject and body first.')
+    setTestSending(true)
+    setTestSent(false)
+    try {
+      const res = await fetch('/api/email/send-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject: `[TEST] ${subject}`,
+          body: buildEmailHtml(subject, body),
+          gmailAccountId: selectedGmailId || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed')
+      setTestSent(true)
+      setTimeout(() => setTestSent(false), 4000)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to send test email.')
+    } finally {
+      setTestSending(false)
+    }
   }
 
   function resetForm() {
@@ -495,6 +522,19 @@ export default function EmailPage() {
             >
               {htmlCopied ? <Check size={12} /> : <Code size={12} />}
               {htmlCopied ? 'HTML Copied!' : 'Copy as HTML Email'}
+            </button>
+            <button
+              type="button"
+              onClick={sendTestEmail}
+              disabled={!body || testSending}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+              style={{
+                background: !body ? 'var(--light-gray)' : testSent ? '#059669' : '#7C3AED',
+                color: !body ? 'var(--mid-gray)' : '#fff',
+              }}
+            >
+              {testSent ? <Check size={12} /> : <FlaskConical size={12} />}
+              {testSending ? 'Sending…' : testSent ? 'Test sent to marketing@!' : 'Send Test Email'}
             </button>
             <button
               type="button"
