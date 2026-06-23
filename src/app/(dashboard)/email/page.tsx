@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Mail, Sparkles, Send, Users, ChevronDown, Clock, Calendar, CheckCircle2, CheckSquare, Square, FileText, Trash2, Eye, X, RotateCw , Zap } from 'lucide-react'
+import { Mail, Sparkles, Send, Users, ChevronDown, Clock, Calendar, CheckCircle2, CheckSquare, Square, FileText, Trash2, Eye, X, RotateCw, Zap, Code, Monitor } from 'lucide-react'
 
 const BRANCH_FILTERS = [
   { value: 'SANDBOX_EAST',       label: 'East Branch' },
@@ -22,6 +22,69 @@ function toDatetimeLocal(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+// Wrap body content in a branded HTML email template with inline styles.
+// Mirrors what recipients actually see — plain text becomes paragraphs,
+// existing HTML is embedded as-is inside the branded wrapper.
+function buildEmailHtml(subject: string, body: string): string {
+  const isHtml = /<[a-z][\s\S]*>/i.test(body)
+  const bodyHtml = isHtml
+    ? body
+    : body
+        .split(/\n{2,}/)
+        .map(p => `<p style="margin:0 0 16px;line-height:1.75;color:#1a1a1a;">${p.replace(/\n/g, '<br>')}</p>`)
+        .join('')
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>${subject.replace(/</g, '&lt;')}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f0f4f5;font-family:Arial,Helvetica,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f0f4f5;padding:28px 0;">
+  <tr><td align="center">
+    <table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+
+      <!-- Header -->
+      <tr>
+        <td style="background:#1a7b8a;padding:26px 36px;">
+          <p style="margin:0;color:#ffffff;font-size:20px;font-weight:700;font-family:Arial,Helvetica,sans-serif;letter-spacing:-0.3px;">Sapphire Clinics East</p>
+          <p style="margin:5px 0 0;color:rgba(255,255,255,0.72);font-size:12px;font-family:Arial,Helvetica,sans-serif;">Aura Health Rehab Clinic</p>
+        </td>
+      </tr>
+
+      <!-- Subject banner -->
+      <tr>
+        <td style="padding:20px 36px 0;">
+          <p style="margin:0;font-size:18px;font-weight:700;color:#0f2d35;font-family:Arial,Helvetica,sans-serif;line-height:1.3;">${subject.replace(/</g, '&lt;')}</p>
+        </td>
+      </tr>
+
+      <!-- Body -->
+      <tr>
+        <td style="padding:20px 36px 32px;font-size:15px;line-height:1.75;color:#1a1a1a;font-family:Arial,Helvetica,sans-serif;">
+          ${bodyHtml}
+        </td>
+      </tr>
+
+      <!-- Footer -->
+      <tr>
+        <td style="padding:18px 36px 24px;border-top:1px solid #e5e7eb;background:#fafafa;">
+          <p style="margin:0;font-size:11px;color:#9ca3af;font-family:Arial,Helvetica,sans-serif;line-height:1.7;">
+            You are receiving this email because you are a patient of Sapphire Clinics East — Aura Health Rehab Clinic.<br>
+            To update your contact preferences, please reach us at our clinic directly.
+          </p>
+        </td>
+      </tr>
+
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>`
+}
+
 export default function EmailPage() {
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
@@ -32,6 +95,8 @@ export default function EmailPage() {
   const [recipientCount, setRecipientCount] = useState<number | null>(null)
   const [sending, setSending] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
+  const [htmlCopied, setHtmlCopied] = useState(false)
   const [aiPrompt, setAiPrompt] = useState('')
   const [sent, setSent] = useState(false)
   const [scheduled, setScheduled] = useState(false)
@@ -175,6 +240,12 @@ export default function EmailPage() {
     } finally {
       setSending(false)
     }
+  }
+
+  function copyAsHtml() {
+    navigator.clipboard.writeText(buildEmailHtml(subject, body))
+    setHtmlCopied(true)
+    setTimeout(() => setHtmlCopied(false), 2500)
   }
 
   function resetForm() {
@@ -409,6 +480,63 @@ export default function EmailPage() {
               ? '⏳ Uploading pasted image…'
               : '💡 Tip: Paste images directly with Ctrl+V — they\'ll be uploaded and embedded as HTML in the email.'}
           </p>
+
+          {/* Copy HTML + Preview toggle */}
+          <div className="flex items-center gap-2 mt-3 flex-wrap">
+            <button
+              type="button"
+              onClick={copyAsHtml}
+              disabled={!body}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+              style={{
+                background: body ? (htmlCopied ? '#059669' : 'var(--charcoal)') : 'var(--light-gray)',
+                color: body ? '#fff' : 'var(--mid-gray)',
+              }}
+            >
+              {htmlCopied ? <Check size={12} /> : <Code size={12} />}
+              {htmlCopied ? 'HTML Copied!' : 'Copy as HTML Email'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowPreview(p => !p)}
+              disabled={!body}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+              style={{
+                border: `1.5px solid ${showPreview ? 'var(--teal)' : 'var(--light-gray)'}`,
+                background: showPreview ? 'var(--pale-teal)' : 'transparent',
+                color: showPreview ? 'var(--teal)' : 'var(--mid-gray)',
+              }}
+            >
+              <Monitor size={12} />
+              {showPreview ? 'Hide Preview' : 'Preview Email'}
+            </button>
+            {body && (
+              <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                Copy the HTML, then paste into any email client's HTML source editor.
+              </span>
+            )}
+          </div>
+
+          {/* Live email preview iframe */}
+          {showPreview && body && (
+            <div className="mt-3 rounded-xl overflow-hidden" style={{ border: '1.5px solid var(--teal)' }}>
+              <div
+                className="px-4 py-2 flex items-center gap-2"
+                style={{ background: 'var(--pale-teal)', borderBottom: '1px solid rgba(26,123,138,0.2)' }}
+              >
+                <Monitor size={13} style={{ color: 'var(--teal)' }} />
+                <span className="text-xs font-semibold" style={{ color: 'var(--teal)' }}>Email Preview</span>
+                <span className="text-xs ml-1" style={{ color: 'var(--mid-gray)' }}>— exactly how recipients will see it</span>
+              </div>
+              <iframe
+                key={body + subject}
+                srcDoc={buildEmailHtml(subject || '(no subject)', body)}
+                title="Email preview"
+                sandbox="allow-same-origin"
+                style={{ width: '100%', height: '560px', border: 'none', display: 'block', background: '#fff' }}
+              />
+            </div>
+          )}
         </div>
 
         {/* Send mode toggle */}
@@ -507,6 +635,14 @@ function CampaignHistory() {
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [preview, setPreview] = useState<{ id: string; subject: string; body: string } | null>(null)
+  const [historyCopied, setHistoryCopied] = useState(false)
+
+  function copyPreviewHtml() {
+    if (!preview) return
+    navigator.clipboard.writeText(buildEmailHtml(preview.subject, preview.body))
+    setHistoryCopied(true)
+    setTimeout(() => setHistoryCopied(false), 2500)
+  }
 
   async function load() {
     setLoading(true)
@@ -709,12 +845,23 @@ function CampaignHistory() {
           onClick={(e) => { if (e.target === e.currentTarget) setPreview(null) }}
         >
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
-            <div className="px-5 py-3 border-b flex items-center justify-between" style={{ borderColor: 'var(--light-gray)' }}>
-              <div className="truncate pr-3">
+            <div className="px-5 py-3 border-b flex items-center justify-between gap-3" style={{ borderColor: 'var(--light-gray)' }}>
+              <div className="truncate flex-1">
                 <p className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Subject</p>
                 <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>{preview.subject}</p>
               </div>
-              <button onClick={() => setPreview(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              <button
+                onClick={copyPreviewHtml}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0 transition-all"
+                style={{
+                  background: historyCopied ? '#059669' : 'var(--charcoal)',
+                  color: '#fff',
+                }}
+              >
+                {historyCopied ? <Check size={12} /> : <Code size={12} />}
+                {historyCopied ? 'Copied!' : 'Copy HTML'}
+              </button>
+              <button onClick={() => setPreview(null)} className="text-gray-400 hover:text-gray-600 flex-shrink-0"><X size={18} /></button>
             </div>
             <div className="p-5 overflow-y-auto flex-1">
               <div
