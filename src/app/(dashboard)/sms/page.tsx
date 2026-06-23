@@ -33,18 +33,6 @@ export default function SmsCampaignsPage() {
       <div className="flex items-center gap-3">
         <MessageSquare size={22} style={{ color: 'var(--narra)' }} />
         <h1 className="text-xl font-bold" style={{ color: 'var(--ink)' }}>SMS Campaigns</h1>
-        <div className="ml-auto flex items-center gap-2">
-          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>Branch:</span>
-          <select
-            value={branchFilter}
-            onChange={(e) => setBranchFilter(e.target.value as 'BOTH' | 'SBEA' | 'SBGH')}
-            className="text-xs px-2 py-1 rounded border"
-            style={{ borderColor: 'var(--light-gray)', background: '#fff' }}>
-            <option value="BOTH">Both branches</option>
-            <option value="SBEA">SBEA — East Branch</option>
-            <option value="SBGH">SBGH — Greenhills Branch</option>
-          </select>
-        </div>
       </div>
 
       {/* Tabs */}
@@ -66,14 +54,38 @@ export default function SmsCampaignsPage() {
       </div>
 
       {tab === 'new'
-        ? <NewCampaign branch={branchFilter} />
-        : <CampaignHistory branch={branchFilter} />}
+        ? <NewCampaign branch={branchFilter} setBranch={setBranchFilter} />
+        : <CampaignHistory branch={branchFilter} setBranch={setBranchFilter} />}
     </div>
   )
 }
 
 // ── New Campaign ────────────────────────────────────────────────────────────
-function NewCampaign({ branch }: { branch: 'BOTH' | 'SBEA' | 'SBGH' }) {
+type Branch = 'BOTH' | 'SBEA' | 'SBGH'
+const BRANCH_OPTIONS: { value: Branch; label: string }[] = [
+  { value: 'BOTH', label: 'Both branches' },
+  { value: 'SBEA', label: 'East (SBEA)' },
+  { value: 'SBGH', label: 'Greenhills (SBGH)' },
+]
+// Prominent segmented branch selector — controls both the recipient filter and
+// which clinic phone the SMS is sent from.
+function BranchSelector({ value, onChange }: { value: Branch; onChange: (b: Branch) => void }) {
+  return (
+    <div className="flex gap-2">
+      {BRANCH_OPTIONS.map(o => (
+        <button key={o.value} type="button" onClick={() => onChange(o.value)}
+          className="flex-1 px-3 py-2 rounded border text-sm font-semibold transition-colors"
+          style={value === o.value
+            ? { background: 'var(--narra)', color: '#fff', borderColor: 'var(--narra)' }
+            : { background: '#fff', color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function NewCampaign({ branch, setBranch }: { branch: Branch; setBranch: (b: Branch) => void }) {
   const [subject, setSubject] = useState('')
   const [message, setMessage] = useState('')
   const [recipientGroup, setRecipientGroup] = useState('pediatric')
@@ -149,6 +161,21 @@ function NewCampaign({ branch }: { branch: 'BOTH' | 'SBEA' | 'SBGH' }) {
 
   return (
     <div className="grid gap-5 max-w-2xl">
+      {/* Branch — controls recipient filter AND which clinic phone sends */}
+      <div>
+        <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--mid-gray)' }}>
+          Branch
+        </label>
+        <BranchSelector value={branch} onChange={setBranch} />
+        <p className="mt-1.5 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+          {branch === 'BOTH'
+            ? 'Sends to both branches — each patient gets the SMS from their own branch’s phone (East SIM / Greenhills SIM).'
+            : branch === 'SBEA'
+              ? 'Sends only to East Branch patients, from the East phone (+639171189289).'
+              : 'Sends only to Greenhills Branch patients, from the Greenhills phone (+639177701686).'}
+        </p>
+      </div>
+
       <div>
         <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--mid-gray)' }}>
           Subject (internal label, not sent)
@@ -178,17 +205,10 @@ function NewCampaign({ branch }: { branch: 'BOTH' | 'SBEA' | 'SBGH' }) {
           </optgroup>
         </select>
         <p className="mt-1.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
-          Branch filter: <strong>{branch === 'BOTH' ? 'Both' : branch}</strong>.
+          Branch: <strong>{branch === 'BOTH' ? 'Both' : branch}</strong>.
           {count !== null && (
             <> &nbsp;·&nbsp; <strong style={{ color: 'var(--narra)' }}>{count}</strong> patient{count === 1 ? '' : 's'} match this group.</>
           )}
-        </p>
-        <p className="mt-1 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
-          {branch === 'BOTH'
-            ? 'Sends from each branch’s own phone — East patients via the East SIM, Greenhills patients via the Greenhills SIM.'
-            : branch === 'SBEA'
-              ? 'Sends from the East Branch phone (+639171189289).'
-              : 'Sends from the Greenhills Branch phone (+639177701686).'}
         </p>
       </div>
 
@@ -288,7 +308,7 @@ interface SmsRow {
   createdAt: string
 }
 
-function CampaignHistory({ branch }: { branch: 'BOTH' | 'SBEA' | 'SBGH' }) {
+function CampaignHistory({ branch, setBranch }: { branch: Branch; setBranch: (b: Branch) => void }) {
   const [rows, setRows] = useState<SmsRow[]>([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<string>('all')
@@ -390,7 +410,14 @@ function CampaignHistory({ branch }: { branch: 'BOTH' | 'SBEA' | 'SBGH' }) {
       <div className="px-5 py-4 flex items-center gap-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
         <h2 className="text-sm font-bold" style={{ color: 'var(--ink)' }}>Past Campaigns</h2>
         <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{rows.length} {rows.length === 1 ? 'record' : 'records'}</span>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <select value={branch} onChange={(e) => setBranch(e.target.value as Branch)}
+            className="text-xs px-2 py-1 rounded border"
+            style={{ borderColor: 'var(--light-gray)', background: '#fff' }}>
+            <option value="BOTH">Both branches</option>
+            <option value="SBEA">East (SBEA)</option>
+            <option value="SBGH">Greenhills (SBGH)</option>
+          </select>
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
             className="text-xs px-2 py-1 rounded border"
             style={{ borderColor: 'var(--light-gray)', background: '#fff' }}>
