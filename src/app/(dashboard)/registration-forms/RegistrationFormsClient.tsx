@@ -9,7 +9,7 @@ import {
 // ── Form definitions ─────────────────────────────────────────────────────────
 const FORM_TYPES: Array<{ key: string; title: string; sbea: string; sbgh: string | null; subtitle?: string; intro?: string }> = [
   { key: 'registration',  title: 'Registration Form',          sbea: 'GULaVBpI', sbgh: 'VaCB1bkE' },
-  { key: 'group-therapy', title: 'Group Therapy Registration', sbea: 'ChrSrsBF', sbgh: null },
+  { key: 'group-therapy', title: 'Group Therapy Registration', sbea: 'ChrSrsBF', sbgh: 'tT8QASYo' },
   {
     key:      'sip',
     title:    'ALAGA Program Registration',
