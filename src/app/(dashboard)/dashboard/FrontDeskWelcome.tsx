@@ -257,7 +257,7 @@ const ALPACA_CSS = `
 `
 
 // ── Alpaca SVG — styled after the cute CGI reference image ──────────────────
-// Key features: round fluffy body, orange (#ED6823), big round bear-like ears,
+// Key features: round fluffy body, orange (#4a8073), big round bear-like ears,
 // orange fluffy hair tuft on top, large warm dark eyes with glass shines,
 // small button nose, rosy cheeks, gentle smile → big smile + sparkles on jump
 function AlpacaSVG() {
@@ -276,14 +276,14 @@ function AlpacaSVG() {
       <rect x="92" y="207" width="20" height="11" rx="8"  fill="#B0A090" />
 
       {/* ── Body (orange, large round) ── */}
-      <ellipse cx="90" cy="158" rx="60" ry="56" fill="#ED6823" />
+      <ellipse cx="90" cy="158" rx="60" ry="56" fill="#4a8073" />
 
       {/* ── Chest patch (warm cream blending up to face) ── */}
       <ellipse cx="90" cy="130" rx="32" ry="36" fill="#F5E8D0" />
 
       {/* ── Tail (poof) ── */}
-      <ellipse cx="147" cy="122" rx="17" ry="20" fill="#ED6823" />
-      <ellipse cx="148" cy="121" rx="11" ry="13" fill="#F5A030" />
+      <ellipse cx="147" cy="122" rx="17" ry="20" fill="#4a8073" />
+      <ellipse cx="148" cy="121" rx="11" ry="13" fill="#244952" />
 
       {/* ── Front legs (near pair — cream) ── */}
       <rect x="50" y="172" width="23" height="48" rx="11.5" fill="#F5E8D0" />
@@ -293,27 +293,27 @@ function AlpacaSVG() {
 
       {/* ── Ears — round & big like the reference image ── */}
       {/* Left ear (drawn before head → head naturally overlaps the base) */}
-      <circle cx="44" cy="48" r="26" fill="#ED6823" className="aw-ear-l" />
-      <circle cx="44" cy="48" r="17" fill="#F5A030" className="aw-ear-l" />
+      <circle cx="44" cy="48" r="26" fill="#4a8073" className="aw-ear-l" />
+      <circle cx="44" cy="48" r="17" fill="#244952" className="aw-ear-l" />
       <circle cx="44" cy="48" r="9"  fill="#FBD080" className="aw-ear-l" />
       {/* Right ear */}
-      <circle cx="136" cy="48" r="26" fill="#ED6823" className="aw-ear-r" />
-      <circle cx="136" cy="48" r="17" fill="#F5A030" className="aw-ear-r" />
+      <circle cx="136" cy="48" r="26" fill="#4a8073" className="aw-ear-r" />
+      <circle cx="136" cy="48" r="17" fill="#244952" className="aw-ear-r" />
       <circle cx="136" cy="48" r="9"  fill="#FBD080" className="aw-ear-r" />
 
       {/* ── Head (large round, orange — covers ear bases naturally) ── */}
-      <circle cx="90" cy="78" r="54" fill="#ED6823" />
+      <circle cx="90" cy="78" r="54" fill="#4a8073" />
 
       {/* ── Orange fluffy hair tuft on top (drawn after head = sits on top) ── */}
-      <circle cx="70"  cy="28" r="20" fill="#ED6823" />
+      <circle cx="70"  cy="28" r="20" fill="#4a8073" />
       <circle cx="90"  cy="20" r="23" fill="#F07020" />
-      <circle cx="110" cy="28" r="20" fill="#ED6823" />
-      <circle cx="79"  cy="13" r="16" fill="#F5A030" />
-      <circle cx="101" cy="13" r="16" fill="#F5A030" />
+      <circle cx="110" cy="28" r="20" fill="#4a8073" />
+      <circle cx="79"  cy="13" r="16" fill="#244952" />
+      <circle cx="101" cy="13" r="16" fill="#244952" />
       <circle cx="90"  cy="7"  r="13" fill="#FBD080" />
       {/* Fluffy texture bumps */}
-      <circle cx="82"  cy="18" r="9"  fill="#F5A030" opacity="0.7" />
-      <circle cx="98"  cy="18" r="9"  fill="#F5A030" opacity="0.7" />
+      <circle cx="82"  cy="18" r="9"  fill="#244952" opacity="0.7" />
+      <circle cx="98"  cy="18" r="9"  fill="#244952" opacity="0.7" />
 
       {/* ── Face patch (warm cream oval for feature contrast) ── */}
       <ellipse cx="90" cy="90" rx="40" ry="36" fill="#F5E8D0" />
@@ -415,7 +415,7 @@ function getReminders(branch: string | undefined): Reminder[] {
         'Send the next-day schedule to each scheduled patient to confirm.',
         'Expect their confirmation replies until 5:00 PM.',
       ],
-      color: '#ED6823', icon: '📋',
+      color: '#4a8073', icon: '📋',
     },
     {
       id: 'desk-confirm-5pm',
@@ -579,7 +579,7 @@ function DeskShortcutReminder() {
       overflow: 'hidden',
     }}>
       {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg, #ED6823, #F5A030)', padding: '0.6rem 0.9rem' }}>
+      <div style={{ background: 'linear-gradient(135deg, #244952, #4a8073)', padding: '0.6rem 0.9rem' }}>
         <p style={{ color: '#fff', fontWeight: 800, fontSize: '0.73rem', letterSpacing: '0.08em', textTransform: 'uppercase', margin: 0 }}>
           Front Desk Daily Shortcut
         </p>
@@ -621,7 +621,7 @@ function DeskShortcutReminder() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.25rem' }}>
           {cutoffs.map(({ time, label }) => (
             <div key={label} style={{ background: '#FFF8F3', border: '1px solid #EDE5D8', borderRadius: '0.35rem', padding: '0.28rem 0.2rem', textAlign: 'center' }}>
-              <div style={{ fontSize: '0.67rem', fontWeight: 800, color: '#ED6823' }}>{time}</div>
+              <div style={{ fontSize: '0.67rem', fontWeight: 800, color: '#4a8073' }}>{time}</div>
               <div style={{ fontSize: '0.54rem', color: '#888', lineHeight: 1.3, marginTop: 1 }}>{label}</div>
             </div>
           ))}
@@ -795,7 +795,7 @@ export default function FrontDeskWelcome({
         width: '100%',
         minHeight: 'calc(100vh - 60px)',
         overflowX: 'hidden',
-        background: 'linear-gradient(155deg, #FFFAF4 0%, #FFF5E8 55%, #FFFCF6 100%)',
+        background: 'linear-gradient(155deg, #f4f8f5 0%, #edf3d9 55%, #f4f8f5 100%)',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -832,7 +832,7 @@ export default function FrontDeskWelcome({
           <div style={{ textAlign: 'center', maxWidth: '560px', padding: '0 2rem' }}>
             <p style={{
               fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.18em',
-              textTransform: 'uppercase', color: '#ED6823', marginBottom: '0.4rem',
+              textTransform: 'uppercase', color: '#4a8073', marginBottom: '0.4rem',
             }}>
               Welcome back
             </p>
@@ -842,24 +842,24 @@ export default function FrontDeskWelcome({
               fontFamily: 'var(--font-display, system-ui)',
             }}>
               Good {getGreeting()},{' '}
-              <span style={{ color: '#ED6823' }}>{name ?? 'there'}</span>! 👋
+              <span style={{ color: '#4a8073' }}>{name ?? 'there'}</span>! 👋
             </h1>
 
             {quote && (
               <div style={{
-                background: 'rgba(237,104,35,0.07)',
-                border: '1px solid rgba(237,104,35,0.18)',
+                background: 'rgba(36,73,82,0.07)',
+                border: '1px solid rgba(36,73,82,0.18)',
                 borderRadius: '0.875rem',
                 padding: '1rem 1.4rem',
               }}>
                 <p style={{
                   fontSize: '1rem', fontWeight: 500, lineHeight: 1.7,
-                  color: '#4A3018', fontStyle: 'italic', margin: 0,
+                  color: '#1a3a35', fontStyle: 'italic', margin: 0,
                 }}>
                   &ldquo;{quote.text}&rdquo;
                 </p>
                 <p style={{
-                  fontSize: '0.78rem', fontWeight: 600, color: '#ED6823',
+                  fontSize: '0.78rem', fontWeight: 600, color: '#4a8073',
                   marginTop: '0.5rem', marginBottom: 0,
                 }}>
                   — {quote.author}
@@ -872,13 +872,13 @@ export default function FrontDeskWelcome({
           {branchLabel && (
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: '0.45rem',
-              background: '#ED6823', color: '#fff',
+              background: '#4a8073', color: '#fff',
               fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.07em',
               padding: '0.3rem 1rem', borderRadius: '99px',
             }}>
               <span style={{
                 width: 6, height: 6, borderRadius: '50%',
-                background: '#FFDE59', display: 'inline-block', flexShrink: 0,
+                background: '#ffffff', display: 'inline-block', flexShrink: 0,
               }} />
               {branchLabel}
             </div>
@@ -911,7 +911,7 @@ export default function FrontDeskWelcome({
         }}>
           {/* Header */}
           <div style={{
-            background: 'linear-gradient(135deg, #ED6823, #F5A030)',
+            background: 'linear-gradient(135deg, #244952, #4a8073)',
             padding: '0.7rem 1.1rem',
             display: 'flex', alignItems: 'center', gap: '0.5rem',
           }}>
@@ -1030,7 +1030,7 @@ export default function FrontDeskWelcome({
                       <p style={{ fontWeight: 700, fontSize: '0.8rem', color: '#1A1A1A', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {p.firstName} {p.lastName}
                       </p>
-                      <p style={{ fontSize: '0.67rem', color: isToday ? '#ED6823' : '#999', margin: 0, fontWeight: isToday ? 600 : 400 }}>
+                      <p style={{ fontSize: '0.67rem', color: isToday ? '#4a8073' : '#999', margin: 0, fontWeight: isToday ? 600 : 400 }}>
                         {dayLabel}
                       </p>
                     </div>
@@ -1045,8 +1045,8 @@ export default function FrontDeskWelcome({
                       }
                       style={{
                         background: (alreadySent || email === 'sent') ? '#22C55E' : email === 'error' ? '#EF4444' : '#fff',
-                        color: (alreadySent || email === 'sent') ? '#fff' : email === 'error' ? '#fff' : '#ED6823',
-                        border: `1px solid ${(alreadySent || email === 'sent') ? '#22C55E' : email === 'error' ? '#EF4444' : '#ED6823'}`,
+                        color: (alreadySent || email === 'sent') ? '#fff' : email === 'error' ? '#fff' : '#4a8073',
+                        border: `1px solid ${(alreadySent || email === 'sent') ? '#22C55E' : email === 'error' ? '#EF4444' : '#4a8073'}`,
                         borderRadius: '0.4rem',
                         padding: '0.32rem 0.7rem', fontSize: '0.67rem', fontWeight: 600,
                         cursor: email === 'sending' ? 'wait' : 'pointer',
@@ -1070,7 +1070,7 @@ export default function FrontDeskWelcome({
                           background:
                             (alreadySentSms || sms === 'sent') ? '#22C55E'
                             : sms === 'error' ? '#EF4444'
-                            : '#ED6823',
+                            : '#4a8073',
                           color: '#fff', border: 'none', borderRadius: '0.4rem',
                           padding: '0.32rem 0.7rem', fontSize: '0.67rem', fontWeight: 600,
                           cursor: (sms === 'sending' || sms === 'sent' || alreadySentSms) ? 'default' : 'pointer',
@@ -1176,7 +1176,7 @@ export default function FrontDeskWelcome({
           left: '50%',
           transform: 'translateX(-50%)',
           background: '#fff',
-          border: '2px solid #ED6823',
+          border: '2px solid #4a8073',
           borderRadius: '0.875rem',
           padding: '0.55rem 1.1rem',
           fontSize: '0.72rem',
@@ -1200,7 +1200,7 @@ export default function FrontDeskWelcome({
           width: 0, height: 0,
           borderLeft: '10px solid transparent',
           borderRight: '10px solid transparent',
-          borderTop: '14px solid #ED6823',
+          borderTop: '14px solid #4a8073',
         }} />
         {/* bubble tail inner */}
         <span style={{
@@ -1233,7 +1233,7 @@ export default function FrontDeskWelcome({
         {/* Ground line */}
         <div style={{
           position: 'absolute', bottom: '6px', left: 0, right: 0, height: '2px',
-          background: 'linear-gradient(90deg, transparent, rgba(237,104,35,0.15) 20%, rgba(237,104,35,0.15) 80%, transparent)',
+          background: 'linear-gradient(90deg, transparent, rgba(36,73,82,0.15) 20%, rgba(36,73,82,0.15) 80%, transparent)',
         }} />
 
         {/* X movement → flip direction → behavior (bob / jump / hide) */}
