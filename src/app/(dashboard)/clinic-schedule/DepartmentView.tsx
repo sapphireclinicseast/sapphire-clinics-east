@@ -787,6 +787,14 @@ const WEEKDAY_FULL: Record<string, string> = {
 function weekdayCodeFor(iso: string): string {
   return WEEKDAY_CODES[new Date(iso + 'T12:00:00').getDay()]
 }
+function tomorrowStr(): string {
+  const d = new Date()
+  d.setDate(d.getDate() + 1)
+  return d.toISOString().split('T')[0]
+}
+function fmtDateShort(iso: string): string {
+  return new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+}
 
 // ─── Main DepartmentView ───────────────────────────────────────────────────────
 export default function DepartmentView({ role, selectedDate, onDateChange }: { role: string; selectedDate: string; onDateChange: (d: string) => void }) {
@@ -796,12 +804,16 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
   const [staff, setStaff] = useState<StaffMember[]>([])
   const [configs, setConfigs] = useState<TherapistConfig[]>([])
   const [loading, setLoading] = useState(true)
+  // Manually-added make-up clinicians (work a session on a day that isn't on
+  // their weekly Decking schedule). Keyed by staffId.
+  const [makeupIds, setMakeupIds] = useState<string[]>([])
+  const [makeupQuery, setMakeupQuery] = useState('')
 
   useEffect(() => {
     fetch('/api/staff').then(r => r.json()).then(setStaff).finally(() => setLoading(false))
   }, [])
 
-  // Decking weekly schedules — drives the "Today" view.
+  // Decking weekly schedules — drives the "Tomorrow" view.
   useEffect(() => {
     fetch('/api/decking/therapists')
       .then(r => r.json())
@@ -809,24 +821,38 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
       .catch(() => setConfigs([]))
   }, [])
 
-  // Reset dept filter when branch changes
-  useEffect(() => { setActiveDept('All') }, [activeBranch])
+  // Reset dept filter + make-up picks when branch changes
+  useEffect(() => { setActiveDept('All'); setMakeupIds([]); setMakeupQuery('') }, [activeBranch])
 
   const branchStaff = staff.filter(s => s.branch === activeBranch)
   const presentDepts = ALL_DEPARTMENTS.filter(d => branchStaff.some(s => s.department === d))
   const filtered = activeDept === 'All' ? branchStaff : branchStaff.filter(s => s.department === activeDept)
 
-  // ── "Today" view: clinicians whose Decking weekly schedule includes the
-  // weekday of the selected date, in the active branch. ──────────────────────
-  const todayCode = weekdayCodeFor(selectedDate)
+  // ── "Tomorrow" view: clinicians whose Decking weekly schedule includes the
+  // weekday of TOMORROW (today + 1), in the active branch. ────────────────────
+  const tomorrowDate = tomorrowStr()
+  const tomorrowCode = weekdayCodeFor(tomorrowDate)
   const staffById = new Map(staff.map(s => [s.id, s]))
-  const todaysClinicians = configs
-    .filter(c => Array.isArray(c.workDays) && c.workDays.includes(todayCode))
+  const tomorrowClinicians = configs
+    .filter(c => Array.isArray(c.workDays) && c.workDays.includes(tomorrowCode))
     .map(c => ({ cfg: c, staff: staffById.get(c.staffId) }))
     .filter((x): x is { cfg: TherapistConfig; staff: StaffMember } => !!x.staff && x.staff.branch === activeBranch)
     .sort((a, b) =>
       (a.staff.lastName || '').localeCompare(b.staff.lastName || '') ||
       (a.staff.firstName || '').localeCompare(b.staff.firstName || ''))
+
+  // Make-up clinicians: manually added, in this branch, not already auto-listed.
+  const autoIds = new Set(tomorrowClinicians.map(x => x.staff.id))
+  const makeupClinicians = makeupIds
+    .map(id => staffById.get(id))
+    .filter((s): s is StaffMember => !!s && s.branch === activeBranch && !autoIds.has(s.id))
+  // Type-ahead matches for the make-up search (exclude already-listed staff).
+  const makeupMatches = makeupQuery.trim().length > 0
+    ? branchStaff
+        .filter(s => !autoIds.has(s.id) && !makeupIds.includes(s.id) &&
+          `${s.firstName} ${s.lastName}`.toLowerCase().includes(makeupQuery.trim().toLowerCase()))
+        .slice(0, 8)
+    : []
 
   return (
     <div className="space-y-4">
@@ -863,12 +889,12 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
       {!loading && (
         <div className="flex flex-wrap gap-2">
           <button
-            onClick={() => setActiveDept('Today')}
+            onClick={() => setActiveDept('Tomorrow')}
             className="px-3 py-1 rounded-full text-xs font-semibold transition-colors"
-            style={activeDept === 'Today'
+            style={activeDept === 'Tomorrow'
               ? { background: 'var(--teal)', color: '#fff' }
               : { background: '#fff', color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>
-            Today
+            Tomorrow
           </button>
           <button
             onClick={() => setActiveDept('All')}
@@ -891,46 +917,115 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
         </div>
       )}
 
-      {/* "Today" view — clinicians working the selected weekday + Front Desk card */}
-      {!loading && activeDept === 'Today' ? (
+      {/* "Tomorrow" view — clinicians working tomorrow + make-ups + Front Desk card */}
+      {!loading && activeDept === 'Tomorrow' ? (
         <div className="grid gap-4" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(300px, 360px)' }}>
-          {/* Left — clinician names working today */}
-          <div className="rounded-xl p-4" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-            <div className="flex items-baseline justify-between mb-3 flex-wrap gap-1">
-              <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
-                Clinicians on {WEEKDAY_FULL[todayCode]}
-              </h3>
-              <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-                {todaysClinicians.length} clinician{todaysClinicians.length !== 1 ? 's' : ''} · {activeBranch}
-              </span>
+          {/* Left — clinicians working tomorrow (+ make-up sessions) */}
+          <div className="flex flex-col gap-4">
+            <div className="rounded-xl p-4" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+              <div className="flex items-baseline justify-between mb-3 flex-wrap gap-1">
+                <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
+                  Clinicians tomorrow · {fmtDateShort(tomorrowDate)}
+                </h3>
+                <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                  {tomorrowClinicians.length} on schedule · {activeBranch}
+                </span>
+              </div>
+              {tomorrowClinicians.length === 0 ? (
+                <p className="text-sm py-8 text-center" style={{ color: 'var(--mid-gray)' }}>
+                  No clinicians have a {WEEKDAY_FULL[tomorrowCode]} schedule for {activeBranch} in the Decking Module.
+                </p>
+              ) : (
+                <div className="flex flex-col divide-y" style={{ borderColor: 'var(--light-gray)' }}>
+                  {tomorrowClinicians.map(({ cfg, staff: s }) => (
+                    <div key={s.id} className="flex items-center justify-between gap-3 py-2">
+                      <span className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>
+                        {s.firstName} {s.lastName}
+                      </span>
+                      <span className="text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
+                        {s.department} · {cfg.startTime}–{cfg.endTime}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            {todaysClinicians.length === 0 ? (
-              <p className="text-sm py-8 text-center" style={{ color: 'var(--mid-gray)' }}>
-                No clinicians have a {WEEKDAY_FULL[todayCode]} schedule for {activeBranch} in the Decking Module.
-              </p>
-            ) : (
-              <div className="flex flex-col divide-y" style={{ borderColor: 'var(--light-gray)' }}>
-                {todaysClinicians.map(({ cfg, staff: s }) => (
-                  <div key={s.id} className="flex items-center justify-between gap-3 py-2">
-                    <span className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>
-                      {s.firstName} {s.lastName}
-                    </span>
-                    <span className="text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
-                      {s.department} · {cfg.startTime}–{cfg.endTime}
-                    </span>
-                  </div>
-                ))}
+
+            {/* Make-up sessions — manually added clinicians, with full scheduling */}
+            {makeupClinicians.length > 0 && (
+              <div className="rounded-xl p-4" style={{ background: '#fff', border: '1px solid #FED7AA' }}>
+                <h3 className="text-sm font-bold mb-3" style={{ color: '#C2410C', fontFamily: 'var(--font-display)' }}>
+                  Make-up sessions · {fmtDateShort(tomorrowDate)}
+                </h3>
+                <div className="space-y-3">
+                  {makeupClinicians.map(s => (
+                    <div key={s.id}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: '#FFF7ED', color: '#C2410C', border: '1px solid #FED7AA' }}>
+                          Make-up · {s.firstName} {s.lastName}
+                        </span>
+                        <button
+                          onClick={() => setMakeupIds(ids => ids.filter(id => id !== s.id))}
+                          className="text-xs font-medium"
+                          style={{ color: 'var(--mid-gray)' }}>
+                          Remove
+                        </button>
+                      </div>
+                      <StaffCard staff={s} selectedDate={tomorrowDate} />
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
 
-          {/* Right — Front Desk Daily Shortcut card + bright-red reminder */}
+          {/* Right — Front Desk card, reminder, and make-up search */}
           <div className="flex flex-col gap-3">
             <DeskShortcutCard />
             <div className="rounded-lg p-3" style={{ background: '#FEF2F2', border: '2px solid #DC2626' }}>
               <p className="text-sm font-bold m-0" style={{ color: '#DC2626', lineHeight: 1.45 }}>
                 Note: Don&apos;t forget to include new patients, especially to medical doctors,
                 psychologists and physical therapists from clinic inquiries.
+              </p>
+            </div>
+
+            {/* Make-up clinician search */}
+            <div className="rounded-xl p-3" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+              <p className="text-sm font-bold mb-2" style={{ color: 'var(--charcoal)' }}>
+                Any clinicians who will do make up sessions?
+              </p>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="text"
+                  value={makeupQuery}
+                  onChange={e => setMakeupQuery(e.target.value)}
+                  placeholder="Search clinician name…"
+                  className="w-full rounded-lg px-3 py-2 text-sm"
+                  style={{ border: '1.5px solid var(--light-gray)', background: '#fff', color: 'var(--charcoal)' }}
+                />
+                {makeupMatches.length > 0 && (
+                  <div className="rounded-lg mt-1 overflow-hidden" style={{ border: '1px solid var(--light-gray)', background: '#fff' }}>
+                    {makeupMatches.map(s => (
+                      <button
+                        key={s.id}
+                        onClick={() => { setMakeupIds(ids => [...ids, s.id]); setMakeupQuery('') }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-stone-50 flex items-center justify-between gap-2"
+                        style={{ color: 'var(--charcoal)' }}>
+                        <span>{s.firstName} {s.lastName}</span>
+                        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{s.department}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {makeupQuery.trim().length > 0 && makeupMatches.length === 0 && (
+                  <p className="text-xs mt-1.5" style={{ color: 'var(--mid-gray)' }}>
+                    No matching clinician in {activeBranch} (already-scheduled clinicians are hidden).
+                  </p>
+                )}
+              </div>
+              <p className="text-[11px] mt-2" style={{ color: 'var(--mid-gray)', lineHeight: 1.4 }}>
+                Add a clinician here to schedule a make-up session on a day that isn&apos;t part of their
+                weekly schedule. They&apos;ll appear under <strong>Make-up sessions</strong> on the left.
               </p>
             </div>
           </div>
