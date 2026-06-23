@@ -800,7 +800,7 @@ function fmtDateShort(iso: string): string {
 export default function DepartmentView({ role, selectedDate, onDateChange }: { role: string; selectedDate: string; onDateChange: (d: string) => void }) {
   const branches = visibleBranches(role)
   const [activeBranch, setActiveBranch] = useState(branches[0])
-  const [activeDept, setActiveDept] = useState('All')
+  const [activeDept, setActiveDept] = useState('Tomorrow')
   const [staff, setStaff] = useState<StaffMember[]>([])
   const [configs, setConfigs] = useState<TherapistConfig[]>([])
   const [loading, setLoading] = useState(true)
@@ -822,7 +822,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
   }, [])
 
   // Reset dept filter + make-up picks when branch changes
-  useEffect(() => { setActiveDept('All'); setMakeupIds([]); setMakeupQuery('') }, [activeBranch])
+  useEffect(() => { setActiveDept('Tomorrow'); setMakeupIds([]); setMakeupQuery('') }, [activeBranch])
 
   const branchStaff = staff.filter(s => s.branch === activeBranch)
   const presentDepts = ALL_DEPARTMENTS.filter(d => branchStaff.some(s => s.department === d))
