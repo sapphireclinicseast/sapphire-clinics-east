@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-
+import Image from 'next/image'
 import { useEffect, useState } from 'react'
 
 type BirthdayPatient = { id: string; firstName: string; lastName: string; birthday: string; hasPhone: boolean }
