@@ -76,7 +76,7 @@ const NAV_SECTIONS: NavSection[] = [
     label: 'Planning & Analysis',
     items: [
       { href: '/budgets', icon: Target, label: 'Budgets', roles: FULL_ACCESS },
-      { href: '/reports', icon: BarChart3, label: 'Reports', roles: FULL_ACCESS },
+      { href: '/reports', icon: BarChart3, label: 'Reports', roles: [...FULL_ACCESS, 'MEDREP'] },
       { href: '/reports/v2', icon: BarChart3, label: 'Reports (v2 / GL)', roles: FULL_ACCESS },
       { href: '/sales-summary', icon: Receipt, label: 'Sales Summary', roles: FULL_ACCESS },
       { href: '/products-analysis', icon: PackageSearch, label: 'Products Analysis', roles: FULL_ACCESS },

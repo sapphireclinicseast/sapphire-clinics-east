@@ -154,7 +154,7 @@ const HR10_SCHEMA = {
   ],
   thankYou: {
     title: 'Thank you for helping us improve by answering this short survey.',
-    description: 'We look forward to having you with us again!\n\nFor customer feedback, you may also email customerfeedback@sapphireclinicseast.org'
+    description: 'We look forward to having you with us again!\n\nFor customer feedback, you may also email marketing@sapphireclinicseast.org'
   }
 };
 
@@ -213,7 +213,7 @@ const HR11_SCHEMA = {
   ],
   thankYou: {
     title: 'Thank you for helping us improve by answering this short survey.',
-    description: 'We look forward to having you with us again!\n\nFor customer feedback, you may also email customerfeedback@sapphireclinicseast.org'
+    description: 'We look forward to having you with us again!\n\nFor customer feedback, you may also email marketing@sapphireclinicseast.org'
   }
 };
 
@@ -277,7 +277,7 @@ const HR12_SCHEMA = {
   ],
   thankYou: {
     title: 'Thank you for helping us improve by answering this short survey.',
-    description: 'We look forward to having you with us again!\n\nFor customer feedback, you may also email customerfeedback@sapphireclinicseast.org'
+    description: 'We look forward to having you with us again!\n\nFor customer feedback, you may also email marketing@sapphireclinicseast.org'
   }
 };
 
@@ -376,7 +376,7 @@ const HR16_SCHEMA = {
   ],
   thankYou: {
     title: 'Thank you for helping us improve by answering this short survey.',
-    description: 'We look forward to having you with us again!\n\nFor customer feedback, you may also email customerfeedback@sapphireclinicseast.org'
+    description: 'We look forward to having you with us again!\n\nFor customer feedback, you may also email marketing@sapphireclinicseast.org'
   }
 };
 

@@ -115,7 +115,7 @@ export async function GET(req: Request) {
     const skuById = new Map(catalog.map(c => [c.id, c.sku]))
     const withSku = (s: Agg) => ({ name: s.name, sku: skuById.get(s.id) || '', units: s.units, gross: round2(s.gross), net: round2(s.net) })
 
-    const fastMoving = [...soldList].sort((a, b) => b.units - a.units || b.gross - a.gross).slice(0, 5).map(withSku)
+    const fastMoving = [...soldList].sort((a, b) => b.units - a.units || b.gross - a.gross).slice(0, 10).map(withSku)
     const slowMoving = [...soldList].sort((a, b) => a.units - b.units || a.gross - b.gross).slice(0, 10).map(withSku)
 
     // No-purchase list: one row per distinct product NAME (a product can have multiple catalog

@@ -49,7 +49,14 @@ interface ApiResponse {
   standardizedTests: StdTest[]
 }
 
-type Filter = 'all' | 'pinned' | 'technical' | 'admin' | 'hr'
+// Filter is a category ('all'/'pinned'/'technical'/'admin'/'hr') OR a specific
+// technical-department name (e.g. 'OT', 'Psychology') when the viewer sees all
+// departments (admin / front-desk / administration staff) and gets per-dept tabs.
+type Filter = string
+
+// Preferred tab order + short labels for the per-department tabs.
+const TECH_DEPT_ORDER = ['OT', 'SLP', 'PT', 'SPED', 'MD', 'Orthosis & Prosthesis', 'Psychology']
+const DEPT_TAB_LABEL: Record<string, string> = { 'Orthosis & Prosthesis': 'Orthosis' }
 
 export default function TemplatesPage() {
   const [data, setData] = useState<ApiResponse | null>(null)
@@ -120,6 +127,9 @@ export default function TemplatesPage() {
       list = list.filter((t) => t.department === 'Admin/Operations')
     } else if (filter === 'hr') {
       list = list.filter((t) => t.department === 'HR')
+    } else if (filter !== 'all') {
+      // A specific technical-department tab (e.g. 'OT', 'Psychology').
+      list = list.filter((t) => t.department === filter)
     }
     if (search.trim()) {
       const q = search.trim().toLowerCase()
@@ -134,15 +144,37 @@ export default function TemplatesPage() {
 
   const visibleTests = useMemo(() => {
     if (!data) return []
-    // Standardized tests don't get pinned individually; only show them
-    // under All / Technical filters (pinned/admin/hr would be empty).
-    if (filter !== 'all' && filter !== 'technical') return []
-    if (!search.trim()) return data.standardizedTests
-    const q = search.trim().toLowerCase()
-    return data.standardizedTests.filter((t) =>
-      (t.name + ' ' + t.department).toLowerCase().includes(q),
-    )
+    // Standardized tests aren't pinned individually and have no HR/Admin items.
+    if (filter === 'pinned' || filter === 'admin' || filter === 'hr') return []
+    let tests = data.standardizedTests
+    if (filter === 'technical' && data.department) {
+      tests = tests.filter((t) => t.department === data.department)
+    } else if (filter !== 'all') {
+      // A specific technical-department tab.
+      tests = tests.filter((t) => t.department === filter)
+    }
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      tests = tests.filter((t) => (t.name + ' ' + t.department).toLowerCase().includes(q))
+    }
+    return tests
   }, [data, filter, search])
+
+  // Viewers who see all departments (admin / front-desk / administration staff)
+  // get one tab per technical department. Derived from the data so it only shows
+  // departments that actually have forms; HR + Admin/Operations have their own tabs.
+  const seesAllDepts = data?.allowedDepts === null
+  const techDepts = useMemo(() => {
+    if (!data) return []
+    const set = new Set<string>()
+    data.templates.forEach((t) => set.add(t.department))
+    data.standardizedTests.forEach((t) => set.add(t.department))
+    set.delete('HR'); set.delete('Admin/Operations')
+    return [...set].sort((a, b) => {
+      const ia = TECH_DEPT_ORDER.indexOf(a), ib = TECH_DEPT_ORDER.indexOf(b)
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
+    })
+  }, [data])
 
   // Group templates by department for nicer display.
   const grouped = useMemo(() => {
@@ -186,7 +218,13 @@ export default function TemplatesPage() {
       <div className="flex flex-wrap items-center gap-2 mb-4 animate-fade-up stagger-1">
         <FilterButton active={filter === 'all'} onClick={() => setFilter('all')} icon={<ClipboardList size={13} />} label="All" />
         <FilterButton active={filter === 'pinned'} onClick={() => setFilter('pinned')} icon={<Pin size={13} />} label="Pinned" />
-        <FilterButton active={filter === 'technical'} onClick={() => setFilter('technical')} icon={<Stethoscope size={13} />} label="Technical Department" />
+        {seesAllDepts ? (
+          techDepts.map((d) => (
+            <FilterButton key={d} active={filter === d} onClick={() => setFilter(d)} icon={<Stethoscope size={13} />} label={DEPT_TAB_LABEL[d] ?? d} />
+          ))
+        ) : (
+          <FilterButton active={filter === 'technical'} onClick={() => setFilter('technical')} icon={<Stethoscope size={13} />} label="Technical Department" />
+        )}
         <FilterButton active={filter === 'admin'} onClick={() => setFilter('admin')} icon={<Briefcase size={13} />} label="Admin/Operations" />
         <FilterButton active={filter === 'hr'} onClick={() => setFilter('hr')} icon={<UserCog size={13} />} label="HR" />
       </div>

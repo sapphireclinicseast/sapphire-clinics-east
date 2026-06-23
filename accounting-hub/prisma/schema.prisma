@@ -19,6 +19,7 @@ enum Role {
   SBEA_FRONTDESK
   SBGH_FRONTDESK
   HMO_OFFICER
+  MEDREP
 }
 
 enum Branch {

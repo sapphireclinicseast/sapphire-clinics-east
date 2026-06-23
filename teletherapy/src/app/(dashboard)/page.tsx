@@ -97,7 +97,8 @@ export default function DashboardPage() {
   const discontinued = sessions.filter((s) => s.sessionNote?.status === 'DISCONTINUED').length
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="max-w-7xl mx-auto lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-6 lg:items-start">
+      <div className="min-w-0">
       {/* Branch switcher for interbranch clinicians */}
       {isMultiBranch && (
         <div className="mb-4 animate-fade-up">
@@ -264,6 +265,54 @@ export default function DashboardPage() {
           ))}
         </div>
       )}
+      </div>{/* end left column */}
+
+      {/* Scheduling reminder — pinned to the right so clinicians always see it */}
+      <aside className="mt-6 lg:mt-0 lg:sticky lg:top-4 animate-fade-up">
+        <ScheduleReminder />
+      </aside>
+    </div>
+  )
+}
+
+// "The 3 R's of Daily Scheduling" quick-reference card.
+function ScheduleReminder() {
+  const rows = [
+    { r: 'RELEASE', when: 'before 1:00 PM', desc: 'Front Desk sends your next-day schedule (decking) for confirmation.' },
+    { r: 'REPLY', when: 'before 5:00 PM', desc: 'You confirm you will attend tomorrow — through the official channel.' },
+    { r: 'REPORT', when: 'by 8:00 AM', desc: 'You report a same-day absence (illness or emergency) and confirm it is acknowledged.' },
+  ]
+  return (
+    <div className="rounded-2xl overflow-hidden shadow-lg border border-[var(--light-gray)] bg-white">
+      {/* Header */}
+      <div className="px-5 py-4 text-center" style={{ background: 'linear-gradient(135deg, var(--narra), var(--moss))' }}>
+        <p className="text-[10px] uppercase tracking-[0.2em] text-white/70 font-semibold">Quick Reference</p>
+        <h3 className="text-white font-bold text-[16px] leading-tight mt-1" style={{ fontFamily: 'var(--font-display)' }}>
+          The 3 R&rsquo;s of Daily Scheduling
+        </h3>
+      </div>
+      {/* Rule banner */}
+      <div className="px-4 py-2.5 text-center text-[13px] font-extrabold text-[var(--deep-teal)]" style={{ background: 'var(--sun-tint)' }}>
+        Release by 1 · Reply by 5 · Report by 8
+      </div>
+      {/* Rows */}
+      <div className="divide-y divide-[var(--light-gray)]">
+        {rows.map((row) => (
+          <div key={row.r} className="px-5 py-3.5">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <span className="font-extrabold text-[13px] tracking-wide text-[var(--deep-teal)]">{row.r}</span>
+              <span className="text-[12px] font-bold text-[var(--charcoal)] bg-[var(--pale-teal)] px-2 py-0.5 rounded-md whitespace-nowrap">{row.when}</span>
+            </div>
+            <p className="text-[12.5px] text-[var(--mid-gray)] leading-snug">{row.desc}</p>
+          </div>
+        ))}
+      </div>
+      {/* Footer note */}
+      <div className="px-5 py-3 bg-[var(--off-white)] border-t border-[var(--light-gray)]">
+        <p className="text-[11px] italic text-[var(--mid-gray)] leading-snug">
+          Confirm explicitly through the official clinic channel — silence is not treated as confirmation.
+        </p>
+      </div>
     </div>
   )
 }

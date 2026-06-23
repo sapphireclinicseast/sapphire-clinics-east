@@ -4,7 +4,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parsePagination, paginatedResult } from '@/lib/pagination'
 
-const VALID_ROLES = ['ADMIN', 'ACCOUNTANT', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN', 'SBEA_FRONTDESK', 'SBGH_FRONTDESK', 'HMO_OFFICER']
+const VALID_ROLES = ['ADMIN', 'ACCOUNTANT', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN', 'SBEA_FRONTDESK', 'SBGH_FRONTDESK', 'HMO_OFFICER', 'MEDREP']
 const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'ALL']
 
 // GET - List all users (paginated)
@@ -127,7 +127,7 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
     }
 
-    if (branch !== undefined && branch !== null && !VALID_BRANCHES.includes(branch)) {
+    if (branch && !VALID_BRANCHES.includes(branch)) {
       return NextResponse.json({ error: 'Invalid branch' }, { status: 400 })
     }
 

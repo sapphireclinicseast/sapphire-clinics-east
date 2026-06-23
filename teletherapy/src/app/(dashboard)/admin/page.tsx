@@ -22,11 +22,11 @@ import {
 import { cn } from '@/lib/utils'
 
 const BRANCH_LABEL: Record<string, string> = {
-  SANDBOX_EAST: 'Sandbox East',
-  SANDBOX_GREENHILLS: 'Sandbox Greenhills',
+  SANDBOX_EAST: 'East Branch',
+  SANDBOX_GREENHILLS: 'Greenhills Branch',
   VERDANA_STORE: 'Verdana Store',
-  SBEA: 'Sandbox East (legacy)',
-  SBGH: 'Sandbox Greenhills (legacy)',
+  SBEA: 'East Branch (legacy)',
+  SBGH: 'Greenhills Branch (legacy)',
 }
 
 interface StaffOption {
@@ -314,14 +314,14 @@ export default function AdminPage() {
               <label className="block text-[13px] font-semibold text-[var(--charcoal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>Account Type</label>
               <select value={accountType} onChange={(e) => setAccountType(e.target.value as typeof accountType)} className="input bg-white">
                 <option value="CLINICIAN">Clinician — full clinical access</option>
-                <option value="FRONT_DESK">Front Desk — limited sections (incl. Patients Love)</option>
-                <option value="ADMIN_STAFF">Admin Staff — limited sections</option>
+                <option value="FRONT_DESK">Front Desk (Administration) — no patient pages, incl. Patients Love</option>
+                <option value="ADMIN_STAFF">Administration staff — no patient pages, no Patients Love</option>
                 <option value="ADMIN">Admin — full access + Admin Panel</option>
               </select>
               <p className="text-[11px] text-[var(--mid-gray)] mt-1">
                 {accountType === 'CLINICIAN' && 'Sees all clinical pages plus Peers Love.'}
-                {accountType === 'FRONT_DESK' && 'Sees: Patients Love, Peers Love, Seminars, Templates (all depts), Manuals, Directory, Wellness Check, Payroll.'}
-                {accountType === 'ADMIN_STAFF' && 'Sees: Peers Love, Seminars, Templates (all depts), Manuals, Directory, Wellness Check, Payroll.'}
+                {accountType === 'FRONT_DESK' && 'For front-desk staff. No Dashboard / Clinic Schedule / Patients / Settings. Sees: Patients Love (HR12 feedback), Peers Love, Seminars, Templates (all depts), Manuals, Directory, Wellness Check, Payroll.'}
+                {accountType === 'ADMIN_STAFF' && 'For other Administration roles. No Dashboard / Clinic Schedule / Patients / Settings, and no Patients Love. Sees: Peers Love, Seminars, Templates (all depts), Manuals, Directory, Wellness Check, Payroll.'}
                 {accountType === 'ADMIN' && 'Full access including the Admin Panel.'}
               </p>
             </div>
@@ -468,24 +468,29 @@ export default function AdminPage() {
               {/* Change password inline form */}
               {/* Edit email inline form */}
               {editingEmailId === acct.id && (
-                <div className="mt-3 p-3 bg-[var(--off-white)] rounded-xl border border-[var(--light-gray)] flex items-center gap-3">
-                  <Mail size={16} className="text-[var(--sand-dark)] shrink-0" />
-                  <input
-                    type="email"
-                    value={newEmail}
-                    onChange={(e) => setNewEmail(e.target.value)}
-                    placeholder="New email address"
-                    className="input !rounded-lg !py-2 text-[13px] flex-1"
-                    autoFocus
-                  />
-                  <button onClick={() => handleChangeEmail(acct.id)} disabled={savingEmail || !newEmail.includes('@')}
-                    className="btn-primary !py-2 !px-4 !text-[12px] !rounded-lg">
-                    {savingEmail ? <Loader2 size={14} className="animate-spin" /> : 'Save'}
-                  </button>
-                  <button onClick={() => { setEditingEmailId(null); setNewEmail('') }}
-                    className="text-[var(--mid-gray)] hover:text-[var(--charcoal)] text-[12px] font-medium">
-                    Cancel
-                  </button>
+                <div className="mt-3 p-3 bg-[var(--off-white)] rounded-xl border border-[var(--light-gray)]">
+                  <div className="flex items-center gap-3">
+                    <Mail size={16} className="text-[var(--sand-dark)] shrink-0" />
+                    <input
+                      type="email"
+                      value={newEmail}
+                      onChange={(e) => setNewEmail(e.target.value)}
+                      placeholder="New email address"
+                      className="input !rounded-lg !py-2 text-[13px] flex-1"
+                      autoFocus
+                    />
+                    <button onClick={() => handleChangeEmail(acct.id)} disabled={savingEmail || !newEmail.includes('@')}
+                      className="btn-primary !py-2 !px-4 !text-[12px] !rounded-lg">
+                      {savingEmail ? <Loader2 size={14} className="animate-spin" /> : 'Save'}
+                    </button>
+                    <button onClick={() => { setEditingEmailId(null); setNewEmail('') }}
+                      className="text-[var(--mid-gray)] hover:text-[var(--charcoal)] text-[12px] font-medium">
+                      Cancel
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-[var(--mid-gray)] mt-2 ml-7">
+                    Updates the login email <strong>and</strong> the staff record&rsquo;s email (across all branches), so payroll and survey matching stay in sync.
+                  </p>
                 </div>
               )}
 

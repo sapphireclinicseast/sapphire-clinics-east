@@ -102,6 +102,8 @@ export default async function DashboardPage() {
 
   // HMO Officer has no use for the module grid — send them directly to AR
   if (isHmoOfficer) redirect('/accounts-receivable')
+  // Med rep only has Reports — send them straight there
+  if (role === 'MEDREP') redirect('/reports')
 
   // Front desk users only see Services + POS (active, clickable)
   const visibleModules = isFrontDesk

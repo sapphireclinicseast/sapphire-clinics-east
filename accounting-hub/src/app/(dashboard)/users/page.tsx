@@ -34,6 +34,7 @@ const ROLE_OPTIONS = [
   { value: 'SBEA_FRONTDESK', label: 'SBEA Front Desk' },
   { value: 'SBGH_FRONTDESK', label: 'SBGH Front Desk' },
   { value: 'HMO_OFFICER', label: 'HMO Officer' },
+  { value: 'MEDREP', label: 'Med Rep (Reports — Gross Revenue only)' },
 ]
 
 const BRANCH_OPTIONS = [
@@ -53,6 +54,7 @@ const ROLE_LABELS: Record<string, string> = {
   SBEA_FRONTDESK: 'SBEA Front Desk',
   SBGH_FRONTDESK: 'SBGH Front Desk',
   HMO_OFFICER: 'HMO Officer',
+  MEDREP: 'Med Rep',
 }
 
 const BRANCH_LABELS: Record<string, string> = {
@@ -108,7 +110,7 @@ export default function UsersPage() {
     setFormEmail('')
     setFormPassword('')
     setFormRole('VIEWER')
-    setFormBranch('')
+    setFormBranch('ALL')
     setError('')
     setModalOpen(true)
   }
@@ -119,7 +121,7 @@ export default function UsersPage() {
     setFormEmail(user.email)
     setFormPassword('')
     setFormRole(user.role)
-    setFormBranch(user.branch || '')
+    setFormBranch(user.branch || 'ALL')
     setError('')
     setModalOpen(true)
   }

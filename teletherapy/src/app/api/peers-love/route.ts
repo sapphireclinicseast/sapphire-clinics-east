@@ -26,8 +26,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ strengths: [] })
   }
 
-  // No assesseeId filter for admins → every entry.
-  const where: { assesseeId?: { in: string[] } } = isAdmin ? {} : { assesseeId: { in: assesseeFilter } }
+  // Filter to rows that HAVE a strengths comment IN THE QUERY — otherwise
+  // `take` grabs the most-recent N rows (most of which have no strengths) and
+  // older comments get truncated away. With this, `take` counts only rows with
+  // strengths, so they all come back.
+  const where: { assesseeId?: { in: string[] }; strengths: { not: null } } = isAdmin
+    ? { strengths: { not: null } }
+    : { assesseeId: { in: assesseeFilter }, strengths: { not: null } }
 
   try {
     // @ts-ignore — PeerEvalResponse table is owned by the Marketing Hub
@@ -40,7 +45,7 @@ export async function GET(req: NextRequest) {
       where,
       select: { id: true, strengths: true, branch: true, submittedAt: true },
       orderBy: { submittedAt: 'desc' },
-      take: 200,
+      take: 500,
     })
 
     const strengths = responses

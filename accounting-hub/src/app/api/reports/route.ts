@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN', 'MEDREP']
 
 export async function GET(req: Request) {
   const session = await auth()
@@ -139,7 +139,10 @@ export async function GET(req: Request) {
               // Standard window: any entry (payroll or not) dated within the year
               {
                 entryDate: { gte: startDate, lt: endDate },
-                ...(branch !== 'ALL' ? { branch } : {}),
+                // Journal entries store branch as the enum form (SANDBOX_EAST); the
+                // request param can be the short code (SBEA) — match both so single-branch
+                // views don't silently drop their journal entries.
+                ...(branch !== 'ALL' ? { branch: { in: [orderBranch, branch] } } : {}),
               },
               // Extended window: payroll entries finalized in Jan–Feb of the next year
               // but whose cutoff period belongs to this report year
@@ -147,7 +150,10 @@ export async function GET(req: Request) {
                 referenceType: { in: ['PAYROLL_EMPLOYEE', 'PAYROLL_CONSULTANT'] },
                 referenceId: { startsWith: `${year}-` },
                 entryDate: { gte: endDate, lt: new Date(`${year + 1}-03-01T00:00:00.000Z`) },
-                ...(branch !== 'ALL' ? { branch } : {}),
+                // Journal entries store branch as the enum form (SANDBOX_EAST); the
+                // request param can be the short code (SBEA) — match both so single-branch
+                // views don't silently drop their journal entries.
+                ...(branch !== 'ALL' ? { branch: { in: [orderBranch, branch] } } : {}),
               },
             ],
           },
@@ -624,6 +630,10 @@ export async function GET(req: Request) {
     const journalRevenueKeys = new Set<string>()
     for (const line of journalLines) {
       if (!line.account || line.account.accountType !== 'REVENUE') continue
+      // POS_ORDER revenue and discounts (incl. 7140 Merchant Discount Rate) are already
+      // counted above from the order/payment data — skip them here to avoid double-counting.
+      // This fold is for manual/indirect entries (e.g. 7220 Other Comprehensive Income).
+      if (line.journalEntry.referenceType === 'POS_ORDER') continue
       const key = `${line.account.accountNumber} ${line.account.accountTitle}`
       const month = new Date(line.journalEntry.entryDate).getMonth() + 1
       const credit = Number(line.credit) || 0
@@ -644,7 +654,9 @@ export async function GET(req: Request) {
       if (!line.account || line.account.accountType !== 'EXPENSE') continue
       if (
         line.journalEntry.referenceType === 'PAYROLL_CONSULTANT' ||
-        line.journalEntry.referenceType === 'PAYROLL_EMPLOYEE'
+        line.journalEntry.referenceType === 'PAYROLL_EMPLOYEE' ||
+        // POS_ORDER COGS (e.g. 8320 Cost of Sales) is already counted from order items above
+        line.journalEntry.referenceType === 'POS_ORDER'
       ) continue
       const key = `${line.account.accountNumber} ${line.account.accountTitle}`
       const month = new Date(line.journalEntry.entryDate).getUTCMonth() + 1

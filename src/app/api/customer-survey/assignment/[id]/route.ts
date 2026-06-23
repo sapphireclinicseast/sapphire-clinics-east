@@ -10,7 +10,7 @@ const SURVEY_SCHEMAS: Record<string, object> = {
     privacy: 'All information disclosed in this assessment will be treated with strict confidentiality in accordance with the Data Privacy Act of 2012 (Republic Act No. 10173). While summary results may be shared with the assessed individual for the purpose of professional development, the identity of the assessor will remain anonymous and will not be disclosed.',
     thankYou: {
       title: 'Thank you for helping us improve by answering this short survey.',
-      description: 'We look forward to having you with us again!\n\nFor customer feedback, you may also email customerfeedback@sapphireclinicseast.org',
+      description: 'We look forward to having you with us again!\n\nFor customer feedback, you may also email marketing@sapphireclinicseast.org',
     },
     sections: [
       {
@@ -41,7 +41,7 @@ const SURVEY_SCHEMAS: Record<string, object> = {
     privacy: 'All information disclosed in this assessment will be treated with strict confidentiality in accordance with the Data Privacy Act of 2012 (Republic Act No. 10173). While summary results may be shared with the assessed individual for the purpose of professional development, the identity of the assessor will remain anonymous and will not be disclosed.',
     thankYou: {
       title: 'Thank you for helping us improve by answering this short survey.',
-      description: 'We look forward to having you with us again!\n\nFor customer feedback, you may also email customerfeedback@sapphireclinicseast.org',
+      description: 'We look forward to having you with us again!\n\nFor customer feedback, you may also email marketing@sapphireclinicseast.org',
     },
     sections: [
       {
@@ -76,7 +76,7 @@ const SURVEY_SCHEMAS: Record<string, object> = {
     privacy: 'All information disclosed in this assessment will be treated with strict confidentiality in accordance with the Data Privacy Act of 2012 (Republic Act No. 10173). While summary results may be shared with the assessed individual for the purpose of professional development, the identity of the assessor will remain anonymous and will not be disclosed.',
     thankYou: {
       title: 'Thank you for helping us improve by answering this short survey.',
-      description: 'We look forward to having you with us again!\n\nFor customer feedback, you may also email customerfeedback@sapphireclinicseast.org',
+      description: 'We look forward to having you with us again!\n\nFor customer feedback, you may also email marketing@sapphireclinicseast.org',
     },
     sections: [
       {
@@ -107,7 +107,7 @@ const SURVEY_SCHEMAS: Record<string, object> = {
     privacy: 'All information disclosed in this assessment will be treated with strict confidentiality in accordance with the Data Privacy Act of 2012 (Republic Act No. 10173). While summary results may be shared with the assessed individual for the purpose of professional development, the identity of the assessor will remain anonymous and will not be disclosed.',
     thankYou: {
       title: 'Thank you for helping us improve by answering this short survey.',
-      description: 'We look forward to having you with us again!\n\nFor customer feedback, you may also email customerfeedback@sapphireclinicseast.org',
+      description: 'We look forward to having you with us again!\n\nFor customer feedback, you may also email marketing@sapphireclinicseast.org',
     },
     // HR16 has pedia and adult variants — the API picks the right one based on patient age
     variants: {
