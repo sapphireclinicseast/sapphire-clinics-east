@@ -884,18 +884,22 @@ export default function FrontDeskWelcome({
           )}
         </div>
 
-        {/* Right column: DESK + PACT reminder cards */}
-        <div style={{ width: '272px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        {/* Right column: DESK reminder card only */}
+        <div style={{ width: '272px', flexShrink: 0 }}>
           <DeskShortcutReminder />
-          <PactCancellationReminder />
         </div>
 
       </div>{/* end top row */}
 
-      {/* ── Birthday + Slot Alerts side by side ── */}
-      <div style={{ width: '100%', maxWidth: '900px', padding: '0 1.5rem', display: 'flex', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+      {/* ── PACT card + Birthday + Slot Alerts ── */}
+      <div style={{ width: '100%', maxWidth: '1200px', padding: '0 1.5rem', display: 'flex', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
 
-      {/* ── Birthday Reminder (left) ── */}
+        {/* PACT Cancellation Reminder — left-most column */}
+        <div style={{ width: '272px', flexShrink: 0 }}>
+          <PactCancellationReminder />
+        </div>
+
+      {/* ── Birthday Reminder ── */}
       <div style={{ flex: '1 1 340px', minWidth: 0 }}>
         <div style={{
           background: '#fff',
