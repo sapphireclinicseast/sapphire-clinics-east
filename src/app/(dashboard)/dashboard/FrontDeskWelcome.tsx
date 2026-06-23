@@ -783,8 +783,8 @@ export default function FrontDeskWelcome({
   }, [branch])
 
   const branchLabel =
-    branch === 'SBEA' ? 'East Branch'
-    : branch === 'SBGH' ? 'Greenhills Branch'
+    branch === 'SBEA' ? 'Aura Health East'
+    : branch === 'SBGH' ? 'Aura Health Greenhills'
     : undefined
 
   return (
@@ -820,10 +820,10 @@ export default function FrontDeskWelcome({
 
           {/* Logo */}
           <Image
-            src="/sandbox-clinic-logo.png"
-            alt="Sandbox Clinic"
-            width={72}
-            height={72}
+            src="/aura-health-logo.png"
+            alt="Aura Health Rehab Clinic"
+            width={180}
+            height={101}
             style={{ objectFit: 'contain' }}
           />
 
@@ -947,7 +947,11 @@ export default function FrontDeskWelcome({
                 const dayLabel = isToday
                   ? 'Today! 🎉'
                   : dobDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
-                const msg = `Happy Birthday, ${p.firstName}! 🎂 Wishing you a wonderful day filled with joy and good health! From all of us at Sapphire Clinics East Inc. 💚`
+                const clinicName =
+                  branch === 'SBEA' ? 'Aura Health East'
+                  : branch === 'SBGH' ? 'Aura Health Greenhills'
+                  : 'Aura Health Rehab Clinic'
+                const msg = `Happy Birthday, ${p.firstName}! 🎂 Wishing you a wonderful day filled with joy and good health! From all of us at ${clinicName}. 🧡`
                 const sms = smsState[p.id] ?? 'idle'
                 const email = emailState[p.id] ?? 'idle'
                 const alreadySent = sentEmailIds.has(p.id)
