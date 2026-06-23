@@ -82,7 +82,7 @@ export default function SchedulingDashboardClient({ role }: { role: string }) {
         <Lock size={48} className="text-gray-300 mb-4" />
         <h2 className="text-xl font-bold text-gray-700 mb-2">Access Restricted</h2>
         <p className="text-sm text-gray-500 max-w-sm">
-          The Scheduling Dashboard is only available to Admin, SBEA Admin, SBGH Admin, Verdana Admin, and Marketing Admin users.
+          The Scheduling Dashboard is only available to Admin, AHEA Admin, AHGH Admin, Verdana Admin, and Marketing Admin users.
         </p>
       </div>
     )

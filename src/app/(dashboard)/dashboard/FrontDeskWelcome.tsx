@@ -108,12 +108,6 @@ function getDailyQuote() {
   return QUOTES[dayOfYear % QUOTES.length]
 }
 
-const HINTS = [
-  { icon: '📅', label: 'View Schedules',   hint: 'Clinic Schedule' },
-  { icon: '👥', label: 'Patient Records',  hint: 'Patient CRM'     },
-  { icon: '📺', label: 'TV Queue Display', hint: 'Queueing Module'  },
-]
-
 function getGreeting() {
   const h = new Date().getHours()
   if (h < 12) return 'morning'
@@ -388,6 +382,351 @@ function AlpacaSVG() {
   )
 }
 
+// ── Timed reminder popup ──────────────────────────────────────────────────────
+interface Reminder {
+  id: string
+  triggerHour: number
+  triggerMinute: number
+  title: string
+  timeLabel: string
+  actions: string[]
+  color: string
+  icon: string
+}
+
+// 15 minutes after clinic opening per branch
+const CLINIC_OPENING_REMINDER: Record<string, { h: number; m: number }> = {
+  SBEA: { h: 10, m: 15 },
+  SBGH: { h:  9, m: 15 },
+}
+
+function getReminders(branch: string | undefined): Reminder[] {
+  const opening = (branch ? CLINIC_OPENING_REMINDER[branch] : null) ?? { h: 10, m: 15 }
+  const oh = opening.h
+  const om = opening.m
+  const openLabel = `${oh % 12 === 0 ? 12 : oh % 12}:${String(om).padStart(2, '0')} ${oh < 12 ? 'AM' : 'PM'}`
+  return [
+    {
+      id: 'desk-deck-out-1pm',
+      triggerHour: 13, triggerMinute: 0,
+      title: 'Deck Out to Patients',
+      timeLabel: '1:00 PM',
+      actions: [
+        'Send the next-day schedule to each scheduled patient to confirm.',
+        'Expect their confirmation replies until 5:00 PM.',
+      ],
+      color: '#ED6823', icon: '📋',
+    },
+    {
+      id: 'desk-confirm-5pm',
+      triggerHour: 17, triggerMinute: 0,
+      title: 'Patient Replies Due · Send to Consultant',
+      timeLabel: '5:00 PM',
+      actions: [
+        'Collect all patient confirmation replies by now.',
+        'Send the confirmed next-day schedule to the consultant.',
+      ],
+      color: '#D97706', icon: '📤',
+    },
+    {
+      id: 'desk-clinic-opening',
+      triggerHour: oh, triggerMinute: om,
+      title: 'Clinic Is Open — Check Absences',
+      timeLabel: openLabel,
+      actions: [
+        'Consultants must have notified Front Desk by 8:00 AM of any same-day absence.',
+        'Inform affected patients now that the clinic is open.',
+      ],
+      color: '#4a8073', icon: '🏥',
+    },
+  ]
+}
+
+function reminderDayKey(id: string): string {
+  const d = new Date()
+  return `${id}-${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+}
+function isReminderDone(id: string): boolean {
+  try { return localStorage.getItem(reminderDayKey(id)) === 'done' } catch { return false }
+}
+function markReminderDone(id: string) {
+  try { localStorage.setItem(reminderDayKey(id), 'done') } catch {}
+}
+
+function ReminderModal({ reminder, onDismiss }: { reminder: Reminder; onDismiss: () => void }) {
+  const [countdown, setCountdown] = useState(60)
+
+  useEffect(() => {
+    if (countdown <= 0) {
+      markReminderDone(reminder.id)
+      onDismiss()
+      return
+    }
+    const t = setInterval(() => setCountdown(c => c - 1), 1000)
+    return () => clearInterval(t)
+  }, [countdown, reminder.id, onDismiss])
+
+  function dismiss() {
+    markReminderDone(reminder.id)
+    onDismiss()
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999,
+        background: 'rgba(0,0,0,0.52)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '1rem',
+      }}
+      onClick={dismiss}
+    >
+      <div
+        style={{
+          background: '#fff', borderRadius: '1.25rem',
+          maxWidth: '440px', width: '100%',
+          boxShadow: '0 24px 64px rgba(0,0,0,0.28)',
+          overflow: 'hidden',
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={{ background: reminder.color, padding: '1.1rem 1.4rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <span style={{ fontSize: '2.2rem', lineHeight: 1 }}>{reminder.icon}</span>
+          <div>
+            <p style={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', margin: 0 }}>
+              Front Desk Reminder &middot; {reminder.timeLabel}
+            </p>
+            <p style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800, margin: '0.22rem 0 0', lineHeight: 1.2 }}>
+              {reminder.title}
+            </p>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: '1.25rem 1.4rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', marginBottom: '1.25rem' }}>
+            {reminder.actions.map((action, i) => (
+              <div key={i} style={{ display: 'flex', gap: '0.65rem', alignItems: 'flex-start' }}>
+                <span style={{
+                  flexShrink: 0, width: 23, height: 23,
+                  background: reminder.color + '18',
+                  border: `1.5px solid ${reminder.color}55`,
+                  borderRadius: '50%',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '0.7rem', fontWeight: 800, color: reminder.color,
+                }}>
+                  {i + 1}
+                </span>
+                <p style={{ fontSize: '0.875rem', color: '#333', lineHeight: 1.6, margin: 0, flex: 1 }}>
+                  {action}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <button
+              onClick={dismiss}
+              style={{
+                flex: 1, padding: '0.72rem', borderRadius: '0.65rem',
+                background: reminder.color, color: '#fff', border: 'none',
+                fontSize: '0.9rem', fontWeight: 700, cursor: 'pointer',
+                transition: 'opacity 0.15s',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.opacity = '0.88')}
+              onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+            >
+              Got it ✓
+            </button>
+            <p style={{ fontSize: '0.68rem', color: '#BBB', margin: 0, whiteSpace: 'nowrap' }}>
+              Auto-closes in {countdown}s
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── DESK Daily Shortcut reminder card ────────────────────────────────────────
+function DeskShortcutReminder() {
+  const steps = [
+    { letter: 'D', action: 'Deck out to patients', time: 'by 1:00 PM', desc: 'Send next-day schedule to each patient to confirm.' },
+    { letter: 'E', action: 'Expect patient replies', time: 'until 5:00 PM', desc: 'Wait for patients to confirm their next-day session.' },
+    { letter: 'S', action: 'Send to consultant', time: 'by 5:00 PM', desc: 'Send the confirmed next-day schedule to the consultant.' },
+    { letter: 'K', action: 'Keep patients posted', time: 'on clinic opening', desc: 'Consultants notify Front Desk by 8:00 AM of any same-day absence.' },
+  ]
+  const cutoffs = [
+    { time: '1:00 PM', label: 'Deck out' },
+    { time: '5:00 PM', label: 'Patient replies' },
+    { time: '5:00 PM', label: 'To consultant' },
+    { time: '8:00 AM', label: 'Consultant absence' },
+  ]
+  const tiers = [
+    { label: 'Standard', desc: 'Cancels before 5 PM the day before', bg: '#edf3d9', border: '#b8d4a0', color: '#4a8073' },
+    { label: 'Late Cancel', desc: 'Cancels after 5 PM the day before', bg: '#FFFBEB', border: '#FDE68A', color: '#D97706' },
+    { label: 'No-Show', desc: 'Did not show up for the session', bg: '#FEF2F2', border: '#FECACA', color: '#DC2626' },
+  ]
+
+  return (
+    <div style={{
+      width: '100%',
+      background: '#fff',
+      border: '1.5px solid #EDE5D8',
+      borderRadius: '0.875rem',
+      boxShadow: '0 2px 10px rgba(0,0,0,0.07)',
+      overflow: 'hidden',
+    }}>
+      {/* Header */}
+      <div style={{ background: 'linear-gradient(135deg, #ED6823, #F5A030)', padding: '0.6rem 0.9rem' }}>
+        <p style={{ color: '#fff', fontWeight: 800, fontSize: '0.73rem', letterSpacing: '0.08em', textTransform: 'uppercase', margin: 0 }}>
+          Front Desk Daily Shortcut
+        </p>
+        <p style={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.61rem', margin: '0.18rem 0 0' }}>
+          Scheduling · Cancellations · No-Shows · Make-Ups
+        </p>
+      </div>
+
+      {/* DESK steps */}
+      <div style={{ padding: '0.6rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+        {steps.map(({ letter, action, time, desc }) => (
+          <div key={letter} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+            <div style={{
+              flexShrink: 0, width: 26, height: 26,
+              background: '#244952', borderRadius: '0.35rem',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: '#fff', fontWeight: 800, fontSize: '0.85rem',
+            }}>
+              {letter}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1A1A1A', display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'baseline' }}>
+                {action}
+                <span style={{ background: '#c69849', color: '#fff', borderRadius: 99, padding: '0.05rem 0.45rem', fontSize: '0.6rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                  {time}
+                </span>
+              </div>
+              <div style={{ fontSize: '0.63rem', color: '#666', marginTop: '0.12rem', lineHeight: 1.4 }}>{desc}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* At-a-Glance Cutoffs */}
+      <div style={{ borderTop: '1px solid #F0E8DC', padding: '0.5rem 0.75rem' }}>
+        <div style={{ fontSize: '0.59rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#AAA', marginBottom: '0.35rem' }}>
+          At-a-Glance Cutoffs
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.25rem' }}>
+          {cutoffs.map(({ time, label }) => (
+            <div key={label} style={{ background: '#FFF8F3', border: '1px solid #EDE5D8', borderRadius: '0.35rem', padding: '0.28rem 0.2rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.67rem', fontWeight: 800, color: '#ED6823' }}>{time}</div>
+              <div style={{ fontSize: '0.54rem', color: '#888', lineHeight: 1.3, marginTop: 1 }}>{label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Cancellation Tiers */}
+      <div style={{ borderTop: '1px solid #F0E8DC', padding: '0.5rem 0.75rem 0.7rem' }}>
+        <div style={{ fontSize: '0.59rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#AAA', marginBottom: '0.35rem' }}>
+          Cancellation Tiers · 5:00 PM Rule
+        </div>
+        <div style={{ display: 'flex', gap: '0.3rem' }}>
+          {tiers.map(({ label, desc, bg, border, color }) => (
+            <div key={label} style={{ flex: 1, background: bg, border: `1px solid ${border}`, borderRadius: '0.35rem', padding: '0.3rem 0.25rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.59rem', fontWeight: 800, color, textTransform: 'uppercase', letterSpacing: '0.03em' }}>{label}</div>
+              <div style={{ fontSize: '0.57rem', color: '#555', marginTop: '0.1rem', lineHeight: 1.35 }}>{desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── PACT Cancellation Reminder card ──────────────────────────────────────────
+function PactCancellationReminder() {
+  const steps = [
+    { letter: 'P', action: 'Plan early', desc: 'Let us know as soon as you know you may miss a session.' },
+    { letter: 'A', action: 'Alert us', desc: 'Tell the Front Desk during office hours, or message your therapist if the office is closed.' },
+    { letter: 'C', action: 'Cut-off', time: '5:00 PM the day before', desc: 'Message us by then so it counts as a Standard Cancellation — not a Late Cancellation.' },
+    { letter: 'T', action: 'Through official channels', desc: 'Use official channels only, and make sure your message is acknowledged.' },
+  ]
+  const tiers = [
+    { label: 'Standard', desc: 'Before 5 PM the day before. Slot is held.', bg: '#edf3d9', border: '#b8d4a0', color: '#4a8073' },
+    { label: 'Late', desc: 'After 5 PM the day before. Fee may apply.', bg: '#FFFBEB', border: '#FDE68A', color: '#D97706' },
+    { label: 'No-Show', desc: 'Did not show up. Fee applies.', bg: '#FEF2F2', border: '#FECACA', color: '#DC2626' },
+  ]
+
+  return (
+    <div style={{
+      width: '100%',
+      background: '#fff',
+      border: '1.5px solid #EDE5D8',
+      borderRadius: '0.875rem',
+      boxShadow: '0 2px 10px rgba(0,0,0,0.07)',
+      overflow: 'hidden',
+    }}>
+      {/* Header */}
+      <div style={{ background: 'linear-gradient(135deg, #244952, #4a8073)', padding: '0.6rem 0.9rem' }}>
+        <p style={{ color: '#fff', fontWeight: 800, fontSize: '0.73rem', letterSpacing: '0.08em', textTransform: 'uppercase', margin: 0 }}>
+          Patient Cancellation — PACT
+        </p>
+        <p style={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.61rem', margin: '0.18rem 0 0' }}>
+          Tell us in time so their slot is held and no fee applies.
+        </p>
+      </div>
+
+      {/* PACT steps */}
+      <div style={{ padding: '0.6rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+        {steps.map(({ letter, action, time, desc }) => (
+          <div key={letter} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+            <div style={{
+              flexShrink: 0, width: 26, height: 26,
+              background: '#244952', borderRadius: '0.35rem',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: '#fff', fontWeight: 800, fontSize: '0.85rem',
+            }}>
+              {letter}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1A1A1A', display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'baseline' }}>
+                {action}
+                {time && (
+                  <span style={{ background: '#c69849', color: '#fff', borderRadius: 99, padding: '0.05rem 0.45rem', fontSize: '0.6rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                    {time}
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: '0.63rem', color: '#666', marginTop: '0.12rem', lineHeight: 1.4 }}>{desc}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* What your notice counts as */}
+      <div style={{ borderTop: '1px solid #F0E8DC', padding: '0.5rem 0.75rem 0.7rem' }}>
+        <div style={{ fontSize: '0.59rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#AAA', marginBottom: '0.35rem' }}>
+          What the notice counts as
+        </div>
+        <div style={{ display: 'flex', gap: '0.3rem' }}>
+          {tiers.map(({ label, desc, bg, border, color }) => (
+            <div key={label} style={{ flex: 1, background: bg, border: `1px solid ${border}`, borderRadius: '0.35rem', padding: '0.3rem 0.25rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.59rem', fontWeight: 800, color, textTransform: 'uppercase', letterSpacing: '0.03em' }}>{label}</div>
+              <div style={{ fontSize: '0.57rem', color: '#555', marginTop: '0.1rem', lineHeight: 1.35 }}>{desc}</div>
+            </div>
+          ))}
+        </div>
+        <p style={{ fontSize: '0.57rem', color: '#AAA', fontStyle: 'italic', marginTop: '0.4rem', marginBottom: 0, lineHeight: 1.4 }}>
+          Messages after 5:00 PM or on the day itself count as Late / same-day cancellations (Section 4).
+        </p>
+      </div>
+    </div>
+  )
+}
+
 // ── Main component ───────────────────────────────────────────────────────────
 export default function FrontDeskWelcome({
   name,
@@ -404,6 +743,25 @@ export default function FrontDeskWelcome({
   const [sentEmailIds, setSentEmailIds] = useState<Set<string>>(new Set())
   const [sentSmsIds, setSentSmsIds] = useState<Set<string>>(new Set())
   const [slotAlerts, setSlotAlerts] = useState<{ nearingNoShow: any[]; subjectNoShow: any[]; nearingCancel: any[]; subjectCancel: any[] }>({ nearingNoShow: [], subjectNoShow: [], nearingCancel: [], subjectCancel: [] })
+  const [activeReminder, setActiveReminder] = useState<Reminder | null>(null)
+
+  useEffect(() => {
+    const reminders = getReminders(branch)
+    function checkReminders() {
+      const now = new Date()
+      const h = now.getHours()
+      const m = now.getMinutes()
+      for (const r of reminders) {
+        if (h === r.triggerHour && m === r.triggerMinute && !isReminderDone(r.id)) {
+          setActiveReminder(r)
+          break
+        }
+      }
+    }
+    checkReminders()
+    const interval = setInterval(checkReminders, 30_000)
+    return () => clearInterval(interval)
+  }, [branch])
 
   useEffect(() => {
     setQuote(getDailyQuote())
@@ -447,87 +805,93 @@ export default function FrontDeskWelcome({
     >
       <style>{ALPACA_CSS}</style>
 
-      {/* ── Logo ── */}
-      <Image
-        src="/sandbox-clinic-logo.png"
-        alt="Sandbox Clinic"
-        width={72}
-        height={72}
-        style={{ objectFit: 'contain' }}
-      />
-
-      {/* ── Greeting ── */}
-      <div style={{ textAlign: 'center', maxWidth: '560px', padding: '0 2rem' }}>
-        <p style={{
-          fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.18em',
-          textTransform: 'uppercase', color: '#ED6823', marginBottom: '0.4rem',
-        }}>
-          Welcome back
-        </p>
-        <h1 style={{
-          fontSize: '2.2rem', fontWeight: 800, lineHeight: 1.2,
-          color: '#1A1A1A', marginBottom: '1.25rem',
-          fontFamily: 'var(--font-display, system-ui)',
-        }}>
-          Good {getGreeting()},{' '}
-          <span style={{ color: '#ED6823' }}>{name ?? 'there'}</span>! 👋
-        </h1>
-
-        {/* Daily quote — renders only after JS sets day-of-year */}
-        {quote && (
-          <div style={{
-            background: 'rgba(237,104,35,0.07)',
-            border: '1px solid rgba(237,104,35,0.18)',
-            borderRadius: '0.875rem',
-            padding: '1rem 1.4rem',
-          }}>
-            <p style={{
-              fontSize: '1rem', fontWeight: 500, lineHeight: 1.7,
-              color: '#4A3018', fontStyle: 'italic', margin: 0,
-            }}>
-              &ldquo;{quote.text}&rdquo;
-            </p>
-            <p style={{
-              fontSize: '0.78rem', fontWeight: 600, color: '#ED6823',
-              marginTop: '0.5rem', marginBottom: 0,
-            }}>
-              — {quote.author}
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* ── Branch badge ── */}
-      {branchLabel && (
-        <div style={{
-          display: 'inline-flex', alignItems: 'center', gap: '0.45rem',
-          background: '#ED6823', color: '#fff',
-          fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.07em',
-          padding: '0.3rem 1rem', borderRadius: '99px',
-        }}>
-          <span style={{
-            width: 6, height: 6, borderRadius: '50%',
-            background: '#FFDE59', display: 'inline-block', flexShrink: 0,
-          }} />
-          {branchLabel}
-        </div>
+      {/* ── Timed reminder popup ── */}
+      {activeReminder && (
+        <ReminderModal
+          reminder={activeReminder}
+          onDismiss={() => setActiveReminder(null)}
+        />
       )}
 
-      {/* ── Quick-access hint cards ── */}
-      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'center', padding: '0 1.5rem' }}>
-        {HINTS.map(c => (
-          <div key={c.label} style={{
-            background: '#fff', border: '1px solid #EDE5D8',
-            borderRadius: '0.875rem', padding: '0.9rem 1.25rem',
-            textAlign: 'center', minWidth: '130px',
-            boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-          }}>
-            <div style={{ fontSize: '1.5rem', marginBottom: '0.35rem' }}>{c.icon}</div>
-            <p style={{ fontSize: '0.72rem', fontWeight: 700, color: '#333' }}>{c.label}</p>
-            <p style={{ fontSize: '0.64rem', color: '#999', marginTop: '0.15rem' }}>{c.hint}</p>
+      {/* ── Top row: greeting (center) + reminder cards (right) ── */}
+      <div style={{ width: '100%', maxWidth: '1200px', padding: '0 1.5rem', display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
+
+        {/* Center column: logo + greeting + quote + branch badge */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
+
+          {/* Logo */}
+          <Image
+            src="/sandbox-clinic-logo.png"
+            alt="Sandbox Clinic"
+            width={72}
+            height={72}
+            style={{ objectFit: 'contain' }}
+          />
+
+          {/* Greeting */}
+          <div style={{ textAlign: 'center', maxWidth: '560px', padding: '0 2rem' }}>
+            <p style={{
+              fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.18em',
+              textTransform: 'uppercase', color: '#ED6823', marginBottom: '0.4rem',
+            }}>
+              Welcome back
+            </p>
+            <h1 style={{
+              fontSize: 'clamp(1.4rem, 2.5vw, 2.2rem)', fontWeight: 800, lineHeight: 1.2,
+              color: '#1A1A1A', marginBottom: '1.25rem',
+              fontFamily: 'var(--font-display, system-ui)',
+            }}>
+              Good {getGreeting()},{' '}
+              <span style={{ color: '#ED6823' }}>{name ?? 'there'}</span>! 👋
+            </h1>
+
+            {quote && (
+              <div style={{
+                background: 'rgba(237,104,35,0.07)',
+                border: '1px solid rgba(237,104,35,0.18)',
+                borderRadius: '0.875rem',
+                padding: '1rem 1.4rem',
+              }}>
+                <p style={{
+                  fontSize: '1rem', fontWeight: 500, lineHeight: 1.7,
+                  color: '#4A3018', fontStyle: 'italic', margin: 0,
+                }}>
+                  &ldquo;{quote.text}&rdquo;
+                </p>
+                <p style={{
+                  fontSize: '0.78rem', fontWeight: 600, color: '#ED6823',
+                  marginTop: '0.5rem', marginBottom: 0,
+                }}>
+                  — {quote.author}
+                </p>
+              </div>
+            )}
           </div>
-        ))}
-      </div>
+
+          {/* Branch badge */}
+          {branchLabel && (
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: '0.45rem',
+              background: '#ED6823', color: '#fff',
+              fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.07em',
+              padding: '0.3rem 1rem', borderRadius: '99px',
+            }}>
+              <span style={{
+                width: 6, height: 6, borderRadius: '50%',
+                background: '#FFDE59', display: 'inline-block', flexShrink: 0,
+              }} />
+              {branchLabel}
+            </div>
+          )}
+        </div>
+
+        {/* Right column: DESK + PACT reminder cards */}
+        <div style={{ width: '272px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <DeskShortcutReminder />
+          <PactCancellationReminder />
+        </div>
+
+      </div>{/* end top row */}
 
       {/* ── Birthday + Slot Alerts side by side ── */}
       <div style={{ width: '100%', maxWidth: '900px', padding: '0 1.5rem', display: 'flex', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
