@@ -18,11 +18,30 @@ declare module 'next-auth' {
   }
 }
 
+// Use distinct cookie names so the marketing hub session cannot bleed into (or
+// be overwritten by) the teletherapy hub, which also runs on *.sapphireclinicseast.org
+// and deliberately scopes its cookies to the parent domain for SSO purposes.
+const SECURE = process.env.NODE_ENV === 'production'
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
   session: { strategy: 'jwt' },
   pages: {
     signIn: '/login',
+  },
+  cookies: {
+    sessionToken: {
+      name: SECURE ? '__Secure-mktg.session-token' : 'mktg.session-token',
+      options: { httpOnly: true, sameSite: 'lax', path: '/', secure: SECURE },
+    },
+    callbackUrl: {
+      name: SECURE ? '__Secure-mktg.callback-url' : 'mktg.callback-url',
+      options: { httpOnly: true, sameSite: 'lax', path: '/', secure: SECURE },
+    },
+    csrfToken: {
+      name: SECURE ? '__Secure-mktg.csrf-token' : 'mktg.csrf-token',
+      options: { httpOnly: true, sameSite: 'lax', path: '/', secure: SECURE },
+    },
   },
   providers: [
     CredentialsProvider({

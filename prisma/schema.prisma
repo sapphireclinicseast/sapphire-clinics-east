@@ -501,6 +501,26 @@ model DeckingSlot {
   patientBookings PatientBooking[]
 }
 
+// ── Clinic Capacity Settings (max daily sessions per dept per branch) ────────
+model ClinicCapSettings {
+  id           String   @id @default("default")
+  seaOt        Int      @default(8)
+  seaPt        Int      @default(8)
+  seaSlp       Int      @default(8)
+  seaSped      Int      @default(8)
+  seaMd        Int      @default(8)
+  seaPsych     Int      @default(8)
+  seaOrthosis  Int      @default(8)
+  sghOt        Int      @default(8)
+  sghPt        Int      @default(8)
+  sghSlp       Int      @default(8)
+  sghSped      Int      @default(8)
+  sghMd        Int      @default(8)
+  sghPsych     Int      @default(8)
+  sghOrthosis  Int      @default(8)
+  updatedAt    DateTime @updatedAt
+}
+
 // ── Survey Settings (leaderboard metric weights) ─────────────────────────────
 model SurveySettings {
   id                    String   @id @default("default")
@@ -800,8 +820,10 @@ enum ClassPortalEventType {
 
 /// One row per calendar event. Spans a single date or a date range
 /// (date..endDate inclusive) for multi-day items like field trips.
+/// Per-branch — EAST and GREENHILLS each maintain their own set.
 model ClassPortalCalendarEvent {
   id          String                @id @default(cuid())
+  branch      ClassPortalBranch
   date        DateTime              @db.Date
   endDate     DateTime?             @db.Date
   title       String
@@ -811,18 +833,19 @@ model ClassPortalCalendarEvent {
   createdAt   DateTime              @default(now())
   updatedAt   DateTime              @updatedAt
 
-  @@index([date])
+  @@index([branch, date])
 }
 
-/// At most one row is "current" at a time — uploads replace the previous
-/// PDF so admins always show the latest official calendar.
+/// One PDF per branch — uploads replace the previous PDF for that
+/// branch so admins always show the latest official calendar.
 model ClassPortalCalendarPdf {
-  id          String   @id @default(cuid())
+  id          String              @id @default(cuid())
+  branch      ClassPortalBranch   @unique
   fileName    String
-  mimeType    String   @default("application/pdf")
+  mimeType    String              @default("application/pdf")
   data        Bytes
   uploadedBy  String
-  uploadedAt  DateTime @default(now())
+  uploadedAt  DateTime            @default(now())
 }
 
 enum ClassPortalBranch {
@@ -941,6 +964,27 @@ model ClassPortalFrontDeskPayment {
   @@index([createdAt])
 }
 
+/// One row per payment-reminder email actually sent. Lets the daily cron
+/// dedupe so a given student receives at most one email per (period,
+/// reason) — never spammed. `reason` is one of WINDOW_OPEN / DUE_SOON /
+/// PAST_DUE; `period` matches the format used elsewhere ("August 2026"
+/// for MONTHLY, "First half SY 2026–2027" for BIANNUAL).
+model ClassPortalPaymentReminderLog {
+  id        String   @id @default(cuid())
+  studentId String
+  email     String
+  plan      String   // MONTHLY | BIANNUAL | ANNUAL
+  period    String
+  dueOn     DateTime @db.Date
+  reason    String   // WINDOW_OPEN | DUE_SOON | PAST_DUE
+  severity  String   // INFO | WARNING
+  sentAt    DateTime @default(now())
+
+  @@unique([studentId, period, reason])
+  @@index([sentAt])
+  @@index([studentId])
+}
+
 /// Defensive audit log for the enrollment funnel. One row per server-
 /// visible event in the upload-token / document-blob / account-create
 /// pipeline. Lets the admin trace cases like "the parent says they
@@ -1004,6 +1048,11 @@ model ClassPortalAnnouncement {
   posterFileType  String?
   posterFileSize  Int?
   posterFileData  Bytes?
+  /// Tracks who blasted this announcement to recipients' emails and when.
+  /// `emailedCount` is the number of successful sends. Null = never emailed.
+  emailedAt       DateTime?
+  emailedBy       String?
+  emailedCount    Int?
   createdAt       DateTime @default(now())
 
   @@index([createdAt])

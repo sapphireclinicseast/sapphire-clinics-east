@@ -17,7 +17,16 @@ import {
   getFees, hydrateFees, saveFees, DEFAULT_FEE_VALUES,
   getVouchers, hydrateVouchers, saveVouchers,
   type StoredUser, type UserRole, type Branch, type FeeSchedule, type FeeExtraItem, type Voucher,
+  type EnrollmentLevel,
 } from '@/lib/session'
+
+// All grade levels that can be assigned via the Users edit modal.
+// Reuses the same enum the rest of the app draws from.
+const ALL_GRADE_LEVELS: EnrollmentLevel[] = [
+  'NURSERY', 'KINDER',
+  'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6',
+  'GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10', 'GRADE_11', 'GRADE_12',
+]
 import { listStaff, type StaffMember } from '@/lib/api'
 import StudentListPanel from '@/components/StudentListPanel'
 import CurriculumPanel from '@/components/CurriculumPanel'
@@ -263,12 +272,20 @@ function UsersPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANC
     const f = new FormData(e.currentTarget)
     const password = String(f.get('password') ?? '')
     try {
+      // Empty-string `level` means "clear it" — pass undefined to skip the
+      // update, or the explicit "" sentinel converted to null below.
+      // The server's PATCH treats `level: ''` as a non-update.
+      const rawLevel = String(f.get('level') ?? '').trim()
+      const level: EnrollmentLevel | undefined = rawLevel
+        ? (rawLevel as EnrollmentLevel)
+        : undefined
       await updateUser(editing.id, {
         email: String(f.get('email') ?? '').trim(),
         password: password || undefined,
         firstName: String(f.get('firstName') ?? '').trim() || undefined,
         lastName: String(f.get('lastName') ?? '').trim() || undefined,
         branch: (String(f.get('branch') ?? '') || undefined) as Branch | undefined,
+        level,
       })
       setEditing(null); refresh()
       setInfo(password ? `User updated. New password: ${password}` : 'User updated.')
@@ -581,6 +598,21 @@ function UsersPanel({ viewerRole, viewerBranch }: { viewerRole: 'ADMIN' | 'BRANC
                   <option value="GREENHILLS">Greenhills Branch</option>
                 </select>
               </label>
+              {/* Grade level is meaningful for STUDENT rows only — staff
+                  accounts (teacher / front desk / branch admin) have no
+                  level on the record. Hide the field for them so the
+                  form doesn't accidentally try to set one. */}
+              {editing.role === 'STUDENT' && (
+                <label className="block">
+                  <span className="label">Grade level</span>
+                  <select name="level" className="select" defaultValue={editing.level ?? ''}>
+                    <option value="">—</option>
+                    {ALL_GRADE_LEVELS.map(l => (
+                      <option key={l} value={l}>{levelLabel(l)}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <label className="block">
                 <span className="label">New password <span className="text-[color:var(--mid-gray)]">(leave blank to keep current)</span></span>
                 <input name="password" className="input font-mono" minLength={6} placeholder="Leave blank to keep current" />

@@ -118,9 +118,9 @@ export default async function DashboardPage() {
   const branch =
     role === 'SBGH_FRONT_DESK' || role === 'SBGH_ADMIN' ? 'SBGH' :
     'SBEA'
-  const firstName = session?.user?.name?.split(' ')[0]
+  const userName = session?.user?.name ?? undefined
   const birthdayPatients = await getBirthdayPatients(branch)
-  return <FrontDeskWelcome name={firstName} branch={branch} birthdayPatients={birthdayPatients} />
+  return <FrontDeskWelcome name={userName} branch={branch} birthdayPatients={birthdayPatients} />
 
   // (Marketing-hub stats view below is kept as dead code in case we ever want
   // a separate route for it; remove if unused after a few weeks.)

@@ -1070,6 +1070,89 @@ export async function recordPayMongoPayment(args: {
 }
 
 /**
+ * Generic "record a payment on behalf of a student" helper for the
+ * front desk. Used when the parent never opened /pay themselves —
+ * staff already has the cash, the bank slip, or the PayMongo receipt
+ * in hand and needs to log it into the system so it lands on the
+ * accounting-hub POS queue same as any other front-desk payment.
+ *
+ * Returns the new PENDING row's classPortalPaymentId on success so the
+ * caller can optionally one-click Confirm it right after; returns null
+ * on any failure (network, auth, validation).
+ */
+export async function recordPaymentOnBehalfOf(args: {
+  studentId: string
+  studentEmail: string
+  studentName: string
+  branch: 'EAST' | 'GREENHILLS'
+  plan: PaymentPlan
+  method: 'FRONT_DESK_CASH' | 'BANK_DEPOSIT' | 'PAYMONGO'
+  /** Tuition amount in PHP centavos. */
+  tuitionCentavos: number
+  miscCentavos?: number
+  /** Free text — e.g. "AY 2026–2027" or "Aug 2026". */
+  period: string
+  /** Optional reference number / receipt no. — surfaced as a notes line. */
+  reference?: string
+  /** Optional extra context appended to the auto-generated notes. */
+  extraNotes?: string
+}): Promise<string | null> {
+  if (typeof window === 'undefined') return null
+  const tok = getToken()
+  if (!tok) return null
+  try {
+    // Per-method prefix on the dedupe key keeps these distinct from
+    // student-originated /pay rows in any future audit.
+    const prefix =
+      args.method === 'PAYMONGO'         ? 'pmgr_' :
+      args.method === 'BANK_DEPOSIT'     ? 'bnks_' :
+                                            'cshs_'
+    const classPortalPaymentId =
+      prefix + Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 12)
+
+    // Compose a readable notes line — the front-desk staff sees this on
+    // the queue row and the cashier sees it on the Convert-to-Order
+    // screen, so it's worth being descriptive.
+    const methodLabel =
+      args.method === 'PAYMONGO'         ? 'PayMongo' :
+      args.method === 'BANK_DEPOSIT'     ? 'Bank deposit' :
+                                            'Cash at front desk'
+    let notes = `${methodLabel} · logged by front desk on behalf of student`
+    if (args.reference?.trim()) notes += ` · ref ${args.reference.trim()}`
+    if (args.extraNotes?.trim()) notes += ` · ${args.extraNotes.trim()}`
+
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/frontdesk-payments`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${tok}`,
+      },
+      body: JSON.stringify({
+        classPortalPaymentId,
+        studentId: args.studentId,
+        studentEmail: args.studentEmail,
+        studentName: args.studentName,
+        branch: args.branch,
+        plan: args.plan,
+        tuitionCentavos: args.tuitionCentavos,
+        miscCentavos: args.miscCentavos ?? 0,
+        period: args.period,
+        method: args.method,
+        notes,
+      }),
+    })
+    if (!res.ok) {
+      console.warn('[recordPaymentOnBehalfOf] failed:', res.status)
+      return null
+    }
+    return classPortalPaymentId
+  } catch (e) {
+    console.warn('[recordPaymentOnBehalfOf] error:', e)
+    return null
+  }
+}
+
+/**
  * Main-admin-only hard delete of a queued PENDING row. Used to clean up
  * test rows created during system trials. CONVERTED rows refuse to
  * delete (return false) — void the associated accounting-hub order
@@ -1120,6 +1203,39 @@ export async function confirmFrontDeskPayment(classPortalPaymentId: string): Pro
     return true
   } catch (e) {
     console.warn('[confirmFrontDeskPayment] error:', e)
+    return false
+  }
+}
+
+/**
+ * Change the recorded payment method on a front-desk-payment row.
+ * Use case: a row was logged under the wrong method (e.g. PAYMONGO
+ * but the parent actually deposited at the bank). Admin and front-
+ * desk (branch-scoped) can correct this without deleting the row.
+ */
+export async function changeFrontDeskPaymentMethod(
+  classPortalPaymentId: string,
+  method: 'PAYMONGO' | 'BANK_DEPOSIT' | 'FRONT_DESK_CASH',
+): Promise<boolean> {
+  if (typeof window === 'undefined') return false
+  if (!getToken()) return false
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/frontdesk-payments/${encodeURIComponent(classPortalPaymentId)}`, {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+        ...(tok ? { authorization: `Bearer ${tok}` } : {}),
+      },
+      body: JSON.stringify({ method }),
+    })
+    if (!res.ok) {
+      console.warn('[changeFrontDeskPaymentMethod] failed:', res.status)
+      return false
+    }
+    return true
+  } catch (e) {
+    console.warn('[changeFrontDeskPaymentMethod] error:', e)
     return false
   }
 }
@@ -1451,7 +1567,34 @@ export interface AnnouncementRecord {
   posterFileName: string | null
   posterFileType: string | null
   posterFileSize: number | null
+  /** When the announcement was last blasted to recipients' emails.
+   *  Null if it has never been emailed. */
+  emailedAt: string | null
+  emailedBy: string | null
+  emailedCount: number | null
   createdAt: string
+}
+
+/** Result returned by the email-blast endpoint. */
+export interface AnnouncementEmailResult {
+  ok: boolean
+  sent: number
+  failed: number
+  errors: Array<{ email: string; error: string }>
+  emailedAt?: string
+  emailedBy?: string
+  note?: string
+  /** Per-grade-level and per-role recipient counts. Surfaces who
+   *  actually got the blast so the admin can verify the level filter. */
+  recipientBreakdown?: {
+    byLevel: Record<string, number>
+    byRole: Record<string, number>
+  }
+  /** The level whitelist the server enforced for this blast. */
+  allowedLevels?: string[]
+  /** Number of DB-returned rows the defensive secondary filter dropped.
+   *  Should always be 0 in normal operation. */
+  droppedByLevel?: number
 }
 
 /** Pull the full list visible to the caller — server applies the
@@ -1521,6 +1664,34 @@ export async function deleteAnnouncementServer(id: string): Promise<boolean> {
   } catch (e) {
     console.warn('[deleteAnnouncementServer]', e)
     return false
+  }
+}
+
+/**
+ * Trigger the server-side blast that emails this announcement to every
+ * recipient (students in target levels + optionally teachers, scoped by
+ * branch for FRONTDESK). Returns the {sent, failed} summary so the UI
+ * can show how it went.
+ */
+export async function emailAnnouncement(id: string): Promise<AnnouncementEmailResult | null> {
+  if (typeof window === 'undefined') return null
+  if (!getToken()) return null
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/announcements/${encodeURIComponent(id)}/email`, {
+      method: 'POST',
+      headers: tok ? { authorization: `Bearer ${tok}` } : undefined,
+    })
+    if (!res.ok) {
+      let body = ''
+      try { body = await res.text() } catch { /* ignore */ }
+      console.warn(`[emailAnnouncement] ${res.status} ${body.slice(0, 200)}`)
+      return null
+    }
+    return await res.json() as AnnouncementEmailResult
+  } catch (e) {
+    console.warn('[emailAnnouncement]', e)
+    return null
   }
 }
 
