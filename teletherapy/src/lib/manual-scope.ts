@@ -6,14 +6,18 @@
  * HR / Admin-Operations manuals. Keys are HR-canonical names.
  */
 
+// Each department sees its own manuals plus company-wide HR manuals.
+// "Admin/Operations" (the Administration department) is NOT company-wide:
+// only Administration staff see Administration manuals.
 export const SCOPE_ALLOWED: Record<string, string[]> = {
-  OT: ['OT', 'HR', 'Admin/Operations'],
-  PT: ['PT', 'HR', 'Admin/Operations'],
-  SLP: ['SLP', 'HR', 'Admin/Operations'],
-  SPED: ['SPED', 'HR', 'Admin/Operations'],
-  MD: ['MD', 'HR', 'Admin/Operations'],
-  Psychology: ['Psychology', 'HR', 'Admin/Operations'],
-  'Orthosis & Prosthesis': ['Orthosis & Prosthesis', 'HR', 'Admin/Operations'],
+  OT: ['OT', 'HR'],
+  PT: ['PT', 'HR'],
+  SLP: ['SLP', 'HR'],
+  SPED: ['SPED', 'HR'],
+  MD: ['MD', 'HR'],
+  Psychology: ['Psychology', 'HR'],
+  'Orthosis & Prosthesis': ['Orthosis & Prosthesis', 'HR'],
+  'Admin/Operations': ['Admin/Operations', 'HR'],
 }
 
 /** Map a teletherapy session.department (often UPPER_SNAKE) to HR's canonical name. */
@@ -29,6 +33,11 @@ export function normaliseDept(dept: string): string {
     PSYCHOLOGY: 'Psychology',
     ORTHOSIS: 'Orthosis & Prosthesis',
     'ORTHOSIS & PROSTHESIS': 'Orthosis & Prosthesis',
+    // Administration department → HR-canonical "Admin/Operations" tag.
+    ADMINISTRATION: 'Admin/Operations',
+    ADMIN: 'Admin/Operations',
+    OPERATIONS: 'Admin/Operations',
+    'ADMIN/OPERATIONS': 'Admin/Operations',
   }
   return map[u] ?? dept
 }
