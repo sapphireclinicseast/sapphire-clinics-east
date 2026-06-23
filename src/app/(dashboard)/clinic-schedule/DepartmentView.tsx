@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { Plus, Pencil, Trash2, Mail, MailCheck, MessageSquare, ChevronDown, ChevronUp, X, Smartphone, Video } from 'lucide-react'
+import DeskShortcutCard from '@/components/DeskShortcutCard'
 
 // ─── Session types per department ────────────────────────────────────────────
 const SESSION_TYPES: Record<string, string[]> = {
@@ -776,16 +777,36 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
 
 const ALL_DEPARTMENTS = ['OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS']
 
+// Decking Module weekly-schedule config (one row per clinician). workDays is
+// stored as day codes e.g. ["MON","TUE","WED","THU","FRI"].
+interface TherapistConfig { staffId: string; workDays: string[]; startTime: string; endTime: string; branch: string; department: string }
+const WEEKDAY_CODES = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
+const WEEKDAY_FULL: Record<string, string> = {
+  SUN: 'Sunday', MON: 'Monday', TUE: 'Tuesday', WED: 'Wednesday', THU: 'Thursday', FRI: 'Friday', SAT: 'Saturday',
+}
+function weekdayCodeFor(iso: string): string {
+  return WEEKDAY_CODES[new Date(iso + 'T12:00:00').getDay()]
+}
+
 // ─── Main DepartmentView ───────────────────────────────────────────────────────
 export default function DepartmentView({ role, selectedDate, onDateChange }: { role: string; selectedDate: string; onDateChange: (d: string) => void }) {
   const branches = visibleBranches(role)
   const [activeBranch, setActiveBranch] = useState(branches[0])
   const [activeDept, setActiveDept] = useState('All')
   const [staff, setStaff] = useState<StaffMember[]>([])
+  const [configs, setConfigs] = useState<TherapistConfig[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetch('/api/staff').then(r => r.json()).then(setStaff).finally(() => setLoading(false))
+  }, [])
+
+  // Decking weekly schedules — drives the "Today" view.
+  useEffect(() => {
+    fetch('/api/decking/therapists')
+      .then(r => r.json())
+      .then((rows: TherapistConfig[]) => setConfigs(Array.isArray(rows) ? rows : []))
+      .catch(() => setConfigs([]))
   }, [])
 
   // Reset dept filter when branch changes
@@ -794,6 +815,18 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
   const branchStaff = staff.filter(s => s.branch === activeBranch)
   const presentDepts = ALL_DEPARTMENTS.filter(d => branchStaff.some(s => s.department === d))
   const filtered = activeDept === 'All' ? branchStaff : branchStaff.filter(s => s.department === activeDept)
+
+  // ── "Today" view: clinicians whose Decking weekly schedule includes the
+  // weekday of the selected date, in the active branch. ──────────────────────
+  const todayCode = weekdayCodeFor(selectedDate)
+  const staffById = new Map(staff.map(s => [s.id, s]))
+  const todaysClinicians = configs
+    .filter(c => Array.isArray(c.workDays) && c.workDays.includes(todayCode))
+    .map(c => ({ cfg: c, staff: staffById.get(c.staffId) }))
+    .filter((x): x is { cfg: TherapistConfig; staff: StaffMember } => !!x.staff && x.staff.branch === activeBranch)
+    .sort((a, b) =>
+      (a.staff.lastName || '').localeCompare(b.staff.lastName || '') ||
+      (a.staff.firstName || '').localeCompare(b.staff.firstName || ''))
 
   return (
     <div className="space-y-4">
@@ -827,8 +860,16 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
       </div>
 
       {/* Department filter chips */}
-      {!loading && presentDepts.length > 0 && (
+      {!loading && (
         <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setActiveDept('Today')}
+            className="px-3 py-1 rounded-full text-xs font-semibold transition-colors"
+            style={activeDept === 'Today'
+              ? { background: 'var(--teal)', color: '#fff' }
+              : { background: '#fff', color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>
+            Today
+          </button>
           <button
             onClick={() => setActiveDept('All')}
             className="px-3 py-1 rounded-full text-xs font-semibold transition-colors"
@@ -850,8 +891,51 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
         </div>
       )}
 
-      {/* Staff cards */}
-      {loading ? (
+      {/* "Today" view — clinicians working the selected weekday + Front Desk card */}
+      {!loading && activeDept === 'Today' ? (
+        <div className="grid gap-4" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(300px, 360px)' }}>
+          {/* Left — clinician names working today */}
+          <div className="rounded-xl p-4" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+            <div className="flex items-baseline justify-between mb-3 flex-wrap gap-1">
+              <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
+                Clinicians on {WEEKDAY_FULL[todayCode]}
+              </h3>
+              <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                {todaysClinicians.length} clinician{todaysClinicians.length !== 1 ? 's' : ''} · {activeBranch}
+              </span>
+            </div>
+            {todaysClinicians.length === 0 ? (
+              <p className="text-sm py-8 text-center" style={{ color: 'var(--mid-gray)' }}>
+                No clinicians have a {WEEKDAY_FULL[todayCode]} schedule for {activeBranch} in the Decking Module.
+              </p>
+            ) : (
+              <div className="flex flex-col divide-y" style={{ borderColor: 'var(--light-gray)' }}>
+                {todaysClinicians.map(({ cfg, staff: s }) => (
+                  <div key={s.id} className="flex items-center justify-between gap-3 py-2">
+                    <span className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>
+                      {s.firstName} {s.lastName}
+                    </span>
+                    <span className="text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
+                      {s.department} · {cfg.startTime}–{cfg.endTime}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Right — Front Desk Daily Shortcut card + bright-red reminder */}
+          <div className="flex flex-col gap-3">
+            <DeskShortcutCard />
+            <div className="rounded-lg p-3" style={{ background: '#FEF2F2', border: '2px solid #DC2626' }}>
+              <p className="text-sm font-bold m-0" style={{ color: '#DC2626', lineHeight: 1.45 }}>
+                Note: Don&apos;t forget to include new patients, especially to medical doctors,
+                psychologists and physical therapists from clinic inquiries.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : loading ? (
         <p className="text-sm text-center py-10" style={{ color: 'var(--mid-gray)' }}>Loading staff…</p>
       ) : filtered.length === 0 ? (
         <div className="rounded-xl py-16 flex flex-col items-center gap-3"
