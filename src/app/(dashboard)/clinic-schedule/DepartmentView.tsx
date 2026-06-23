@@ -841,6 +841,13 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
       (a.staff.lastName || '').localeCompare(b.staff.lastName || '') ||
       (a.staff.firstName || '').localeCompare(b.staff.firstName || ''))
 
+  // Group tomorrow's clinicians by department (in ALL_DEPARTMENTS order); each
+  // group stays alphabetical because tomorrowClinicians is already sorted.
+  const tomorrowByDept = [
+    ...ALL_DEPARTMENTS.map(dept => ({ dept, list: tomorrowClinicians.filter(x => x.staff.department === dept) })),
+    { dept: 'Other', list: tomorrowClinicians.filter(x => !ALL_DEPARTMENTS.includes(x.staff.department)) },
+  ].filter(g => g.list.length > 0)
+
   // Make-up clinicians: manually added, in this branch, not already auto-listed.
   const autoIds = new Set(tomorrowClinicians.map(x => x.staff.id))
   const makeupClinicians = makeupIds
@@ -940,9 +947,22 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
                   </p>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {tomorrowClinicians.map(({ staff: s }) => (
-                    <StaffCard key={s.id} staff={s} selectedDate={tomorrowDate} />
+                <div className="space-y-5">
+                  {tomorrowByDept.map(g => (
+                    <div key={g.dept}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--teal)' }}>{g.dept}</span>
+                        <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                          {g.list.length} clinician{g.list.length !== 1 ? 's' : ''}
+                        </span>
+                        <div className="flex-1 h-px" style={{ background: 'var(--light-gray)' }} />
+                      </div>
+                      <div className="space-y-2">
+                        {g.list.map(({ staff: s }) => (
+                          <StaffCard key={s.id} staff={s} selectedDate={tomorrowDate} />
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
               )}
