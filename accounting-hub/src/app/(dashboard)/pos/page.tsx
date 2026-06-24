@@ -911,6 +911,9 @@ function OrderFormModal({
   const [referenceNumber, setReferenceNumber] = useState('')
   const [orderNotes, setOrderNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  // Synchronous re-entrancy guard: blocks duplicate orders from rapid re-clicks
+  // before React re-renders the disabled button (state updates lag a render).
+  const submittingRef = useRef(false)
   const [error, setError] = useState('')
   const patientTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const clinicianTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -1316,6 +1319,12 @@ function OrderFormModal({
       return
     }
 
+    // Re-entrancy guard — set BEFORE any await so rapid re-clicks during the
+    // clinician-validation fetch can't spawn parallel/duplicate orders.
+    if (submittingRef.current) return
+    submittingRef.current = true
+    setSubmitting(true)
+
     // Validate clinician has no disabled unit pays for the services in this order
     if (clinicianName.trim() && effectiveRevenueType !== 'UNEARNED' && !isAdvancePayment) {
       const serviceIds = items.filter(i => i.serviceId).map(i => i.serviceId!)
@@ -1332,13 +1341,14 @@ function OrderFormModal({
               `\u2022 ${b.serviceName} (${b.unitPayName})`
             ).join('\n')
             alert(`Cannot complete order.\n\nThe following services have unit pay disabled for ${clinicianName.trim()}:\n\n${serviceList}\n\nPlease remove the service(s) or change the clinician.`)
+            submittingRef.current = false
+            setSubmitting(false)
             return
           }
         } catch { /* validation failed silently — allow checkout */ }
       }
     }
 
-    setSubmitting(true)
     setError('')
     try {
       // If unearned or advance, auto-create/find digital wallet
@@ -1506,6 +1516,7 @@ function OrderFormModal({
     } catch {
       setError('Failed to create order')
     } finally {
+      submittingRef.current = false
       setSubmitting(false)
     }
   }
@@ -6449,6 +6460,9 @@ function ProductsSection({
   const [platform, setPlatform] = useState('Clinic')
   const [configuredModes, setConfiguredModes] = useState<PaymentModeType[]>([])
   const [submitting, setSubmitting] = useState(false)
+  // Synchronous re-entrancy guard: blocks duplicate orders from rapid re-clicks
+  // before React re-renders the disabled button (state updates lag a render).
+  const submittingRef = useRef(false)
   const [error, setError] = useState('')
   const [prodIssuedInvoice, setProdIssuedInvoice] = useState(false)
   const [prodInvoiceNumber, setProdInvoiceNumber] = useState('')
@@ -6651,6 +6665,9 @@ function ProductsSection({
     }
     const allFreeSamples = cart.every(c => c.isFreeSample)
     if (!allFreeSamples && !hasRewardPointsPayment && productPaymentShort) { setError('Payments do not cover the net amount'); return }
+    // Re-entrancy guard — block duplicate submissions while one is in flight.
+    if (submittingRef.current) return
+    submittingRef.current = true
     setSubmitting(true)
     setError('')
     try {
@@ -6719,6 +6736,7 @@ function ProductsSection({
     } catch {
       setError('Failed to create order')
     } finally {
+      submittingRef.current = false
       setSubmitting(false)
     }
   }
