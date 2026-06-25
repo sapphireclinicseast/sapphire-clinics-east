@@ -290,7 +290,7 @@ export async function PUT(
       // cashier so it can be re-converted). Mirror reopen the same way.
       if (typeof updated.queueItemId === 'string' && updated.queueItemId.startsWith('clsp_')) {
         const classPortalPaymentId = updated.queueItemId.slice('clsp_'.length)
-        const marketingUrl = process.env.MARKETING_HUB_URL || 'https://marketing.sapphireclinicseast.org'
+        const marketingUrl = process.env.MARKETING_HUB_URL || 'https://operations.sapphireclinicseast.org'
         const apiKey = process.env.EXTERNAL_API_KEY || ''
         if (apiKey && classPortalPaymentId) {
           // Voiding sends the row back to PENDING (re-appears in queue).

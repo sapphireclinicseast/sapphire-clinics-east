@@ -398,7 +398,7 @@ export async function POST(req: Request) {
     // Fire-and-forget — a failed webhook must not block the order from saving.
     if (typeof queueItemId === 'string' && queueItemId.startsWith('pbk_')) {
       const bookingId = queueItemId.slice('pbk_'.length)
-      const marketingUrl = process.env.MARKETING_HUB_URL || 'https://marketing.sapphireclinicseast.org'
+      const marketingUrl = process.env.MARKETING_HUB_URL || 'https://operations.sapphireclinicseast.org'
       const apiKey = process.env.EXTERNAL_API_KEY || ''
       if (apiKey && bookingId) {
         void fetch(`${marketingUrl}/api/decking/bookings/${encodeURIComponent(bookingId)}/mark-accounted-external`, {
@@ -420,7 +420,7 @@ export async function POST(req: Request) {
     // order from being saved (the front desk's books are the source of truth).
     if (typeof queueItemId === 'string' && queueItemId.startsWith('clsp_')) {
       const classPortalPaymentId = queueItemId.slice('clsp_'.length)
-      const marketingUrl = process.env.MARKETING_HUB_URL || 'https://marketing.sapphireclinicseast.org'
+      const marketingUrl = process.env.MARKETING_HUB_URL || 'https://operations.sapphireclinicseast.org'
       const apiKey = process.env.EXTERNAL_API_KEY || ''
       if (apiKey && classPortalPaymentId) {
         void fetch(`${marketingUrl}/api/internal/class-portal/frontdesk-payments/${encodeURIComponent(classPortalPaymentId)}`, {

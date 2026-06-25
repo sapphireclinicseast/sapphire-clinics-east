@@ -31,7 +31,7 @@ services:
       NEXTAUTH_URL: ${NEXTAUTH_URL}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       AUTH_TRUST_HOST: "true"
-      MARKETING_HUB_URL: ${MARKETING_HUB_URL:-https://marketing.sapphireclinicseast.org}
+      MARKETING_HUB_URL: ${MARKETING_HUB_URL:-https://operations.sapphireclinicseast.org}
       HR_PLATFORM_URL: ${HR_PLATFORM_URL:-http://host.docker.internal:3457}
       EXTERNAL_API_KEY: ${EXTERNAL_API_KEY}
       RESEND_API_KEY: ${RESEND_API_KEY}
