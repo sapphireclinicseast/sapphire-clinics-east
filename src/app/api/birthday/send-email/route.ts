@@ -3,12 +3,12 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getGmailClient, getLegacyRefreshToken } from '@/lib/email'
 
-const LOGO_URL = 'https://marketing.sapphireclinicseast.org/brand/logo-teal-transparent.png'
+const LOGO_URL = 'https://operations.sapphireclinicseast.org/brand/aura-logo-cream.png'
 
 function clinicNameForBranch(branch?: string): string {
-  if (branch === 'SBEA') return 'Sapphire Clinics East Inc. — East Branch'
-  if (branch === 'SBGH') return 'Sapphire Clinics East Inc. — Greenhills Branch'
-  return 'Sapphire Clinics East Inc.'
+  if (branch === 'SBEA') return 'Aura Health Rehab East'
+  if (branch === 'SBGH') return 'Aura Health Rehab Greenhills'
+  return 'Aura Health Rehab'
 }
 
 function buildBirthdayEmailHtml(firstName: string, clinicName: string): string {
