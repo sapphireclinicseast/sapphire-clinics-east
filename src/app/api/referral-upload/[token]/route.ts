@@ -79,7 +79,7 @@ export async function POST(
     if (oldFile) await fs.unlink(path.join(uploadDir, oldFile)).catch(() => {})
   }
 
-  const baseUrl = process.env.NEXTAUTH_URL ?? 'https://marketing.sapphireclinicseast.org'
+  const baseUrl = process.env.NEXTAUTH_URL ?? 'https://operations.sapphireclinicseast.org'
   const referralUrl = `${baseUrl}/api/uploads/${filename}`
 
   await prisma.$transaction([

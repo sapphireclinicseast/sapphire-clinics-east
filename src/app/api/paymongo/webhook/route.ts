@@ -1,6 +1,6 @@
 // PayMongo webhook receiver.
 // Configure in the PayMongo dashboard:
-//   URL: https://marketing.sapphireclinicseast.org/api/paymongo/webhook
+//   URL: https://operations.sapphireclinicseast.org/api/paymongo/webhook
 //   Events: link.payment.paid (aliased as "link.paid" in older docs)
 
 import { NextRequest, NextResponse } from 'next/server'

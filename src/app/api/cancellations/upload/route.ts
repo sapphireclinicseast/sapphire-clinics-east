@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
   await fs.mkdir(uploadDir, { recursive: true })
   await fs.writeFile(path.join(uploadDir, filename), Buffer.from(await file.arrayBuffer()))
 
-  const baseUrl = process.env.NEXTAUTH_URL ?? 'https://marketing.sapphireclinicseast.org'
+  const baseUrl = process.env.NEXTAUTH_URL ?? 'https://operations.sapphireclinicseast.org'
   const proofUrl = `${baseUrl}/api/uploads/${filename}`
 
   return NextResponse.json({ proofUrl })

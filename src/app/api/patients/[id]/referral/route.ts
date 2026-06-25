@@ -95,7 +95,7 @@ export async function POST(
     }
   }
 
-  const baseUrl = process.env.NEXTAUTH_URL ?? 'https://marketing.sapphireclinicseast.org'
+  const baseUrl = process.env.NEXTAUTH_URL ?? 'https://operations.sapphireclinicseast.org'
   const referralUrl = `${baseUrl}/api/uploads/${filename}`
 
   await prisma.patient.update({ where: { id }, data: { referralUrl } })

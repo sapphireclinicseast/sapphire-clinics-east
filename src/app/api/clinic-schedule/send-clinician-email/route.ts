@@ -6,20 +6,20 @@ import { getGmailClient } from '@/lib/email'
 // ─── Branch config ────────────────────────────────────────────────────────────
 const BRANCH_CONFIG: Record<string, { location: string; phone: string; teamName: string; ccEmail: string }> = {
   SBEA: {
-    location: 'East Branch',
+    location: 'Sandbox Clinic - East',
     phone: '0917 118 9289 | (02) 5310 4991',
-    teamName: 'East Branch',
-    ccEmail: 'east@sapphireclinicseast.org',
+    teamName: 'Sandbox Clinic - East',
+    ccEmail: 'east.sandboxclinic@gmail.com',
   },
   SBGH: {
-    location: 'Greenhills Branch',
+    location: 'Sandbox Clinic Greenhills',
     phone: '0917 770 1686 | (02) 8529 1590',
-    teamName: 'Greenhills Branch',
-    ccEmail: 'greenhills@sapphireclinicseast.org',
+    teamName: 'Sandbox Clinic Greenhills',
+    ccEmail: 'greenhills.sandboxclinic@gmail.com',
   },
 }
 
-const LOGO_URL = 'https://marketing.sapphireclinicseast.org/brand/logo-teal-transparent.png'
+const LOGO_URL = 'https://operations.sapphireclinicseast.org/sandbox-clinic-logo.png'
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-PH', {
@@ -73,7 +73,7 @@ function buildClinicianEmailHtml(opts: {
       <table width="640" align="center" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);max-width:640px;">
         <tr>
           <td style="padding:32px 40px 20px;text-align:center;border-bottom:1px solid #eeeeee;">
-            <img src="${LOGO_URL}" alt="Sapphire Clinics East" style="height:60px;max-width:280px;display:inline-block;">
+            <img src="${LOGO_URL}" alt="Sandbox Clinic" style="height:60px;max-width:280px;display:inline-block;">
           </td>
         </tr>
         <tr>
@@ -83,7 +83,7 @@ function buildClinicianEmailHtml(opts: {
 
             <table cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #eee;border-radius:8px;overflow:hidden;margin:0 0 20px;">
               <thead>
-                <tr style="background:#244952;color:#fff;">
+                <tr style="background:#1A7B8A;color:#fff;">
                   <th style="padding:10px 12px;text-align:left;font-size:12px;text-transform:uppercase;">Time</th>
                   <th style="padding:10px 12px;text-align:left;font-size:12px;text-transform:uppercase;">Patient</th>
                   <th style="padding:10px 12px;text-align:left;font-size:12px;text-transform:uppercase;">Session</th>
@@ -190,16 +190,13 @@ export async function POST(req: NextRequest) {
   const dayEnd = new Date(`${date}T23:59:59.999Z`)
 
   const schedules = await prisma.schedule.findMany({
-    // 2026-05-26: clinician roster only includes CONFIRMED slots — skip
-    // PENDING (not yet acknowledged), CANCELLED, and RESCHEDULED so the
-    // therapist doesn't see sessions that won't happen.
-    where: { staffId, date: { gte: dayStart, lte: dayEnd }, status: 'CONFIRMED' },
+    where: { staffId, date: { gte: dayStart, lte: dayEnd } },
     include: { patient: true },
     orderBy: { startTime: 'asc' },
   })
 
   if (schedules.length === 0) {
-    return NextResponse.json({ error: 'No CONFIRMED schedules found for this staff on this date' }, { status: 400 })
+    return NextResponse.json({ error: 'No schedules found for this staff on this date' }, { status: 400 })
   }
 
   const scheduleRows = schedules.map((s) => ({

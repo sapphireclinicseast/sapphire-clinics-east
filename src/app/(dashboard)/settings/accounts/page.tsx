@@ -657,7 +657,7 @@ export default function AccountsPage() {
               This usually means the <strong>redirect URL is not set</strong> in your Canva integration.
               Go to <a href="https://www.canva.com/developers" target="_blank" rel="noreferrer" className="underline font-semibold">developers.canva.com</a> →
               Your integrations → click your integration → <strong>set the Redirect URL</strong> to{' '}
-              <code className="bg-red-100 px-1 rounded">https://marketing.sapphireclinicseast.org/api/canva/callback</code>
+              <code className="bg-red-100 px-1 rounded">https://operations.sapphireclinicseast.org/api/canva/callback</code>
             </p>
           </div>
         )}

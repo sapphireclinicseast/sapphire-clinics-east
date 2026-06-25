@@ -34,7 +34,7 @@ export async function POST(
     data: { token, patientId: id, expiresAt },
   })
 
-  const baseUrl = process.env.NEXTAUTH_URL ?? 'https://marketing.sapphireclinicseast.org'
+  const baseUrl = process.env.NEXTAUTH_URL ?? 'https://operations.sapphireclinicseast.org'
   const uploadUrl = `${baseUrl}/referral/${token}`
 
   // Generate QR code as data URL
