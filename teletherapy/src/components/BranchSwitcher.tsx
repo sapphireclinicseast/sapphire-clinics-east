@@ -11,11 +11,11 @@ interface BranchInfo {
 }
 
 const BRANCH_LABELS: Record<string, string> = {
-  SANDBOX_EAST: 'East',
-  SANDBOX_GREENHILLS: 'Greenhills',
-  VERDANA_STORE: 'Verdana',
-  SBEA: 'East',
-  SBGH: 'Greenhills',
+  SANDBOX_EAST: 'East Branch',
+  SANDBOX_GREENHILLS: 'Greenhills Branch',
+  VERDANA_STORE: 'Verdana Store',
+  SBEA: 'East Branch',
+  SBGH: 'Greenhills Branch',
 }
 
 function branchLabel(branch: string) {
