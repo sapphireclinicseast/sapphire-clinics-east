@@ -59,7 +59,7 @@ function buildEmailHtml(opts: {
         <!-- Header -->
         <tr>
           <td style="padding:28px 40px;text-align:center;background:linear-gradient(135deg,#193339 0%,#244952 65%,#4a8073 100%);">
-            <img src="${LOGO_URL}" alt="Aura Health Rehab" style="height:80px;max-width:240px;display:inline-block;">
+            <img src="${LOGO_URL}" alt="Aura Health Rehab" style="height:140px;max-width:340px;display:inline-block;">
           </td>
         </tr>
         <!-- Body -->
