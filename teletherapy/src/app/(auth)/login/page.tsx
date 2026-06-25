@@ -4,7 +4,7 @@ import { useState, Suspense } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { LogIn, Eye, EyeOff, Video, ShieldCheck } from 'lucide-react'
+import { LogIn, Eye, EyeOff, ShieldCheck } from 'lucide-react'
 
 function LoginForm() {
   const router = useRouter()
@@ -68,16 +68,16 @@ function LoginForm() {
 
       {/* Login card — templates.sapphireclinicseast.org gate pattern */}
       <div className="w-full max-w-[400px] animate-gate">
-        {/* Icon */}
-        <div className="flex justify-center mb-6">
-          <div className="w-[60px] h-[60px] rounded-full flex items-center justify-center"
-               style={{ background: 'linear-gradient(135deg, var(--narra), var(--moss))', boxShadow: '0 4px 20px rgba(15, 49, 56, 0.40)' }}>
-            <Video className="w-7 h-7 text-white" />
-          </div>
-        </div>
-
         {/* Card */}
         <div className="bg-white rounded-2xl p-10 shadow-[0_20px_60px_rgba(0,0,0,0.3)]">
+          {/* Brand family — Sapphire Clinics East · Aura Health Rehab · Verdana */}
+          <div className="flex items-center justify-center gap-4 pb-6 mb-7 border-b border-[var(--light-gray)]">
+            <img src="/brand/scei-mark.png" alt="Sapphire Clinics East" className="h-9 w-auto" />
+            <span className="w-px h-7 bg-[var(--light-gray)]" />
+            <img src="/brand/aura-mark.png" alt="Aura Health Rehab" className="h-8 w-auto" />
+            <span className="w-px h-7 bg-[var(--light-gray)]" />
+            <img src="/brand/verdana-mark.png" alt="Verdana Rehab Solutions" className="h-9 w-auto" />
+          </div>
           {/* Header */}
           <div className="text-center mb-8">
             <h1 className="text-[22px] font-bold text-[var(--charcoal)] tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
