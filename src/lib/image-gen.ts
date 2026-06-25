@@ -25,15 +25,15 @@ export const BIRTHDAY_TEMPLATES: { id: BirthdayTemplateStyle; label: string; des
 ]
 
 export const BRANCHES = [
-  { id: 'east', label: 'East Branch', greeting: 'From your Family in Sandbox Clinic — East Branch' },
-  { id: 'greenhills', label: 'Greenhills Branch', greeting: 'From your Family in Sandbox Clinic — Greenhills Branch' },
+  { id: 'east', label: 'East Branch', greeting: 'From your Family at Aura Health Rehab — East Branch' },
+  { id: 'greenhills', label: 'Greenhills Branch', greeting: 'From your Family at Aura Health Rehab — Greenhills Branch' },
   { id: 'verdana', label: 'Verdana Store', greeting: 'With Love from the Team at Verdana Store' },
 ]
 
-// Inline SVG logo mark (matches SCEI diamond logo)
-const LOGO_SVG_WHITE = `<svg width="44" height="44" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><polygon points="50,5 95,50 50,95 5,50" stroke="white" stroke-width="3.5" fill="none"/><polygon points="50,18 82,50 50,82 18,50" stroke="white" stroke-width="2.5" fill="none"/><polygon points="50,30 70,50 50,70 30,50" stroke="white" stroke-width="2" fill="rgba(255,255,255,0.15)"/><polygon points="50,38 62,50 50,62 38,50" stroke="white" stroke-width="1.5" fill="rgba(255,255,255,0.25)"/><polygon points="50,44 56,50 50,56 44,50" fill="white"/></svg>`
+// Inline SVG logo mark (Aura Health Rehab rainbow)
+const LOGO_SVG_WHITE = `<svg width="50" height="29" viewBox="0 0 50 29" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 26 a21 21 0 0 1 42 0" stroke="#edf3d9" stroke-width="4.5" fill="none"/><path d="M12.5 26 a12.5 12.5 0 0 1 25 0" stroke="#edf3d9" stroke-width="4.2" fill="none"/><path d="M21 26 a4 4 0 0 1 8 0" stroke="#edf3d9" stroke-width="4" fill="none"/></svg>`
 
-const LOGO_SVG_TEAL = `<svg width="44" height="44" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><polygon points="50,5 95,50 50,95 5,50" stroke="#1A7B8A" stroke-width="3.5" fill="none"/><polygon points="50,18 82,50 50,82 18,50" stroke="#1A7B8A" stroke-width="2.5" fill="none"/><polygon points="50,30 70,50 50,70 30,50" stroke="#2AAABB" stroke-width="2" fill="rgba(26,123,138,0.1)"/><polygon points="50,38 62,50 50,62 38,50" stroke="#2AAABB" stroke-width="1.5" fill="rgba(26,123,138,0.15)"/><polygon points="50,44 56,50 50,56 44,50" fill="#1A7B8A"/></svg>`
+const LOGO_SVG_TEAL = `<svg width="50" height="29" viewBox="0 0 50 29" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 26 a21 21 0 0 1 42 0" stroke="#244952" stroke-width="4.5" fill="none"/><path d="M12.5 26 a12.5 12.5 0 0 1 25 0" stroke="#244952" stroke-width="4.2" fill="none"/><path d="M21 26 a4 4 0 0 1 8 0" stroke="#244952" stroke-width="4" fill="none"/></svg>`
 
 // ─────────────────────────────────────────────────────────────
 // HOLIDAY THEMES
@@ -93,25 +93,25 @@ function birthdayClassic(staffName: string, photoUrl: string, greeting: string):
   <style>
     *{margin:0;padding:0;box-sizing:border-box;}
     body{width:1080px;height:1350px;overflow:hidden;font-family:'Open Sans',sans-serif;}
-    .card{width:1080px;height:1350px;background:linear-gradient(150deg,#0A1012 0%,#0D5B68 55%,#0A1012 100%);
+    .card{width:1080px;height:1350px;background:linear-gradient(150deg,#0A1012 0%,#244952 55%,#0A1012 100%);
       display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;overflow:hidden;}
-    .glow{position:absolute;inset:0;background:radial-gradient(ellipse 70% 55% at 50% 40%,rgba(42,170,187,0.18) 0%,transparent 70%);pointer-events:none;}
+    .glow{position:absolute;inset:0;background:radial-gradient(ellipse 70% 55% at 50% 40%,rgba(111,163,146,0.18) 0%,transparent 70%);pointer-events:none;}
     .corner-decor{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;padding:40px;font-size:36px;opacity:0.22;}
     .photo-wrap{position:relative;z-index:2;margin-bottom:32px;}
-    .photo-ring{width:320px;height:320px;border-radius:50%;background:#0D5B68;
-      box-shadow:0 0 0 6px #C9A227,0 0 0 12px rgba(201,162,39,0.2),0 20px 60px rgba(0,0,0,0.5);overflow:hidden;}
+    .photo-ring{width:320px;height:320px;border-radius:50%;background:#244952;
+      box-shadow:0 0 0 6px #c69849,0 0 0 12px rgba(198,152,73,0.2),0 20px 60px rgba(0,0,0,0.5);overflow:hidden;}
     .photo-ring img{width:100%;height:100%;border-radius:50%;object-fit:cover;}
     .bday-tag{font-family:'Montserrat',sans-serif;font-size:15px;font-weight:700;letter-spacing:0.35em;
-      text-transform:uppercase;color:#C9A227;margin-bottom:14px;position:relative;z-index:2;}
+      text-transform:uppercase;color:#c69849;margin-bottom:14px;position:relative;z-index:2;}
     .name{font-family:'Montserrat',sans-serif;font-size:66px;font-weight:900;color:#fff;
       letter-spacing:-0.02em;line-height:1.05;text-align:center;position:relative;z-index:2;margin-bottom:16px;}
-    .divider{width:60px;height:3px;background:#C9A227;border-radius:2px;margin:0 auto 18px;position:relative;z-index:2;}
+    .divider{width:60px;height:3px;background:#c69849;border-radius:2px;margin:0 auto 18px;position:relative;z-index:2;}
     .greeting{font-size:20px;color:rgba(255,255,255,0.72);text-align:center;max-width:680px;
       line-height:1.65;position:relative;z-index:2;}
     .footer{position:absolute;bottom:0;left:0;right:0;display:flex;align-items:center;justify-content:center;
-      gap:14px;padding:26px;border-top:1px solid rgba(201,162,39,0.2);z-index:2;}
+      gap:14px;padding:26px;border-top:1px solid rgba(198,152,73,0.2);z-index:2;}
     .footer-text{font-family:'Montserrat',sans-serif;font-size:13px;font-weight:700;
-      letter-spacing:0.2em;text-transform:uppercase;color:#1A7B8A;}
+      letter-spacing:0.2em;text-transform:uppercase;color:#edf3d9;}
   </style>
 </head><body>
   <div class="card">
@@ -122,7 +122,7 @@ function birthdayClassic(staffName: string, photoUrl: string, greeting: string):
     <div class="name">${staffName}</div>
     <div class="divider"></div>
     <div class="greeting">${greeting}</div>
-    <div class="footer">${LOGO_SVG_WHITE}<span class="footer-text">Sapphire Clinics East, Inc.</span></div>
+    <div class="footer">${LOGO_SVG_WHITE}<span class="footer-text">Aura Health Rehab</span></div>
   </div>
 </body></html>`
 }
@@ -135,9 +135,9 @@ function birthdayElegant(staffName: string, photoUrl: string, greeting: string):
     *{margin:0;padding:0;box-sizing:border-box;}
     body{width:1080px;height:1350px;overflow:hidden;font-family:'Open Sans',sans-serif;}
     .card{width:1080px;height:1350px;background:#f7fbfc;display:flex;flex-direction:row;position:relative;overflow:hidden;}
-    .left{width:430px;height:100%;background:linear-gradient(180deg,#0D5B68 0%,#1A7B8A 100%);
+    .left{width:430px;height:100%;background:linear-gradient(180deg,#244952 0%,#4a8073 100%);
       display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 40px;gap:28px;position:relative;}
-    .photo-ring{width:290px;height:290px;border-radius:50%;border:6px solid #C9A227;
+    .photo-ring{width:290px;height:290px;border-radius:50%;border:6px solid #c69849;
       box-shadow:0 8px 40px rgba(0,0,0,0.3);overflow:hidden;}
     .photo-ring img{width:100%;height:100%;border-radius:50%;object-fit:cover;}
     .left-brand{display:flex;align-items:center;gap:10px;}
@@ -145,22 +145,22 @@ function birthdayElegant(staffName: string, photoUrl: string, greeting: string):
       letter-spacing:0.25em;text-transform:uppercase;color:rgba(255,255,255,0.65);}
     .right{flex:1;display:flex;flex-direction:column;justify-content:center;padding:70px 60px 70px 70px;position:relative;}
     .corner-accent{position:absolute;top:0;right:0;width:160px;height:160px;
-      background:radial-gradient(circle at top right,rgba(201,162,39,0.09),transparent 70%);}
+      background:radial-gradient(circle at top right,rgba(198,152,73,0.09),transparent 70%);}
     .corner-accent-br{position:absolute;bottom:0;left:0;width:180px;height:180px;
-      background:radial-gradient(circle at bottom left,rgba(26,123,138,0.06),transparent 70%);}
+      background:radial-gradient(circle at bottom left,rgba(74,128,115,0.06),transparent 70%);}
     .emoji-row{font-size:32px;letter-spacing:8px;margin-bottom:20px;}
     .tag{font-family:'Montserrat',sans-serif;font-size:13px;font-weight:700;letter-spacing:0.4em;
-      text-transform:uppercase;color:#C9A227;margin-bottom:18px;}
+      text-transform:uppercase;color:#c69849;margin-bottom:18px;}
     .name{font-family:'Montserrat',sans-serif;font-size:60px;font-weight:900;color:#1C2B30;
       letter-spacing:-0.02em;line-height:1.05;margin-bottom:22px;}
-    .bar{width:50px;height:4px;background:#1A7B8A;border-radius:2px;margin-bottom:22px;}
+    .bar{width:50px;height:4px;background:#4a8073;border-radius:2px;margin-bottom:22px;}
     .greeting{font-size:19px;color:#4a5a60;line-height:1.7;}
   </style>
 </head><body>
   <div class="card">
     <div class="left">
       <div class="photo-ring"><img src="${photoUrl}" alt="${staffName}"/></div>
-      <div class="left-brand">${LOGO_SVG_WHITE}<span class="left-brand-text">SCEI</span></div>
+      <div class="left-brand">${LOGO_SVG_WHITE}<span class="left-brand-text">Aura Health Rehab</span></div>
     </div>
     <div class="right">
       <div class="corner-accent"></div>
@@ -182,17 +182,17 @@ function birthdayBold(staffName: string, photoUrl: string, greeting: string): st
   <style>
     *{margin:0;padding:0;box-sizing:border-box;}
     body{width:1080px;height:1350px;overflow:hidden;font-family:'Open Sans',sans-serif;}
-    .card{width:1080px;height:1350px;background:#1A7B8A;
+    .card{width:1080px;height:1350px;background:#4a8073;
       display:flex;flex-direction:column;align-items:center;position:relative;overflow:hidden;}
     .bg-c1{position:absolute;width:700px;height:700px;border-radius:50%;
       background:rgba(255,255,255,0.06);top:-200px;right:-200px;}
     .bg-c2{position:absolute;width:500px;height:500px;border-radius:50%;
-      background:rgba(13,91,104,0.4);bottom:-100px;left:-100px;}
+      background:rgba(36,73,82,0.4);bottom:-100px;left:-100px;}
     .top-tag{width:100%;text-align:center;padding-top:36px;position:relative;z-index:2;
       font-family:'Montserrat',sans-serif;font-size:13px;font-weight:700;letter-spacing:0.5em;
       text-transform:uppercase;color:rgba(255,255,255,0.55);}
     .photo-frame{position:relative;z-index:2;margin-top:30px;margin-bottom:28px;}
-    .outer-ring{width:316px;height:316px;border-radius:50%;background:#C9A227;
+    .outer-ring{width:316px;height:316px;border-radius:50%;background:#c69849;
       display:flex;align-items:center;justify-content:center;}
     .inner-ring{width:300px;height:300px;border-radius:50%;overflow:hidden;}
     .inner-ring img{width:100%;height:100%;object-fit:cover;}
@@ -217,7 +217,7 @@ function birthdayBold(staffName: string, photoUrl: string, greeting: string): st
     <div class="name">${staffName}</div>
     <div class="divider-row"><div class="div-line"></div><span class="div-emoji">🎂</span><div class="div-line"></div></div>
     <div class="greeting">${greeting}</div>
-    <div class="footer">${LOGO_SVG_WHITE}<span class="footer-text">Sapphire Clinics East, Inc.</span></div>
+    <div class="footer">${LOGO_SVG_WHITE}<span class="footer-text">Aura Health Rehab</span></div>
   </div>
 </body></html>`
 }
@@ -385,7 +385,7 @@ export function generateHolidayCardHTML(params: {
     <div class="holiday-name">${holiday}</div>
     <div class="divider"></div>
     <div class="caption">${caption}</div>
-    <div class="footer">${logo}<span class="footer-text">Sapphire Clinics East, Inc. · ${date}</span></div>
+    <div class="footer">${logo}<span class="footer-text">Aura Health Rehab · ${date}</span></div>
   </div>
 </body></html>`
 }
