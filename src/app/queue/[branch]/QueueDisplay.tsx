@@ -15,18 +15,18 @@ const DEPT_COLORS: Record<string, { bg: string; text: string }> = {
   FRONT_DESK: { bg: '#6366F1', text: '#fff' },
 }
 
-// Medal colours for leaderboard (brand-tuned: Sun, neutral, Clay)
-const MEDAL_COLORS = ['#EDD8A8', '#94A3B8', '#C68077'] // 1st (sand), 2nd (neutral), 3rd (coral)
+// Medal colours for leaderboard (brand-tuned: Gold, neutral, Clay)
+const MEDAL_COLORS = ['#C69849', '#94A3B8', '#CF9D88'] // 1st (gold), 2nd (neutral), 3rd (clay)
 
-// ─── Sapphire Clinics palette (2026.05 — Aura Academy refresh) ──────────────
+// ─── Aura Health Rehab palette (2026.06) ────────────────────────────────────
 const BRAND = {
-  narra:      '#194850', // primary — deep teal
-  narraDeep:  '#0F3138', // deeper teal (footer / cards)
-  moss:       '#3E6B66', // secondary — mid-teal
-  sage:       '#7B988A', // tertiary — soft sage
-  clay:       '#C68077', // warm accent — coral / dusty rose
-  sun:        '#EDD8A8', // light accent — warm sand
-  paper:      '#F4ECDD', // dominant neutral surface (cream)
+  narra:      '#244952', // primary — deep teal
+  narraDeep:  '#193339', // deeper teal (footer / cards) — derived shade
+  moss:       '#4A8073', // secondary — mid-teal
+  sage:       '#7EA596', // tertiary — soft sage — derived tint
+  clay:       '#CF9D88', // warm accent — coral / dusty rose
+  sun:        '#C69849', // light accent — warm gold
+  paper:      '#EDF3D9', // dominant neutral surface (pale green-cream)
   ink:        '#1A1A1A', // type / fine rules on light
 }
 
@@ -101,7 +101,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
 
   const COMPLAINT_FORM_URL = 'https://hr.sapphireclinicseast.org/patient-complaint-form.html'
   // QR colour matches brand Narra so the code reads as "official"
-  const complaintQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(COMPLAINT_FORM_URL)}&color=194850&bgcolor=FFFFFF&margin=8`
+  const complaintQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(COMPLAINT_FORM_URL)}&color=244952&bgcolor=FFFFFF&margin=8`
 
   // ── Live clock (updates every second) ──────────────────────────────────────
   useEffect(() => {
@@ -296,8 +296,10 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
         position: 'relative',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <Image src="/sandbox-clinic-logo.png" alt="Sapphire Clinics East" width={48} height={48}
-            style={{ objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
+          {/* Aura Health Rehab mark — light (cream) symbol only; the branch
+              wordmark sits beside it. Light-on-dark on the teal masthead. */}
+          <Image src="/aura-health-mark-light.png" alt="Aura Health Rehab" width={120} height={120} priority
+            style={{ objectFit: 'contain', height: '3.4rem', width: 'auto', flexShrink: 0 }} />
           <div>
             <p style={{
               fontFamily: 'var(--font-montserrat), "Helvetica Neue", system-ui, sans-serif',
@@ -463,8 +465,8 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
               alignItems: 'center', justifyContent: 'center', gap: '1rem',
               color: 'rgba(244,236,221,0.4)',
             }}>
-              <Image src="/sandbox-clinic-logo.png" alt="Sapphire Clinics East" width={120} height={120}
-                style={{ objectFit: 'contain', opacity: 0.3 }} />
+              <Image src="/aura-health-logo-light.png" alt="Aura Health Rehab" width={200} height={200}
+                style={{ objectFit: 'contain', opacity: 0.6 }} />
               <p style={{ fontSize: '0.85rem', fontWeight: 600 }}>No ads uploaded</p>
             </div>
           ) : (
@@ -732,7 +734,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <p style={{ fontSize: '0.7rem', color: 'rgba(244,236,221,0.45)', letterSpacing: '0.02em' }}>
-          Sapphire Clinics East Patient Queue Display — For internal use only
+          Aura Health Rehab — Patient Queue Display · For internal use only
         </p>
         <p style={{
           fontFamily: 'var(--font-manrope), "Helvetica Neue", system-ui, sans-serif',

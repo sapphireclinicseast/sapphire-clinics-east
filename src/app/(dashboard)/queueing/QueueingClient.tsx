@@ -410,6 +410,7 @@ function branchBadge(branch: string) {
 function AdsManager({ role }: { role: string }) {
   const [ads, setAds]           = useState<Ad[]>([])
   const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
   const [uploadErr, setUploadErr] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [showLeaderboard, setShowLeaderboard] = useState(false)
@@ -465,18 +466,43 @@ function AdsManager({ role }: { role: string }) {
     setTogglingCf(false)
   }
 
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     setUploadErr('')
     setUploading(true)
+    setUploadProgress(0)
+
     const form = new FormData()
     form.append('file', file)
     form.append('branch', uploadBranch)
-    const res = await fetch('/api/queue-ads', { method: 'POST', body: form })
-    setUploading(false)
-    if (res.ok) { loadAds(); if (fileRef.current) fileRef.current.value = '' }
-    else { const d = await res.json(); setUploadErr(d.error ?? 'Upload failed') }
+
+    const xhr = new XMLHttpRequest()
+    xhr.upload.onprogress = (ev) => {
+      if (ev.lengthComputable) setUploadProgress(Math.round((ev.loaded / ev.total) * 100))
+    }
+    xhr.onload = () => {
+      setUploading(false)
+      setUploadProgress(0)
+      if (xhr.status >= 200 && xhr.status < 300) {
+        loadAds()
+        if (fileRef.current) fileRef.current.value = ''
+      } else {
+        try {
+          const d = JSON.parse(xhr.responseText)
+          setUploadErr(d.error ?? `Upload failed (${xhr.status})`)
+        } catch {
+          setUploadErr(`Upload failed (${xhr.status})`)
+        }
+      }
+    }
+    xhr.onerror = () => {
+      setUploading(false)
+      setUploadProgress(0)
+      setUploadErr('Network error — check your connection and try again')
+    }
+    xhr.open('POST', '/api/queue-ads')
+    xhr.send(form)
   }
 
   async function handleBranchChange(id: string, branch: string) {
@@ -540,7 +566,7 @@ function AdsManager({ role }: { role: string }) {
         </div>
         <label className="cursor-pointer px-4 py-2 rounded-lg text-sm font-medium"
           style={{ background: 'var(--teal)', color: '#fff', opacity: uploading ? 0.6 : 1 }}>
-          {uploading ? 'Uploading…' : 'Choose File'}
+          {uploading ? `Uploading ${uploadProgress}%…` : 'Choose File'}
           <input ref={fileRef} type="file" className="hidden"
             accept="video/mp4,video/webm,video/ogg,video/quicktime,.mp4,.webm,.ogg,.mov,image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp"
             onChange={handleUpload} disabled={uploading} />
@@ -720,6 +746,13 @@ const BRANCH_TV_COLORS: Record<string, { bg: string; color: string }> = {
   SBEA: { bg: '#CCFBF1', color: '#0F766E' },
   SBGH: { bg: '#DBEAFE', color: '#1D4ED8' },
 }
+// Public TV-display URL slug per branch — Aura Health Rehab branded
+// (the SBEA/SBGH enum keys stay internal; legacy /sbea·/sbgh still resolve).
+const BRANCH_TV_SLUGS: Record<string, string> = {
+  SBEA: 'ahea',
+  SBGH: 'ahgh',
+}
+const tvSlug = (b: string) => BRANCH_TV_SLUGS[b] ?? b.toLowerCase()
 
 export default function QueueingClient({ role }: { role: string }) {
   const branches = visibleBranches(role)
@@ -787,7 +820,7 @@ export default function QueueingClient({ role }: { role: string }) {
 
   useEffect(() => { loadQueue() }, [loadQueue])
 
-  const queueUrl = `https://queue.sapphireclinicseast.org/${activeBranch.toLowerCase()}`
+  const queueUrl = `https://queue.sapphireclinicseast.org/${tvSlug(activeBranch)}`
 
   return (
     <div className="space-y-5">
@@ -806,7 +839,7 @@ export default function QueueingClient({ role }: { role: string }) {
         </div>
         {/* TV Display — single branch: direct link; multi-branch: dropdown */}
         {branches.length === 1 ? (
-          <a href={`https://queue.sapphireclinicseast.org/${branches[0].toLowerCase()}`}
+          <a href={`https://queue.sapphireclinicseast.org/${tvSlug(branches[0])}`}
             target="_blank" rel="noreferrer"
             className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold"
             style={{ background: 'var(--teal)', color: '#fff', textDecoration: 'none' }}>
@@ -838,7 +871,7 @@ export default function QueueingClient({ role }: { role: string }) {
                   const col = BRANCH_TV_COLORS[b] ?? { bg: '#F3F4F6', color: '#374151' }
                   return (
                     <a key={b}
-                      href={`https://queue.sapphireclinicseast.org/${b.toLowerCase()}`}
+                      href={`https://queue.sapphireclinicseast.org/${tvSlug(b)}`}
                       target="_blank" rel="noreferrer"
                       onClick={() => setShowTvMenu(false)}
                       className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
@@ -857,7 +890,7 @@ export default function QueueingClient({ role }: { role: string }) {
                           {BRANCH_TV_LABELS[b] ?? b}
                         </p>
                         <p style={{ fontSize: '0.68rem', color: 'var(--mid-gray)', marginTop: '0.15rem' }}>
-                          queue.sapphireclinicseast.org/{b.toLowerCase()}
+                          queue.sapphireclinicseast.org/{tvSlug(b)}
                         </p>
                       </div>
                       <ExternalLink size={11} style={{ color: 'var(--mid-gray)', flexShrink: 0 }} />
