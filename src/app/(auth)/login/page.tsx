@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
@@ -33,6 +33,8 @@ export default function LoginPage() {
   const [showPw, setShowPw]     = useState(false)
   const [error, setError]       = useState('')
   const [loading, setLoading]   = useState(false)
+  const [introComplete, setIntroComplete] = useState(false)
+
   // ── Forgot password state ───────────────────────────────────────────────────
   const [mode, setMode]                 = useState<Mode>('login')
   const [fpEmail, setFpEmail]           = useState('')
@@ -43,6 +45,11 @@ export default function LoginPage() {
   const [fpLoading, setFpLoading]       = useState(false)
   const [fpError, setFpError]           = useState('')
   const [fpSuccess, setFpSuccess]       = useState('')
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIntroComplete(true), 2500)
+    return () => clearTimeout(timer)
+  }, [])
 
   // ── Login submit ─────────────────────────────────────────────────────────────
   async function handleSubmit(e: React.FormEvent) {
@@ -128,12 +135,12 @@ export default function LoginPage() {
     <div
       className="min-h-screen flex items-center justify-center relative overflow-hidden"
       style={{
-        // SCEI brand gradient — terracotta top-left → gold → mid teal → deep teal bottom-right
+        // Aura backdrop — coral top-left → cream halo → soft sage bottom-right
         background: [
-          'radial-gradient(1200px 380px at 50% 35%, rgba(237, 243, 217, 0.18), transparent 60%)',
-          'radial-gradient(820px 380px at 8% 0%, rgba(207, 157, 136, 0.55), transparent 60%)',
-          'radial-gradient(1100px 440px at 100% 110%, rgba(74, 128, 115, 0.50), transparent 65%)',
-          'linear-gradient(135deg, #cf9d88 0%, #c69849 30%, #4a8073 68%, #244952 100%)',
+          'radial-gradient(1200px 380px at 50% 35%, rgba(244, 236, 221, 0.22), transparent 60%)',
+          'radial-gradient(820px 380px at 8% 0%, rgba(212, 145, 132, 0.55), transparent 60%)',
+          'radial-gradient(1100px 440px at 100% 110%, rgba(123, 152, 138, 0.55), transparent 65%)',
+          'linear-gradient(135deg, #D49184 0%, #C9A28F 38%, #9CB1A2 72%, #7B988A 100%)',
         ].join(', '),
       }}
     >
@@ -155,14 +162,52 @@ export default function LoginPage() {
         }}
       />
 
+      {/* Logo Intro Overlay */}
+      <div
+        className="absolute inset-0 flex flex-col items-center justify-center z-20 transition-opacity duration-700"
+        style={{
+          opacity: introComplete ? 0 : 1,
+          pointerEvents: introComplete ? 'none' : 'auto',
+          background: 'var(--narra)',
+        }}
+      >
+        <div className="flex flex-col items-center gap-6">
+          <Image src="/brand/logo-white-transparent.png" alt="Sapphire Clinics East" width={180} height={180} style={{ objectFit: 'contain' }} priority />
+          <div
+            style={{
+              fontFamily: 'var(--font-display)',
+              color: '#ffffff',
+              fontSize: '1.4rem',
+              fontWeight: 700,
+              letterSpacing: '0.25em',
+              textTransform: 'uppercase',
+            }}
+          >
+            Operations Hub
+          </div>
+        </div>
+      </div>
+
       {/* Main card */}
       <div
-        className="relative z-10 w-full max-w-md mx-4"
-        style={{ animation: 'login-enter 0.5s ease both' }}
+        className="relative z-10 w-full max-w-md mx-4 transition-all duration-700"
+        style={{
+          opacity: introComplete ? 1 : 0,
+          transform: introComplete ? 'translateY(0)' : 'translateY(20px)',
+        }}
       >
-        {/* Logo */}
+        {/* Three-brand logo row */}
         <div className="flex flex-col items-center mb-10">
-          <Image src="/brand/logo-white-transparent.png" alt="Sapphire Clinics East" width={140} height={140} style={{ objectFit: 'contain' }} className="mb-2" priority />
+          <div className="flex items-center gap-5">
+            <Image src="/brand/logo-white-transparent.png" alt="Sapphire Clinics East" width={76} height={76} style={{ objectFit: 'contain' }} priority />
+            <div style={{ width: 1, height: 44, background: 'rgba(255,255,255,0.22)' }} />
+            <Image src="/brand/aura-logo-cream.png" alt="Aura Health Rehab" width={76} height={76} style={{ objectFit: 'contain' }} priority />
+            <div style={{ width: 1, height: 44, background: 'rgba(255,255,255,0.22)' }} />
+            <div className="flex flex-col items-center gap-1">
+              <Image src="/brand/verdana-logo-white.png" alt="Verdana Rehab Solutions" width={52} height={52} style={{ objectFit: 'contain' }} priority />
+              <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.55rem', letterSpacing: '0.14em', textTransform: 'uppercase', fontFamily: 'var(--font-display)' }}>Verdana</span>
+            </div>
+          </div>
           <p
             style={{
               fontFamily: 'var(--font-display)',
@@ -171,7 +216,7 @@ export default function LoginPage() {
               letterSpacing: '0.2em',
               textTransform: 'uppercase',
               color: '#ffffff',
-              marginTop: 8,
+              marginTop: 16,
             }}
           >
             Operations Hub
