@@ -1,8 +1,24 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Contact, Plus, Trash2, Loader2, X, Mail, Lock, Pencil, Globe, Building2, Save, ExternalLink } from 'lucide-react'
+import { Contact, Plus, Trash2, Loader2, X, Mail, Lock, Pencil, Globe, Building2, Save, ExternalLink, Search, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
+
+type SortState = { col: string; dir: 'asc' | 'desc' }
+
+// Clickable column header that toggles asc → desc → asc on the given column.
+function SortableTh({ label, col, sort, onToggle, className }: { label: string; col: string; sort: SortState; onToggle: (c: string) => void; className?: string }) {
+  const active = sort.col === col
+  return (
+    <th onClick={() => onToggle(col)}
+      className={`px-5 py-3 font-semibold cursor-pointer select-none hover:text-[var(--deep-teal)] transition-colors ${className ?? ''}`}>
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {active ? (sort.dir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={13} className="opacity-30" />}
+      </span>
+    </th>
+  )
+}
 
 interface DirectoryEntry {
   id: string
@@ -121,6 +137,8 @@ export default function DirectoryPage() {
   const [restrictView, setRestrictView] = useState(false)
   const [viewSel, setViewSel] = useState<string[]>([])
   const [savingEmail, setSavingEmail] = useState(false)
+  const [emailQ, setEmailQ] = useState('')
+  const [emailSort, setEmailSort] = useState<SortState>({ col: '', dir: 'asc' })
   async function loadEmails() {
     const res = await fetch('/api/directory')
     if (res.ok) setEntries((await res.json()).entries ?? [])
@@ -167,6 +185,8 @@ export default function DirectoryPage() {
   const [wRestrict, setWRestrict] = useState(false)
   const [wViewSel, setWViewSel] = useState<string[]>([])
   const [savingWeb, setSavingWeb] = useState(false)
+  const [webQ, setWebQ] = useState('')
+  const [webSort, setWebSort] = useState<SortState>({ col: '', dir: 'asc' })
   async function loadWebsites() {
     const res = await fetch('/api/directory/websites')
     if (res.ok) setWebsites((await res.json()).websites ?? [])
@@ -210,6 +230,43 @@ export default function DirectoryPage() {
     { key: 'websites', label: 'Websites', icon: Globe },
   ]
 
+  function toggleSort(setter: React.Dispatch<React.SetStateAction<SortState>>, col: string) {
+    setter((s) => (s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' }))
+  }
+
+  // Filter (text search) + sort the Emails rows.
+  const visibleEmails = useMemo(() => {
+    const q = emailQ.trim().toLowerCase()
+    let rows = entries
+    if (q) rows = rows.filter((e) => [
+      ...(e.departments ?? []).map((d) => DEPT_LABELS[d] ?? d),
+      ...(e.branches ?? []).map((b) => BRANCH_LABELS[b] ?? b),
+      e.email ?? '', e.description ?? '',
+    ].join(' ').toLowerCase().includes(q))
+    if (emailSort.col) {
+      const key = (e: DirectoryEntry) => {
+        if (emailSort.col === 'dept') { const d = sortDepts(e.departments ?? [])[0]; return d ? (DEPT_LABELS[d] ?? d) : '' }
+        if (emailSort.col === 'branch') { const b = sortBranches(e.branches ?? [])[0]; return b ? (BRANCH_LABELS[b] ?? b) : '' }
+        if (emailSort.col === 'email') return (e.email ?? '').toLowerCase()
+        return (e.description ?? '').toLowerCase()
+      }
+      rows = [...rows].sort((a, b) => key(a).localeCompare(key(b)) * (emailSort.dir === 'asc' ? 1 : -1))
+    }
+    return rows
+  }, [entries, emailQ, emailSort])
+
+  // Filter (text search) + sort the Websites rows.
+  const visibleWebsites = useMemo(() => {
+    const q = webQ.trim().toLowerCase()
+    let rows = websites
+    if (q) rows = rows.filter((w) => [w.link ?? '', w.description ?? ''].join(' ').toLowerCase().includes(q))
+    if (webSort.col) {
+      const key = (w: WebsiteEntry) => (webSort.col === 'link' ? (w.link ?? '') : (w.description ?? '')).toLowerCase()
+      rows = [...rows].sort((a, b) => key(a).localeCompare(key(b)) * (webSort.dir === 'asc' ? 1 : -1))
+    }
+    return rows
+  }, [websites, webQ, webSort])
+
   return (
     <div className="max-w-5xl mx-auto">
       {toast && <div className="toast">{toast}</div>}
@@ -248,7 +305,7 @@ export default function DirectoryPage() {
         <>
           {/* ── BRANCH INFORMATION ── */}
           {tab === 'branch' && (
-            <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+            <div className="space-y-4">
               {BRANCH_ORDER.map((b) => (
                 <div key={b} className="card-static">
                   <div className="flex items-center justify-between mb-2">
@@ -332,24 +389,33 @@ export default function DirectoryPage() {
                 </div>
               )}
 
+              {entries.length > 0 && (
+                <div className="relative mb-3 sm:max-w-xs">
+                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mid-gray)]" />
+                  <input value={emailQ} onChange={(e) => setEmailQ(e.target.value)} placeholder="Filter emails…" className="input text-[13px] !pl-9" />
+                </div>
+              )}
               <div className="card-static !p-0 overflow-hidden">
                 {entries.length === 0 ? (
                   <div className="py-12 text-center text-[var(--mid-gray)] text-[13px]"><Mail size={26} className="mx-auto mb-2 opacity-40" />No emails yet.</div>
                 ) : (
-                  <div className="overflow-auto max-h-[60vh]">
+                  <div>
                     <table className="w-full text-left border-collapse">
-                      <thead className="sticky top-0 z-10">
+                      <thead>
                         <tr className="text-[11px] uppercase tracking-wider text-[var(--mid-gray)]" style={{ background: 'var(--off-white)' }}>
-                          <th className="px-5 py-3 font-semibold">Department</th>
-                          <th className="px-5 py-3 font-semibold">Branch</th>
-                          <th className="px-5 py-3 font-semibold">Email</th>
-                          <th className="px-5 py-3 font-semibold">Description</th>
+                          <SortableTh label="Department" col="dept" sort={emailSort} onToggle={(c) => toggleSort(setEmailSort, c)} />
+                          <SortableTh label="Branch" col="branch" sort={emailSort} onToggle={(c) => toggleSort(setEmailSort, c)} />
+                          <SortableTh label="Email" col="email" sort={emailSort} onToggle={(c) => toggleSort(setEmailSort, c)} />
+                          <SortableTh label="Description" col="desc" sort={emailSort} onToggle={(c) => toggleSort(setEmailSort, c)} />
                           {isAdmin && <th className="px-5 py-3 font-semibold">Visible To</th>}
                           {isAdmin && <th className="px-5 py-3 font-semibold w-20"></th>}
                         </tr>
                       </thead>
                       <tbody>
-                        {entries.map((e) => (
+                        {visibleEmails.length === 0 && (
+                          <tr><td colSpan={isAdmin ? 6 : 4} className="px-5 py-10 text-center text-[13px] text-[var(--mid-gray)]">No emails match “{emailQ}”.</td></tr>
+                        )}
+                        {visibleEmails.map((e) => (
                           <tr key={e.id} className="border-t border-[var(--light-gray)] align-top">
                             <td className="px-5 py-3"><div className="flex flex-wrap gap-1.5">{sortDepts(e.departments).map((d) => <span key={d} className="px-2 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{DEPT_LABELS[d] ?? d}</span>)}</div></td>
                             <td className="px-5 py-3"><div className="flex flex-wrap gap-1.5">{sortBranches(e.branches ?? []).map((b) => <span key={b} className="px-2 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider" style={{ background: 'var(--sun-tint)', color: '#8a6a1f' }}>{BRANCH_LABELS[b] ?? b}</span>)}</div></td>
@@ -422,22 +488,31 @@ export default function DirectoryPage() {
                 </div>
               )}
 
+              {websites.length > 0 && (
+                <div className="relative mb-3 sm:max-w-xs">
+                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mid-gray)]" />
+                  <input value={webQ} onChange={(e) => setWebQ(e.target.value)} placeholder="Filter websites…" className="input text-[13px] !pl-9" />
+                </div>
+              )}
               <div className="card-static !p-0 overflow-hidden">
                 {websites.length === 0 ? (
                   <div className="py-12 text-center text-[var(--mid-gray)] text-[13px]"><Globe size={26} className="mx-auto mb-2 opacity-40" />No websites yet.</div>
                 ) : (
-                  <div className="overflow-auto max-h-[60vh]">
+                  <div>
                     <table className="w-full text-left border-collapse">
-                      <thead className="sticky top-0 z-10">
+                      <thead>
                         <tr className="text-[11px] uppercase tracking-wider text-[var(--mid-gray)]" style={{ background: 'var(--off-white)' }}>
-                          <th className="px-5 py-3 font-semibold">Link</th>
-                          <th className="px-5 py-3 font-semibold">Description</th>
+                          <SortableTh label="Link" col="link" sort={webSort} onToggle={(c) => toggleSort(setWebSort, c)} />
+                          <SortableTh label="Description" col="desc" sort={webSort} onToggle={(c) => toggleSort(setWebSort, c)} />
                           {isAdmin && <th className="px-5 py-3 font-semibold">Visible To</th>}
                           {isAdmin && <th className="px-5 py-3 font-semibold w-20"></th>}
                         </tr>
                       </thead>
                       <tbody>
-                        {websites.map((w) => (
+                        {visibleWebsites.length === 0 && (
+                          <tr><td colSpan={isAdmin ? 4 : 2} className="px-5 py-10 text-center text-[13px] text-[var(--mid-gray)]">No websites match “{webQ}”.</td></tr>
+                        )}
+                        {visibleWebsites.map((w) => (
                           <tr key={w.id} className="border-t border-[var(--light-gray)] align-top">
                             <td className="px-5 py-3">
                               {w.linkHidden ? (
