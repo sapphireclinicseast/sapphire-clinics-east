@@ -21,6 +21,7 @@ interface HRManual {
   version: string
   sizeBytes: number
   pageCount: number
+  audience?: string
   updatedAt: string
 }
 
@@ -39,6 +40,20 @@ export async function GET() {
     ? null
     : allowedDeptsFor(myRole, (session.user as { department?: string }).department ?? '')
 
+  // Per-manual Staff Portal audience set in the HR hub:
+  //   ALL = everyone · CLINICIAN = clinical staff · ADMIN = admin/office staff.
+  // System admins (role ADMIN) always see every manual. Account type defaults
+  // to CLINICIAN, so accounts without an explicit type are treated as clinical.
+  const isClinician = myAccountType === 'CLINICIAN' || myAccountType === ''
+  const isAdminEmployee = myAccountType === 'ADMIN_STAFF' || myAccountType === 'FRONT_DESK'
+  const audienceVisible = (aud?: string) => {
+    if (isAdmin) return true
+    const a = (aud || 'ALL').toUpperCase()
+    if (a === 'CLINICIAN') return isClinician
+    if (a === 'ADMIN') return isAdminEmployee
+    return true
+  }
+
   let res: Response
   try {
     res = await fetch(`${HR_API_BASE}/manuals/public`, { cache: 'no-store' })
@@ -53,7 +68,7 @@ export async function GET() {
   const all = data.ok ? data.manuals ?? [] : []
 
   const manuals = all
-    .filter((m) => manualInScope(m.departments, allowed))
+    .filter((m) => manualInScope(m.departments, allowed) && audienceVisible(m.audience))
     .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
     .map((m) => ({
       id: m.id,
