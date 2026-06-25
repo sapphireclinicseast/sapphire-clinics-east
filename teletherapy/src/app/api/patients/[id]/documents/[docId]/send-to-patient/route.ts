@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
+import { loadEmailLogo, emailHeader } from '@/lib/email-branding'
 import { readFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import path from 'path'
@@ -120,21 +121,23 @@ export async function POST(
   }
   const deptLabel = DEPT_LABEL[doc.department] ?? doc.department
 
+  const logo = await loadEmailLogo()
+
   const html = `
-    <div style="font-family: Arial, sans-serif; color: #1B3F38; max-width: 600px; margin: 0 auto;">
-      <div style="background: linear-gradient(135deg, #26554B, #1B3F38); color: white; padding: 24px; border-radius: 12px 12px 0 0;">
-        <h1 style="margin: 0; font-size: 22px;">Initial Evaluation Report</h1>
-      </div>
-      <div style="background: #F5F0E8; padding: 24px; border-radius: 0 0 12px 12px;">
-        <p style="font-size: 15px;">Dear ${patientName},</p>
-        <p style="font-size: 14px; line-height: 1.6;">
-          Please find attached your Initial Evaluation report from your ${deptLabel} sessions at our clinic.
-        </p>
-        <p style="font-size: 14px; line-height: 1.6;">
+    <div style="font-family: 'Montserrat', 'Arimo', Verdana, sans-serif; color: #244952; max-width: 600px; margin: 0 auto;">
+      ${emailHeader('Initial Evaluation Report', 'Sapphire Clinics East, Inc.', !!logo)}
+      <div style="background: #ffffff; padding: 24px; border: 1px solid #d9e3c6; border-top: none; border-radius: 0 0 12px 12px;">
+        <p style="font-size: 15px; margin-top: 0;">Dear <strong>${patientName}</strong>,</p>
+        <div style="background: #edf3d9; border-left: 4px solid #c69849; padding: 16px; border-radius: 8px; margin: 16px 0;">
+          <p style="font-size: 14px; line-height: 1.6; margin: 0;">
+            Please find attached your <strong>Initial Evaluation report</strong> from your ${deptLabel} sessions at our clinic.
+          </p>
+        </div>
+        <p style="font-size: 14px; line-height: 1.6; color: #244952;">
           For questions or concerns, please reach out to our front desk team.
         </p>
-        <p style="font-size: 13px; color: #7A908C; margin-top: 24px;">
-          — Sapphire Clinics East Inc.
+        <p style="font-size: 13px; color: #4a8073; margin-top: 24px;">
+          — Sapphire Clinics East, Inc.
         </p>
       </div>
     </div>
@@ -147,6 +150,7 @@ export async function POST(
       subject: `Initial Evaluation Report — ${patientName}`,
       html,
       attachments: [{ filename: doc.fileName, content: fileBuffer }],
+      inlineImages: logo ? [logo] : undefined,
     })
   } catch (err: any) {
     return NextResponse.json({ error: err.message ?? 'Email send failed' }, { status: 500 })

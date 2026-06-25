@@ -32,6 +32,15 @@ interface Attachment {
   content: Buffer
 }
 
+// An image embedded inline in the HTML via `cid:` reference (multipart/related),
+// so it renders in the body without relying on remote-image loading (which many
+// mail clients block by default). Reference it in HTML as <img src="cid:THE_CID">.
+interface InlineImage {
+  cid: string
+  filename: string
+  content: Buffer
+}
+
 function encodeSubject(subject: string): string {
   // RFC 2047 encoded-word so non-ASCII/emoji in Subject renders correctly.
   return `=?UTF-8?B?${Buffer.from(subject, 'utf-8').toString('base64')}?=`
@@ -68,10 +77,14 @@ function buildRawMessage(opts: {
   subject: string
   html: string
   attachments?: Attachment[]
+  inlineImages?: InlineImage[]
 }): string {
-  const { from, to, cc, subject, html, attachments } = opts
-  const hasAttachments = attachments && attachments.length > 0
-  const boundary = `----=_Part_${Date.now()}_${Math.random().toString(36).slice(2)}`
+  const { from, to, cc, subject, html, attachments, inlineImages } = opts
+  const hasAttachments = !!(attachments && attachments.length > 0)
+  const hasInline = !!(inlineImages && inlineImages.length > 0)
+  const uid = `${Date.now()}_${Math.random().toString(36).slice(2)}`
+  const relBoundary = `----=_Rel_${uid}`
+  const mixBoundary = `----=_Mix_${uid}`
 
   const headers = [
     `From: ${from}`,
@@ -88,29 +101,64 @@ function buildRawMessage(opts: {
     chunkBase64(Buffer.from(html, 'utf-8').toString('base64')),
   ].join('\r\n')
 
+  const inlinePart = (img: InlineImage) => {
+    const safeName = img.filename.replace(/"/g, '')
+    return [
+      `Content-Type: ${guessMimeType(img.filename)}; name="${safeName}"`,
+      'Content-Transfer-Encoding: base64',
+      `Content-ID: <${img.cid}>`,
+      `Content-Disposition: inline; filename="${safeName}"`,
+      '',
+      chunkBase64(img.content.toString('base64')),
+    ].join('\r\n')
+  }
+
+  const attachmentPart = (att: Attachment) => {
+    const safeName = att.filename.replace(/"/g, '')
+    return [
+      `Content-Type: ${guessMimeType(att.filename)}; name="${safeName}"`,
+      `Content-Disposition: attachment; filename="${safeName}"`,
+      'Content-Transfer-Encoding: base64',
+      '',
+      chunkBase64(att.content.toString('base64')),
+    ].join('\r\n')
+  }
+
+  // The HTML (optionally wrapped with its inline images in a multipart/related)
+  // forms the "primary" body; attachments, if any, wrap everything in a
+  // multipart/mixed. Four shapes: html | related | mixed[html] | mixed[related].
+  const relatedBlock = () => {
+    const parts = [`--${relBoundary}`, htmlPart]
+    for (const img of inlineImages!) parts.push(`--${relBoundary}`, inlinePart(img))
+    parts.push(`--${relBoundary}--`)
+    return parts.join('\r\n')
+  }
+
   let body: string
-  if (!hasAttachments) {
+  if (!hasInline && !hasAttachments) {
     headers.push('Content-Type: text/html; charset=utf-8')
     headers.push('Content-Transfer-Encoding: base64')
     body = chunkBase64(Buffer.from(html, 'utf-8').toString('base64'))
+  } else if (hasInline && !hasAttachments) {
+    headers.push(`Content-Type: multipart/related; boundary="${relBoundary}"`)
+    body = relatedBlock()
+  } else if (!hasInline && hasAttachments) {
+    headers.push(`Content-Type: multipart/mixed; boundary="${mixBoundary}"`)
+    const parts: string[] = [`--${mixBoundary}`, htmlPart]
+    for (const att of attachments!) parts.push(`--${mixBoundary}`, attachmentPart(att))
+    parts.push(`--${mixBoundary}--`)
+    body = parts.join('\r\n')
   } else {
-    headers.push(`Content-Type: multipart/mixed; boundary="${boundary}"`)
-    const parts: string[] = [`--${boundary}`, htmlPart]
-    for (const att of attachments!) {
-      const safeName = att.filename.replace(/"/g, '')
-      const mime = guessMimeType(att.filename)
-      parts.push(`--${boundary}`)
-      parts.push(
-        [
-          `Content-Type: ${mime}; name="${safeName}"`,
-          `Content-Disposition: attachment; filename="${safeName}"`,
-          'Content-Transfer-Encoding: base64',
-          '',
-          chunkBase64(att.content.toString('base64')),
-        ].join('\r\n'),
-      )
-    }
-    parts.push(`--${boundary}--`)
+    // Both inline images AND attachments: mixed[ related[html, inline...], att... ]
+    headers.push(`Content-Type: multipart/mixed; boundary="${mixBoundary}"`)
+    const relWrapper = [
+      `Content-Type: multipart/related; boundary="${relBoundary}"`,
+      '',
+      relatedBlock(),
+    ].join('\r\n')
+    const parts: string[] = [`--${mixBoundary}`, relWrapper]
+    for (const att of attachments!) parts.push(`--${mixBoundary}`, attachmentPart(att))
+    parts.push(`--${mixBoundary}--`)
     body = parts.join('\r\n')
   }
 
@@ -124,12 +172,14 @@ export async function sendEmail({
   subject,
   html,
   attachments,
+  inlineImages,
 }: {
   to: string
   cc?: string | string[]
   subject: string
   html: string
   attachments?: Attachment[]
+  inlineImages?: InlineImage[]
 }) {
   const ccList = !cc ? undefined : Array.isArray(cc) ? cc : [cc]
   const raw = buildRawMessage({
@@ -139,6 +189,7 @@ export async function sendEmail({
     subject,
     html,
     attachments,
+    inlineImages,
   })
 
   try {

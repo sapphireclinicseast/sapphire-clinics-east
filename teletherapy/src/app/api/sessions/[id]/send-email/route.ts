@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
+import { loadEmailLogo, emailHeader } from '@/lib/email-branding'
 import { readFile } from 'fs/promises'
 
 function escapeHtml(str: string): string {
@@ -298,12 +299,11 @@ export async function POST(
       <p style="font-size: 13px; color: #244952;">${emailAttachments.length} file(s) attached to this email.</p>
     ` : ''
 
+    const logo = await loadEmailLogo()
+
     const html = `
       <div style="font-family: 'Montserrat', 'Arimo', Verdana, sans-serif; max-width: 600px; margin: 0 auto; color: #244952;">
-        <div style="background: linear-gradient(135deg, #244952, #4a8073); padding: 24px; border-radius: 12px 12px 0 0;">
-          <h1 style="color: white; margin: 0; font-size: 20px;">Session Notes</h1>
-          <p style="color: rgba(255,255,255,0.7); margin: 4px 0 0; font-size: 14px;">Sapphire Clinics East, Inc.</p>
-        </div>
+        ${emailHeader('Session Notes', 'Sapphire Clinics East, Inc.', !!logo)}
         <div style="background: white; padding: 24px; border: 1px solid #d9e3c6; border-top: none; border-radius: 0 0 12px 12px;">
           <p>Dear <strong>${escapeHtml(patientName)}</strong>,</p>
           <p>Here are the notes from your session:</p>
@@ -330,6 +330,7 @@ export async function POST(
       subject: `Session Notes - ${sessionDate}`,
       html,
       attachments: emailAttachments,
+      inlineImages: logo ? [logo] : undefined,
     })
 
     await prisma.sessionNote.update({
