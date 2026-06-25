@@ -93,7 +93,8 @@ ${opts.meetLink ? `              <tr style="background:#EFF6FF;"><td style="padd
             <p style="margin:0 0 4px;">Best regards,</p>
             <p style="margin:0 0 2px;font-weight:bold;">${cfg.teamName}</p>
             <p style="margin:0 0 2px;">${cfg.phone}</p>
-            <p style="margin:0;"><a href="mailto:${ccEmail}" style="color:#4a8073;">${ccEmail}</a></p>
+            <p style="margin:0 0 2px;"><a href="mailto:${ccEmail}" style="color:#4a8073;">${ccEmail}</a></p>
+            <p style="margin:0;"><a href="https://www.sapphireclinicseast.org" style="color:#4a8073;">www.sapphireclinicseast.org</a></p>
           </td>
         </tr>
         <!-- Footer -->
@@ -153,6 +154,7 @@ function buildEmailPlainText(opts: {
     cfg.teamName,
     cfg.phone,
     ccEmail,
+    'www.sapphireclinicseast.org',
   ].join('\n')
 }
 
