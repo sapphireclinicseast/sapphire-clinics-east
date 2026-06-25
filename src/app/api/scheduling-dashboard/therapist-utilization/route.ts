@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
   if (branch && branch !== 'all') configWhere.branch = branch
   if (department && department !== 'all') configWhere.department = department
   if (staffId) configWhere.staffId = staffId
+  configWhere.staff = { active: true }
 
   const configs = await prisma.deckingTherapistConfig.findMany({
     where: configWhere,
