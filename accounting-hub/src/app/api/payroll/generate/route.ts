@@ -296,17 +296,32 @@ export async function GET(req: Request) {
       // quantity=2 counts as 2 sessions, not 1 — matches how therapists
       // actually deliver care. Only unit-pay-eligible items are counted so
       // that product add-ons don't inflate a therapist's session total.
-      const sessionsByDay = new Map<string, number>()
+      //
+      // A 2-hour session ("... (2 HOURS)") occupies two session slots, so it
+      // counts as 2 toward the daily minimum (and in the displayed count).
+      // This weighting affects ONLY threshold qualification + the shown
+      // count — the bonus payout (below) stays based on the raw session
+      // count so the 2-hour rule never changes a peso amount.
+      const TWO_HOUR_RE = /\b2[\s-]*H(?:OU)?RS?\b/i
+      const sessionsByDay = new Map<string, number>()    // weighted: 2-hour = 2
+      const rawSessionsByDay = new Map<string, number>() // unweighted: for bonus payout
       for (const order of consultantOrders) {
         const dayKey = new Date(order.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }) // YYYY-MM-DD
         let sessions = 0
+        let rawSessions = 0
         for (const item of order.items) {
           if (!item.service?.unitPayId) continue
           if (item.service.unitPayEnabled === false) continue
-          sessions += Number(item.quantity) || 1
+          const qty = Number(item.quantity) || 1
+          rawSessions += qty
+          const serviceName = item.service?.name || item.name || ''
+          sessions += TWO_HOUR_RE.test(serviceName) ? qty * 2 : qty
         }
         if (sessions > 0) {
           sessionsByDay.set(dayKey, (sessionsByDay.get(dayKey) || 0) + sessions)
+        }
+        if (rawSessions > 0) {
+          rawSessionsByDay.set(dayKey, (rawSessionsByDay.get(dayKey) || 0) + rawSessions)
         }
       }
 
@@ -324,13 +339,17 @@ export async function GET(req: Request) {
 
         for (const [dayKey, count] of sessionsByDay) {
           if (count >= rule.threshold) {
+            // `count` is weighted (2-hour = 2) and decides qualification +
+            // the shown count; the bonus uses the raw session count so the
+            // 2-hour weighting only counts toward the 7, never the payout.
+            const rawCount = rawSessionsByDay.get(dayKey) || count
             incentiveLines.push({
               ruleId: rule.id,
               ruleName: rule.name,
               date: dayKey,
               patientCount: count, // field kept for backward-compat; semantically = session count
               bonusPerUnit: Number(rule.bonusPerUnit),
-              bonus: Number(rule.bonusPerUnit) * count,
+              bonus: Number(rule.bonusPerUnit) * rawCount,
             })
           }
         }
