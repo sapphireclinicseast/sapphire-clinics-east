@@ -4,7 +4,7 @@ import type { NextRequest } from 'next/server'
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  const publicPaths = ['/login', '/forgot-password', '/reset-password', '/api/', '/capture']
+  const publicPaths = ['/login', '/forgot-password', '/reset-password', '/api/', '/capture', '/brand/']
   const isPublic = publicPaths.some((p) => pathname.startsWith(p))
 
   if (isPublic) return NextResponse.next()
