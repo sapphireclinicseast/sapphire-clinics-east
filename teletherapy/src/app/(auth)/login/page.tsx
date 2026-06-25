@@ -71,12 +71,15 @@ function LoginForm() {
         {/* Card */}
         <div className="bg-white rounded-2xl p-10 shadow-[0_20px_60px_rgba(0,0,0,0.3)]">
           {/* Brand family — Sapphire Clinics East · Aura Health Rehab · Verdana */}
+          {/* Marks are normalized to equal content height + uniform padding;
+              the per-logo heights below are optical-balance tweaks so the wide
+              rainbow and the bold V read at the same visual size as the diamond. */}
           <div className="flex items-center justify-center gap-4 pb-6 mb-7 border-b border-[var(--light-gray)]">
-            <img src="/brand/scei-mark.png" alt="Sapphire Clinics East" className="h-9 w-auto" />
+            <img src="/brand/scei-mark.png" alt="Sapphire Clinics East" className="h-[38px] w-auto" />
             <span className="w-px h-7 bg-[var(--light-gray)]" />
-            <img src="/brand/aura-mark.png" alt="Aura Health Rehab" className="h-8 w-auto" />
+            <img src="/brand/aura-mark.png" alt="Aura Health Rehab" className="h-[28px] w-auto" />
             <span className="w-px h-7 bg-[var(--light-gray)]" />
-            <img src="/brand/verdana-mark.png" alt="Verdana Rehab Solutions" className="h-9 w-auto" />
+            <img src="/brand/verdana-mark.png" alt="Verdana Rehab Solutions" className="h-[32px] w-auto" />
           </div>
           {/* Header */}
           <div className="text-center mb-8">
