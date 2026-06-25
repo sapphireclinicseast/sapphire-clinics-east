@@ -101,9 +101,9 @@ export async function POST(req: NextRequest) {
   if (!patient.email) return NextResponse.json({ error: 'Patient has no email address on file' }, { status: 422 })
 
   const clinicName =
-    branch === 'SBEA' ? 'Sandbox Clinic East'
-    : branch === 'SBGH' ? 'Sandbox Clinic Greenhills'
-    : 'Sandbox Clinic'
+    branch === 'SBEA' ? 'Aura Health Rehab East'
+    : branch === 'SBGH' ? 'Aura Health Rehab Greenhills'
+    : 'Aura Health Rehab'
 
   // Resolve Gmail credentials
   let refreshToken: string | null = null
