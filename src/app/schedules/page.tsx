@@ -34,28 +34,33 @@ export default async function SchedulesGatePage({
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '55vh' }}>
       <div style={{
-        width: '100%', maxWidth: '380px',
-        border: '1px solid #f0e8e2',
+        width: '100%', maxWidth: '400px',
         borderRadius: '16px',
         overflow: 'hidden',
-        boxShadow: '0 4px 24px rgba(237,104,35,0.10)',
+        boxShadow: '0 4px 32px rgba(36,73,82,0.10), 0 1px 4px rgba(0,0,0,0.04)',
+        background: '#fff',
+        border: '1px solid var(--light-gray)',
       }}>
-        {/* Orange accent bar */}
-        <div style={{ height: '6px', background: 'linear-gradient(90deg,#ED6823,#FFA235)' }} />
+        {/* Aura accent bar */}
+        <div style={{ height: '4px', background: 'linear-gradient(90deg, #244952, #4a8073)' }} />
 
-        <div style={{ padding: '32px 28px 28px' }}>
-          <h1 style={{ fontSize: '20px', fontWeight: 700, color: '#000', margin: '0 0 4px' }}>
+        <div style={{ padding: '36px 32px 32px' }}>
+          <h1 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--charcoal)', margin: '0 0 4px', fontFamily: 'var(--font-display)' }}>
             Schedule Access
           </h1>
-          <p style={{ fontSize: '13px', color: '#777', margin: '0 0 24px' }}>
+          <p style={{ fontSize: '13px', color: 'var(--mid-gray)', margin: '0 0 28px', fontFamily: 'var(--font-body)' }}>
             Enter the access code to view clinic schedules.
           </p>
 
           <form action={verifyCode}>
             <input type="hidden" name="next" value={next} />
 
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#555', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{
+                display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--mid-gray)',
+                marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.08em',
+                fontFamily: 'var(--font-body)',
+              }}>
                 Access Code
               </label>
               <input
@@ -66,14 +71,16 @@ export default async function SchedulesGatePage({
                 placeholder="Enter code"
                 style={{
                   width: '100%', boxSizing: 'border-box',
-                  padding: '10px 14px', fontSize: '15px',
-                  border: hasError ? '1.5px solid #dc2626' : '1.5px solid #e5e7eb',
-                  borderRadius: '8px', outline: 'none',
-                  color: '#111', background: '#fff',
+                  padding: '11px 16px', fontSize: '15px',
+                  border: hasError ? '1.5px solid var(--destructive)' : '1.5px solid var(--input)',
+                  borderRadius: '10px', outline: 'none',
+                  color: 'var(--charcoal)', background: '#fff',
+                  fontFamily: 'var(--font-body)',
+                  transition: 'border-color 0.2s, box-shadow 0.2s',
                 }}
               />
               {hasError && (
-                <p style={{ fontSize: '12px', color: '#dc2626', margin: '6px 0 0' }}>
+                <p style={{ fontSize: '12px', color: 'var(--destructive)', margin: '8px 0 0', fontFamily: 'var(--font-body)' }}>
                   Incorrect code. Please try again.
                 </p>
               )}
@@ -82,11 +89,14 @@ export default async function SchedulesGatePage({
             <button
               type="submit"
               style={{
-                width: '100%', padding: '11px',
-                background: '#ED6823', color: '#fff',
+                width: '100%', padding: '12px',
+                background: '#244952', color: '#fff',
                 fontWeight: 700, fontSize: '14px',
-                border: 'none', borderRadius: '8px',
-                cursor: 'pointer', letterSpacing: '0.02em',
+                border: 'none', borderRadius: '10px',
+                cursor: 'pointer', letterSpacing: '0.03em',
+                fontFamily: 'var(--font-display)',
+                transition: 'background 0.2s, transform 0.1s',
+                boxShadow: '0 2px 8px rgba(36,73,82,0.2)',
               }}
             >
               Continue

@@ -1,4 +1,13 @@
+import type { Metadata } from 'next'
 import Image from 'next/image'
+
+export const metadata: Metadata = {
+  title: 'SAPPHIRE Schedule Hub — Sapphire Clinics East',
+  openGraph: {
+    title: 'SAPPHIRE Schedule Hub',
+    siteName: 'SAPPHIRE Schedule Hub',
+  },
+}
 
 export default function SchedulesLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -14,15 +23,16 @@ export default function SchedulesLayout({ children }: { children: React.ReactNod
       `}</style>
 
       {/* Header */}
-      <header style={{ background: '#fff', borderBottom: '3px solid #ED6823', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
+      <header style={{ background: '#fff', borderBottom: '3px solid #244952', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
         <div className="sched-header-inner" style={{ maxWidth: '1100px', margin: '0 auto' }}>
           <Image
-            src="/sandbox-clinic-logo.png"
-            alt="Sandbox Clinic"
+            src="/aura-health-logo.png"
+            alt="Aura Health Rehab"
             width={180}
-            height={48}
-            style={{ height: '44px', width: 'auto', objectFit: 'contain' }}
+            height={101}
+            style={{ height: '56px', width: 'auto', objectFit: 'contain' }}
             priority
+            unoptimized
           />
         </div>
       </header>
