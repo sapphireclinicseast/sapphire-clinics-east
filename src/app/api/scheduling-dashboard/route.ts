@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Branch + department filtering via staff relation
-  const staffWhere: Record<string, unknown> = {}
+  const staffWhere: Record<string, unknown> = { active: true }
   if (branch && branch !== 'all') {
     staffWhere.branch = branch
   }
