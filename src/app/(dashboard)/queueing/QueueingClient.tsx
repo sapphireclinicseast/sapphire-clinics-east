@@ -746,6 +746,13 @@ const BRANCH_TV_COLORS: Record<string, { bg: string; color: string }> = {
   SBEA: { bg: '#CCFBF1', color: '#0F766E' },
   SBGH: { bg: '#DBEAFE', color: '#1D4ED8' },
 }
+// Public TV-display URL slug per branch — Aura Health Rehab branded
+// (the SBEA/SBGH enum keys stay internal; legacy /sbea·/sbgh still resolve).
+const BRANCH_TV_SLUGS: Record<string, string> = {
+  SBEA: 'ahea',
+  SBGH: 'ahgh',
+}
+const tvSlug = (b: string) => BRANCH_TV_SLUGS[b] ?? b.toLowerCase()
 
 export default function QueueingClient({ role }: { role: string }) {
   const branches = visibleBranches(role)
@@ -813,7 +820,7 @@ export default function QueueingClient({ role }: { role: string }) {
 
   useEffect(() => { loadQueue() }, [loadQueue])
 
-  const queueUrl = `https://queue.sapphireclinicseast.org/${activeBranch.toLowerCase()}`
+  const queueUrl = `https://queue.sapphireclinicseast.org/${tvSlug(activeBranch)}`
 
   return (
     <div className="space-y-5">
@@ -832,7 +839,7 @@ export default function QueueingClient({ role }: { role: string }) {
         </div>
         {/* TV Display — single branch: direct link; multi-branch: dropdown */}
         {branches.length === 1 ? (
-          <a href={`https://queue.sapphireclinicseast.org/${branches[0].toLowerCase()}`}
+          <a href={`https://queue.sapphireclinicseast.org/${tvSlug(branches[0])}`}
             target="_blank" rel="noreferrer"
             className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold"
             style={{ background: 'var(--teal)', color: '#fff', textDecoration: 'none' }}>
@@ -864,7 +871,7 @@ export default function QueueingClient({ role }: { role: string }) {
                   const col = BRANCH_TV_COLORS[b] ?? { bg: '#F3F4F6', color: '#374151' }
                   return (
                     <a key={b}
-                      href={`https://queue.sapphireclinicseast.org/${b.toLowerCase()}`}
+                      href={`https://queue.sapphireclinicseast.org/${tvSlug(b)}`}
                       target="_blank" rel="noreferrer"
                       onClick={() => setShowTvMenu(false)}
                       className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
@@ -883,7 +890,7 @@ export default function QueueingClient({ role }: { role: string }) {
                           {BRANCH_TV_LABELS[b] ?? b}
                         </p>
                         <p style={{ fontSize: '0.68rem', color: 'var(--mid-gray)', marginTop: '0.15rem' }}>
-                          queue.sapphireclinicseast.org/{b.toLowerCase()}
+                          queue.sapphireclinicseast.org/{tvSlug(b)}
                         </p>
                       </div>
                       <ExternalLink size={11} style={{ color: 'var(--mid-gray)', flexShrink: 0 }} />
