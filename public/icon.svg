@@ -1,15 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <!-- Aura Health Rehab rainbow mark — favicon -->
-  <!-- Outer ring: Deep forest teal -->
-  <path d="M 2 46 A 30 30 0 0 1 62 46 Z" fill="#2F6B57"/>
-  <!-- Gap -->
-  <path d="M 6.5 46 A 25.5 25.5 0 0 1 57.5 46 Z" fill="#FFFFFF"/>
-  <!-- Middle ring: Sage green -->
-  <path d="M 10 46 A 22 22 0 0 1 54 46 Z" fill="#7FAA68"/>
-  <!-- Gap -->
-  <path d="M 14.5 46 A 17.5 17.5 0 0 1 49.5 46 Z" fill="#FFFFFF"/>
-  <!-- Inner ring: Steel blue-gray -->
-  <path d="M 18 46 A 14 14 0 0 1 46 46 Z" fill="#7293A2"/>
-  <!-- Center cutout -->
-  <path d="M 25 46 A 7 7 0 0 1 39 46 Z" fill="#FFFFFF"/>
+  <!-- Aura Health Rehab rainbow mark — official palette, side-padded (uncut), transparent gaps -->
+  <!-- Outer band — forest #296354 -->
+  <path d="M 3.85 46 A 28.15 28.15 0 0 1 60.15 46 L 53.26 46 A 21.26 21.26 0 0 0 10.74 46 Z" fill="#296354"/>
+  <!-- Middle band — sage #8EAF74 -->
+  <path d="M 11.98 46 A 20.02 20.02 0 0 1 52.02 46 L 45.20 46 A 13.20 13.20 0 0 0 18.80 46 Z" fill="#8EAF74"/>
+  <!-- Inner band — steel #6E8E8E -->
+  <path d="M 20.12 46 A 11.88 11.88 0 0 1 43.88 46 L 36.99 46 A 4.99 4.99 0 0 0 27.01 46 Z" fill="#6E8E8E"/>
 </svg>
