@@ -543,7 +543,7 @@ function AdsManager({ role }: { role: string }) {
             Video (.mp4, .webm, .mov) or Image (.jpg, .png, .gif, .webp) — max 200 MB
           </p>
           <p className="text-xs mt-1 font-medium" style={{ color: 'var(--teal)' }}>
-            📐 Optimal for TV display: <strong>1152 × 975 px</strong> (matches 60% panel on 1080p TV) — or <strong>1080 × 920 px</strong> minimum. Avoid portrait 9:16 (heavy cropping).
+            📐 Optimal for TV display: <strong>1152 × 960 px</strong> (matches 60% panel on 1080p TV) — or <strong>1080 × 900 px</strong> minimum. Avoid portrait 9:16 (heavy cropping).
           </p>
         </div>
         {/* Branch selector */}
