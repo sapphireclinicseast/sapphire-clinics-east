@@ -79,7 +79,14 @@ ${opts.meetLink ? `              <tr style="background:#EFF6FF;"><td style="padd
             <ol style="margin:0 0 24px;padding-left:20px;line-height:1.7;">
               <li><strong>Arrival:</strong> Please arrive at least 10 minutes before your scheduled appointment to allow time for check-in and any necessary paperwork.</li>
               <li><strong>What to Bring:</strong> Kindly bring a valid ID, senior citizen or PWD ID (if applicable), and any relevant medical documents.</li>
-              <li><strong>Cancellation/Rescheduling:</strong> To avoid a cancellation fee, please inform us by <strong>5:00 PM the day before</strong> your appointment. Your first 2 cancellations every 6 months are free (warning only); from the 3rd onward, a fee applies: <em>Standard</em> (before 5:00 PM the prior day) — standard fee; <em>Late</em> (after 5:00 PM the prior day) — late fee; <em>No-show</em> — fee charged from deposit. Please use official channels only: call ${phone1}, message us on Facebook, or email <a href="mailto:${ccEmail}" style="color:#4a8073;">${ccEmail}</a>, and confirm your message was acknowledged.</li>
+              <li><strong>Cancellation/Rescheduling:</strong> Please inform us by <strong>5:00 PM the day before</strong> your appointment should you wish to cancel or reschedule. Your first 2 cancellations every 6 months are free (warning only); from the 3rd onward, a fee applies.
+                <ul style="margin:6px 0 6px;padding-left:18px;line-height:1.8;">
+                  <li>Inform the front desk <em>before</em> 5:00 PM the prior day — standard cancellation fee applies</li>
+                  <li>Inform the front desk <em>after</em> 5:00 PM the prior day — late cancellation fee applies</li>
+                  <li>No-show — fee charged from deposit</li>
+                </ul>
+                Please use official channels only: call ${phone1}, message us on Facebook, or email <a href="mailto:${ccEmail}" style="color:#4a8073;">${ccEmail}</a>, and confirm your message was acknowledged.
+              </li>
             </ol>
             <p style="margin:0 0 8px;font-weight:bold;">Protocols:</p>
             <ol style="margin:0 0 24px;padding-left:20px;line-height:1.7;">
@@ -138,7 +145,11 @@ function buildEmailPlainText(opts: {
     'Important Information:',
     '1. Arrival: Please arrive at least 10 minutes before your scheduled appointment to allow time for check-in and any necessary paperwork.',
     '2. What to Bring: Kindly bring a valid ID, senior citizen or PWD ID (if applicable), and any relevant medical documents.',
-    `3. Cancellation/Rescheduling: To avoid a cancellation fee, please inform us by 5:00 PM the day before your appointment. Your first 2 cancellations every 6 months are free; from the 3rd onward: Standard (before 5:00 PM prior day) — standard fee; Late (after 5:00 PM prior day) — late fee; No-show — fee charged from deposit. Use official channels only: call ${cfg.phone.split('|')[0].trim()}, message us on Facebook, or email ${ccEmail}. Confirm your message was acknowledged.`,
+    `3. Cancellation/Rescheduling: Please inform us by 5:00 PM the day before your appointment should you wish to cancel or reschedule. Your first 2 cancellations every 6 months are free (warning only); from the 3rd onward, a fee applies.`,
+    `   • Inform the front desk before 5:00 PM the prior day — standard cancellation fee applies`,
+    `   • Inform the front desk after 5:00 PM the prior day — late cancellation fee applies`,
+    `   • No-show — fee charged from deposit`,
+    `   Please use official channels only: call ${cfg.phone.split('|')[0].trim()}, message us on Facebook, or email ${ccEmail}. Confirm your message was acknowledged.`,
     '',
     'Protocols:',
     '1. Masks are highly encouraged within the clinic premises.',
