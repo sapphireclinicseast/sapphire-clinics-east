@@ -4,7 +4,7 @@ export default function SchedulesLayout({ children }: { children: React.ReactNod
   return (
     <div style={{
       minHeight: '100vh',
-      background: '#F4ECDD',
+      background: '#edf3d9',
       fontFamily: 'var(--font-manrope), system-ui, -apple-system, sans-serif',
       color: '#1A1A1A',
       overflowX: 'hidden',
@@ -26,17 +26,18 @@ export default function SchedulesLayout({ children }: { children: React.ReactNod
       {/* Header */}
       <header style={{
         background: '#fff',
-        borderBottom: '1px solid #C8D6CF',
-        boxShadow: '0 1px 0 rgba(25,72,80,0.04)',
+        borderBottom: '1px solid #CBDCD5',
+        boxShadow: '0 1px 0 rgba(36,73,82,0.04)',
       }}>
         <div className="sched-header-inner" style={{ maxWidth: '1100px', margin: '0 auto' }}>
           <Image
-            src="/sandbox-clinic-logo.png"
-            alt="Sapphire Clinics East"
+            src="/aura-health-logo.png"
+            alt="Aura Health Rehab"
             width={180}
-            height={48}
-            style={{ height: '44px', width: 'auto', objectFit: 'contain' }}
+            height={101}
+            style={{ height: '56px', width: 'auto', objectFit: 'contain' }}
             priority
+            unoptimized
           />
         </div>
       </header>
@@ -48,7 +49,7 @@ export default function SchedulesLayout({ children }: { children: React.ReactNod
 
       {/* Footer */}
       <footer style={{
-        borderTop: '1px solid #C8D6CF',
+        borderTop: '1px solid #CBDCD5',
         marginTop: '56px',
         padding: '20px 24px',
         textAlign: 'center',

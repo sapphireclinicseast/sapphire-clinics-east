@@ -15,6 +15,17 @@ export function middleware(req: NextRequest) {
 
   // ── schedules.* subdomain → /schedules/* ─────────────────────────────────
   if (host.startsWith('schedules.')) {
+    // Legacy Sandbox branch slugs → Aura slugs. Redirect old shared links
+    // (schedules.*/sbea/… , /sbgh/…) to the new branded URLs instead of 404ing.
+    const LEGACY_SLUGS: Record<string, string> = { sbea: 'ahea', sbgh: 'ahgh' }
+    const legacy = pathname.match(/^\/(sbea|sbgh)(\/.*)?$/i)
+    if (legacy) {
+      const newSlug = LEGACY_SLUGS[legacy[1].toLowerCase()]
+      const url = req.nextUrl.clone()
+      url.pathname = `/${newSlug}${legacy[2] ?? ''}`
+      return NextResponse.redirect(url, 308)
+    }
+
     const internalPath = pathname === '/' ? '/schedules' : `/schedules${pathname}`
 
     // Cookie gate: protect branch/dept pages
