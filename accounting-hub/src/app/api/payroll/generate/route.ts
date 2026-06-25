@@ -123,7 +123,7 @@ export async function GET(req: Request) {
             name: true,
             quantity: true,
             lineTotal: true,
-            service: { select: { id: true, name: true, department: true, unitPayId: true, unitPayEnabled: true } },
+            service: { select: { id: true, name: true, department: true, unitPayId: true, unitPayEnabled: true, thresholdCounted: true, thresholdQty: true } },
           },
         },
       },
@@ -297,24 +297,20 @@ export async function GET(req: Request) {
       // actually deliver care. Only unit-pay-eligible items are counted so
       // that product add-ons don't inflate a therapist's session total.
       //
-      // A "BASIC SESSION (2 HOURS)" occupies two session slots, so it counts
-      // as 2× quantity. Other services — including a 2-hour INITIAL
-      // EVALUATION — count as 1× quantity. This weighted count drives the
-      // daily minimum, the displayed count, AND the bonus, so the payslip's
+      // Only services flagged "Included in patient threshold count" (per-service
+      // toggle on the Services page) are counted, each crediting its configured
+      // thresholdQty (e.g. 2 for a 2-hour session). This weighted count drives
+      // the daily minimum, the displayed count, AND the bonus, so the payslip's
       // Sessions × Rate always equals Total.
-      const isBasicTwoHour = (name: string) => {
-        const n = (name || '').toUpperCase()
-        return n.includes('BASIC') && /\b2[\s-]*H(?:OU)?RS?\b/.test(n)
-      }
       const sessionsByDay = new Map<string, number>()
       for (const order of consultantOrders) {
         const dayKey = new Date(order.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }) // YYYY-MM-DD
         let sessions = 0
         for (const item of order.items) {
-          if (!item.service?.unitPayId) continue
-          if (item.service.unitPayEnabled === false) continue
+          if (!item.service?.thresholdCounted) continue
           const qty = Number(item.quantity) || 1
-          sessions += isBasicTwoHour(item.service?.name || item.name || '') ? qty * 2 : qty
+          const weight = Number(item.service.thresholdQty) || 1
+          sessions += qty * weight
         }
         if (sessions > 0) {
           sessionsByDay.set(dayKey, (sessionsByDay.get(dayKey) || 0) + sessions)

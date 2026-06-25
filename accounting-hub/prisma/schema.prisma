@@ -193,6 +193,8 @@ model Service {
   unitPayId             String?
   unitPay               UnitPay?      @relation(fields: [unitPayId], references: [id], onDelete: SetNull)
   unitPayEnabled        Boolean       @default(true)
+  thresholdCounted      Boolean       @default(false) // include in daily patient-threshold incentive count
+  thresholdQty          Int           @default(1)     // sessions credited per unit (e.g. 2 for a 2-hour session)
   issuedOfficialInvoice Boolean       @default(false)
   isActive              Boolean       @default(true)
   createdById           String

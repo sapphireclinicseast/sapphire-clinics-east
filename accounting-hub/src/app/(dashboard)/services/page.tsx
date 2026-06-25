@@ -37,6 +37,8 @@ interface Service {
   unitPayId?: string | null
   unitPay?: { id: string; name: string } | null
   unitPayEnabled?: boolean
+  thresholdCounted?: boolean
+  thresholdQty?: number
   isActive: boolean
   createdAt: string
   eligibleFor?: { eligibleService: { id: string; name: string; department: string; price: string | number }; discountPercent?: number | string | null }[]
@@ -128,6 +130,8 @@ export default function ServicesPage() {
   const [revenueAccounts, setRevenueAccounts] = useState<RevenueAccount[]>([])
   const [fUnitPayId, setFUnitPayId] = useState('')
   const [fUnitPayEnabled, setFUnitPayEnabled] = useState(true)
+  const [fThresholdCounted, setFThresholdCounted] = useState(false)
+  const [fThresholdQty, setFThresholdQty] = useState('1')
   const [unitPays, setUnitPays] = useState<{ id: string; name: string }[]>([])
   const [fEligibleServices, setFEligibleServices] = useState<{ serviceId: string; discountPercent: number; name?: string; department?: string }[]>([])
   const [eligibleSearch, setEligibleSearch] = useState('')
@@ -227,7 +231,7 @@ export default function ServicesPage() {
     setFName(''); setFDept('PT'); setFBranch('ALL'); setFPrice(''); setFNewPrice(''); setFNewPriceDate(''); setFBranchPrices([])
     setFPriceType('FIXED'); setFRevenueType('EARNED'); setFHasDoctorFee(false); setFDoctorFee('')
     setFClinicFee(''); setFPwdClinicOnly(false); setFNoPwdDiscount(false); setFIssuedOfficialInvoice(false); setFDescription('')
-    setFWalletType(''); setFVipTier(''); setFPackageSessions(''); setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFUnitPayId(''); setFUnitPayEnabled(false); setFEligibleServices([]); setEligibleSearch(''); setEligibleResults([])
+    setFWalletType(''); setFVipTier(''); setFPackageSessions(''); setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFUnitPayId(''); setFUnitPayEnabled(false); setFThresholdCounted(false); setFThresholdQty('1'); setFEligibleServices([]); setEligibleSearch(''); setEligibleResults([])
     setError(''); setModalOpen(true)
   }
 
@@ -251,6 +255,8 @@ export default function ServicesPage() {
     setFRevenueAccountSearch(s.revenueAccount ? `${s.revenueAccount.accountNumber} ${s.revenueAccount.accountTitle}` : '')
     setFUnitPayId(s.unitPayId || '')
     setFUnitPayEnabled(!!s.unitPayId && s.unitPayEnabled !== false)
+    setFThresholdCounted(!!s.thresholdCounted)
+    setFThresholdQty(String(s.thresholdQty ?? 1))
     setFEligibleServices(
       (s.eligibleFor || []).map((e: { eligibleService: { id: string; name: string; department: string }; discountPercent?: number | string | null }) => ({
         serviceId: e.eligibleService.id,
@@ -291,6 +297,8 @@ export default function ServicesPage() {
       revenueAccountId: fRevenueAccountId || null,
       unitPayId: fUnitPayEnabled ? (fUnitPayId || null) : null,
       unitPayEnabled: fUnitPayEnabled,
+      thresholdCounted: fThresholdCounted,
+      thresholdQty: fThresholdCounted ? (parseInt(fThresholdQty) || 1) : 1,
       newPrice: fNewPrice || null,
       newPriceEffectiveDate: fNewPriceDate || null,
       branchPrices: fBranch === 'ALL' ? fBranchPrices.filter(bp => bp.price).map(bp => ({ branch: bp.branch, price: bp.price, newPrice: bp.newPrice || null, newPriceEffectiveDate: bp.newPriceDate || null })) : [],
@@ -1026,6 +1034,30 @@ export default function ServicesPage() {
                   </select>
                 ) : (
                   <p className="text-xs px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>No Unit Pay Card</p>
+                )}
+              </div>
+
+              {/* Daily patient-threshold incentive count */}
+              <div>
+                <label className="flex items-center gap-2 mb-2 cursor-pointer">
+                  <input type="checkbox" checked={fThresholdCounted}
+                    onChange={e => { setFThresholdCounted(e.target.checked); if (!e.target.checked) setFThresholdQty('1') }}
+                    className="rounded" />
+                  <span className="text-xs font-medium" style={{ color: 'var(--charcoal)' }}>
+                    Included in patient threshold count <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(daily min-patients incentive)</span>
+                  </span>
+                </label>
+                {fThresholdCounted ? (
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>Qty for threshold count</label>
+                    <input type="number" min={1} step={1} value={fThresholdQty}
+                      onChange={(e) => setFThresholdQty(e.target.value)}
+                      className="w-20 px-3 py-2 rounded-xl border text-sm outline-none"
+                      style={{ borderColor: 'var(--teal)', background: '#f0fdfa' }} />
+                    <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>session(s) per unit (e.g. 2 for a 2-hour session)</span>
+                  </div>
+                ) : (
+                  <p className="text-xs px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>Not counted toward the daily patient threshold</p>
                 )}
               </div>
 
