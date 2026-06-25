@@ -739,8 +739,8 @@ function AdsManager({ role }: { role: string }) {
 
 // ─── Main QueueingClient ──────────────────────────────────────────────────────
 const BRANCH_TV_LABELS: Record<string, string> = {
-  SBEA: 'East Branch',
-  SBGH: 'Greenhills Branch',
+  SBEA: 'Aura Health - East Branch',
+  SBGH: 'Aura Health - Greenhills Branch',
 }
 const BRANCH_TV_COLORS: Record<string, { bg: string; color: string }> = {
   SBEA: { bg: '#CCFBF1', color: '#0F766E' },
