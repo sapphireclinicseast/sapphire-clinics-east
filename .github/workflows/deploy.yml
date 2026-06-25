@@ -228,6 +228,10 @@ jobs:
               sleep 12
             fi
 
+            echo "→ Ensuring upload subdirs are writable by the nextjs container user (uid 1001)..."
+            mkdir -p /opt/sapphire/uploads/queue-ads
+            chown 1001:1001 /opt/sapphire/uploads/queue-ads
+
             echo "→ Recreating sapphire_app container (--no-deps, skip dep wait)..."
             # --no-deps avoids tearing down or waiting on postgres/redis when only
             # the app changed. If postgres is briefly unhealthy mid-deploy, this
