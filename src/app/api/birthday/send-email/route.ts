@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getGmailClient, getLegacyRefreshToken } from '@/lib/email'
 
-const LOGO_URL = 'https://operations.sapphireclinicseast.org/brand/aura-logo-cream.png'
+const LOGO_URL = 'https://operations.sapphireclinicseast.org/brand/aura-logo-color.png'
 
 function clinicNameForBranch(branch?: string): string {
   if (branch === 'SBEA') return 'Aura Health Rehab East'
@@ -25,22 +25,15 @@ function buildBirthdayEmailHtml(firstName: string, clinicName: string): string {
       <td align="center">
         <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(36,73,82,0.12);">
 
-          <!-- Logo -->
+          <!-- Header: paper background with full-color logo -->
           <tr>
-            <td style="padding:24px 40px 20px;text-align:center;border-bottom:1px solid rgba(74,128,115,0.18);">
-              <img src="${LOGO_URL}" alt="${clinicName}" style="height:52px;max-width:240px;display:inline-block;">
-            </td>
-          </tr>
-
-          <!-- Header -->
-          <tr>
-            <td style="background:linear-gradient(135deg,#4a8073,#244952);padding:36px 40px;text-align:center;">
-              <div style="font-size:52px;margin-bottom:12px;">🎂</div>
-              <h1 style="color:#edf3d9;margin:0;font-size:26px;font-weight:800;letter-spacing:-0.5px;">
+            <td style="background:linear-gradient(160deg,#edf3d9 0%,#d4e8d8 100%);padding:36px 40px 28px;text-align:center;">
+              <img src="${LOGO_URL}" alt="${clinicName}" style="height:130px;max-width:300px;display:inline-block;margin-bottom:20px;">
+              <h1 style="color:#244952;margin:0;font-size:26px;font-weight:800;letter-spacing:-0.5px;">
                 Happy Birthday, ${firstName}!
               </h1>
-              <p style="color:rgba(237,243,217,0.82);margin:8px 0 0;font-size:14px;font-weight:500;">
-                Wishing you a wonderful day! 💚
+              <p style="color:#4a8073;margin:8px 0 0;font-size:14px;font-weight:500;">
+                Wishing you a wonderful day! 🎉
               </p>
             </td>
           </tr>
@@ -53,18 +46,18 @@ function buildBirthdayEmailHtml(firstName: string, clinicName: string): string {
               </p>
               <p style="color:#244952;font-size:15px;line-height:1.8;margin:0 0 20px;">
                 On behalf of everyone at <strong>${clinicName}</strong>, we want to wish you a very
-                <strong style="color:#4a8073;">Happy Birthday!</strong> 🎉
+                <strong style="color:#4a8073;">Happy Birthday!</strong>
               </p>
               <p style="color:#244952;font-size:15px;line-height:1.8;margin:0 0 24px;">
                 We are grateful to have you as part of our clinic family. Your health and well-being
-                mean the world to us — today and every day. May this special day bring you joy,
+                mean the world to us &mdash; today and every day. May this special day bring you joy,
                 laughter, and wonderful memories!
               </p>
 
-              <!-- Birthday card highlight -->
-              <div style="background:#edf3d9;border:2px solid #4a8073;border-radius:12px;padding:22px 24px;text-align:center;margin-bottom:24px;">
-                <p style="color:#cf9d88;font-size:20px;font-weight:800;margin:0 0 8px;">
-                  🌟 You&rsquo;re a star! 🌟
+              <!-- Birthday highlight -->
+              <div style="background:rgba(198,152,73,0.08);border:2px solid #c69849;border-radius:12px;padding:22px 24px;text-align:center;margin-bottom:28px;">
+                <p style="color:#c69849;font-size:20px;font-weight:800;margin:0 0 8px;">
+                  ✨ You&rsquo;re a star! ✨
                 </p>
                 <p style="color:#244952;font-size:14px;margin:0;font-style:italic;">
                   &ldquo;May you continue to shine brightly in everything you do.&rdquo;
@@ -74,19 +67,17 @@ function buildBirthdayEmailHtml(firstName: string, clinicName: string): string {
               <p style="color:#244952;font-size:15px;line-height:1.8;margin:0 0 8px;">
                 With warmest wishes,
               </p>
-              <p style="color:#c69849;font-size:16px;font-weight:700;margin:0;">
-                The ${clinicName} Team 💚
+              <p style="color:#244952;font-size:16px;font-weight:700;margin:0 0 2px;">
+                The ${clinicName} Team
               </p>
+              <p style="margin:0;"><a href="https://www.sapphireclinicseast.org" style="color:#4a8073;font-size:13px;">www.sapphireclinicseast.org</a></p>
             </td>
           </tr>
 
           <!-- Footer -->
           <tr>
-            <td style="background:#edf3d9;border-top:1px solid rgba(74,128,115,0.18);padding:20px 40px;text-align:center;">
-              <p style="color:#4a8073;font-size:12px;margin:0 0 4px;font-weight:600;">
-                ${clinicName}
-              </p>
-              <p style="color:#244952;font-size:11px;margin:0;opacity:0.55;">
+            <td style="background:#244952;border-top:1px solid #193339;padding:16px 40px;text-align:center;">
+              <p style="color:rgba(237,243,217,0.55);font-size:11px;margin:0;">
                 This is an automated birthday greeting. You received this because you are a valued patient.
               </p>
             </td>
@@ -107,7 +98,6 @@ export async function POST(req: NextRequest) {
   const { patientId, branch } = await req.json()
   if (!patientId) return NextResponse.json({ error: 'patientId required' }, { status: 400 })
 
-  // Load patient
   const patient = await prisma.patient.findUnique({
     where: { id: patientId },
     select: { id: true, firstName: true, lastName: true, email: true },
@@ -117,7 +107,6 @@ export async function POST(req: NextRequest) {
 
   const clinicName = clinicNameForBranch(branch)
 
-  // Resolve Gmail credentials
   let refreshToken: string | null = null
   let senderEmail = 'noreply@sapphireclinicseast.org'
 
@@ -133,11 +122,9 @@ export async function POST(req: NextRequest) {
   const html = buildBirthdayEmailHtml(patient.firstName, clinicName)
 
   const subjectText = `Happy Birthday, ${patient.firstName}! — ${clinicName}`
-  // RFC 2047 encoded-word so non-ASCII/emoji in Subject and From display name render correctly
   const encode2047 = (s: string) => `=?UTF-8?B?${Buffer.from(s, 'utf-8').toString('base64')}?=`
   const subjectEncoded = encode2047(subjectText)
   const fromNameEncoded = encode2047(clinicName)
-  // Base64-encode the HTML body to avoid encoding issues with emojis
   const bodyBase64 = Buffer.from(html, 'utf-8').toString('base64')
 
   const rawLines = [
@@ -150,7 +137,6 @@ export async function POST(req: NextRequest) {
     '',
     bodyBase64,
   ]
-  // Email spec requires CRLF line endings
   const raw = Buffer.from(rawLines.join('\r\n')).toString('base64url')
 
   await gmail.users.messages.send({ userId: 'me', requestBody: { raw } })
