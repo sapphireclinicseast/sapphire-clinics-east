@@ -1,8 +1,9 @@
 'use client'
 
 import React from 'react'
-import Image from 'next/image'
+
 import { useEffect, useState } from 'react'
+import Image from 'next/image'
 import DeskShortcutCard from '@/components/DeskShortcutCard'
 
 type BirthdayPatient = { id: string; firstName: string; lastName: string; birthday: string; hasPhone: boolean }
@@ -701,7 +702,7 @@ export default function FrontDeskWelcome({
         width: '100%',
         minHeight: 'calc(100vh - 60px)',
         overflowX: 'hidden',
-        background: 'linear-gradient(155deg, #f4f8ef 0%, #edf3d9 55%, #f4f8ef 100%)',
+        background: 'linear-gradient(155deg, #f4f8f5 0%, #edf3d9 55%, #f4f8f5 100%)',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -818,7 +819,7 @@ export default function FrontDeskWelcome({
         }}>
           {/* Header */}
           <div style={{
-            background: 'linear-gradient(135deg, #4a8073, #244952)',
+            background: 'linear-gradient(135deg, #244952, #4a8073)',
             padding: '0.7rem 1.1rem',
             display: 'flex', alignItems: 'center', gap: '0.5rem',
           }}>
@@ -843,7 +844,7 @@ export default function FrontDeskWelcome({
           <div style={{ padding: '0.65rem 0.875rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             {birthdayPatients.length === 0 ? (
               <p style={{ textAlign: 'center', fontSize: '0.75rem', color: '#AAA', padding: '0.6rem 0', margin: 0 }}>
-                No patient birthdays this week 💚
+                No patient birthdays this week 🌿
               </p>
             ) : (
               birthdayPatients.map(p => {
@@ -859,7 +860,7 @@ export default function FrontDeskWelcome({
                   branch === 'SBEA' ? 'Aura Health East'
                   : branch === 'SBGH' ? 'Aura Health Greenhills'
                   : 'Aura Health Rehab Clinic'
-                const msg = `Happy Birthday, ${p.firstName}! 🎂 Wishing you a wonderful day filled with joy and good health! From all of us at ${clinicName}. 🧡`
+                const msg = `Happy Birthday, ${p.firstName}! 🎂 Wishing you a wonderful day filled with joy and good health! From all of us at ${clinicName}. 💚`
                 const sms = smsState[p.id] ?? 'idle'
                 const email = emailState[p.id] ?? 'idle'
                 const alreadySent = sentEmailIds.has(p.id)
@@ -928,8 +929,8 @@ export default function FrontDeskWelcome({
                 return (
                   <div key={p.id} style={{
                     display: 'flex', alignItems: 'center', gap: '0.65rem',
-                    background: isToday ? '#e8f2ef' : '#FAFAFA',
-                    border: `1px solid ${isToday ? 'rgba(74,128,115,0.45)' : '#dde8e5'}`,
+                    background: isToday ? '#FFF7F0' : '#FAFAFA',
+                    border: `1px solid ${isToday ? '#F5B48A' : '#EDE5D8'}`,
                     borderRadius: '0.6rem',
                     padding: '0.55rem 0.8rem',
                   }}>
@@ -1001,7 +1002,7 @@ export default function FrontDeskWelcome({
           {/* Text prompt hint */}
           {birthdayPatients.length > 0 && (
             <div style={{
-              borderTop: '1px solid rgba(74,128,115,0.18)',
+              borderTop: '1px solid #F0E8DC',
               padding: '0.5rem 0.875rem',
               fontSize: '0.65rem', color: '#AAA', fontStyle: 'italic',
             }}>
@@ -1062,8 +1063,11 @@ export default function FrontDeskWelcome({
             ))}
           </div>
 
-          {/* Progress Reports — wired so Email PR immediately populates Past list */}
-          <ProgressReportsSection />
+          {/* Progress Reports — pending PRs awaiting Paid + Email */}
+          <PendingProgressReports />
+
+          {/* Past Progress Reports — searchable history */}
+          <PastProgressReports />
         </div>
 
       </div>{/* end side-by-side wrapper */}
@@ -1137,7 +1141,7 @@ export default function FrontDeskWelcome({
         {/* Ground line */}
         <div style={{
           position: 'absolute', bottom: '6px', left: 0, right: 0, height: '2px',
-          background: 'linear-gradient(90deg, transparent, rgba(74,128,115,0.18) 20%, rgba(74,128,115,0.18) 80%, transparent)',
+          background: 'linear-gradient(90deg, transparent, rgba(36,73,82,0.15) 20%, rgba(36,73,82,0.15) 80%, transparent)',
         }} />
 
         {/* X movement → flip direction → behavior (bob / jump / hide) */}
@@ -1168,17 +1172,7 @@ interface PRDoc {
   patient: { id: string; firstName: string; lastName: string; email: string | null }
 }
 
-function ProgressReportsSection() {
-  const [pastTick, setPastTick] = React.useState(0)
-  return (
-    <>
-      <PendingProgressReports onEmailSent={() => setPastTick(t => t + 1)} />
-      <PastProgressReports refreshTick={pastTick} />
-    </>
-  )
-}
-
-function PendingProgressReports({ onEmailSent }: { onEmailSent?: () => void }) {
+function PendingProgressReports() {
   const [docs, setDocs] = useState<PRDoc[]>([])
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -1220,7 +1214,6 @@ function PendingProgressReports({ onEmailSent }: { onEmailSent?: () => void }) {
       const r = await fetch(`/api/progress-reports/${d.id}/email`, { method: 'POST' })
       if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Failed') }
       alert('Email sent.')
-      onEmailSent?.()   // tell Past list to refresh
       await load()
     } catch (e) { alert('Error: ' + (e as Error).message) }
     finally { setBusyId(null) }
@@ -1240,24 +1233,20 @@ function PendingProgressReports({ onEmailSent }: { onEmailSent?: () => void }) {
           {docs.map(d => {
             const informed = d.informedFrontDeskAt ? new Date(d.informedFrontDeskAt).toLocaleDateString() : '—'
             return (
-              <div key={d.id} style={{ background: '#fff', border: '1px solid #FED7AA', borderRadius: '0.6rem', padding: '0.6rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {/* ── Top: patient info ── */}
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#7C2D12' }}>
-                    {d.patient.lastName}, {d.patient.firstName}
+              <div key={d.id} style={{ background: '#fff', border: '1px solid #FED7AA', borderRadius: '0.6rem', padding: '0.6rem 0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#7C2D12' }}>
+                      {d.patient.lastName}, {d.patient.firstName}
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: '#9A3412', marginTop: 1 }}>
+                      <a href={`/api/progress-reports/${d.id}/file`} target="_blank" rel="noreferrer" style={{ color: '#C2410C', textDecoration: 'underline' }}>
+                        {d.fileName}
+                      </a>
+                      {' · '}{d.department}
+                      {' · '}<span style={{ background: '#FFEDD5', color: '#9A3412', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.62rem', textTransform: 'uppercase' }}>Informed {informed}</span>
+                    </div>
                   </div>
-                  <div style={{ fontSize: '0.7rem', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    <a href={`/api/progress-reports/${d.id}/file`} target="_blank" rel="noreferrer" title={d.fileName} style={{ color: '#C2410C', textDecoration: 'underline' }}>
-                      {d.fileName}
-                    </a>
-                  </div>
-                  <div style={{ fontSize: '0.7rem', color: '#9A3412', marginTop: 2, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <span>·{d.department}·</span>
-                    <span style={{ background: '#FFEDD5', color: '#9A3412', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.62rem', textTransform: 'uppercase' }}>Informed {informed}</span>
-                  </div>
-                </div>
-                {/* ── Bottom: controls on their own row, never overlapping the filename ── */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', borderTop: '1px solid #FED7AA', paddingTop: '0.4rem' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', fontWeight: 600, color: '#7C2D12', cursor: 'pointer' }}>
                     <input
                       type="checkbox"
@@ -1277,7 +1266,6 @@ function PendingProgressReports({ onEmailSent }: { onEmailSent?: () => void }) {
                       background: d.paid && d.patient.email ? '#059669' : '#E2E8F0',
                       color: d.paid && d.patient.email ? '#fff' : '#94A3B8',
                       fontSize: '0.78rem', fontWeight: 700,
-                      whiteSpace: 'nowrap',
                       cursor: d.paid && d.patient.email && busyId !== d.id ? 'pointer' : 'not-allowed',
                     }}
                   >
@@ -1294,7 +1282,7 @@ function PendingProgressReports({ onEmailSent }: { onEmailSent?: () => void }) {
 }
 
 // ── Past Progress Reports (green — already sent, searchable history) ─────────
-function PastProgressReports({ refreshTick }: { refreshTick?: number }) {
+function PastProgressReports() {
   const [docs, setDocs] = useState<PRDoc[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
@@ -1311,8 +1299,7 @@ function PastProgressReports({ refreshTick }: { refreshTick?: number }) {
     } finally { setLoading(false) }
   }
 
-  // Initial load + re-fetch whenever parent signals a new email was sent
-  React.useEffect(() => { load() }, [refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => { load() }, [])
 
   // Debounced search
   React.useEffect(() => {

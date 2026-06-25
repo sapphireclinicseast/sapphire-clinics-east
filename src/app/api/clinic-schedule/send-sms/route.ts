@@ -79,7 +79,7 @@ function buildMessage(opts: {
     weekday: 'short', month: 'short', day: 'numeric',
   })
   return (
-    `Hi ${opts.patientFirstName}! ${dept} ${opts.sessionType} at Sandbox ${branch} ` +
+    `Hi ${opts.patientFirstName}! ${dept} ${opts.sessionType} at Aura Health ${branch} ` +
     `on ${shortDate}, ${formatTime(opts.startTime)}-${formatTime(opts.endTime)}. ` +
     `Please reply to confirm, thank you.`
   )
