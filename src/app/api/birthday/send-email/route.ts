@@ -78,7 +78,7 @@ function buildBirthdayEmailHtml(firstName: string, clinicName: string): string {
           <tr>
             <td style="background:#244952;border-top:1px solid #193339;padding:16px 40px;text-align:center;">
               <p style="color:rgba(237,243,217,0.55);font-size:11px;margin:0;">
-                This is an automated birthday greeting. You received this because you are a valued patient.
+                You received this because you are a valued patient.
               </p>
             </td>
           </tr>
