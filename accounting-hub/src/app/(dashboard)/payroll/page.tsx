@@ -271,6 +271,15 @@ const BRANCHES = [
   { value: 'VERDANA', label: 'Verdana Store' },
 ]
 
+// Friendly branch labels for read-only displays (codes stay for form values).
+const BRANCH_LABELS: Record<string, string> = {
+  SBEA: 'East Branch',
+  SBGH: 'Greenhills Branch',
+  VERDANA: 'Verdana Store',
+  VERDANA_STORE: 'Verdana Store',
+}
+const branchLabel = (b?: string | null) => (b ? (BRANCH_LABELS[b] || b) : '')
+
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December']
 
@@ -2497,7 +2506,7 @@ export default function PayrollPage() {
                               <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{DEPT_LABELS[e.department] || e.department}</p>
                             </td>
                             <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{getCutoffLabel(e.cutoffPeriod)}</td>
-                            <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{e.branch}</td>
+                            <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{branchLabel(e.branch)}</td>
                             <td className="px-4 py-3 text-right text-xs" style={{ color: 'var(--charcoal)' }}>{formatCurrency(e.grossPay)}</td>
                             <td className="px-4 py-3 text-right font-semibold text-xs" style={{ color: '#c44b00' }}>{formatCurrency(e.taxAmount)}</td>
                             <td className="px-4 py-3 text-center">
@@ -2874,7 +2883,7 @@ export default function PayrollPage() {
                           </td>
                           <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{c.name}</td>
                           <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{DEPT_LABELS[c.department] || c.department}</td>
-                          <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{c.branch}</td>
+                          <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{branchLabel(c.branch)}</td>
                           <td className="px-4 py-3 text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>{c.bioId ?? '—'}</td>
                           <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{c.email || '—'}</td>
                           <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{c.phone || '—'}</td>
@@ -3025,7 +3034,7 @@ export default function PayrollPage() {
                                             <div key={ps.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-white border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
                                               <div className="flex items-center gap-4">
                                                 <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{ps.cutoffPeriod}</span>
-                                                <span style={{ color: 'var(--mid-gray)' }}>{ps.branch}</span>
+                                                <span style={{ color: 'var(--mid-gray)' }}>{branchLabel(ps.branch)}</span>
                                                 <span className="font-mono" style={{ color: 'var(--charcoal)' }}>Net: {formatCurrency(toNum(ps.netPay))}</span>
                                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
                                                   style={ps.status === 'FINAL' ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>
@@ -3150,7 +3159,7 @@ export default function PayrollPage() {
                             </td>
                             <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
                               {rule.departments && rule.departments.length > 0 ? rule.departments.join(', ') : 'All depts'}
-                              {rule.branch ? ` · ${rule.branch}` : ''}
+                              {rule.branch ? ` · ${branchLabel(rule.branch)}` : ''}
                             </td>
                             <td className="px-4 py-3">
                               <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${rule.isActive ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
@@ -3385,7 +3394,7 @@ export default function PayrollPage() {
                       <div className="flex flex-wrap gap-1.5">
                         {rule.consultants.map(c => (
                           <span key={c.id} className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
-                            {c.name} <span className="opacity-60">({c.branch})</span>
+                            {c.name} <span className="opacity-60">({branchLabel(c.branch)})</span>
                           </span>
                         ))}
                       </div>
@@ -3438,7 +3447,7 @@ export default function PayrollPage() {
                                 e.target.checked ? [...prev, c.id] : prev.filter(id => id !== c.id)
                               )} className="rounded" />
                             <span className="text-xs" style={{ color: 'var(--charcoal)' }}>{c.name}</span>
-                            <span className="text-xs opacity-50">({c.branch})</span>
+                            <span className="text-xs opacity-50">({branchLabel(c.branch)})</span>
                           </label>
                         ))}
                       {trUnitPayId && consultants.filter(c => c.isActive && c.unitPayRates.some(r => r.unitPayId === trUnitPayId)).length === 0 && (
@@ -4813,7 +4822,7 @@ export default function PayrollPage() {
                         {p.department && <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{DEPT_LABELS[p.department] || p.department}</p>}
                       </td>
                       <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{getCutoffLabel(p.cutoffPeriod)}</td>
-                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{p.branch}</td>
+                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{branchLabel(p.branch)}</td>
                       <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{p.grossPay != null ? formatCurrency(p.grossPay) : '—'}</td>
                       <td className="px-3 py-2.5 text-right font-mono" style={{ color: '#c44b00' }}>{p.taxAmount != null && p.taxAmount > 0 ? formatCurrency(p.taxAmount) : '—'}</td>
                       <td className="px-3 py-2.5 text-right font-mono font-semibold" style={{ color: 'var(--teal)' }}>{formatCurrency(p.netPay)}</td>
@@ -4861,7 +4870,7 @@ export default function PayrollPage() {
                           {sp.fromAccount.accountNumber} — {sp.fromAccount.accountTitle}
                         </span>
                         <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-                          {sp.cutoffPeriod}{sp.branch ? ` · ${sp.branch}` : ''}
+                          {sp.cutoffPeriod}{sp.branch ? ` · ${branchLabel(sp.branch)}` : ''}
                         </span>
                       </div>
                       <div className="flex items-center gap-3">
@@ -4976,7 +4985,7 @@ export default function PayrollPage() {
                         {p.department && <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{DEPT_LABELS[p.department] || p.department}</p>}
                       </td>
                       <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{getCutoffLabel(p.cutoffPeriod)}</td>
-                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{p.branch}</td>
+                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{branchLabel(p.branch)}</td>
                       <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{p.sssEE > 0 ? formatCurrency(p.sssEE) : '—'}</td>
                       <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{p.sssER > 0 ? formatCurrency(p.sssER) : '—'}</td>
                       <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{p.philEE > 0 ? formatCurrency(p.philEE) : '—'}</td>
