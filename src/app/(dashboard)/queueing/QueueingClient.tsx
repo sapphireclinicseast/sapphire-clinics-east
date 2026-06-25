@@ -410,6 +410,7 @@ function branchBadge(branch: string) {
 function AdsManager({ role }: { role: string }) {
   const [ads, setAds]           = useState<Ad[]>([])
   const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
   const [uploadErr, setUploadErr] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [showLeaderboard, setShowLeaderboard] = useState(false)
@@ -465,18 +466,43 @@ function AdsManager({ role }: { role: string }) {
     setTogglingCf(false)
   }
 
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     setUploadErr('')
     setUploading(true)
+    setUploadProgress(0)
+
     const form = new FormData()
     form.append('file', file)
     form.append('branch', uploadBranch)
-    const res = await fetch('/api/queue-ads', { method: 'POST', body: form })
-    setUploading(false)
-    if (res.ok) { loadAds(); if (fileRef.current) fileRef.current.value = '' }
-    else { const d = await res.json(); setUploadErr(d.error ?? 'Upload failed') }
+
+    const xhr = new XMLHttpRequest()
+    xhr.upload.onprogress = (ev) => {
+      if (ev.lengthComputable) setUploadProgress(Math.round((ev.loaded / ev.total) * 100))
+    }
+    xhr.onload = () => {
+      setUploading(false)
+      setUploadProgress(0)
+      if (xhr.status >= 200 && xhr.status < 300) {
+        loadAds()
+        if (fileRef.current) fileRef.current.value = ''
+      } else {
+        try {
+          const d = JSON.parse(xhr.responseText)
+          setUploadErr(d.error ?? `Upload failed (${xhr.status})`)
+        } catch {
+          setUploadErr(`Upload failed (${xhr.status})`)
+        }
+      }
+    }
+    xhr.onerror = () => {
+      setUploading(false)
+      setUploadProgress(0)
+      setUploadErr('Network error — check your connection and try again')
+    }
+    xhr.open('POST', '/api/queue-ads')
+    xhr.send(form)
   }
 
   async function handleBranchChange(id: string, branch: string) {
@@ -540,7 +566,7 @@ function AdsManager({ role }: { role: string }) {
         </div>
         <label className="cursor-pointer px-4 py-2 rounded-lg text-sm font-medium"
           style={{ background: 'var(--teal)', color: '#fff', opacity: uploading ? 0.6 : 1 }}>
-          {uploading ? 'Uploading…' : 'Choose File'}
+          {uploading ? `Uploading ${uploadProgress}%…` : 'Choose File'}
           <input ref={fileRef} type="file" className="hidden"
             accept="video/mp4,video/webm,video/ogg,video/quicktime,.mp4,.webm,.ogg,.mov,image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp"
             onChange={handleUpload} disabled={uploading} />
