@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { Eye, EyeOff, Lock, Mail, Calculator } from 'lucide-react'
+import { Eye, EyeOff, Lock, Mail } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -93,21 +93,17 @@ export default function LoginPage() {
         className="w-full max-w-md rounded-2xl p-8 shadow-2xl"
         style={{ background: 'white' }}
       >
-        {/* Logo / Header */}
+        {/* Logos / Header */}
         <div className="text-center mb-8">
-          <div
-            className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
-            style={{ background: 'var(--pale-teal)' }}
-          >
-            <Calculator size={32} style={{ color: 'var(--teal)' }} />
+          <div className="flex items-end justify-center gap-5 mb-4">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/login-scei.png" alt="Sapphire Clinics East Inc." className="h-14 w-auto object-contain" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/login-aura.png" alt="Aura Health Rehab" className="h-14 w-auto object-contain" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/login-verdana.png" alt="Verdana Rehab Solutions" className="h-14 w-auto object-contain" />
           </div>
-          <h1
-            className="text-base tracking-widest leading-tight"
-            style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)', fontWeight: 600, letterSpacing: '0.12em' }}
-          >
-            SAPPHIRE CLINICS EAST INC.
-          </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)', fontWeight: 300 }}>
+          <p className="text-sm" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)', fontWeight: 300 }}>
             Accounting Hub
           </p>
         </div>
