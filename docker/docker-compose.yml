@@ -90,6 +90,8 @@ services:
       CLIENT_PORTAL_URL: ${CLIENT_PORTAL_URL:-https://client.sapphireclinicseast.org}
       CLASS_PORTAL_JWT_SECRET: ${CLASS_PORTAL_JWT_SECRET}
       AURORA_ADMIN_TOKEN: ${AURORA_ADMIN_TOKEN}
+      # Auth for the VPS crontab that fires /api/public/class-portal/cron/payment-reminders.
+      CRON_SECRET: ${CRON_SECRET}
     extra_hosts:
       - "host.docker.internal:172.18.0.1"
     volumes:
