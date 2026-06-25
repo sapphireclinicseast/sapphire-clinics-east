@@ -1,4 +1,4 @@
-// Client-side helpers for talking to marketing.sapphireclinicseast.org's
+// Client-side helpers for talking to operations.sapphireclinicseast.org's
 // /api/public/class-portal/* endpoints. Token is stored in localStorage and
 // sent as Bearer on each request.
 
@@ -10,17 +10,19 @@ const IMPERSONATION_TOKEN_KEY = 'scei_class_impersonation_token_v1'
 const IMPERSONATION_META_KEY = 'scei_class_impersonation_meta_v1'
 
 /**
- * Resolve the marketing app's origin. In prod the class-portal is served
- * at class.sapphireclinicseast.org and the marketing app at
- * marketing.sapphireclinicseast.org. In dev we expect the marketing app
- * on http://localhost:3000.
+ * Resolve the backend app's origin. In prod the class-portal is served at
+ * class.sapphireclinicseast.org and the backend at
+ * operations.sapphireclinicseast.org. The legacy marketing.* hostname
+ * now 301-redirects to operations.* for every URI — and browsers refuse
+ * to follow 3xx on CORS preflights, so the URL HAS to be operations.*
+ * directly. In dev we expect the marketing app on http://localhost:3000.
  */
 export function backendOrigin(): string {
   if (typeof window === 'undefined') return ''
   const host = window.location.host
-  if (host.startsWith('class.')) return 'https://marketing.sapphireclinicseast.org'
+  if (host.startsWith('class.')) return 'https://operations.sapphireclinicseast.org'
   if (host.startsWith('localhost') || host.startsWith('127.0.0.1')) return 'http://localhost:3000'
-  return 'https://marketing.sapphireclinicseast.org'
+  return 'https://operations.sapphireclinicseast.org'
 }
 
 export function getToken(): string | null {
