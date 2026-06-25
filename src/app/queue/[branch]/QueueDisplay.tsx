@@ -684,7 +684,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                 <img
                   src={`/api/queue-ads/stream/${currentAd.id}`}
                   alt="Clinic ad"
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
                 />
               ) : null}
             </div>
