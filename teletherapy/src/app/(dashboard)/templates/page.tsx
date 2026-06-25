@@ -17,7 +17,6 @@ import {
   PinOff,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import BranchSwitcher, { useBranchSwitcher } from '@/components/BranchSwitcher'
 
 interface Template {
   id: string
@@ -64,7 +63,6 @@ export default function TemplatesPage() {
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
-  const { branches, isMultiBranch, activeStaffId, switchBranch } = useBranchSwitcher()
 
   useEffect(() => { fetchTemplates() }, [])
 
@@ -191,11 +189,6 @@ export default function TemplatesPage() {
 
   return (
     <div className="max-w-5xl mx-auto">
-      {isMultiBranch && (
-        <div className="mb-4 animate-fade-up">
-          <BranchSwitcher branches={branches} activeStaffId={activeStaffId} onSwitch={switchBranch} />
-        </div>
-      )}
 
       {/* Hero */}
       <div className="hero-gradient rounded-2xl px-8 py-8 mb-6 animate-fade-up">

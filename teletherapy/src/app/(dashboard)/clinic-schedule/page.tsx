@@ -20,7 +20,7 @@ import {
   User as UserIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import BranchSwitcher, { useBranchSwitcher } from '@/components/BranchSwitcher'
+import { useBranchSwitcher } from '@/components/BranchSwitcher'
 
 type ViewMode = 'day' | 'week' | 'month'
 
@@ -117,7 +117,7 @@ export default function ClinicSchedulePage() {
   const [loading, setLoading] = useState(true)
   const [profilePatient, setProfilePatient] = useState<PatientInfo | null>(null)
   const [moreDay, setMoreDay] = useState<string | null>(null)
-  const { branches, isMultiBranch, activeStaffId, switchBranch } = useBranchSwitcher()
+  const { isMultiBranch, activeStaffId } = useBranchSwitcher()
 
   const range = useMemo(() => {
     if (view === 'day') return { start: anchor, end: anchor }
@@ -185,12 +185,6 @@ export default function ClinicSchedulePage() {
 
   return (
     <div className="max-w-6xl mx-auto">
-      {/* Branch switcher for interbranch clinicians */}
-      {isMultiBranch && (
-        <div className="mb-4 animate-fade-up">
-          <BranchSwitcher branches={branches} activeStaffId={activeStaffId} onSwitch={switchBranch} />
-        </div>
-      )}
 
       {/* Hero */}
       <div className="hero-gradient rounded-2xl px-8 py-8 mb-6 animate-fade-up">

@@ -28,11 +28,15 @@ import {
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { allowedSections } from '@/lib/section-access'
+import BranchSwitcher, { BranchProvider, useBranchSwitcher } from '@/components/BranchSwitcher'
 
 function DashboardContent({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession()
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  // Shared branch toggle: shown in the top bar for any multi-branch staff
+  // (e.g. someone working at both East and Greenhills on one login).
+  const { isMultiBranch } = useBranchSwitcher()
 
   // User-card display, with robust fallbacks so it never renders a bare "?".
   const fullName = session?.user?.name?.trim()
@@ -186,20 +190,31 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Top bar (mobile) */}
-        <header className="lg:hidden flex items-center gap-3 px-4 py-3.5 bg-white border-b border-[var(--light-gray)]">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="text-[var(--charcoal)] hover:text-[var(--teal)] transition-colors"
-          >
-            <Menu size={22} />
-          </button>
-          <div className="flex items-center gap-2">
-            <Video size={18} className="text-[var(--teal)]" />
-            <h1 className="font-bold text-[15px] text-[var(--charcoal)]" style={{ fontFamily: 'var(--font-display)' }}>
-              SCEI Staff Portal
-            </h1>
+        {/* Top bar: mobile menu/brand on the left (mobile only) + the branch
+            toggle on the right. On desktop the bar is hidden unless there's a
+            toggle to show (multi-branch staff), so single-branch users keep the
+            clean header-less look. */}
+        <header
+          className={cn(
+            'flex items-center justify-between gap-3 px-4 lg:px-8 py-3 bg-white border-b border-[var(--light-gray)]',
+            !isMultiBranch && 'lg:hidden'
+          )}
+        >
+          <div className="flex items-center gap-3 lg:hidden">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="text-[var(--charcoal)] hover:text-[var(--teal)] transition-colors"
+            >
+              <Menu size={22} />
+            </button>
+            <div className="flex items-center gap-2">
+              <Video size={18} className="text-[var(--teal)]" />
+              <h1 className="font-bold text-[15px] text-[var(--charcoal)]" style={{ fontFamily: 'var(--font-display)' }}>
+                SCEI Staff Portal
+              </h1>
+            </div>
           </div>
+          <BranchSwitcher />
         </header>
 
         {/* Page content */}
@@ -218,7 +233,9 @@ export default function DashboardLayout({
 }) {
   return (
     <SessionProvider>
-      <DashboardContent>{children}</DashboardContent>
+      <BranchProvider>
+        <DashboardContent>{children}</DashboardContent>
+      </BranchProvider>
     </SessionProvider>
   )
 }

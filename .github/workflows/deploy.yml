@@ -132,6 +132,28 @@ jobs:
                echo "✅ SSL cert already exists for accounting."
              fi'
 
+      # ── 6c. Provision SSL for staff subdomain (if needed) ───────
+      # staff.sapphireclinicseast.org is the canonical staff-portal host
+      # (migrated from teletherapy.*). scripts/nginx.conf references this
+      # cert, so it must exist before `nginx -t` runs below.
+      - name: Setup staff SSL
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            'if [ ! -d /etc/letsencrypt/live/staff.sapphireclinicseast.org ]; then
+               echo "→ Provisioning SSL for staff.sapphireclinicseast.org..."
+               certbot certonly --standalone --preferred-challenges http \
+                 -d staff.sapphireclinicseast.org \
+                 --non-interactive --agree-tos \
+                 -m admin@sapphireclinicseast.org \
+                 --pre-hook "systemctl stop nginx" \
+                 --post-hook "systemctl start nginx" \
+                 && echo "✅ SSL cert obtained." \
+                 || echo "⚠ SSL cert failed — will retry next deploy."
+             else
+               echo "✅ SSL cert already exists for staff."
+             fi'
+
       # ── 6. Update Nginx config & reload ─────────────────────────
       - name: Update Nginx config
         run: |
@@ -391,7 +413,7 @@ jobs:
               echo "DATABASE_URL=postgresql://sapphire:${PG_PASS}@${DB_IP}:5432/sapphire_marketing" > .env
               echo "→ DB host: ${DB_IP}"
               grep "^NEXTAUTH_SECRET" "$MENV" >> .env
-              echo "NEXTAUTH_URL=https://teletherapy.sapphireclinicseast.org" >> .env
+              echo "NEXTAUTH_URL=https://staff.sapphireclinicseast.org" >> .env
               echo "AUTH_TRUST_HOST=true" >> .env
               grep "^GOOGLE_CLIENT_ID" "$MENV" >> .env 2>/dev/null || true
               grep "^GOOGLE_CLIENT_SECRET" "$MENV" >> .env 2>/dev/null || true
@@ -405,7 +427,7 @@ jobs:
               grep "^ANTHROPIC_MODEL" "$MENV" >> .env 2>/dev/null || true
             else
               echo "DATABASE_URL=postgresql://sapphire:sapphire@localhost:5433/sapphire_marketing" > .env
-              echo "NEXTAUTH_URL=https://teletherapy.sapphireclinicseast.org" >> .env
+              echo "NEXTAUTH_URL=https://staff.sapphireclinicseast.org" >> .env
               echo "NEXTAUTH_SECRET=$(openssl rand -base64 32)" >> .env
               echo "AUTH_TRUST_HOST=true" >> .env
               echo "UPLOAD_DIR=./uploads" >> .env

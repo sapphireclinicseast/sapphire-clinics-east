@@ -16,7 +16,7 @@ import {
   Stethoscope,
 } from 'lucide-react'
 import { cn, formatTime, formatDate, toDateString } from '@/lib/utils'
-import BranchSwitcher, { useBranchSwitcher } from '@/components/BranchSwitcher'
+import { useBranchSwitcher } from '@/components/BranchSwitcher'
 
 interface SessionItem {
   id: string
@@ -57,7 +57,7 @@ export default function DashboardPage() {
   const [date, setDate] = useState(toDateString(new Date()))
   const [sessions, setSessions] = useState<SessionItem[]>([])
   const [loading, setLoading] = useState(true)
-  const { branches, isMultiBranch, activeStaffId, switchBranch } = useBranchSwitcher()
+  const { isMultiBranch, activeStaffId } = useBranchSwitcher()
 
   // Limited staff accounts (Front Desk / Admin Staff) don't have the clinical
   // dashboard in their preset — send them to their first allowed section.
@@ -99,12 +99,6 @@ export default function DashboardPage() {
   return (
     <div className="max-w-7xl mx-auto lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-6 lg:items-start">
       <div className="min-w-0">
-      {/* Branch switcher for interbranch clinicians */}
-      {isMultiBranch && (
-        <div className="mb-4 animate-fade-up">
-          <BranchSwitcher branches={branches} activeStaffId={activeStaffId} onSwitch={switchBranch} />
-        </div>
-      )}
 
       {/* Hero header — templates pattern */}
       <div className="hero-gradient rounded-2xl px-8 py-8 mb-8 animate-fade-up">

@@ -13,7 +13,7 @@ import {
   X as XIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import BranchSwitcher, { useBranchSwitcher } from '@/components/BranchSwitcher'
+import { useBranchSwitcher } from '@/components/BranchSwitcher'
 
 interface Payslip {
   kind: 'employee' | 'consultant'
@@ -113,7 +113,7 @@ export default function PayrollPage() {
   const [data, setData] = useState<PayrollResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const { branches, isMultiBranch, activeStaffId, activeBranch, switchBranch } = useBranchSwitcher()
+  const { isMultiBranch, activeBranch } = useBranchSwitcher()
 
   useEffect(() => { fetchPayslips() }, [])
 
@@ -151,12 +151,6 @@ export default function PayrollPage() {
 
   return (
     <div className="max-w-5xl mx-auto">
-      {/* Branch switcher for interbranch clinicians */}
-      {isMultiBranch && (
-        <div className="mb-4 animate-fade-up">
-          <BranchSwitcher branches={branches} activeStaffId={activeStaffId} onSwitch={switchBranch} />
-        </div>
-      )}
 
       {/* Hero */}
       <div className="hero-gradient rounded-2xl px-8 py-8 mb-6 animate-fade-up">
