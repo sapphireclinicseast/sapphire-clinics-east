@@ -142,6 +142,7 @@ export async function POST() {
       bankName:       hr.bankName,
       bankAccountNo:  hr.bankAccountNo,
       hrPlatformId:   hr.hrId,
+      active:         true, // present in HR's active feed → (re)activate
     }
 
     try {
@@ -160,18 +161,30 @@ export async function POST() {
     }
   }
 
-  const toDelete = existing.filter(s => !matchedIds.has(s.id))
+  // Staff no longer in HR's active feed (inactive or removed in HR). Try a
+  // hard delete; if they have history (survey/peer-eval/schedule rows with FK
+  // constraints), soft-deactivate instead so they drop out of the Staff Module
+  // and Top 5 while their records are preserved.
+  const toRemove = existing.filter(s => !matchedIds.has(s.id))
   let deleted = 0
-  for (const s of toDelete) {
+  let deactivated = 0
+  for (const s of toRemove) {
     try {
       await prisma.staff.delete({ where: { id: s.id } })
       deleted++
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      errors.push('Delete ' + s.firstName + ' ' + s.lastName + ': ' + msg)
+    } catch {
+      try {
+        if (s.active !== false) {
+          await prisma.staff.update({ where: { id: s.id }, data: { active: false } })
+        }
+        deactivated++
+      } catch (err2) {
+        const msg = err2 instanceof Error ? err2.message : String(err2)
+        errors.push('Deactivate ' + s.firstName + ' ' + s.lastName + ': ' + msg)
+      }
     }
   }
 
-  console.log('[staff-sync] Done:', { created, updated, deleted, nameChanges, errors: errors.length })
-  return NextResponse.json({ synced: created + updated, created, updated, deleted, nameChanges, errors, total: hrStaff.length })
+  console.log('[staff-sync] Done:', { created, updated, deleted, deactivated, nameChanges, errors: errors.length })
+  return NextResponse.json({ synced: created + updated, created, updated, deleted, deactivated, nameChanges, errors, total: hrStaff.length })
 }

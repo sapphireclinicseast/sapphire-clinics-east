@@ -17,7 +17,7 @@ export async function GET() {
   const allowed = allowedBranches(role)
 
   const staff = await prisma.staff.findMany({
-    where:   allowed ? { branch: { in: allowed } } : {},
+    where:   { active: true, ...(allowed ? { branch: { in: allowed } } : {}) },
     orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
   })
   return NextResponse.json(staff)

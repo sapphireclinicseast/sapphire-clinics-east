@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
     where: {
       submittedAt: { gte: yearStart, lt: yearEnd },
       ...branchWhere,
+      staff: { active: true },
     },
     include: {
       staff: { select: { id: true, firstName: true, lastName: true, department: true, branch: true } },

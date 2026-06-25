@@ -109,6 +109,7 @@ export async function GET(req: NextRequest) {
         submittedAt: { gte: yearStart, lt: yearEnd },
         ...branchWhere,
         ...(filterStaff ? { staffId: filterStaff } : {}),
+        staff: { active: true }, // exclude inactive staff from Top 5 / leaderboard
       },
       include: {
         staff: { select: { id: true, firstName: true, lastName: true, department: true, branch: true } },

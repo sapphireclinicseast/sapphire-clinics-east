@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
 
   // Survey responses for this branch this year
   const responses = await prisma.surveyResponse.findMany({
-    where: { submittedAt: { gte: yearStart, lt: yearEnd }, branch },
+    where: { submittedAt: { gte: yearStart, lt: yearEnd }, branch, staff: { active: true } },
     include: {
       staff: { select: { id: true, firstName: true, lastName: true, department: true } },
     },

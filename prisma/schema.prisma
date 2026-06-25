@@ -360,6 +360,7 @@ model Staff {
   bankName        String?         // Bank Name from HR Platform
   bankAccountNo   String?         // Bank Account Number from HR Platform
   hrPlatformId    String?         // ID from HR Platform for sync matching
+  active          Boolean         @default(true) // false = inactive in HR; hidden from Staff Module, Top 5, etc.
   createdById     String?
   createdBy       User?           @relation(fields: [createdById], references: [id])
   createdAt       DateTime        @default(now())
