@@ -14,13 +14,13 @@ export const BRAND = {
   nearBlack: '#0A1012',
 } as const
 
-export type BirthdayTemplateStyle = 'classic' | 'elegant' | 'bold' | 'sandbox' | 'verdana'
+export type BirthdayTemplateStyle = 'classic' | 'elegant' | 'bold' | 'aura' | 'verdana'
 
 export const BIRTHDAY_TEMPLATES: { id: BirthdayTemplateStyle; label: string; description: string }[] = [
   { id: 'classic', label: 'Classic Dark', description: 'Dark teal gradient with gold accents' },
   { id: 'elegant', label: 'Light Elegant', description: 'Clean split layout, white & teal' },
   { id: 'bold', label: 'Bold Teal', description: 'Full teal background, modern layout' },
-  { id: 'sandbox', label: 'Sandbox Brand Guide', description: 'Sandbox Clinic orange brand style' },
+  { id: 'aura', label: 'Aura Brand Guide', description: 'Aura Health green & gold brand style' },
   { id: 'verdana', label: 'Verdana Brand Guide', description: 'Verdana Store green brand style' },
 ]
 
@@ -222,48 +222,47 @@ function birthdayBold(staffName: string, photoUrl: string, greeting: string): st
 </body></html>`
 }
 
-function birthdaySandbox(staffName: string, photoUrl: string, greeting: string): string {
+function birthdayAura(staffName: string, photoUrl: string, greeting: string): string {
   return `<!DOCTYPE html><html><head>
   <meta charset="UTF-8"/>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&family=Open+Sans:wght@400;600&display=swap" rel="stylesheet"/>
   <style>
     *{margin:0;padding:0;box-sizing:border-box;}
     body{width:1080px;height:1350px;overflow:hidden;font-family:'Open Sans',sans-serif;}
-    .card{width:1080px;height:1350px;background:linear-gradient(150deg,#1a0800 0%,#5c1e00 50%,#1a0800 100%);
+    .card{width:1080px;height:1350px;background:linear-gradient(150deg,#0c1a16 0%,#2e5a4b 50%,#0c1a16 100%);
       display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;overflow:hidden;}
-    .glow{position:absolute;inset:0;background:radial-gradient(ellipse 70% 55% at 50% 40%,rgba(244,116,39,0.22) 0%,transparent 70%);pointer-events:none;}
-    .ring-outer{position:absolute;width:600px;height:600px;border-radius:50%;border:1px solid rgba(244,116,39,0.08);top:50%;left:50%;transform:translate(-50%,-58%);}
-    .ring-inner{position:absolute;width:440px;height:440px;border-radius:50%;border:1px solid rgba(244,116,39,0.05);top:50%;left:50%;transform:translate(-50%,-58%);}
+    .glow{position:absolute;inset:0;background:radial-gradient(ellipse 70% 55% at 50% 40%,rgba(111,163,146,0.22) 0%,transparent 70%);pointer-events:none;}
+    .ring-outer{position:absolute;width:600px;height:600px;border-radius:50%;border:1px solid rgba(198,152,73,0.1);top:50%;left:50%;transform:translate(-50%,-58%);}
+    .ring-inner{position:absolute;width:440px;height:440px;border-radius:50%;border:1px solid rgba(198,152,73,0.07);top:50%;left:50%;transform:translate(-50%,-58%);}
     .corner-decor{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;padding:40px;font-size:36px;opacity:0.18;}
     .photo-wrap{position:relative;z-index:2;margin-bottom:32px;}
-    .photo-ring{width:320px;height:320px;border-radius:50%;background:#3a1200;
-      box-shadow:0 0 0 6px #F47427,0 0 0 12px rgba(244,116,39,0.18),0 24px 64px rgba(0,0,0,0.55);overflow:hidden;}
+    .photo-ring{width:320px;height:320px;border-radius:50%;background:#244952;
+      box-shadow:0 0 0 6px #c69849,0 0 0 12px rgba(198,152,73,0.2),0 24px 64px rgba(0,0,0,0.55);overflow:hidden;}
     .photo-ring img{width:100%;height:100%;border-radius:50%;object-fit:cover;}
     .bday-tag{font-family:'Montserrat',sans-serif;font-size:14px;font-weight:700;letter-spacing:0.4em;
-      text-transform:uppercase;color:#F47427;margin-bottom:14px;position:relative;z-index:2;}
+      text-transform:uppercase;color:#c69849;margin-bottom:14px;position:relative;z-index:2;}
     .name{font-family:'Montserrat',sans-serif;font-size:64px;font-weight:900;color:#fff;
       letter-spacing:-0.02em;line-height:1.05;text-align:center;position:relative;z-index:2;margin-bottom:16px;}
-    .divider{width:56px;height:3px;background:#F47427;border-radius:2px;margin:0 auto 18px;position:relative;z-index:2;}
-    .greeting{font-size:19px;color:rgba(255,255,255,0.68);text-align:center;max-width:700px;
+    .divider{width:56px;height:3px;background:#c69849;border-radius:2px;margin:0 auto 18px;position:relative;z-index:2;}
+    .greeting{font-size:19px;color:rgba(255,255,255,0.78);text-align:center;max-width:700px;
       line-height:1.65;position:relative;z-index:2;padding:0 40px;}
     .footer{position:absolute;bottom:0;left:0;right:0;display:flex;align-items:center;justify-content:center;
-      gap:14px;padding:26px;border-top:1px solid rgba(244,116,39,0.15);z-index:2;}
-    .footer-text{font-family:'Montserrat',sans-serif;font-size:13px;font-weight:700;
-      letter-spacing:0.22em;text-transform:uppercase;color:#F47427;}
-    .footer-icon{font-size:22px;}
+      gap:14px;padding:24px;border-top:1px solid rgba(198,152,73,0.2);z-index:2;}
+    .footer-text{font-family:'Montserrat',sans-serif;font-size:14px;font-weight:700;
+      letter-spacing:0.2em;text-transform:uppercase;color:#edf3d9;}
   </style>
 </head><body>
   <div class="card">
     <div class="glow"></div>
     <div class="ring-outer"></div>
     <div class="ring-inner"></div>
-    <div class="corner-decor"><span>🎂</span><span>🎊</span></div>
+    <div class="corner-decor"><span>🎂</span><span>🎉</span></div>
     <div class="photo-wrap"><div class="photo-ring"><img src="${photoUrl}" alt="${staffName}"/></div></div>
     <div class="bday-tag">✨ Happy Birthday ✨</div>
     <div class="name">${staffName}</div>
     <div class="divider"></div>
     <div class="greeting">${greeting}</div>
-    <div class="footer"><span class="footer-icon">🌿</span><span class="footer-text">Sandbox Clinic</span></div>
+    <div class="footer">${LOGO_SVG_WHITE}<span class="footer-text">Aura Health Rehab</span></div>
   </div>
 </body></html>`
 }
@@ -326,7 +325,7 @@ export function generateBirthdayCardHTML(params: {
   const greeting = branchData.greeting
   if (template === 'elegant') return birthdayElegant(staffName, photoUrl, greeting)
   if (template === 'bold') return birthdayBold(staffName, photoUrl, greeting)
-  if (template === 'sandbox') return birthdaySandbox(staffName, photoUrl, greeting)
+  if (template === 'aura' || template === 'sandbox') return birthdayAura(staffName, photoUrl, greeting)
   if (template === 'verdana') return birthdayVerdana(staffName, photoUrl, greeting)
   return birthdayClassic(staffName, photoUrl, greeting)
 }

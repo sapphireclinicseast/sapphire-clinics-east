@@ -15,7 +15,7 @@ export default function BirthdayTemplatePage() {
   const [showCanvaPicker, setShowCanvaPicker] = useState(false)
   const [caption, setCaption] = useState('')
   const [branch, setBranch] = useState('east')
-  const [template, setTemplate] = useState('sandbox')
+  const [template, setTemplate] = useState('aura')
   const [generating, setGenerating] = useState(false)
   const [previewHtml, setPreviewHtml] = useState<string | null>(null)
   const [scheduledAt, setScheduledAt] = useState('')
@@ -214,7 +214,7 @@ export default function BirthdayTemplatePage() {
             </label>
             <div className="grid grid-cols-1 gap-2">
               {[
-                { id: 'sandbox', label: 'Sandbox Brand Guide', color: '#F47427', desc: 'Orange brand style' },
+                { id: 'aura', label: 'Aura Brand Guide', color: '#c69849', desc: 'Green & gold brand style' },
                 { id: 'verdana', label: 'Verdana Brand Guide', color: '#2D6A4F', desc: 'Green brand style' },
                 { id: 'none', label: '✕ No Card — Text Only', color: '#D97706', desc: 'Caption only, no image' },
               ].map((t) => (
