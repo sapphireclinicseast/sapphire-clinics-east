@@ -37,7 +37,6 @@ export default function SchedulesLayout({ children }: { children: React.ReactNod
             height={101}
             style={{ height: '56px', width: 'auto', objectFit: 'contain' }}
             priority
-            unoptimized
           />
         </div>
       </header>
