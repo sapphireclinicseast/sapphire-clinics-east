@@ -422,19 +422,22 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                           {item.sessionType}
                         </span>
 
-                        {/* Status */}
+                        {/* Status — solid dark pill so it stays legible on the
+                            light moss rows (future) as well as now/past rows. */}
                         {item.status === 'CONFIRMED' && (
                           <span style={{
-                            fontSize: '0.6rem', fontWeight: 700, color: BRAND.sun,
-                            background: 'rgba(237,216,168,0.16)', padding: '0.15rem 0.5rem', borderRadius: '99px', whiteSpace: 'nowrap',
+                            fontSize: '0.6rem', fontWeight: 700, color: BRAND.paper,
+                            background: BRAND.narraDeep, border: `1px solid ${BRAND.sun}`,
+                            padding: '0.15rem 0.55rem', borderRadius: '99px', whiteSpace: 'nowrap',
                           }}>
                             Confirmed
                           </span>
                         )}
                         {item.status === 'CANCELLED' && (
                           <span style={{
-                            fontSize: '0.6rem', fontWeight: 700, color: BRAND.clay,
-                            background: 'rgba(198,128,119,0.18)', padding: '0.15rem 0.5rem', borderRadius: '99px', whiteSpace: 'nowrap',
+                            fontSize: '0.6rem', fontWeight: 700, color: BRAND.paper,
+                            background: BRAND.narraDeep, border: `1px solid ${BRAND.clay}`,
+                            padding: '0.15rem 0.55rem', borderRadius: '99px', whiteSpace: 'nowrap',
                           }}>
                             Cancelled
                           </span>
