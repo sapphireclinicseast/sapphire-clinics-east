@@ -22,6 +22,28 @@ export default function BirthdayTemplatePage() {
   const [platforms, setPlatforms] = useState<string[]>(['FACEBOOK', 'INSTAGRAM'])
   const [scheduling, setScheduling] = useState(false)
   const [success, setSuccess] = useState(false)
+  const [testEmail, setTestEmail] = useState('')
+  const [sendingTest, setSendingTest] = useState(false)
+
+  async function sendTestEmail() {
+    if (!staffName.trim()) return alert('Enter the staff member\'s name first.')
+    if (!testEmail.trim()) return alert('Enter a recipient email.')
+    setSendingTest(true)
+    try {
+      const res = await fetch('/api/templates/birthday/send-sample', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: testEmail.trim(), staffName, caption, photoDataUrl: photoPreview, branch }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) alert('Sample sent to ' + testEmail.trim())
+      else alert(data.error || 'Failed to send sample.')
+    } catch {
+      alert('Failed to send sample.')
+    } finally {
+      setSendingTest(false)
+    }
+  }
 
   function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -404,6 +426,38 @@ export default function BirthdayTemplatePage() {
             <Send size={15} />
             {scheduling ? 'Scheduling…' : noCard ? 'Schedule Text Post' : 'Schedule Birthday Post'}
           </button>
+
+          {/* Send a sample to an email so you can preview how it looks */}
+          <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--light-gray)' }}>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
+              Send a sample to email
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="email"
+                value={testEmail}
+                onChange={(e) => setTestEmail(e.target.value)}
+                placeholder="you@sapphireclinicseast.org"
+                className="flex-1 min-w-0 px-3 py-2 rounded-lg border text-sm outline-none"
+                style={{ borderColor: 'var(--light-gray)' }}
+              />
+              <button
+                onClick={sendTestEmail}
+                disabled={sendingTest || !staffName || !testEmail}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap"
+                style={{
+                  background: staffName && testEmail ? '#c69849' : 'var(--light-gray)',
+                  color: staffName && testEmail ? '#fff' : 'var(--mid-gray)',
+                }}
+              >
+                <Send size={14} />
+                {sendingTest ? 'Sending…' : 'Send test'}
+              </button>
+            </div>
+            <p className="text-xs mt-1.5" style={{ color: 'var(--mid-gray)' }}>
+              Emails an Aura-styled preview of this birthday greeting to any address.
+            </p>
+          </div>
         </div>
 
         {/* Right: Preview */}
