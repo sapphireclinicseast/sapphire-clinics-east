@@ -2,6 +2,13 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { Plus, Pencil, Trash2, Mail, MailCheck, MessageSquare, ChevronDown, ChevronUp, X, Smartphone, Video } from 'lucide-react'
+import DeskShortcutCard from '@/components/DeskShortcutCard'
+
+// ─── Branch display labels (enum values must stay SBEA / SBGH in the DB) ────
+const BRANCH_LABEL: Record<string, string> = {
+  SBEA: 'East Branch',
+  SBGH: 'Greenhills Branch',
+}
 
 // ─── Session types per department ────────────────────────────────────────────
 const SESSION_TYPES: Record<string, string[]> = {
@@ -539,7 +546,7 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
           style={isSBEA
             ? { background: 'var(--pale-teal)', color: 'var(--teal)' }
             : { background: '#FFF3CD', color: '#92400E' }}>
-          {staff.branch}
+          {BRANCH_LABEL[staff.branch] ?? staff.branch}
         </span>
         {open ? <ChevronUp size={16} style={{ color: 'var(--mid-gray)' }} /> : <ChevronDown size={16} style={{ color: 'var(--mid-gray)' }} />}
       </button>
@@ -776,24 +783,89 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
 
 const ALL_DEPARTMENTS = ['OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS']
 
+// Decking Module weekly-schedule config (one row per clinician). workDays is
+// stored as day codes e.g. ["MON","TUE","WED","THU","FRI"].
+interface TherapistConfig { staffId: string; workDays: string[]; startTime: string; endTime: string; branch: string; department: string }
+const WEEKDAY_CODES = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
+const WEEKDAY_FULL: Record<string, string> = {
+  SUN: 'Sunday', MON: 'Monday', TUE: 'Tuesday', WED: 'Wednesday', THU: 'Thursday', FRI: 'Friday', SAT: 'Saturday',
+}
+function weekdayCodeFor(iso: string): string {
+  return WEEKDAY_CODES[new Date(iso + 'T12:00:00').getDay()]
+}
+function tomorrowStr(): string {
+  const d = new Date()
+  d.setDate(d.getDate() + 1)
+  return d.toISOString().split('T')[0]
+}
+function fmtDateShort(iso: string): string {
+  return new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+}
+
 // ─── Main DepartmentView ───────────────────────────────────────────────────────
 export default function DepartmentView({ role, selectedDate, onDateChange }: { role: string; selectedDate: string; onDateChange: (d: string) => void }) {
   const branches = visibleBranches(role)
   const [activeBranch, setActiveBranch] = useState(branches[0])
-  const [activeDept, setActiveDept] = useState('All')
+  const [activeDept, setActiveDept] = useState('Tomorrow')
   const [staff, setStaff] = useState<StaffMember[]>([])
+  const [configs, setConfigs] = useState<TherapistConfig[]>([])
   const [loading, setLoading] = useState(true)
+  // Manually-added make-up clinicians (work a session on a day that isn't on
+  // their weekly Decking schedule). Keyed by staffId.
+  const [makeupIds, setMakeupIds] = useState<string[]>([])
+  const [makeupQuery, setMakeupQuery] = useState('')
 
   useEffect(() => {
     fetch('/api/staff').then(r => r.json()).then(setStaff).finally(() => setLoading(false))
   }, [])
 
-  // Reset dept filter when branch changes
-  useEffect(() => { setActiveDept('All') }, [activeBranch])
+  // Decking weekly schedules — drives the "Tomorrow" view.
+  useEffect(() => {
+    fetch('/api/decking/therapists')
+      .then(r => r.json())
+      .then((rows: TherapistConfig[]) => setConfigs(Array.isArray(rows) ? rows : []))
+      .catch(() => setConfigs([]))
+  }, [])
+
+  // Reset dept filter + make-up picks when branch changes
+  useEffect(() => { setActiveDept('Tomorrow'); setMakeupIds([]); setMakeupQuery('') }, [activeBranch])
 
   const branchStaff = staff.filter(s => s.branch === activeBranch)
   const presentDepts = ALL_DEPARTMENTS.filter(d => branchStaff.some(s => s.department === d))
   const filtered = activeDept === 'All' ? branchStaff : branchStaff.filter(s => s.department === activeDept)
+
+  // ── "Tomorrow" view: clinicians whose Decking weekly schedule includes the
+  // weekday of TOMORROW (today + 1), in the active branch. ────────────────────
+  const tomorrowDate = tomorrowStr()
+  const tomorrowCode = weekdayCodeFor(tomorrowDate)
+  const staffById = new Map(staff.map(s => [s.id, s]))
+  const tomorrowClinicians = configs
+    .filter(c => Array.isArray(c.workDays) && c.workDays.includes(tomorrowCode))
+    .map(c => ({ cfg: c, staff: staffById.get(c.staffId) }))
+    .filter((x): x is { cfg: TherapistConfig; staff: StaffMember } => !!x.staff && x.staff.branch === activeBranch)
+    .sort((a, b) =>
+      (a.staff.lastName || '').localeCompare(b.staff.lastName || '') ||
+      (a.staff.firstName || '').localeCompare(b.staff.firstName || ''))
+
+  // Group tomorrow's clinicians by department (in ALL_DEPARTMENTS order); each
+  // group stays alphabetical because tomorrowClinicians is already sorted.
+  const tomorrowByDept = [
+    ...ALL_DEPARTMENTS.map(dept => ({ dept, list: tomorrowClinicians.filter(x => x.staff.department === dept) })),
+    { dept: 'Other', list: tomorrowClinicians.filter(x => !ALL_DEPARTMENTS.includes(x.staff.department)) },
+  ].filter(g => g.list.length > 0)
+
+  // Make-up clinicians: manually added, in this branch, not already auto-listed.
+  const autoIds = new Set(tomorrowClinicians.map(x => x.staff.id))
+  const makeupClinicians = makeupIds
+    .map(id => staffById.get(id))
+    .filter((s): s is StaffMember => !!s && s.branch === activeBranch && !autoIds.has(s.id))
+  // Type-ahead matches for the make-up search (exclude already-listed staff).
+  const makeupMatches = makeupQuery.trim().length > 0
+    ? branchStaff
+        .filter(s => !autoIds.has(s.id) && !makeupIds.includes(s.id) &&
+          `${s.firstName} ${s.lastName}`.toLowerCase().includes(makeupQuery.trim().toLowerCase()))
+        .slice(0, 8)
+    : []
 
   return (
     <div className="space-y-4">
@@ -808,7 +880,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
                 style={activeBranch === b
                   ? { background: 'var(--teal)', color: '#fff' }
                   : { background: '#fff', color: 'var(--mid-gray)' }}>
-                {b}
+                {BRANCH_LABEL[b] ?? b}
               </button>
             ))}
           </div>
@@ -827,8 +899,16 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
       </div>
 
       {/* Department filter chips */}
-      {!loading && presentDepts.length > 0 && (
+      {!loading && (
         <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setActiveDept('Tomorrow')}
+            className="px-3 py-1 rounded-full text-xs font-semibold transition-colors"
+            style={activeDept === 'Tomorrow'
+              ? { background: 'var(--teal)', color: '#fff' }
+              : { background: '#fff', color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>
+            Tomorrow
+          </button>
           <button
             onClick={() => setActiveDept('All')}
             className="px-3 py-1 rounded-full text-xs font-semibold transition-colors"
@@ -850,8 +930,130 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
         </div>
       )}
 
-      {/* Staff cards */}
-      {loading ? (
+      {/* "Tomorrow" view — clinicians working tomorrow + make-ups + Front Desk card */}
+      {!loading && activeDept === 'Tomorrow' ? (
+        <div className="grid gap-4" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(300px, 360px)' }}>
+          {/* Left — clinicians working tomorrow (+ make-up sessions) */}
+          <div className="flex flex-col gap-4">
+            <div>
+              <div className="flex items-baseline justify-between mb-2 flex-wrap gap-1">
+                <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
+                  Clinicians tomorrow · {fmtDateShort(tomorrowDate)}
+                </h3>
+                <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                  {tomorrowClinicians.length} on schedule · {BRANCH_LABEL[activeBranch] ?? activeBranch}
+                </span>
+              </div>
+              {tomorrowClinicians.length === 0 ? (
+                <div className="rounded-xl py-12 flex flex-col items-center gap-2"
+                  style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+                  <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>No clinicians scheduled tomorrow</p>
+                  <p className="text-xs text-center px-4" style={{ color: 'var(--mid-gray)' }}>
+                    No {activeBranch} clinician has a {WEEKDAY_FULL[tomorrowCode]} in the Decking Module. Add a make-up session on the right if needed.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  {tomorrowByDept.map(g => (
+                    <div key={g.dept}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--teal)' }}>{g.dept}</span>
+                        <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                          {g.list.length} clinician{g.list.length !== 1 ? 's' : ''}
+                        </span>
+                        <div className="flex-1 h-px" style={{ background: 'var(--light-gray)' }} />
+                      </div>
+                      <div className="space-y-2">
+                        {g.list.map(({ staff: s }) => (
+                          <StaffCard key={s.id} staff={s} selectedDate={tomorrowDate} />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Make-up sessions — manually added clinicians, with full scheduling */}
+            {makeupClinicians.length > 0 && (
+              <div className="rounded-xl p-4" style={{ background: '#fff', border: '1px solid #FED7AA' }}>
+                <h3 className="text-sm font-bold mb-3" style={{ color: '#C2410C', fontFamily: 'var(--font-display)' }}>
+                  Make-up sessions · {fmtDateShort(tomorrowDate)}
+                </h3>
+                <div className="space-y-3">
+                  {makeupClinicians.map(s => (
+                    <div key={s.id}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: '#FFF7ED', color: '#C2410C', border: '1px solid #FED7AA' }}>
+                          Make-up · {s.firstName} {s.lastName}
+                        </span>
+                        <button
+                          onClick={() => setMakeupIds(ids => ids.filter(id => id !== s.id))}
+                          className="text-xs font-medium"
+                          style={{ color: 'var(--mid-gray)' }}>
+                          Remove
+                        </button>
+                      </div>
+                      <StaffCard staff={s} selectedDate={tomorrowDate} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Right — Front Desk card, reminder, and make-up search */}
+          <div className="flex flex-col gap-3">
+            <DeskShortcutCard />
+            <div className="rounded-lg p-3" style={{ background: '#FEF2F2', border: '2px solid #DC2626' }}>
+              <p className="text-sm font-bold m-0" style={{ color: '#DC2626', lineHeight: 1.45 }}>
+                Note: Don&apos;t forget to include new patients, especially to medical doctors,
+                psychologists and physical therapists from clinic inquiries.
+              </p>
+            </div>
+
+            {/* Make-up clinician search */}
+            <div className="rounded-xl p-3" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+              <p className="text-sm font-bold mb-2" style={{ color: 'var(--charcoal)' }}>
+                Any clinicians who will do make up sessions?
+              </p>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="text"
+                  value={makeupQuery}
+                  onChange={e => setMakeupQuery(e.target.value)}
+                  placeholder="Search clinician name…"
+                  className="w-full rounded-lg px-3 py-2 text-sm"
+                  style={{ border: '1.5px solid var(--light-gray)', background: '#fff', color: 'var(--charcoal)' }}
+                />
+                {makeupMatches.length > 0 && (
+                  <div className="rounded-lg mt-1 overflow-hidden" style={{ border: '1px solid var(--light-gray)', background: '#fff' }}>
+                    {makeupMatches.map(s => (
+                      <button
+                        key={s.id}
+                        onClick={() => { setMakeupIds(ids => [...ids, s.id]); setMakeupQuery('') }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-stone-50 flex items-center justify-between gap-2"
+                        style={{ color: 'var(--charcoal)' }}>
+                        <span>{s.firstName} {s.lastName}</span>
+                        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{s.department}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {makeupQuery.trim().length > 0 && makeupMatches.length === 0 && (
+                  <p className="text-xs mt-1.5" style={{ color: 'var(--mid-gray)' }}>
+                    No matching clinician in {activeBranch} (already-scheduled clinicians are hidden).
+                  </p>
+                )}
+              </div>
+              <p className="text-[11px] mt-2" style={{ color: 'var(--mid-gray)', lineHeight: 1.4 }}>
+                Add a clinician here to schedule a make-up session on a day that isn&apos;t part of their
+                weekly schedule. They&apos;ll appear under <strong>Make-up sessions</strong> on the left.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : loading ? (
         <p className="text-sm text-center py-10" style={{ color: 'var(--mid-gray)' }}>Loading staff…</p>
       ) : filtered.length === 0 ? (
         <div className="rounded-xl py-16 flex flex-col items-center gap-3"
