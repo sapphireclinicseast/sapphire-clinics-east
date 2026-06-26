@@ -6,7 +6,7 @@ import {
   recordPaymentOnBehalfOf, hydrateUsers, getAuth,
   changeFrontDeskPaymentMethod, patchFrontDeskPayment,
   type FrontDeskPaymentRow, type PaymentPlan, type StoredUser, type Branch,
-  type FrontDeskPaymentPatch,
+  type FrontDeskPaymentPatch, type FrontDeskMethodDetail,
 } from '@/lib/session'
 
 interface FdpProps {
@@ -24,9 +24,22 @@ function fmt(cents: number) {
 function planLabel(p: PaymentPlan) {
   return p === 'ANNUAL' ? 'Annual' : p === 'BIANNUAL' ? 'Bi-annual' : 'Monthly'
 }
-function methodLabel(m: FrontDeskPaymentRow['method']) {
+// Instrument detail label. Used as a sub-line on rows where the method
+// is FRONT_DESK_CASH ("Frontdesk payment"). null → CASH for display
+// (legacy rows recorded before methodDetail existed).
+const METHOD_DETAIL_OPTIONS: Array<{ value: FrontDeskMethodDetail; label: string }> = [
+  { value: 'CASH',        label: 'Cash' },
+  { value: 'CREDIT_CARD', label: 'Credit Card' },
+  { value: 'DEBIT_CARD',  label: 'Debit Card' },
+  { value: 'GCASH',       label: 'GCash' },
+  { value: 'PAYMAYA',     label: 'PayMaya' },
+]
+function methodDetailLabel(d: FrontDeskMethodDetail | null | undefined) {
+  return METHOD_DETAIL_OPTIONS.find(o => o.value === d)?.label ?? 'Cash'
+}
+function methodLabel(m: FrontDeskPaymentRow['method'], detail?: FrontDeskMethodDetail | null) {
   if (m === 'BANK_DEPOSIT') return 'Bank deposit'
-  if (m === 'FRONT_DESK_CASH') return 'Cash at front desk'
+  if (m === 'FRONT_DESK_CASH') return `Frontdesk payment (${methodDetailLabel(detail ?? null)})`
   if (m === 'PAYMONGO') return 'PayMongo'
   return 'Unspecified'
 }
@@ -87,23 +100,62 @@ export default function FrontDeskPaymentConfirmations({ canDelete = false }: Fdp
     setBusy(null)
   }
 
-  // Inline edit for the recorded method. Admin + front desk (branch-
-  // scoped) can correct a row that was logged under the wrong method —
-  // e.g. PAYMONGO recorded but the parent actually deposited at the
-  // bank. We optimistically swap the row in-place; on failure we revert
-  // and surface the error so the staff knows to retry.
-  async function handleChangeMethod(row: FrontDeskPaymentRow, next: NonNullable<FrontDeskPaymentRow['method']>) {
+  // Inline edit for the recorded method + instrument. The dropdown is
+  // a flat 7-option list (5 Frontdesk-payment instruments + Bank
+  // deposit + PayMongo); each option encodes both the top-level method
+  // and, for Frontdesk payment, the instrument detail. We
+  // optimistically swap the row in-place; on failure we revert and
+  // surface the error so the staff knows to retry.
+  async function handleChangeMethod(
+    row: FrontDeskPaymentRow,
+    next: NonNullable<FrontDeskPaymentRow['method']>,
+    nextDetail: FrontDeskMethodDetail | null,
+  ) {
     if (busy) return
-    if (next === row.method) return
-    const prev = row.method
+    if (next === row.method && nextDetail === (row.methodDetail ?? null)) return
+    const prevMethod = row.method
+    const prevDetail = row.methodDetail
     setErr(null); setBusy(row.classPortalPaymentId)
-    setRows(rs => rs.map(r => r.classPortalPaymentId === row.classPortalPaymentId ? { ...r, method: next } : r))
-    const ok = await changeFrontDeskPaymentMethod(row.classPortalPaymentId, next)
-    if (!ok) {
-      setRows(rs => rs.map(r => r.classPortalPaymentId === row.classPortalPaymentId ? { ...r, method: prev } : r))
-      setErr(`Could not change ${row.studentName}'s method. Please retry.`)
+    setRows(rs => rs.map(r => r.classPortalPaymentId === row.classPortalPaymentId
+      ? { ...r, method: next, methodDetail: nextDetail }
+      : r))
+    const res = await patchFrontDeskPayment(row.classPortalPaymentId, {
+      method: next,
+      methodDetail: nextDetail,
+    })
+    if (!res.ok) {
+      setRows(rs => rs.map(r => r.classPortalPaymentId === row.classPortalPaymentId
+        ? { ...r, method: prevMethod, methodDetail: prevDetail }
+        : r))
+      setErr(`Could not change ${row.studentName}'s method. ${res.error}`)
     }
     setBusy(null)
+  }
+
+  // Composite values used by the inline <select>. Encoded as
+  // "METHOD|DETAIL" for FRONT_DESK_CASH variants, plain method
+  // string for the other two. Keeps the handler logic flat.
+  const INLINE_METHOD_OPTIONS: Array<{ value: string; label: string }> = [
+    { value: 'FRONT_DESK_CASH|CASH',        label: 'Frontdesk: Cash' },
+    { value: 'FRONT_DESK_CASH|CREDIT_CARD', label: 'Frontdesk: Credit Card' },
+    { value: 'FRONT_DESK_CASH|DEBIT_CARD',  label: 'Frontdesk: Debit Card' },
+    { value: 'FRONT_DESK_CASH|GCASH',       label: 'Frontdesk: GCash' },
+    { value: 'FRONT_DESK_CASH|PAYMAYA',     label: 'Frontdesk: PayMaya' },
+    { value: 'BANK_DEPOSIT',                label: 'Bank deposit' },
+    { value: 'PAYMONGO',                    label: 'PayMongo' },
+  ]
+  function rowToInlineValue(r: FrontDeskPaymentRow): string {
+    if (r.method === 'FRONT_DESK_CASH') return `FRONT_DESK_CASH|${r.methodDetail ?? 'CASH'}`
+    if (r.method === 'BANK_DEPOSIT' || r.method === 'PAYMONGO') return r.method
+    return ''
+  }
+  function inlineValueToParts(v: string): { method: NonNullable<FrontDeskPaymentRow['method']>; detail: FrontDeskMethodDetail | null } | null {
+    if (v.startsWith('FRONT_DESK_CASH|')) {
+      const detail = v.split('|')[1] as FrontDeskMethodDetail
+      return { method: 'FRONT_DESK_CASH', detail }
+    }
+    if (v === 'BANK_DEPOSIT' || v === 'PAYMONGO') return { method: v, detail: null }
+    return null
   }
 
   async function handleDelete(row: FrontDeskPaymentRow) {
@@ -199,20 +251,18 @@ export default function FrontDeskPaymentConfirmations({ canDelete = false }: Fdp
                     <td className="py-2.5 px-3 text-[12.5px]">
                       <select
                         className="select text-[12.5px] py-1"
-                        value={r.method ?? ''}
+                        value={rowToInlineValue(r)}
                         onChange={e => {
-                          const v = e.target.value
-                          if (v === 'BANK_DEPOSIT' || v === 'FRONT_DESK_CASH' || v === 'PAYMONGO') {
-                            void handleChangeMethod(r, v)
-                          }
+                          const parts = inlineValueToParts(e.target.value)
+                          if (parts) void handleChangeMethod(r, parts.method, parts.detail)
                         }}
                         disabled={busy === r.classPortalPaymentId}
-                        title="Change the recorded method if it was logged under the wrong type (e.g. PayMongo but actually a bank deposit)."
+                        title="Change the recorded payment method. Frontdesk-payment rows also pick the instrument here."
                       >
                         {!r.method && <option value="">— Unspecified —</option>}
-                        <option value="FRONT_DESK_CASH">Cash at front desk</option>
-                        <option value="BANK_DEPOSIT">Bank deposit</option>
-                        <option value="PAYMONGO">PayMongo</option>
+                        {INLINE_METHOD_OPTIONS.map(o => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
                       </select>
                     </td>
                     <td className="py-2.5 px-3 text-[12.5px]">{r.branch}</td>
@@ -304,20 +354,18 @@ export default function FrontDeskPaymentConfirmations({ canDelete = false }: Fdp
                     <td className="py-2.5 px-3 text-[12.5px]">
                       <select
                         className="select text-[12.5px] py-1"
-                        value={r.method ?? ''}
+                        value={rowToInlineValue(r)}
                         onChange={e => {
-                          const v = e.target.value
-                          if (v === 'BANK_DEPOSIT' || v === 'FRONT_DESK_CASH' || v === 'PAYMONGO') {
-                            void handleChangeMethod(r, v)
-                          }
+                          const parts = inlineValueToParts(e.target.value)
+                          if (parts) void handleChangeMethod(r, parts.method, parts.detail)
                         }}
                         disabled={busy === r.classPortalPaymentId}
-                        title="Change the recorded method if it was logged under the wrong type (e.g. PayMongo but actually a bank deposit)."
+                        title="Change the recorded payment method. Frontdesk-payment rows also pick the instrument here."
                       >
                         {!r.method && <option value="">— Unspecified —</option>}
-                        <option value="FRONT_DESK_CASH">Cash at front desk</option>
-                        <option value="BANK_DEPOSIT">Bank deposit</option>
-                        <option value="PAYMONGO">PayMongo</option>
+                        {INLINE_METHOD_OPTIONS.map(o => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
                       </select>
                     </td>
                     <td className="py-2.5 px-3 text-[12.5px]">{r.branch}</td>
@@ -399,6 +447,7 @@ function RecordPaymentModal({
   // Per-row state. Defaults pick the most common shape: monthly cash.
   const [studentId, setStudentId] = useState('')
   const [method, setMethod] = useState<'FRONT_DESK_CASH' | 'BANK_DEPOSIT' | 'PAYMONGO'>('FRONT_DESK_CASH')
+  const [methodDetail, setMethodDetail] = useState<FrontDeskMethodDetail>('CASH')
   const [plan, setPlan] = useState<PaymentPlan>('MONTHLY')
   const [amount, setAmount] = useState('')
   const [period, setPeriod] = useState('')
@@ -441,6 +490,7 @@ function RecordPaymentModal({
         branch: selectedBranch,
         plan,
         method,
+        methodDetail: method === 'FRONT_DESK_CASH' ? methodDetail : undefined,
         tuitionCentavos: Math.round(peso * 100),
         miscCentavos: 0,
         period: period.trim(),
@@ -451,9 +501,18 @@ function RecordPaymentModal({
         return
       }
       await onRecorded()
+      const verifyHint =
+        method === 'PAYMONGO'                       ? 'PayMongo receipt is verified' :
+        method === 'BANK_DEPOSIT'                   ? 'deposit slip is reconciled' :
+        methodDetail === 'CASH'                     ? 'cash is in hand' :
+        methodDetail === 'CREDIT_CARD'              ? 'credit-card transaction posts' :
+        methodDetail === 'DEBIT_CARD'               ? 'debit-card transaction posts' :
+        methodDetail === 'GCASH'                    ? 'GCash payment shows up in the merchant account' :
+        methodDetail === 'PAYMAYA'                  ? 'PayMaya payment shows up in the merchant account' :
+                                                      'payment is verified'
       alert(
         `Recorded ${studentName}'s payment in the Pending queue. ` +
-        `Click "Confirm payment" once the ${method === 'PAYMONGO' ? 'PayMongo receipt is verified' : method === 'BANK_DEPOSIT' ? 'deposit slip is reconciled' : 'cash is in hand'} ` +
+        `Click "Confirm payment" once the ${verifyHint} ` +
         `— the row will move to Confirmed Payments and the student's portal will flip to PAID.`
       )
     } finally {
@@ -514,11 +573,27 @@ function RecordPaymentModal({
             onChange={e => setMethod(e.target.value as 'FRONT_DESK_CASH' | 'BANK_DEPOSIT' | 'PAYMONGO')}
             disabled={busy}
           >
-            <option value="FRONT_DESK_CASH">Cash at front desk</option>
+            <option value="FRONT_DESK_CASH">Frontdesk payment</option>
             <option value="BANK_DEPOSIT">Bank deposit</option>
             <option value="PAYMONGO">PayMongo</option>
           </select>
         </label>
+
+        {method === 'FRONT_DESK_CASH' && (
+          <label className="block mb-3">
+            <span className="label">Frontdesk payment type</span>
+            <select
+              className="select"
+              value={methodDetail}
+              onChange={e => setMethodDetail(e.target.value as FrontDeskMethodDetail)}
+              disabled={busy}
+            >
+              {METHOD_DETAIL_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </label>
+        )}
 
         <label className="block mb-3">
           <span className="label">Plan</span>
@@ -617,6 +692,7 @@ function EditPaymentModal({ row, onClose, onSaved }: {
   const [plan, setPlan] = useState<PaymentPlan>(row.plan)
   const [period, setPeriod] = useState(row.period)
   const [method, setMethod] = useState<NonNullable<FrontDeskPaymentRow['method']>>(row.method ?? 'FRONT_DESK_CASH')
+  const [methodDetail, setMethodDetail] = useState<FrontDeskMethodDetail>((row.methodDetail ?? 'CASH'))
   // Show the combined total in PHP; on save we split back into tuition
   // (the full amount) + misc (0). Keeping it one input matches what the
   // staff usually wants to reconcile.
@@ -644,6 +720,15 @@ function EditPaymentModal({ row, onClose, onSaved }: {
     if (plan !== row.plan) patch.plan = plan
     if (period.trim() !== row.period) patch.period = period.trim()
     if (method !== (row.method ?? 'FRONT_DESK_CASH')) patch.method = method
+    // For Frontdesk payment, also patch the instrument when it changed
+    // (or when switching INTO Frontdesk payment, send the picked value).
+    if (method === 'FRONT_DESK_CASH') {
+      const currentDetail = row.method === 'FRONT_DESK_CASH' ? (row.methodDetail ?? 'CASH') : null
+      if (methodDetail !== currentDetail) patch.methodDetail = methodDetail
+    } else if (row.methodDetail !== null && method !== row.method) {
+      // Switching away from Frontdesk payment — clear the dangling detail.
+      patch.methodDetail = null
+    }
     if (tuitionCentavos !== row.tuitionCentavos) patch.tuitionCentavos = tuitionCentavos
     // Always set miscCentavos to 0 when amount changed — the editor's
     // single "Amount" field carries the full total.
@@ -709,12 +794,25 @@ function EditPaymentModal({ row, onClose, onSaved }: {
           <label className="block">
             <span className="label">Method</span>
             <select className="select" value={method} onChange={e => setMethod(e.target.value as NonNullable<FrontDeskPaymentRow['method']>)} disabled={busy}>
-              <option value="FRONT_DESK_CASH">Cash at front desk</option>
+              <option value="FRONT_DESK_CASH">Frontdesk payment</option>
               <option value="BANK_DEPOSIT">Bank deposit</option>
               <option value="PAYMONGO">PayMongo</option>
             </select>
           </label>
         </div>
+
+        {method === 'FRONT_DESK_CASH' && (
+          <div className="mb-3">
+            <label className="block">
+              <span className="label">Frontdesk payment type</span>
+              <select className="select" value={methodDetail} onChange={e => setMethodDetail(e.target.value as FrontDeskMethodDetail)} disabled={busy}>
+                {METHOD_DETAIL_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3 mb-3">
           <label className="block">

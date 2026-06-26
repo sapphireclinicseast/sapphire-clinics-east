@@ -47,6 +47,7 @@ export async function POST(req: Request) {
       miscCentavos?: number
       period?: string
       method?: string
+      methodDetail?: string | null
       notes?: string
     }
 
@@ -85,6 +86,25 @@ export async function POST(req: Request) {
     if (method === 'PAYMONGO' && auth.role === 'STUDENT') {
       return withCors(NextResponse.json({ error: 'Only staff can log a PayMongo payment.' }, { status: 403 }), origin)
     }
+
+    // Validate methodDetail. Only meaningful when method = FRONT_DESK_CASH
+    // ("Frontdesk payment" in the UI). For other methods we force-null it
+    // so the row stays clean even if a buggy client sends a value.
+    const allowedDetails = ['CASH', 'CREDIT_CARD', 'DEBIT_CARD', 'GCASH', 'PAYMAYA'] as const
+    type AllowedDetail = typeof allowedDetails[number]
+    let methodDetail: AllowedDetail | null = null
+    if (method === 'FRONT_DESK_CASH') {
+      const raw = body.methodDetail ?? null
+      if (raw === null || raw === '') {
+        // Default to CASH so legacy callers keep working.
+        methodDetail = 'CASH'
+      } else if ((allowedDetails as readonly string[]).includes(raw)) {
+        methodDetail = raw as AllowedDetail
+      } else {
+        return withCors(NextResponse.json({ error: 'Invalid methodDetail. Must be one of: CASH, CREDIT_CARD, DEBIT_CARD, GCASH, PAYMAYA.' }, { status: 400 }), origin)
+      }
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const row = await (prisma.classPortalFrontDeskPayment as any).upsert({
       where: { classPortalPaymentId: body.classPortalPaymentId },
@@ -97,6 +117,7 @@ export async function POST(req: Request) {
         miscCentavos,
         period: body.period,
         method,
+        methodDetail,
         notes: body.notes ?? null,
       },
       create: {
@@ -110,6 +131,7 @@ export async function POST(req: Request) {
         miscCentavos,
         period: body.period!,
         method,
+        methodDetail,
         notes: body.notes ?? null,
         status: 'PENDING',
       },
@@ -128,6 +150,7 @@ export async function POST(req: Request) {
         miscCentavos: row.miscCentavos,
         period: row.period,
         method: row.method ?? null,
+        methodDetail: row.methodDetail ?? null,
         status: row.status,
         createdAt: row.createdAt.toISOString(),
         convertedAt: row.convertedAt?.toISOString() ?? null,
@@ -165,6 +188,7 @@ export async function GET(req: Request) {
       miscCentavos: r.miscCentavos,
       period: r.period,
       method: r.method ?? null,
+      methodDetail: r.methodDetail ?? null,
       status: r.status,
       notes: r.notes ?? null,
       createdAt: r.createdAt.toISOString(),

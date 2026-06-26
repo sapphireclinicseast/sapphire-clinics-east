@@ -360,6 +360,7 @@ model Staff {
   bankName        String?         // Bank Name from HR Platform
   bankAccountNo   String?         // Bank Account Number from HR Platform
   hrPlatformId    String?         // ID from HR Platform for sync matching
+  active          Boolean         @default(true) // false = inactive in HR; hidden from Staff Module, Top 5, etc.
   createdById     String?
   createdBy       User?           @relation(fields: [createdById], references: [id])
   createdAt       DateTime        @default(now())
@@ -952,10 +953,17 @@ model ClassPortalFrontDeskPayment {
   miscCentavos         Int               @default(0)
   period               String
   status               String            @default("PENDING") // PENDING | CONVERTED | VOIDED
-  /// FRONT_DESK_CASH | BANK_DEPOSIT — informational for the front desk
-  /// confirming the payment. PayMongo never lands in this table (it flips
-  /// the local class-portal record to PAID directly via the success redirect).
+  /// FRONT_DESK_CASH | BANK_DEPOSIT | PAYMONGO. FRONT_DESK_CASH is a
+  /// legacy enum value — the UI now labels it "Frontdesk payment" and
+  /// uses `methodDetail` to record the actual instrument (cash, credit
+  /// card, debit card, GCash, PayMaya). Bank deposit + PayMongo leave
+  /// methodDetail null.
   method               String?
+  /// Instrument detail. Only meaningful when method = FRONT_DESK_CASH;
+  /// one of: CASH | CREDIT_CARD | DEBIT_CARD | GCASH | PAYMAYA. Null
+  /// on legacy rows recorded before this column existed (treat as CASH
+  /// in display logic).
+  methodDetail         String?
   notes                String?
   createdAt            DateTime          @default(now())
   convertedAt          DateTime?

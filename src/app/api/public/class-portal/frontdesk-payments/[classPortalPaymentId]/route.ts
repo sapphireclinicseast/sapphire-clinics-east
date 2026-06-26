@@ -34,6 +34,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ cl
        *  PAYMONGO but the parent actually paid by bank deposit. Same
        *  auth rules as status flips (branch-scoped for non-admin). */
       method?: 'PAYMONGO' | 'BANK_DEPOSIT' | 'FRONT_DESK_CASH' | null
+      /** Sub-instrument when method = FRONT_DESK_CASH. CASH | CREDIT_CARD
+       *  | DEBIT_CARD | GCASH | PAYMAYA. Null clears it (only valid when
+       *  the row's method is also being cleared / set to a non-FDC type). */
+      methodDetail?: 'CASH' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'GCASH' | 'PAYMAYA' | null
       /** Reconciliation edits: amount and date overrides so the class-
        *  portal row matches what the accounting hub Order actually
        *  recorded. Plan + period are also editable for the same reason. */
@@ -79,6 +83,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ cl
         return withCors(NextResponse.json({ error: 'Invalid method.' }, { status: 400 }), origin)
       }
       data.method = (body.method as AllowedMethod | null)
+      // Switching away from FRONT_DESK_CASH must clear methodDetail so
+      // a stale "GCash" tag doesn't dangle on a BANK_DEPOSIT row. Only
+      // applied when the caller didn't ALSO set methodDetail explicitly.
+      if (data.method !== 'FRONT_DESK_CASH' && body.methodDetail === undefined) {
+        data.methodDetail = null
+      }
+    }
+    if (body.methodDetail !== undefined) {
+      const allowedDetails = ['CASH', 'CREDIT_CARD', 'DEBIT_CARD', 'GCASH', 'PAYMAYA'] as const
+      if (body.methodDetail !== null && !(allowedDetails as readonly string[]).includes(body.methodDetail)) {
+        return withCors(NextResponse.json({ error: 'Invalid methodDetail. Must be one of: CASH, CREDIT_CARD, DEBIT_CARD, GCASH, PAYMAYA.' }, { status: 400 }), origin)
+      }
+      data.methodDetail = body.methodDetail
     }
     if (body.notes !== undefined) data.notes = body.notes ?? null
 
@@ -151,6 +168,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ cl
         classPortalPaymentId: updated.classPortalPaymentId,
         status: updated.status,
         method: updated.method ?? null,
+        methodDetail: updated.methodDetail ?? null,
         plan: updated.plan,
         period: updated.period,
         tuitionCentavos: updated.tuitionCentavos,

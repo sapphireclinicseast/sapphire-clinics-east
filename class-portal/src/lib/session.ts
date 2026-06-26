@@ -965,6 +965,10 @@ export function studentHasActivePayment(studentId: string): boolean {
   return getPaymentsForStudent(studentId).some(p => p.status === 'PAID')
 }
 
+/** Instrument detail when method = FRONT_DESK_CASH ("Frontdesk payment"
+ *  in the UI). Null is treated as CASH for display + accounting. */
+export type FrontDeskMethodDetail = 'CASH' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'GCASH' | 'PAYMAYA'
+
 export interface FrontDeskPaymentRow {
   id: string
   classPortalPaymentId: string
@@ -977,6 +981,9 @@ export interface FrontDeskPaymentRow {
   miscCentavos: number
   period: string
   method: 'FRONT_DESK_CASH' | 'BANK_DEPOSIT' | 'PAYMONGO' | null
+  /** Instrument detail. Only meaningful when method=FRONT_DESK_CASH;
+   *  null on legacy rows + on Bank deposit / PayMongo. */
+  methodDetail: FrontDeskMethodDetail | null
   status: 'PENDING' | 'CONVERTED' | 'VOIDED'
   /** Free-text remarks / accounting-hub reconciliation notes. */
   notes: string | null
@@ -1089,6 +1096,8 @@ export async function recordPaymentOnBehalfOf(args: {
   branch: 'EAST' | 'GREENHILLS'
   plan: PaymentPlan
   method: 'FRONT_DESK_CASH' | 'BANK_DEPOSIT' | 'PAYMONGO'
+  /** Required when method = FRONT_DESK_CASH. Ignored otherwise. */
+  methodDetail?: FrontDeskMethodDetail
   /** Tuition amount in PHP centavos. */
   tuitionCentavos: number
   miscCentavos?: number
@@ -1115,10 +1124,21 @@ export async function recordPaymentOnBehalfOf(args: {
     // Compose a readable notes line — the front-desk staff sees this on
     // the queue row and the cashier sees it on the Convert-to-Order
     // screen, so it's worth being descriptive.
+    // For FRONT_DESK_CASH we surface the instrument detail in the
+    // method label too so the cashier sees "Frontdesk payment (GCash)"
+    // rather than a generic label.
+    const detailLabel =
+      args.methodDetail === 'CASH'        ? 'Cash' :
+      args.methodDetail === 'CREDIT_CARD' ? 'Credit Card' :
+      args.methodDetail === 'DEBIT_CARD'  ? 'Debit Card' :
+      args.methodDetail === 'GCASH'       ? 'GCash' :
+      args.methodDetail === 'PAYMAYA'     ? 'PayMaya' :
+                                             null
     const methodLabel =
       args.method === 'PAYMONGO'         ? 'PayMongo' :
       args.method === 'BANK_DEPOSIT'     ? 'Bank deposit' :
-                                            'Cash at front desk'
+      detailLabel                          ? `Frontdesk payment (${detailLabel})` :
+                                            'Frontdesk payment'
     let notes = `${methodLabel} · logged by front desk on behalf of student`
     if (args.reference?.trim()) notes += ` · ref ${args.reference.trim()}`
     if (args.extraNotes?.trim()) notes += ` · ${args.extraNotes.trim()}`
@@ -1140,6 +1160,7 @@ export async function recordPaymentOnBehalfOf(args: {
         miscCentavos: args.miscCentavos ?? 0,
         period: args.period,
         method: args.method,
+        methodDetail: args.method === 'FRONT_DESK_CASH' ? (args.methodDetail ?? 'CASH') : null,
         notes,
       }),
     })
@@ -1219,6 +1240,9 @@ export async function confirmFrontDeskPayment(classPortalPaymentId: string): Pro
 export interface FrontDeskPaymentPatch {
   notes?: string | null
   method?: 'PAYMONGO' | 'BANK_DEPOSIT' | 'FRONT_DESK_CASH'
+  /** Instrument detail. Required when switching TO FRONT_DESK_CASH;
+   *  ignored on other methods. Null clears it. */
+  methodDetail?: FrontDeskMethodDetail | null
   tuitionCentavos?: number
   miscCentavos?: number
   plan?: string
