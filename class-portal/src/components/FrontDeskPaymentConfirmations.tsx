@@ -4,8 +4,9 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   getFrontDeskPaymentsServer, confirmFrontDeskPayment, deleteFrontDeskPayment,
   recordPaymentOnBehalfOf, hydrateUsers, getAuth,
-  changeFrontDeskPaymentMethod,
+  changeFrontDeskPaymentMethod, patchFrontDeskPayment,
   type FrontDeskPaymentRow, type PaymentPlan, type StoredUser, type Branch,
+  type FrontDeskPaymentPatch,
 } from '@/lib/session'
 
 interface FdpProps {
@@ -47,6 +48,10 @@ export default function FrontDeskPaymentConfirmations({ canDelete = false }: Fdp
   // doesn't pay the fetch unless staff actually clicks "+ Record".
   const [recordOpen, setRecordOpen] = useState(false)
   const [users, setUsers] = useState<StoredUser[]>([])
+  // Per-row reconciliation editor — opens with the row pre-filled so
+  // staff can correct amount / date / notes / plan / period / method
+  // to match what the accounting-hub Order actually shows.
+  const [editingRow, setEditingRow] = useState<FrontDeskPaymentRow | null>(null)
   const viewerBranch: Branch | undefined = useMemo(() => {
     if (typeof window === 'undefined') return undefined
     return getAuth()?.branch
@@ -223,6 +228,16 @@ export default function FrontDeskPaymentConfirmations({ canDelete = false }: Fdp
                         >
                           {busy === r.classPortalPaymentId ? 'Confirming…' : 'Confirm payment'}
                         </button>
+                        <button
+                          type="button"
+                          className="text-[11px] px-2 py-1 rounded border hover:bg-[color:var(--paper-2)] disabled:opacity-40"
+                          style={{ borderColor: 'var(--paper-3)' }}
+                          onClick={() => setEditingRow(r)}
+                          disabled={busy === r.classPortalPaymentId}
+                          title="Edit amount, date, notes or other fields to match the accounting hub."
+                        >
+                          Edit
+                        </button>
                         {canDelete && (
                           <button
                             type="button"
@@ -274,7 +289,7 @@ export default function FrontDeskPaymentConfirmations({ canDelete = false }: Fdp
                   <th className="py-2 px-3 text-right">Amount</th>
                   <th className="py-2 px-3">Confirmed at</th>
                   <th className="py-2 px-3">Status</th>
-                  {canDelete && <th className="py-2 px-3 text-right">Action</th>}
+                  <th className="py-2 px-3 text-right">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -309,19 +324,31 @@ export default function FrontDeskPaymentConfirmations({ canDelete = false }: Fdp
                     <td className="py-2.5 px-3 text-right tabular-nums">{fmt(r.tuitionCentavos + r.miscCentavos)}</td>
                     <td className="py-2.5 px-3 text-[12.5px]">{r.convertedAt ? new Date(r.convertedAt).toLocaleString() : '—'}</td>
                     <td className="py-2.5 px-3"><span className="badge badge-paid">Paid</span></td>
-                    {canDelete && (
-                      <td className="py-2.5 px-3 text-right">
+                    <td className="py-2.5 px-3 text-right">
+                      <div className="inline-flex gap-1.5 items-center justify-end">
                         <button
                           type="button"
-                          className="text-[11px] px-2 py-1 rounded text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] disabled:opacity-40"
-                          onClick={() => void handleDelete(r)}
+                          className="text-[11px] px-2 py-1 rounded border hover:bg-[color:var(--paper-2)] disabled:opacity-40"
+                          style={{ borderColor: 'var(--paper-3)' }}
+                          onClick={() => setEditingRow(r)}
                           disabled={busy === r.classPortalPaymentId}
-                          title="Delete this confirmed payment (main admin only). Does NOT void the accounting-hub Order."
+                          title="Edit amount, date, notes or other fields to match the accounting hub."
                         >
-                          {busy === r.classPortalPaymentId ? 'Deleting…' : 'Delete'}
+                          Edit
                         </button>
-                      </td>
-                    )}
+                        {canDelete && (
+                          <button
+                            type="button"
+                            className="text-[11px] px-2 py-1 rounded text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] disabled:opacity-40"
+                            onClick={() => void handleDelete(r)}
+                            disabled={busy === r.classPortalPaymentId}
+                            title="Delete this confirmed payment (main admin only). Does NOT void the accounting-hub Order."
+                          >
+                            {busy === r.classPortalPaymentId ? 'Deleting…' : 'Delete'}
+                          </button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -340,6 +367,17 @@ export default function FrontDeskPaymentConfirmations({ canDelete = false }: Fdp
             // shows up in the table. Closing the modal first feels
             // snappier than waiting on the network round-trip.
             setRecordOpen(false)
+            await load()
+          }}
+        />
+      )}
+
+      {editingRow && (
+        <EditPaymentModal
+          row={editingRow}
+          onClose={() => setEditingRow(null)}
+          onSaved={async () => {
+            setEditingRow(null)
             await load()
           }}
         />
@@ -543,6 +581,204 @@ function RecordPaymentModal({
           <button className="btn-secondary text-xs" onClick={onClose} disabled={busy}>Cancel</button>
           <button className="btn-primary text-xs" onClick={() => void handleSubmit()} disabled={busy || !studentId}>
             {busy ? 'Recording…' : 'Record payment'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ─────────── Edit-payment (reconcile-with-accounting-hub) modal ─────────── */
+
+// Convert an ISO timestamp to the YYYY-MM-DDTHH:mm shape <input type="datetime-local">
+// expects. We keep the local time as-is so the staff sees the same wall
+// clock they're used to in the table.
+function isoToLocalInput(iso: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (!Number.isFinite(d.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+// And back: the input gives us a value in the user's local tz; we send
+// it as an ISO string for Prisma to store as a proper Date.
+function localInputToIso(s: string): string | null {
+  if (!s) return null
+  const d = new Date(s)
+  if (!Number.isFinite(d.getTime())) return null
+  return d.toISOString()
+}
+
+function EditPaymentModal({ row, onClose, onSaved }: {
+  row: FrontDeskPaymentRow
+  onClose: () => void
+  onSaved: () => void | Promise<void>
+}) {
+  const [plan, setPlan] = useState<PaymentPlan>(row.plan)
+  const [period, setPeriod] = useState(row.period)
+  const [method, setMethod] = useState<NonNullable<FrontDeskPaymentRow['method']>>(row.method ?? 'FRONT_DESK_CASH')
+  // Show the combined total in PHP; on save we split back into tuition
+  // (the full amount) + misc (0). Keeping it one input matches what the
+  // staff usually wants to reconcile.
+  const totalPhp = (row.tuitionCentavos + row.miscCentavos) / 100
+  const [amount, setAmount] = useState<string>(totalPhp.toString())
+  const [createdAt, setCreatedAt] = useState<string>(isoToLocalInput(row.createdAt))
+  const [convertedAt, setConvertedAt] = useState<string>(isoToLocalInput(row.convertedAt))
+  const [notes, setNotes] = useState<string>(row.notes ?? '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const isConfirmed = row.status === 'CONVERTED'
+
+  async function handleSubmit() {
+    setErr(null)
+    const peso = Number(String(amount).replace(/,/g, ''))
+    if (!Number.isFinite(peso) || peso < 0) { setErr('Enter the amount paid (in PHP).'); return }
+    if (!period.trim()) { setErr('Period covered is required.'); return }
+    const tuitionCentavos = Math.round(peso * 100)
+
+    // Build a patch with only fields that actually changed — the
+    // server returns 400 if nothing changed, and sending unchanged
+    // values churns audit logs.
+    const patch: FrontDeskPaymentPatch = {}
+    if (plan !== row.plan) patch.plan = plan
+    if (period.trim() !== row.period) patch.period = period.trim()
+    if (method !== (row.method ?? 'FRONT_DESK_CASH')) patch.method = method
+    if (tuitionCentavos !== row.tuitionCentavos) patch.tuitionCentavos = tuitionCentavos
+    // Always set miscCentavos to 0 when amount changed — the editor's
+    // single "Amount" field carries the full total.
+    if (tuitionCentavos !== row.tuitionCentavos && row.miscCentavos !== 0) patch.miscCentavos = 0
+    const newCreatedIso = localInputToIso(createdAt)
+    if (newCreatedIso && newCreatedIso !== row.createdAt) patch.createdAt = newCreatedIso
+    const newConvertedIso = localInputToIso(convertedAt)
+    if (newConvertedIso !== row.convertedAt) {
+      // Setting convertedAt to a value when the row was PENDING flips
+      // it to CONVERTED on the server (it's stamped when status is
+      // CONVERTED). We don't change status here; that's still the
+      // explicit "Confirm payment" button's job.
+      patch.convertedAt = newConvertedIso
+    }
+    const trimmedNotes = notes.trim()
+    if (trimmedNotes !== (row.notes ?? '')) patch.notes = trimmedNotes || null
+
+    if (Object.keys(patch).length === 0) {
+      setErr('No changes to save.')
+      return
+    }
+    setBusy(true)
+    const res = await patchFrontDeskPayment(row.classPortalPaymentId, patch)
+    if (!res.ok) {
+      setErr(res.error || 'Could not save changes. Please retry.')
+      setBusy(false)
+      return
+    }
+    setBusy(false)
+    await onSaved()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm overflow-y-auto p-3 sm:p-4 flex items-start justify-center" onClick={() => !busy && onClose()}>
+      <div className="card-static w-full max-w-md mt-10 sm:mt-16" onClick={(e) => e.stopPropagation()}>
+        <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>
+          Edit payment · reconcile with accounting hub
+        </div>
+        <h3 className="text-[18px] leading-tight mb-1">{row.studentName}</h3>
+        <p className="text-[11.5px] text-[color:var(--mid-gray)] mb-4">
+          {row.studentEmail} · {row.branch} · {isConfirmed ? 'Confirmed' : 'Pending'} ·{' '}
+          <span className="font-mono text-[10.5px]">{row.classPortalPaymentId}</span>
+        </p>
+
+        {err && (
+          <div className="mb-3 px-3 py-2 rounded-lg bg-rose-50 border border-rose-100 text-[12.5px] text-rose-800">{err}</div>
+        )}
+
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <label className="block">
+            <span className="label">Amount paid (PHP)</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              min={0}
+              step="0.01"
+              className="input"
+              value={amount}
+              onChange={e => setAmount(e.target.value)}
+              disabled={busy}
+            />
+          </label>
+          <label className="block">
+            <span className="label">Method</span>
+            <select className="select" value={method} onChange={e => setMethod(e.target.value as NonNullable<FrontDeskPaymentRow['method']>)} disabled={busy}>
+              <option value="FRONT_DESK_CASH">Cash at front desk</option>
+              <option value="BANK_DEPOSIT">Bank deposit</option>
+              <option value="PAYMONGO">PayMongo</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <label className="block">
+            <span className="label">Plan</span>
+            <select className="select" value={plan} onChange={e => setPlan(e.target.value as PaymentPlan)} disabled={busy}>
+              <option value="ANNUAL">Annual</option>
+              <option value="BIANNUAL">Bi-annual</option>
+              <option value="MONTHLY">Monthly</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className="label">Period covered</span>
+            <input
+              type="text"
+              className="input"
+              value={period}
+              onChange={e => setPeriod(e.target.value)}
+              placeholder='e.g. "AY 2026–2027" or "Aug 2026"'
+              disabled={busy}
+            />
+          </label>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <label className="block">
+            <span className="label">Submitted at</span>
+            <input
+              type="datetime-local"
+              className="input"
+              value={createdAt}
+              onChange={e => setCreatedAt(e.target.value)}
+              disabled={busy}
+              title="When the payment was first logged."
+            />
+          </label>
+          <label className="block">
+            <span className="label">Confirmed at</span>
+            <input
+              type="datetime-local"
+              className="input"
+              value={convertedAt}
+              onChange={e => setConvertedAt(e.target.value)}
+              disabled={busy}
+              title="When the cash/deposit was verified by staff. Leave empty if still pending."
+            />
+          </label>
+        </div>
+
+        <label className="block mb-4">
+          <span className="label">Remarks / accounting-hub reference (optional)</span>
+          <textarea
+            className="input"
+            rows={3}
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            placeholder="e.g. OR #12345 · matches accounting hub Order ABC-987 · amount adjusted from ₱5,000 → ₱4,800"
+            disabled={busy}
+          />
+        </label>
+
+        <div className="flex gap-2 justify-end">
+          <button className="btn-secondary text-xs" onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="btn-primary text-xs" onClick={() => void handleSubmit()} disabled={busy}>
+            {busy ? 'Saving…' : 'Save changes'}
           </button>
         </div>
       </div>

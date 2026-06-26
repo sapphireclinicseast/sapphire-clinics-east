@@ -978,6 +978,8 @@ export interface FrontDeskPaymentRow {
   period: string
   method: 'FRONT_DESK_CASH' | 'BANK_DEPOSIT' | 'PAYMONGO' | null
   status: 'PENDING' | 'CONVERTED' | 'VOIDED'
+  /** Free-text remarks / accounting-hub reconciliation notes. */
+  notes: string | null
   createdAt: string
   convertedAt: string | null
 }
@@ -1204,6 +1206,53 @@ export async function confirmFrontDeskPayment(classPortalPaymentId: string): Pro
   } catch (e) {
     console.warn('[confirmFrontDeskPayment] error:', e)
     return false
+  }
+}
+
+/**
+ * Generic patch helper for a front-desk-payment row. Use case:
+ * reconciling the class-portal row with the accounting-hub Order
+ * (amount mismatch, wrong submission/confirmation date, missing
+ * remarks). Same auth as confirm/method-change: admin unscoped,
+ * front desk branch-scoped server-side.
+ */
+export interface FrontDeskPaymentPatch {
+  notes?: string | null
+  method?: 'PAYMONGO' | 'BANK_DEPOSIT' | 'FRONT_DESK_CASH'
+  tuitionCentavos?: number
+  miscCentavos?: number
+  plan?: string
+  period?: string
+  /** ISO 8601 string. createdAt = "Submitted at". */
+  createdAt?: string
+  /** ISO 8601 string or null to clear. convertedAt = "Confirmed at". */
+  convertedAt?: string | null
+}
+
+export async function patchFrontDeskPayment(
+  classPortalPaymentId: string,
+  patch: FrontDeskPaymentPatch,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (typeof window === 'undefined') return { ok: false, error: 'server-side' }
+  if (!getToken()) return { ok: false, error: 'not authenticated' }
+  try {
+    const tok = getToken()
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/frontdesk-payments/${encodeURIComponent(classPortalPaymentId)}`, {
+      method: 'PATCH',
+      headers: {
+        'content-type': 'application/json',
+        ...(tok ? { authorization: `Bearer ${tok}` } : {}),
+      },
+      body: JSON.stringify(patch),
+    })
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      const msg = (j?.error as string) || `HTTP ${res.status}`
+      return { ok: false, error: msg }
+    }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: (e as Error).message }
   }
 }
 
