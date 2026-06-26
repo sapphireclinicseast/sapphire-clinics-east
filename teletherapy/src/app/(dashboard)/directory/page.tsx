@@ -430,8 +430,8 @@ export default function DirectoryPage() {
                 {entries.length === 0 ? (
                   <div className="py-12 text-center text-[var(--mid-gray)] text-[13px]"><Mail size={26} className="mx-auto mb-2 opacity-40" />No emails yet.</div>
                 ) : (
-                  <div>
-                    <table className="w-full text-left border-collapse">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[600px] text-left border-collapse">
                       <thead>
                         <tr className="text-[11px] uppercase tracking-wider text-[var(--mid-gray)]" style={{ background: 'var(--off-white)' }}>
                           <SortableTh label="Department" col="dept" sort={emailSort} onToggle={(c) => toggleSort(setEmailSort, c)} />
@@ -529,8 +529,8 @@ export default function DirectoryPage() {
                 {websites.length === 0 ? (
                   <div className="py-12 text-center text-[var(--mid-gray)] text-[13px]"><Globe size={26} className="mx-auto mb-2 opacity-40" />No websites yet.</div>
                 ) : (
-                  <div>
-                    <table className="w-full text-left border-collapse">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[600px] text-left border-collapse">
                       <thead>
                         <tr className="text-[11px] uppercase tracking-wider text-[var(--mid-gray)]" style={{ background: 'var(--off-white)' }}>
                           <SortableTh label="Link" col="link" sort={webSort} onToggle={(c) => toggleSort(setWebSort, c)} />
