@@ -49,6 +49,17 @@ const DEPT_ORDER = ['OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS', '
 const BRANCH_LABELS: Record<string, string> = { EAST: 'East', GREENHILLS: 'Greenhills', VERDANA: 'Verdana', CORPORATE: 'Corporate' }
 const BRANCH_ORDER = ['EAST', 'GREENHILLS', 'VERDANA', 'CORPORATE']
 
+// HR forms that have fillable online versions — shown as scannable QR cards at
+// the top of the Directory. QR SVGs are pre-generated in /public/forms-qr.
+const HR_BASE = 'https://hr.sapphireclinicseast.org'
+const FORM_QRS = [
+  { id: 'hr03', code: 'HR03', name: 'Grievance Form', path: '/concern-form.html' },
+  { id: 'hr06', code: 'HR06', name: 'Incident Report Form', path: '/patient-complaint-form.html' },
+  { id: 'hr19', code: 'HR19', name: 'Staff Feedback Form', path: '/forms/fill/uK3npNQ1' },
+  { id: 'hr20', code: 'HR20', name: 'Staff Referral Form', path: '/forms/fill/QHfTVwaX' },
+  { id: 'hr21', code: 'HR21', name: 'Payroll Revision Request', path: '/forms/fill/byKlxWS6' },
+]
+
 const sortDepts = (ds: string[]) => [...ds].sort((a, b) => DEPT_ORDER.indexOf(a) - DEPT_ORDER.indexOf(b))
 const sortBranches = (bs: string[]) => [...bs].sort((a, b) => BRANCH_ORDER.indexOf(a) - BRANCH_ORDER.indexOf(b))
 
@@ -280,6 +291,26 @@ export default function DirectoryPage() {
         <div>
           <h1 className="text-2xl font-bold text-[var(--charcoal)]" style={{ fontFamily: 'var(--font-display)' }}>Directory</h1>
           <p className="text-[13px] text-[var(--mid-gray)] mt-0.5">Branch information, emails and websites across the clinic.</p>
+        </div>
+      </div>
+
+      {/* Online Forms — scannable QR cards (HR fillable forms) */}
+      <div className="rounded-2xl p-5 mb-6 border border-[var(--light-gray)]" style={{ background: '#edf3d9' }}>
+        <div className="mb-4">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] mb-1" style={{ color: '#cf9d88' }}>Fill It Online</p>
+          <h2 className="text-[18px] font-bold" style={{ color: '#244952', fontFamily: 'var(--font-display)' }}>Online Forms — Scan or Click</h2>
+          <p className="text-[12.5px] text-[var(--mid-gray)] mt-1">These forms have fillable online versions. Scan the QR with your phone, or tap a card to open it.</p>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {FORM_QRS.map((f) => (
+            <a key={f.id} href={`${HR_BASE}${f.path}`} target="_blank" rel="noopener noreferrer"
+              className="bg-white rounded-xl p-3 flex flex-col items-center text-center border border-[var(--light-gray)] hover:shadow-md transition-shadow">
+              <img src={`/forms-qr/${f.id}.svg`} alt={`${f.code} ${f.name} QR code`} width={120} height={120} className="w-full max-w-[118px]" style={{ aspectRatio: '1 / 1' }} />
+              <div className="mt-2 text-[13px] font-bold" style={{ color: '#c69849' }}>{f.code}</div>
+              <div className="text-[12px] font-semibold leading-tight" style={{ color: '#244952' }}>{f.name}</div>
+              <div className="mt-1 text-[10.5px] text-[var(--mid-gray)] break-all">{f.path}</div>
+            </a>
+          ))}
         </div>
       </div>
 
