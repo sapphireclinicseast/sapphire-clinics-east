@@ -34,6 +34,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ cl
        *  PAYMONGO but the parent actually paid by bank deposit. Same
        *  auth rules as status flips (branch-scoped for non-admin). */
       method?: 'PAYMONGO' | 'BANK_DEPOSIT' | 'FRONT_DESK_CASH' | null
+      /** Reconciliation edits: amount and date overrides so the class-
+       *  portal row matches what the accounting hub Order actually
+       *  recorded. Plan + period are also editable for the same reason. */
+      tuitionCentavos?: number
+      miscCentavos?: number
+      plan?: string
+      period?: string
+      /** ISO date strings. createdAt = "submitted at" on Pending rows;
+       *  convertedAt = "confirmed at" on Confirmed rows. */
+      createdAt?: string
+      convertedAt?: string | null
     }
 
     // Branch scoping for non-main-admin roles.
@@ -46,19 +57,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ cl
       return withCors(NextResponse.json({ error: 'You can only edit payments for your own branch.' }, { status: 403 }), origin)
     }
 
-    // Decide what's actually changing.
-    //   - If body.status was sent (explicit string), treat it as a
-    //     status flip. Default-existing behaviour: any non-PENDING
-    //     value flips to CONVERTED.
-    //   - If body.method was sent (defined, including null to clear),
-    //     update the method too. Method-only edits leave status alone.
+    // Decide what's actually changing. Build the Prisma `data` payload
+    // piecewise — each whitelisted field is validated independently so
+    // a bad amount doesn't drop a valid notes edit.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: Record<string, any> = {}
     const statusSent = typeof body.status === 'string'
     if (statusSent) {
       const status: 'PENDING' | 'CONVERTED' = body.status === 'PENDING' ? 'PENDING' : 'CONVERTED'
       data.status = status
-      data.convertedAt = status === 'CONVERTED' ? new Date() : null
+      // Only stamp convertedAt to now() when the caller didn't supply
+      // an explicit convertedAt — the explicit override wins below.
+      if (body.convertedAt === undefined) {
+        data.convertedAt = status === 'CONVERTED' ? new Date() : null
+      }
     }
     if (body.method !== undefined) {
       const allowed = ['PAYMONGO', 'BANK_DEPOSIT', 'FRONT_DESK_CASH'] as const
@@ -69,6 +81,61 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ cl
       data.method = (body.method as AllowedMethod | null)
     }
     if (body.notes !== undefined) data.notes = body.notes ?? null
+
+    // Amount fields — must be non-negative integers; the existing
+    // posting endpoint rejects sum <= 0, but here we let the admin
+    // patch one side without touching the other.
+    if (body.tuitionCentavos !== undefined) {
+      const v = Math.round(Number(body.tuitionCentavos))
+      if (!Number.isFinite(v) || v < 0) {
+        return withCors(NextResponse.json({ error: 'tuitionCentavos must be a non-negative number.' }, { status: 400 }), origin)
+      }
+      data.tuitionCentavos = v
+    }
+    if (body.miscCentavos !== undefined) {
+      const v = Math.round(Number(body.miscCentavos))
+      if (!Number.isFinite(v) || v < 0) {
+        return withCors(NextResponse.json({ error: 'miscCentavos must be a non-negative number.' }, { status: 400 }), origin)
+      }
+      data.miscCentavos = v
+    }
+
+    if (body.plan !== undefined) {
+      const v = String(body.plan).trim()
+      if (!v) {
+        return withCors(NextResponse.json({ error: 'plan must not be empty.' }, { status: 400 }), origin)
+      }
+      data.plan = v
+    }
+    if (body.period !== undefined) {
+      const v = String(body.period).trim()
+      if (!v) {
+        return withCors(NextResponse.json({ error: 'period must not be empty.' }, { status: 400 }), origin)
+      }
+      data.period = v
+    }
+
+    // Date overrides. Accept ISO 8601 or YYYY-MM-DD. Null on convertedAt
+    // clears it (back to PENDING-style row).
+    if (body.createdAt !== undefined) {
+      const d = new Date(body.createdAt)
+      if (!Number.isFinite(d.getTime())) {
+        return withCors(NextResponse.json({ error: 'createdAt is not a valid date.' }, { status: 400 }), origin)
+      }
+      data.createdAt = d
+    }
+    if (body.convertedAt !== undefined) {
+      if (body.convertedAt === null) {
+        data.convertedAt = null
+      } else {
+        const d = new Date(body.convertedAt)
+        if (!Number.isFinite(d.getTime())) {
+          return withCors(NextResponse.json({ error: 'convertedAt is not a valid date.' }, { status: 400 }), origin)
+        }
+        data.convertedAt = d
+      }
+    }
+
     if (Object.keys(data).length === 0) {
       return withCors(NextResponse.json({ error: 'No editable fields supplied.' }, { status: 400 }), origin)
     }
@@ -84,6 +151,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ cl
         classPortalPaymentId: updated.classPortalPaymentId,
         status: updated.status,
         method: updated.method ?? null,
+        plan: updated.plan,
+        period: updated.period,
+        tuitionCentavos: updated.tuitionCentavos,
+        miscCentavos: updated.miscCentavos,
+        notes: updated.notes ?? null,
+        createdAt: updated.createdAt.toISOString(),
         convertedAt: updated.convertedAt?.toISOString() ?? null,
       },
     }), origin)

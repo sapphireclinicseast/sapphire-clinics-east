@@ -166,6 +166,7 @@ export async function GET(req: Request) {
       period: r.period,
       method: r.method ?? null,
       status: r.status,
+      notes: r.notes ?? null,
       createdAt: r.createdAt.toISOString(),
       convertedAt: r.convertedAt?.toISOString() ?? null,
     }))
