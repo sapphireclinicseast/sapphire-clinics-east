@@ -4,6 +4,12 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { Plus, Pencil, Trash2, Mail, MailCheck, MessageSquare, ChevronDown, ChevronUp, X, Smartphone, Video } from 'lucide-react'
 import DeskShortcutCard from '@/components/DeskShortcutCard'
 
+// ─── Branch display labels (enum values must stay SBEA / SBGH in the DB) ────
+const BRANCH_LABEL: Record<string, string> = {
+  SBEA: 'East Branch',
+  SBGH: 'Greenhills Branch',
+}
+
 // ─── Session types per department ────────────────────────────────────────────
 const SESSION_TYPES: Record<string, string[]> = {
   OT:         ['IE', 'Basic Session', 'Specialized Session', 'Group Session', 'PTC', 'Aquatherapy', 'IE Intern', 'Session Intern'],
@@ -540,7 +546,7 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
           style={isSBEA
             ? { background: 'var(--pale-teal)', color: 'var(--teal)' }
             : { background: '#FFF3CD', color: '#92400E' }}>
-          {staff.branch}
+          {BRANCH_LABEL[staff.branch] ?? staff.branch}
         </span>
         {open ? <ChevronUp size={16} style={{ color: 'var(--mid-gray)' }} /> : <ChevronDown size={16} style={{ color: 'var(--mid-gray)' }} />}
       </button>
@@ -874,7 +880,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
                 style={activeBranch === b
                   ? { background: 'var(--teal)', color: '#fff' }
                   : { background: '#fff', color: 'var(--mid-gray)' }}>
-                {b}
+                {BRANCH_LABEL[b] ?? b}
               </button>
             ))}
           </div>
@@ -935,7 +941,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
                   Clinicians tomorrow · {fmtDateShort(tomorrowDate)}
                 </h3>
                 <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-                  {tomorrowClinicians.length} on schedule · {activeBranch}
+                  {tomorrowClinicians.length} on schedule · {BRANCH_LABEL[activeBranch] ?? activeBranch}
                 </span>
               </div>
               {tomorrowClinicians.length === 0 ? (
@@ -943,7 +949,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
                   style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
                   <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>No clinicians scheduled tomorrow</p>
                   <p className="text-xs text-center px-4" style={{ color: 'var(--mid-gray)' }}>
-                    No {activeBranch} clinician has a {WEEKDAY_FULL[tomorrowCode]} in the Decking Module. Add a make-up session on the right if needed.
+                    No {BRANCH_LABEL[activeBranch] ?? activeBranch} clinician has a {WEEKDAY_FULL[tomorrowCode]} in the Decking Module. Add a make-up session on the right if needed.
                   </p>
                 </div>
               ) : (
