@@ -66,6 +66,8 @@ export async function GET(req: NextRequest) {
     select: {
       id: true, firstName: true, lastName: true, dob: true, sex: true,
       patientType: true, diagnosis: true, city: true, branch: true,
+      email: true, phone: true, address: true, civilStatus: true,
+      pwdSeniorId: true,
     },
   })
   if (!patient) {
@@ -168,6 +170,12 @@ export async function GET(req: NextRequest) {
     expiresAt: a.expiresAt.toISOString(),
   }))
 
+  // Compose a single human-readable address line (street/barangay + city).
+  const addressLine = [patient.address, patient.city]
+    .map((p) => (p ? titleCase(p) : ''))
+    .filter(Boolean)
+    .join(', ') || null
+
   const profile = {
     fullName: titleCase(`${patient.firstName} ${patient.lastName}`),
     dob: patient.dob ? patient.dob.toISOString().slice(0, 10) : null,
@@ -177,6 +185,12 @@ export async function GET(req: NextRequest) {
     diagnosis: patient.diagnosis ? titleCase(patient.diagnosis) : null,
     city: patient.city ? titleCase(patient.city) : null,
     branch: patient.branch ? (BRANCH_LABEL[patient.branch] ?? patient.branch) : null,
+    // Contact + ID fields for the patient-facing portal profile section.
+    email: patient.email ? patient.email.trim() : null,
+    phone: patient.phone ? patient.phone.trim() : null,
+    address: addressLine,
+    civilStatus: patient.civilStatus ? titleCase(patient.civilStatus) : null,
+    pwdSeniorId: patient.pwdSeniorId ? patient.pwdSeniorId.trim() : null,
   }
 
   return withCors(NextResponse.json({ profile, servicesAvailed, sessions, surveys }), origin)

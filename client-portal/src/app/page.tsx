@@ -1,7 +1,8 @@
 'use client'
 
-import { Suspense, useCallback, useEffect, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { QRCodeSVG } from 'qrcode.react'
 import {
   loginPatient,
   registerPatient,
@@ -13,6 +14,8 @@ import {
 import { getSession, setSession, clearSession } from '@/lib/session'
 import Chatbot from '@/components/Chatbot'
 import { Hero3D } from '@/components/landing/Hero3D'
+import RewardsPanel from '@/components/RewardsPanel'
+import { DirectorySection } from '@/components/Directory'
 
 type Tab = 'returning' | 'new'
 
@@ -49,19 +52,26 @@ function HomeInner() {
     <div className="space-y-8 md:space-y-10">
       <Chatbot />
 
-      <section className="animate-fade-up">
-        <Hero3D signedInFirstName={session?.firstName ?? null} />
-      </section>
-
-      {ready && session ? (
-        <SignedInDashboard token={session.token} onSignOut={handleSignOut} />
+      {/* Wait for the session check before rendering, so signed-in patients
+          never flash the marketing hero. */}
+      {!ready ? null : session ? (
+        <PortalDashboard
+          token={session.token}
+          firstName={session.firstName}
+          onSignOut={handleSignOut}
+        />
       ) : (
         <section
           id="get-started"
-          className="max-w-5xl mx-auto animate-fade-up stagger-2 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] items-start scroll-mt-24"
+          className="max-w-5xl mx-auto animate-fade-up grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,400px)] items-start scroll-mt-24"
         >
-          <AuthCard expired={expired} onAuthed={handleAuthed} />
-          <ComplaintCard />
+          {/* Brand hero on the left … */}
+          <Hero3D />
+          {/* … sign-in on the right, with the complaint card directly below it. */}
+          <div className="space-y-6">
+            <AuthCard expired={expired} onAuthed={handleAuthed} />
+            <ComplaintCard />
+          </div>
         </section>
       )}
     </div>
@@ -342,22 +352,39 @@ function AuthCard({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Signed-in dashboard
+// Signed-in portal — sidebar with Profile / Sessions / Feedback sections
 // ─────────────────────────────────────────────────────────────────────────────
 
 const SURVEY_BASE = 'https://survey.sapphireclinicseast.org'
 
-const SURVEY_LABEL: Record<string, string> = {
-  HR10: 'Client Satisfaction Survey',
-  HR11: 'Therapy Experience Survey',
-  HR12: 'Facility & Front Desk Survey',
-  HR16: 'Teletherapy Experience Survey',
-}
+// Survey types that assess a CLINICIAN (therapy experience) vs the FRONT DESK,
+// per the "Customer Survey" assignment logic in the Operations Hub.
+const CLINICIAN_SURVEYS = new Set(['HR10', 'HR11', 'HR16'])
+const FRONTDESK_SURVEYS = new Set(['HR12'])
 
-function SignedInDashboard({ token, onSignOut }: { token: string; onSignOut: () => void }) {
+type Section = 'profile' | 'sessions' | 'feedback' | 'rewards' | 'directory'
+
+const SECTIONS: { key: Section; label: string }[] = [
+  { key: 'profile', label: 'Profile' },
+  { key: 'sessions', label: 'Sessions' },
+  { key: 'feedback', label: 'Feedback' },
+  { key: 'rewards', label: 'Reward Points' },
+  { key: 'directory', label: 'Directory' },
+]
+
+function PortalDashboard({
+  token,
+  firstName,
+  onSignOut,
+}: {
+  token: string
+  firstName: string
+  onSignOut: () => void
+}) {
   const [data, setData] = useState<MeResult | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [section, setSection] = useState<Section>('profile')
 
   useEffect(() => {
     let cancelled = false
@@ -377,8 +404,8 @@ function SignedInDashboard({ token, onSignOut }: { token: string; onSignOut: () 
     <section className="max-w-5xl mx-auto animate-fade-up stagger-2 space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-[26px] leading-tight text-[color:var(--deep-teal)]">Your portal</h2>
-          <p className="text-sm text-[color:var(--mid-gray)] mt-1">Profile, sessions, and feedback in one place.</p>
+          <h2 className="text-[26px] leading-tight text-[color:var(--deep-teal)]">Welcome back, {firstName}</h2>
+          <p className="text-sm text-[color:var(--mid-gray)] mt-1">Your profile, sessions, and feedback in one place.</p>
         </div>
         <div className="flex items-center gap-2">
           <a href="/book" className="btn-primary inline-flex items-center justify-center">Book a session →</a>
@@ -394,15 +421,24 @@ function SignedInDashboard({ token, onSignOut }: { token: string; onSignOut: () 
       )}
 
       {data && (
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] items-start">
-          <div className="space-y-6">
-            <ProfileCard data={data} />
-            <ServicesCard services={data.servicesAvailed} />
-            <SessionsCard sessions={data.sessions} />
-          </div>
-          <div className="space-y-6">
-            <FeedbackCard surveys={data.surveys} />
-            <ComplaintCard />
+        <div className="grid gap-6 lg:grid-cols-[200px_minmax(0,1fr)] items-start">
+          <SidebarNav section={section} onChange={setSection} />
+          <div className="min-w-0">
+            {section === 'profile' && <ProfileSection data={data} />}
+            {section === 'sessions' && <SessionsSection sessions={data.sessions} />}
+            {section === 'feedback' && <FeedbackSection surveys={data.surveys} />}
+            {section === 'rewards' && (
+              <div>
+                <div className="card-static mb-5">
+                  <h3 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">Reward Points</h3>
+                  <p className="text-sm text-[color:var(--mid-gray)] mt-1">
+                    Look up your VIP or Prepaid card to see your points and balance.
+                  </p>
+                </div>
+                <RewardsPanel />
+              </div>
+            )}
+            {section === 'directory' && <DirectorySection />}
           </div>
         </div>
       )}
@@ -410,123 +446,286 @@ function SignedInDashboard({ token, onSignOut }: { token: string; onSignOut: () 
   )
 }
 
-function ProfileCard({ data }: { data: MeResult }) {
+function SidebarNav({ section, onChange }: { section: Section; onChange: (s: Section) => void }) {
+  return (
+    <nav className="card-static !p-2 lg:sticky lg:top-6">
+      <div
+        className="px-2 pt-1.5 pb-2 text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]"
+        style={{ fontFamily: 'var(--font-display)' }}
+      >
+        Sections
+      </div>
+      <div className="flex lg:flex-col gap-1">
+        {SECTIONS.map((s) => (
+          <button
+            key={s.key}
+            onClick={() => onChange(s.key)}
+            className={`flex-1 lg:flex-none text-left px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors ${
+              section === s.key
+                ? 'bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)]'
+                : 'text-[color:var(--mid-gray)] hover:text-[color:var(--teal)] hover:bg-[color:var(--pale-teal)]/50'
+            }`}
+            style={{ fontFamily: 'var(--font-display)' }}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+    </nav>
+  )
+}
+
+// ── Profile ──────────────────────────────────────────────────────────────────
+
+function ProfileSection({ data }: { data: MeResult }) {
   const p = data.profile
   return (
     <div className="card-static">
       <h3 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">Patient Profile</h3>
-      <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4">
+      <p className="text-sm text-[color:var(--mid-gray)] mt-1">Your demographics as recorded in our Patient CRM.</p>
+      <dl className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
         <Detail label="Full Name" value={p.fullName} />
-        <Detail label="Date of Birth" value={p.dob} />
-        <Detail label="Sex" value={p.sex} />
-        <Detail label="Age" value={p.age != null ? String(p.age) : null} />
-        <Detail label="Patient Type" value={p.patientType} />
+        <Detail label="Date of Birth" value={p.dob ? `${fmtDate(p.dob)}${p.age != null ? ` (${p.age} yrs)` : ''}` : null} />
+        <Detail label="Cellphone No." value={p.phone} />
+        <Detail label="Email" value={p.email} />
+        <Detail label="Address" value={p.address} />
         <Detail label="Diagnosis" value={p.diagnosis} />
-        <Detail label="City" value={p.city} />
+        <Detail label="Civil Status" value={p.civilStatus} />
+        <Detail label="PWD / Senior ID No." value={p.pwdSeniorId} />
         <Detail label="Branch" value={p.branch} />
       </dl>
       <p className="mt-5 text-[12px] text-[color:var(--mid-gray)] leading-relaxed border-t border-[color:var(--light-gray)] pt-3">
-        To update your Patient Profile, please inform the front desk to fill in the data in their Operations Hub.
+        To update your Patient Profile, please inform the front desk so they can edit your details in the Operations Hub.
       </p>
     </div>
   )
 }
 
-function ServicesCard({ services }: { services: string[] }) {
-  return (
-    <div className="card-static">
-      <h3 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">Services Availed</h3>
-      {services.length === 0 ? (
-        <p className="mt-3 text-sm text-[color:var(--mid-gray)]">No services recorded yet.</p>
-      ) : (
-        <div className="mt-4 flex flex-wrap gap-2">
-          {services.map((s) => (
-            <span
-              key={s}
-              className="inline-flex items-center px-3 py-1.5 rounded-full text-[13px] font-medium bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)]"
-              style={{ fontFamily: 'var(--font-display)' }}
-            >
-              {s}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
+// ── Sessions ─────────────────────────────────────────────────────────────────
 
-function SessionsCard({ sessions }: { sessions: MeResult['sessions'] }) {
+const SESSIONS_DISCLAIMER =
+  'We began using this system in late March–April 2026, so sessions before then are not reflected here.'
+
+function SessionsSection({ sessions }: { sessions: MeResult['sessions'] }) {
+  // Distinct departments present in this patient's history → subtabs.
+  const departments = useMemo(() => {
+    const seen = new Set<string>()
+    const order: string[] = []
+    for (const s of sessions) {
+      const d = s.department || 'Other'
+      if (!seen.has(d)) { seen.add(d); order.push(d) }
+    }
+    return order
+  }, [sessions])
+
+  const [dept, setDept] = useState<string | null>(departments[0] ?? null)
+  // Keep the active subtab valid if the underlying data changes.
+  useEffect(() => {
+    if (departments.length && (dept == null || !departments.includes(dept))) {
+      setDept(departments[0])
+    }
+  }, [departments, dept])
+
+  if (sessions.length === 0) {
+    return (
+      <div className="card-static">
+        <h3 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">Session History</h3>
+        <p className="mt-3 text-sm text-[color:var(--mid-gray)]">No sessions recorded yet.</p>
+        <Disclaimer>{SESSIONS_DISCLAIMER}</Disclaimer>
+      </div>
+    )
+  }
+
+  const active = dept && departments.includes(dept) ? dept : departments[0]
+  const deptSessions = sessions.filter((s) => (s.department || 'Other') === active)
+
+  // Group the active department's sessions by provider (clinician).
+  const byProvider = new Map<string, MeResult['sessions']>()
+  for (const s of deptSessions) {
+    const arr = byProvider.get(s.clinician) ?? []
+    arr.push(s)
+    byProvider.set(s.clinician, arr)
+  }
+
   return (
     <div className="card-static">
       <h3 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">Session History</h3>
-      {sessions.length === 0 ? (
-        <p className="mt-3 text-sm text-[color:var(--mid-gray)]">No sessions yet.</p>
-      ) : (
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-[11px] uppercase tracking-[0.1em] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
-                <th className="pb-2 pr-4 font-semibold">Date</th>
-                <th className="pb-2 pr-4 font-semibold">Time</th>
-                <th className="pb-2 pr-4 font-semibold">Clinician</th>
-                <th className="pb-2 font-semibold">Service</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sessions.map((s) => (
-                <tr key={`${s.source}-${s.id}`} className="border-t border-[color:var(--light-gray)]">
-                  <td className="py-2.5 pr-4 whitespace-nowrap text-[color:var(--deep-teal)]">{fmtDate(s.date)}</td>
-                  <td className="py-2.5 pr-4 whitespace-nowrap text-[color:var(--mid-gray)]">{fmtTime(s.startTime)}–{fmtTime(s.endTime)}</td>
-                  <td className="py-2.5 pr-4 text-[color:var(--deep-teal)]">{s.clinician}</td>
-                  <td className="py-2.5 text-[color:var(--mid-gray)]">
-                    {s.department || '—'}
-                    {s.isTeletherapy && (
-                      <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[color:var(--pale-teal)] text-[color:var(--teal)]" style={{ fontFamily: 'var(--font-display)' }}>Tele</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+
+      {/* Department subtabs */}
+      <div className="mt-4 flex flex-wrap gap-2">
+        {departments.map((d) => (
+          <button
+            key={d}
+            onClick={() => setDept(d)}
+            className={`px-3 py-1.5 rounded-full text-[13px] font-semibold transition-colors ${
+              active === d
+                ? 'bg-[color:var(--teal)] text-white'
+                : 'bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)] hover:opacity-80'
+            }`}
+            style={{ fontFamily: 'var(--font-display)' }}
+          >
+            {shortDept(d)}
+          </button>
+        ))}
+      </div>
+
+      <p className="mt-4 text-[13px] font-semibold text-[color:var(--deep-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
+        {active}
+      </p>
+
+      <div className="mt-3 space-y-6">
+        {[...byProvider.entries()].map(([provider, rows]) => (
+          <div key={provider}>
+            <div className="text-sm font-semibold text-[color:var(--teal)]">{provider}</div>
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[11px] uppercase tracking-[0.1em] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+                    <th className="pb-2 pr-4 font-semibold">Date</th>
+                    <th className="pb-2 pr-4 font-semibold">Type of Service</th>
+                    <th className="pb-2 font-semibold">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((s) => (
+                    <tr key={`${s.source}-${s.id}`} className="border-t border-[color:var(--light-gray)]">
+                      <td className="py-2.5 pr-4 whitespace-nowrap text-[color:var(--deep-teal)]">{fmtDate(s.date)}</td>
+                      <td className="py-2.5 pr-4 text-[color:var(--mid-gray)]">{s.isTeletherapy ? 'Teletherapy' : 'In-clinic'}</td>
+                      <td className="py-2.5"><StatusBadge status={s.status} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <Disclaimer>{SESSIONS_DISCLAIMER}</Disclaimer>
+    </div>
+  )
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const s = status.toUpperCase()
+  const tone =
+    s === 'COMPLETED' || s === 'PAID'
+      ? 'bg-emerald-50 text-emerald-700'
+      : s === 'CANCELLED' || s === 'NO_SHOW' || s === 'REJECTED'
+        ? 'bg-rose-50 text-rose-700'
+        : 'bg-[color:var(--pale-teal)] text-[color:var(--teal)]'
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${tone}`} style={{ fontFamily: 'var(--font-display)' }}>
+      {fmtStatus(status)}
+    </span>
+  )
+}
+
+// ── Feedback ─────────────────────────────────────────────────────────────────
+
+function FeedbackSection({ surveys }: { surveys: MeResult['surveys'] }) {
+  const clinicianSurveys = surveys.filter((s) => CLINICIAN_SURVEYS.has(s.surveyType))
+  const frontdeskSurveys = surveys.filter((s) => FRONTDESK_SURVEYS.has(s.surveyType))
+
+  return (
+    <div className="card-static">
+      <h3 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">Feedback</h3>
+      <p className="text-sm text-[color:var(--mid-gray)] mt-1">
+        Scan a QR code with your phone to share feedback. Your responses are confidential.
+      </p>
+
+      <div className="mt-5 grid gap-5 sm:grid-cols-2">
+        {/* Complaint — always available */}
+        <QrCard
+          title="Raise a complaint"
+          subtitle="A concern you'd like us to look into."
+          url={COMPLAINT_FORM_URL}
+          qrSrc="/complaint-qr.svg"
+        />
+
+        {/* Clinician feedback — only when randomly selected to assess your provider */}
+        {clinicianSurveys.map((s) => (
+          <QrCard
+            key={s.id}
+            title="Rate your clinician"
+            subtitle="You were randomly selected to assess your provider."
+            url={`${SURVEY_BASE}?id=${encodeURIComponent(s.id)}`}
+          />
+        ))}
+
+        {/* Front desk feedback — only when randomly selected to assess the front desk */}
+        {frontdeskSurveys.map((s) => (
+          <QrCard
+            key={s.id}
+            title="Rate our front desk"
+            subtitle="You were randomly selected to assess our front desk."
+            url={`${SURVEY_BASE}?id=${encodeURIComponent(s.id)}`}
+          />
+        ))}
+      </div>
+
+      {clinicianSurveys.length === 0 && frontdeskSurveys.length === 0 && (
+        <Disclaimer>
+          Clinician and front-desk feedback QR codes appear here only when you&apos;re randomly
+          selected to assess a staff member.
+        </Disclaimer>
       )}
     </div>
   )
 }
 
-function FeedbackCard({ surveys }: { surveys: MeResult['surveys'] }) {
+function QrCard({
+  title,
+  subtitle,
+  url,
+  qrSrc,
+}: {
+  title: string
+  subtitle: string
+  url: string
+  qrSrc?: string
+}) {
   return (
-    <aside className="card-static">
-      <h3 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">Give us feedback!</h3>
-      {surveys.length === 0 ? (
-        <p className="mt-2 text-sm text-[color:var(--mid-gray)]">
-          No surveys for you right now. When one is assigned, it&apos;ll appear here.
-        </p>
-      ) : (
-        <>
-          <p className="mt-1.5 text-sm text-[color:var(--mid-gray)]">
-            You have {surveys.length === 1 ? 'a survey' : `${surveys.length} surveys`} waiting — your honest input shapes our care.
-          </p>
-          <div className="mt-4 space-y-2.5">
-            {surveys.map((s) => (
-              <a
-                key={s.id}
-                href={`${SURVEY_BASE}?id=${encodeURIComponent(s.id)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-[color:var(--light-gray)] hover:border-[color:var(--teal)] hover:bg-[color:var(--pale-teal)] transition-colors group"
-              >
-                <span className="text-sm font-semibold text-[color:var(--deep-teal)]">
-                  {SURVEY_LABEL[s.surveyType] ?? s.surveyType}
-                </span>
-                <span className="text-[color:var(--teal)] group-hover:translate-x-0.5 transition-transform">→</span>
-              </a>
-            ))}
-          </div>
-        </>
-      )}
-    </aside>
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex flex-col items-center text-center rounded-2xl border border-[color:var(--light-gray)] hover:border-[color:var(--teal)] p-5 transition-colors group"
+    >
+      <div className="text-sm font-semibold text-[color:var(--deep-teal)]">{title}</div>
+      <p className="text-[12px] text-[color:var(--mid-gray)] mt-1 leading-snug">{subtitle}</p>
+      <div className="mt-4 rounded-xl bg-white p-3 border border-[color:var(--light-gray)] shadow-sm">
+        {qrSrc ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={qrSrc} alt={`QR code — ${title}`} width={132} height={132} className="w-[132px] h-[132px]" />
+        ) : (
+          <QRCodeSVG value={url} size={132} level="M" bgColor="#ffffff" fgColor="#13262B" />
+        )}
+      </div>
+      <span className="mt-3 text-[12px] font-semibold text-[color:var(--teal)] group-hover:translate-x-0.5 transition-transform" style={{ fontFamily: 'var(--font-display)' }}>
+        Or tap to open →
+      </span>
+    </a>
   )
+}
+
+// ── Shared bits used by the signed-in sections ───────────────────────────────
+
+function Disclaimer({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="mt-5 text-[12px] text-[color:var(--mid-gray)] leading-relaxed border-t border-[color:var(--light-gray)] pt-3">
+      {children}
+    </p>
+  )
+}
+
+function shortDept(label: string): string {
+  const m = /\(([^)]+)\)/.exec(label)
+  return m ? m[1] : label
+}
+
+function fmtStatus(s: string): string {
+  return s.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -605,13 +804,4 @@ function fmtDate(iso: string): string {
   const d = new Date(`${iso}T00:00:00`)
   if (Number.isNaN(d.getTime())) return iso
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-}
-
-function fmtTime(hhmm: string): string {
-  const m = /^(\d{1,2}):(\d{2})/.exec(hhmm)
-  if (!m) return hhmm
-  let h = parseInt(m[1], 10)
-  const ampm = h >= 12 ? 'PM' : 'AM'
-  h = h % 12 || 12
-  return `${h}:${m[2]} ${ampm}`
 }

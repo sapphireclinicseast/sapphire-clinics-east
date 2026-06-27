@@ -1,97 +1,71 @@
 'use client'
 
-// Landing-page hero: dark Narra card with the SCEI booking message + status
-// pill on the left, and a fade-in/fade-out rotator of real, anonymized
-// positive feedback from our client satisfaction surveys on the right.
-// Quotes come from /api/booking-proxy/survey-praise (proxied to the marketing
-// app's /api/public/survey-praise).
+// Landing-page hero — a tall vertical card for the LEFT column, so the sign-in
+// card sits beside it on the right (no scrolling to reach sign-in). Carries the
+// Aura Health Rehab brand: dark Narra→Moss gradient with the logo lockup,
+// "Care for the whole human." headline, value props, and a compact rotator of
+// real, anonymized praise from our client satisfaction surveys.
+// Quotes come from /api/booking-proxy/survey-praise.
 
 import { useEffect, useState } from 'react'
 import { Card } from '@/components/ui/card'
 import { Spotlight } from '@/components/ui/spotlight'
 
-interface Hero3DProps {
-  signedInFirstName?: string | null
-}
-
-export function Hero3D({ signedInFirstName }: Hero3DProps) {
+export function Hero3D() {
   return (
     <Card
-      className="w-full min-h-[480px] md:min-h-[520px] relative overflow-hidden border-0 rounded-3xl text-white"
+      className="w-full h-full min-h-[480px] relative overflow-hidden border-0 rounded-3xl text-white"
       style={{
-        // Narra is the brand's deepest green; matches the dark "hero
-        // moment" pairing from the brand guide (Narra + Sun).
         background:
           'radial-gradient(800px 360px at 110% -10%, rgba(198,152,73,0.30), transparent 60%),' +
           'radial-gradient(700px 320px at -10% 120%, rgba(207,157,136,0.24), transparent 60%),' +
           'linear-gradient(135deg, #13262B 0%, #244952 55%, #4A8073 110%)',
       }}
     >
-      <Spotlight
-        className="-top-40 left-0 md:left-60 md:-top-20"
-        fill="rgb(198, 152, 73)" // Sun
-      />
+      <Spotlight className="-top-40 left-0 md:left-60 md:-top-20" fill="rgb(198, 152, 73)" />
 
-      <div className="flex flex-col md:flex-row h-full">
-        {/* Left content */}
-        <div className="flex-1 p-8 md:p-10 relative z-10 flex flex-col justify-center">
-          <div
-            className="inline-flex items-center gap-2 self-start px-3 py-1 rounded-full bg-white/10 backdrop-blur-sm text-[11px] uppercase tracking-[0.14em] mb-6 border border-white/10"
-            style={{ fontFamily: 'var(--font-display)' }}
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-[color:var(--sun)] animate-pulse-ring"></span>
-            Online booking
-          </div>
-
-          <h1
-            className="text-[40px] md:text-[52px] leading-[1.04] tracking-[-0.02em] font-bold bg-clip-text text-transparent"
-            style={{
-              backgroundImage:
-                'linear-gradient(180deg, #EDF3D9 0%, rgba(237,243,217,0.65) 100%)',
-            }}
-          >
-            Care for the<br />whole human.
-          </h1>
-
-          <p className="mt-5 text-[15px] md:text-[16px] text-white/75 leading-relaxed max-w-md">
-            Sapphire Clinics East — log in to book your next session, settle the
-            downpayment, and keep your profile and full session history in one
-            calm place.
-          </p>
-
-          {signedInFirstName && (
-            <div className="mt-7 p-4 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/15 flex items-center justify-between gap-3 max-w-md">
-              <div>
-                <div
-                  className="text-[10.5px] uppercase tracking-[0.12em] text-white/60"
-                  style={{ fontFamily: 'var(--font-display)' }}
-                >
-                  Signed in as
-                </div>
-                <div className="font-semibold">{signedInFirstName}</div>
-              </div>
-              <a
-                href="/book"
-                className="inline-flex items-center gap-1.5 bg-[color:var(--clay)] hover:opacity-90 text-white text-sm font-semibold px-3.5 py-2 rounded-lg transition-opacity"
-                style={{ fontFamily: 'var(--font-display)' }}
-              >
-                Continue booking →
-              </a>
-            </div>
-          )}
-
-          <div
-            className="mt-7 flex flex-col gap-2 text-[13px] text-white/80 max-w-md"
-            style={{ fontFamily: 'var(--font-display)' }}
-          >
-            <div className="flex items-center gap-2"><Check /> View your patient profile at a glance</div>
-            <div className="flex items-center gap-2"><Check /> Book a session and pay securely via PayMongo</div>
-            <div className="flex items-center gap-2"><Check /> Revisit your full session history anytime</div>
+      <div className="relative z-10 flex flex-col h-full p-8 md:p-10">
+        {/* Aura Health Rehab brand lockup on a clean white chip */}
+        <div className="inline-flex items-center gap-3 self-start bg-white rounded-2xl pl-3.5 pr-5 py-2.5 shadow-sm">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/aura-mark.png" alt="Aura Health Rehab" width={64} height={32} className="h-8 w-auto" />
+          <div className="leading-none" style={{ fontFamily: 'var(--font-display)' }}>
+            <div className="text-[color:var(--narra)] font-bold text-[16px] tracking-tight">AURA HEALTH</div>
+            <div className="text-[color:var(--moss)] text-[10px] font-semibold tracking-[0.34em] mt-1">REHAB</div>
           </div>
         </div>
 
-        {/* Right content — rotating client praise */}
-        <div className="flex-1 relative min-h-[220px] md:min-h-[520px] flex items-center justify-center p-8 md:p-10 z-10">
+        <div
+          className="inline-flex items-center gap-2 self-start px-3 py-1 rounded-full bg-white/10 backdrop-blur-sm text-[11px] uppercase tracking-[0.14em] mt-7 mb-5 border border-white/10"
+          style={{ fontFamily: 'var(--font-display)' }}
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-[color:var(--sun)] animate-pulse-ring"></span>
+          Online booking
+        </div>
+
+        <h1
+          className="text-[38px] md:text-[46px] leading-[1.04] tracking-[-0.02em] font-bold bg-clip-text text-transparent"
+          style={{ backgroundImage: 'linear-gradient(180deg, #EDF3D9 0%, rgba(237,243,217,0.65) 100%)' }}
+        >
+          Care for the<br />whole human.
+        </h1>
+
+        <p className="mt-5 text-[15px] md:text-[16px] text-white/75 leading-relaxed max-w-md">
+          Aura Health Rehab — log in to book your next session, settle the
+          downpayment, and keep your profile and full session history in one calm place.
+        </p>
+
+        <div
+          className="mt-7 flex flex-col gap-2 text-[13px] text-white/85 max-w-md"
+          style={{ fontFamily: 'var(--font-display)' }}
+        >
+          <div className="flex items-center gap-2"><Check /> View your patient profile at a glance</div>
+          <div className="flex items-center gap-2"><Check /> Book a session and pay securely via PayMongo</div>
+          <div className="flex items-center gap-2"><Check /> Revisit your full session history anytime</div>
+        </div>
+
+        {/* Compact praise rotator pinned to the bottom of the card */}
+        <div className="mt-auto pt-8">
           <PraiseRotator />
         </div>
       </div>
@@ -101,9 +75,7 @@ export function Hero3D({ signedInFirstName }: Hero3DProps) {
 
 // Fallback line shown until/if no survey quotes are available. Not a
 // fabricated testimonial — just brand copy.
-const PRAISE_FALLBACK = [
-  'Real words from the people we care for.',
-]
+const PRAISE_FALLBACK = ['Real words from the people we care for.']
 
 function PraiseRotator() {
   const [quotes, setQuotes] = useState<string[]>(PRAISE_FALLBACK)
@@ -147,38 +119,22 @@ function PraiseRotator() {
   }, [quotes])
 
   return (
-    <figure className="relative max-w-sm w-full text-center">
-      <div
-        className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--sun)] mb-5 flex items-center justify-center gap-2"
+    <figure className="rounded-2xl bg-white/10 backdrop-blur-sm border border-white/10 p-5">
+      <figcaption
+        className="text-[10.5px] uppercase tracking-[0.16em] text-[color:var(--sun)] mb-2.5 flex items-center gap-2"
         style={{ fontFamily: 'var(--font-display)' }}
       >
         <span className="w-1.5 h-1.5 rounded-full bg-[color:var(--sun)] animate-pulse-ring"></span>
         From our random client surveys
-      </div>
-      <div className="min-h-[150px] md:min-h-[200px] flex items-center justify-center">
-        <blockquote
-          className="text-[18px] md:text-[22px] leading-[1.4] text-[#EDF3D9] transition-opacity duration-[600ms] ease-in-out"
-          style={{ opacity: visible ? 1 : 0 }}
-        >
-          <span className="text-[color:var(--sun)] text-3xl leading-none align-[-0.3em] mr-0.5">“</span>
-          {quotes[idx]}
-          <span className="text-[color:var(--sun)] text-3xl leading-none align-[-0.3em] ml-0.5">”</span>
-        </blockquote>
-      </div>
-      {quotes.length > 1 && (
-        <div className="mt-6 flex items-center justify-center gap-1.5">
-          {quotes.slice(0, 8).map((_, i) => (
-            <span
-              key={i}
-              className="h-1.5 rounded-full transition-all duration-300"
-              style={{
-                width: i === idx % 8 ? 18 : 6,
-                background: i === idx % 8 ? 'var(--sun)' : 'rgba(244,236,221,0.3)',
-              }}
-            />
-          ))}
-        </div>
-      )}
+      </figcaption>
+      <blockquote
+        className="text-[15px] md:text-[16px] leading-[1.45] text-[#EDF3D9] transition-opacity duration-[600ms] ease-in-out min-h-[3.2em]"
+        style={{ opacity: visible ? 1 : 0 }}
+      >
+        <span className="text-[color:var(--sun)] text-2xl leading-none align-[-0.3em] mr-0.5">“</span>
+        {quotes[idx]}
+        <span className="text-[color:var(--sun)] text-2xl leading-none align-[-0.3em] ml-0.5">”</span>
+      </blockquote>
     </figure>
   )
 }
