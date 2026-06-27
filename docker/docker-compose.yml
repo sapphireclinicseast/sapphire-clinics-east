@@ -110,7 +110,7 @@ services:
       app:
         condition: service_started
     environment:
-      MARKETING_URL: ${MARKETING_URL:-https://marketing.sapphireclinicseast.org}
+      MARKETING_URL: ${MARKETING_URL:-https://operations.sapphireclinicseast.org}
       ACCOUNTING_URL: ${ACCOUNTING_URL:-https://accounting.sapphireclinicseast.org}
       # Aurora chatbot admin console (/admin). Password gates login; token must
       # match the marketing app's AURORA_ADMIN_TOKEN to authorize edits.
@@ -134,7 +134,7 @@ services:
       app:
         condition: service_started
     environment:
-      MARKETING_URL: ${MARKETING_URL:-https://marketing.sapphireclinicseast.org}
+      MARKETING_URL: ${MARKETING_URL:-https://operations.sapphireclinicseast.org}
       # Server-side PayMongo secret key for /api/pay/create-checkout.
       # Pinned to the class-portal-specific key; falls back to the global
       # PAYMONGO_SECRET_KEY if the class-specific one isn't set.

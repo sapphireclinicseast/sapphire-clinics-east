@@ -4,7 +4,7 @@ const config: NextConfig = {
   output: 'standalone',
   experimental: {},
   env: {
-    NEXT_PUBLIC_MARKETING_URL: process.env.MARKETING_URL ?? 'https://marketing.sapphireclinicseast.org',
+    NEXT_PUBLIC_MARKETING_URL: process.env.MARKETING_URL ?? 'https://operations.sapphireclinicseast.org',
   },
 }
 

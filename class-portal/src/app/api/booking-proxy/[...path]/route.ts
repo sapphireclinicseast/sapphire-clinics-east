@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 
-const UPSTREAM = process.env.MARKETING_URL ?? 'https://marketing.sapphireclinicseast.org'
+const UPSTREAM = process.env.MARKETING_URL ?? 'https://operations.sapphireclinicseast.org'
 
 async function proxy(req: NextRequest, method: 'GET' | 'POST', path: string[]) {
   const url = new URL(`${UPSTREAM}/api/public/${path.join('/')}`)
