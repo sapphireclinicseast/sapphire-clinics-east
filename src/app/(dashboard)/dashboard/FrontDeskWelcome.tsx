@@ -150,12 +150,12 @@ const ALPACA_CSS = `
   /* ── Ear wiggle during jump (synced to awBehave 14–22%) ── */
   .aw-ear-l {
     transform-box: fill-box;
-    transform-origin: 100% 85%;
+    transform-origin: 50% 100%;
     animation: awEarL 22s ease-in-out infinite;
   }
   .aw-ear-r {
     transform-box: fill-box;
-    transform-origin: 0% 85%;
+    transform-origin: 50% 100%;
     animation: awEarR 22s ease-in-out infinite;
   }
 
@@ -257,128 +257,121 @@ const ALPACA_CSS = `
   }
 `
 
-// ── Alpaca SVG — styled after the cute CGI reference image ──────────────────
-// Key features: round fluffy body, orange (#4a8073), big round bear-like ears,
-// orange fluffy hair tuft on top, large warm dark eyes with glass shines,
-// small button nose, rosy cheeks, gentle smile → big smile + sparkles on jump
+// ── Alpaca SVG ───────────────────────────────────────────────────────────────
+// True alpaca anatomy: long neck, upright banana ears, flat wide muzzle,
+// fluffy teal topknot, slender legs, cream wool body.
+// For richer animation, add lottie-react + a LottieFiles alpaca JSON instead.
 function AlpacaSVG() {
   return (
-    <svg
-      width="180"
-      height="230"
-      viewBox="0 0 180 230"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      {/* ── Back legs (far pair — muted, drawn first so body covers tops) ── */}
-      <rect x="64" y="174" width="20" height="44" rx="10" fill="#D5CAC0" />
-      <rect x="92" y="176" width="20" height="42" rx="10" fill="#D5CAC0" />
-      <rect x="64" y="207" width="20" height="11" rx="8"  fill="#B0A090" />
-      <rect x="92" y="207" width="20" height="11" rx="8"  fill="#B0A090" />
+    <svg width="160" height="260" viewBox="0 0 160 260" fill="none" xmlns="http://www.w3.org/2000/svg">
 
-      {/* ── Body (orange, large round) ── */}
-      <ellipse cx="90" cy="158" rx="60" ry="56" fill="#4a8073" />
+      {/* ── Back legs (far pair — drawn first, body covers tops) ── */}
+      <rect x="50" y="192" width="15" height="58" rx="7.5" fill="#C4B8A4" />
+      <rect x="85" y="194" width="15" height="56" rx="7.5" fill="#C4B8A4" />
+      <rect x="50" y="238" width="15" height="12" rx="6" fill="#7A6A58" />
+      <rect x="85" y="238" width="15" height="12" rx="6" fill="#7A6A58" />
 
-      {/* ── Chest patch (warm cream blending up to face) ── */}
-      <ellipse cx="90" cy="130" rx="32" ry="36" fill="#F5E8D0" />
+      {/* ── Body (large fluffy wool oval) ── */}
+      <ellipse cx="80" cy="192" rx="52" ry="46" fill="#EDE8D5" />
+      {/* Wool texture bumps */}
+      <ellipse cx="50"  cy="180" rx="13" ry="9"  fill="#E2DCC8" />
+      <ellipse cx="110" cy="180" rx="13" ry="9"  fill="#E2DCC8" />
+      <ellipse cx="65"  cy="162" rx="13" ry="9"  fill="#E2DCC8" />
+      <ellipse cx="95"  cy="162" rx="13" ry="9"  fill="#E2DCC8" />
+      <ellipse cx="80"  cy="155" rx="13" ry="8"  fill="#E2DCC8" />
 
-      {/* ── Tail (poof) ── */}
-      <ellipse cx="147" cy="122" rx="17" ry="20" fill="#4a8073" />
-      <ellipse cx="148" cy="121" rx="11" ry="13" fill="#244952" />
+      {/* ── Tail (small fluffy poof) ── */}
+      <ellipse cx="128" cy="170" rx="12" ry="11" fill="#EDE8D5" />
+      <ellipse cx="129" cy="169" rx="7"  ry="7"  fill="#E2DCC8" />
 
-      {/* ── Front legs (near pair — cream) ── */}
-      <rect x="50" y="172" width="23" height="48" rx="11.5" fill="#F5E8D0" />
-      <rect x="78" y="174" width="23" height="46" rx="11.5" fill="#F5E8D0" />
-      <rect x="50" y="209" width="23" height="11"  rx="9"   fill="#C5B4A4" />
-      <rect x="78" y="209" width="23" height="11"  rx="9"   fill="#C5B4A4" />
+      {/* ── Front legs (near pair — slightly lighter) ── */}
+      <rect x="57" y="195" width="15" height="57" rx="7.5" fill="#EAE4CE" />
+      <rect x="82" y="197" width="15" height="55" rx="7.5" fill="#EAE4CE" />
+      <rect x="57" y="240" width="15" height="12" rx="6" fill="#7A6A58" />
+      <rect x="82" y="240" width="15" height="12" rx="6" fill="#7A6A58" />
 
-      {/* ── Ears — round & big like the reference image ── */}
-      {/* Left ear (drawn before head → head naturally overlaps the base) */}
-      <circle cx="44" cy="48" r="26" fill="#4a8073" className="aw-ear-l" />
-      <circle cx="44" cy="48" r="17" fill="#244952" className="aw-ear-l" />
-      <circle cx="44" cy="48" r="9"  fill="#FBD080" className="aw-ear-l" />
+      {/* ── Neck (long — the defining alpaca silhouette) ── */}
+      <rect x="65" y="126" width="30" height="78" rx="15" fill="#EDE8D5" />
+      {/* Neck shadow/depth on sides */}
+      <rect x="65" y="130" width="6"  height="68" rx="3" fill="#E2DCC8" opacity="0.6" />
+      <rect x="89" y="130" width="6"  height="68" rx="3" fill="#E2DCC8" opacity="0.6" />
+
+      {/* ── Head (smaller oval — alpaca heads are compact) ── */}
+      <ellipse cx="80" cy="108" rx="29" ry="27" fill="#EDE8D5" />
+
+      {/* ── Topknot / forelock (teal fluffy tuft — brand colour accent) ── */}
+      <circle cx="68"  cy="82"  r="13" fill="#4a8073" />
+      <circle cx="80"  cy="76"  r="15" fill="#4a8073" />
+      <circle cx="92"  cy="82"  r="13" fill="#4a8073" />
+      <circle cx="73"  cy="72"  r="10" fill="#244952" />
+      <circle cx="87"  cy="72"  r="10" fill="#244952" />
+      <circle cx="80"  cy="68"  r="8"  fill="#5a9085" />
+      <circle cx="80"  cy="65"  r="5"  fill="#6aaa97" opacity="0.7" />
+
+      {/* ── Ears (upright banana — NOT round; this is the key alpaca feature) ── */}
+      {/* Left ear */}
+      <ellipse cx="55" cy="90" rx="9" ry="21" fill="#4a8073" className="aw-ear-l" />
+      <ellipse cx="55" cy="93" rx="5" ry="14" fill="#244952" className="aw-ear-l" />
       {/* Right ear */}
-      <circle cx="136" cy="48" r="26" fill="#4a8073" className="aw-ear-r" />
-      <circle cx="136" cy="48" r="17" fill="#244952" className="aw-ear-r" />
-      <circle cx="136" cy="48" r="9"  fill="#FBD080" className="aw-ear-r" />
+      <ellipse cx="105" cy="90" rx="9" ry="21" fill="#4a8073" className="aw-ear-r" />
+      <ellipse cx="105" cy="93" rx="5" ry="14" fill="#244952" className="aw-ear-r" />
 
-      {/* ── Head (large round, orange — covers ear bases naturally) ── */}
-      <circle cx="90" cy="78" r="54" fill="#4a8073" />
+      {/* ── Face patch (defines the long alpaca face area) ── */}
+      <ellipse cx="80" cy="115" rx="21" ry="19" fill="#E4DBC8" />
 
-      {/* ── Orange fluffy hair tuft on top (drawn after head = sits on top) ── */}
-      <circle cx="70"  cy="28" r="20" fill="#4a8073" />
-      <circle cx="90"  cy="20" r="23" fill="#F07020" />
-      <circle cx="110" cy="28" r="20" fill="#4a8073" />
-      <circle cx="79"  cy="13" r="16" fill="#244952" />
-      <circle cx="101" cy="13" r="16" fill="#244952" />
-      <circle cx="90"  cy="7"  r="13" fill="#FBD080" />
-      {/* Fluffy texture bumps */}
-      <circle cx="82"  cy="18" r="9"  fill="#244952" opacity="0.7" />
-      <circle cx="98"  cy="18" r="9"  fill="#244952" opacity="0.7" />
-
-      {/* ── Face patch (warm cream oval for feature contrast) ── */}
-      <ellipse cx="90" cy="90" rx="40" ry="36" fill="#F5E8D0" />
-
-      {/* ── Eyes ── (big, round, dark brown — key cuteness feature) */}
+      {/* ── Eyes (large, warm dark — drawn after face patch) ── */}
       {/* Left eye */}
-      <circle cx="72"  cy="78" r="16"  fill="#1C0D04" />
-      <circle cx="72"  cy="78" r="11.5" fill="#3D1A08" />
-      <circle cx="78"  cy="71" r="6"   fill="#FFFFFF" />          {/* main shine */}
-      <circle cx="68"  cy="81" r="2.8" fill="#FFFFFF" opacity="0.5" /> {/* soft glow */}
+      <circle cx="68" cy="106" r="10.5" fill="#1C0D04" />
+      <circle cx="68" cy="106" r="7"    fill="#3D1A08" />
+      <circle cx="72" cy="101" r="4"    fill="#FFFFFF" />
+      <circle cx="65" cy="109" r="1.8"  fill="#FFFFFF" opacity="0.5" />
       {/* Right eye */}
-      <circle cx="108" cy="78" r="16"   fill="#1C0D04" />
-      <circle cx="108" cy="78" r="11.5" fill="#3D1A08" />
-      <circle cx="114" cy="71" r="6"    fill="#FFFFFF" />
-      <circle cx="104" cy="81" r="2.8"  fill="#FFFFFF" opacity="0.5" />
+      <circle cx="92" cy="106" r="10.5" fill="#1C0D04" />
+      <circle cx="92" cy="106" r="7"    fill="#3D1A08" />
+      <circle cx="96" cy="101" r="4"    fill="#FFFFFF" />
+      <circle cx="89" cy="109" r="1.8"  fill="#FFFFFF" opacity="0.5" />
 
-      {/* ── Happy eye squints (cover bottom of eyes during jump → squinting smile) ── */}
-      <ellipse cx="72"  cy="89" rx="16" ry="11" fill="#F5E8D0" className="aw-squint" />
-      <ellipse cx="108" cy="89" rx="16" ry="11" fill="#F5E8D0" className="aw-squint" />
+      {/* Happy squints (show during jump, cover eye bottoms) */}
+      <ellipse cx="68" cy="114" rx="10.5" ry="8" fill="#E4DBC8" className="aw-squint" />
+      <ellipse cx="92" cy="114" rx="10.5" ry="8" fill="#E4DBC8" className="aw-squint" />
 
-      {/* ── Eyelids (same color as face patch, animate scaleY 0→1 from top for blink) ── */}
-      <ellipse cx="72"  cy="78" rx="16" ry="16" fill="#F5E8D0" className="aw-eyelid" />
-      <ellipse cx="108" cy="78" rx="16" ry="16" fill="#F5E8D0" className="aw-eyelid" />
+      {/* Eyelids (blink scaleY 0→1 from top) */}
+      <ellipse cx="68" cy="106" rx="10.5" ry="10.5" fill="#E4DBC8" className="aw-eyelid" />
+      <ellipse cx="92" cy="106" rx="10.5" ry="10.5" fill="#E4DBC8" className="aw-eyelid" />
 
-      {/* ── Snout / nose area ── */}
-      <ellipse cx="90" cy="100" rx="16" ry="12" fill="#CCAA80" />
-      <ellipse cx="90" cy="97"  rx="9.5" ry="6.5" fill="#7A3020" />
-      <ellipse cx="85.5" cy="98.5" rx="2.8" ry="2.2" fill="#3D1010" />
-      <ellipse cx="94.5" cy="98.5" rx="2.8" ry="2.2" fill="#3D1010" />
+      {/* ── Snout (wide & flat — alpaca muzzle is broad, not button) ── */}
+      <ellipse cx="80" cy="124" rx="16" ry="10" fill="#D0C0A0" />
+      {/* Nostrils — wide apart (distinctly alpaca) */}
+      <ellipse cx="73" cy="123" rx="4"   ry="3.2" fill="#7A5030" />
+      <ellipse cx="87" cy="123" rx="4"   ry="3.2" fill="#7A5030" />
+      <circle  cx="72" cy="122" r="1.4"  fill="#5A3018" />
+      <circle  cx="86" cy="122" r="1.4"  fill="#5A3018" />
 
       {/* ── Normal smile ── */}
-      <path
-        d="M78 112 Q90 125 102 112"
-        stroke="#7A3020" strokeWidth="2.5" fill="none" strokeLinecap="round"
-        className="aw-smile-normal"
-      />
+      <path d="M72 132 Q80 140 88 132"
+        stroke="#7A5030" strokeWidth="2" fill="none" strokeLinecap="round"
+        className="aw-smile-normal" />
 
-      {/* ── Happy wide smile (visible during jump) ── */}
-      {/* Teeth fill behind the smile curve */}
-      <path
-        d="M73 110 Q90 130 107 110 Q107 118 90 118 Q73 118 73 110 Z"
-        fill="#FFFFFF"
-        className="aw-smile-happy"
-      />
-      {/* Smile outline */}
-      <path
-        d="M73 110 Q90 130 107 110"
-        stroke="#7A3020" strokeWidth="3" fill="none" strokeLinecap="round"
-        className="aw-smile-happy"
-      />
+      {/* ── Happy wide smile + teeth (during jump) ── */}
+      <path d="M69 131 Q80 145 91 131 Q91 138 80 138 Q69 138 69 131 Z"
+        fill="#FFFFFF" className="aw-smile-happy" />
+      <path d="M69 131 Q80 145 91 131"
+        stroke="#7A5030" strokeWidth="2.5" fill="none" strokeLinecap="round"
+        className="aw-smile-happy" />
 
-      {/* ── Happiness sparkles (appear during jump) ── */}
+      {/* ── Sparkles (jump) ── */}
       <g className="aw-smile-happy">
-        <line x1="42" y1="65" x2="33" y2="56" stroke="#FFD060" strokeWidth="2.5" strokeLinecap="round" />
-        <line x1="40" y1="74" x2="30" y2="72" stroke="#FFD060" strokeWidth="2.5" strokeLinecap="round" />
-        <line x1="42" y1="57" x2="40" y2="48" stroke="#FFD060" strokeWidth="2.5" strokeLinecap="round" />
-        <line x1="138" y1="65" x2="147" y2="56" stroke="#FFD060" strokeWidth="2.5" strokeLinecap="round" />
-        <line x1="140" y1="74" x2="150" y2="72" stroke="#FFD060" strokeWidth="2.5" strokeLinecap="round" />
-        <line x1="138" y1="57" x2="140" y2="48" stroke="#FFD060" strokeWidth="2.5" strokeLinecap="round" />
+        <line x1="34" y1="95"  x2="25" y2="87"  stroke="#c69849" strokeWidth="2.5" strokeLinecap="round" />
+        <line x1="32" y1="105" x2="22" y2="103" stroke="#c69849" strokeWidth="2.5" strokeLinecap="round" />
+        <line x1="34" y1="87"  x2="32" y2="78"  stroke="#c69849" strokeWidth="2.5" strokeLinecap="round" />
+        <line x1="126" y1="95"  x2="135" y2="87"  stroke="#c69849" strokeWidth="2.5" strokeLinecap="round" />
+        <line x1="128" y1="105" x2="138" y2="103" stroke="#c69849" strokeWidth="2.5" strokeLinecap="round" />
+        <line x1="126" y1="87"  x2="128" y2="78"  stroke="#c69849" strokeWidth="2.5" strokeLinecap="round" />
       </g>
 
-      {/* ── Rosy cheeks (subtle warmth) ── */}
-      <ellipse cx="56"  cy="93" rx="13" ry="9" fill="#FF8888" opacity="0.22" />
-      <ellipse cx="124" cy="93" rx="13" ry="9" fill="#FF8888" opacity="0.22" />
+      {/* ── Rosy cheeks ── */}
+      <ellipse cx="55" cy="114" rx="10" ry="7" fill="#FF8888" opacity="0.20" />
+      <ellipse cx="105" cy="114" rx="10" ry="7" fill="#FF8888" opacity="0.20" />
     </svg>
   )
 }
@@ -1072,86 +1065,82 @@ export default function FrontDeskWelcome({
 
       </div>{/* end side-by-side wrapper */}
 
-      {/* Spacer — ensures content sits above the alpaca row */}
-      <div style={{ height: '330px', flexShrink: 0 }} />
+      {/* ── Alpaca section — sits below the PACT/Birthday/Alerts row ── */}
+      <div style={{ width: '100%', position: 'relative', marginTop: '0.5rem' }}>
 
-      {/* ── Speech bubble — floats above the alpaca strip ── */}
-      <div
-        className="aw-bubble"
-        style={{
-          position: 'absolute',
-          bottom: '268px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          background: '#fff',
-          border: '2px solid #4a8073',
-          borderRadius: '0.875rem',
-          padding: '0.55rem 1.1rem',
-          fontSize: '0.72rem',
-          fontWeight: 600,
-          color: '#333',
-          textAlign: 'center',
-          whiteSpace: 'nowrap',
-          boxShadow: '0 3px 14px rgba(0,0,0,0.1)',
-          zIndex: 5,
-          pointerEvents: 'none',
-        }}
-      >
-        Welcome to your workstation!{' '}
-        <span style={{ fontWeight: 400, color: '#666' }}>
-          Choose options on the left panel to start!
-        </span>
-        {/* bubble tail outer */}
-        <span style={{
-          position: 'absolute', bottom: '-14px', left: '50%',
-          transform: 'translateX(-50%)',
-          width: 0, height: 0,
-          borderLeft: '10px solid transparent',
-          borderRight: '10px solid transparent',
-          borderTop: '14px solid #4a8073',
-        }} />
-        {/* bubble tail inner */}
-        <span style={{
-          position: 'absolute', bottom: '-10px', left: '50%',
-          transform: 'translateX(-50%)',
-          width: 0, height: 0,
-          borderLeft: '7px solid transparent',
-          borderRight: '7px solid transparent',
-          borderTop: '10px solid #fff',
-        }} />
-      </div>
+        {/* Speech bubble — centred above the alpaca strip */}
+        <div
+          className="aw-bubble"
+          style={{
+            position: 'absolute',
+            bottom: '268px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: '#fff',
+            border: '2px solid #4a8073',
+            borderRadius: '0.875rem',
+            padding: '0.55rem 1.1rem',
+            fontSize: '0.72rem',
+            fontWeight: 600,
+            color: '#333',
+            textAlign: 'center',
+            whiteSpace: 'nowrap',
+            boxShadow: '0 3px 14px rgba(0,0,0,0.1)',
+            zIndex: 5,
+            pointerEvents: 'none',
+          }}
+        >
+          Welcome to your workstation!{' '}
+          <span style={{ fontWeight: 400, color: '#666' }}>
+            Choose options on the left panel to start!
+          </span>
+          <span style={{
+            position: 'absolute', bottom: '-14px', left: '50%',
+            transform: 'translateX(-50%)',
+            width: 0, height: 0,
+            borderLeft: '10px solid transparent',
+            borderRight: '10px solid transparent',
+            borderTop: '14px solid #4a8073',
+          }} />
+          <span style={{
+            position: 'absolute', bottom: '-10px', left: '50%',
+            transform: 'translateX(-50%)',
+            width: 0, height: 0,
+            borderLeft: '7px solid transparent',
+            borderRight: '7px solid transparent',
+            borderTop: '10px solid #fff',
+          }} />
+        </div>
 
-      {/* ── Walking alpaca strip ─────────────────────────────────────────────
-           Height = 305px so the jump (-66px) stays within bounds:
-           Alpaca top at normal = 305 - 8 - 230 = 67px from strip top
-           Jump top             = 67 - 66 = 1px from strip top  ✓
-           Hide translateY 200  = 67 + 200 = 267px  (38px visible = hair tips) ✓
-           Peek translateY 122  = 67 + 122 = 189px  (116px visible = face) ✓
-      ── */}
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 0, left: 0,
+        {/* ── Walking alpaca strip ────────────────────────────────────────────
+             Height = 310px.  Alpaca is 260px tall, bottom: 8px.
+             Normal top = 310 - 8 - 260 = 42px from strip top.
+             Jump peak  = 42 - 66 = -24 → clipped by overflow:hidden (fine).
+             Hide +200  = 42 + 200 = 242px → only 68px visible = hair tips ✓
+             Peek +122  = 42 + 122 = 164px → 146px visible = face ✓
+        ── */}
+        <div style={{
           width: '100%',
-          height: '305px',
+          height: '310px',
           overflow: 'hidden',
           pointerEvents: 'none',
-        }}
-      >
-        {/* Ground line */}
-        <div style={{
-          position: 'absolute', bottom: '6px', left: 0, right: 0, height: '2px',
-          background: 'linear-gradient(90deg, transparent, rgba(36,73,82,0.15) 20%, rgba(36,73,82,0.15) 80%, transparent)',
-        }} />
-
-        {/* X movement → flip direction → behavior (bob / jump / hide) */}
-        <div className="aw-x" style={{ position: 'absolute', bottom: '8px' }}>
-          <div className="aw-flip">
-            <div className="aw-behave">
-              <AlpacaSVG />
+          position: 'relative',
+        }}>
+          {/* Ground line */}
+          <div style={{
+            position: 'absolute', bottom: '6px', left: 0, right: 0, height: '2px',
+            background: 'linear-gradient(90deg, transparent, rgba(36,73,82,0.15) 20%, rgba(36,73,82,0.15) 80%, transparent)',
+          }} />
+          {/* X movement → flip direction → behavior (bob / jump / hide) */}
+          <div className="aw-x" style={{ position: 'absolute', bottom: '8px' }}>
+            <div className="aw-flip">
+              <div className="aw-behave">
+                <AlpacaSVG />
+              </div>
             </div>
           </div>
         </div>
+
       </div>
     </div>
   )
