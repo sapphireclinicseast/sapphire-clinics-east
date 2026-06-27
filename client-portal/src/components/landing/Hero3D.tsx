@@ -87,13 +87,13 @@ function AlpacaMascot({ className = '' }: { className?: string }) {
           alt=""
           className="w-full h-auto block drop-shadow-[0_10px_28px_rgba(0,0,0,0.28)]"
         />
-        {/* Aura Health Rehab logo overlaid at the centre of the alpaca's body */}
+        {/* Aura arch mark centred on the alpaca's belly (no wordmark) */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/aura-logo-full.png"
+          src="/aura-mark.png"
           alt="Aura Health Rehab"
           className="absolute"
-          style={{ left: '53%', top: '63%', width: '40%', transform: 'translate(-50%, -50%)' }}
+          style={{ left: '53%', top: '64%', width: '44%', transform: 'translate(-50%, -50%)' }}
         />
       </div>
     </div>
