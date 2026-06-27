@@ -110,7 +110,7 @@ export function DirectorySection() {
       <div className="mt-6 pt-6 border-t border-[color:var(--light-gray)]">
         <div className="flex items-center gap-2.5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/verdana-icon.png" alt="" width={28} height={25} className="h-6 w-auto" />
+          <img src="/verdana-icon.png" alt="" width={36} height={32} className="h-9 w-auto" />
           <div className="text-[15px] font-semibold text-[color:var(--narra)]">Verdana Rehab Solutions</div>
         </div>
         <div className="mt-3 space-y-1.5">
