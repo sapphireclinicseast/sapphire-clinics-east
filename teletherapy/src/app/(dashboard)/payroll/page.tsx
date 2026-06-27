@@ -13,7 +13,7 @@ import {
   X as XIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { useBranchSwitcher } from '@/components/BranchSwitcher'
+import BranchSwitcher, { useBranchSwitcher } from '@/components/BranchSwitcher'
 
 interface Payslip {
   kind: 'employee' | 'consultant'
@@ -92,10 +92,10 @@ function fmtIssued(iso: string): string {
 }
 
 const BRANCH_LABEL: Record<string, string> = {
-  SBEA: 'East Branch',
-  SBGH: 'Greenhills Branch',
-  SANDBOX_EAST: 'East Branch',
-  SANDBOX_GREENHILLS: 'Greenhills Branch',
+  SBEA: 'Sandbox East',
+  SBGH: 'Sandbox Greenhills',
+  SANDBOX_EAST: 'Sandbox East',
+  SANDBOX_GREENHILLS: 'Sandbox Greenhills',
   VERDANA_STORE: 'Verdana Store',
 }
 
@@ -113,7 +113,7 @@ export default function PayrollPage() {
   const [data, setData] = useState<PayrollResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const { isMultiBranch, activeBranch } = useBranchSwitcher()
+  const { isMultiBranch, activeStaffId, activeBranch } = useBranchSwitcher()
 
   useEffect(() => { fetchPayslips() }, [])
 
@@ -151,22 +151,32 @@ export default function PayrollPage() {
 
   return (
     <div className="max-w-5xl mx-auto">
+      {/* Branch switcher for interbranch clinicians */}
+      {isMultiBranch && (
+        <div className="mb-4 animate-fade-up">
+          <BranchSwitcher />
+        </div>
+      )}
 
       {/* Hero */}
       <div className="hero-gradient rounded-2xl px-8 py-8 mb-6 animate-fade-up">
-        <div className="relative z-10 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-white/15 flex items-center justify-center backdrop-blur-sm border border-white/20">
-            <Wallet className="w-6 h-6 text-white" />
+        <div className="relative z-10 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-white/15 flex items-center justify-center backdrop-blur-sm border border-white/20">
+              <Wallet className="w-6 h-6 text-white" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold text-white tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
+                Payroll
+              </h1>
+              <p className="text-white/70 text-sm mt-1">
+                Locked payslips from the accounting hub. Drafts and unfinalized
+                cutoffs aren&rsquo;t shown here.
+              </p>
+            </div>
           </div>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-bold text-white tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-              Payroll
-            </h1>
-            <p className="text-white/70 text-sm mt-1">
-              Locked payslips from the accounting hub. Drafts and unfinalized
-              cutoffs aren&rsquo;t shown here.
-            </p>
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/Codepaca.svg" alt="Aura alpaca mascot" width={200} height={200} style={{ display: 'block', flexShrink: 0 }} />
         </div>
       </div>
 
