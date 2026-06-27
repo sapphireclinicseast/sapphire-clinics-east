@@ -114,8 +114,8 @@ export default function PatientRequestsPanel({ branch }: Props) {
         const amount = b.payment?.amount ? `₱${Number(b.payment.amount).toLocaleString()}` : null
         return (
           <div key={b.id} className="bg-white border rounded-lg px-3 py-2 text-sm">
-            <div className="flex items-start justify-between gap-3 flex-wrap">
-              <div className="flex-1 min-w-[240px]">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+              <div className="flex-1">
                 <div className="font-medium truncate">
                   {who || <span className="text-rose-600">⚠ No name</span>}
                   <span className="text-gray-500 font-normal"> · {b.department.replace(/_/g, ' ')}</span>
@@ -146,7 +146,7 @@ export default function PatientRequestsPanel({ branch }: Props) {
                 </div>
                 {b.notes && <div className="text-xs text-gray-500 mt-0.5 italic">&ldquo;{b.notes}&rdquo;</div>}
               </div>
-              <div className="shrink-0 flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
                 <button
                   className={`px-3 py-1 rounded text-xs font-medium disabled:opacity-50 ${
                     b.addedToDeck
