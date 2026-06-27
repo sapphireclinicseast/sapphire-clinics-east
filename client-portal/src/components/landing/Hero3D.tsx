@@ -14,7 +14,7 @@ import { Spotlight } from '@/components/ui/spotlight'
 export function Hero3D() {
   return (
     <Card
-      className="w-full h-full min-h-[480px] relative overflow-hidden border-0 rounded-3xl text-white"
+      className="w-full min-h-[520px] relative overflow-hidden border-0 rounded-3xl text-white"
       style={{
         background:
           'radial-gradient(800px 360px at 110% -10%, rgba(198,152,73,0.30), transparent 60%),' +
@@ -56,13 +56,13 @@ export function Hero3D() {
         </div>
 
         {/* Compact praise rotator pinned to the bottom of the card */}
-        <div className="mt-auto pt-8 max-w-[280px]">
+        <div className="mt-auto pt-8 max-w-[200px]">
           <PraiseRotator />
         </div>
       </div>
 
       {/* Waving alpaca mascot in the lower-right, Aura logo on its body */}
-      <AlpacaMascot className="hidden md:block absolute right-3 bottom-3 w-[228px] z-[5] pointer-events-none" />
+      <AlpacaMascot className="hidden md:block absolute right-2 bottom-2 w-[184px] z-[5] pointer-events-none" />
     </Card>
   )
 }
@@ -84,8 +84,15 @@ function AlpacaMascot({ className = '' }: { className?: string }) {
           src="/aura-mark.png"
           alt="Aura Health Rehab"
           className="absolute"
-          style={{ left: '53%', top: '62%', width: '32%', transform: 'translate(-50%, -50%)' }}
+          style={{ left: '53%', top: '62%', width: '27%', transform: 'translate(-50%, -50%)' }}
         />
+        {/* Registered-trademark mark at the arch's upper-right */}
+        <span
+          className="absolute text-[color:var(--narra)] font-semibold leading-none select-none"
+          style={{ left: '67.5%', top: '56.5%', fontSize: '9px', transform: 'translate(0, -100%)' }}
+        >
+          ®
+        </span>
       </div>
     </div>
   )
