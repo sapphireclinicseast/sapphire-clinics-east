@@ -150,6 +150,11 @@ export interface PatientProfile {
   diagnosis: string | null
   city: string | null
   branch: string | null
+  email: string | null
+  phone: string | null
+  address: string | null
+  civilStatus: string | null
+  pwdSeniorId: string | null
 }
 export interface PatientSessionRecord {
   id: string
