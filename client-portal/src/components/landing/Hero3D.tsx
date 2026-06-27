@@ -84,7 +84,7 @@ function AlpacaMascot({ className = '' }: { className?: string }) {
           src="/aura-mark.png"
           alt="Aura Health Rehab"
           className="absolute"
-          style={{ left: '53%', top: '62%', width: '27%', transform: 'translate(-50%, -50%)' }}
+          style={{ left: '53%', top: '62%', width: '22%', transform: 'translate(-50%, -50%)' }}
         />
       </div>
     </div>
