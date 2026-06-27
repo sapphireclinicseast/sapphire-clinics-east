@@ -63,15 +63,17 @@ function HomeInner() {
       ) : (
         <section
           id="get-started"
-          className="max-w-5xl mx-auto animate-fade-up grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,400px)] items-start scroll-mt-24"
+          className="max-w-5xl mx-auto animate-fade-up grid gap-6 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)] items-start scroll-mt-24"
         >
-          {/* Brand hero on the left … */}
-          <Hero3D />
-          {/* … sign-in on the right, with the complaint card directly below it. */}
+          {/* Left column — brand hero + feedback. items-start keeps this
+              column anchored to the top so the alpaca and complaint card stay
+              put even when the New-patient form grows the right column. */}
           <div className="space-y-6">
-            <AuthCard expired={expired} onAuthed={handleAuthed} />
+            <Hero3D />
             <ComplaintCard />
           </div>
+          {/* Right column — the (larger) Get started / sign-in + register form. */}
+          <AuthCard expired={expired} onAuthed={handleAuthed} />
         </section>
       )}
     </div>
