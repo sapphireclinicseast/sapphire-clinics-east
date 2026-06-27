@@ -116,9 +116,15 @@ function PraiseRotator() {
       .then((r) => r.json())
       .then((d) => {
         if (cancelled) return
-        if (Array.isArray(d?.quotes) && d.quotes.length) {
-          setQuotes(d.quotes)
-          setIdx(0)
+        if (Array.isArray(d?.quotes)) {
+          // Don't feature quotes that mention the old "Sandbox" brand name.
+          const filtered = d.quotes.filter(
+            (q: unknown): q is string => typeof q === 'string' && !/sandbox/i.test(q),
+          )
+          if (filtered.length) {
+            setQuotes(filtered)
+            setIdx(0)
+          }
         }
       })
       .catch(() => {})
