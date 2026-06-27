@@ -250,7 +250,8 @@ export default function FrontDeskPaymentConfirmations({ canDelete = false }: Fdp
                     <td className="py-2.5 px-3 text-[12.5px]">{r.period}</td>
                     <td className="py-2.5 px-3 text-[12.5px]">
                       <select
-                        className="select text-[12.5px] py-1"
+                        className="select text-[12.5px] py-1 w-full"
+                        style={{ minWidth: 180 }}
                         value={rowToInlineValue(r)}
                         onChange={e => {
                           const parts = inlineValueToParts(e.target.value)
@@ -353,7 +354,8 @@ export default function FrontDeskPaymentConfirmations({ canDelete = false }: Fdp
                     <td className="py-2.5 px-3 text-[12.5px]">{r.period}</td>
                     <td className="py-2.5 px-3 text-[12.5px]">
                       <select
-                        className="select text-[12.5px] py-1"
+                        className="select text-[12.5px] py-1 w-full"
+                        style={{ minWidth: 180 }}
                         value={rowToInlineValue(r)}
                         onChange={e => {
                           const parts = inlineValueToParts(e.target.value)
