@@ -20,7 +20,7 @@ const manrope = Manrope({
 })
 
 export const metadata: Metadata = {
-  title: 'Aura Health Rehab — Patient Portal',
+  title: 'Aura Health Rehab',
   description: 'Book your appointment online at Aura Health Rehab',
 }
 

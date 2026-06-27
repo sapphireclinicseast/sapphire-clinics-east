@@ -108,8 +108,12 @@ export function DirectorySection() {
       </div>
 
       <div className="mt-6 pt-6 border-t border-[color:var(--light-gray)]">
-        <div className="text-[15px] font-semibold text-[color:var(--narra)]">Verdana Rehab</div>
-        <div className="mt-2 space-y-1.5">
+        <div className="flex items-center gap-2.5">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/verdana-icon.png" alt="" width={28} height={25} className="h-6 w-auto" />
+          <div className="text-[15px] font-semibold text-[color:var(--narra)]">Verdana Rehab Solutions</div>
+        </div>
+        <div className="mt-3 space-y-1.5">
           <Row icon="🌐">
             <a href={VERDANA.websiteHref} target="_blank" rel="noreferrer" className={linkCls}>{VERDANA.website}</a>
           </Row>
