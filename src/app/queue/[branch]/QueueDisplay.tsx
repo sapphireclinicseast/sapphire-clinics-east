@@ -553,7 +553,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                       {lbDept === 'Overall' ? 'Top 5 — Overall' : `Top 5 — ${lbDept}`}
                     </p>
                     <p style={{ fontSize: '0.75rem', color: 'rgba(244,236,221,0.55)', marginTop: '0.25rem' }}>
-                      {leaderboard?.year} — {branch === 'SBEA' ? 'East Branch' : branch === 'SBGH' ? 'Greenhills' : branch}
+                      {leaderboard?.year} — {branch === 'SBEA' ? 'East Branch' : branch === 'SBGH' ? 'Greenhills Branch' : branch}
                     </p>
                   </div>
 

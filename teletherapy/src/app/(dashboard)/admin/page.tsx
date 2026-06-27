@@ -25,8 +25,8 @@ const BRANCH_LABEL: Record<string, string> = {
   SANDBOX_EAST: 'East Branch',
   SANDBOX_GREENHILLS: 'Greenhills Branch',
   VERDANA_STORE: 'Verdana Store',
-  SBEA: 'East Branch (legacy)',
-  SBGH: 'Greenhills Branch (legacy)',
+  SBEA: 'East Branch',
+  SBGH: 'Greenhills Branch',
 }
 
 interface StaffOption {
