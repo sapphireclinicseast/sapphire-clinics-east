@@ -1233,20 +1233,22 @@ function PendingProgressReports() {
           {docs.map(d => {
             const informed = d.informedFrontDeskAt ? new Date(d.informedFrontDeskAt).toLocaleDateString() : '—'
             return (
-              <div key={d.id} style={{ background: '#fff', border: '1px solid #FED7AA', borderRadius: '0.6rem', padding: '0.6rem 0.75rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#7C2D12' }}>
-                      {d.patient.lastName}, {d.patient.firstName}
-                    </div>
-                    <div style={{ fontSize: '0.7rem', color: '#9A3412', marginTop: 1 }}>
-                      <a href={`/api/progress-reports/${d.id}/file`} target="_blank" rel="noreferrer" style={{ color: '#C2410C', textDecoration: 'underline' }}>
-                        {d.fileName}
-                      </a>
-                      {' · '}{d.department}
-                      {' · '}<span style={{ background: '#FFEDD5', color: '#9A3412', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.62rem', textTransform: 'uppercase' }}>Informed {informed}</span>
-                    </div>
+              <div key={d.id} style={{ background: '#fff', border: '1px solid #FED7AA', borderRadius: '0.6rem', padding: '0.6rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                {/* Row 1 — name + file info */}
+                <div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#7C2D12' }}>
+                    {d.patient.lastName}, {d.patient.firstName}
                   </div>
+                  <div style={{ fontSize: '0.7rem', color: '#9A3412', marginTop: 1 }}>
+                    <a href={`/api/progress-reports/${d.id}/file`} target="_blank" rel="noreferrer" style={{ color: '#C2410C', textDecoration: 'underline' }}>
+                      {d.fileName}
+                    </a>
+                    {' · '}{d.department}
+                    {' · '}<span style={{ background: '#FFEDD5', color: '#9A3412', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.62rem', textTransform: 'uppercase' }}>Informed {informed}</span>
+                  </div>
+                </div>
+                {/* Row 2 — controls */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', fontWeight: 600, color: '#7C2D12', cursor: 'pointer' }}>
                     <input
                       type="checkbox"
