@@ -25,34 +25,23 @@ export function Hero3D() {
       <Spotlight className="-top-40 left-0 md:left-60 md:-top-20" fill="rgb(198, 152, 73)" />
 
       <div className="relative z-10 flex flex-col h-full p-8 md:p-10">
-        {/* Aura Health Rehab brand lockup on a clean white chip */}
-        <div className="inline-flex items-center gap-3 self-start bg-white rounded-2xl pl-3.5 pr-5 py-2.5 shadow-sm">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/aura-mark.png" alt="Aura Health Rehab" width={64} height={32} className="h-8 w-auto" />
-          <div className="leading-none" style={{ fontFamily: 'var(--font-display)' }}>
-            <div className="text-[color:var(--narra)] font-bold text-[16px] tracking-tight">AURA HEALTH</div>
-            <div className="text-[color:var(--moss)] text-[10px] font-semibold tracking-[0.34em] mt-1">REHAB</div>
-          </div>
-        </div>
-
-        <div
-          className="inline-flex items-center gap-2 self-start px-3 py-1 rounded-full bg-white/10 backdrop-blur-sm text-[11px] uppercase tracking-[0.14em] mt-7 mb-5 border border-white/10"
-          style={{ fontFamily: 'var(--font-display)' }}
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-[color:var(--sun)] animate-pulse-ring"></span>
-          Online booking
-        </div>
+        {/* Aura cream arch mark (no wordmark), centred */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/aura-mark-cream.png"
+          alt="Aura Health Rehab"
+          className="h-16 w-auto self-center mb-2"
+        />
 
         <h1
-          className="text-[38px] md:text-[46px] leading-[1.04] tracking-[-0.02em] font-bold bg-clip-text text-transparent"
+          className="mt-6 text-[38px] md:text-[46px] leading-[1.04] tracking-[-0.02em] font-bold bg-clip-text text-transparent"
           style={{ backgroundImage: 'linear-gradient(180deg, #EDF3D9 0%, rgba(237,243,217,0.65) 100%)' }}
         >
           Care for the<br />whole human.
         </h1>
 
         <p className="mt-5 text-[15px] md:text-[16px] text-white/75 leading-relaxed max-w-md">
-          Aura Health Rehab — log in to book your next session, settle the
-          downpayment, and keep your profile and full session history in one calm place.
+          Aura Health Rehab — keep your profile and full session history in one calm place.
         </p>
 
         <div
@@ -62,6 +51,8 @@ export function Hero3D() {
           <div className="flex items-center gap-2"><Check /> View your patient profile at a glance</div>
           <div className="flex items-center gap-2"><Check /> Book a session and pay securely via PayMongo</div>
           <div className="flex items-center gap-2"><Check /> Revisit your full session history anytime</div>
+          <div className="flex items-center gap-2"><Check /> Check your Reward Points available</div>
+          <div className="flex items-start gap-2"><span className="mt-0.5"><Check /></span> Give feedback and raise concerns that go straight to the HR Department</div>
         </div>
 
         {/* Compact praise rotator pinned to the bottom of the card */}
