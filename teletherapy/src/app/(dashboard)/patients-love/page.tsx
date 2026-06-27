@@ -159,7 +159,8 @@ export default function PatientsLovePage() {
             </div>
           </div>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/Codepaca.svg" alt="Aura alpaca mascot" width={260} height={260} style={{ display: 'block', flexShrink: 0 }} />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/Codepaca.svg" alt="Aura alpaca mascot" width={260} height={260} className="block shrink-0 w-[130px] h-[130px] sm:w-[220px] sm:h-[220px] lg:w-[260px] lg:h-[260px]" />
         </div>
       </div>
 
