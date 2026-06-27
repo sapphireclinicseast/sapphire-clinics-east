@@ -65,11 +65,38 @@ export function Hero3D() {
         </div>
 
         {/* Compact praise rotator pinned to the bottom of the card */}
-        <div className="mt-auto pt-8">
+        <div className="mt-auto pt-8 max-w-[280px]">
           <PraiseRotator />
         </div>
       </div>
+
+      {/* Waving alpaca mascot in the lower-right, Aura logo on its body */}
+      <AlpacaMascot className="hidden md:block absolute right-3 bottom-3 w-[228px] z-[5] pointer-events-none" />
     </Card>
+  )
+}
+
+function AlpacaMascot({ className = '' }: { className?: string }) {
+  return (
+    <div className={className} aria-hidden="true">
+      {/* Inner wrapper is the positioning context for the logo overlay. */}
+      <div className="relative">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/waving-alpaca.svg"
+          alt=""
+          className="w-full h-auto block drop-shadow-[0_10px_28px_rgba(0,0,0,0.28)]"
+        />
+        {/* Aura Health Rehab logo overlaid at the centre of the alpaca's body */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/aura-logo-full.png"
+          alt="Aura Health Rehab"
+          className="absolute"
+          style={{ left: '53%', top: '63%', width: '40%', transform: 'translate(-50%, -50%)' }}
+        />
+      </div>
+    </div>
   )
 }
 
