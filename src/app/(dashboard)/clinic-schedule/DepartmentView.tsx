@@ -932,7 +932,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
 
       {/* "Tomorrow" view — clinicians working tomorrow + make-ups + Front Desk card */}
       {!loading && activeDept === 'Tomorrow' ? (
-        <div className="grid gap-4" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(300px, 360px)' }}>
+        <div className="grid gap-4 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
           {/* Left — clinicians working tomorrow (+ make-up sessions) */}
           <div className="flex flex-col gap-4">
             <div>
@@ -949,7 +949,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
                   style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
                   <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>No clinicians scheduled tomorrow</p>
                   <p className="text-xs text-center px-4" style={{ color: 'var(--mid-gray)' }}>
-                    No {BRANCH_LABEL[activeBranch] ?? activeBranch} clinician has a {WEEKDAY_FULL[tomorrowCode]} in the Decking Module. Add a make-up session on the right if needed.
+                    No {activeBranch} clinician has a {WEEKDAY_FULL[tomorrowCode]} in the Decking Module. Add a make-up session on the right if needed.
                   </p>
                 </div>
               ) : (
