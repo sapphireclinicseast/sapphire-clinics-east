@@ -453,7 +453,7 @@ export default function FrontDeskWelcome({
       )}
 
       {/* ── Top row: greeting (center) + reminder cards (right) ── */}
-      <div style={{ width: '100%', maxWidth: '1200px', padding: '0 1.5rem', display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
+      <div className="w-full max-w-[1200px] px-6 flex flex-col lg:flex-row gap-6 items-start">
 
         {/* Center column: logo + greeting + quote + branch badge */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
@@ -526,7 +526,7 @@ export default function FrontDeskWelcome({
         </div>
 
         {/* Right column: DESK reminder card only */}
-        <div style={{ width: '272px', flexShrink: 0 }}>
+        <div className="w-full lg:w-[272px] lg:shrink-0">
           <DeskShortcutCard />
         </div>
 
@@ -536,7 +536,7 @@ export default function FrontDeskWelcome({
       <div style={{ width: '100%', maxWidth: '1200px', padding: '0 1.5rem', display: 'flex', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
 
         {/* PACT Cancellation Reminder — left-most column, alpaca sits above it */}
-        <div style={{ width: '272px', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+        <div className="w-full lg:w-[272px] lg:shrink-0" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/Codepaca.svg" alt="Aura alpaca mascot" width={200} height={200} style={{ display: 'block' }} />
           <PactCancellationReminder />
