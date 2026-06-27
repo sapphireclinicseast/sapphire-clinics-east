@@ -15,8 +15,8 @@ const manrope = Manrope({
 })
 
 export const metadata: Metadata = {
-  title: 'SAPPHIRE Marketing Hub — Sapphire Clinics East',
-  description: 'SCEI Internal Marketing Hub — Sapphire Clinics East, Inc.',
+  title: 'OPERATIONS — Sapphire Clinics East',
+  description: 'SCEI Operations Hub — Sapphire Clinics East, Inc.',
   icons: {
     icon: [
       { url: '/icon.svg', type: 'image/svg+xml' },
