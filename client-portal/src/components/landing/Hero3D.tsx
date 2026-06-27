@@ -25,13 +25,23 @@ export function Hero3D() {
       <Spotlight className="-top-40 left-0 md:left-60 md:-top-20" fill="rgb(198, 152, 73)" />
 
       <div className="relative z-10 flex flex-col h-full p-8 md:p-10">
-        {/* Aura cream arch mark (no wordmark), centred */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/aura-mark-cream.png"
-          alt="Aura Health Rehab"
-          className="h-16 w-auto self-center mb-2"
-        />
+        {/* Aura cream arch mark on the left, brand tagline on its right */}
+        <div className="flex items-center gap-4 self-start mb-2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/aura-mark-cream.png"
+            alt="Aura Health Rehab"
+            className="h-16 w-auto shrink-0"
+          />
+          <div
+            className="text-[color:var(--paper)] text-[16px] md:text-[17px] font-semibold leading-[1.3]"
+            style={{ fontFamily: 'var(--font-display)' }}
+          >
+            <div>Feeling Seen.</div>
+            <div>Finding Footing.</div>
+            <div>Moving Forward.</div>
+          </div>
+        </div>
 
         <h1
           className="mt-6 text-[38px] md:text-[46px] leading-[1.04] tracking-[-0.02em] font-bold bg-clip-text text-transparent"
