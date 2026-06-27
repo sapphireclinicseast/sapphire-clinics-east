@@ -914,49 +914,6 @@ export default function FrontDeskWelcome({
       {/* ── Alpaca section — sits below the PACT/Birthday/Alerts row ── */}
       <div style={{ width: '100%', position: 'relative', marginTop: '0.5rem' }}>
 
-        {/* Speech bubble — centred above the alpaca strip */}
-        <div
-          className="aw-bubble"
-          style={{
-            position: 'absolute',
-            bottom: '268px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: '#fff',
-            border: '2px solid #4a8073',
-            borderRadius: '0.875rem',
-            padding: '0.55rem 1.1rem',
-            fontSize: '0.72rem',
-            fontWeight: 600,
-            color: '#333',
-            textAlign: 'center',
-            whiteSpace: 'nowrap',
-            boxShadow: '0 3px 14px rgba(0,0,0,0.1)',
-            zIndex: 5,
-            pointerEvents: 'none',
-          }}
-        >
-          Welcome to your workstation!{' '}
-          <span style={{ fontWeight: 400, color: '#666' }}>
-            Choose options on the left panel to start!
-          </span>
-          <span style={{
-            position: 'absolute', bottom: '-14px', left: '50%',
-            transform: 'translateX(-50%)',
-            width: 0, height: 0,
-            borderLeft: '10px solid transparent',
-            borderRight: '10px solid transparent',
-            borderTop: '14px solid #4a8073',
-          }} />
-          <span style={{
-            position: 'absolute', bottom: '-10px', left: '50%',
-            transform: 'translateX(-50%)',
-            width: 0, height: 0,
-            borderLeft: '7px solid transparent',
-            borderRight: '7px solid transparent',
-            borderTop: '10px solid #fff',
-          }} />
-        </div>
 
         {/* ── Walking alpaca strip ────────────────────────────────────────────
              Height = 310px.  Alpaca is 260px tall, bottom: 8px.
