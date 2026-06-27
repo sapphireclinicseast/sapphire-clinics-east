@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAdmin } from '@/lib/admin-auth'
 
-const UPSTREAM = process.env.MARKETING_URL ?? 'https://marketing.sapphireclinicseast.org'
+const UPSTREAM = process.env.MARKETING_URL ?? 'https://operations.sapphireclinicseast.org'
 
 async function proxy(req: NextRequest, path: string[]) {
   if (!isAdmin(req)) {
