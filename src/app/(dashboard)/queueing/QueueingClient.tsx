@@ -390,10 +390,14 @@ function WalkInModal({ staff, defaultBranch, defaultDate, onClose, onSaved }: {
   )
 }
 
+const BRANCH_LABEL: Record<string, string> = {
+  SBEA: 'East Branch',
+  SBGH: 'Greenhills Branch',
+}
 const BRANCH_OPTIONS = [
-  { value: 'ALL',  label: 'All Branches',  color: '#6B7280' },
-  { value: 'SBEA', label: 'SBEA Only',     color: '#0D9488' },
-  { value: 'SBGH', label: 'SBGH Only',     color: '#2563EB' },
+  { value: 'ALL',  label: 'All Branches',        color: '#6B7280' },
+  { value: 'SBEA', label: 'East Branch Only',     color: '#0D9488' },
+  { value: 'SBGH', label: 'Greenhills Branch Only', color: '#2563EB' },
 ]
 function branchBadge(branch: string) {
   const opt = BRANCH_OPTIONS.find(o => o.value === branch) ?? BRANCH_OPTIONS[0]
@@ -942,7 +946,7 @@ export default function QueueingClient({ role }: { role: string }) {
                     style={activeBranch === b
                       ? { background: 'var(--teal)', color: '#fff' }
                       : { background: '#fff', color: 'var(--mid-gray)' }}>
-                    {b}
+                    {BRANCH_LABEL[b] ?? b}
                   </button>
                 ))}
               </div>
