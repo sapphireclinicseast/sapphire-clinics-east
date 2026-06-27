@@ -10,6 +10,10 @@ const ALLOWED_ORIGINS = [
   'https://class.sapphireclinicseast.org',
   'http://localhost:3006',
   'http://127.0.0.1:3006',
+  // Public marketing landing page (static site at the apex domain) — reads
+  // the live hero stats from /api/public/stats.
+  'https://sapphireclinicseast.org',
+  'https://www.sapphireclinicseast.org',
 ]
 
 export function corsHeaders(origin: string | null): Record<string, string> {

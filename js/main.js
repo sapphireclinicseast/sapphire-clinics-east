@@ -36,11 +36,14 @@ const SITE_CONFIG = {
     { name: 'Verdana Rehab Solutions', imgSrc: 'BRANDS/VERDANA STORE.png',     link: 'verdana' },
   ],
 
-  /* ── Key Statistics (shown in hero) ── */
+  /* ── Key Statistics (shown in hero) ──
+     "Patients Served" and "Confirmed Sessions" are refreshed at page load
+     from live operations data (see refreshLiveStats); the values below are
+     the offline fallback — keep them roughly current. */
   stats: [
     { num: '2',       lbl: 'Branches' },
-    { num: '2,400+',  lbl: 'Patients Served' },
-    { num: '4,300+',  lbl: 'Confirmed Sessions' },
+    { num: '2,500+',  lbl: 'Patients Served' },
+    { num: '5,200+',  lbl: 'Confirmed Sessions' },
     { num: '4.64/5★', lbl: 'Satisfaction Score' },
   ],
 
@@ -226,6 +229,37 @@ function buildHeroStats() {
       <div class="hero-stat-lbl">${s.lbl}</div>
     </div>
   `).join('');
+
+  // Refresh "Patients Served" and "Confirmed Sessions" from LIVE operations
+  // data so they never go stale. Falls back silently to the hardcoded
+  // SITE_CONFIG.stats values above if the request fails (offline, etc.).
+  refreshLiveStats(wrap);
+}
+
+// Round a live count DOWN to a clean "2,500+" style figure (nearest 100)
+// to match the existing hero aesthetic and avoid an oddly precise number.
+function formatStat(n) {
+  const floored = Math.floor(n / 100) * 100;
+  return floored.toLocaleString('en-US') + '+';
+}
+
+function refreshLiveStats(wrap) {
+  fetch('https://operations.sapphireclinicseast.org/api/public/stats')
+    .then(r => (r.ok ? r.json() : Promise.reject(new Date().toString())))
+    .then(data => {
+      const nums = wrap.querySelectorAll('.hero-stat');
+      nums.forEach(el => {
+        const lbl = el.querySelector('.hero-stat-lbl')?.textContent?.trim();
+        const numEl = el.querySelector('.hero-stat-num');
+        if (!numEl) return;
+        if (lbl === 'Patients Served' && Number.isFinite(data.patients)) {
+          numEl.textContent = formatStat(data.patients);
+        } else if (lbl === 'Confirmed Sessions' && Number.isFinite(data.sessions)) {
+          numEl.textContent = formatStat(data.sessions);
+        }
+      });
+    })
+    .catch(() => { /* keep the hardcoded fallback values */ });
 }
 
 function buildHMOs() {
