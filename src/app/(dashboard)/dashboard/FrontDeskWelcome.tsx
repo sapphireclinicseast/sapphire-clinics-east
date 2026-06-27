@@ -140,29 +140,6 @@ const ALPACA_CSS = `
     display: inline-block;
   }
 
-  /* ── Blink (4s loop on each eyelid element) ── */
-  .aw-eyelid {
-    transform-box: fill-box;
-    transform-origin: 50% 0%;
-    animation: awBlink 4s ease-in-out infinite;
-  }
-
-  /* ── Ear wiggle during jump (synced to awBehave 14–22%) ── */
-  .aw-ear-l {
-    transform-box: fill-box;
-    transform-origin: 50% 100%;
-    animation: awEarL 22s ease-in-out infinite;
-  }
-  .aw-ear-r {
-    transform-box: fill-box;
-    transform-origin: 50% 100%;
-    animation: awEarR 22s ease-in-out infinite;
-  }
-
-  /* ── Happy expressions: appear during jump (14–23%) ── */
-  .aw-smile-normal { animation: awSmileNormal 22s ease-in-out infinite; }
-  .aw-smile-happy  { animation: awSmileHappy  22s ease-in-out infinite; }
-  .aw-squint       { animation: awSmileHappy  22s ease-in-out infinite; }
 
   /* ── Speech bubble pulse ── */
   .aw-bubble {
@@ -225,154 +202,23 @@ const ALPACA_CSS = `
     100% { transform: translateY(0px)   scaleX(1)    scaleY(1); }
   }
 
-  /* Eyelid slides down from top of eye → closed → opens */
-  @keyframes awBlink {
-    0%, 82%, 100% { transform: scaleY(0); }   /* open */
-    85%, 88%      { transform: scaleY(1); }   /* closed */
-  }
-
-  /* Normal smile hidden during jump, happy smile shown */
-  @keyframes awSmileNormal {
-    0%, 13%, 25%, 100% { opacity: 1; }
-    15%, 22%           { opacity: 0; }
-  }
-  @keyframes awSmileHappy {
-    0%, 13%, 25%, 100% { opacity: 0; }
-    15%, 22%           { opacity: 1; }
-  }
-
-  /* Ears wiggle up when jumping */
-  @keyframes awEarL {
-    0%, 13%, 25%, 100% { transform: rotate(0deg); }
-    15%, 20%           { transform: rotate(-24deg); }
-  }
-  @keyframes awEarR {
-    0%, 13%, 25%, 100% { transform: rotate(0deg); }
-    15%, 20%           { transform: rotate(24deg); }
-  }
-
   @keyframes awBubblePulse {
     0%, 100% { opacity: 0.93; transform: translateX(-50%) scale(1); }
     50%      { opacity: 1;    transform: translateX(-50%) scale(1.02); }
   }
 `
 
-// ── Alpaca SVG ───────────────────────────────────────────────────────────────
-// True alpaca anatomy: long neck, upright banana ears, flat wide muzzle,
-// fluffy teal topknot, slender legs, cream wool body.
-// For richer animation, add lottie-react + a LottieFiles alpaca JSON instead.
+// ── Alpaca — Codepaca SVG with built-in SMIL leg/body animations ─────────────
 function AlpacaSVG() {
   return (
-    <svg width="160" height="260" viewBox="0 0 160 260" fill="none" xmlns="http://www.w3.org/2000/svg">
-
-      {/* ── Back legs (far pair — drawn first, body covers tops) ── */}
-      <rect x="50" y="192" width="15" height="58" rx="7.5" fill="#C4B8A4" />
-      <rect x="85" y="194" width="15" height="56" rx="7.5" fill="#C4B8A4" />
-      <rect x="50" y="238" width="15" height="12" rx="6" fill="#7A6A58" />
-      <rect x="85" y="238" width="15" height="12" rx="6" fill="#7A6A58" />
-
-      {/* ── Body (large fluffy wool oval) ── */}
-      <ellipse cx="80" cy="192" rx="52" ry="46" fill="#EDE8D5" />
-      {/* Wool texture bumps */}
-      <ellipse cx="50"  cy="180" rx="13" ry="9"  fill="#E2DCC8" />
-      <ellipse cx="110" cy="180" rx="13" ry="9"  fill="#E2DCC8" />
-      <ellipse cx="65"  cy="162" rx="13" ry="9"  fill="#E2DCC8" />
-      <ellipse cx="95"  cy="162" rx="13" ry="9"  fill="#E2DCC8" />
-      <ellipse cx="80"  cy="155" rx="13" ry="8"  fill="#E2DCC8" />
-
-      {/* ── Tail (small fluffy poof) ── */}
-      <ellipse cx="128" cy="170" rx="12" ry="11" fill="#EDE8D5" />
-      <ellipse cx="129" cy="169" rx="7"  ry="7"  fill="#E2DCC8" />
-
-      {/* ── Front legs (near pair — slightly lighter) ── */}
-      <rect x="57" y="195" width="15" height="57" rx="7.5" fill="#EAE4CE" />
-      <rect x="82" y="197" width="15" height="55" rx="7.5" fill="#EAE4CE" />
-      <rect x="57" y="240" width="15" height="12" rx="6" fill="#7A6A58" />
-      <rect x="82" y="240" width="15" height="12" rx="6" fill="#7A6A58" />
-
-      {/* ── Neck (long — the defining alpaca silhouette) ── */}
-      <rect x="65" y="126" width="30" height="78" rx="15" fill="#EDE8D5" />
-      {/* Neck shadow/depth on sides */}
-      <rect x="65" y="130" width="6"  height="68" rx="3" fill="#E2DCC8" opacity="0.6" />
-      <rect x="89" y="130" width="6"  height="68" rx="3" fill="#E2DCC8" opacity="0.6" />
-
-      {/* ── Head (smaller oval — alpaca heads are compact) ── */}
-      <ellipse cx="80" cy="108" rx="29" ry="27" fill="#EDE8D5" />
-
-      {/* ── Topknot / forelock (teal fluffy tuft — brand colour accent) ── */}
-      <circle cx="68"  cy="82"  r="13" fill="#4a8073" />
-      <circle cx="80"  cy="76"  r="15" fill="#4a8073" />
-      <circle cx="92"  cy="82"  r="13" fill="#4a8073" />
-      <circle cx="73"  cy="72"  r="10" fill="#244952" />
-      <circle cx="87"  cy="72"  r="10" fill="#244952" />
-      <circle cx="80"  cy="68"  r="8"  fill="#5a9085" />
-      <circle cx="80"  cy="65"  r="5"  fill="#6aaa97" opacity="0.7" />
-
-      {/* ── Ears (upright banana — NOT round; this is the key alpaca feature) ── */}
-      {/* Left ear */}
-      <ellipse cx="55" cy="90" rx="9" ry="21" fill="#4a8073" className="aw-ear-l" />
-      <ellipse cx="55" cy="93" rx="5" ry="14" fill="#244952" className="aw-ear-l" />
-      {/* Right ear */}
-      <ellipse cx="105" cy="90" rx="9" ry="21" fill="#4a8073" className="aw-ear-r" />
-      <ellipse cx="105" cy="93" rx="5" ry="14" fill="#244952" className="aw-ear-r" />
-
-      {/* ── Face patch (defines the long alpaca face area) ── */}
-      <ellipse cx="80" cy="115" rx="21" ry="19" fill="#E4DBC8" />
-
-      {/* ── Eyes (large, warm dark — drawn after face patch) ── */}
-      {/* Left eye */}
-      <circle cx="68" cy="106" r="10.5" fill="#1C0D04" />
-      <circle cx="68" cy="106" r="7"    fill="#3D1A08" />
-      <circle cx="72" cy="101" r="4"    fill="#FFFFFF" />
-      <circle cx="65" cy="109" r="1.8"  fill="#FFFFFF" opacity="0.5" />
-      {/* Right eye */}
-      <circle cx="92" cy="106" r="10.5" fill="#1C0D04" />
-      <circle cx="92" cy="106" r="7"    fill="#3D1A08" />
-      <circle cx="96" cy="101" r="4"    fill="#FFFFFF" />
-      <circle cx="89" cy="109" r="1.8"  fill="#FFFFFF" opacity="0.5" />
-
-      {/* Happy squints (show during jump, cover eye bottoms) */}
-      <ellipse cx="68" cy="114" rx="10.5" ry="8" fill="#E4DBC8" className="aw-squint" />
-      <ellipse cx="92" cy="114" rx="10.5" ry="8" fill="#E4DBC8" className="aw-squint" />
-
-      {/* Eyelids (blink scaleY 0→1 from top) */}
-      <ellipse cx="68" cy="106" rx="10.5" ry="10.5" fill="#E4DBC8" className="aw-eyelid" />
-      <ellipse cx="92" cy="106" rx="10.5" ry="10.5" fill="#E4DBC8" className="aw-eyelid" />
-
-      {/* ── Snout (wide & flat — alpaca muzzle is broad, not button) ── */}
-      <ellipse cx="80" cy="124" rx="16" ry="10" fill="#D0C0A0" />
-      {/* Nostrils — wide apart (distinctly alpaca) */}
-      <ellipse cx="73" cy="123" rx="4"   ry="3.2" fill="#7A5030" />
-      <ellipse cx="87" cy="123" rx="4"   ry="3.2" fill="#7A5030" />
-      <circle  cx="72" cy="122" r="1.4"  fill="#5A3018" />
-      <circle  cx="86" cy="122" r="1.4"  fill="#5A3018" />
-
-      {/* ── Normal smile ── */}
-      <path d="M72 132 Q80 140 88 132"
-        stroke="#7A5030" strokeWidth="2" fill="none" strokeLinecap="round"
-        className="aw-smile-normal" />
-
-      {/* ── Happy wide smile + teeth (during jump) ── */}
-      <path d="M69 131 Q80 145 91 131 Q91 138 80 138 Q69 138 69 131 Z"
-        fill="#FFFFFF" className="aw-smile-happy" />
-      <path d="M69 131 Q80 145 91 131"
-        stroke="#7A5030" strokeWidth="2.5" fill="none" strokeLinecap="round"
-        className="aw-smile-happy" />
-
-      {/* ── Sparkles (jump) ── */}
-      <g className="aw-smile-happy">
-        <line x1="34" y1="95"  x2="25" y2="87"  stroke="#c69849" strokeWidth="2.5" strokeLinecap="round" />
-        <line x1="32" y1="105" x2="22" y2="103" stroke="#c69849" strokeWidth="2.5" strokeLinecap="round" />
-        <line x1="34" y1="87"  x2="32" y2="78"  stroke="#c69849" strokeWidth="2.5" strokeLinecap="round" />
-        <line x1="126" y1="95"  x2="135" y2="87"  stroke="#c69849" strokeWidth="2.5" strokeLinecap="round" />
-        <line x1="128" y1="105" x2="138" y2="103" stroke="#c69849" strokeWidth="2.5" strokeLinecap="round" />
-        <line x1="126" y1="87"  x2="128" y2="78"  stroke="#c69849" strokeWidth="2.5" strokeLinecap="round" />
-      </g>
-
-      {/* ── Rosy cheeks ── */}
-      <ellipse cx="55" cy="114" rx="10" ry="7" fill="#FF8888" opacity="0.20" />
-      <ellipse cx="105" cy="114" rx="10" ry="7" fill="#FF8888" opacity="0.20" />
-    </svg>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/Codepaca.svg"
+      alt="Aura alpaca mascot"
+      width={220}
+      height={220}
+      style={{ display: 'block' }}
+    />
   )
 }
 
