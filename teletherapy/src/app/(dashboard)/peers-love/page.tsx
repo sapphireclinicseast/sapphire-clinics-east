@@ -83,19 +83,23 @@ export default function PeersLovePage() {
         <div className="absolute top-4 right-8 text-4xl opacity-20 animate-pulse" style={{ animationDuration: '3s' }}>🤝</div>
         <div className="absolute bottom-6 right-20 text-3xl opacity-25" style={{ transform: 'rotate(-15deg)' }}>🌟</div>
         <div className="absolute top-12 right-32 text-2xl opacity-20" style={{ transform: 'rotate(20deg)' }}>✨</div>
-        <div className="relative z-10 flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-white/25 backdrop-blur flex items-center justify-center shadow-lg">
-            <HeartHandshake className="w-7 h-7 text-white" />
+        <div className="relative z-10 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-white/25 backdrop-blur flex items-center justify-center shadow-lg">
+              <HeartHandshake className="w-7 h-7 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl sm:text-3xl text-white tracking-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-heading)', fontWeight: 600 }}>
+                What your Peers Love About You
+                <Sparkles size={20} className="text-yellow-200" />
+              </h1>
+              <p className="text-white/90 text-sm mt-1" style={{ fontFamily: 'var(--font-body)' }}>
+                Kind words and strengths your colleagues shared about you 💚
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl sm:text-3xl text-white tracking-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-heading)', fontWeight: 600 }}>
-              What your Peers Love About You
-              <Sparkles size={20} className="text-yellow-200" />
-            </h1>
-            <p className="text-white/90 text-sm mt-1" style={{ fontFamily: 'var(--font-body)' }}>
-              Kind words and strengths your colleagues shared about you 💚
-            </p>
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/Codepaca.svg" alt="Aura alpaca mascot" width={260} height={260} style={{ display: 'block', flexShrink: 0 }} />
         </div>
       </div>
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Heart, Loader2, MessageCircle, Sparkles, Info } from 'lucide-react'
+import BranchSwitcher, { useBranchSwitcher } from '@/components/BranchSwitcher'
 
 interface StrengthItem {
   id: string
@@ -102,17 +103,17 @@ function SpeechBubble({ text, index, submittedAt, surveyType }: { text: string; 
 export default function PatientsLovePage() {
   const [strengths, setStrengths] = useState<StrengthItem[]>([])
   const [loading, setLoading] = useState(true)
+  const { isMultiBranch, activeStaffId } = useBranchSwitcher()
 
-  // Aggregate feedback across ALL of this clinician's branches (e.g. East +
-  // Greenhills) — no branch filter, so multi-branch clinicians see everything.
   useEffect(() => {
-    fetchStrengths()
-  }, [])
+    if (activeStaffId || !isMultiBranch) fetchStrengths()
+  }, [activeStaffId, isMultiBranch])
 
   async function fetchStrengths() {
     setLoading(true)
     try {
-      const res = await fetch(`/api/patient-love`)
+      const staffParam = isMultiBranch && activeStaffId ? `?staffId=${activeStaffId}` : ''
+      const res = await fetch(`/api/patient-love${staffParam}`)
       if (res.ok) {
         const data = await res.json()
         setStrengths(data.strengths ?? [])
@@ -123,11 +124,18 @@ export default function PatientsLovePage() {
 
   return (
     <div className="max-w-5xl mx-auto">
+      {/* Branch switcher */}
+      {isMultiBranch && (
+        <div className="mb-4 animate-fade-up">
+          <BranchSwitcher />
+        </div>
+      )}
+
       {/* Hero header */}
       <div
         className="relative rounded-3xl px-8 py-8 mb-6 overflow-hidden animate-fade-up"
         style={{
-          background: 'linear-gradient(135deg, #cf9d88 0%, #c69849 100%)',
+          background: 'linear-gradient(135deg, #C68077 0%, #EDD8A8 100%)',
         }}
       >
         {/* Decorative floating hearts in bg */}
@@ -135,19 +143,23 @@ export default function PatientsLovePage() {
         <div className="absolute bottom-6 right-20 text-3xl opacity-25" style={{ transform: 'rotate(-15deg)' }}>⭐</div>
         <div className="absolute top-12 right-32 text-2xl opacity-20" style={{ transform: 'rotate(20deg)' }}>✨</div>
 
-        <div className="relative z-10 flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-white/25 backdrop-blur flex items-center justify-center shadow-lg">
-            <Heart className="w-7 h-7 text-white" fill="white" />
+        <div className="relative z-10 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-white/25 backdrop-blur flex items-center justify-center shadow-lg">
+              <Heart className="w-7 h-7 text-white" fill="white" />
+            </div>
+            <div>
+              <h1 className="text-2xl sm:text-3xl text-white tracking-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-heading)', fontWeight: 600 }}>
+                What Patients Love About You
+                <Sparkles size={20} className="text-yellow-200" />
+              </h1>
+              <p className="text-white/90 text-sm mt-1" style={{ fontFamily: 'var(--font-body)' }}>
+                A wall of kind words from the people you&apos;ve helped ✨
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl sm:text-3xl text-white tracking-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-heading)', fontWeight: 600 }}>
-              What Patients Love About You
-              <Sparkles size={20} className="text-yellow-200" />
-            </h1>
-            <p className="text-white/90 text-sm mt-1" style={{ fontFamily: 'var(--font-body)' }}>
-              A wall of kind words from the people you&apos;ve helped ✨
-            </p>
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/Codepaca.svg" alt="Aura alpaca mascot" width={260} height={260} style={{ display: 'block', flexShrink: 0 }} />
         </div>
       </div>
 
@@ -184,7 +196,7 @@ export default function PatientsLovePage() {
 
           {/* Count stat */}
           <div className="text-center mb-4">
-            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#cf9d88]/10 text-[#cf9d88] text-[13px] font-semibold">
+            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#C68077]/10 text-[#C68077] text-[13px] font-semibold">
               <Heart size={14} fill="currentColor" />
               {strengths.length} kind {strengths.length === 1 ? 'word' : 'words'} from your patients
             </span>

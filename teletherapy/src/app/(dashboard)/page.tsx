@@ -264,6 +264,8 @@ export default function DashboardPage() {
       {/* Scheduling reminder — pinned to the right so clinicians always see it */}
       <aside className="mt-6 lg:mt-0 lg:sticky lg:top-4 animate-fade-up">
         <ScheduleReminder />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/Codepaca.svg" alt="Aura alpaca mascot" width={160} height={160} style={{ display: 'block', margin: '12px auto 0' }} />
       </aside>
     </div>
   )
@@ -279,11 +281,15 @@ function ScheduleReminder() {
   return (
     <div className="rounded-2xl overflow-hidden shadow-lg border border-[var(--light-gray)] bg-white">
       {/* Header */}
-      <div className="px-5 py-4 text-center" style={{ background: 'linear-gradient(135deg, var(--narra), var(--moss))' }}>
-        <p className="text-[10px] uppercase tracking-[0.2em] text-white/70 font-semibold">Quick Reference</p>
-        <h3 className="text-white font-bold text-[16px] leading-tight mt-1" style={{ fontFamily: 'var(--font-display)' }}>
-          The 3 R&rsquo;s of Daily Scheduling
-        </h3>
+      <div className="px-5 py-4 flex items-center justify-between gap-3" style={{ background: 'linear-gradient(135deg, var(--narra), var(--moss))' }}>
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.2em] text-white/70 font-semibold">Quick Reference</p>
+          <h3 className="text-white font-bold text-[16px] leading-tight mt-1" style={{ fontFamily: 'var(--font-display)' }}>
+            The 3 R&rsquo;s of Daily Scheduling
+          </h3>
+        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/Codepaca.svg" alt="Aura alpaca mascot" width={90} height={90} style={{ display: 'block', flexShrink: 0 }} />
       </div>
       {/* Rule banner */}
       <div className="px-4 py-2.5 text-center text-[13px] font-extrabold text-[var(--deep-teal)]" style={{ background: 'var(--sun-tint)' }}>
