@@ -37,6 +37,11 @@ interface StaffMember {
 type SortCol = 'name' | 'department' | 'branch' | 'email' | 'phone' | 'jobTitle' | 'sex' | 'employmentType'
 type SortDir = 'asc' | 'desc'
 
+const BRANCH_LABEL: Record<string, string> = {
+  SBEA: 'East Branch',
+  SBGH: 'Greenhills Branch',
+}
+
 function branchFromRole(role: string): string | null {
   if (role.startsWith('SBEA_')) return 'SBEA'
   if (role.startsWith('SBGH_')) return 'SBGH'
@@ -51,7 +56,7 @@ function BranchChip({ branch }: { branch: string }) {
         ? { background: 'var(--pale-teal)', color: 'var(--teal)' }
         : { background: '#FFF3CD', color: '#92400E' }
     }>
-      {branch}
+      {BRANCH_LABEL[branch] ?? branch}
     </span>
   )
 }
@@ -266,12 +271,12 @@ export default function StaffClient({ role }: { role: string }) {
 
   const statCards = autoBranch
     ? [
-        { label: `${autoBranch} Staff`, value: staff.length, icon: <Users size={18} style={{ color: 'var(--teal)' }} /> },
+        { label: `${BRANCH_LABEL[autoBranch] ?? autoBranch} Staff`, value: staff.length, icon: <Users size={18} style={{ color: 'var(--teal)' }} /> },
       ]
     : [
         { label: 'Total Staff', value: staff.length,  icon: <Users size={18} style={{ color: 'var(--teal)' }} /> },
-        { label: 'SBEA',        value: totalSBEA,      icon: <span className="text-xs font-bold" style={{ color: 'var(--teal)' }}>SBEA</span> },
-        { label: 'SBGH',        value: totalSBGH,      icon: <span className="text-xs font-bold" style={{ color: '#92400E' }}>SBGH</span> },
+        { label: 'East Branch',       value: totalSBEA, icon: <span className="text-xs font-bold" style={{ color: 'var(--teal)' }}>SBEA</span> },
+        { label: 'Greenhills Branch', value: totalSBGH, icon: <span className="text-xs font-bold" style={{ color: '#92400E' }}>SBGH</span> },
       ]
 
   const COLS: { col: SortCol; label: string }[] = [
