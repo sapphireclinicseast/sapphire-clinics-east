@@ -86,13 +86,6 @@ function AlpacaMascot({ className = '' }: { className?: string }) {
           className="absolute"
           style={{ left: '53%', top: '62%', width: '27%', transform: 'translate(-50%, -50%)' }}
         />
-        {/* Registered-trademark mark at the arch's upper-right */}
-        <span
-          className="absolute text-[color:var(--narra)] font-semibold leading-none select-none"
-          style={{ left: '67.5%', top: '56.5%', fontSize: '9px', transform: 'translate(0, -100%)' }}
-        >
-          ®
-        </span>
       </div>
     </div>
   )
