@@ -116,111 +116,6 @@ function getGreeting() {
   return 'evening'
 }
 
-// ── All CSS keyframes & class definitions ────────────────────────────────────
-// Behavior cycle = 22s:
-//   0–12%  → walking bob
-//   14–23% → JUMP (squash → air → land) + happy face
-//   23–44% → walking bob
-//   45–71% → HIDE (sink below screen → peek face up → pop back)
-//   71–100%→ walking bob
-const ALPACA_CSS = `
-  /* ── Walking ── */
-  .aw-x {
-    animation: awX 42s linear infinite;
-  }
-  .aw-flip {
-    animation: awFlip 42s linear infinite;
-    transform-origin: center;
-    display: inline-block;
-  }
-
-  /* ── Jump / hide / bob (22s loop on behavior wrapper) ── */
-  .aw-behave {
-    animation: awBehave 22s ease-in-out infinite;
-    display: inline-block;
-  }
-
-
-  /* ── Speech bubble pulse ── */
-  .aw-bubble {
-    animation: awBubblePulse 3s ease-in-out infinite;
-  }
-
-  /* ─────────────── Keyframes ─────────────── */
-
-  @keyframes awX {
-    0%   { transform: translateX(calc(100vw + 250px)); }
-    46%  { transform: translateX(-250px); }
-    54%  { transform: translateX(-250px); }
-    100% { transform: translateX(calc(100vw + 250px)); }
-  }
-
-  @keyframes awFlip {
-    0%   { transform: scaleX(-1); }
-    46%  { transform: scaleX(-1); }
-    54%  { transform: scaleX(1); }
-    100% { transform: scaleX(1); }
-  }
-
-  @keyframes awBehave {
-    /* Walk bob */
-    0%   { transform: translateY(0px)   scaleX(1)    scaleY(1); }
-    3%   { transform: translateY(-11px) scaleX(1)    scaleY(1); }
-    6%   { transform: translateY(0px)   scaleX(1)    scaleY(1); }
-    9%   { transform: translateY(-11px) scaleX(1)    scaleY(1); }
-    12%  { transform: translateY(0px)   scaleX(1)    scaleY(1); }
-
-    /* JUMP — squat → launch → peak → land → settle */
-    14%  { transform: translateY(0px)   scaleX(1.1)  scaleY(0.85); }
-    17%  { transform: translateY(-62px) scaleX(0.87) scaleY(1.16); }
-    19%  { transform: translateY(-66px) scaleX(0.87) scaleY(1.16); }
-    21%  { transform: translateY(-8px)  scaleX(1.13) scaleY(0.80); }
-    23%  { transform: translateY(0px)   scaleX(1)    scaleY(1); }
-
-    /* Walk bob */
-    27%  { transform: translateY(-11px) scaleX(1)    scaleY(1); }
-    31%  { transform: translateY(0px)   scaleX(1)    scaleY(1); }
-    35%  { transform: translateY(-11px) scaleX(1)    scaleY(1); }
-    39%  { transform: translateY(0px)   scaleX(1)    scaleY(1); }
-    43%  { transform: translateY(-11px) scaleX(1)    scaleY(1); }
-
-    /* HIDE — sink below screen → peek just the face → pop back */
-    45%  { transform: translateY(0px)   scaleX(1)    scaleY(1); }
-    49%  { transform: translateY(200px) scaleX(1)    scaleY(1); }
-    58%  { transform: translateY(200px) scaleX(1)    scaleY(1); }
-    63%  { transform: translateY(122px) scaleX(1)    scaleY(1); }
-    67%  { transform: translateY(122px) scaleX(1)    scaleY(1); }
-    71%  { transform: translateY(0px)   scaleX(1)    scaleY(1); }
-
-    /* Walk bob */
-    75%  { transform: translateY(-11px) scaleX(1)    scaleY(1); }
-    79%  { transform: translateY(0px)   scaleX(1)    scaleY(1); }
-    83%  { transform: translateY(-11px) scaleX(1)    scaleY(1); }
-    87%  { transform: translateY(0px)   scaleX(1)    scaleY(1); }
-    91%  { transform: translateY(-11px) scaleX(1)    scaleY(1); }
-    95%  { transform: translateY(0px)   scaleX(1)    scaleY(1); }
-    100% { transform: translateY(0px)   scaleX(1)    scaleY(1); }
-  }
-
-  @keyframes awBubblePulse {
-    0%, 100% { opacity: 0.93; transform: translateX(-50%) scale(1); }
-    50%      { opacity: 1;    transform: translateX(-50%) scale(1.02); }
-  }
-`
-
-// ── Alpaca — Codepaca SVG with built-in SMIL leg/body animations ─────────────
-function AlpacaSVG() {
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src="/Codepaca.svg"
-      alt="Aura alpaca mascot"
-      width={220}
-      height={220}
-      style={{ display: 'block' }}
-    />
-  )
-}
 
 // ── Timed reminder popup ──────────────────────────────────────────────────────
 interface Reminder {
@@ -549,9 +444,7 @@ export default function FrontDeskWelcome({
         gap: '1.5rem',
       }}
     >
-      <style>{ALPACA_CSS}</style>
-
-      {/* ── Timed reminder popup ── */}
+{/* ── Timed reminder popup ── */}
       {activeReminder && (
         <ReminderModal
           reminder={activeReminder}
@@ -642,8 +535,10 @@ export default function FrontDeskWelcome({
       {/* ── PACT card + Birthday + Slot Alerts ── */}
       <div style={{ width: '100%', maxWidth: '1200px', padding: '0 1.5rem', display: 'flex', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
 
-        {/* PACT Cancellation Reminder — left-most column */}
-        <div style={{ width: '272px', flexShrink: 0 }}>
+        {/* PACT Cancellation Reminder — left-most column, alpaca sits above it */}
+        <div style={{ width: '272px', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/Codepaca.svg" alt="Aura alpaca mascot" width={200} height={200} style={{ display: 'block' }} />
           <PactCancellationReminder />
         </div>
 
@@ -911,40 +806,6 @@ export default function FrontDeskWelcome({
 
       </div>{/* end side-by-side wrapper */}
 
-      {/* ── Alpaca section — sits below the PACT/Birthday/Alerts row ── */}
-      <div style={{ width: '100%', position: 'relative', marginTop: '0.5rem' }}>
-
-
-        {/* ── Walking alpaca strip ────────────────────────────────────────────
-             Height = 310px.  Alpaca is 260px tall, bottom: 8px.
-             Normal top = 310 - 8 - 260 = 42px from strip top.
-             Jump peak  = 42 - 66 = -24 → clipped by overflow:hidden (fine).
-             Hide +200  = 42 + 200 = 242px → only 68px visible = hair tips ✓
-             Peek +122  = 42 + 122 = 164px → 146px visible = face ✓
-        ── */}
-        <div style={{
-          width: '100%',
-          height: '310px',
-          overflow: 'hidden',
-          pointerEvents: 'none',
-          position: 'relative',
-        }}>
-          {/* Ground line */}
-          <div style={{
-            position: 'absolute', bottom: '6px', left: 0, right: 0, height: '2px',
-            background: 'linear-gradient(90deg, transparent, rgba(36,73,82,0.15) 20%, rgba(36,73,82,0.15) 80%, transparent)',
-          }} />
-          {/* X movement → flip direction → behavior (bob / jump / hide) */}
-          <div className="aw-x" style={{ position: 'absolute', bottom: '8px' }}>
-            <div className="aw-flip">
-              <div className="aw-behave">
-                <AlpacaSVG />
-              </div>
-            </div>
-          </div>
-        </div>
-
-      </div>
     </div>
   )
 }
