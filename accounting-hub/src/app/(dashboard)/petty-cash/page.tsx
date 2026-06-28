@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
-import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Download, Upload } from 'lucide-react'
+import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Download, Upload, FileDown, FileText } from 'lucide-react'
 
 // ── Constants ──────────────────────────────────────────────────
 const BRANCHES = [
@@ -36,6 +36,19 @@ interface Entry {
   reimbursementId: string | null
 }
 
+interface Reimb {
+  id: string
+  refNumber: string
+  grossTotal: string | number
+  status: string
+  paidAt: string | null
+  debitAccount: string | null
+  depositAccount: string | null
+  proofUrl: string | null
+  createdAt: string
+  _count: { entries: number }
+}
+
 // ── Computed helpers ───────────────────────────────────────────
 const digitsOnly = (s: string | null) => (s || '').replace(/\D/g, '')
 const formatTin = (raw: string) => {
@@ -58,7 +71,9 @@ export default function PettyCashPage() {
   const canWrite = WRITE_ROLES.includes((session?.user as { role?: string })?.role || '')
 
   const [branch, setBranch] = useState('SANDBOX_EAST')
+  const [tab, setTab] = useState<'entries' | 'reimbursements'>('entries')
   const [entries, setEntries] = useState<Entry[]>([])
+  const [reimbursements, setReimbursements] = useState<Reimb[]>([])
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
   const [coaOptions, setCoaOptions] = useState<string[]>([])
@@ -67,6 +82,9 @@ export default function PettyCashPage() {
   const [showSettings, setShowSettings] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [showReimbModal, setShowReimbModal] = useState(false)
+  const [generating, setGenerating] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadEntries = useCallback(async (br: string) => {
@@ -85,7 +103,17 @@ export default function PettyCashPage() {
     } catch { /* ignore */ }
   }, [])
 
-  useEffect(() => { loadEntries(branch); loadSettings(branch) }, [branch, loadEntries, loadSettings])
+  const loadReimbursements = useCallback(async (br: string) => {
+    try {
+      const r = await fetch(`/api/petty-cash/reimbursements?branch=${br}`)
+      setReimbursements(r.ok ? await r.json() : [])
+    } catch { setReimbursements([]) }
+  }, [])
+
+  useEffect(() => {
+    setSelected(new Set())
+    loadEntries(branch); loadSettings(branch); loadReimbursements(branch)
+  }, [branch, loadEntries, loadSettings, loadReimbursements])
 
   useEffect(() => {
     fetch('/api/chart-of-accounts')
@@ -187,7 +215,88 @@ export default function PettyCashPage() {
   const deleteRow = async (id: string) => {
     if (!confirm('Delete this entry?')) return
     setEntries(prev => prev.filter(e => e.id !== id))
+    setSelected(prev => { const n = new Set(prev); n.delete(id); return n })
     try { await fetch(`/api/petty-cash/entries?id=${id}`, { method: 'DELETE' }) } catch { /* ignore */ }
+  }
+
+  // ── Reimbursement (Phase 2) ───────────────────────────────────
+  const buildReimbursementPdf = async (refNumber: string, br: string, rows: Entry[]): Promise<string> => {
+    const { jsPDF } = await import('jspdf')
+    const autoTable = (await import('jspdf-autotable')).default
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+    const branchLabel = BRANCHES.find(b => b.value === br)?.label || br
+    doc.setFont('helvetica', 'bold').setFontSize(14).text('Request for Reimbursement', 14, 15)
+    doc.setFont('helvetica', 'normal').setFontSize(9)
+    doc.text(`Branch: ${branchLabel}`, 14, 22)
+    doc.text(`Ref No: ${refNumber}`, 14, 27)
+    doc.text(`Date: ${new Date().toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}`, 14, 32)
+    const tG = rows.reduce((s, e) => s + num(e.grossAmount), 0)
+    const tN = rows.reduce((s, e) => s + netOfVat(e), 0)
+    const tV = rows.reduce((s, e) => s + vatAmount(e), 0)
+    autoTable(doc, {
+      startY: 37,
+      head: [['PCV Number', 'Requestor', 'Department', 'PCF Status', 'Date', 'Description', 'Vatable', 'Gross Amount', 'Net of VAT', 'VAT Amount']],
+      body: rows.map(e => [
+        e.pcvNumber, e.requestor || '', e.department || '', e.pcfStatus || '',
+        e.date ? String(e.date).slice(0, 10) : '', e.description || '', e.vatable || '',
+        peso(num(e.grossAmount)), peso(netOfVat(e)), peso(vatAmount(e)),
+      ]),
+      foot: [['', '', '', '', '', '', 'TOTAL', peso(tG), peso(tN), peso(tV)]],
+      styles: { fontSize: 7, cellPadding: 1.5 },
+      headStyles: { fillColor: [36, 73, 82], textColor: 255 },
+      footStyles: { fillColor: [237, 243, 217], textColor: [30, 30, 30], fontStyle: 'bold' },
+      columnStyles: { 7: { halign: 'right' }, 8: { halign: 'right' }, 9: { halign: 'right' } },
+      margin: { left: 10, right: 10 },
+    })
+    doc.save(`${refNumber}.pdf`)
+    return doc.output('datauristring')
+  }
+
+  const generateReimbursement = async () => {
+    setGenerating(true)
+    try {
+      const ids = [...selected]
+      const sel = entries.filter(e => selected.has(e.id))
+      const res = await fetch('/api/petty-cash/reimbursements', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch, entryIds: ids }),
+      })
+      if (!res.ok) { alert((await res.json()).error || 'Failed to generate'); setGenerating(false); return }
+      const { id, refNumber } = await res.json()
+      const pdfData = await buildReimbursementPdf(refNumber, branch, sel)
+      try {
+        await fetch('/api/petty-cash/reimbursements', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, pdfData }),
+        })
+      } catch { /* pdf storage best-effort */ }
+      setSelected(new Set())
+      setShowReimbModal(false)
+      await loadEntries(branch)
+      await loadReimbursements(branch)
+      setTab('reimbursements')
+    } catch { alert('Failed to generate reimbursement') }
+    setGenerating(false)
+  }
+
+  const downloadReimbursementPdf = async (rep: Reimb) => {
+    try {
+      const r = await fetch(`/api/petty-cash/reimbursements?id=${rep.id}`)
+      if (!r.ok) return
+      const { pdfData } = await r.json()
+      if (!pdfData) { alert('No PDF stored for this report.'); return }
+      const a = document.createElement('a')
+      a.href = pdfData; a.download = `${rep.refNumber}.pdf`
+      document.body.appendChild(a); a.click(); a.remove()
+    } catch { /* ignore */ }
+  }
+
+  const deleteReimbursement = async (rep: Reimb) => {
+    if (!confirm(`Delete reimbursement ${rep.refNumber}? Its ${rep._count.entries} entries will be unlocked for future replenishment.`)) return
+    try {
+      await fetch(`/api/petty-cash/reimbursements?id=${rep.id}`, { method: 'DELETE' })
+      await loadReimbursements(branch); await loadEntries(branch)
+    } catch { /* ignore */ }
   }
 
   const cellCls = 'w-full bg-transparent px-2 py-1.5 text-xs outline-none focus:bg-[var(--pale-teal)] rounded'
@@ -196,13 +305,18 @@ export default function PettyCashPage() {
   const vatEditable = (e: Entry) => e.vatable === 'VAT' || e.vatable === 'NV'
   const totalGross = entries.reduce((s, e) => s + num(e.grossAmount), 0)
 
+  const selectableIds = entries.filter(e => !e.reimbursementId).map(e => e.id)
+  const allSelected = selectableIds.length > 0 && selectableIds.every(id => selected.has(id))
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(selectableIds))
+  const toggleOne = (id: string) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+
   return (
     <div className={expanded ? 'fixed inset-0 z-50 overflow-auto p-6 space-y-4' : 'space-y-4'} style={expanded ? { background: 'var(--off-white)' } : undefined}>
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
           Petty Cash
         </h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
             {BRANCHES.map(b => (
               <button key={b.value} onClick={() => setBranch(b.value)}
@@ -241,163 +355,244 @@ export default function PettyCashPage() {
         </div>
       </div>
 
-      <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-        {entries.length} entries · Total Gross <strong style={{ color: 'var(--charcoal)' }}>₱{peso(totalGross)}</strong>
-        {' · '}Next PCV #{nextPcvSeq}
-      </p>
+      {/* Tabs + Request for Reimbursement */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
+          {([['entries', 'Entries'], ['reimbursements', `For Reimbursement (${reimbursements.length})`]] as const).map(([k, lbl]) => (
+            <button key={k} onClick={() => setTab(k)}
+              className="px-4 py-2 text-xs font-semibold transition-colors"
+              style={tab === k ? { background: 'var(--deep-teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+        {tab === 'entries' && canWrite && (
+          <button onClick={() => setShowReimbModal(true)} disabled={selected.size === 0}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40"
+            style={{ background: 'var(--teal)' }}>
+            <FileText size={15} /> Request for Reimbursement{selected.size > 0 ? ` (${selected.size})` : ''}
+          </button>
+        )}
+      </div>
 
-      <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)', maxHeight: expanded ? 'calc(100vh - 170px)' : '70vh' }}>
-        {loading ? (
-          <div className="flex items-center justify-center py-16"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} /></div>
-        ) : (
-          <table className="text-xs" style={{ borderCollapse: 'collapse', minWidth: 2400 }}>
-            <thead className="sticky top-0 z-10">
+      {tab === 'entries' && (
+        <>
+          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+            {entries.length} entries · {selected.size} selected · Total Gross <strong style={{ color: 'var(--charcoal)' }}>₱{peso(totalGross)}</strong>
+            {' · '}Next PCV #{nextPcvSeq}
+          </p>
+
+          <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)', maxHeight: expanded ? 'calc(100vh - 210px)' : '70vh' }}>
+            {loading ? (
+              <div className="flex items-center justify-center py-16"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} /></div>
+            ) : (
+              <table className="text-xs" style={{ borderCollapse: 'collapse', minWidth: 2440 }}>
+                <thead className="sticky top-0 z-10">
+                  <tr style={{ background: 'var(--off-white)' }}>
+                    <th className="border-r border-b px-2 py-2 text-center" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                      <input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={!canWrite || selectableIds.length === 0} title="Select all" />
+                    </th>
+                    {['PCV Number', 'Requestor', 'Department', 'PCF Status', 'Date', 'Description', 'Description for Hub',
+                      'Vatable', 'SI Number', 'TIN Number', 'TIN Number 2', 'Branch Code', 'Registered name',
+                      'Registered Address', 'Gross Amount', 'Net of VAT', 'VAT Amount', 'Account Title', 'Reference Number', ''
+                    ].map((h, i) => (
+                      <th key={i} className="border-r border-b px-2 py-2 text-left font-semibold whitespace-nowrap"
+                        style={{ color: 'var(--charcoal)', borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {entries.map(e => {
+                    const lk = locked(e)
+                    const ve = vatEditable(e)
+                    return (
+                      <tr key={e.id} style={{ background: e.reimbursementId ? '#f8fafc' : '#fff' }}>
+                        <td className="border-r border-b text-center" style={{ borderColor: 'var(--light-gray)' }}>
+                          <input type="checkbox" checked={selected.has(e.id)} disabled={lk}
+                            onChange={() => toggleOne(e.id)} title={e.reimbursementId ? 'Locked (in a reimbursement report)' : ''} />
+                        </td>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                          <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--charcoal)' }}>{e.pcvNumber}</span>
+                        </td>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                          <select className={cellCls} value={e.requestor || ''} disabled={lk}
+                            onChange={ev => saveField(e.id, { requestor: ev.target.value }, false)} style={{ minWidth: 160 }}>
+                            <option value=""></option>
+                            {requestors.map(r => <option key={r} value={r}>{r}</option>)}
+                            {e.requestor && !requestors.includes(e.requestor) && <option value={e.requestor}>{e.requestor}</option>}
+                          </select>
+                        </td>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                          <select className={cellCls} value={e.department || ''} disabled={lk}
+                            onChange={ev => saveField(e.id, { department: ev.target.value }, false)}>
+                            <option value=""></option>
+                            {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                          </select>
+                        </td>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                          <select className={cellCls} value={e.pcfStatus || ''} disabled={lk}
+                            onChange={ev => saveField(e.id, { pcfStatus: ev.target.value }, false)} style={{ minWidth: 140 }}>
+                            <option value=""></option>
+                            {PCF_STATUS.map(s => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </td>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                          <input type="date" className={cellCls} disabled={lk}
+                            value={e.date ? String(e.date).slice(0, 10) : ''}
+                            onChange={ev => saveField(e.id, { date: ev.target.value }, false)} />
+                        </td>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                          <input className={cellCls} disabled={lk} value={e.description || ''} style={{ minWidth: 220 }}
+                            onChange={ev => patchLocal(e.id, { description: ev.target.value })}
+                            onBlur={ev => saveField(e.id, { description: ev.target.value }, false)} />
+                        </td>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: '#fafafa' }}>
+                          <span className="px-2 py-1.5 block" style={{ color: 'var(--mid-gray)', minWidth: 240 }}>{descForHub(e)}</span>
+                        </td>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                          <select className={cellCls} value={e.vatable || ''} disabled={lk}
+                            onChange={ev => {
+                              const v = ev.target.value
+                              const patch: Partial<Entry> = { vatable: v }
+                              if (v !== 'VAT' && v !== 'NV') { patch.siNumber = null; patch.tinNumber = null }
+                              saveField(e.id, patch, false)
+                            }}>
+                            <option value=""></option>
+                            {VATABLE.map(v => <option key={v} value={v}>{v}</option>)}
+                          </select>
+                        </td>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: ve ? '#fff' : '#f3f4f6' }}>
+                          <input className={cellCls} disabled={lk || !ve} value={e.siNumber || ''} style={{ minWidth: 140 }}
+                            onChange={ev => patchLocal(e.id, { siNumber: ev.target.value })}
+                            onBlur={ev => saveField(e.id, { siNumber: ev.target.value }, false)} />
+                        </td>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: ve ? '#fff' : '#f3f4f6' }}>
+                          <input className={cellCls} disabled={lk || !ve} value={e.tinNumber || ''} placeholder="XXX-XXX-XXX-XXXXX"
+                            style={{ minWidth: 150 }}
+                            onChange={ev => patchLocal(e.id, { tinNumber: formatTin(ev.target.value) })}
+                            onBlur={ev => saveField(e.id, { tinNumber: formatTin(ev.target.value) }, false)} />
+                        </td>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: '#fafafa' }}>
+                          <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--mid-gray)' }}>{tinNumber2(e.tinNumber)}</span>
+                        </td>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: '#fafafa' }}>
+                          <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--mid-gray)' }}>{branchCodeOf(e.tinNumber)}</span>
+                        </td>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                          <input className={cellCls} disabled={lk} value={e.registeredName || ''} style={{ minWidth: 180 }}
+                            onChange={ev => patchLocal(e.id, { registeredName: ev.target.value })}
+                            onBlur={ev => saveField(e.id, { registeredName: ev.target.value }, false)} />
+                        </td>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                          <input className={cellCls} disabled={lk} value={e.registeredAddress || ''} style={{ minWidth: 220 }}
+                            onChange={ev => patchLocal(e.id, { registeredAddress: ev.target.value })}
+                            onBlur={ev => saveField(e.id, { registeredAddress: ev.target.value }, false)} />
+                        </td>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                          <input type="number" step="0.01" className={`${cellCls} text-right`} disabled={lk}
+                            value={num(e.grossAmount) === 0 ? '' : String(e.grossAmount)} style={{ minWidth: 110 }}
+                            onChange={ev => patchLocal(e.id, { grossAmount: ev.target.value })}
+                            onBlur={ev => saveField(e.id, { grossAmount: Number(ev.target.value) || 0 }, false)} />
+                        </td>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: '#fafafa' }}>
+                          <span className="px-2 py-1.5 block text-right" style={{ color: 'var(--mid-gray)' }}>{peso(netOfVat(e))}</span>
+                        </td>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: '#fafafa' }}>
+                          <span className="px-2 py-1.5 block text-right" style={{ color: 'var(--mid-gray)' }}>{peso(vatAmount(e))}</span>
+                        </td>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                          <select className={cellCls} value={e.accountTitle || ''} disabled={lk}
+                            onChange={ev => saveField(e.id, { accountTitle: ev.target.value }, false)} style={{ minWidth: 200 }}>
+                            <option value=""></option>
+                            {coaOptions.map(c => <option key={c} value={c}>{c}</option>)}
+                            {e.accountTitle && !coaOptions.includes(e.accountTitle) && <option value={e.accountTitle}>{e.accountTitle}</option>}
+                          </select>
+                        </td>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                          <input className={cellCls} disabled={lk} value={e.referenceNumber || ''} style={{ minWidth: 130 }}
+                            onChange={ev => patchLocal(e.id, { referenceNumber: ev.target.value })}
+                            onBlur={ev => saveField(e.id, { referenceNumber: ev.target.value }, false)} />
+                        </td>
+                        <td className="border-b px-1 text-center" style={{ borderColor: 'var(--light-gray)' }}>
+                          {!lk && (
+                            <button onClick={() => deleteRow(e.id)} title="Delete" className="p-1 rounded hover:bg-red-50">
+                              <Trash2 size={13} style={{ color: '#dc2626' }} />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                  {entries.length === 0 && (
+                    <tr><td colSpan={21} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>
+                      No entries yet. Click &quot;Add Row&quot; to start.
+                    </td></tr>
+                  )}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {canWrite && (
+            <button onClick={addRow} disabled={adding}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+              style={{ background: 'var(--teal)' }}>
+              {adding ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Add Row
+            </button>
+          )}
+        </>
+      )}
+
+      {tab === 'reimbursements' && (
+        <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+          <table className="w-full text-sm">
+            <thead>
               <tr style={{ background: 'var(--off-white)' }}>
-                {['PCV Number', 'Requestor', 'Department', 'PCF Status', 'Date', 'Description', 'Description for Hub',
-                  'Vatable', 'SI Number', 'TIN Number', 'TIN Number 2', 'Branch Code', 'Registered name',
-                  'Registered Address', 'Gross Amount', 'Net of VAT', 'VAT Amount', 'Account Title', 'Reference Number', ''
-                ].map((h, i) => (
-                  <th key={i} className="border-r border-b px-2 py-2 text-left font-semibold whitespace-nowrap"
-                    style={{ color: 'var(--charcoal)', borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-                    {h}
-                  </th>
+                {['Reimbursement Ref', 'Date', 'Entries', 'Gross Total', 'Status', ''].map((h, i) => (
+                  <th key={i} className="px-4 py-2.5 text-left text-xs font-semibold whitespace-nowrap"
+                    style={{ color: 'var(--charcoal)' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {entries.map(e => {
-                const lk = locked(e)
-                const ve = vatEditable(e)
-                return (
-                  <tr key={e.id} style={{ background: e.reimbursementId ? '#f8fafc' : '#fff' }}>
-                    <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                      <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--charcoal)' }}>{e.pcvNumber}</span>
-                    </td>
-                    <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                      <select className={cellCls} value={e.requestor || ''} disabled={lk}
-                        onChange={ev => saveField(e.id, { requestor: ev.target.value }, false)} style={{ minWidth: 160 }}>
-                        <option value=""></option>
-                        {requestors.map(r => <option key={r} value={r}>{r}</option>)}
-                        {e.requestor && !requestors.includes(e.requestor) && <option value={e.requestor}>{e.requestor}</option>}
-                      </select>
-                    </td>
-                    <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                      <select className={cellCls} value={e.department || ''} disabled={lk}
-                        onChange={ev => saveField(e.id, { department: ev.target.value }, false)}>
-                        <option value=""></option>
-                        {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-                      </select>
-                    </td>
-                    <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                      <select className={cellCls} value={e.pcfStatus || ''} disabled={lk}
-                        onChange={ev => saveField(e.id, { pcfStatus: ev.target.value }, false)} style={{ minWidth: 140 }}>
-                        <option value=""></option>
-                        {PCF_STATUS.map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                    </td>
-                    <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                      <input type="date" className={cellCls} disabled={lk}
-                        value={e.date ? String(e.date).slice(0, 10) : ''}
-                        onChange={ev => saveField(e.id, { date: ev.target.value }, false)} />
-                    </td>
-                    <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                      <input className={cellCls} disabled={lk} value={e.description || ''} style={{ minWidth: 220 }}
-                        onChange={ev => patchLocal(e.id, { description: ev.target.value })}
-                        onBlur={ev => saveField(e.id, { description: ev.target.value }, false)} />
-                    </td>
-                    <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: '#fafafa' }}>
-                      <span className="px-2 py-1.5 block" style={{ color: 'var(--mid-gray)', minWidth: 240 }}>{descForHub(e)}</span>
-                    </td>
-                    <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                      <select className={cellCls} value={e.vatable || ''} disabled={lk}
-                        onChange={ev => {
-                          const v = ev.target.value
-                          const patch: Partial<Entry> = { vatable: v }
-                          if (v !== 'VAT' && v !== 'NV') { patch.siNumber = null; patch.tinNumber = null }
-                          saveField(e.id, patch, false)
-                        }}>
-                        <option value=""></option>
-                        {VATABLE.map(v => <option key={v} value={v}>{v}</option>)}
-                      </select>
-                    </td>
-                    <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: ve ? '#fff' : '#f3f4f6' }}>
-                      <input className={cellCls} disabled={lk || !ve} value={e.siNumber || ''} style={{ minWidth: 140 }}
-                        onChange={ev => patchLocal(e.id, { siNumber: ev.target.value })}
-                        onBlur={ev => saveField(e.id, { siNumber: ev.target.value }, false)} />
-                    </td>
-                    <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: ve ? '#fff' : '#f3f4f6' }}>
-                      <input className={cellCls} disabled={lk || !ve} value={e.tinNumber || ''} placeholder="XXX-XXX-XXX-XXXXX"
-                        style={{ minWidth: 150 }}
-                        onChange={ev => patchLocal(e.id, { tinNumber: formatTin(ev.target.value) })}
-                        onBlur={ev => saveField(e.id, { tinNumber: formatTin(ev.target.value) }, false)} />
-                    </td>
-                    <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: '#fafafa' }}>
-                      <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--mid-gray)' }}>{tinNumber2(e.tinNumber)}</span>
-                    </td>
-                    <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: '#fafafa' }}>
-                      <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--mid-gray)' }}>{branchCodeOf(e.tinNumber)}</span>
-                    </td>
-                    <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                      <input className={cellCls} disabled={lk} value={e.registeredName || ''} style={{ minWidth: 180 }}
-                        onChange={ev => patchLocal(e.id, { registeredName: ev.target.value })}
-                        onBlur={ev => saveField(e.id, { registeredName: ev.target.value }, false)} />
-                    </td>
-                    <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                      <input className={cellCls} disabled={lk} value={e.registeredAddress || ''} style={{ minWidth: 220 }}
-                        onChange={ev => patchLocal(e.id, { registeredAddress: ev.target.value })}
-                        onBlur={ev => saveField(e.id, { registeredAddress: ev.target.value }, false)} />
-                    </td>
-                    <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                      <input type="number" step="0.01" className={`${cellCls} text-right`} disabled={lk}
-                        value={num(e.grossAmount) === 0 ? '' : String(e.grossAmount)} style={{ minWidth: 110 }}
-                        onChange={ev => patchLocal(e.id, { grossAmount: ev.target.value })}
-                        onBlur={ev => saveField(e.id, { grossAmount: Number(ev.target.value) || 0 }, false)} />
-                    </td>
-                    <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: '#fafafa' }}>
-                      <span className="px-2 py-1.5 block text-right" style={{ color: 'var(--mid-gray)' }}>{peso(netOfVat(e))}</span>
-                    </td>
-                    <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: '#fafafa' }}>
-                      <span className="px-2 py-1.5 block text-right" style={{ color: 'var(--mid-gray)' }}>{peso(vatAmount(e))}</span>
-                    </td>
-                    <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                      <select className={cellCls} value={e.accountTitle || ''} disabled={lk}
-                        onChange={ev => saveField(e.id, { accountTitle: ev.target.value }, false)} style={{ minWidth: 200 }}>
-                        <option value=""></option>
-                        {coaOptions.map(c => <option key={c} value={c}>{c}</option>)}
-                        {e.accountTitle && !coaOptions.includes(e.accountTitle) && <option value={e.accountTitle}>{e.accountTitle}</option>}
-                      </select>
-                    </td>
-                    <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                      <input className={cellCls} disabled={lk} value={e.referenceNumber || ''} style={{ minWidth: 130 }}
-                        onChange={ev => patchLocal(e.id, { referenceNumber: ev.target.value })}
-                        onBlur={ev => saveField(e.id, { referenceNumber: ev.target.value }, false)} />
-                    </td>
-                    <td className="border-b px-1 text-center" style={{ borderColor: 'var(--light-gray)' }}>
-                      {!lk && (
-                        <button onClick={() => deleteRow(e.id)} title="Delete" className="p-1 rounded hover:bg-red-50">
-                          <Trash2 size={13} style={{ color: '#dc2626' }} />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-              {entries.length === 0 && (
-                <tr><td colSpan={20} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>
-                  No entries yet. Click &quot;Add Row&quot; to start.
+              {reimbursements.map(r => (
+                <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                  <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{r.refNumber}</td>
+                  <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{new Date(r.createdAt).toLocaleDateString('en-PH')}</td>
+                  <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{r._count.entries}</td>
+                  <td className="px-4 py-2.5 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>₱{peso(num(r.grossTotal))}</td>
+                  <td className="px-4 py-2.5">
+                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                      style={r.status === 'PAID' ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>
+                      {r.status === 'PAID' ? 'Paid' : 'Pending'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                    <button onClick={() => downloadReimbursementPdf(r)} title="Download PDF"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1"
+                      style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                      <FileDown size={13} /> PDF
+                    </button>
+                    {canWrite && (
+                      <button onClick={() => deleteReimbursement(r)} title="Delete (unlocks entries)"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border"
+                        style={{ borderColor: '#fecaca', color: '#dc2626' }}>
+                        <Trash2 size={13} /> Delete
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {reimbursements.length === 0 && (
+                <tr><td colSpan={6} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>
+                  No reimbursement reports yet. Select entries and click &quot;Request for Reimbursement&quot;.
                 </td></tr>
               )}
             </tbody>
           </table>
-        )}
-      </div>
-
-      {canWrite && (
-        <button onClick={addRow} disabled={adding}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
-          style={{ background: 'var(--teal)' }}>
-          {adding ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Add Row
-        </button>
+        </div>
       )}
 
       {showSettings && (
@@ -405,6 +600,47 @@ export default function PettyCashPage() {
           onClose={() => setShowSettings(false)}
           onSaved={(s) => { setRequestors(s.requestors); setNextPcvSeq(s.nextPcvSeq) }} />
       )}
+
+      {showReimbModal && (
+        <ReimbModal entries={entries.filter(e => selected.has(e.id))} generating={generating}
+          onClose={() => setShowReimbModal(false)} onGenerate={generateReimbursement} />
+      )}
+    </div>
+  )
+}
+
+// ── Reimbursement modal ────────────────────────────────────────
+function ReimbModal({ entries, generating, onClose, onGenerate }: {
+  entries: Entry[]; generating: boolean; onClose: () => void; onGenerate: () => void
+}) {
+  const tG = entries.reduce((s, e) => s + num(e.grossAmount), 0)
+  const tN = entries.reduce((s, e) => s + netOfVat(e), 0)
+  const tV = entries.reduce((s, e) => s + vatAmount(e), 0)
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-lg" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Request for Reimbursement</h2>
+          <button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+        </div>
+        <p className="text-sm mb-4" style={{ color: 'var(--mid-gray)' }}>
+          {entries.length} selected entr{entries.length === 1 ? 'y' : 'ies'} will be included and locked.
+        </p>
+        <div className="grid grid-cols-3 gap-3 mb-5">
+          {[['Gross Amount', tG], ['Net of VAT', tN], ['VAT Amount', tV]].map(([lbl, v]) => (
+            <div key={lbl as string} className="rounded-xl p-3 text-center" style={{ background: 'var(--off-white)' }}>
+              <p className="text-[11px] mb-1" style={{ color: 'var(--mid-gray)' }}>{lbl as string}</p>
+              <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(v as number)}</p>
+            </div>
+          ))}
+        </div>
+        <button onClick={onGenerate} disabled={generating || entries.length === 0}
+          className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2"
+          style={{ background: 'var(--teal)' }}>
+          {generating ? <Loader2 size={15} className="animate-spin" /> : <FileDown size={15} />}
+          {generating ? 'Generating…' : 'Generate PDF'}
+        </button>
+      </div>
     </div>
   )
 }

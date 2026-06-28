@@ -1666,6 +1666,7 @@ model ReimbursementReport {
 model PettyCashSettings {
   branch     String   @id  // SANDBOX_EAST | SANDBOX_GREENHILLS | VERDANA_STORE
   nextPcvSeq Int      @default(1)
+  nextReimbSeq Int   @default(1)
   requestors Json     @default("[]")
   updatedAt  DateTime @updatedAt @default(now())
 }
