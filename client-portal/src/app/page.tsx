@@ -108,7 +108,7 @@ function AuthCard({
     setBusy(true); setErr(null)
     const f = new FormData(e.currentTarget)
     try {
-      const res = await loginPatient(String(f.get('email')), String(f.get('password')))
+      const res = await loginPatient(String(f.get('username')), String(f.get('password')))
       setSession(res)
       onAuthed(res.firstName, res.token)
     } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
@@ -127,6 +127,7 @@ function AuthCard({
         String(f.get('email')),
         String(f.get('firstName')),
         String(f.get('lastName')),
+        String(f.get('username')),
         password,
       )
       setSession(res)
@@ -216,7 +217,7 @@ function AuthCard({
         hasAccount === null ? (
           <div className="space-y-4" key="returning-ask">
             <p className="text-sm text-[color:var(--deep-teal)]">
-              Do you already have a portal account (an email &amp; password)?
+              Do you already have a portal account (a username &amp; password)?
             </p>
             <div className="grid grid-cols-2 gap-3">
               <button
@@ -239,8 +240,8 @@ function AuthCard({
           </div>
         ) : hasAccount ? (
           <form className="space-y-4" onSubmit={handleLogin} key="returning-login">
-            <Field label="Email">
-              <input required name="email" type="email" className="input" placeholder="you@example.com" />
+            <Field label="Username">
+              <input required name="username" autoCapitalize="none" autoCorrect="off" className="input" placeholder="your username" />
             </Field>
             <Field label="Password">
               <input required name="password" type="password" className="input" placeholder="••••••••" />
@@ -258,7 +259,7 @@ function AuthCard({
         ) : (
           <form className="space-y-4" onSubmit={handleClaim} key="returning-claim">
             <p className="text-sm text-[color:var(--mid-gray)] -mt-1">
-              You&apos;re already in our records — verify with your email, first name and last name, then choose a password.
+              You&apos;re already in our records — verify with your email, first name and last name, then choose a username &amp; password.
             </p>
             <Field label="Email">
               <input required name="email" type="email" className="input" placeholder="you@example.com" />
@@ -271,6 +272,12 @@ function AuthCard({
                 <input required name="lastName" className="input" placeholder="Dela Cruz" />
               </Field>
             </div>
+            <Field label="Choose a username">
+              <input required name="username" autoCapitalize="none" autoCorrect="off" className="input" placeholder="e.g. juan.delacruz" />
+            </Field>
+            <p className="text-[11px] text-[color:var(--mid-gray)] -mt-2" style={{ fontFamily: 'var(--font-display)' }}>
+              Your username is how you&apos;ll sign in — pick your own, even if you share an email with a family member.
+            </p>
             <div className="grid grid-cols-2 gap-3">
               <Field label="New password">
                 <input required name="password" type="password" className="input" placeholder="At least 8 characters" />

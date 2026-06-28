@@ -12,6 +12,20 @@ export function validatePassword(pw: unknown): string | null {
   return null
 }
 
+// Usernames are the portal login handle. Stored lower-cased so uniqueness and
+// login are effectively case-insensitive.
+export function normalizeUsername(u: unknown): string {
+  return typeof u === 'string' ? u.trim().toLowerCase() : ''
+}
+
+export function validateUsername(u: string): string | null {
+  if (!u) return 'Username is required'
+  if (u.length < 3) return 'Username must be at least 3 characters'
+  if (u.length > 30) return 'Username is too long'
+  if (!/^[a-z0-9._-]+$/.test(u)) return 'Username can only use letters, numbers, and . _ -'
+  return null
+}
+
 export function hashPassword(pw: string): Promise<string> {
   return bcrypt.hash(pw, 12)
 }

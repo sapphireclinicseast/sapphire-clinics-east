@@ -1,6 +1,7 @@
 // POST /api/public/patients/login — self-service portal login.
-// Body: { email, password } → { patientId, firstName, token } on success.
-// Returns 401 for both unknown email and wrong password (no account enumeration).
+// Body: { username, password } → { patientId, firstName, token } on success.
+// The identifier is a username (new accounts) or email (legacy accounts).
+// Returns 401 for both unknown identifier and wrong password (no enumeration).
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
@@ -12,32 +13,38 @@ export async function OPTIONS(req: NextRequest) {
   return preflight(req.headers.get('origin'))
 }
 
-type Body = { email?: string; password?: string }
+type Body = { username?: string; email?: string; password?: string }
 
 export async function POST(req: NextRequest) {
   const origin = req.headers.get('origin')
   const body = (await req.json().catch(() => ({}))) as Body
 
-  const email = (body.email ?? '').trim().toLowerCase()
+  // Login field accepts a username (new accounts) or email (legacy accounts).
+  const identifier = (body.username ?? body.email ?? '').trim().toLowerCase()
   const password = body.password ?? ''
 
-  if (!email || !password) {
+  if (!identifier || !password) {
     return withCors(
-      NextResponse.json({ error: 'Email and password are required' }, { status: 400 }),
+      NextResponse.json({ error: 'Username and password are required' }, { status: 400 }),
       origin,
     )
   }
 
   const invalid = () =>
     withCors(
-      NextResponse.json({ error: 'Incorrect email or password' }, { status: 401 }),
+      NextResponse.json({ error: 'Incorrect username or password' }, { status: 401 }),
       origin,
     )
 
-  // A single parent email is often shared by siblings, so check every patient
-  // with this email and sign in as the one whose password matches.
+  // Match the identifier against username OR email (a shared email can map to
+  // multiple siblings), then sign in as the one whose password verifies.
   const patients = await prisma.patient.findMany({
-    where: { email: { equals: email, mode: 'insensitive' } },
+    where: {
+      OR: [
+        { username: { equals: identifier, mode: 'insensitive' } },
+        { email: { equals: identifier, mode: 'insensitive' } },
+      ],
+    },
     select: { id: true, firstName: true, passwordHash: true },
   })
 

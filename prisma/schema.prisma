@@ -206,6 +206,7 @@ model Patient {
   lastName    String
   email       String?
   phone       String?
+  username    String?     @unique  // portal login handle; lets siblings sharing one email pick distinct logins
   passwordHash String?         // optional self-service portal login (bcrypt); null = no portal account yet
   dob         DateTime?
   patientType PatientType
