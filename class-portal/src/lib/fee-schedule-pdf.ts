@@ -144,7 +144,10 @@ export function generateFeeSchedulePdf(input: FeeScheduleInput): jsPDF {
   doc.rect(TABLE_X, y - 2, TABLE_W, ROW_H, 'F')
   doc.setFont('helvetica', 'bold'); setText(doc, [255, 255, 255])
   doc.text('TOTAL ANNUAL FEES', TABLE_X + 4, y + 3.5)
-  doc.text(`₱${fmtPHP(input.annualTotalCentavos)}`, TABLE_X + TABLE_W - 4, y + 3.5, { align: 'right' })
+  // ₱ (U+20B1) isn't in jsPDF's default helvetica glyph set — renders
+  // as "±" with wonky kerning. Use "PHP " in body text; the table
+  // header "(PHP)" stays since plain ASCII renders fine.
+  doc.text(fmtPHP(input.annualTotalCentavos), TABLE_X + TABLE_W - 4, y + 3.5, { align: 'right' })
   y += ROW_H + 10
 
   // ── Payment Plan Options ────────────────────────────────────────
@@ -206,7 +209,7 @@ export function generateFeeSchedulePdf(input: FeeScheduleInput): jsPDF {
 
   // ── Footnote ────────────────────────────────────────────────────
   doc.setFont('helvetica', 'italic'); doc.setFontSize(9); setText(doc, [80, 80, 80])
-  const note = 'The Miscellaneous Fee of ₱5,000.00 covers school ID, learning materials, records management, and related administrative costs. The Tuition Fee is reserved exclusively for instructional services. This schedule reflects the fees as recorded on the student’s account at the time of issuance.'
+  const note = 'The Miscellaneous Fee of PHP 5,000.00 covers school ID, learning materials, records management, and related administrative costs. The Tuition Fee is reserved exclusively for instructional services. This schedule reflects the fees as recorded on the student’s account at the time of issuance.'
   const noteLines = doc.splitTextToSize(note, CONTENT_W)
   doc.text(noteLines, MARGIN, y)
   // 32mm breathing room so the 28mm e-signature image fits cleanly
