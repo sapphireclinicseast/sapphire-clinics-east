@@ -36,12 +36,17 @@ export async function POST(req: NextRequest) {
     return withCors(NextResponse.json({ error: pwErr }, { status: 400 }), origin)
   }
 
+  // Match on BOTH email and last name. A single parent email is often shared by
+  // siblings, so we must find the specific record — not just the first by email.
   const patient = await prisma.patient.findFirst({
-    where: { email: { equals: email, mode: 'insensitive' } },
-    select: { id: true, firstName: true, lastName: true, passwordHash: true },
+    where: {
+      email: { equals: email, mode: 'insensitive' },
+      lastName: { equals: lastName, mode: 'insensitive' },
+    },
+    select: { id: true, firstName: true, passwordHash: true },
   })
 
-  if (!patient || patient.lastName.toLowerCase() !== lastName.toLowerCase()) {
+  if (!patient) {
     return withCors(
       NextResponse.json(
         { error: 'No matching record found. Please register as a new patient.' },
