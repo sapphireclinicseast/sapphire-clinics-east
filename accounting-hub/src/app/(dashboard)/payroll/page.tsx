@@ -879,6 +879,7 @@ export default function PayrollPage() {
   const [emailStatus, setEmailStatus] = useState<Record<string, 'success' | 'error'>>({})
   const [emailMsg, setEmailMsg] = useState<Record<string, string>>({})
   const [downloadingAll, setDownloadingAll] = useState(false)
+  const [downloadPct, setDownloadPct] = useState(0)
   const [generatedDateRange, setGeneratedDateRange] = useState<{ start: string; end: string } | null>(null)
 
   /* ── Payroll Settings ── */
@@ -2223,14 +2224,82 @@ export default function PayrollPage() {
     } catch (e) { console.error('PDF storage error:', e) }
   }
 
+  // Minimal in-browser ZIP writer (STORE method — PDFs are already compressed).
+  const makeZipBlob = (files: { name: string; data: Uint8Array }[]): Blob => {
+    const crcTable = (() => {
+      const t = new Uint32Array(256)
+      for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); t[n] = c >>> 0 }
+      return t
+    })()
+    const crc32 = (buf: Uint8Array) => { let c = 0xFFFFFFFF; for (let i = 0; i < buf.length; i++) c = crcTable[(c ^ buf[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0 }
+    const enc = new TextEncoder()
+    const parts: Uint8Array[] = []
+    const central: Uint8Array[] = []
+    let offset = 0
+    for (const f of files) {
+      const nameB = enc.encode(f.name)
+      const crc = crc32(f.data)
+      const lh = new DataView(new ArrayBuffer(30))
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0, true); lh.setUint16(8, 0, true)
+      lh.setUint16(10, 0, true); lh.setUint16(12, 0, true); lh.setUint32(14, crc, true)
+      lh.setUint32(18, f.data.length, true); lh.setUint32(22, f.data.length, true)
+      lh.setUint16(26, nameB.length, true); lh.setUint16(28, 0, true)
+      parts.push(new Uint8Array(lh.buffer), nameB, f.data)
+      const ch = new DataView(new ArrayBuffer(46))
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0, true)
+      ch.setUint16(10, 0, true); ch.setUint16(12, 0, true); ch.setUint16(14, 0, true); ch.setUint32(16, crc, true)
+      ch.setUint32(20, f.data.length, true); ch.setUint32(24, f.data.length, true)
+      ch.setUint16(28, nameB.length, true); ch.setUint16(30, 0, true); ch.setUint16(32, 0, true)
+      ch.setUint16(34, 0, true); ch.setUint16(36, 0, true); ch.setUint32(38, 0, true); ch.setUint32(42, offset, true)
+      central.push(new Uint8Array(ch.buffer), nameB)
+      offset += 30 + nameB.length + f.data.length
+    }
+    const centralSize = central.reduce((sum, c) => sum + c.length, 0)
+    const eocd = new DataView(new ArrayBuffer(22))
+    eocd.setUint32(0, 0x06054b50, true); eocd.setUint16(4, 0, true); eocd.setUint16(6, 0, true)
+    eocd.setUint16(8, files.length, true); eocd.setUint16(10, files.length, true)
+    eocd.setUint32(12, centralSize, true); eocd.setUint32(16, offset, true); eocd.setUint16(20, 0, true)
+    return new Blob([...parts, ...central, new Uint8Array(eocd.buffer)] as BlobPart[], { type: 'application/zip' })
+  }
+
   const downloadAllPdfs = async () => {
     const active = payrollPreviews.filter(p => (p.grossPay > 0 || p.orderCount > 0 || p.existingStatus !== null) && p.department !== 'ADMINISTRATION')
+    if (active.length === 0) return
     setDownloadingAll(true)
-    for (const p of active) {
-      try { await downloadPdf(p); await new Promise(r => setTimeout(r, 600)) }
-      catch (e) { console.error('PDF error for', p.consultantName, e) }
+    setDownloadPct(0)
+    try {
+      const files: { name: string; data: Uint8Array }[] = []
+      for (let i = 0; i < active.length; i++) {
+        const p = active[i]
+        try {
+          const extras = extraUnitPays[p.consultantId] || []
+          const adjs = adjustments[p.consultantId] || []
+          const doc = await buildPayslipPdf(p, extras, adjs, cutoffPeriod, generatedDateRange ?? undefined)
+          const safeName = p.consultantName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()
+          files.push({ name: `payslip-${safeName}-${cutoffPeriod}.pdf`, data: new Uint8Array(doc.output('arraybuffer') as ArrayBuffer) })
+          // Keep the server-side copy used by the my-payslips portal
+          try {
+            const pdfBase64 = doc.output('datauristring')
+            await fetch('/api/payroll/payslip-pdf', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ type: 'consultant', pdfBase64, consultantId: p.consultantId, cutoffPeriod, branch: p.branch }),
+            })
+          } catch (e) { console.error('PDF storage error:', e) }
+        } catch (e) { console.error('PDF error for', p.consultantName, e) }
+        setDownloadPct(Math.round(((i + 1) / active.length) * 100))
+      }
+      if (files.length > 0) {
+        const url = URL.createObjectURL(makeZipBlob(files))
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `consultant-payslips-${cutoffPeriod}.zip`
+        document.body.appendChild(a); a.click(); a.remove()
+        URL.revokeObjectURL(url)
+      }
+    } finally {
+      setDownloadingAll(false)
+      setDownloadPct(0)
     }
-    setDownloadingAll(false)
   }
 
   const emailClinician = async (p: PayrollPreview) => {
@@ -4005,7 +4074,7 @@ export default function PayrollPage() {
                       className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border disabled:opacity-50"
                       style={{ borderColor: 'var(--charcoal)', color: 'var(--charcoal)' }}>
                       {downloadingAll ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                      {downloadingAll ? 'Generating PDFs...' : 'Download ALL PDFs'}
+                      {downloadingAll ? `Generating ZIP… ${downloadPct}%` : 'Download ALL PDFs'}
                     </button>
                   )}
                   {payrollPreviews.some(p => p.grossPay > 0 || p.orderCount > 0 || p.existingStatus !== null) && (
