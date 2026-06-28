@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
-import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2 } from 'lucide-react'
+import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Download, Upload } from 'lucide-react'
 
 // ── Constants ──────────────────────────────────────────────────
 const BRANCHES = [
@@ -66,6 +66,8 @@ export default function PettyCashPage() {
   const [nextPcvSeq, setNextPcvSeq] = useState<number>(1)
   const [showSettings, setShowSettings] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadEntries = useCallback(async (br: string) => {
     setLoading(true)
@@ -114,6 +116,59 @@ export default function PettyCashPage() {
     if (saveTimers.current[id]) clearTimeout(saveTimers.current[id])
     if (debounce) saveTimers.current[id] = setTimeout(doSave, 500)
     else doSave()
+  }
+
+  const downloadTemplate = async () => {
+    const XLSX = await import('xlsx')
+    const headers = ['Requestor', 'Department', 'PCF Status', 'Date', 'Description', 'Vatable',
+      'SI Number', 'TIN Number', 'Registered Name', 'Registered Address', 'Gross Amount', 'Account Title', 'Reference Number']
+    const example = ['JUAN DELA CRUZ', 'ADMIN', 'For Replenishment', '2026-06-29', 'Sample expense (delete this row)',
+      'VAT', 'SI-0001', '000-000-000-00000', 'SAMPLE VENDOR INC', 'SAMPLE ADDRESS, CITY', 1120, '8050 Courier and Shipping Expense', 'REF-001']
+    const ws = XLSX.utils.aoa_to_sheet([headers, example])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Petty Cash')
+    XLSX.writeFile(wb, 'petty-cash-import-template.xlsx')
+  }
+
+  const FIELD_MAP: Record<string, string> = {
+    requestor: 'requestor', department: 'department', pcfstatus: 'pcfStatus', date: 'date',
+    description: 'description', vatable: 'vatable', sinumber: 'siNumber', sino: 'siNumber',
+    tinnumber: 'tinNumber', registeredname: 'registeredName', registeredaddress: 'registeredAddress',
+    grossamount: 'grossAmount', gross: 'grossAmount', accounttitle: 'accountTitle',
+    referencenumber: 'referenceNumber', reference: 'referenceNumber',
+  }
+
+  const handleImportFile = async (file: File) => {
+    setImporting(true)
+    try {
+      const XLSX = await import('xlsx')
+      const buf = await file.arrayBuffer()
+      const wb = XLSX.read(buf, { cellDates: true })
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const json: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' })
+      const rows = json.map(raw => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const out: any = {}
+        for (const k of Object.keys(raw)) {
+          const field = FIELD_MAP[k.toLowerCase().replace(/[^a-z0-9]/g, '')]
+          if (!field) continue
+          let v = raw[k]
+          if (field === 'date' && v instanceof Date) v = v.toISOString()
+          if (field === 'tinNumber' && v) v = formatTin(String(v))
+          out[field] = v
+        }
+        return out
+      }).filter(r => Object.values(r).some(v => v !== '' && v !== null && v !== undefined))
+      if (rows.length === 0) { alert('No data rows found in the file.'); setImporting(false); return }
+      const res = await fetch('/api/petty-cash/entries/import', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch, rows }),
+      })
+      if (res.ok) { const d = await res.json(); await loadEntries(branch); await loadSettings(branch); alert(`Imported ${d.created} row(s).`) }
+      else alert((await res.json()).error || 'Import failed')
+    } catch (e) { console.error(e); alert('Could not read the file. Use the downloaded template (.xlsx or .csv).') }
+    setImporting(false)
   }
 
   const addRow = async () => {
@@ -169,6 +224,20 @@ export default function PettyCashPage() {
             style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
             <Settings size={14} /> Settings
           </button>
+          <button onClick={downloadTemplate}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border"
+            style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+            <Download size={14} /> Template
+          </button>
+          {canWrite && (
+            <button onClick={() => fileInputRef.current?.click()} disabled={importing}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-50"
+              style={{ background: 'var(--teal)' }}>
+              {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} Import CSV/Excel
+            </button>
+          )}
+          <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleImportFile(f); e.target.value = '' }} />
         </div>
       </div>
 
