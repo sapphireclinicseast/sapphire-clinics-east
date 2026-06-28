@@ -81,13 +81,21 @@ export interface RegistrationLetterInput {
   branch: 'EAST' | 'GREENHILLS' | null
   level: EnrollmentLevel | null
   schoolYear: string                // e.g. "2026-2027"
-  /** Annual figures — already extrapolated by plan on the server. */
+  /** Net annual tuition (= combined annual − misc). With the early
+   *  bird checkbox on, this is treated as "net of 30% discount" and
+   *  the base is reverse-derived (base = net / 0.7). */
   annualTuitionCentavos: number
+  /** Flat ₱5,000/year. */
   annualMiscCentavos: number
+  /** Combined annual = net tuition + misc. Always equals what the
+   *  parent will have paid by SY-end. */
   annualTotalCentavos: number
+  /** Single-installment combined amount (annual ÷ installmentCount). */
+  installmentCentavos: number
+  installmentCount: number
   /** ANNUAL | BIANNUAL | MONTHLY. Drives whether paid/balance rows appear. */
   plan: string
-  /** Sum of CONVERTED rows so far. Only surfaced for BIANNUAL / MONTHLY. */
+  /** Sum of CONVERTED installments so far. */
   paidTotalCentavos: number
   /** When true, the breakdown shows base + 30% discount + net tuition. */
   appliedEarlyBird: boolean
@@ -187,14 +195,24 @@ export function generateRegistrationLetterPdf(input: RegistrationLetterInput): j
   const TABLE_W = CONTENT_W - 28
   const ROW_H = 8
 
-  type Row = { label: string; amount: number; emphasis?: 'total' | 'discount' | 'paid' | 'balance' }
+  type Row = { label: string; amount: number; emphasis?: 'total' | 'discount' | 'paid' | 'balance' | 'installment' }
   const breakdownRows: Row[] = []
+  const planUpper = (input.plan || '').toUpperCase()
+  const installmentLabel =
+    planUpper === 'MONTHLY'  ? 'Monthly Due'  :
+    planUpper === 'BIANNUAL' ? 'Semester Due' :
+                                'Annual Due'
 
   if (input.appliedEarlyBird) {
-    // Reverse-calculate the pre-discount base: net = base × 0.7  →  base = net / 0.7
+    // Reverse-derive the pre-discount base annual tuition. The recorded
+    // installment amounts already reflect the discount (and bundle a
+    // share of the ₱5,000 misc), so:
+    //   net_tuition = recorded_annual_combined − misc           (server)
+    //   base        = net_tuition / 0.7
+    //   discount    = base − net_tuition
     const baseTuition = Math.round(input.annualTuitionCentavos / 0.7)
     const discount = baseTuition - input.annualTuitionCentavos
-    breakdownRows.push({ label: 'Tuition Fee (base)', amount: baseTuition })
+    breakdownRows.push({ label: 'Annual Tuition Fee (base)', amount: baseTuition })
     breakdownRows.push({ label: 'Less: Early Bird Discount (30%)', amount: -discount, emphasis: 'discount' })
     breakdownRows.push({ label: 'Net Tuition Fee', amount: input.annualTuitionCentavos })
   } else {
@@ -203,11 +221,12 @@ export function generateRegistrationLetterPdf(input: RegistrationLetterInput): j
   breakdownRows.push({ label: 'Miscellaneous Fee', amount: input.annualMiscCentavos })
   breakdownRows.push({ label: 'TOTAL ANNUAL FEES', amount: input.annualTotalCentavos, emphasis: 'total' })
 
-  // Paid + Balance only for biannual/monthly — annual students pay
-  // the whole thing at once, so paid==total is uninformative.
-  const planUpper = (input.plan || '').toUpperCase()
-  const showPaidBalance = planUpper === 'BIANNUAL' || planUpper === 'MONTHLY'
-  if (showPaidBalance) {
+  // Per-installment + paid + balance only for biannual/monthly —
+  // annual students pay the whole thing at once, so installment ==
+  // total and paid == total are uninformative.
+  const showInstallmentRows = planUpper === 'BIANNUAL' || planUpper === 'MONTHLY'
+  if (showInstallmentRows) {
+    breakdownRows.push({ label: installmentLabel, amount: input.installmentCentavos, emphasis: 'installment' })
     const balance = input.annualTotalCentavos - input.paidTotalCentavos
     breakdownRows.push({ label: 'Amount Paid to Date', amount: input.paidTotalCentavos, emphasis: 'paid' })
     breakdownRows.push({ label: 'Outstanding Balance', amount: Math.max(0, balance), emphasis: 'balance' })
@@ -242,6 +261,9 @@ export function generateRegistrationLetterPdf(input: RegistrationLetterInput): j
     } else if (row.emphasis === 'paid') {
       doc.setFont('helvetica', 'bold')
       setText(doc, [33, 90, 75]) // darker sage
+    } else if (row.emphasis === 'installment') {
+      doc.setFont('helvetica', 'bold')
+      setText(doc, TEAL)
     } else if (row.emphasis === 'discount') {
       doc.setFont('helvetica', 'italic')
       setText(doc, [167, 76, 76]) // muted red for the deduction line

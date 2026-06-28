@@ -78,47 +78,61 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const plan = (rows.length > 0 ? (rows[rows.length - 1] as any).plan : 'ANNUAL') as string
 
-    // Annualized tuition. For ANNUAL the row IS the whole year. For
-    // BIANNUAL/MONTHLY we extrapolate from the latest installment so
-    // the letter shows the full school-year cost regardless of how
-    // many installments are paid so far. Front-desk-edit overrides
-    // are already baked into `tuitionCentavos` because the PATCH
-    // endpoint writes there directly.
-    let annualTuitionCentavos = 0
+    // Annualized COMBINED amount (tuition + misc) — extrapolated from
+    // the latest installment by plan factor. Front-desk records the
+    // combined per-installment amount in `tuitionCentavos`, so this
+    // sum/extrapolation directly gives the full SY cost the parent
+    // is on the hook for.
+    let annualCombinedCentavos = 0
+    let installmentCentavos = 0
+    let installmentCount = 1
     if (rows.length > 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const latest = rows[rows.length - 1] as any
-      const perInstallment = latest.tuitionCentavos as number
+      const perInstallment = (latest.tuitionCentavos as number) + (latest.miscCentavos as number)
+      installmentCentavos = perInstallment
       if (plan === 'MONTHLY') {
-        annualTuitionCentavos = perInstallment * 10        // SY runs Jun–Mar = 10 months of classes
+        installmentCount = 10
+        annualCombinedCentavos = perInstallment * 10        // SY runs Jun–Mar = 10 months of classes
       } else if (plan === 'BIANNUAL') {
-        annualTuitionCentavos = perInstallment * 2
+        installmentCount = 2
+        annualCombinedCentavos = perInstallment * 2
       } else {
-        // ANNUAL — sum (typically just the one row) so any misc
-        // re-entries don't double-count.
-        for (const r of rows) annualTuitionCentavos += r.tuitionCentavos as number
+        // ANNUAL — sum (typically just the one row) so re-recorded
+        // rows don't get double-counted.
+        for (const r of rows) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const rr = r as any
+          annualCombinedCentavos += (rr.tuitionCentavos as number) + (rr.miscCentavos as number)
+        }
+        installmentCount = 1
+        installmentCentavos = annualCombinedCentavos
       }
     }
+
+    // The flat ₱5,000 annual miscellaneous fee. The recorded
+    // per-installment amount above ALREADY includes a pro-rated share
+    // of this — so the "tuition only" portion is the combined annual
+    // minus this flat misc. This is what the letter shows as "Net
+    // Tuition Fee" (and what gets reverse-derived to "base tuition"
+    // when the early-bird checkbox is on).
+    const annualMiscCentavos = MISC_CENTAVOS
+    const annualTotalCentavos = annualCombinedCentavos
+    const annualTuitionCentavos = Math.max(0, annualCombinedCentavos - annualMiscCentavos)
 
     // Amounts actually paid (= CONVERTED rows only). PENDING rows are
     // submitted but not yet confirmed by the cashier, so they don't
     // count toward the "paid to date" figure on the letter.
-    let paidTuitionCentavos = 0
-    let paidMiscCentavos = 0
+    let paidCombinedCentavos = 0
     let convertedCount = 0
     for (const r of rows) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rr = r as any
       if (rr.status === 'CONVERTED') {
-        paidTuitionCentavos += rr.tuitionCentavos as number
-        paidMiscCentavos += rr.miscCentavos as number
+        paidCombinedCentavos += (rr.tuitionCentavos as number) + (rr.miscCentavos as number)
         convertedCount += 1
       }
     }
-
-    const annualMiscCentavos = MISC_CENTAVOS
-    const annualTotalCentavos = annualTuitionCentavos + annualMiscCentavos
-    const paidTotalCentavos = paidTuitionCentavos + paidMiscCentavos
 
     return withCors(NextResponse.json({
       student: {
@@ -132,12 +146,21 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       },
       schoolYear: sy.label,
       plan,
+      // "Net tuition" — what gets shown as "Tuition Fee" on the
+      // simple breakdown, and what gets reverse-derived to base
+      // when the early-bird discount checkbox is ticked.
       annualTuitionCentavos,
       annualMiscCentavos,
+      // Combined annual (tuition + misc). Always equals what the
+      // parent will have paid by SY-end.
       annualTotalCentavos,
-      paidTuitionCentavos,
-      paidMiscCentavos,
-      paidTotalCentavos,
+      // Per-installment amount + how many installments.
+      installmentCentavos,
+      installmentCount,
+      // Paid + (legacy) per-bucket fields for downstream consumers.
+      paidTuitionCentavos: paidCombinedCentavos, // legacy alias
+      paidMiscCentavos: 0,                        // misc is bundled into installments
+      paidTotalCentavos: paidCombinedCentavos,
       paymentRowCount: rows.length,
       convertedRowCount: convertedCount,
     }), origin)

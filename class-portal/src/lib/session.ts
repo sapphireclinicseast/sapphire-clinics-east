@@ -1219,17 +1219,23 @@ export interface FeeSummary {
   }
   schoolYear: string                  // "2026-2027"
   plan: string                        // PaymentPlan as string
-  /** Full annual amounts (extrapolated for biannual/monthly so the
-   *  letter shows the full SY cost regardless of how much is paid). */
+  /** Net annual tuition (post-misc-allocation, post any discount). */
   annualTuitionCentavos: number
+  /** Flat ₱5,000 / year, bundled pro-rata into each installment. */
   annualMiscCentavos: number
+  /** Combined annual (net tuition + misc) = what the parent will
+   *  have paid by SY-end. For monthly/biannual this is per-installment
+   *  × installment count. */
   annualTotalCentavos: number
+  /** Single-installment total (combined). For ANNUAL = annualTotal. */
+  installmentCentavos: number
+  installmentCount: number             // 1 / 2 / 10
   /** Actually paid amounts so far (= CONVERTED rows only). */
-  paidTuitionCentavos: number
-  paidMiscCentavos: number
+  paidTuitionCentavos: number          // legacy alias for paidTotal
+  paidMiscCentavos: number             // 0 — misc is bundled
   paidTotalCentavos: number
-  paymentRowCount: number             // 0 means staff hasn't recorded yet
-  convertedRowCount: number           // how many of those are CONVERTED
+  paymentRowCount: number              // 0 means staff hasn't recorded yet
+  convertedRowCount: number            // how many of those are CONVERTED
 }
 
 export async function fetchFeeSummary(studentId: string): Promise<FeeSummary | null> {
