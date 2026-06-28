@@ -92,13 +92,33 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { id, pdfData } = await req.json()
+    const body = await req.json()
+    const { id, action } = body
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
-    await prisma.reimbursementReport.update({ where: { id }, data: { pdfData: pdfData || null } })
+    if (action === 'pay') {
+      await prisma.reimbursementReport.update({
+        where: { id },
+        data: {
+          status: 'PAID', paidAt: new Date(),
+          debitAccount: body.debitAccount || null,
+          depositAccount: body.depositAccount || null,
+          proofUrl: body.proofUrl || null,
+        },
+      })
+      return NextResponse.json({ success: true })
+    }
+    if (action === 'unpay') {
+      await prisma.reimbursementReport.update({
+        where: { id },
+        data: { status: 'PENDING', paidAt: null, debitAccount: null, depositAccount: null, proofUrl: null },
+      })
+      return NextResponse.json({ success: true })
+    }
+    await prisma.reimbursementReport.update({ where: { id }, data: { pdfData: body.pdfData || null } })
     return NextResponse.json({ success: true })
   } catch (e) {
     console.error('Reimbursement patch error:', e)
-    return NextResponse.json({ error: 'Failed to save PDF' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to update' }, { status: 500 })
   }
 }
 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
-import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Download, Upload, FileDown, FileText } from 'lucide-react'
+import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Download, Upload, FileDown, FileText, CheckCircle2, Paperclip } from 'lucide-react'
 
 // ── Constants ──────────────────────────────────────────────────
 const BRANCHES = [
@@ -85,6 +85,8 @@ export default function PettyCashPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [showReimbModal, setShowReimbModal] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [bankOptions, setBankOptions] = useState<string[]>([])
+  const [payTarget, setPayTarget] = useState<Reimb | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadEntries = useCallback(async (br: string) => {
@@ -125,6 +127,18 @@ export default function PettyCashPage() {
         setCoaOptions(list.map((a: any) => `${a.accountNumber} ${a.accountTitle}`))
       })
       .catch(() => setCoaOptions([]))
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/chart-of-accounts?accountType=ASSET')
+      .then(r => r.ok ? r.json() : [])
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .then((d: any) => {
+        const list = Array.isArray(d) ? d : (d.accounts || d.data || [])
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setBankOptions(list.map((a: any) => `${a.accountNumber} ${a.accountTitle}`))
+      })
+      .catch(() => setBankOptions([]))
   }, [])
 
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
@@ -289,6 +303,22 @@ export default function PettyCashPage() {
       a.href = pdfData; a.download = `${rep.refNumber}.pdf`
       document.body.appendChild(a); a.click(); a.remove()
     } catch { /* ignore */ }
+  }
+
+  const recordPaid = async (rep: Reimb, debitAccount: string, depositAccount: string, file: File | null) => {
+    let proofUrl: string | null = null
+    if (file) {
+      const fd = new FormData(); fd.append('file', file)
+      const up = await fetch('/api/upload', { method: 'POST', body: fd })
+      if (!up.ok) { alert((await up.json()).error || 'Proof upload failed'); throw new Error('upload') }
+      proofUrl = (await up.json()).url
+    }
+    const res = await fetch('/api/petty-cash/reimbursements', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: rep.id, action: 'pay', debitAccount, depositAccount, proofUrl }),
+    })
+    if (!res.ok) { alert((await res.json()).error || 'Failed to record payment'); throw new Error('pay') }
+    await loadReimbursements(branch)
   }
 
   const deleteReimbursement = async (rep: Reimb) => {
@@ -575,6 +605,20 @@ export default function PettyCashPage() {
                       style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
                       <FileDown size={13} /> PDF
                     </button>
+                    {r.proofUrl && (
+                      <a href={r.proofUrl} target="_blank" rel="noopener noreferrer" title="View proof of deposit"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1"
+                        style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                        <Paperclip size={13} /> Proof
+                      </a>
+                    )}
+                    {canWrite && r.status !== 'PAID' && (
+                      <button onClick={() => setPayTarget(r)} title="Record as Paid"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-white mr-1"
+                        style={{ background: 'var(--teal)' }}>
+                        <CheckCircle2 size={13} /> Record as Paid
+                      </button>
+                    )}
                     {canWrite && (
                       <button onClick={() => deleteReimbursement(r)} title="Delete (unlocks entries)"
                         className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border"
@@ -604,6 +648,11 @@ export default function PettyCashPage() {
       {showReimbModal && (
         <ReimbModal entries={entries.filter(e => selected.has(e.id))} generating={generating}
           onClose={() => setShowReimbModal(false)} onGenerate={generateReimbursement} />
+      )}
+
+      {payTarget && (
+        <RecordPaidModal report={payTarget} bankOptions={bankOptions}
+          onClose={() => setPayTarget(null)} onPay={recordPaid} />
       )}
     </div>
   )
@@ -639,6 +688,58 @@ function ReimbModal({ entries, generating, onClose, onGenerate }: {
           style={{ background: 'var(--teal)' }}>
           {generating ? <Loader2 size={15} className="animate-spin" /> : <FileDown size={15} />}
           {generating ? 'Generating…' : 'Generate PDF'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function RecordPaidModal({ report, bankOptions, onClose, onPay }: {
+  report: Reimb; bankOptions: string[]
+  onClose: () => void; onPay: (rep: Reimb, debit: string, deposit: string, file: File | null) => Promise<void>
+}) {
+  const [debit, setDebit] = useState('')
+  const [deposit, setDeposit] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const [saving, setSaving] = useState(false)
+  const submit = async () => {
+    if (!debit || !deposit) { alert('Select both the debit (from) and deposit (to) accounts.'); return }
+    setSaving(true)
+    try { await onPay(report, debit, deposit, file); onClose() } catch { /* handled in onPay */ }
+    setSaving(false)
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Record as Paid — {report.refNumber}</h2>
+          <button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+        </div>
+
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Debited from (bank account)</label>
+        <select value={debit} onChange={e => setDebit(e.target.value)}
+          className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }}>
+          <option value="">Select account…</option>
+          {bankOptions.map(a => <option key={a} value={a}>{a}</option>)}
+        </select>
+
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Deposited to (bank account)</label>
+        <select value={deposit} onChange={e => setDeposit(e.target.value)}
+          className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }}>
+          <option value="">Select account…</option>
+          {bankOptions.map(a => <option key={a} value={a}>{a}</option>)}
+        </select>
+
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Proof of deposit (image / PDF)</label>
+        <input type="file" accept="image/*,.pdf" onChange={e => setFile(e.target.files?.[0] || null)}
+          className="w-full text-xs mb-1" />
+        <p className="text-[11px] mb-4" style={{ color: 'var(--mid-gray)' }}>Optional, but recommended. Max 10MB.</p>
+
+        <button onClick={submit} disabled={saving}
+          className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2"
+          style={{ background: 'var(--teal)' }}>
+          {saving ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
+          {saving ? 'Saving…' : 'Record as Paid'}
         </button>
       </div>
     </div>
