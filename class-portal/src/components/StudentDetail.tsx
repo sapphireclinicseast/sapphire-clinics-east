@@ -894,9 +894,14 @@ function RegistrationLetterCard({ student }: { student: StoredUser }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [lastIssued, setLastIssued] = useState<IssuedRegistrationLetter | null>(null)
+  // Free-text purpose. Whatever the staff types here lands verbatim in
+  // the certifying line ("…for [purpose] only and not for any other
+  // intent."). Default covers the most common case — reimbursement.
+  const [purpose, setPurpose] = useState('reimbursement purposes')
 
   async function buildInput(): Promise<{ summary: FeeSummary; letter: IssuedRegistrationLetter } | null> {
     setErr(null)
+    if (!purpose.trim()) { setErr('Please fill in the purpose for the letter.'); return null }
     setBusy(true)
     try {
       const summary = await fetchFeeSummary(student.id)
@@ -929,6 +934,7 @@ function RegistrationLetterCard({ student }: { student: StoredUser }) {
       annualTotalCentavos: r.summary.annualTotalCentavos,
       issuedAt: new Date(r.letter.issuedAt),
       issuedBy: r.letter.issuedBy,
+      purpose: purpose.trim(),
     })
   }
 
@@ -947,6 +953,7 @@ function RegistrationLetterCard({ student }: { student: StoredUser }) {
       annualTotalCentavos: r.summary.annualTotalCentavos,
       issuedAt: new Date(r.letter.issuedAt),
       issuedBy: r.letter.issuedBy,
+      purpose: purpose.trim(),
     })
   }
 
@@ -956,8 +963,23 @@ function RegistrationLetterCard({ student }: { student: StoredUser }) {
         School Registration Letter
       </div>
       <div className="text-[12px] text-[color:var(--mid-gray)] mt-1">
-        Official enrollment certification signed by HANNAH JARA (CEO and President). Auto-pulls the student&apos;s current annual tuition + ₱5,000 misc, mints a fresh AURA-REG reference number, and generates a one-page PDF the parent can submit for employer / HMO reimbursement.
+        Official enrollment certification signed by HANNAH JARA (CEO and President). Auto-pulls the student&apos;s current annual tuition + ₱5,000 misc, mints a fresh AURA-REG reference number, and generates a one-page PDF.
       </div>
+      <label className="block mt-3">
+        <span className="label">Purpose (appears in the certification line)</span>
+        <input
+          type="text"
+          className="input"
+          value={purpose}
+          onChange={e => setPurpose(e.target.value)}
+          placeholder="e.g. reimbursement purposes / scholarship application / visa requirement"
+          disabled={busy}
+        />
+        <span className="text-[11px] text-[color:var(--mid-gray)] block mt-1">
+          The letter will read: &quot;…issued upon the request of the parent / guardian for{' '}
+          <span className="font-semibold text-[color:var(--narra)]">{purpose.trim() || '[purpose]'}</span> only and not for any other intent.&quot;
+        </span>
+      </label>
       {lastIssued && (
         <div className="text-[11.5px] text-[color:var(--mid-gray)] mt-2">
           Last issued: <span className="font-semibold text-[color:var(--narra)]">{lastIssued.referenceNumber}</span> on {new Date(lastIssued.issuedAt).toLocaleString()}
