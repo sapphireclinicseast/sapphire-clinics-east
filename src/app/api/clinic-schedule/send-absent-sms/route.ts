@@ -42,22 +42,20 @@ function toE164(phone: string): string {
   return '+' + digits
 }
 
+// Designed to stay under 160 chars for a single GSM-7 SMS segment.
+// Worst-case estimate (long names): ~155 chars.
 function buildAbsentMessage(opts: {
   patientFirstName:   string
   clinicianFirstName: string
-  date:               string
   branch:             string
   department:         string
 }): string {
   const branch = BRANCH_SHORT[opts.branch] ?? opts.branch
   const dept   = DEPT_DISPLAY[opts.department] ?? opts.department
-  const shortDate = new Date(opts.date + 'T12:00:00').toLocaleDateString('en-PH', {
-    weekday: 'short', month: 'short', day: 'numeric',
-  })
   return (
-    `Hi ${opts.patientFirstName}! Your ${dept} session at Aura Health ${branch} ` +
-    `today (${shortDate}) has been cancelled — ${opts.clinicianFirstName} will be absent. ` +
-    `We sincerely apologize and will contact you to reschedule. Thank you.`
+    `Hi ${opts.patientFirstName}, your ${dept} session at Aura Health ` +
+    `${branch} today is cancelled - ${opts.clinicianFirstName} will be absent. ` +
+    `We apologize & will contact you to reschedule.`
   )
 }
 
@@ -151,7 +149,6 @@ export async function POST(req: NextRequest) {
       const message = buildAbsentMessage({
         patientFirstName:   s.patient.firstName,
         clinicianFirstName,
-        date,
         branch,
         department:         s.staff.department,
       })

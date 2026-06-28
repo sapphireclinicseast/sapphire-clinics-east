@@ -307,6 +307,7 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
   const [sendingClinicianSms, setSendingClinicianSms] = useState(false)
   const [sendingClinicianEmail, setSendingClinicianEmail] = useState(false)
   const [sendingAbsentSms, setSendingAbsentSms] = useState(false)
+  const [sendingAbsentEmail, setSendingAbsentEmail] = useState(false)
   const [toast, setToast] = useState('')
   // Last-week suggestions
   const [lastWeekSuggestions, setLastWeekSuggestions] = useState<Schedule[]>([])
@@ -522,6 +523,22 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
     } else {
       const d = await res.json()
       showToast(d.error ?? 'Failed to send absent notices')
+    }
+  }
+
+  async function sendAbsentEmail() {
+    setSendingAbsentEmail(true)
+    const res = await fetch('/api/clinic-schedule/send-absent-email', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ staffId: staff.id, date: selectedDate }),
+    })
+    setSendingAbsentEmail(false)
+    if (res.ok) {
+      const d = await res.json()
+      showToast(`Absent notice emailed to ${d.sent} patient${d.sent !== 1 ? 's' : ''}`)
+    } else {
+      const d = await res.json()
+      showToast(d.error ?? 'Failed to send absent notice emails')
     }
   }
 
@@ -769,10 +786,17 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
                 </button>
                 <button onClick={sendAbsentSms} disabled={sendingAbsentSms}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                  title={`Notify all of ${staff.firstName}'s patients today that they are absent`}
+                  title={`Notify all of ${staff.firstName}'s patients today via SMS that they are absent`}
                   style={{ background: '#DC2626', color: '#fff', opacity: sendingAbsentSms ? 0.5 : 1 }}>
                   <Smartphone size={13} />
                   {sendingAbsentSms ? 'Sending…' : 'Send Mobile Text to Patients that Clinician is Absent'}
+                </button>
+                <button onClick={sendAbsentEmail} disabled={sendingAbsentEmail}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                  title={`Notify all of ${staff.firstName}'s patients today via email that they are absent`}
+                  style={{ background: '#B91C1C', color: '#fff', opacity: sendingAbsentEmail ? 0.5 : 1 }}>
+                  <Mail size={13} />
+                  {sendingAbsentEmail ? 'Sending…' : 'Send Email to Patients that Clinician is Absent'}
                 </button>
               </div>
             </div>
