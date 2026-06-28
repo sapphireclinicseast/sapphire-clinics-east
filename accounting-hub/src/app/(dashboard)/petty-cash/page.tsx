@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
-import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Download, Upload, FileDown, FileText, CheckCircle2, Paperclip } from 'lucide-react'
+import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Download, Upload, FileDown, FileText, CheckCircle2, Paperclip, Eye, Pencil } from 'lucide-react'
 
 // ── Constants ──────────────────────────────────────────────────
 const BRANCHES = [
@@ -321,7 +321,7 @@ export default function PettyCashPage() {
   }
 
   const recordPaid = async (rep: Reimb, debitAccount: string, depositAccount: string, file: File | null) => {
-    let proofUrl: string | null = null
+    let proofUrl: string | null = rep.proofUrl ?? null
     if (file) {
       const fd = new FormData(); fd.append('file', file)
       const up = await fetch('/api/upload', { method: 'POST', body: fd })
@@ -453,7 +453,7 @@ export default function PettyCashPage() {
                     const lk = locked(e)
                     const ve = vatEditable(e)
                     return (
-                      <tr key={e.id} style={{ background: e.reimbursementId ? '#f8fafc' : '#fff' }}>
+                      <tr key={e.id} style={{ background: e.reimbursementId ? '#c3ccd6' : '#fff' }}>
                         <td className="border-r border-b text-center" style={{ borderColor: 'var(--light-gray)' }}>
                           <input type="checkbox" checked={selected.has(e.id)} disabled={lk}
                             onChange={() => toggleOne(e.id)} title={e.reimbursementId ? 'Locked (in a reimbursement report)' : ''} />
@@ -493,7 +493,7 @@ export default function PettyCashPage() {
                             onChange={ev => patchLocal(e.id, { description: ev.target.value })}
                             onBlur={ev => saveField(e.id, { description: ev.target.value }, false)} />
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: '#fafafa' }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : '#fafafa' }}>
                           <span className="px-2 py-1.5 block" style={{ color: 'var(--mid-gray)', minWidth: 240 }}>{descForHub(e)}</span>
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
@@ -508,21 +508,21 @@ export default function PettyCashPage() {
                             {VATABLE.map(v => <option key={v} value={v}>{v}</option>)}
                           </select>
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: ve ? '#fff' : '#f3f4f6' }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : (ve ? '#fff' : '#f3f4f6') }}>
                           <input className={cellCls} disabled={lk || !ve} value={e.siNumber || ''} style={{ minWidth: 140 }}
                             onChange={ev => patchLocal(e.id, { siNumber: ev.target.value })}
                             onBlur={ev => saveField(e.id, { siNumber: ev.target.value }, false)} />
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: ve ? '#fff' : '#f3f4f6' }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : (ve ? '#fff' : '#f3f4f6') }}>
                           <input className={cellCls} disabled={lk || !ve} value={e.tinNumber || ''} placeholder="XXX-XXX-XXX-XXXXX"
                             style={{ minWidth: 150 }}
                             onChange={ev => patchLocal(e.id, { tinNumber: formatTin(ev.target.value) })}
                             onBlur={ev => saveField(e.id, { tinNumber: formatTin(ev.target.value) }, false)} />
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: '#fafafa' }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : '#fafafa' }}>
                           <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--mid-gray)' }}>{tinNumber2(e.tinNumber)}</span>
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: '#fafafa' }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : '#fafafa' }}>
                           <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--mid-gray)' }}>{branchCodeOf(e.tinNumber)}</span>
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
@@ -541,10 +541,10 @@ export default function PettyCashPage() {
                             onChange={ev => patchLocal(e.id, { grossAmount: ev.target.value })}
                             onBlur={ev => saveField(e.id, { grossAmount: Number(ev.target.value) || 0 }, false)} />
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: '#fafafa' }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : '#fafafa' }}>
                           <span className="px-2 py-1.5 block text-right" style={{ color: 'var(--mid-gray)' }}>{peso(netOfVat(e))}</span>
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: '#fafafa' }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : '#fafafa' }}>
                           <span className="px-2 py-1.5 block text-right" style={{ color: 'var(--mid-gray)' }}>{peso(vatAmount(e))}</span>
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
@@ -621,17 +621,31 @@ export default function PettyCashPage() {
                       <FileDown size={13} /> PDF
                     </button>
                     {r.proofUrl && (
-                      <a href={r.proofUrl} target="_blank" rel="noopener noreferrer" title="View proof of deposit"
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1"
-                        style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
-                        <Paperclip size={13} /> Proof
-                      </a>
+                      <>
+                        <a href={r.proofUrl} target="_blank" rel="noopener noreferrer" title="View proof of deposit"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1"
+                          style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                          <Eye size={13} /> View
+                        </a>
+                        <a href={r.proofUrl} download title="Download proof of deposit"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1"
+                          style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                          <Download size={13} /> Proof
+                        </a>
+                      </>
                     )}
                     {canWrite && r.status !== 'PAID' && (
                       <button onClick={() => setPayTarget(r)} title="Record as Paid"
                         className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-white mr-1"
                         style={{ background: 'var(--teal)' }}>
                         <CheckCircle2 size={13} /> Record as Paid
+                      </button>
+                    )}
+                    {canWrite && r.status === 'PAID' && (
+                      <button onClick={() => setPayTarget(r)} title="Edit payment details"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1"
+                        style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                        <Pencil size={13} /> Edit
                       </button>
                     )}
                     {canWrite && (
@@ -713,8 +727,9 @@ function RecordPaidModal({ report, bankOptions, onClose, onPay }: {
   report: Reimb; bankOptions: string[]
   onClose: () => void; onPay: (rep: Reimb, debit: string, deposit: string, file: File | null) => Promise<void>
 }) {
-  const [debit, setDebit] = useState('')
-  const [deposit, setDeposit] = useState('')
+  const isEdit = report.status === 'PAID'
+  const [debit, setDebit] = useState(report.debitAccount || '')
+  const [deposit, setDeposit] = useState(report.depositAccount || '')
   const [file, setFile] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
   const submit = async () => {
@@ -727,7 +742,7 @@ function RecordPaidModal({ report, bankOptions, onClose, onPay }: {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Record as Paid — {report.refNumber}</h2>
+          <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{isEdit ? 'Edit Payment Details' : 'Record as Paid'} — {report.refNumber}</h2>
           <button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
         </div>
 
@@ -750,16 +765,16 @@ function RecordPaidModal({ report, bankOptions, onClose, onPay }: {
           <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white" style={{ background: 'var(--teal)' }}>
             <Upload size={13} /> Choose File
           </span>
-          <span className="text-xs truncate" style={{ color: 'var(--mid-gray)', maxWidth: 220 }}>{file ? file.name : 'No file chosen'}</span>
+          <span className="text-xs truncate" style={{ color: 'var(--mid-gray)', maxWidth: 220 }}>{file ? file.name : (report.proofUrl ? 'Current proof kept' : 'No file chosen')}</span>
           <input type="file" accept="image/*,.pdf" className="hidden" onChange={e => setFile(e.target.files?.[0] || null)} />
         </label>
-        <p className="text-[11px] mb-4" style={{ color: 'var(--mid-gray)' }}>Optional, but recommended. Max 10MB.</p>
+        <p className="text-[11px] mb-4" style={{ color: 'var(--mid-gray)' }}>{report.proofUrl ? 'A proof is already attached — choose a new file to replace it. ' : 'Optional, but recommended. '}Max 10MB.</p>
 
         <button onClick={submit} disabled={saving}
           className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2"
           style={{ background: 'var(--teal)' }}>
           {saving ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
-          {saving ? 'Saving…' : 'Record as Paid'}
+          {saving ? 'Saving…' : (isEdit ? 'Save Changes' : 'Record as Paid')}
         </button>
       </div>
     </div>
