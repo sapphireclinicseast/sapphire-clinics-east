@@ -100,11 +100,11 @@ export function lookupPatient(email: string, lastName: string) {
   })
 }
 
-// Email + password login for patients who have a portal account.
-export function loginPatient(email: string, password: string) {
+// Username (or legacy email) + password login for patients with a portal account.
+export function loginPatient(username: string, password: string) {
   return jsonFetch<AuthResult>(`/patients/login`, {
     method: 'POST',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ username, password }),
   })
 }
 
@@ -114,11 +114,12 @@ export function setPatientPassword(
   email: string,
   firstName: string,
   lastName: string,
+  username: string,
   password: string,
 ) {
   return jsonFetch<AuthResult>(`/patients/set-password`, {
     method: 'POST',
-    body: JSON.stringify({ email, firstName, lastName, password }),
+    body: JSON.stringify({ email, firstName, lastName, username, password }),
   })
 }
 
