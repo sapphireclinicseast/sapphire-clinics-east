@@ -756,48 +756,59 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
                   ))}
                 </tbody>
               </table>
-              {/* Send all buttons */}
-              <div className="px-3 py-2 flex flex-wrap gap-2 justify-end" style={{ borderTop: '1px solid var(--light-gray)', background: 'var(--off-white)' }}>
-                <button onClick={sendAllReminders} disabled={sendingAll}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                  style={{ background: '#2563EB', color: '#fff', opacity: sendingAll ? 0.6 : 1 }}>
-                  <MailCheck size={13} />
-                  {sendingAll ? 'Sending…' : 'Email All Patients'}
-                </button>
-                <button onClick={sendAllSmsReminders} disabled={sendingSmsAll}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                  style={{ background: '#16A34A', color: '#fff', opacity: sendingSmsAll ? 0.6 : 1 }}>
-                  <MessageSquare size={13} />
-                  {sendingSmsAll ? 'Sending…' : 'Text All Patients'}
-                </button>
-                <button onClick={sendClinicianSms} disabled={sendingClinicianSms || !staff.phone}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                  title={!staff.phone ? 'No mobile number on file for this clinician' : `Send schedule to ${staff.firstName}`}
-                  style={{ background: '#ED6823', color: '#fff', opacity: (sendingClinicianSms || !staff.phone) ? 0.5 : 1 }}>
-                  <Smartphone size={13} />
-                  {sendingClinicianSms ? 'Sending…' : 'Text Clinician'}
-                </button>
-                <button onClick={sendClinicianEmail} disabled={sendingClinicianEmail}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                  title={`Email schedule to ${staff.firstName}`}
-                  style={{ background: '#EA580C', color: '#fff', opacity: sendingClinicianEmail ? 0.5 : 1 }}>
-                  <Mail size={13} />
-                  {sendingClinicianEmail ? 'Sending…' : 'Email Clinician'}
-                </button>
-                <button onClick={sendAbsentSms} disabled={sendingAbsentSms}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                  title={`Notify all of ${staff.firstName}'s patients today via SMS that they are absent`}
-                  style={{ background: '#DC2626', color: '#fff', opacity: sendingAbsentSms ? 0.5 : 1 }}>
-                  <Smartphone size={13} />
-                  {sendingAbsentSms ? 'Sending…' : 'Text: Absent Notice'}
-                </button>
-                <button onClick={sendAbsentEmail} disabled={sendingAbsentEmail}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                  title={`Notify all of ${staff.firstName}'s patients today via email that they are absent`}
-                  style={{ background: '#B91C1C', color: '#fff', opacity: sendingAbsentEmail ? 0.5 : 1 }}>
-                  <Mail size={13} />
-                  {sendingAbsentEmail ? 'Sending…' : 'Email: Absent Notice'}
-                </button>
+              {/* Send all buttons — grouped by recipient */}
+              <div className="px-3 py-3 space-y-2.5" style={{ borderTop: '1px solid var(--light-gray)', background: 'var(--off-white)' }}>
+                {/* Patients row */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider w-20 shrink-0" style={{ color: 'var(--mid-gray)' }}>Patients</span>
+                  <button onClick={sendAllReminders} disabled={sendingAll}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                    style={{ background: '#2563EB', color: '#fff', opacity: sendingAll ? 0.6 : 1 }}>
+                    <MailCheck size={13} />
+                    {sendingAll ? 'Sending…' : 'Email All Patients'}
+                  </button>
+                  <button onClick={sendAllSmsReminders} disabled={sendingSmsAll}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                    style={{ background: '#2563EB', color: '#fff', opacity: sendingSmsAll ? 0.6 : 1 }}>
+                    <MessageSquare size={13} />
+                    {sendingSmsAll ? 'Sending…' : 'Text All Patients'}
+                  </button>
+                  <button onClick={sendAbsentSms} disabled={sendingAbsentSms}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                    title={`Notify all of ${staff.firstName}'s patients today via SMS that they are absent`}
+                    style={{ background: '#DC2626', color: '#fff', opacity: sendingAbsentSms ? 0.5 : 1 }}>
+                    <Smartphone size={13} />
+                    {sendingAbsentSms ? 'Sending…' : 'Text: Clinician Absent Notice'}
+                  </button>
+                  <button onClick={sendAbsentEmail} disabled={sendingAbsentEmail}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                    title={`Notify all of ${staff.firstName}'s patients today via email that they are absent`}
+                    style={{ background: '#DC2626', color: '#fff', opacity: sendingAbsentEmail ? 0.5 : 1 }}>
+                    <Mail size={13} />
+                    {sendingAbsentEmail ? 'Sending…' : 'Email: Clinician Absent Notice'}
+                  </button>
+                </div>
+                {/* Clinician row */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider w-20 shrink-0" style={{ color: 'var(--mid-gray)' }}>Clinician</span>
+                  <button onClick={sendClinicianSms} disabled={sendingClinicianSms || !staff.phone}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                    title={!staff.phone ? 'No mobile number on file for this clinician' : `Send schedule to ${staff.firstName}`}
+                    style={{ background: '#16A34A', color: '#fff', opacity: (sendingClinicianSms || !staff.phone) ? 0.5 : 1 }}>
+                    <Smartphone size={13} />
+                    {sendingClinicianSms ? 'Sending…' : 'Text Clinician'}
+                  </button>
+                  <button onClick={sendClinicianEmail} disabled={sendingClinicianEmail}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                    title={`Email schedule to ${staff.firstName}`}
+                    style={{ background: '#16A34A', color: '#fff', opacity: sendingClinicianEmail ? 0.5 : 1 }}>
+                    <Mail size={13} />
+                    {sendingClinicianEmail ? 'Sending…' : 'Email Clinician'}
+                  </button>
+                  <span className="text-[10px] italic" style={{ color: 'var(--mid-gray)' }}>
+                    *Patient status change will automatically send SMS to clinician
+                  </span>
+                </div>
               </div>
             </div>
           )}
