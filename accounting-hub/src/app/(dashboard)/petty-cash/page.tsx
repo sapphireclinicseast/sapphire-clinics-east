@@ -65,6 +65,18 @@ const netOfVat = (e: Entry) => (e.vatable === 'VAT' ? num(e.grossAmount) / 1.12 
 const vatAmount = (e: Entry) => num(e.grossAmount) - netOfVat(e)
 const descForHub = (e: Entry) => (e.description ? `${e.pcvNumber}; ${e.description}` : e.pcvNumber)
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fetchDataUrl = async (url: string): Promise<string | null> => {
+  try {
+    const res = await fetch(url); if (!res.ok) return null
+    const blob = await res.blob()
+    return await new Promise<string | null>(resolve => {
+      const fr = new FileReader()
+      fr.onloadend = () => resolve(fr.result as string)
+      fr.onerror = () => resolve(null)
+      fr.readAsDataURL(blob)
+    })
+  } catch { return null }
+}
 
 export default function PettyCashPage() {
   const { data: session } = useSession()
@@ -239,16 +251,19 @@ export default function PettyCashPage() {
     const autoTable = (await import('jspdf-autotable')).default
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
     const branchLabel = BRANCHES.find(b => b.value === br)?.label || br
-    doc.setFont('helvetica', 'bold').setFontSize(14).text('Request for Reimbursement', 14, 15)
-    doc.setFont('helvetica', 'normal').setFontSize(9)
-    doc.text(`Branch: ${branchLabel}`, 14, 22)
-    doc.text(`Ref No: ${refNumber}`, 14, 27)
-    doc.text(`Date: ${new Date().toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}`, 14, 32)
+    const logo = await fetchDataUrl('/aura-logo.png')
+    let tx = 14
+    if (logo) { doc.addImage(logo, 'PNG', 14, 9, 18, 18); tx = 36 }
+    doc.setFont('helvetica', 'bold').setFontSize(13).text('Request for Reimbursement', tx, 15)
+    doc.setFont('helvetica', 'normal').setFontSize(8.5)
+    doc.text(`Branch: ${branchLabel}`, tx, 20)
+    doc.text(`Ref No: ${refNumber}`, tx, 24)
+    doc.text(`Date: ${new Date().toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}`, tx, 28)
     const tG = rows.reduce((s, e) => s + num(e.grossAmount), 0)
     const tN = rows.reduce((s, e) => s + netOfVat(e), 0)
     const tV = rows.reduce((s, e) => s + vatAmount(e), 0)
     autoTable(doc, {
-      startY: 37,
+      startY: 33,
       head: [['PCV Number', 'Requestor', 'Department', 'PCF Status', 'Date', 'Description', 'Vatable', 'Gross Amount', 'Net of VAT', 'VAT Amount']],
       body: rows.map(e => [
         e.pcvNumber, e.requestor || '', e.department || '', e.pcfStatus || '',
@@ -731,8 +746,13 @@ function RecordPaidModal({ report, bankOptions, onClose, onPay }: {
         </select>
 
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Proof of deposit (image / PDF)</label>
-        <input type="file" accept="image/*,.pdf" onChange={e => setFile(e.target.files?.[0] || null)}
-          className="w-full text-xs mb-1" />
+        <label className="flex items-center gap-2 cursor-pointer mb-1">
+          <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white" style={{ background: 'var(--teal)' }}>
+            <Upload size={13} /> Choose File
+          </span>
+          <span className="text-xs truncate" style={{ color: 'var(--mid-gray)', maxWidth: 220 }}>{file ? file.name : 'No file chosen'}</span>
+          <input type="file" accept="image/*,.pdf" className="hidden" onChange={e => setFile(e.target.files?.[0] || null)} />
+        </label>
         <p className="text-[11px] mb-4" style={{ color: 'var(--mid-gray)' }}>Optional, but recommended. Max 10MB.</p>
 
         <button onClick={submit} disabled={saving}
