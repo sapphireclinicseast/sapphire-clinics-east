@@ -80,6 +80,8 @@ jobs:
             --exclude='/data/' \
             --exclude='teletherapy/node_modules' \
             --exclude='teletherapy/.next' \
+            --exclude='teletherapy/.next.new' \
+            --exclude='teletherapy/.next.old' \
             --exclude='teletherapy/.env' \
             --exclude='teletherapy/uploads' \
             ./ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/sapphireclinicseast.org/
@@ -464,8 +466,9 @@ jobs:
           done
           echo "✅ Marketing-hub migrations applied."
 
-          echo "→ Building Next.js app..."
-          npm run build 2>&1
+          # (The authoritative atomic build happens later, after npm install —
+          # see "Building teletherapy Next.js app". A second in-place build here
+          # only risked corrupting the live .next, so it was removed.)
 
           echo "→ Updating docker-compose and restarting postgres with port exposed..."
           cp /var/www/sapphireclinicseast.org/docker/docker-compose.yml /opt/sapphire/docker/docker-compose.yml 2>/dev/null || true
@@ -574,15 +577,31 @@ jobs:
             exit 1
           fi
 
-          echo "→ Building teletherapy Next.js app..."
-          if ! npm run build > /tmp/tt-build.log 2>&1; then
+          # ATOMIC BUILD — build into a staging dir (.next.new) and swap it in
+          # only once it's complete. The running app keeps serving the live
+          # .next throughout, so a concurrent or cancelled CI build can no
+          # longer leave the portal with a half-written .next (the cause of the
+          # intermittent 500 "Internal Server Error" / 502 during deploy storms).
+          echo "→ Building teletherapy Next.js app (atomic → .next.new)..."
+          rm -rf .next.new
+          if ! NEXT_DIST_DIR=.next.new NEXT_TELEMETRY_DISABLED=1 npm run build > /tmp/tt-build.log 2>&1; then
             echo "❌ npm run build failed — last 30 lines:"
             tail -30 /tmp/tt-build.log
+            rm -rf .next.new
             exit 1
           fi
-          echo "   ✓ build OK"
+          if [ ! -f .next.new/BUILD_ID ]; then
+            echo "❌ build exited 0 but .next.new/BUILD_ID missing — not swapping"
+            rm -rf .next.new
+            exit 1
+          fi
+          echo "   ✓ build OK — swapping .next.new → .next"
+          rm -rf .next.old
+          mv .next .next.old 2>/dev/null || true
+          mv .next.new .next
+          rm -rf .next.old
 
-          echo "→ Starting teletherapy app..."
+          echo "→ Restarting teletherapy app..."
           pm2 delete scei-teletherapy 2>/dev/null || true
           PORT=3002 HOSTNAME=0.0.0.0 pm2 start npm --name scei-teletherapy -- start && pm2 save
 
