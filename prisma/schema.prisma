@@ -972,6 +972,29 @@ model ClassPortalFrontDeskPayment {
   @@index([createdAt])
 }
 
+/// One row per issued school registration letter. Provides a unique
+/// reference number (AURA-REG-YYYY-NNNN) and an audit trail for who
+/// generated it for whom. The PDF itself is rendered client-side from
+/// the live student + payment data, so no blob storage needed here —
+/// regenerating the same row produces the same letter.
+model ClassPortalRegistrationLetter {
+  id               String   @id @default(cuid())
+  referenceNumber  String   @unique          // AURA-REG-YYYY-NNNN
+  studentId        String
+  issuedBy         String                    // email of admin/frontdesk
+  issuedAt         DateTime @default(now())
+  /// Snapshot of the annual tuition + misc at the moment of issuance
+  /// (centavos). Lets the same reference number always reproduce the
+  /// numbers we issued, even if the student's payment rows change later.
+  annualTuitionCentavos Int
+  annualMiscCentavos    Int                  @default(500000) // ₱5,000
+  /// Convenience field — `tuition + misc` at issuance time.
+  annualTotalCentavos   Int
+
+  @@index([studentId])
+  @@index([issuedAt])
+}
+
 /// One row per payment-reminder email actually sent. Lets the daily cron
 /// dedupe so a given student receives at most one email per (period,
 /// reason) — never spammed. `reason` is one of WINDOW_OPEN / DUE_SOON /
