@@ -1219,10 +1219,17 @@ export interface FeeSummary {
   }
   schoolYear: string                  // "2026-2027"
   plan: string                        // PaymentPlan as string
+  /** Full annual amounts (extrapolated for biannual/monthly so the
+   *  letter shows the full SY cost regardless of how much is paid). */
   annualTuitionCentavos: number
   annualMiscCentavos: number
   annualTotalCentavos: number
+  /** Actually paid amounts so far (= CONVERTED rows only). */
+  paidTuitionCentavos: number
+  paidMiscCentavos: number
+  paidTotalCentavos: number
   paymentRowCount: number             // 0 means staff hasn't recorded yet
+  convertedRowCount: number           // how many of those are CONVERTED
 }
 
 export async function fetchFeeSummary(studentId: string): Promise<FeeSummary | null> {

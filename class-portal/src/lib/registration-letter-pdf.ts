@@ -80,9 +80,16 @@ export interface RegistrationLetterInput {
   branch: 'EAST' | 'GREENHILLS' | null
   level: EnrollmentLevel | null
   schoolYear: string                // e.g. "2026-2027"
+  /** Annual figures — already extrapolated by plan on the server. */
   annualTuitionCentavos: number
   annualMiscCentavos: number
   annualTotalCentavos: number
+  /** ANNUAL | BIANNUAL | MONTHLY. Drives whether paid/balance rows appear. */
+  plan: string
+  /** Sum of CONVERTED rows so far. Only surfaced for BIANNUAL / MONTHLY. */
+  paidTotalCentavos: number
+  /** When true, the breakdown shows base + 30% discount + net tuition. */
+  appliedEarlyBird: boolean
   issuedAt: Date
   /** email of staff who pressed the button — appended discreetly in the footer */
   issuedBy: string
@@ -169,19 +176,48 @@ export function generateRegistrationLetterPdf(input: RegistrationLetterInput): j
   y += lines1.length * 5 + 4
 
   const totalWords = pesosInWords(input.annualTotalCentavos)
-  const bodyLine2 = `The corresponding total annual school fees for the said school year amount to ${totalWords} Only (₱${fmtPHP(input.annualTotalCentavos)}), broken down as follows:`
+  const bodyLine2 = `The corresponding total annual school fees for the said school year amount to ${totalWords} Only (PHP ${fmtPHP(input.annualTotalCentavos)}), broken down as follows:`
   const lines2 = doc.splitTextToSize(bodyLine2, CONTENT_W)
   doc.text(lines2, MARGIN, y)
   y += lines2.length * 5 + 6
 
-  // ── Breakdown table with cream watermark ────────────────────────
-  const TABLE_X = MARGIN + 20
-  const TABLE_W = CONTENT_W - 40
+  // ── Breakdown table (rows depend on plan + discount flag) ───────
+  const TABLE_X = MARGIN + 14
+  const TABLE_W = CONTENT_W - 28
   const ROW_H = 8
-  setFill(doc, CREAM)
-  doc.rect(TABLE_X, y - 2, TABLE_W, ROW_H * 3 + 4, 'F')
 
-  // Header row
+  type Row = { label: string; amount: number; emphasis?: 'total' | 'discount' | 'paid' | 'balance' }
+  const breakdownRows: Row[] = []
+
+  if (input.appliedEarlyBird) {
+    // Reverse-calculate the pre-discount base: net = base × 0.7  →  base = net / 0.7
+    const baseTuition = Math.round(input.annualTuitionCentavos / 0.7)
+    const discount = baseTuition - input.annualTuitionCentavos
+    breakdownRows.push({ label: 'Tuition Fee (base)', amount: baseTuition })
+    breakdownRows.push({ label: 'Less: Early Bird Discount (30%)', amount: -discount, emphasis: 'discount' })
+    breakdownRows.push({ label: 'Net Tuition Fee', amount: input.annualTuitionCentavos })
+  } else {
+    breakdownRows.push({ label: 'Tuition Fee', amount: input.annualTuitionCentavos })
+  }
+  breakdownRows.push({ label: 'Miscellaneous Fee', amount: input.annualMiscCentavos })
+  breakdownRows.push({ label: 'TOTAL ANNUAL FEES', amount: input.annualTotalCentavos, emphasis: 'total' })
+
+  // Paid + Balance only for biannual/monthly — annual students pay
+  // the whole thing at once, so paid==total is uninformative.
+  const planUpper = (input.plan || '').toUpperCase()
+  const showPaidBalance = planUpper === 'BIANNUAL' || planUpper === 'MONTHLY'
+  if (showPaidBalance) {
+    const balance = input.annualTotalCentavos - input.paidTotalCentavos
+    breakdownRows.push({ label: 'Amount Paid to Date', amount: input.paidTotalCentavos, emphasis: 'paid' })
+    breakdownRows.push({ label: 'Outstanding Balance', amount: Math.max(0, balance), emphasis: 'balance' })
+  }
+
+  // Render
+  const tableHeight = ROW_H + breakdownRows.length * ROW_H + 2
+  setFill(doc, CREAM)
+  doc.rect(TABLE_X, y - 2, TABLE_W, tableHeight, 'F')
+
+  // Header
   setFill(doc, TEAL)
   doc.rect(TABLE_X, y - 2, TABLE_W, ROW_H, 'F')
   doc.setFont('helvetica', 'bold')
@@ -191,27 +227,37 @@ export function generateRegistrationLetterPdf(input: RegistrationLetterInput): j
   doc.text('Amount (PHP)', TABLE_X + TABLE_W - 4, y + 3.5, { align: 'right' })
   y += ROW_H
 
-  // Tuition row
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(10.5)
-  setText(doc, INK)
-  doc.text('Tuition Fee', TABLE_X + 4, y + 3.5)
-  doc.text(fmtPHP(input.annualTuitionCentavos), TABLE_X + TABLE_W - 4, y + 3.5, { align: 'right' })
-  y += ROW_H
-
-  // Misc row
-  doc.text('Miscellaneous Fee', TABLE_X + 4, y + 3.5)
-  doc.text(fmtPHP(input.annualMiscCentavos), TABLE_X + TABLE_W - 4, y + 3.5, { align: 'right' })
-  y += ROW_H
-
-  // Total row — amber emphasis bar
-  setFill(doc, AMBER)
-  doc.rect(TABLE_X, y - 2, TABLE_W, ROW_H, 'F')
-  doc.setFont('helvetica', 'bold')
-  setText(doc, [255, 255, 255])
-  doc.text('TOTAL ANNUAL FEES', TABLE_X + 4, y + 3.5)
-  doc.text(`₱${fmtPHP(input.annualTotalCentavos)}`, TABLE_X + TABLE_W - 4, y + 3.5, { align: 'right' })
-  y += ROW_H + 8
+  for (const row of breakdownRows) {
+    if (row.emphasis === 'total') {
+      setFill(doc, AMBER)
+      doc.rect(TABLE_X, y - 2, TABLE_W, ROW_H, 'F')
+      doc.setFont('helvetica', 'bold')
+      setText(doc, [255, 255, 255])
+    } else if (row.emphasis === 'balance') {
+      setFill(doc, SAGE)
+      doc.rect(TABLE_X, y - 2, TABLE_W, ROW_H, 'F')
+      doc.setFont('helvetica', 'bold')
+      setText(doc, [255, 255, 255])
+    } else if (row.emphasis === 'paid') {
+      doc.setFont('helvetica', 'bold')
+      setText(doc, [33, 90, 75]) // darker sage
+    } else if (row.emphasis === 'discount') {
+      doc.setFont('helvetica', 'italic')
+      setText(doc, [167, 76, 76]) // muted red for the deduction line
+    } else {
+      doc.setFont('helvetica', 'normal')
+      setText(doc, INK)
+    }
+    doc.setFontSize(10.5)
+    doc.text(row.label, TABLE_X + 4, y + 3.5)
+    // Amount: show parentheses for negatives, plain otherwise
+    const amountText = row.amount < 0
+      ? `(${fmtPHP(-row.amount)})`
+      : fmtPHP(row.amount)
+    doc.text(amountText, TABLE_X + TABLE_W - 4, y + 3.5, { align: 'right' })
+    y += ROW_H
+  }
+  y += 8
 
   // ── Purpose boilerplate ─────────────────────────────────────────
   doc.setFont('helvetica', 'normal')
