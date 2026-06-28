@@ -51,6 +51,93 @@ function fmt(cents: number): string {
   return '₱' + (cents / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+const MONTH_NAMES_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+const MONTH_NAMES_LONG  = ['January','February','March','April','May','June','July','August','September','October','November','December']
+
+/** Months elapsed since June 1 of the current school year, including the
+ *  current month. June = 1, July = 2, ..., March = 10. Apr-May (between
+ *  SYs) returns 10 so a parent who somehow enrols then sees the full SY
+ *  obligation. */
+function syMonthsElapsed(today: Date): number {
+  const m = today.getMonth() // 0-11, Jun=5
+  if (m >= 5) return m - 5 + 1            // Jun→1, Jul→2, ..., Dec→7
+  if (m <= 2) return (12 - 5) + m + 1     // Jan→8, Feb→9, Mar→10
+  return 10                                // Apr–May: between SYs
+}
+
+interface LateBackBalance {
+  /** Combined PHP centavos due now. */
+  totalAmount: number
+  /** Tuition portion (used so voucher discount applies cleanly). */
+  tuitionAmount: number
+  /** Misc portion. */
+  miscAmount: number
+  /** How many monthly installments are bundled. 5 for biannual first half. */
+  months: number
+  /** "Back balance June–September 2026" — used as the PaymentRecord period
+   *  and audit-trail label so the cashier sees what they're confirming. */
+  period: string
+  /** Short label rendered in the warning callout. */
+  label: string
+}
+
+/** Returns a back-balance computation when the student is "late" for
+ *  the selected plan, otherwise null. Late = SY months elapsed > 1 for
+ *  MONTHLY, > 5 for BIANNUAL — combined with the parent having no
+ *  CONVERTED payments yet for the relevant period. ANNUAL students are
+ *  always lump-sum so no back balance applies. */
+function computeLateBackBalance(
+  selectedPlan: PaymentPlan,
+  perInstallmentTuition: number,
+  perInstallmentMisc: number,
+  history: PaymentRecord[],
+  today: Date,
+): LateBackBalance | null {
+  const monthsElapsed = syMonthsElapsed(today)
+  const todayMonthIdx = today.getMonth()
+  // SY label like "2026–2027" — for the period text.
+  const syStartYear = todayMonthIdx >= 5 ? today.getFullYear() : today.getFullYear() - 1
+
+  if (selectedPlan === 'MONTHLY') {
+    // Any PAID monthly already on file means they're not a fresh late
+    // enrollee — they've been paying along and just need their next
+    // regular monthly installment.
+    const hasAnyPaidMonthly = history.some(h => h.status === 'PAID' && h.plan === 'MONTHLY')
+    if (hasAnyPaidMonthly) return null
+    if (monthsElapsed <= 1) return null
+    const endMonthName = MONTH_NAMES_LONG[todayMonthIdx]
+    return {
+      totalAmount: (perInstallmentTuition + perInstallmentMisc) * monthsElapsed,
+      tuitionAmount: perInstallmentTuition * monthsElapsed,
+      miscAmount: perInstallmentMisc * monthsElapsed,
+      months: monthsElapsed,
+      period: `Back balance · June–${endMonthName} ${syStartYear}`,
+      label: `${monthsElapsed}-month back balance (June–${endMonthName})`,
+    }
+  }
+
+  if (selectedPlan === 'BIANNUAL') {
+    // First half = months 1-5 (June-October). If anything PAID covers
+    // "first half" already, skip — the parent should be paying the
+    // second half regularly via the normal biannual flow.
+    const hasFirstHalfPaid = history.some(h =>
+      h.status === 'PAID' && h.plan === 'BIANNUAL' && /first[- ]?half/i.test(h.period),
+    )
+    if (hasFirstHalfPaid) return null
+    if (monthsElapsed <= 5) return null
+    return {
+      totalAmount: perInstallmentTuition + perInstallmentMisc, // biannual rate = first half
+      tuitionAmount: perInstallmentTuition,
+      miscAmount: perInstallmentMisc,
+      months: 5,
+      period: `First-half back balance · June–October ${syStartYear}`,
+      label: 'First-half back balance (June–October)',
+    }
+  }
+
+  return null
+}
+
 export default function PayPage() {
   const router = useRouter()
   const [user, setUser] = useState<StoredUser | null>(null)
@@ -90,11 +177,34 @@ export default function PayPage() {
   const plans = useMemo(() => fee ? plansFor(fee) : [], [fee])
   const plan = useMemo(() => plans.find(p => p.plan === selected) ?? plans[0], [plans, selected])
 
+  // Late-enrollment back balance for monthly/biannual. When set, the
+  // checkout summary, voucher math, period label, and all three payment
+  // method handlers (PayMongo / Front-desk cash / Bank deposit) use the
+  // lump-sum back balance instead of the regular per-installment amount.
+  const lateBackBalance = useMemo(() => {
+    if (!plan) return null
+    return computeLateBackBalance(
+      plan.plan,
+      plan.tuition,
+      plan.misc,
+      history,
+      new Date(),
+    )
+  }, [plan, history])
+
+  // "Effective" amounts that flow through the rest of the page. When a
+  // back balance applies, tuition + misc swap out for the lump version;
+  // when not, they pass through unchanged.
+  const effectiveTuition = lateBackBalance?.tuitionAmount ?? plan?.tuition ?? 0
+  const effectiveMisc    = lateBackBalance?.miscAmount    ?? plan?.misc    ?? 0
+  const effectivePeriod  = lateBackBalance?.period        ?? plan?.period  ?? ''
+
   // Discount derived from the applied voucher — recomputed against the
-  // currently selected plan's tuition so switching plans keeps it correct.
+  // EFFECTIVE tuition so switching plans (or hitting the back-balance
+  // path) keeps it correct.
   const discountPercent = appliedVoucher?.discountPercent ?? 0
-  const discountAmount = plan ? Math.round((plan.tuition * discountPercent) / 100) : 0
-  const discountedTuition = plan ? Math.max(0, plan.tuition - discountAmount) : 0
+  const discountAmount = Math.round((effectiveTuition * discountPercent) / 100)
+  const discountedTuition = Math.max(0, effectiveTuition - discountAmount)
 
   /** Build the up-front PENDING record common to every method. */
   function buildPending(paymentId: string): PaymentRecord {
@@ -104,12 +214,12 @@ export default function PayPage() {
       studentEmail: user!.email,
       plan: plan.plan,
       tuitionAmount: discountedTuition,
-      miscAmount: plan.misc,
-      period: plan.period,
+      miscAmount: effectiveMisc,
+      period: effectivePeriod,
       ...(appliedVoucher ? {
         voucherCode: appliedVoucher.code,
         discountPercent,
-        tuitionBeforeDiscount: plan.tuition,
+        tuitionBeforeDiscount: effectiveTuition,
       } : {}),
       status: 'PENDING',
       method,
@@ -164,8 +274,8 @@ export default function PayPage() {
           plan: plan.plan,
           paymentId,
           tuitionAmount: discountedTuition,
-          miscAmount: plan.misc,
-          period: plan.period,
+          miscAmount: effectiveMisc,
+          period: effectivePeriod,
           voucherCode: appliedVoucher?.code,
           discountPercent: appliedVoucher ? discountPercent : undefined,
         }),
@@ -207,8 +317,8 @@ export default function PayPage() {
             branch: user.branch ?? 'EAST',
             plan: plan.plan,
             tuitionCentavos: discountedTuition,
-            miscCentavos: plan.misc,
-            period: plan.period,
+            miscCentavos: effectiveMisc,
+            period: effectivePeriod,
             method: 'FRONT_DESK_CASH',
           }),
         })
@@ -257,8 +367,8 @@ export default function PayPage() {
             branch: user.branch ?? 'EAST',
             plan: plan.plan,
             tuitionCentavos: discountedTuition,
-            miscCentavos: plan.misc,
-            period: plan.period,
+            miscCentavos: effectiveMisc,
+            period: effectivePeriod,
             method: 'BANK_DEPOSIT',
           }),
         })
@@ -286,7 +396,7 @@ export default function PayPage() {
 
   if (!user || !plan) return null
 
-  const total = discountedTuition + plan.misc
+  const total = discountedTuition + effectiveMisc
   const studentBranch = user.branch ?? 'EAST'
   const bank = BANK_DETAILS[studentBranch as keyof typeof BANK_DETAILS]
 
@@ -415,24 +525,54 @@ export default function PayPage() {
           )}
         </div>
 
+        {/* Late-enrollment back-balance callout. Surfaces ABOVE the
+            checkout summary so the parent reads it before scrolling
+            to the payment buttons. Replaces the normal per-installment
+            "Total to pay" with the lump-sum back balance — the
+            checkout summary below also re-binds to the effective
+            amounts so the math stays consistent. */}
+        {lateBackBalance && (
+          <div className="mt-5 rounded-xl p-4 border-2" style={{ borderColor: '#c69849', background: '#fef3c7' }}>
+            <div className="flex items-start gap-3">
+              <span aria-hidden className="text-[20px] leading-none mt-0.5">⏰</span>
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-[14px] mb-1" style={{ color: '#92400e', fontFamily: 'var(--font-display)' }}>
+                  Late enrollment — settle back balance first
+                </div>
+                <p className="text-[13px] text-[color:var(--ink)] leading-relaxed">
+                  Because you&apos;re starting the <span className="font-semibold">{plan.title}</span> plan after the school year began, you need to settle the <span className="font-semibold">{lateBackBalance.label}</span> as a lump sum before regular {plan.plan === 'BIANNUAL' ? 'second-half (December) ' : ''}installments can begin.
+                </p>
+                <p className="text-[13.5px] text-[color:var(--ink)] leading-relaxed mt-2">
+                  <span className="font-bold">Amount due now: {fmt(lateBackBalance.totalAmount)}</span>
+                  {' '}({lateBackBalance.months} {lateBackBalance.months === 1 ? 'month' : 'months'} covered).
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="mt-5 rounded-xl p-4 border" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
           <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--mid-gray)] font-semibold mb-2" style={{ fontFamily: 'var(--font-display)' }}>Checkout summary</div>
           <dl className="grid grid-cols-2 text-sm gap-y-1">
-            <dt className="text-[color:var(--mid-gray)]">{plan.title} tuition</dt>
-            <dd className="text-right tabular-nums">{fmt(plan.tuition)}</dd>
+            <dt className="text-[color:var(--mid-gray)]">
+              {lateBackBalance ? `${plan.title} back-balance tuition (${lateBackBalance.months}× )` : `${plan.title} tuition`}
+            </dt>
+            <dd className="text-right tabular-nums">{fmt(effectiveTuition)}</dd>
             {appliedVoucher && discountAmount > 0 && <>
               <dt className="text-[color:var(--moss)]">Discount ({appliedVoucher.code} · {discountPercent}%)</dt>
               <dd className="text-right tabular-nums text-[color:var(--moss)]">−{fmt(discountAmount)}</dd>
             </>}
-            {plan.misc > 0 && <>
-              <dt className="text-[color:var(--mid-gray)]">Miscellaneous</dt>
-              <dd className="text-right tabular-nums">{fmt(plan.misc)}</dd>
+            {effectiveMisc > 0 && <>
+              <dt className="text-[color:var(--mid-gray)]">
+                {lateBackBalance ? `Miscellaneous (${lateBackBalance.months}× )` : 'Miscellaneous'}
+              </dt>
+              <dd className="text-right tabular-nums">{fmt(effectiveMisc)}</dd>
             </>}
             <dt className="text-[color:var(--narra)] font-bold pt-2 border-t mt-1" style={{ borderColor: 'var(--paper-3)' }}>Total to pay</dt>
             <dd className="text-right tabular-nums font-bold pt-2 border-t mt-1 text-[color:var(--narra)]" style={{ borderColor: 'var(--paper-3)' }}>{fmt(total)}</dd>
           </dl>
           <div className="text-[11.5px] text-[color:var(--mid-gray)] mt-3" style={{ fontFamily: 'var(--font-display)' }}>
-            Period covered: <span className="font-semibold text-[color:var(--ink)]">{plan.period}</span> · Deadline: <span className="font-semibold text-[color:var(--ink)]">{plan.deadline}</span>
+            Period covered: <span className="font-semibold text-[color:var(--ink)]">{effectivePeriod}</span> · Deadline: <span className="font-semibold text-[color:var(--ink)]">{lateBackBalance ? 'Due upon enrollment' : plan.deadline}</span>
           </div>
         </div>
 
