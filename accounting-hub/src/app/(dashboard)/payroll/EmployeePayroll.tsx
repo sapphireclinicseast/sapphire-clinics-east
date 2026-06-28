@@ -2730,7 +2730,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                   <button onClick={() => setShowReqSettings(false)}><X size={16} /></button>
                 </div>
                 <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>
-                  Positions listed below require Admin or Accountant approval. Branch admins (SBEA Admin, SBGH Admin) cannot approve requests from employees with these job titles.
+                  Positions listed below require Admin or Accountant approval. Branch admins (AHEA Admin, AHGH Admin) cannot approve requests from employees with these job titles.
                 </p>
                 <div className="space-y-2 mb-3">
                   {(empSettings.requestApprovalExcludedPositions || []).map((pos, i) => (
