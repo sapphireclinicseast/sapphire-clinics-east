@@ -898,6 +898,10 @@ function RegistrationLetterCard({ student }: { student: StoredUser }) {
   // the certifying line ("…for [purpose] only and not for any other
   // intent."). Default covers the most common case — reimbursement.
   const [purpose, setPurpose] = useState('reimbursement purposes')
+  // Early bird 30% discount toggle. When on, the breakdown shows
+  // base → less 30% → net tuition (reverse-derived from the recorded
+  // tuition, which is assumed to already reflect the discount).
+  const [appliedEarlyBird, setAppliedEarlyBird] = useState(false)
 
   async function buildInput(): Promise<{ summary: FeeSummary; letter: IssuedRegistrationLetter } | null> {
     setErr(null)
@@ -932,6 +936,9 @@ function RegistrationLetterCard({ student }: { student: StoredUser }) {
       annualTuitionCentavos: r.summary.annualTuitionCentavos,
       annualMiscCentavos: r.summary.annualMiscCentavos,
       annualTotalCentavos: r.summary.annualTotalCentavos,
+      plan: r.summary.plan,
+      paidTotalCentavos: r.summary.paidTotalCentavos,
+      appliedEarlyBird,
       issuedAt: new Date(r.letter.issuedAt),
       issuedBy: r.letter.issuedBy,
       purpose: purpose.trim(),
@@ -951,6 +958,9 @@ function RegistrationLetterCard({ student }: { student: StoredUser }) {
       annualTuitionCentavos: r.summary.annualTuitionCentavos,
       annualMiscCentavos: r.summary.annualMiscCentavos,
       annualTotalCentavos: r.summary.annualTotalCentavos,
+      plan: r.summary.plan,
+      paidTotalCentavos: r.summary.paidTotalCentavos,
+      appliedEarlyBird,
       issuedAt: new Date(r.letter.issuedAt),
       issuedBy: r.letter.issuedBy,
       purpose: purpose.trim(),
@@ -978,6 +988,22 @@ function RegistrationLetterCard({ student }: { student: StoredUser }) {
         <span className="text-[11px] text-[color:var(--mid-gray)] block mt-1">
           The letter will read: &quot;…issued upon the request of the parent / guardian for{' '}
           <span className="font-semibold text-[color:var(--narra)]">{purpose.trim() || '[purpose]'}</span> only and not for any other intent.&quot;
+        </span>
+      </label>
+
+      <label className="flex items-start gap-2 mt-3 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={appliedEarlyBird}
+          onChange={e => setAppliedEarlyBird(e.target.checked)}
+          disabled={busy}
+          className="mt-0.5"
+        />
+        <span className="text-[12.5px] text-[color:var(--ink)]">
+          <span className="font-semibold">Student availed of the 30% Early Bird Discount.</span>
+          <span className="block text-[11px] text-[color:var(--mid-gray)] mt-0.5">
+            When ticked, the breakdown shows the base tuition, the 30% deduction, and the net tuition — so the parent&apos;s employer can see how the discount was applied. Untick for the simple 1-line tuition presentation.
+          </span>
         </span>
       </label>
       {lastIssued && (

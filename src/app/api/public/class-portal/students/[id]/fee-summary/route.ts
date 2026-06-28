@@ -71,19 +71,54 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       orderBy: { createdAt: 'asc' },
     })
 
-    // Sum tuition. Front-desk-edit overrides are already baked into
-    // `tuitionCentavos` because the PATCH endpoint writes there directly.
-    let annualTuitionCentavos = 0
-    for (const r of rows) annualTuitionCentavos += r.tuitionCentavos as number
-
     // Plan = most recent row's plan, falling back to "ANNUAL" if no
     // rows yet (newly enrolled students will see 0 tuition until staff
-    // records the first payment, which is the intended behaviour —
-    // the letter shouldn't lie about a fee they haven't been billed for).
+    // records the first payment — that's the intended behaviour; the
+    // letter shouldn't lie about a fee they haven't been billed for).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const plan = (rows.length > 0 ? (rows[rows.length - 1] as any).plan : 'ANNUAL') as string
+
+    // Annualized tuition. For ANNUAL the row IS the whole year. For
+    // BIANNUAL/MONTHLY we extrapolate from the latest installment so
+    // the letter shows the full school-year cost regardless of how
+    // many installments are paid so far. Front-desk-edit overrides
+    // are already baked into `tuitionCentavos` because the PATCH
+    // endpoint writes there directly.
+    let annualTuitionCentavos = 0
+    if (rows.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const latest = rows[rows.length - 1] as any
+      const perInstallment = latest.tuitionCentavos as number
+      if (plan === 'MONTHLY') {
+        annualTuitionCentavos = perInstallment * 10        // SY runs Jun–Mar = 10 months of classes
+      } else if (plan === 'BIANNUAL') {
+        annualTuitionCentavos = perInstallment * 2
+      } else {
+        // ANNUAL — sum (typically just the one row) so any misc
+        // re-entries don't double-count.
+        for (const r of rows) annualTuitionCentavos += r.tuitionCentavos as number
+      }
+    }
+
+    // Amounts actually paid (= CONVERTED rows only). PENDING rows are
+    // submitted but not yet confirmed by the cashier, so they don't
+    // count toward the "paid to date" figure on the letter.
+    let paidTuitionCentavos = 0
+    let paidMiscCentavos = 0
+    let convertedCount = 0
+    for (const r of rows) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rr = r as any
+      if (rr.status === 'CONVERTED') {
+        paidTuitionCentavos += rr.tuitionCentavos as number
+        paidMiscCentavos += rr.miscCentavos as number
+        convertedCount += 1
+      }
+    }
+
     const annualMiscCentavos = MISC_CENTAVOS
     const annualTotalCentavos = annualTuitionCentavos + annualMiscCentavos
+    const paidTotalCentavos = paidTuitionCentavos + paidMiscCentavos
 
     return withCors(NextResponse.json({
       student: {
@@ -100,7 +135,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       annualTuitionCentavos,
       annualMiscCentavos,
       annualTotalCentavos,
+      paidTuitionCentavos,
+      paidMiscCentavos,
+      paidTotalCentavos,
       paymentRowCount: rows.length,
+      convertedRowCount: convertedCount,
     }), origin)
   } catch (e) {
     if (e instanceof Response) {
