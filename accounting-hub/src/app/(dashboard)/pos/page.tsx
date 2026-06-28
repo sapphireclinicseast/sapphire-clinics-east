@@ -345,8 +345,8 @@ const WALLET_ACTION_BADGE: Record<string, { bg: string; color: string }> = {
 
 const BRANCHES = [
   { value: '', label: 'All Branches' },
-  { value: 'SANDBOX_EAST', label: 'SBEA' },
-  { value: 'SANDBOX_GREENHILLS', label: 'SBGH' },
+  { value: 'SANDBOX_EAST', label: 'AHEA' },
+  { value: 'SANDBOX_GREENHILLS', label: 'AHGH' },
   { value: 'VERDANA_STORE', label: 'Verdana' },
 ]
 

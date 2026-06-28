@@ -2224,7 +2224,7 @@ export default function PayrollPage() {
   }
 
   const downloadAllPdfs = async () => {
-    const active = payrollPreviews.filter(p => p.grossPay > 0 || p.orderCount > 0 || p.existingStatus !== null)
+    const active = payrollPreviews.filter(p => (p.grossPay > 0 || p.orderCount > 0 || p.existingStatus !== null) && p.department !== 'ADMINISTRATION')
     setDownloadingAll(true)
     for (const p of active) {
       try { await downloadPdf(p); await new Promise(r => setTimeout(r, 600)) }
