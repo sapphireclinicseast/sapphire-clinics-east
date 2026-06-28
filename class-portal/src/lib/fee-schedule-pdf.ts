@@ -155,14 +155,19 @@ export function generateFeeSchedulePdf(input: FeeScheduleInput): jsPDF {
   doc.text('II. Payment Plan Options', MARGIN, y)
   y += 5
 
-  // 4-column layout: Plan | Per Installment | Number of Payments | Annual Total
+  // 4-column layout: Plan | Per Installment | No. of Payments | Annual Total.
+  // Widths tuned so the right-aligned headers and the longest data row
+  // ("10 (every 5th, Jun–Mar)") fit without bleeding into adjacent columns.
+  // Old layout had col 3 = 50mm with the 27mm label "Number of Payments"
+  // right-aligned, and col 4 = 30mm with the 30mm label "Annual Total (PHP)"
+  // right-aligned — the two labels visually collided. Shortened col 3 label
+  // and rebalanced widths so each header has at least 8mm of breathing room.
   const cols = [
-    { w: 44, label: 'Plan' },
-    { w: 50, label: 'Per Installment (PHP)' },
-    { w: 50, label: 'Number of Payments' },
-    { w: 30, label: 'Annual Total (PHP)' },
+    { w: 30, label: 'Plan' },
+    { w: 45, label: 'Per Installment (PHP)' },
+    { w: 55, label: 'No. of Payments' },
+    { w: 44, label: 'Annual Total (PHP)' },
   ]
-  // Recompute widths so they sum to TABLE_W
   const sumW = cols.reduce((s, c) => s + c.w, 0)
   const scale = TABLE_W / sumW
   cols.forEach(c => { c.w = c.w * scale })
