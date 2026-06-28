@@ -12,6 +12,7 @@
 
 import { jsPDF } from 'jspdf'
 import { AURA_LOGO_DATA_URL } from './aura-logo'
+import { HANNAH_SIGNATURE_DATA_URL } from './aura-signature'
 import { levelLabel, type EnrollmentLevel } from './session'
 
 const PAGE_W = 210
@@ -273,9 +274,20 @@ export function generateRegistrationLetterPdf(input: RegistrationLetterInput): j
   const bodyLine4 = `Issued this ${issuedDate} at Aura Academy for Learning${branchText ? ' – ' + branchText : ''}.`
   const lines4 = doc.splitTextToSize(bodyLine4, CONTENT_W)
   doc.text(lines4, MARGIN, y)
-  y += lines4.length * 5 + 22
+  // 32mm of breathing room so the 28mm e-signature image fits above
+  // the signature line without colliding with the body text.
+  y += lines4.length * 5 + 32
 
-  // ── Signatory ───────────────────────────────────────────────────
+  // ── Signatory (with e-signature overlapping the line) ───────────
+  // Signature image — 500×500 source, drawn at 28mm square so the
+  // visual weight is significant but doesn't dominate. Bottom of the
+  // image sits just above the signature line so it reads as "signed
+  // across the line" rather than floating.
+  const SIG_SIZE = 28
+  try {
+    doc.addImage(HANNAH_SIGNATURE_DATA_URL, 'PNG', MARGIN + 4, y - SIG_SIZE + 6, SIG_SIZE, SIG_SIZE, undefined, 'FAST')
+  } catch { /* tolerate — the printed/typed name still identifies the signatory */ }
+
   setDraw(doc, INK)
   doc.setLineWidth(0.3)
   doc.line(MARGIN, y, MARGIN + 70, y)

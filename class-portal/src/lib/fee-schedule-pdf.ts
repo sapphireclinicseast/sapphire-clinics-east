@@ -10,6 +10,7 @@
 
 import { jsPDF } from 'jspdf'
 import { AURA_LOGO_DATA_URL } from './aura-logo'
+import { HANNAH_SIGNATURE_DATA_URL } from './aura-signature'
 import { levelLabel, type EnrollmentLevel } from './session'
 
 const PAGE_W = 210
@@ -208,9 +209,16 @@ export function generateFeeSchedulePdf(input: FeeScheduleInput): jsPDF {
   const note = 'The Miscellaneous Fee of ₱5,000.00 covers school ID, learning materials, records management, and related administrative costs. The Tuition Fee is reserved exclusively for instructional services. This schedule reflects the fees as recorded on the student’s account at the time of issuance.'
   const noteLines = doc.splitTextToSize(note, CONTENT_W)
   doc.text(noteLines, MARGIN, y)
-  y += noteLines.length * 4.5 + 14
+  // 32mm breathing room so the 28mm e-signature image fits cleanly
+  // above the signature line without colliding with the footnote.
+  y += noteLines.length * 4.5 + 32
 
-  // ── Signatory ───────────────────────────────────────────────────
+  // ── Signatory (with e-signature overlapping the line) ───────────
+  const SIG_SIZE = 28
+  try {
+    doc.addImage(HANNAH_SIGNATURE_DATA_URL, 'PNG', MARGIN + 4, y - SIG_SIZE + 6, SIG_SIZE, SIG_SIZE, undefined, 'FAST')
+  } catch { /* tolerate — typed name still identifies the signatory */ }
+
   setDraw(doc, INK); doc.setLineWidth(0.3)
   doc.line(MARGIN, y, MARGIN + 70, y)
   y += 4
