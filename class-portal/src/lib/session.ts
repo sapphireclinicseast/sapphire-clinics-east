@@ -1202,6 +1202,66 @@ export async function deleteFrontDeskPayment(classPortalPaymentId: string): Prom
 }
 
 /**
+ * Per-student annualized fee summary used to render the registration
+ * letter + fee schedule PDFs. Tuition is summed across the student's
+ * recorded ClassPortalFrontDeskPayment rows for the current SY — so
+ * front-desk overrides on individual rows flow through automatically.
+ */
+export interface FeeSummary {
+  student: {
+    id: string
+    email: string
+    firstName: string | null
+    lastName: string | null
+    fullName: string
+    level: EnrollmentLevel | null
+    branch: 'EAST' | 'GREENHILLS' | null
+  }
+  schoolYear: string                  // "2026-2027"
+  plan: string                        // PaymentPlan as string
+  annualTuitionCentavos: number
+  annualMiscCentavos: number
+  annualTotalCentavos: number
+  paymentRowCount: number             // 0 means staff hasn't recorded yet
+}
+
+export async function fetchFeeSummary(studentId: string): Promise<FeeSummary | null> {
+  if (typeof window === 'undefined') return null
+  if (!getToken()) return null
+  try {
+    return await backendJson<FeeSummary>(`/api/public/class-portal/students/${encodeURIComponent(studentId)}/fee-summary`)
+  } catch (e) {
+    console.warn('[fetchFeeSummary] failed:', e)
+    return null
+  }
+}
+
+export interface IssuedRegistrationLetter {
+  id: string
+  referenceNumber: string             // AURA-REG-YYYY-NNNN
+  issuedAt: string                    // ISO
+  issuedBy: string                    // email
+  annualTuitionCentavos: number
+  annualMiscCentavos: number
+  annualTotalCentavos: number
+}
+
+export async function issueRegistrationLetter(studentId: string): Promise<IssuedRegistrationLetter | null> {
+  if (typeof window === 'undefined') return null
+  if (!getToken()) return null
+  try {
+    const { letter } = await backendJson<{ letter: IssuedRegistrationLetter }>(
+      `/api/public/class-portal/students/${encodeURIComponent(studentId)}/issue-registration-letter`,
+      { method: 'POST', body: JSON.stringify({}) },
+    )
+    return letter
+  } catch (e) {
+    console.warn('[issueRegistrationLetter] failed:', e)
+    return null
+  }
+}
+
+/**
  * Flip a queued front-desk payment from PENDING → CONVERTED. Triggers the
  * student's local PaymentRecord to hydrate to PAID on next refresh.
  * Returns true on success.

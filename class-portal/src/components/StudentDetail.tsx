@@ -18,6 +18,9 @@ import {
 import { backendOrigin, getToken } from '@/lib/backend'
 import { downloadWaiverPdf, generateWaiverPdf } from '@/lib/waiver-pdf'
 import { downloadEnrollmentPdf, generateEnrollmentPdf } from '@/lib/enrollment-pdf'
+import { downloadRegistrationLetterPdf, openRegistrationLetterPdf } from '@/lib/registration-letter-pdf'
+import { downloadFeeSchedulePdf, openFeeSchedulePdf } from '@/lib/fee-schedule-pdf'
+import { fetchFeeSummary, issueRegistrationLetter, type FeeSummary, type IssuedRegistrationLetter } from '@/lib/session'
 // Removed `generateAffidavitPdf` / `AffidavitInput` imports — the
 // admin-preview Annex 3 card was deleted (regenerated affidavit had
 // blank fields that confused users into thinking it was the official
@@ -348,6 +351,17 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
             viewerRole={viewerRole}
             onUpdated={(updated) => { setStudent(updated); onChange?.() }}
           />
+          {/* Registration letter + fee schedule — admin viewers (which
+              includes front desk; the front-desk page passes role=ADMIN
+              to this component) can issue an official school
+              registration letter and a matching schedule of fees the
+              parent can submit to their employer for reimbursement. */}
+          {viewerRole === 'ADMIN' && (
+            <RegistrationLetterCard student={student} />
+          )}
+          {viewerRole === 'ADMIN' && (
+            <FeeScheduleCard student={student} />
+          )}
           <StaffUploadedDocCard
             docKey="form_137_sf10"
             title="Form 137 / SF10"
@@ -867,6 +881,181 @@ async function previewPdf(doc: import('jspdf').jsPDF) {
   window.open(url, '_blank', 'noopener')
   // Revoke after a delay so the new tab can load it first.
   setTimeout(() => URL.revokeObjectURL(url), 60_000)
+}
+
+/**
+ * Registration-letter card. Each press of Download/View mints a fresh
+ * AURA-REG-YYYY-NNNN reference number, snapshots the current annual
+ * fees from the server, and renders the PDF client-side using jsPDF.
+ * Front desk + main admin only — surfaced when viewerRole is ADMIN
+ * (the front-desk page calls this component with role=ADMIN).
+ */
+function RegistrationLetterCard({ student }: { student: StoredUser }) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [lastIssued, setLastIssued] = useState<IssuedRegistrationLetter | null>(null)
+
+  async function buildInput(): Promise<{ summary: FeeSummary; letter: IssuedRegistrationLetter } | null> {
+    setErr(null)
+    setBusy(true)
+    try {
+      const summary = await fetchFeeSummary(student.id)
+      if (!summary) { setErr('Could not pull the fee summary. Please retry.'); return null }
+      if (summary.paymentRowCount === 0) {
+        setErr('No payment records yet for this student in the current school year. Record a payment first, then generate the letter.')
+        return null
+      }
+      const letter = await issueRegistrationLetter(student.id)
+      if (!letter) { setErr('Could not assign a reference number. Please retry.'); return null }
+      setLastIssued(letter)
+      return { summary, letter }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleDownload() {
+    const r = await buildInput()
+    if (!r) return
+    downloadRegistrationLetterPdf({
+      referenceNumber: r.letter.referenceNumber,
+      studentFullName: r.summary.student.fullName,
+      studentEmail: r.summary.student.email,
+      branch: r.summary.student.branch,
+      level: r.summary.student.level,
+      schoolYear: r.summary.schoolYear,
+      annualTuitionCentavos: r.summary.annualTuitionCentavos,
+      annualMiscCentavos: r.summary.annualMiscCentavos,
+      annualTotalCentavos: r.summary.annualTotalCentavos,
+      issuedAt: new Date(r.letter.issuedAt),
+      issuedBy: r.letter.issuedBy,
+    })
+  }
+
+  async function handlePreview() {
+    const r = await buildInput()
+    if (!r) return
+    openRegistrationLetterPdf({
+      referenceNumber: r.letter.referenceNumber,
+      studentFullName: r.summary.student.fullName,
+      studentEmail: r.summary.student.email,
+      branch: r.summary.student.branch,
+      level: r.summary.student.level,
+      schoolYear: r.summary.schoolYear,
+      annualTuitionCentavos: r.summary.annualTuitionCentavos,
+      annualMiscCentavos: r.summary.annualMiscCentavos,
+      annualTotalCentavos: r.summary.annualTotalCentavos,
+      issuedAt: new Date(r.letter.issuedAt),
+      issuedBy: r.letter.issuedBy,
+    })
+  }
+
+  return (
+    <div className="rounded-2xl p-4 border" style={{ borderColor: 'var(--paper-3)', background: '#fff' }}>
+      <div className="font-semibold text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>
+        School Registration Letter
+      </div>
+      <div className="text-[12px] text-[color:var(--mid-gray)] mt-1">
+        Official enrollment certification signed by HANNAH JARA (CEO and President). Auto-pulls the student&apos;s current annual tuition + ₱5,000 misc, mints a fresh AURA-REG reference number, and generates a one-page PDF the parent can submit for employer / HMO reimbursement.
+      </div>
+      {lastIssued && (
+        <div className="text-[11.5px] text-[color:var(--mid-gray)] mt-2">
+          Last issued: <span className="font-semibold text-[color:var(--narra)]">{lastIssued.referenceNumber}</span> on {new Date(lastIssued.issuedAt).toLocaleString()}
+        </div>
+      )}
+      {err && (
+        <div className="mt-2 px-3 py-2 rounded-lg bg-rose-50 border border-rose-100 text-[12px] text-rose-800">{err}</div>
+      )}
+      <div className="flex gap-2 mt-3 flex-wrap">
+        <button type="button" className="btn-secondary text-xs" onClick={() => void handlePreview()} disabled={busy}>
+          {busy ? 'Issuing…' : 'View'}
+        </button>
+        <button type="button" className="btn-primary text-xs" onClick={() => void handleDownload()} disabled={busy}>
+          {busy ? 'Issuing…' : 'Download PDF'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Schedule-of-fees card. Same data source as the registration letter
+ * but shows the breakdown PLUS payment-plan tranches (annual /
+ * bi-annual / monthly). Does NOT mint a reference number — this is
+ * informational, not a certifying document.
+ */
+function FeeScheduleCard({ student }: { student: StoredUser }) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  async function buildInput(): Promise<FeeSummary | null> {
+    setErr(null)
+    setBusy(true)
+    try {
+      const summary = await fetchFeeSummary(student.id)
+      if (!summary) { setErr('Could not pull the fee summary. Please retry.'); return null }
+      if (summary.paymentRowCount === 0) {
+        setErr('No payment records yet for this student in the current school year.')
+        return null
+      }
+      return summary
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleDownload() {
+    const s = await buildInput()
+    if (!s) return
+    downloadFeeSchedulePdf({
+      studentFullName: s.student.fullName,
+      branch: s.student.branch,
+      level: s.student.level,
+      schoolYear: s.schoolYear,
+      annualTuitionCentavos: s.annualTuitionCentavos,
+      annualMiscCentavos: s.annualMiscCentavos,
+      annualTotalCentavos: s.annualTotalCentavos,
+      issuedAt: new Date(),
+      issuedBy: 'admin', // discreet footer; we don't need the auth email here
+    })
+  }
+  async function handlePreview() {
+    const s = await buildInput()
+    if (!s) return
+    openFeeSchedulePdf({
+      studentFullName: s.student.fullName,
+      branch: s.student.branch,
+      level: s.student.level,
+      schoolYear: s.schoolYear,
+      annualTuitionCentavos: s.annualTuitionCentavos,
+      annualMiscCentavos: s.annualMiscCentavos,
+      annualTotalCentavos: s.annualTotalCentavos,
+      issuedAt: new Date(),
+      issuedBy: 'admin',
+    })
+  }
+
+  return (
+    <div className="rounded-2xl p-4 border" style={{ borderColor: 'var(--paper-3)', background: '#fff' }}>
+      <div className="font-semibold text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>
+        Schedule of Fees
+      </div>
+      <div className="text-[12px] text-[color:var(--mid-gray)] mt-1">
+        Annual breakdown (Tuition + ₱5,000 Miscellaneous) plus the three payment plan options — Annual, Bi-annual, Monthly — with each tranche pre-computed. Pull this for the parent when they ask &quot;how much do I owe in total this year?&quot;.
+      </div>
+      {err && (
+        <div className="mt-2 px-3 py-2 rounded-lg bg-rose-50 border border-rose-100 text-[12px] text-rose-800">{err}</div>
+      )}
+      <div className="flex gap-2 mt-3 flex-wrap">
+        <button type="button" className="btn-secondary text-xs" onClick={() => void handlePreview()} disabled={busy}>
+          {busy ? 'Loading…' : 'View'}
+        </button>
+        <button type="button" className="btn-primary text-xs" onClick={() => void handleDownload()} disabled={busy}>
+          {busy ? 'Loading…' : 'Download PDF'}
+        </button>
+      </div>
+    </div>
+  )
 }
 
 // `enrollmentToAffidavitInput` removed alongside the admin-preview
