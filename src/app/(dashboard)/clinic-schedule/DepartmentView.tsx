@@ -757,10 +757,10 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
                 </tbody>
               </table>
               {/* Send all buttons — grouped by recipient */}
-              <div className="px-3 py-3 space-y-2.5" style={{ borderTop: '1px solid var(--light-gray)', background: 'var(--off-white)' }}>
-                {/* Patients row */}
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[10px] font-bold uppercase tracking-wider w-20 shrink-0" style={{ color: 'var(--mid-gray)' }}>Patients</span>
+              <div className="px-3 py-3 space-y-2" style={{ borderTop: '1px solid var(--light-gray)', background: 'var(--off-white)' }}>
+                {/* Patients section */}
+                <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Patients</p>
+                <div className="flex flex-wrap gap-2">
                   <button onClick={sendAllReminders} disabled={sendingAll}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
                     style={{ background: '#2563EB', color: '#fff', opacity: sendingAll ? 0.6 : 1 }}>
@@ -788,9 +788,9 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
                     {sendingAbsentEmail ? 'Sending…' : 'Email: Clinician Absent Notice'}
                   </button>
                 </div>
-                {/* Clinician row */}
+                {/* Clinician section */}
+                <p className="text-[10px] font-bold uppercase tracking-wider pt-1" style={{ color: 'var(--mid-gray)' }}>Clinician</p>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[10px] font-bold uppercase tracking-wider w-20 shrink-0" style={{ color: 'var(--mid-gray)' }}>Clinician</span>
                   <button onClick={sendClinicianSms} disabled={sendingClinicianSms || !staff.phone}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
                     title={!staff.phone ? 'No mobile number on file for this clinician' : `Send schedule to ${staff.firstName}`}
