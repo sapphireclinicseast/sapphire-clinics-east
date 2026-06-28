@@ -110,10 +110,15 @@ export function loginPatient(email: string, password: string) {
 
 // Returning patient already in the CRM, claiming a portal account by setting a
 // password (verified against their email + last name).
-export function setPatientPassword(email: string, lastName: string, password: string) {
+export function setPatientPassword(
+  email: string,
+  firstName: string,
+  lastName: string,
+  password: string,
+) {
   return jsonFetch<AuthResult>(`/patients/set-password`, {
     method: 'POST',
-    body: JSON.stringify({ email, lastName, password }),
+    body: JSON.stringify({ email, firstName, lastName, password }),
   })
 }
 
