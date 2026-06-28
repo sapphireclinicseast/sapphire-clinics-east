@@ -125,6 +125,7 @@ function AuthCard({
     try {
       const res = await setPatientPassword(
         String(f.get('email')),
+        String(f.get('firstName')),
         String(f.get('lastName')),
         password,
       )
@@ -257,14 +258,19 @@ function AuthCard({
         ) : (
           <form className="space-y-4" onSubmit={handleClaim} key="returning-claim">
             <p className="text-sm text-[color:var(--mid-gray)] -mt-1">
-              You&apos;re already in our records — verify with your email and last name, then choose a password.
+              You&apos;re already in our records — verify with your email, first name and last name, then choose a password.
             </p>
             <Field label="Email">
               <input required name="email" type="email" className="input" placeholder="you@example.com" />
             </Field>
-            <Field label="Last name">
-              <input required name="lastName" className="input" placeholder="Dela Cruz" />
-            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="First name">
+                <input required name="firstName" className="input" placeholder="Juan" />
+              </Field>
+              <Field label="Last name">
+                <input required name="lastName" className="input" placeholder="Dela Cruz" />
+              </Field>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <Field label="New password">
                 <input required name="password" type="password" className="input" placeholder="At least 8 characters" />
