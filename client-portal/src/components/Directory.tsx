@@ -14,6 +14,7 @@ export interface Branch {
 
 export const AURA_WEBSITE = 'https://www.sapphireclinicseast.org'
 export const AURA_TIKTOK = '@aurahealthrehab'
+export const AURA_TIKTOK_URL = 'https://www.tiktok.com/@aurahealthrehab'
 
 export const AURA_BRANCHES: Branch[] = [
   {
@@ -85,7 +86,8 @@ export function AuraHeading() {
         <a href={AURA_WEBSITE} target="_blank" rel="noreferrer" className={linkCls}>
           www.sapphireclinicseast.org
         </a>
-        <span> · TikTok {AURA_TIKTOK}</span>
+        <span> · TikTok </span>
+        <a href={AURA_TIKTOK_URL} target="_blank" rel="noreferrer" className={linkCls}>{AURA_TIKTOK}</a>
       </div>
     </>
   )
