@@ -42,20 +42,21 @@ function toE164(phone: string): string {
   return '+' + digits
 }
 
-// Designed to stay under 160 chars for a single GSM-7 SMS segment.
-// Worst-case estimate (long names): ~155 chars.
 function buildAbsentMessage(opts: {
-  patientFirstName:   string
-  clinicianFirstName: string
-  branch:             string
-  department:         string
+  patientFirstName: string
+  date:             string
+  branch:           string
+  department:       string
 }): string {
-  const branch = BRANCH_SHORT[opts.branch] ?? opts.branch
-  const dept   = DEPT_DISPLAY[opts.department] ?? opts.department
+  const branch    = BRANCH_SHORT[opts.branch] ?? opts.branch
+  const dept      = DEPT_DISPLAY[opts.department] ?? opts.department
+  const shortDate = new Date(opts.date + 'T12:00:00').toLocaleDateString('en-PH', {
+    weekday: 'short', month: 'short', day: 'numeric',
+  })
   return (
-    `Hi ${opts.patientFirstName}, your ${dept} session at Aura Health ` +
-    `${branch} today is cancelled - ${opts.clinicianFirstName} will be absent. ` +
-    `We apologize & will contact you to reschedule.`
+    `Hi ${opts.patientFirstName}! Your ${dept} session at Aura Health ${branch} on ` +
+    `${shortDate} has been cancelled — your therapist will be unavailable. ` +
+    `We sincerely apologize and will contact you for updates. Thank you.`
   )
 }
 
@@ -140,17 +141,16 @@ export async function POST(req: NextRequest) {
   }
 
   const branch = schedules[0].staff.branch
-  const clinicianFirstName = schedules[0].staff.firstName
   let sent = 0, viber = 0, sms = 0, lastError = ''
 
   for (const s of schedules) {
     if (!s.patient) continue
     try {
       const message = buildAbsentMessage({
-        patientFirstName:   s.patient.firstName,
-        clinicianFirstName,
+        patientFirstName: s.patient.firstName,
+        date,
         branch,
-        department:         s.staff.department,
+        department:       s.staff.department,
       })
       const channel = await dispatch({
         patientId: s.patient.id,
