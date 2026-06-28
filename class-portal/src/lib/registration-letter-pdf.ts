@@ -86,6 +86,10 @@ export interface RegistrationLetterInput {
   issuedAt: Date
   /** email of staff who pressed the button — appended discreetly in the footer */
   issuedBy: string
+  /** Free text — the staff fills this in per-letter so the certifying
+   *  line reads e.g. "for reimbursement purposes only and not for any
+   *  other intent." Default fallback is "reimbursement purposes". */
+  purpose: string
 }
 
 function branchFull(b: 'EAST' | 'GREENHILLS' | null): string {
@@ -209,11 +213,12 @@ export function generateRegistrationLetterPdf(input: RegistrationLetterInput): j
   doc.text(`₱${fmtPHP(input.annualTotalCentavos)}`, TABLE_X + TABLE_W - 4, y + 3.5, { align: 'right' })
   y += ROW_H + 8
 
-  // ── Reimbursement boilerplate ───────────────────────────────────
+  // ── Purpose boilerplate ─────────────────────────────────────────
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10.5)
   setText(doc, INK)
-  const bodyLine3 = 'This certification is issued upon the request of the parent / guardian for reimbursement purposes only and not for any other intent.'
+  const purposeText = (input.purpose || 'reimbursement purposes').trim()
+  const bodyLine3 = `This certification is issued upon the request of the parent / guardian for ${purposeText} only and not for any other intent.`
   const lines3 = doc.splitTextToSize(bodyLine3, CONTENT_W)
   doc.text(lines3, MARGIN, y)
   y += lines3.length * 5 + 4
