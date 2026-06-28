@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
-import { Plus, Settings, Loader2, Trash2, X } from 'lucide-react'
+import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2 } from 'lucide-react'
 
 // ── Constants ──────────────────────────────────────────────────
 const BRANCHES = [
@@ -65,6 +65,7 @@ export default function PettyCashPage() {
   const [requestors, setRequestors] = useState<string[]>([])
   const [nextPcvSeq, setNextPcvSeq] = useState<number>(1)
   const [showSettings, setShowSettings] = useState(false)
+  const [expanded, setExpanded] = useState(false)
 
   const loadEntries = useCallback(async (br: string) => {
     setLoading(true)
@@ -141,7 +142,7 @@ export default function PettyCashPage() {
   const totalGross = entries.reduce((s, e) => s + num(e.grossAmount), 0)
 
   return (
-    <div className="space-y-4">
+    <div className={expanded ? 'fixed inset-0 z-50 overflow-auto p-6 space-y-4' : 'space-y-4'} style={expanded ? { background: 'var(--off-white)' } : undefined}>
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
           Petty Cash
@@ -158,6 +159,11 @@ export default function PettyCashPage() {
               </button>
             ))}
           </div>
+          <button onClick={() => setExpanded(v => !v)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border"
+            style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+            {expanded ? <><Minimize2 size={14} /> Collapse</> : <><Maximize2 size={14} /> Expand</>}
+          </button>
           <button onClick={() => setShowSettings(true)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border"
             style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
@@ -171,7 +177,7 @@ export default function PettyCashPage() {
         {' · '}Next PCV #{nextPcvSeq}
       </p>
 
-      <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)', maxHeight: '70vh' }}>
+      <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)', maxHeight: expanded ? 'calc(100vh - 170px)' : '70vh' }}>
         {loading ? (
           <div className="flex items-center justify-center py-16"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} /></div>
         ) : (
