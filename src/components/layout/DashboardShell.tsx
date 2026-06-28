@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Sidebar from './Sidebar'
 import TopBar from './TopBar'
 import SurveyPrompt from '../SurveyPrompt'
+import WaitlistReminder from '../WaitlistReminder'
 import type { Session } from 'next-auth'
 
 export default function DashboardShell({
@@ -43,6 +44,9 @@ export default function DashboardShell({
 
       {/* Global survey prompt — shows on ALL pages for front desk users */}
       <SurveyPrompt role={role} />
+
+      {/* Waitlist check reminder — fires at 11 AM and 4 PM for front desk */}
+      <WaitlistReminder role={role} />
     </div>
   )
 }
