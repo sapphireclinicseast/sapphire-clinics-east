@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
   try {
     const staff = await prisma.staff.findMany({
       where: {
+        active: true, // exclude staff marked inactive in HR (mirror Staff Module + Top 5)
         ...(branch ? { branch } : {}),
         ...(search
           ? {
