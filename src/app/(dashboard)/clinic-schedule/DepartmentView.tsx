@@ -306,6 +306,7 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
   const [sendingSmsAll, setSendingSmsAll] = useState(false)
   const [sendingClinicianSms, setSendingClinicianSms] = useState(false)
   const [sendingClinicianEmail, setSendingClinicianEmail] = useState(false)
+  const [sendingAbsentSms, setSendingAbsentSms] = useState(false)
   const [toast, setToast] = useState('')
   // Last-week suggestions
   const [lastWeekSuggestions, setLastWeekSuggestions] = useState<Schedule[]>([])
@@ -502,6 +503,25 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
     } else {
       const d = await res.json()
       showToast(d.error ?? 'Failed to send schedule to clinician')
+    }
+  }
+
+  async function sendAbsentSms() {
+    setSendingAbsentSms(true)
+    const res = await fetch('/api/clinic-schedule/send-absent-sms', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ staffId: staff.id, date: selectedDate }),
+    })
+    setSendingAbsentSms(false)
+    if (res.ok) {
+      const d = await res.json()
+      const parts = []
+      if (d.viber > 0) parts.push(`${d.viber} via Viber`)
+      if (d.sms   > 0) parts.push(`${d.sms} via SMS`)
+      showToast(`Absent notice sent to ${d.sent} patient${d.sent !== 1 ? 's' : ''} — ${parts.join(', ')}`)
+    } else {
+      const d = await res.json()
+      showToast(d.error ?? 'Failed to send absent notices')
     }
   }
 
@@ -746,6 +766,13 @@ function StaffCard({ staff, selectedDate }: { staff: StaffMember; selectedDate: 
                   style={{ background: '#EA580C', color: '#fff', opacity: sendingClinicianEmail ? 0.5 : 1 }}>
                   <Mail size={13} />
                   {sendingClinicianEmail ? 'Sending…' : 'Send Email to Clinician on Schedule'}
+                </button>
+                <button onClick={sendAbsentSms} disabled={sendingAbsentSms}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                  title={`Notify all of ${staff.firstName}'s patients today that they are absent`}
+                  style={{ background: '#DC2626', color: '#fff', opacity: sendingAbsentSms ? 0.5 : 1 }}>
+                  <Smartphone size={13} />
+                  {sendingAbsentSms ? 'Sending…' : 'Send Mobile Text to Patients that Clinician is Absent'}
                 </button>
               </div>
             </div>
