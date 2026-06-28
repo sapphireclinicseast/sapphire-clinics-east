@@ -28,7 +28,7 @@ export default function SurveyPrompt({ role }: { role: string }) {
   const dismissedRef = useRef<Map<string, number>>(new Map())
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const isFrontDesk = role === 'SBEA_FRONT_DESK' || role === 'SBGH_FRONT_DESK'
+  const isFrontDesk = role === 'AHEA_FRONT_DESK' || role === 'AHGH_FRONT_DESK'
 
   // ── Check for upcoming survey prompts ──────────────────────────────────
   const checkUpcoming = useCallback(async () => {
@@ -92,7 +92,7 @@ export default function SurveyPrompt({ role }: { role: string }) {
           patientId: prompt.patientId,
           patientName: prompt.patientName,
           patientAge: prompt.patientAge,
-          branch: role === 'SBGH_FRONT_DESK' ? 'SBGH' : 'SBEA',
+          branch: role === 'AHGH_FRONT_DESK' ? 'SBGH' : 'SBEA',
           sessionType: prompt.sessionType?.toLowerCase().includes('group') ? 'group' : 'individual',
           scheduleId: prompt.scheduleId,
         }),

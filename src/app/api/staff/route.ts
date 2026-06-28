@@ -38,7 +38,7 @@ export async function PATCH(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const role = (session.user as { role?: string }).role ?? ''
-  if (!['ADMIN', 'MARKETING_ADMIN', 'SBEA_ADMIN', 'SBGH_ADMIN', 'SBEA_FRONT_DESK', 'SBGH_FRONT_DESK'].includes(role)) {
+  if (!['ADMIN', 'MARKETING_ADMIN', 'SBEA_ADMIN', 'SBGH_ADMIN', 'AHEA_FRONT_DESK', 'AHGH_FRONT_DESK'].includes(role)) {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
   }
 

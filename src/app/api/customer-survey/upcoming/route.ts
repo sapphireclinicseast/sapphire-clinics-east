@@ -17,7 +17,7 @@ export async function GET() {
 
   const role = (session.user as { role?: string }).role ?? ''
   const branch = branchFromRole(role)
-  const isFrontDesk = role === 'SBEA_FRONT_DESK' || role === 'SBGH_FRONT_DESK'
+  const isFrontDesk = role === 'AHEA_FRONT_DESK' || role === 'AHGH_FRONT_DESK'
 
   if (!isFrontDesk || !branch) {
     return NextResponse.json({ prompts: [] })

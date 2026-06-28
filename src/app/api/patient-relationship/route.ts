@@ -34,8 +34,8 @@ export async function GET(req: NextRequest) {
 
   // Branch scoping
   let branch = searchParams.get('branch') || ''
-  if (role === 'SBEA_FRONT_DESK') branch = 'SANDBOX_EAST'
-  else if (role === 'SBGH_FRONT_DESK') branch = 'SANDBOX_GREENHILLS'
+  if (role === 'AHEA_FRONT_DESK') branch = 'SANDBOX_EAST'
+  else if (role === 'AHGH_FRONT_DESK') branch = 'SANDBOX_GREENHILLS'
 
   const branchFilter = branch ? { branches: { has: branch } } : undefined
 

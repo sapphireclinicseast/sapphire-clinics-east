@@ -9,8 +9,8 @@ const ROLE_LABELS: Record<string, string> = {
   SBEA_ADMIN: 'AHEA Admin',
   SBGH_ADMIN: 'AHGH Admin',
   VERDANA_ADMIN: 'Verdana Admin',
-  SBEA_FRONT_DESK: 'AHEA Front Desk',
-  SBGH_FRONT_DESK: 'AHGH Front Desk',
+  AHEA_FRONT_DESK: 'AHEA Front Desk',
+  AHGH_FRONT_DESK: 'AHGH Front Desk',
 }
 
 function roleLabel(role: string) {
@@ -180,8 +180,8 @@ export default function UsersPage() {
                   <option value="SBEA_ADMIN">AHEA Admin — East Branch social only</option>
                   <option value="SBGH_ADMIN">AHGH Admin — Greenhills Branch social only</option>
                   <option value="VERDANA_ADMIN">Verdana Admin — Verdana Store social only</option>
-                  <option value="SBEA_FRONT_DESK">AHEA Front Desk — clinic tools + East Branch patients</option>
-                  <option value="SBGH_FRONT_DESK">AHGH Front Desk — clinic tools + Greenhills Branch patients</option>
+                  <option value="AHEA_FRONT_DESK">AHEA Front Desk — clinic tools + East Branch patients</option>
+                  <option value="AHGH_FRONT_DESK">AHGH Front Desk — clinic tools + Greenhills Branch patients</option>
                 </select>
               </div>
               <div>
@@ -325,8 +325,8 @@ export default function UsersPage() {
                           <option value="SBEA_ADMIN">AHEA Admin — East Branch social only</option>
                           <option value="SBGH_ADMIN">AHGH Admin — Greenhills Branch social only</option>
                           <option value="VERDANA_ADMIN">Verdana Admin — Verdana Store social only</option>
-                          <option value="SBEA_FRONT_DESK">AHEA Front Desk — clinic tools + East Branch patients</option>
-                          <option value="SBGH_FRONT_DESK">AHGH Front Desk — clinic tools + Greenhills Branch patients</option>
+                          <option value="AHEA_FRONT_DESK">AHEA Front Desk — clinic tools + East Branch patients</option>
+                          <option value="AHGH_FRONT_DESK">AHGH Front Desk — clinic tools + Greenhills Branch patients</option>
                         </select>
                       </div>
                       <div>

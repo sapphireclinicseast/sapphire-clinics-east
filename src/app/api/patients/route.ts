@@ -84,8 +84,8 @@ function branchLabel(branch: string): string {
 const MAIN_ADMIN_EMAIL = 'main@sapphireclinicseast.org'
 
 const ROLE_BRANCH: Record<string, string> = {
-  SBEA_FRONT_DESK: 'SANDBOX_EAST',
-  SBGH_FRONT_DESK: 'SANDBOX_GREENHILLS',
+  AHEA_FRONT_DESK: 'SANDBOX_EAST',
+  AHGH_FRONT_DESK: 'SANDBOX_GREENHILLS',
 }
 
 export async function GET(req: NextRequest) {
@@ -110,32 +110,24 @@ export async function GET(req: NextRequest) {
       )
     }
   }
-  // Front desk export is also scoped to their branch
-  const exportBranches = forcedBranch
+  // Branch filter — front desk is locked to their branch; otherwise honor the
+  // singular `branch` or comma-separated `branches` query param. Applies to all
+  // requests (count, listing, export), not just CSV export.
+  const requestedBranches = forcedBranch
     ? [forcedBranch]
-    : (searchParams.get('branches')?.split(',').filter(Boolean) ?? [])
+    : (searchParams.get('branches')?.split(',').filter(Boolean)
+        ?? (branch ? [branch] : []))
 
   // Raw SQL pre-filter for branch (avoids enum array type mismatch with PrismaPg driver adapter)
   let branchFilterIds: string[] | null = null
 
-  if (branch) {
-    const rows = await prisma.$queryRawUnsafe<{ id: string }[]>(
-      `SELECT id FROM "Patient" WHERE branch::text = $1 OR $1 = ANY("branches"::text[])`,
-      branch,
-    )
-    branchFilterIds = rows.map(r => r.id)
-  }
-
-  if (exportCsv && exportBranches.length > 0) {
-    const placeholders = exportBranches.map((_, i) => `$${i + 1}`).join(', ')
+  if (requestedBranches.length > 0) {
+    const placeholders = requestedBranches.map((_, i) => `$${i + 1}`).join(', ')
     const rows = await prisma.$queryRawUnsafe<{ id: string }[]>(
       `SELECT DISTINCT id FROM "Patient" WHERE branch::text = ANY(ARRAY[${placeholders}]) OR "branches"::text[] && ARRAY[${placeholders}]`,
-      ...exportBranches,
+      ...requestedBranches,
     )
-    const exportIds = rows.map(r => r.id)
-    branchFilterIds = branchFilterIds
-      ? branchFilterIds.filter(id => exportIds.includes(id))
-      : exportIds
+    branchFilterIds = rows.map(r => r.id)
   }
 
   const where: any = {

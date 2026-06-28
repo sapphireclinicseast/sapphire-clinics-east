@@ -17,7 +17,7 @@ export default function WaitlistReminder({ role }: { role: string }) {
   const [visible, setVisible] = useState(false)
   const shownHourRef = useRef<number | null>(null)
 
-  const isFrontDesk = role === 'SBEA_FRONT_DESK' || role === 'SBGH_FRONT_DESK'
+  const isFrontDesk = role === 'AHEA_FRONT_DESK' || role === 'AHGH_FRONT_DESK'
 
   useEffect(() => {
     if (!isFrontDesk) return

@@ -8,8 +8,8 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
 const ROLE_BRANCH: Record<string, string> = {
-  SBEA_FRONT_DESK: 'SBEA',
-  SBGH_FRONT_DESK: 'SBGH',
+  AHEA_FRONT_DESK: 'SBEA',
+  AHGH_FRONT_DESK: 'SBGH',
 }
 
 export async function GET(req: NextRequest) {

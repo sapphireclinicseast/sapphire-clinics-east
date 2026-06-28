@@ -429,7 +429,7 @@ export async function GET(req: NextRequest) {
   if (view === 'staff') {
     // Return staff with assessment progress — filtered by branch for front desk
     // Front desk users only see FRONT_DESK department staff
-    const isFrontDesk = role === 'SBEA_FRONT_DESK' || role === 'SBGH_FRONT_DESK'
+    const isFrontDesk = role === 'AHEA_FRONT_DESK' || role === 'AHGH_FRONT_DESK'
     const whereClause = {
       ...(userBranch ? { branch: userBranch } : {}),
       ...(isFrontDesk ? { department: 'FRONT_DESK' as const } : {}),

@@ -1,0 +1,3 @@
+-- Rename front-desk role enum values from SBEA/SBGH prefix to AHEA/AHGH prefix
+ALTER TYPE "Role" RENAME VALUE 'SBEA_FRONT_DESK' TO 'AHEA_FRONT_DESK';
+ALTER TYPE "Role" RENAME VALUE 'SBGH_FRONT_DESK' TO 'AHGH_FRONT_DESK';

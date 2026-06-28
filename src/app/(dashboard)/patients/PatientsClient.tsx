@@ -203,13 +203,13 @@ function Field({ label, value, onChange, type = 'text', placeholder = '', upperc
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 const ROLE_TO_BRANCH: Record<string, string> = {
-  SBEA_FRONT_DESK: 'SANDBOX_EAST',
-  SBGH_FRONT_DESK: 'SANDBOX_GREENHILLS',
+  AHEA_FRONT_DESK: 'SANDBOX_EAST',
+  AHGH_FRONT_DESK: 'SANDBOX_GREENHILLS',
 }
 
 export default function PatientsPage({ role = '', userEmail = '' }: { role?: string; userEmail?: string }) {
   const isMainAdmin = userEmail.toLowerCase() === 'main@sapphireclinicseast.org'
-  const isFrontDesk  = role === 'SBEA_FRONT_DESK' || role === 'SBGH_FRONT_DESK'
+  const isFrontDesk  = role === 'AHEA_FRONT_DESK' || role === 'AHGH_FRONT_DESK'
   const forcedBranch = ROLE_TO_BRANCH[role] ?? ''
 
   const [patients, setPatients]         = useState<Patient[]>([])

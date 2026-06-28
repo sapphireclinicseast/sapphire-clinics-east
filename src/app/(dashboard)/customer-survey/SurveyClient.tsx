@@ -183,7 +183,7 @@ export default function SurveyClient({ role }: { role: string }) {
   const [settingsSaving, setSettingsSaving] = useState(false)
   const [settingsMsg, setSettingsMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
-  const isFrontDesk = role === 'SBEA_FRONT_DESK' || role === 'SBGH_FRONT_DESK'
+  const isFrontDesk = role === 'AHEA_FRONT_DESK' || role === 'AHGH_FRONT_DESK'
   const isAdmin = ['MARKETING_ADMIN', 'SUPERADMIN', 'ADMIN', 'SBEA_ADMIN', 'SBGH_ADMIN'].includes(role)
   const isMarketingAdmin = ['MARKETING_ADMIN', 'SUPERADMIN', 'ADMIN'].includes(role)
 
