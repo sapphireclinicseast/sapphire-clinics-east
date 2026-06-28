@@ -1610,3 +1610,62 @@ model InvoiceSettings {
   email       String?
   updatedAt   DateTime @updatedAt
 }
+
+// ── Petty Cash module ─────────────────────────────────────────
+model PettyCashEntry {
+  id                String   @id @default(cuid())
+  branch            String   // SANDBOX_EAST | SANDBOX_GREENHILLS | VERDANA_STORE
+  pcvNumber         String   // e.g. PCV26-001794
+  pcvSeq            Int
+  requestor         String?
+  department        String?  // ADMIN, PT, OT, SLP, SPED, PSYCH, MD, ORTHOSIS
+  pcfStatus         String?  // Unliquidated | For Replenishment | Cancelled | Missing
+  date              DateTime?
+  description       String?
+  vatable           String?  // VAT | NV | Invalid | Cancelled
+  siNumber          String?
+  tinNumber         String?  // XXX-XXX-XXX-XXXXX
+  registeredName    String?
+  registeredAddress String?
+  grossAmount       Decimal  @default(0)
+  accountTitle      String?
+  referenceNumber   String?
+  reimbursementId   String?
+  reimbursement     ReimbursementReport? @relation(fields: [reimbursementId], references: [id], onDelete: SetNull)
+  createdById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([branch, pcvNumber])
+  @@index([branch])
+  @@index([reimbursementId])
+}
+
+model ReimbursementReport {
+  id             String   @id @default(cuid())
+  branch         String
+  refNumber      String   // e.g. AHEA26-000001
+  refSeq         Int
+  grossTotal     Decimal  @default(0)
+  status         String   @default("PENDING") // PENDING | PAID
+  pdfData        String?  // base64 data URI
+  paidAt         DateTime?
+  debitAccount   String?
+  depositAccount String?
+  proofUrl       String?
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  entries        PettyCashEntry[]
+
+  @@unique([branch, refNumber])
+  @@index([branch])
+}
+
+model PettyCashSettings {
+  branch     String   @id  // SANDBOX_EAST | SANDBOX_GREENHILLS | VERDANA_STORE
+  nextPcvSeq Int      @default(1)
+  requestors Json     @default("[]")
+  updatedAt  DateTime @updatedAt @default(now())
+}
