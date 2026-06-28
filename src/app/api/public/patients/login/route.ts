@@ -34,20 +34,21 @@ export async function POST(req: NextRequest) {
       origin,
     )
 
-  const patient = await prisma.patient.findFirst({
+  // A single parent email is often shared by siblings, so check every patient
+  // with this email and sign in as the one whose password matches.
+  const patients = await prisma.patient.findMany({
     where: { email: { equals: email, mode: 'insensitive' } },
     select: { id: true, firstName: true, passwordHash: true },
   })
 
-  // No account yet → let the UI route them to sign-up, but don't leak existence.
-  if (!patient || !patient.passwordHash) return invalid()
-
-  const ok = await verifyPassword(password, patient.passwordHash)
-  if (!ok) return invalid()
-
-  const token = issuePatientToken(patient.id)
-  return withCors(
-    NextResponse.json({ patientId: patient.id, firstName: patient.firstName, token }),
-    origin,
-  )
+  for (const p of patients) {
+    if (p.passwordHash && (await verifyPassword(password, p.passwordHash))) {
+      const token = issuePatientToken(p.id)
+      return withCors(
+        NextResponse.json({ patientId: p.id, firstName: p.firstName, token }),
+        origin,
+      )
+    }
+  }
+  return invalid()
 }
