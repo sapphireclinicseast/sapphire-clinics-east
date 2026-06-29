@@ -1645,6 +1645,7 @@ model PettyCashEntry {
   paymentMethod     String?
   checkNumber       String?
   creditCard        String?
+  creditCardId      String?
   payrollAccount    String?
   paymentBankAccount String?
   reimbursementId   String?
@@ -1700,5 +1701,22 @@ model CreditCard {
   isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
 
+  @@index([branch])
+}
+
+model CreditCardReport {
+  id           String   @id @default(cuid())
+  branch       String
+  cardId       String
+  bankCode     String
+  refSeq       Int
+  refNumber    String
+  periodMonth  Int
+  periodYear   Int
+  statementUrl String?
+  status       String   @default("FOR_FILING")
+  createdAt    DateTime @default(now())
+
+  @@unique([branch, cardId, periodMonth, periodYear])
   @@index([branch])
 }

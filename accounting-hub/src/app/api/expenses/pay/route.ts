@@ -26,6 +26,7 @@ export async function POST(req: Request) {
       checkNumber: body.checkNumber != null && body.checkNumber !== '' ? String(body.checkNumber) : null,
       paymentBankAccount: body.paymentBankAccount ? String(body.paymentBankAccount) : null,
       creditCard: body.creditCard ? String(body.creditCard) : null,
+      creditCardId: body.creditCardId ? String(body.creditCardId) : null,
       payrollAccount: body.payrollAccount != null && body.payrollAccount !== '' ? String(body.payrollAccount) : null,
     }
     const res = await prisma.pettyCashEntry.updateMany({
@@ -51,7 +52,7 @@ export async function PATCH(req: Request) {
     if (entryIds.length === 0) return NextResponse.json({ error: 'No entries selected' }, { status: 400 })
     const res = await prisma.pettyCashEntry.updateMany({
       where: { id: { in: entryIds } },
-      data: { paidAt: null, paymentMethod: null, checkNumber: null, paymentBankAccount: null, creditCard: null, payrollAccount: null },
+      data: { paidAt: null, paymentMethod: null, checkNumber: null, paymentBankAccount: null, creditCard: null, creditCardId: null, payrollAccount: null },
     })
     return NextResponse.json({ ok: true, count: res.count })
   } catch (e) {

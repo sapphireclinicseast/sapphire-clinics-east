@@ -270,7 +270,7 @@ export default function ExpensesPage() {
     try { await fetch(`/api/expenses/credit-cards?id=${id}`, { method: 'DELETE' }) } catch { /* ignore */ }
   }
 
-  const submitPayment = async (p: { datePaid: string; paymentMethod: string; checkNumber: string; paymentBankAccount: string; creditCard: string; payrollAccount: string }) => {
+  const submitPayment = async (p: { datePaid: string; paymentMethod: string; checkNumber: string; paymentBankAccount: string; creditCard: string; creditCardId: string; payrollAccount: string }) => {
     setPaying(true)
     try {
       const res = await fetch('/api/expenses/pay', {
@@ -651,7 +651,11 @@ export default function ExpensesPage() {
         </>
       )}
 
-      {!isRecording && (
+      {tab === 'cc-report' && (
+        <CcReportTab branch={branch} cards={cards} canWrite={canWrite} />
+      )}
+
+      {!isRecording && tab !== 'cc-report' && (
         <div className="rounded-2xl border bg-white py-20 text-center" style={{ borderColor: 'var(--light-gray)' }}>
           <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{TABS.find(t => t.key === tab)?.label}</p>
           <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Coming soon — instructions pending.</p>
@@ -685,13 +689,13 @@ export default function ExpensesPage() {
 function ForPaymentModal({ count, bankOptions, cards, paying, onClose, onAddCard, onSubmit }: {
   count: number; bankOptions: string[]; cards: Card[]; paying: boolean
   onClose: () => void; onAddCard: (bank: string, cardNumber: string, bankCode: string) => Promise<Card | null>
-  onSubmit: (p: { datePaid: string; paymentMethod: string; checkNumber: string; paymentBankAccount: string; creditCard: string; payrollAccount: string }) => void
+  onSubmit: (p: { datePaid: string; paymentMethod: string; checkNumber: string; paymentBankAccount: string; creditCard: string; creditCardId: string; payrollAccount: string }) => void
 }) {
   const [datePaid, setDatePaid] = useState(new Date().toISOString().slice(0, 10))
   const [method, setMethod] = useState('')
   const [checkNumber, setCheckNumber] = useState('')
   const [bankAccount, setBankAccount] = useState('')
-  const [card, setCard] = useState('')
+  const [cardId, setCardId] = useState('')
   const [payrollAccount, setPayrollAccount] = useState('')
   const [showAddCard, setShowAddCard] = useState(false)
   const [nb, setNb] = useState(''); const [nn, setNn] = useState(''); const [nc, setNc] = useState('')
@@ -704,15 +708,16 @@ function ForPaymentModal({ count, bankOptions, cards, paying, onClose, onAddCard
     if (!datePaid) { alert('Enter the Date of Payment.'); return }
     if (!method) { alert('Select a Payment Method.'); return }
     if (isCheck && (!checkNumber || !bankAccount)) { alert('Enter the Check Number and bank account.'); return }
-    if (isCard && !card) { alert('Choose a credit card.'); return }
+    if (isCard && !cardId) { alert('Choose a credit card.'); return }
     if (isPayroll && !payrollAccount) { alert("Enter the admin officer's bank account number."); return }
-    onSubmit({ datePaid, paymentMethod: method, checkNumber: isCheck ? checkNumber : '', paymentBankAccount: isCheck ? bankAccount : '', creditCard: isCard ? card : '', payrollAccount: isPayroll ? payrollAccount : '' })
+    const selCard = cards.find(c => c.id === cardId)
+    onSubmit({ datePaid, paymentMethod: method, checkNumber: isCheck ? checkNumber : '', paymentBankAccount: isCheck ? bankAccount : '', creditCard: isCard && selCard ? cardLabel(selCard) : '', creditCardId: isCard ? cardId : '', payrollAccount: isPayroll ? payrollAccount : '' })
   }
 
   const saveNewCard = async () => {
     if (!nb || !nn || !nc) { alert('Enter the bank, card number and bank code.'); return }
     const c = await onAddCard(nb, nn, nc)
-    if (c) { setCard(cardLabel(c)); setShowAddCard(false); setNb(''); setNn(''); setNc('') }
+    if (c) { setCardId(c.id); setShowAddCard(false); setNb(''); setNn(''); setNc('') }
   }
 
   return (
@@ -756,10 +761,10 @@ function ForPaymentModal({ count, bankOptions, cards, paying, onClose, onAddCard
           <>
             <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Credit card</label>
             <div className="flex items-center gap-2 mb-3">
-              <select value={card} onChange={e => setCard(e.target.value)}
+              <select value={cardId} onChange={e => setCardId(e.target.value)}
                 className="flex-1 px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
                 <option value="">Select card…</option>
-                {cards.map(c => <option key={c.id} value={cardLabel(c)}>{cardLabel(c)}</option>)}
+                {cards.map(c => <option key={c.id} value={c.id}>{cardLabel(c)}</option>)}
               </select>
               <button onClick={() => setShowAddCard(v => !v)} title="Add a credit card"
                 className="px-3 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>+</button>
@@ -864,6 +869,268 @@ function CreditCardSettings({ branch, cards, canWrite, bankOptions, prepaidAccou
             {saving ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Add Credit Card
           </button>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ── Credit Card Report tab ─────────────────────────────────────
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+interface CcReport {
+  id: string; branch: string; cardId: string; bankCode: string; refNumber: string
+  periodMonth: number; periodYear: number; statementUrl: string | null; status: string; createdAt: string
+}
+interface CcTxn {
+  id: string; pcvNumber: string; requestor: string | null; date: string | null
+  description: string | null; accountTitle: string | null; grossAmount: string | number; paidAt: string | null
+}
+
+function CcReportTab({ branch, cards, canWrite }: { branch: string; cards: Card[]; canWrite: boolean }) {
+  const now = new Date()
+  const [cardId, setCardId] = useState('')
+  const [month, setMonth] = useState(now.getMonth() + 1)
+  const [year, setYear] = useState(now.getFullYear())
+  const [reports, setReports] = useState<CcReport[]>([])
+  const [txns, setTxns] = useState<CcTxn[]>([])
+  const [loadingTxns, setLoadingTxns] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [uploadingStmt, setUploadingStmt] = useState('')
+
+  const loadReports = useCallback(async () => {
+    try { const r = await fetch(`/api/expenses/cc-reports?branch=${branch}`); setReports(r.ok ? await r.json() : []) }
+    catch { setReports([]) }
+  }, [branch])
+  useEffect(() => { loadReports() }, [loadReports])
+
+  useEffect(() => {
+    if (!cardId) { setTxns([]); return }
+    let alive = true
+    setLoadingTxns(true)
+    fetch(`/api/expenses/cc-transactions?branch=${branch}&cardId=${cardId}&month=${month}&year=${year}`)
+      .then(r => (r.ok ? r.json() : []))
+      .then(d => { if (alive) setTxns(d) })
+      .catch(() => { if (alive) setTxns([]) })
+      .finally(() => { if (alive) setLoadingTxns(false) })
+    return () => { alive = false }
+  }, [branch, cardId, month, year])
+
+  const report = reports.find(r => r.cardId === cardId && r.periodMonth === month && r.periodYear === year) || null
+  const total = txns.reduce((s, t) => s + num(t.grossAmount), 0)
+  const cardOf = (id: string) => cards.find(c => c.id === id)
+
+  const createReport = async () => {
+    if (!cardId) { alert('Choose a credit card.'); return }
+    setCreating(true)
+    try {
+      const r = await fetch('/api/expenses/cc-reports', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch, cardId, periodMonth: month, periodYear: year }),
+      })
+      if (r.ok) { const rep = await r.json(); setReports(prev => (prev.some(x => x.id === rep.id) ? prev : [rep, ...prev])) }
+      else alert((await r.json()).error || 'Failed to create report')
+    } catch { alert('Failed to create report') }
+    setCreating(false)
+  }
+  const setStatus = async (id: string, status: string) => {
+    setReports(prev => prev.map(r => (r.id === id ? { ...r, status } : r)))
+    try { await fetch('/api/expenses/cc-reports', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, status }) }) } catch { /* ignore */ }
+  }
+  const uploadStatement = async (id: string, file: File | null) => {
+    if (!file) return
+    setUploadingStmt(id)
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const up = await fetch('/api/upload', { method: 'POST', body: fd })
+      if (up.ok) {
+        const url = (await up.json()).url
+        setReports(prev => prev.map(r => (r.id === id ? { ...r, statementUrl: url } : r)))
+        await fetch('/api/expenses/cc-reports', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, statementUrl: url }) })
+      } else alert((await up.json()).error || 'Upload failed')
+    } catch { alert('Upload failed') }
+    setUploadingStmt('')
+  }
+  const deleteReport = async (id: string) => {
+    if (!confirm('Delete this CC report? The expense transactions themselves are not deleted.')) return
+    setReports(prev => prev.filter(r => r.id !== id))
+    try { await fetch(`/api/expenses/cc-reports?id=${id}`, { method: 'DELETE' }) } catch { /* ignore */ }
+  }
+
+  const years: number[] = []
+  for (let y = now.getFullYear() + 1; y >= now.getFullYear() - 4; y--) years.push(y)
+
+  if (cards.length === 0) {
+    return (
+      <div className="rounded-2xl border bg-white py-16 text-center" style={{ borderColor: 'var(--light-gray)' }}>
+        <CreditCard size={28} className="mx-auto mb-2" style={{ color: 'var(--mid-gray)' }} />
+        <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>No credit cards set up yet</p>
+        <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Add a credit card in Settings first (with its bank code), then charge one-time expenses to it.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Filters */}
+      <div className="flex items-end gap-3 flex-wrap">
+        <div>
+          <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Credit Card</label>
+          <select value={cardId} onChange={e => setCardId(e.target.value)}
+            className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)', minWidth: 230 }}>
+            <option value="">Select card…</option>
+            {cards.map(c => <option key={c.id} value={c.id}>{cardLabel(c)}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Month</label>
+          <select value={month} onChange={e => setMonth(Number(e.target.value))}
+            className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
+            {MONTHS.map((mLabel, i) => <option key={i} value={i + 1}>{mLabel}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Year</label>
+          <select value={year} onChange={e => setYear(Number(e.target.value))}
+            className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
+            {years.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {cardId && (
+        <>
+          {/* Report header / actions */}
+          <div className="rounded-2xl border bg-white p-4 flex items-center justify-between flex-wrap gap-3" style={{ borderColor: 'var(--light-gray)' }}>
+            <div>
+              <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{cardOf(cardId) ? cardLabel(cardOf(cardId)!) : ''} · {MONTHS[month - 1]} {year}</p>
+              {report ? (
+                <p className="text-lg font-bold font-mono" style={{ color: 'var(--charcoal)' }}>{report.refNumber}</p>
+              ) : (
+                <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>No CC report generated for this card &amp; month yet.</p>
+              )}
+              <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{txns.length} transaction(s) · Total <strong style={{ color: 'var(--charcoal)' }}>₱{peso(total)}</strong></p>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {!report && canWrite && (
+                <button onClick={createReport} disabled={creating}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+                  {creating ? <Loader2 size={14} className="animate-spin" /> : <CreditCard size={14} />} Create CC Report
+                </button>
+              )}
+              {report && (
+                <>
+                  <select value={report.status} disabled={!canWrite} onChange={e => setStatus(report.id, e.target.value)}
+                    className="px-3 py-2 rounded-xl border text-sm font-semibold" style={{ borderColor: 'var(--light-gray)', color: report.status === 'FILED' ? '#166534' : '#92400e' }}>
+                    <option value="FOR_FILING">For Filing</option>
+                    <option value="FILED">Filed</option>
+                  </select>
+                  {report.statementUrl && (
+                    <a href={report.statementUrl} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 px-3 py-2 rounded-xl text-sm font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                      <Eye size={14} /> Statement
+                    </a>
+                  )}
+                  {canWrite && (
+                    <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold text-white cursor-pointer" style={{ background: 'var(--teal)' }}>
+                      {uploadingStmt === report.id ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                      {report.statementUrl ? 'Replace statement' : 'Upload statement'}
+                      <input type="file" className="hidden" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv"
+                        onChange={ev => { uploadStatement(report.id, ev.target.files?.[0] || null); ev.target.value = '' }} />
+                    </label>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Transactions */}
+          <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)', maxHeight: '50vh' }}>
+            {loadingTxns ? (
+              <div className="flex items-center justify-center py-12"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} /></div>
+            ) : (
+              <table className="w-full text-xs">
+                <thead className="sticky top-0">
+                  <tr style={{ background: 'var(--off-white)' }}>
+                    {['PCV Number', 'Payee', 'Expense Date', 'Description', 'Account Title', 'Charged On', 'Amount'].map((h, i) => (
+                      <th key={i} className="px-3 py-2 text-left font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {txns.map(t => (
+                    <tr key={t.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                      <td className="px-3 py-2 font-mono whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{t.pcvNumber}</td>
+                      <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{t.requestor || ''}</td>
+                      <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{t.date ? String(t.date).slice(0, 10) : ''}</td>
+                      <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{t.description || ''}</td>
+                      <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{t.accountTitle || ''}</td>
+                      <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{t.paidAt ? String(t.paidAt).slice(0, 10) : ''}</td>
+                      <td className="px-3 py-2 text-right font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(num(t.grossAmount))}</td>
+                    </tr>
+                  ))}
+                  {txns.length === 0 && (
+                    <tr><td colSpan={7} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No credit-card charges for this card in {MONTHS[month - 1]} {year}.</td></tr>
+                  )}
+                  {txns.length > 0 && (
+                    <tr className="border-t-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                      <td colSpan={6} className="px-3 py-2 text-right font-bold" style={{ color: 'var(--charcoal)' }}>TOTAL</td>
+                      <td className="px-3 py-2 text-right font-bold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(total)}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* All saved CC reports */}
+      <div>
+        <h3 className="text-sm font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Saved CC Reports</h3>
+        <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+          <table className="w-full text-xs">
+            <thead>
+              <tr style={{ background: 'var(--off-white)' }}>
+                {['Reference', 'Card', 'Period', 'Status', 'Statement', ''].map((h, i) => (
+                  <th key={i} className="px-3 py-2 text-left font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {reports.map(r => {
+                const c = cardOf(r.cardId)
+                return (
+                  <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                    <td className="px-3 py-2 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{r.refNumber}</td>
+                    <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{c ? cardLabel(c) : r.bankCode}</td>
+                    <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{MONTHS[r.periodMonth - 1]} {r.periodYear}</td>
+                    <td className="px-3 py-2">
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold"
+                        style={r.status === 'FILED' ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>
+                        {r.status === 'FILED' ? 'Filed' : 'For Filing'}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2">
+                      {r.statementUrl
+                        ? <a href={r.statementUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline" style={{ color: 'var(--teal)' }}><Eye size={12} /> View</a>
+                        : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {canWrite && (
+                        <button onClick={() => deleteReport(r.id)} title="Delete report" className="p-1 rounded hover:bg-red-50">
+                          <Trash2 size={13} style={{ color: '#dc2626' }} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+              {reports.length === 0 && (
+                <tr><td colSpan={6} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No CC reports yet.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )
