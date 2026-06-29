@@ -9,7 +9,7 @@ const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE']
 const EDITABLE = [
   'requestor', 'department', 'pcfStatus', 'date', 'description', 'vatable',
   'siNumber', 'tinNumber', 'registeredName', 'registeredAddress', 'grossAmount',
-  'accountTitle', 'referenceNumber',
+  'accountTitle', 'referenceNumber', 'proofUrl',
 ] as const
 
 function pcvNumber(seq: number): string {

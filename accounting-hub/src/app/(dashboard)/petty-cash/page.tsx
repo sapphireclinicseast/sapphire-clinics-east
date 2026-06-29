@@ -33,6 +33,7 @@ interface Entry {
   grossAmount: string | number
   accountTitle: string | null
   referenceNumber: string | null
+  proofUrl: string | null
   reimbursementId: string | null
 }
 
@@ -99,6 +100,7 @@ export default function PettyCashPage() {
   const [generating, setGenerating] = useState(false)
   const [bankOptions, setBankOptions] = useState<string[]>([])
   const [payTarget, setPayTarget] = useState<Reimb | null>(null)
+  const [uploadingProof, setUploadingProof] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadEntries = useCallback(async (br: string) => {
@@ -236,6 +238,18 @@ export default function PettyCashPage() {
       else alert((await r.json()).error || 'Failed to add row')
     } catch { /* ignore */ }
     setAdding(false)
+  }
+
+  const uploadProof = async (id: string, file: File | null) => {
+    if (!file) return
+    setUploadingProof(id)
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const up = await fetch('/api/upload', { method: 'POST', body: fd })
+      if (up.ok) saveField(id, { proofUrl: (await up.json()).url }, false)
+      else alert((await up.json()).error || 'Upload failed')
+    } catch { alert('Upload failed') }
+    setUploadingProof('')
   }
 
   const deleteRow = async (id: string) => {
@@ -431,7 +445,7 @@ export default function PettyCashPage() {
             {loading ? (
               <div className="flex items-center justify-center py-16"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} /></div>
             ) : (
-              <table className="text-xs" style={{ borderCollapse: 'collapse', minWidth: 2440 }}>
+              <table className="text-xs" style={{ borderCollapse: 'collapse', minWidth: 2560 }}>
                 <thead className="sticky top-0 z-10">
                   <tr style={{ background: 'var(--off-white)' }}>
                     <th className="border-r border-b px-2 py-2 text-center" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
@@ -439,7 +453,7 @@ export default function PettyCashPage() {
                     </th>
                     {['PCV Number', 'Requestor', 'Department', 'PCF Status', 'Date', 'Description', 'Description for Hub',
                       'Vatable', 'SI Number', 'TIN Number', 'TIN Number 2', 'Branch Code', 'Registered name',
-                      'Registered Address', 'Gross Amount', 'Net of VAT', 'VAT Amount', 'Account Title', 'Reference Number', ''
+                      'Registered Address', 'Gross Amount', 'Net of VAT', 'VAT Amount', 'Account Title', 'Reference Number', 'Proof', ''
                     ].map((h, i) => (
                       <th key={i} className="border-r border-b px-2 py-2 text-left font-semibold whitespace-nowrap"
                         style={{ color: 'var(--charcoal)', borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
@@ -560,6 +574,25 @@ export default function PettyCashPage() {
                             onChange={ev => patchLocal(e.id, { referenceNumber: ev.target.value })}
                             onBlur={ev => saveField(e.id, { referenceNumber: ev.target.value }, false)} />
                         </td>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                          <div className="flex items-center gap-1 px-1 py-1 whitespace-nowrap">
+                            {e.proofUrl && (
+                              <a href={e.proofUrl} target="_blank" rel="noopener noreferrer" title="View proof"
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[11px]"
+                                style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                                <Eye size={12} /> View
+                              </a>
+                            )}
+                            {!lk && (
+                              <label className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] font-medium text-white cursor-pointer" style={{ background: 'var(--teal)' }}>
+                                {uploadingProof === e.id ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                                {e.proofUrl ? 'Replace' : 'Upload'}
+                                <input type="file" className="hidden" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv"
+                                  onChange={ev => { uploadProof(e.id, ev.target.files?.[0] || null); ev.target.value = '' }} />
+                              </label>
+                            )}
+                          </div>
+                        </td>
                         <td className="border-b px-1 text-center" style={{ borderColor: 'var(--light-gray)' }}>
                           {!lk && (
                             <button onClick={() => deleteRow(e.id)} title="Delete" className="p-1 rounded hover:bg-red-50">
@@ -571,7 +604,7 @@ export default function PettyCashPage() {
                     )
                   })}
                   {entries.length === 0 && (
-                    <tr><td colSpan={21} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>
+                    <tr><td colSpan={22} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>
                       No entries yet. Click &quot;Add Row&quot; to start.
                     </td></tr>
                   )}

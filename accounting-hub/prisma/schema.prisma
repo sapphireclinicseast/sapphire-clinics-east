@@ -1630,6 +1630,7 @@ model PettyCashEntry {
   grossAmount       Decimal  @default(0)
   accountTitle      String?
   referenceNumber   String?
+  proofUrl          String?
   reimbursementId   String?
   reimbursement     ReimbursementReport? @relation(fields: [reimbursementId], references: [id], onDelete: SetNull)
   createdById       String?

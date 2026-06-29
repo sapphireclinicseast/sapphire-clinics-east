@@ -24,9 +24,12 @@ export async function POST(req: Request) {
       'image/jpeg', 'image/png', 'image/webp', 'application/pdf',
       'application/msword',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/csv',
     ]
     if (!allowedTypes.includes(file.type)) {
-      return NextResponse.json({ error: 'File must be an image (JPG, PNG, WebP), PDF, or Word document' }, { status: 400 })
+      return NextResponse.json({ error: 'File must be an image (JPG, PNG, WebP), PDF, Word, or Excel document' }, { status: 400 })
     }
 
     // Max 10MB
