@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
-import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Search, ArrowUp, ArrowDown, Upload, Eye, Wallet, CreditCard } from 'lucide-react'
+import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Search, ArrowUp, ArrowDown, Upload, Eye, Wallet, CreditCard, CheckCircle2, Pencil } from 'lucide-react'
 
 // ── Constants ──────────────────────────────────────────────────
 const BRANCHES = [
@@ -50,6 +50,7 @@ interface Entry {
   creditCard: string | null
   payrollAccount: string | null
   paymentBankAccount: string | null
+  finalized: boolean
 }
 
 interface Card { id: string; branch: string; bank: string; cardNumber: string; bankCode: string }
@@ -243,7 +244,7 @@ export default function ExpensesPage() {
 
   const cellCls = 'w-full bg-transparent px-2 py-1.5 text-xs outline-none focus:bg-[var(--pale-teal)] rounded'
   const tdCls = 'border-r border-b align-top'
-  const locked = (e: Entry) => !!e.paidAt || !canWrite
+  const locked = (e: Entry) => !!e.paidAt || !!e.finalized || !canWrite
   const vatEditable = (e: Entry) => e.vatable === 'VAT' || e.vatable === 'Non-VAT' || e.vatable === 'NV'
 
   const q = search.trim().toLowerCase()
@@ -358,9 +359,9 @@ export default function ExpensesPage() {
                     const lk = locked(e)
                     const ve = vatEditable(e)
                     return (
-                      <tr key={e.id} style={{ background: e.paidAt ? '#c3ccd6' : '#fff' }}>
+                      <tr key={e.id} style={{ background: e.paidAt ? '#c3ccd6' : (e.finalized ? '#eaf7ee' : '#fff') }}>
                         <td className="border-r border-b text-center" style={{ borderColor: 'var(--light-gray)' }}>
-                          <input type="checkbox" checked={selected.has(e.id)} disabled={lk}
+                          <input type="checkbox" checked={selected.has(e.id)} disabled={!canWrite || !!e.paidAt}
                             onChange={() => toggleOne(e.id)} title={e.paidAt ? 'Locked (paid)' : ''} />
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
@@ -496,10 +497,20 @@ export default function ExpensesPage() {
                           </div>
                         </td>
                         <td className="border-b px-1 text-center" style={{ borderColor: 'var(--light-gray)' }}>
-                          {!lk && (
-                            <button onClick={() => deleteRow(e.id)} title="Delete" className="p-1 rounded hover:bg-red-50">
-                              <Trash2 size={13} style={{ color: '#dc2626' }} />
-                            </button>
+                          {canWrite && !e.paidAt && (
+                            <div className="flex items-center justify-center gap-0.5 whitespace-nowrap">
+                              <button onClick={() => saveField(e.id, { finalized: true }, false)} disabled={!!e.finalized}
+                                title={e.finalized ? 'Finalized' : 'Mark as finalized'} className="p-1 rounded hover:bg-green-50">
+                                <CheckCircle2 size={14} style={{ color: e.finalized ? '#16a34a' : '#9ca3af' }} />
+                              </button>
+                              <button onClick={() => saveField(e.id, { finalized: false }, false)} disabled={!e.finalized}
+                                title="Edit (re-open)" className="p-1 rounded hover:bg-teal-50 disabled:opacity-40">
+                                <Pencil size={13} style={{ color: 'var(--teal)' }} />
+                              </button>
+                              <button onClick={() => deleteRow(e.id)} title="Delete" className="p-1 rounded hover:bg-red-50">
+                                <Trash2 size={13} style={{ color: '#dc2626' }} />
+                              </button>
+                            </div>
                           )}
                         </td>
                       </tr>

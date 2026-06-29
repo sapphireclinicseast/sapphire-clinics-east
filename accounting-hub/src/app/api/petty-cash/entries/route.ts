@@ -9,7 +9,7 @@ const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', '
 const EDITABLE = [
   'requestor', 'department', 'pcfStatus', 'date', 'description', 'vatable',
   'siNumber', 'tinNumber', 'registeredName', 'registeredAddress', 'grossAmount',
-  'accountTitle', 'referenceNumber', 'proofUrl', 'validity',
+  'accountTitle', 'referenceNumber', 'proofUrl', 'validity', 'finalized',
 ] as const
 
 const PCV_BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VER', CEO: 'CEO' }

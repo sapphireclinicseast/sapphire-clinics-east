@@ -1634,6 +1634,7 @@ model PettyCashEntry {
   validity          String?
   branchAllocations Json?
   recordType        String   @default("PETTY_CASH")
+  finalized         Boolean  @default(false)
   paidAt            DateTime?
   paymentMethod     String?
   checkNumber       String?

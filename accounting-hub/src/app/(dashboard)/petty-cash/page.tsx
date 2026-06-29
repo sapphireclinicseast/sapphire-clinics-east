@@ -41,6 +41,7 @@ interface Entry {
   proofUrl: string | null
   branchAllocations: { branch: string; amount: number }[] | null
   reimbursementId: string | null
+  finalized: boolean
 }
 
 interface Reimb {
@@ -387,7 +388,7 @@ export default function PettyCashPage() {
 
   const cellCls = 'w-full bg-transparent px-2 py-1.5 text-xs outline-none focus:bg-[var(--pale-teal)] rounded'
   const tdCls = 'border-r border-b align-top'
-  const locked = (e: Entry) => !!e.reimbursementId || !canWrite
+  const locked = (e: Entry) => !!e.reimbursementId || !!e.finalized || !canWrite
   const vatEditable = (e: Entry) => e.vatable === 'VAT' || e.vatable === 'Non-VAT' || e.vatable === 'NV'
   const totalGross = entries.reduce((s, e) => s + num(e.grossAmount), 0)
 
@@ -494,9 +495,9 @@ export default function PettyCashPage() {
                     const lk = locked(e)
                     const ve = vatEditable(e)
                     return (
-                      <tr key={e.id} style={{ background: e.reimbursementId ? '#c3ccd6' : '#fff' }}>
+                      <tr key={e.id} style={{ background: e.reimbursementId ? '#c3ccd6' : (e.finalized ? '#eaf7ee' : '#fff') }}>
                         <td className="border-r border-b text-center" style={{ borderColor: 'var(--light-gray)' }}>
-                          <input type="checkbox" checked={selected.has(e.id)} disabled={lk}
+                          <input type="checkbox" checked={selected.has(e.id)} disabled={!canWrite || !!e.reimbursementId}
                             onChange={() => toggleOne(e.id)} title={e.reimbursementId ? 'Locked (in a reimbursement report)' : ''} />
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
@@ -651,10 +652,20 @@ export default function PettyCashPage() {
                           </div>
                         </td>
                         <td className="border-b px-1 text-center" style={{ borderColor: 'var(--light-gray)' }}>
-                          {!lk && (
-                            <button onClick={() => deleteRow(e.id)} title="Delete" className="p-1 rounded hover:bg-red-50">
-                              <Trash2 size={13} style={{ color: '#dc2626' }} />
-                            </button>
+                          {canWrite && !e.reimbursementId && (
+                            <div className="flex items-center justify-center gap-0.5 whitespace-nowrap">
+                              <button onClick={() => saveField(e.id, { finalized: true }, false)} disabled={!!e.finalized}
+                                title={e.finalized ? 'Finalized' : 'Mark as finalized'} className="p-1 rounded hover:bg-green-50">
+                                <CheckCircle2 size={14} style={{ color: e.finalized ? '#16a34a' : '#9ca3af' }} />
+                              </button>
+                              <button onClick={() => saveField(e.id, { finalized: false }, false)} disabled={!e.finalized}
+                                title="Edit (re-open)" className="p-1 rounded hover:bg-teal-50 disabled:opacity-40">
+                                <Pencil size={13} style={{ color: 'var(--teal)' }} />
+                              </button>
+                              <button onClick={() => deleteRow(e.id)} title="Delete" className="p-1 rounded hover:bg-red-50">
+                                <Trash2 size={13} style={{ color: '#dc2626' }} />
+                              </button>
+                            </div>
                           )}
                         </td>
                       </tr>
