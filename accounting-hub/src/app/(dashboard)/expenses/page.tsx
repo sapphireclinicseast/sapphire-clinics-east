@@ -43,6 +43,7 @@ interface Entry {
   grossAmount: string | number
   accountTitle: string | null
   proofUrl: string | null
+  proofUrls: string[] | null
   recordType: string | null
   paidAt: string | null
   paymentMethod: string | null
@@ -199,15 +200,26 @@ export default function ExpensesPage() {
     setAdding(false)
   }
 
+  const proofsOf = (e: Entry): string[] => {
+    const arr = Array.isArray(e.proofUrls) ? e.proofUrls : []
+    if (arr.length) return arr
+    return e.proofUrl ? [e.proofUrl] : []
+  }
   const uploadProof = async (id: string, file: File | null) => {
     if (!file) return
+    const e0 = entries.find(x => x.id === id)
+    const cur = e0 ? proofsOf(e0) : []
     setUploadingProof(id)
     setUploadPct(p => ({ ...p, [id]: 0 }))
     const res = await uploadWithProgress(file, pct => setUploadPct(p => ({ ...p, [id]: pct })))
-    if (res.ok && res.url) saveField(id, { proofUrl: res.url }, false)
+    if (res.ok && res.url) { const next = [...cur, res.url]; saveField(id, { proofUrls: next, proofUrl: next[0] }, false) }
     else alert(res.error || 'Upload failed')
     setUploadingProof('')
     setUploadPct(p => { const n = { ...p }; delete n[id]; return n })
+  }
+  const removeProof = (e: Entry, url: string) => {
+    const next = proofsOf(e).filter(u => u !== url)
+    saveField(e.id, { proofUrls: next, proofUrl: next[0] ?? null }, false)
   }
 
   const deleteRow = async (id: string) => {
@@ -494,18 +506,25 @@ export default function ExpensesPage() {
                           )}
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <div className="flex items-center gap-1 px-1 py-1 whitespace-nowrap">
-                            {e.proofUrl && (
-                              <a href={e.proofUrl} target="_blank" rel="noopener noreferrer" title="View proof"
-                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[11px]"
-                                style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
-                                <Eye size={12} /> View
-                              </a>
-                            )}
+                          <div className="flex flex-col gap-1 px-1 py-1" style={{ minWidth: 120 }}>
+                            {proofsOf(e).map((url, i) => (
+                              <div key={url} className="flex items-center gap-1 whitespace-nowrap">
+                                <a href={url} target="_blank" rel="noopener noreferrer" title="View proof"
+                                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[11px]"
+                                  style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                                  <Eye size={12} /> {i + 1}
+                                </a>
+                                {!lk && (
+                                  <button onClick={() => removeProof(e, url)} title="Remove this proof" className="p-0.5 rounded hover:bg-red-50">
+                                    <X size={12} style={{ color: '#dc2626' }} />
+                                  </button>
+                                )}
+                              </div>
+                            ))}
                             {!lk && (
-                              <label className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] font-medium text-white cursor-pointer" style={{ background: 'var(--teal)' }}>
+                              <label className="inline-flex items-center justify-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] font-medium text-white cursor-pointer" style={{ background: 'var(--teal)' }}>
                                 {uploadingProof === e.id ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                                {uploadingProof === e.id ? `${uploadPct[e.id] ?? 0}%` : (e.proofUrl ? 'Replace' : 'Upload')}
+                                {uploadingProof === e.id ? `${uploadPct[e.id] ?? 0}%` : (proofsOf(e).length ? 'Add proof' : 'Upload')}
                                 <input type="file" className="hidden" disabled={uploadingProof === e.id} accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv"
                                   onChange={ev => { uploadProof(e.id, ev.target.files?.[0] || null); ev.target.value = '' }} />
                               </label>

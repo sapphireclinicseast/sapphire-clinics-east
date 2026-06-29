@@ -1631,6 +1631,7 @@ model PettyCashEntry {
   accountTitle      String?
   referenceNumber   String?
   proofUrl          String?
+  proofUrls         Json?
   validity          String?
   branchAllocations Json?
   recordType        String   @default("PETTY_CASH")

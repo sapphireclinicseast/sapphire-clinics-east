@@ -9,7 +9,7 @@ const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', '
 const EDITABLE = [
   'requestor', 'department', 'pcfStatus', 'date', 'description', 'vatable',
   'siNumber', 'tinNumber', 'registeredName', 'registeredAddress', 'grossAmount',
-  'accountTitle', 'referenceNumber', 'proofUrl', 'validity', 'finalized',
+  'accountTitle', 'referenceNumber', 'proofUrl', 'proofUrls', 'validity', 'finalized',
 ] as const
 
 const PCV_BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VER', CEO: 'CEO' }
@@ -100,6 +100,7 @@ export async function PUT(req: Request) {
       }
     }
     if ('branchAllocations' in body) data.branchAllocations = body.branchAllocations ?? null
+    if ('proofUrls' in body) data.proofUrls = body.proofUrls ?? null
     const entry = await prisma.pettyCashEntry.update({ where: { id }, data })
     return NextResponse.json(entry)
   } catch (e) {
