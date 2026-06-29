@@ -23,12 +23,14 @@ export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const branch = new URL(req.url).searchParams.get('branch') || ''
+  const sp = new URL(req.url).searchParams
+  const branch = sp.get('branch') || ''
+  const recordType = sp.get('recordType') || 'PETTY_CASH'
   if (!VALID_BRANCHES.includes(branch)) {
     return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
   }
   const entries = await prisma.pettyCashEntry.findMany({
-    where: { branch },
+    where: { branch, recordType },
     orderBy: { pcvSeq: 'asc' },
   })
   return NextResponse.json(entries)
@@ -41,7 +43,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { branch } = await req.json()
+    const body = await req.json()
+    const branch = body.branch
+    const recordType = ['PETTY_CASH', 'RECURRING', 'ONE_TIME'].includes(body.recordType) ? body.recordType : 'PETTY_CASH'
     if (!VALID_BRANCHES.includes(branch)) {
       return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
     }
@@ -54,6 +58,7 @@ export async function POST(req: Request) {
       return tx.pettyCashEntry.create({
         data: {
           branch,
+          recordType,
           pcvNumber: pcvNumber(branch, seq),
           pcvSeq: seq,
           date: new Date(),
@@ -81,8 +86,8 @@ export async function PUT(req: Request) {
 
     const existing = await prisma.pettyCashEntry.findUnique({ where: { id } })
     if (!existing) return NextResponse.json({ error: 'Entry not found' }, { status: 404 })
-    if (existing.reimbursementId) {
-      return NextResponse.json({ error: 'Locked: entry is part of a reimbursement report' }, { status: 409 })
+    if (existing.reimbursementId || existing.paidAt) {
+      return NextResponse.json({ error: 'Locked: entry has been paid / reimbursed' }, { status: 409 })
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

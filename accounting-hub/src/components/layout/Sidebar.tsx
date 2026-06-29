@@ -16,6 +16,7 @@ import {
   Stethoscope,
   FileCheck,
   Receipt,
+  CreditCard,
   Building2,
   PackageSearch,
   TrendingUp,
@@ -64,6 +65,7 @@ const NAV_SECTIONS: NavSection[] = [
     label: 'Transactions',
     items: [
       { href: '/petty-cash', icon: Wallet, label: 'Petty Cash', roles: FULL_ACCESS },
+      { href: '/expenses', icon: CreditCard, label: 'Expenses', roles: FULL_ACCESS },
       { href: '/inventory', icon: Package, label: 'Inventory & Procurement', roles: FULL_ACCESS },
       { href: '/asset-management', icon: Building2, label: 'Asset Management', roles: SERVICES_POS_ACCESS },
       { href: '/services', icon: Stethoscope, label: 'Services', roles: SERVICES_POS_ACCESS },

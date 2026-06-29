@@ -1633,6 +1633,13 @@ model PettyCashEntry {
   proofUrl          String?
   validity          String?
   branchAllocations Json?
+  recordType        String   @default("PETTY_CASH")
+  paidAt            DateTime?
+  paymentMethod     String?
+  checkNumber       String?
+  creditCard        String?
+  payrollAccount    String?
+  paymentBankAccount String?
   reimbursementId   String?
   reimbursement     ReimbursementReport? @relation(fields: [reimbursementId], references: [id], onDelete: SetNull)
   createdById       String?
@@ -1642,6 +1649,7 @@ model PettyCashEntry {
   @@unique([branch, pcvNumber])
   @@index([branch])
   @@index([reimbursementId])
+  @@index([recordType])
 }
 
 model ReimbursementReport {
@@ -1673,4 +1681,16 @@ model PettyCashSettings {
   nextReimbSeq Int   @default(1)
   requestors Json     @default("[]")
   updatedAt  DateTime @updatedAt @default(now())
+}
+
+model CreditCard {
+  id         String   @id @default(cuid())
+  branch     String
+  bank       String
+  cardNumber String
+  bankCode   String
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  @@index([branch])
 }
