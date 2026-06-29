@@ -91,7 +91,7 @@ export async function GET(req: Request) {
     if (department) consultantWhere.department = department
     if (consultantId) consultantWhere.id = consultantId
 
-    const consultants = await prisma.consultant.findMany({
+    const consultantsRaw = await prisma.consultant.findMany({
       where: consultantWhere,
       include: {
         unitPayRates: {
@@ -100,6 +100,24 @@ export async function GET(req: Request) {
       },
       orderBy: { name: 'asc' },
     })
+
+    // Exclude anyone who is on the EMPLOYEE payroll — admin/clinician staff get
+    // synced into both tables, but employees are paid via employee payroll, not
+    // here. Match on externalStaffId (reliable) or "LASTNAME, FIRSTNAME"|branch.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const empWhere: any = { isActive: true }
+    if (branch) empWhere.branch = branch
+    else if (allowed) empWhere.branch = { in: allowed }
+    const employees = await prisma.employee.findMany({
+      where: empWhere,
+      select: { externalStaffId: true, firstName: true, lastName: true, branch: true },
+    })
+    const empExtIds = new Set(employees.map(e => e.externalStaffId).filter(Boolean) as string[])
+    const empNameKeys = new Set(employees.map(e => `${e.lastName}, ${e.firstName}`.trim().toUpperCase() + '|' + e.branch))
+    const consultants = consultantsRaw.filter(c =>
+      !(c.externalStaffId && empExtIds.has(c.externalStaffId)) &&
+      !empNameKeys.has(`${c.name}`.trim().toUpperCase() + '|' + c.branch)
+    )
 
     // Get all orders in the cutoff period
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
