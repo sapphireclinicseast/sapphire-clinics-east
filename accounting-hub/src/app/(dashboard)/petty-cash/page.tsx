@@ -16,6 +16,7 @@ const DEPARTMENTS = ['ADMIN', 'PT', 'OT', 'SLP', 'SPED', 'PSYCH', 'MD', 'ORTHOSI
 const PCF_STATUS = ['Unliquidated', 'For Replenishment', 'Cancelled', 'Missing']
 const VATABLE = ['VAT', 'Non-VAT']
 const VALIDITY = ['Valid', 'Invalid', 'Cancelled']
+const PAYMENT_METHODS = ['Check deposit', 'Check encashment to deposit as cash', "Deposit to admin officer's bank account"]
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
 interface Entry {
@@ -48,6 +49,7 @@ interface Reimb {
   grossTotal: string | number
   status: string
   paidAt: string | null
+  paymentMethod: string | null
   debitAccount: string | null
   depositAccount: string | null
   proofUrl: string | null
@@ -359,7 +361,7 @@ export default function PettyCashPage() {
     } catch { /* ignore */ }
   }
 
-  const recordPaid = async (rep: Reimb, debitAccount: string, depositAccount: string, file: File | null) => {
+  const recordPaid = async (rep: Reimb, debitAccount: string, depositAccount: string, file: File | null, datePaid: string, paymentMethod: string) => {
     let proofUrl: string | null = rep.proofUrl ?? null
     if (file) {
       const fd = new FormData(); fd.append('file', file)
@@ -369,7 +371,7 @@ export default function PettyCashPage() {
     }
     const res = await fetch('/api/petty-cash/reimbursements', {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: rep.id, action: 'pay', debitAccount, depositAccount, proofUrl }),
+      body: JSON.stringify({ id: rep.id, action: 'pay', debitAccount, depositAccount, proofUrl, datePaid, paymentMethod }),
     })
     if (!res.ok) { alert((await res.json()).error || 'Failed to record payment'); throw new Error('pay') }
     await loadReimbursements(branch)
@@ -701,6 +703,11 @@ export default function PettyCashPage() {
                       style={r.status === 'PAID' ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>
                       {r.status === 'PAID' ? 'Paid' : 'Pending'}
                     </span>
+                    {r.status === 'PAID' && r.paidAt && (
+                      <div className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                        {new Date(r.paidAt).toLocaleDateString('en-PH')}{r.paymentMethod ? ` · ${r.paymentMethod}` : ''}
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
                     <button onClick={() => downloadReimbursementPdf(r)} title="Download PDF"
@@ -813,17 +820,21 @@ function ReimbModal({ entries, generating, onClose, onGenerate }: {
 
 function RecordPaidModal({ report, bankOptions, onClose, onPay }: {
   report: Reimb; bankOptions: string[]
-  onClose: () => void; onPay: (rep: Reimb, debit: string, deposit: string, file: File | null) => Promise<void>
+  onClose: () => void; onPay: (rep: Reimb, debit: string, deposit: string, file: File | null, datePaid: string, paymentMethod: string) => Promise<void>
 }) {
   const isEdit = report.status === 'PAID'
   const [debit, setDebit] = useState(report.debitAccount || '')
   const [deposit, setDeposit] = useState(report.depositAccount || '')
+  const [datePaid, setDatePaid] = useState(report.paidAt ? String(report.paidAt).slice(0, 10) : new Date().toISOString().slice(0, 10))
+  const [paymentMethod, setPaymentMethod] = useState(report.paymentMethod || '')
   const [file, setFile] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
   const submit = async () => {
+    if (!datePaid) { alert('Enter the Date Paid.'); return }
+    if (!paymentMethod) { alert('Select a Payment Method.'); return }
     if (!debit || !deposit) { alert('Select both the debit (from) and deposit (to) accounts.'); return }
     setSaving(true)
-    try { await onPay(report, debit, deposit, file); onClose() } catch { /* handled in onPay */ }
+    try { await onPay(report, debit, deposit, file, datePaid, paymentMethod); onClose() } catch { /* handled in onPay */ }
     setSaving(false)
   }
   return (
@@ -833,6 +844,17 @@ function RecordPaidModal({ report, bankOptions, onClose, onPay }: {
           <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{isEdit ? 'Edit Payment Details' : 'Record as Paid'} — {report.refNumber}</h2>
           <button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
         </div>
+
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Date Paid</label>
+        <input type="date" value={datePaid} onChange={e => setDatePaid(e.target.value)}
+          className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Payment Method</label>
+        <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}
+          className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }}>
+          <option value="">Select method…</option>
+          {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
 
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Debited from (bank account)</label>
         <select value={debit} onChange={e => setDebit(e.target.value)}

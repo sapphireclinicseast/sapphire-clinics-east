@@ -1653,6 +1653,7 @@ model ReimbursementReport {
   status         String   @default("PENDING") // PENDING | PAID
   pdfData        String?  // base64 data URI
   paidAt         DateTime?
+  paymentMethod  String?
   debitAccount   String?
   depositAccount String?
   proofUrl       String?
