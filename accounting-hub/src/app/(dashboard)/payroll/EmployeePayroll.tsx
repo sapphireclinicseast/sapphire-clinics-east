@@ -4351,12 +4351,19 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                     </select>
                   </div>
                   <div>
-                    <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Branch</label>
-                    <select value={holidayForm.branch} onChange={e => setHolidayForm(f => ({ ...f, branch: e.target.value }))}
-                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }}>
-                      <option value="">All Branches</option>
-                      {BRANCHES.filter(b => b.value).map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
-                    </select>
+                    <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Applies to</label>
+                    <label className="flex items-center gap-2 cursor-pointer mb-2">
+                      <input type="checkbox" checked={holidayForm.branch === ''}
+                        onChange={e => setHolidayForm(f => ({ ...f, branch: e.target.checked ? '' : (BRANCHES.find(b => b.value)?.value || 'SBEA') }))} />
+                      <span>All branches</span>
+                    </label>
+                    {holidayForm.branch !== '' && (
+                      <select value={holidayForm.branch} onChange={e => setHolidayForm(f => ({ ...f, branch: e.target.value }))}
+                        className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }}>
+                        {BRANCHES.filter(b => b.value).map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+                      </select>
+                    )}
+                    <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Uncheck to apply this holiday&apos;s premium pay to a specific branch only (e.g. a city-specific holiday).</p>
                   </div>
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" checked={holidayForm.isRecurring} onChange={e => setHolidayForm(f => ({ ...f, isRecurring: e.target.checked }))} />

@@ -81,10 +81,20 @@ export async function POST(req: Request) {
   const maxDate = new Date(Math.max(...phtDates.map(d => d.getTime())))
   maxDate.setDate(maxDate.getDate() + 1)
 
+  // Only holidays that apply to this branch: all-branches (branch=null) + this branch's own.
   const holidays = await prisma.holiday.findMany({
-    where: { date: { gte: minDate, lt: maxDate } },
+    where: {
+      date: { gte: minDate, lt: maxDate },
+      OR: [{ branch: null }, ...(branch ? [{ branch }] : [])],
+    },
   })
-  const holidayMap = new Map(holidays.map(h => [h.date.toISOString().split('T')[0], h]))
+  // A branch-specific holiday overrides an all-branches one on the same date for this branch.
+  const holidayMap = new Map<string, (typeof holidays)[number]>()
+  for (const h of holidays) {
+    const key = h.date.toISOString().split('T')[0]
+    const existing = holidayMap.get(key)
+    if (!existing || (h.branch && !existing.branch)) holidayMap.set(key, h)
+  }
 
   // Helper: get Philippine date string (UTC+8) from a Date
   const toPHTDateKey = (d: Date) => {
