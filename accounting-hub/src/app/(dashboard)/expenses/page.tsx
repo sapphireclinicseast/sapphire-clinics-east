@@ -73,6 +73,22 @@ const descForHub = (e: Entry) => (e.description ? `${e.pcvNumber}; ${e.descripti
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const cardLabel = (c: Card) => `${c.bank} •••• ${c.cardNumber.slice(-4)} (${c.bankCode})`
 
+// Upload via XHR so we can report upload progress (0–100%).
+function uploadWithProgress(file: File, onProgress: (pct: number) => void): Promise<{ ok: boolean; url?: string; error?: string }> {
+  return new Promise(resolve => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', '/api/upload')
+    xhr.upload.onprogress = ev => { if (ev.lengthComputable) onProgress(Math.round((ev.loaded / ev.total) * 100)) }
+    xhr.onload = () => {
+      try { const d = JSON.parse(xhr.responseText || '{}'); resolve({ ...d, ok: xhr.status >= 200 && xhr.status < 300 }) }
+      catch { resolve({ ok: false, error: 'Upload failed' }) }
+    }
+    xhr.onerror = () => resolve({ ok: false, error: 'Upload failed' })
+    const fd = new FormData(); fd.append('file', file)
+    xhr.send(fd)
+  })
+}
+
 export default function ExpensesPage() {
   const { data: session } = useSession()
   const canWrite = WRITE_ROLES.includes((session?.user as { role?: string })?.role || '')
@@ -93,6 +109,7 @@ export default function ExpensesPage() {
   const [paying, setPaying] = useState(false)
   const [search, setSearch] = useState('')
   const [uploadingProof, setUploadingProof] = useState('')
+  const [uploadPct, setUploadPct] = useState<Record<string, number>>({})
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const recordType = TABS.find(t => t.key === tab)?.recordType || ''
@@ -185,13 +202,12 @@ export default function ExpensesPage() {
   const uploadProof = async (id: string, file: File | null) => {
     if (!file) return
     setUploadingProof(id)
-    try {
-      const fd = new FormData(); fd.append('file', file)
-      const up = await fetch('/api/upload', { method: 'POST', body: fd })
-      if (up.ok) saveField(id, { proofUrl: (await up.json()).url }, false)
-      else alert((await up.json()).error || 'Upload failed')
-    } catch { alert('Upload failed') }
+    setUploadPct(p => ({ ...p, [id]: 0 }))
+    const res = await uploadWithProgress(file, pct => setUploadPct(p => ({ ...p, [id]: pct })))
+    if (res.ok && res.url) saveField(id, { proofUrl: res.url }, false)
+    else alert(res.error || 'Upload failed')
     setUploadingProof('')
+    setUploadPct(p => { const n = { ...p }; delete n[id]; return n })
   }
 
   const deleteRow = async (id: string) => {
@@ -489,8 +505,8 @@ export default function ExpensesPage() {
                             {!lk && (
                               <label className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] font-medium text-white cursor-pointer" style={{ background: 'var(--teal)' }}>
                                 {uploadingProof === e.id ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                                {e.proofUrl ? 'Replace' : 'Upload'}
-                                <input type="file" className="hidden" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv"
+                                {uploadingProof === e.id ? `${uploadPct[e.id] ?? 0}%` : (e.proofUrl ? 'Replace' : 'Upload')}
+                                <input type="file" className="hidden" disabled={uploadingProof === e.id} accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv"
                                   onChange={ev => { uploadProof(e.id, ev.target.files?.[0] || null); ev.target.value = '' }} />
                               </label>
                             )}
