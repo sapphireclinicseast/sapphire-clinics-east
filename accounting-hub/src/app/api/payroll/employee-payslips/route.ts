@@ -22,6 +22,38 @@ function fmtDateStr(dt: Date): string {
   return dt.toISOString().substring(0, 10)
 }
 
+/**
+ * Re-mark timekeeping records' holiday flags from the branch-filtered Holiday
+ * table at generation time. This makes payslip generation authoritative for
+ * holidays so it self-corrects on "Regenerate": a record stamped as a holiday
+ * at upload time is cleared if that date's holiday is actually for a different
+ * branch (e.g. a Greenhills-only holiday should not pay East employees), and a
+ * branch-specific holiday wins over an all-branches one on the same date.
+ */
+async function applyBranchHolidays(
+  records: { date: Date; isHoliday: boolean; holidayType: string | null }[],
+  qBranch: string,
+): Promise<void> {
+  if (records.length === 0) return
+  const min = new Date(Math.min(...records.map(r => r.date.getTime())))
+  const max = new Date(Math.max(...records.map(r => r.date.getTime())))
+  max.setUTCDate(max.getUTCDate() + 1)
+  const hols = await prisma.holiday.findMany({
+    where: { date: { gte: min, lt: max }, OR: [{ branch: null }, ...(qBranch ? [{ branch: qBranch }] : [])] },
+  })
+  const byDate = new Map<string, { type: string; branchSpecific: boolean }>()
+  for (const h of hols) {
+    const k = h.date.toISOString().substring(0, 10)
+    const ex = byDate.get(k)
+    if (!ex || (h.branch && !ex.branchSpecific)) byDate.set(k, { type: h.holidayType, branchSpecific: !!h.branch })
+  }
+  for (const r of records) {
+    const h = byDate.get(r.date.toISOString().substring(0, 10)) || null
+    r.isHoliday = !!h
+    r.holidayType = h ? h.type : null
+  }
+}
+
 /** Compute cutoff start/end Dates from settings */
 function cutoffDateRange(
   settings: { cutoff1Start: number; cutoff1End: number; cutoff2Start: number; cutoff2End: number; cutoff2EndLastDay: boolean },
@@ -181,6 +213,7 @@ export async function POST(req: Request) {
     },
     orderBy: { date: 'asc' },
   })
+  await applyBranchHolidays(records, qBranch)
 
   // Fetch approved OVERTIME requests for all employees in this branch for the cutoff period
   // OT is only paid if the employee has an approved OT request covering that date
@@ -732,6 +765,7 @@ export async function PATCH(req: Request) {
       },
       orderBy: { date: 'asc' },
     })
+    await applyBranchHolidays(empRecords, qBranch)
 
     // Approved OT requests
     const otRequests = await prisma.employeeRequest.findMany({
