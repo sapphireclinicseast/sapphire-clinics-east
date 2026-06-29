@@ -1631,6 +1631,7 @@ model PettyCashEntry {
   accountTitle      String?
   referenceNumber   String?
   proofUrl          String?
+  branchAllocations Json?
   reimbursementId   String?
   reimbursement     ReimbursementReport? @relation(fields: [reimbursementId], references: [id], onDelete: SetNull)
   createdById       String?

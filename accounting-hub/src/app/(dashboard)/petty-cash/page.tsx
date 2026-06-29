@@ -9,7 +9,9 @@ const BRANCHES = [
   { code: 'AHEA', value: 'SANDBOX_EAST', label: 'AHEA' },
   { code: 'AHGH', value: 'SANDBOX_GREENHILLS', label: 'AHGH' },
   { code: 'VER', value: 'VERDANA_STORE', label: 'VERDANA' },
+  { code: 'CEO', value: 'CEO', label: 'CEO' },
 ]
+const ALLOC_BRANCHES = BRANCHES.filter(b => b.value !== 'CEO')
 const DEPARTMENTS = ['ADMIN', 'PT', 'OT', 'SLP', 'SPED', 'PSYCH', 'MD', 'ORTHOSIS']
 const PCF_STATUS = ['Unliquidated', 'For Replenishment', 'Cancelled', 'Missing']
 const VATABLE = ['VAT', 'NV', 'Invalid', 'Cancelled']
@@ -34,6 +36,7 @@ interface Entry {
   accountTitle: string | null
   referenceNumber: string | null
   proofUrl: string | null
+  branchAllocations: { branch: string; amount: number }[] | null
   reimbursementId: string | null
 }
 
@@ -238,6 +241,25 @@ export default function PettyCashPage() {
       else alert((await r.json()).error || 'Failed to add row')
     } catch { /* ignore */ }
     setAdding(false)
+  }
+
+  const getAllocArr = (e: Entry) => (Array.isArray(e.branchAllocations) ? e.branchAllocations : [])
+  const allocOf = (e: Entry, bv: string) => getAllocArr(e).find(x => x.branch === bv)?.amount
+  const allocSum = (e: Entry) => getAllocArr(e).reduce((sm, a) => sm + (Number(a.amount) || 0), 0)
+  const saveAlloc = (e: Entry, arr: { branch: string; amount: number }[], debounce = false) => saveField(e.id, { branchAllocations: arr }, debounce)
+  const toggleAlloc = (e: Entry, bv: string) => {
+    const arr = getAllocArr(e).slice()
+    const i = arr.findIndex(x => x.branch === bv)
+    if (i >= 0) arr.splice(i, 1); else arr.push({ branch: bv, amount: 0 })
+    if (arr.length === 1) arr[0].amount = num(e.grossAmount)
+    saveAlloc(e, arr)
+  }
+  const setAllocAmt = (e: Entry, bv: string, val: string) => {
+    const arr = getAllocArr(e).slice()
+    const amt = Number(val) || 0
+    const i = arr.findIndex(x => x.branch === bv)
+    if (i >= 0) arr[i] = { branch: bv, amount: amt }; else arr.push({ branch: bv, amount: amt })
+    saveAlloc(e, arr, true)
   }
 
   const uploadProof = async (id: string, file: File | null) => {
@@ -453,7 +475,7 @@ export default function PettyCashPage() {
                     </th>
                     {['PCV Number', 'Requestor', 'Department', 'PCF Status', 'Date', 'Description', 'Description for Hub',
                       'Vatable', 'SI Number', 'TIN Number', 'TIN Number 2', 'Branch Code', 'Registered name',
-                      'Registered Address', 'Gross Amount', 'Net of VAT', 'VAT Amount', 'Account Title', 'Reference Number', 'Proof', ''
+                      'Registered Address', 'Gross Amount', 'Net of VAT', 'VAT Amount', 'Account Title', 'Reference Number', ...(branch === 'CEO' ? ['Branch (allocations)'] : []), 'Proof', ''
                     ].map((h, i) => (
                       <th key={i} className="border-r border-b px-2 py-2 text-left font-semibold whitespace-nowrap"
                         style={{ color: 'var(--charcoal)', borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
@@ -574,6 +596,29 @@ export default function PettyCashPage() {
                             onChange={ev => patchLocal(e.id, { referenceNumber: ev.target.value })}
                             onBlur={ev => saveField(e.id, { referenceNumber: ev.target.value }, false)} />
                         </td>
+                        {branch === 'CEO' && (
+                          <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                            <div className="px-1 py-1" style={{ minWidth: 210 }}>
+                              {ALLOC_BRANCHES.map(b => {
+                                const checked = allocOf(e, b.value) !== undefined
+                                return (
+                                  <div key={b.value} className="flex items-center gap-1 mb-0.5">
+                                    <label className="flex items-center gap-1 text-[11px]" style={{ minWidth: 56 }}>
+                                      <input type="checkbox" checked={checked} disabled={lk} onChange={() => toggleAlloc(e, b.value)} /> {b.label}
+                                    </label>
+                                    <input type="number" step="0.01" disabled={lk || !checked} placeholder="0"
+                                      value={checked ? String(allocOf(e, b.value) ?? '') : ''}
+                                      onChange={ev => setAllocAmt(e, b.value, ev.target.value)}
+                                      className="w-20 px-1 py-0.5 text-[11px] border rounded text-right" style={{ borderColor: 'var(--light-gray)' }} />
+                                  </div>
+                                )
+                              })}
+                              <div className="text-[10px] mt-0.5" style={{ color: Math.abs(allocSum(e) - num(e.grossAmount)) < 0.01 ? 'var(--mid-gray)' : '#dc2626' }}>
+                                &Sigma; {peso(allocSum(e))} / {peso(num(e.grossAmount))}
+                              </div>
+                            </div>
+                          </td>
+                        )}
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
                           <div className="flex items-center gap-1 px-1 py-1 whitespace-nowrap">
                             {e.proofUrl && (
@@ -604,7 +649,7 @@ export default function PettyCashPage() {
                     )
                   })}
                   {entries.length === 0 && (
-                    <tr><td colSpan={22} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>
+                    <tr><td colSpan={branch === 'CEO' ? 23 : 22} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>
                       No entries yet. Click &quot;Add Row&quot; to start.
                     </td></tr>
                   )}

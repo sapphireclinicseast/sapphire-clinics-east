@@ -366,7 +366,7 @@ export async function GET(req: Request) {
         where: {
           accountTitle: accountKey,
           date: { gte: startDate, lt: endDate },
-          ...(branch !== 'ALL' ? { branch: orderBranch } : {}),
+          ...(branch !== 'ALL' ? { branch: orderBranch } : { branch: { not: 'CEO' } }),
           pcfStatus: { not: 'Cancelled' },
           NOT: { vatable: 'Cancelled' },
         },
@@ -382,6 +382,34 @@ export async function GET(req: Request) {
           branch: 'PETTY CASH',
           amount: net,
         })
+      }
+      // CEO petty cash allocated to this expense account for the filtered branch
+      const ceoRows = await prisma.pettyCashEntry.findMany({
+        where: {
+          accountTitle: accountKey, branch: 'CEO',
+          date: { gte: startDate, lt: endDate },
+          pcfStatus: { not: 'Cancelled' },
+          NOT: { vatable: 'Cancelled' },
+        },
+        orderBy: { date: 'asc' },
+      })
+      for (const e of ceoRows) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const allocs = Array.isArray(e.branchAllocations) ? (e.branchAllocations as any[]) : []
+        for (const a of allocs) {
+          const ab = a?.branch as string | undefined
+          const ag = Number(a?.amount) || 0
+          if (!ab || !ag) continue
+          if (branch !== 'ALL' && ab !== orderBranch) continue
+          const netA = e.vatable === 'VAT' ? ag / 1.12 : ag
+          if (!netA) continue
+          items.push({
+            date: e.date ? e.date.toISOString().split('T')[0] : '',
+            type: `${e.pcvNumber} — ${e.description || ''} · CEO Petty Cash`,
+            branch: 'CEO',
+            amount: netA,
+          })
+        }
       }
       items.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
 

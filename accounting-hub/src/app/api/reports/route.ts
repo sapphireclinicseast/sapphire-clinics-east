@@ -673,7 +673,7 @@ export async function GET(req: Request) {
     const pettyCashEntries = await prisma.pettyCashEntry.findMany({
       where: {
         date: { gte: startDate, lt: endDate },
-        ...(branch !== 'ALL' ? { branch: orderBranch } : {}),
+        ...(branch !== 'ALL' ? { branch: orderBranch } : { branch: { not: 'CEO' } }),
         pcfStatus: { not: 'Cancelled' },
         NOT: { vatable: 'Cancelled' },
       },
@@ -689,6 +689,29 @@ export async function GET(req: Request) {
       if (!monthly[m]) continue
       monthly[m].expenseByAccount[e.accountTitle] = (monthly[m].expenseByAccount[e.accountTitle] || 0) + net
       if (vat > 0) monthly[m].deductionsByAccount['1040 Input VAT'] = (monthly[m].deductionsByAccount['1040 Input VAT'] || 0) + vat
+    }
+
+    /* ── CEO petty cash → allocated per branch (Gross split across branches) ── */
+    const ceoEntries = await prisma.pettyCashEntry.findMany({
+      where: { branch: 'CEO', date: { gte: startDate, lt: endDate }, pcfStatus: { not: 'Cancelled' }, NOT: { vatable: 'Cancelled' } },
+      select: { accountTitle: true, date: true, vatable: true, branchAllocations: true },
+    })
+    for (const e of ceoEntries) {
+      if (!e.accountTitle || !e.date) continue
+      const m = new Date(e.date).getUTCMonth() + 1
+      if (!monthly[m]) continue
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const allocs = Array.isArray(e.branchAllocations) ? (e.branchAllocations as any[]) : []
+      for (const a of allocs) {
+        const ab = a?.branch as string | undefined
+        const ag = Number(a?.amount) || 0
+        if (!ab || !ag) continue
+        if (branch !== 'ALL' && ab !== orderBranch) continue
+        const netA = e.vatable === 'VAT' ? ag / 1.12 : ag
+        const vatA = ag - netA
+        monthly[m].expenseByAccount[e.accountTitle] = (monthly[m].expenseByAccount[e.accountTitle] || 0) + netA
+        if (vatA > 0) monthly[m].deductionsByAccount['1040 Input VAT'] = (monthly[m].deductionsByAccount['1040 Input VAT'] || 0) + vatA
+      }
     }
 
     /* ── Payroll expense from direct payslip sums ───────────────

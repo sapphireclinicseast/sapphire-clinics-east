@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
-const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE']
+const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'CEO']
 
 // Fields a client may set/update on an entry.
 const EDITABLE = [
@@ -93,6 +93,7 @@ export async function PUT(req: Request) {
         else data[f] = body[f] === '' ? null : body[f]
       }
     }
+    if ('branchAllocations' in body) data.branchAllocations = body.branchAllocations ?? null
     const entry = await prisma.pettyCashEntry.update({ where: { id }, data })
     return NextResponse.json(entry)
   } catch (e) {
