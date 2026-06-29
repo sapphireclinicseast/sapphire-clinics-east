@@ -14,7 +14,8 @@ const BRANCHES = [
 const ALLOC_BRANCHES = BRANCHES.filter(b => b.value !== 'CEO')
 const DEPARTMENTS = ['ADMIN', 'PT', 'OT', 'SLP', 'SPED', 'PSYCH', 'MD', 'ORTHOSIS']
 const PCF_STATUS = ['Unliquidated', 'For Replenishment', 'Cancelled', 'Missing']
-const VATABLE = ['VAT', 'NV', 'Invalid', 'Cancelled']
+const VATABLE = ['VAT', 'Non-VAT']
+const VALIDITY = ['Valid', 'Invalid', 'Cancelled']
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
 interface Entry {
@@ -28,6 +29,7 @@ interface Entry {
   date: string | null
   description: string | null
   vatable: string | null
+  validity: string | null
   siNumber: string | null
   tinNumber: string | null
   registeredName: string | null
@@ -179,10 +181,10 @@ export default function PettyCashPage() {
 
   const downloadTemplate = async () => {
     const XLSX = await import('xlsx')
-    const headers = ['Requestor', 'Department', 'PCF Status', 'Date', 'Description', 'Vatable',
-      'SI Number', 'TIN Number', 'Registered Name', 'Registered Address', 'Gross Amount', 'Account Title', 'Reference Number']
+    const headers = ['Requestor', 'Department', 'PCF Status', 'Date', 'Description', 'Valid/Invalid', 'Vatable',
+      'SI Number', 'TIN Number', 'Registered Name', 'Registered Address', 'Gross Amount', 'Account Title']
     const example = ['JUAN DELA CRUZ', 'ADMIN', 'For Replenishment', '2026-06-29', 'Sample expense (delete this row)',
-      'VAT', 'SI-0001', '000-000-000-00000', 'SAMPLE VENDOR INC', 'SAMPLE ADDRESS, CITY', 1120, '8050 Courier and Shipping Expense', 'REF-001']
+      'Valid', 'VAT', 'SI-0001', '000-000-000-00000', 'SAMPLE VENDOR INC', 'SAMPLE ADDRESS, CITY', 1120, '8050 Courier and Shipping Expense']
     const ws = XLSX.utils.aoa_to_sheet([headers, example])
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Petty Cash')
@@ -195,6 +197,7 @@ export default function PettyCashPage() {
     tinnumber: 'tinNumber', registeredname: 'registeredName', registeredaddress: 'registeredAddress',
     grossamount: 'grossAmount', gross: 'grossAmount', accounttitle: 'accountTitle',
     referencenumber: 'referenceNumber', reference: 'referenceNumber',
+    validinvalid: 'validity', valid: 'validity', validity: 'validity',
   }
 
   const handleImportFile = async (file: File) => {
@@ -383,7 +386,7 @@ export default function PettyCashPage() {
   const cellCls = 'w-full bg-transparent px-2 py-1.5 text-xs outline-none focus:bg-[var(--pale-teal)] rounded'
   const tdCls = 'border-r border-b align-top'
   const locked = (e: Entry) => !!e.reimbursementId || !canWrite
-  const vatEditable = (e: Entry) => e.vatable === 'VAT' || e.vatable === 'NV'
+  const vatEditable = (e: Entry) => e.vatable === 'VAT' || e.vatable === 'Non-VAT' || e.vatable === 'NV'
   const totalGross = entries.reduce((s, e) => s + num(e.grossAmount), 0)
 
   const selectableIds = entries.filter(e => !e.reimbursementId).map(e => e.id)
@@ -474,8 +477,8 @@ export default function PettyCashPage() {
                       <input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={!canWrite || selectableIds.length === 0} title="Select all" />
                     </th>
                     {['PCV Number', 'Requestor', 'Department', 'PCF Status', 'Date', 'Description', 'Description for Hub',
-                      'Vatable', 'SI Number', 'TIN Number', 'TIN Number 2', 'Branch Code', 'Registered name',
-                      'Registered Address', 'Gross Amount', 'Net of VAT', 'VAT Amount', 'Account Title', 'Reference Number', ...(branch === 'CEO' ? ['Branch (allocations)'] : []), 'Proof', ''
+                      'Valid/Invalid', 'Vatable', 'SI Number', 'TIN Number', 'TIN Number 2', 'Branch Code', 'Registered name',
+                      'Registered Address', 'Gross Amount', 'Net of VAT', 'VAT Amount', 'Account Title', ...(branch === 'CEO' ? ['Branch (allocations)'] : []), 'Proof', ''
                     ].map((h, i) => (
                       <th key={i} className="border-r border-b px-2 py-2 text-left font-semibold whitespace-nowrap"
                         style={{ color: 'var(--charcoal)', borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
@@ -533,11 +536,23 @@ export default function PettyCashPage() {
                           <span className="px-2 py-1.5 block" style={{ color: 'var(--mid-gray)', minWidth: 240 }}>{descForHub(e)}</span>
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <select className={cellCls} value={e.vatable || ''} disabled={lk}
+                          <select className={cellCls} value={e.validity || ''} disabled={lk}
+                            onChange={ev => {
+                              const v = ev.target.value
+                              const patch: Partial<Entry> = { validity: v }
+                              if (v !== 'Valid') { patch.vatable = null; patch.siNumber = null; patch.tinNumber = null }
+                              saveField(e.id, patch, false)
+                            }}>
+                            <option value=""></option>
+                            {VALIDITY.map(v => <option key={v} value={v}>{v}</option>)}
+                          </select>
+                        </td>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : (e.validity === 'Valid' ? '#fff' : '#f3f4f6') }}>
+                          <select className={cellCls} value={e.vatable || ''} disabled={lk || e.validity !== 'Valid'}
                             onChange={ev => {
                               const v = ev.target.value
                               const patch: Partial<Entry> = { vatable: v }
-                              if (v !== 'VAT' && v !== 'NV') { patch.siNumber = null; patch.tinNumber = null }
+                              if (v !== 'VAT' && v !== 'Non-VAT') { patch.siNumber = null; patch.tinNumber = null }
                               saveField(e.id, patch, false)
                             }}>
                             <option value=""></option>
@@ -590,11 +605,6 @@ export default function PettyCashPage() {
                             {coaOptions.map(c => <option key={c} value={c}>{c}</option>)}
                             {e.accountTitle && !coaOptions.includes(e.accountTitle) && <option value={e.accountTitle}>{e.accountTitle}</option>}
                           </select>
-                        </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <input className={cellCls} disabled={lk} value={e.referenceNumber || ''} style={{ minWidth: 130 }}
-                            onChange={ev => patchLocal(e.id, { referenceNumber: ev.target.value })}
-                            onBlur={ev => saveField(e.id, { referenceNumber: ev.target.value }, false)} />
                         </td>
                         {branch === 'CEO' && (
                           <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
@@ -894,7 +904,7 @@ function SettingsModal({ branch, requestors, nextPcvSeq, canWrite, onClose, onSa
         <input type="number" min="1" value={startNum} onChange={e => setStartNum(e.target.value)} disabled={!canWrite}
           className="w-full px-3 py-2 rounded-xl border text-sm mb-1" style={{ borderColor: 'var(--light-gray)' }} />
         <p className="text-[11px] mb-4" style={{ color: 'var(--mid-gray)' }}>
-          The next row added will be PCV{new Date().getFullYear() % 100}-{String(parseInt(startNum, 10) || 1).padStart(6, '0')}.
+          The next row added will be {BRANCHES.find(b => b.value === branch)?.code || branch}-PCV{new Date().getFullYear() % 100}-{String(parseInt(startNum, 10) || 1).padStart(6, '0')}.
         </p>
 
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Requestors ({names.length})</label>

@@ -9,12 +9,13 @@ const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', '
 const EDITABLE = [
   'requestor', 'department', 'pcfStatus', 'date', 'description', 'vatable',
   'siNumber', 'tinNumber', 'registeredName', 'registeredAddress', 'grossAmount',
-  'accountTitle', 'referenceNumber', 'proofUrl',
+  'accountTitle', 'referenceNumber', 'proofUrl', 'validity',
 ] as const
 
-function pcvNumber(seq: number): string {
+const PCV_BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VER', CEO: 'CEO' }
+function pcvNumber(branch: string, seq: number): string {
   const yy = new Date().getFullYear() % 100
-  return `PCV${yy}-${String(seq).padStart(6, '0')}`
+  return `${PCV_BRANCH_CODE[branch] || branch}-PCV${yy}-${String(seq).padStart(6, '0')}`
 }
 
 // GET /api/petty-cash/entries?branch=SANDBOX_EAST
@@ -53,7 +54,7 @@ export async function POST(req: Request) {
       return tx.pettyCashEntry.create({
         data: {
           branch,
-          pcvNumber: pcvNumber(seq),
+          pcvNumber: pcvNumber(branch, seq),
           pcvSeq: seq,
           date: new Date(),
           createdById: session.user.id ?? null,

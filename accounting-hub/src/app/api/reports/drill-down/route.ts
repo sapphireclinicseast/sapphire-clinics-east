@@ -367,12 +367,11 @@ export async function GET(req: Request) {
           accountTitle: accountKey,
           date: { gte: startDate, lt: endDate },
           ...(branch !== 'ALL' ? { branch: orderBranch } : { branch: { not: 'CEO' } }),
-          pcfStatus: { not: 'Cancelled' },
-          NOT: { vatable: 'Cancelled' },
         },
         orderBy: { date: 'asc' },
       })
       for (const e of pcRows) {
+        if (e.pcfStatus === 'Cancelled' || e.validity === 'Cancelled' || e.vatable === 'Cancelled') continue
         const gross = Number(e.grossAmount)
         const net = e.vatable === 'VAT' ? gross / 1.12 : gross
         if (!net) continue
@@ -388,12 +387,11 @@ export async function GET(req: Request) {
         where: {
           accountTitle: accountKey, branch: 'CEO',
           date: { gte: startDate, lt: endDate },
-          pcfStatus: { not: 'Cancelled' },
-          NOT: { vatable: 'Cancelled' },
         },
         orderBy: { date: 'asc' },
       })
       for (const e of ceoRows) {
+        if (e.pcfStatus === 'Cancelled' || e.validity === 'Cancelled' || e.vatable === 'Cancelled') continue
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const allocs = Array.isArray(e.branchAllocations) ? (e.branchAllocations as any[]) : []
         for (const a of allocs) {

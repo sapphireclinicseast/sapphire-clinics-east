@@ -674,13 +674,12 @@ export async function GET(req: Request) {
       where: {
         date: { gte: startDate, lt: endDate },
         ...(branch !== 'ALL' ? { branch: orderBranch } : { branch: { not: 'CEO' } }),
-        pcfStatus: { not: 'Cancelled' },
-        NOT: { vatable: 'Cancelled' },
       },
-      select: { accountTitle: true, date: true, vatable: true, grossAmount: true },
+      select: { accountTitle: true, date: true, vatable: true, grossAmount: true, validity: true, pcfStatus: true },
     })
     for (const e of pettyCashEntries) {
       if (!e.accountTitle || !e.date) continue
+      if (e.pcfStatus === 'Cancelled' || e.validity === 'Cancelled' || e.vatable === 'Cancelled') continue
       const gross = Number(e.grossAmount)
       if (!gross) continue
       const net = e.vatable === 'VAT' ? gross / 1.12 : gross
@@ -693,11 +692,12 @@ export async function GET(req: Request) {
 
     /* ── CEO petty cash → allocated per branch (Gross split across branches) ── */
     const ceoEntries = await prisma.pettyCashEntry.findMany({
-      where: { branch: 'CEO', date: { gte: startDate, lt: endDate }, pcfStatus: { not: 'Cancelled' }, NOT: { vatable: 'Cancelled' } },
-      select: { accountTitle: true, date: true, vatable: true, branchAllocations: true },
+      where: { branch: 'CEO', date: { gte: startDate, lt: endDate } },
+      select: { accountTitle: true, date: true, vatable: true, branchAllocations: true, validity: true, pcfStatus: true },
     })
     for (const e of ceoEntries) {
       if (!e.accountTitle || !e.date) continue
+      if (e.pcfStatus === 'Cancelled' || e.validity === 'Cancelled' || e.vatable === 'Cancelled') continue
       const m = new Date(e.date).getUTCMonth() + 1
       if (!monthly[m]) continue
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

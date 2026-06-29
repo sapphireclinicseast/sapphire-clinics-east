@@ -5,11 +5,12 @@ import { prisma } from '@/lib/prisma'
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'CEO']
 const STR_FIELDS = ['requestor', 'department', 'pcfStatus', 'description', 'vatable',
-  'siNumber', 'tinNumber', 'registeredName', 'registeredAddress', 'accountTitle', 'referenceNumber'] as const
+  'siNumber', 'tinNumber', 'registeredName', 'registeredAddress', 'accountTitle', 'referenceNumber', 'validity'] as const
 
-function pcvNumber(seq: number): string {
+const PCV_BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VER', CEO: 'CEO' }
+function pcvNumber(branch: string, seq: number): string {
   const yy = new Date().getFullYear() % 100
-  return `PCV${yy}-${String(seq).padStart(6, '0')}`
+  return `${PCV_BRANCH_CODE[branch] || branch}-PCV${yy}-${String(seq).padStart(6, '0')}`
 }
 
 // POST /api/petty-cash/entries/import  { branch, rows: [{...editable fields}] }
@@ -40,7 +41,7 @@ export async function POST(req: Request) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const data: any = {
           branch,
-          pcvNumber: pcvNumber(seq),
+          pcvNumber: pcvNumber(branch, seq),
           pcvSeq: seq,
           createdById: session.user.id ?? null,
         }
