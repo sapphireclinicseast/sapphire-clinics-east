@@ -36,7 +36,7 @@ export async function GET(req: Request) {
     where: { branch, recordType: 'PETTY_CASH', reimbursementId: { not: null }, ...dateWhere },
     select: {
       id: true, date: true, pcvNumber: true, accountTitle: true, description: true, vatable: true, grossAmount: true,
-      validity: true, filingStatus: true, reimbursement: { select: { paymentMethod: true, debitAccount: true, refNumber: true } },
+      validity: true, filingStatus: true, reimbursement: { select: { paymentMethod: true, checkNumber: true, debitAccount: true, refNumber: true } },
     },
     orderBy: { date: 'asc' },
   })
@@ -56,13 +56,17 @@ export async function GET(req: Request) {
     }),
     ...pc.map(e => {
       const gross = Number(e.grossAmount)
+      const pm = e.reimbursement?.paymentMethod || ''
+      const isCheck = pm === 'Check deposit' || pm === 'Check encashment to deposit as cash'
+      const chk = e.reimbursement?.checkNumber || ''
       return {
         id: e.id, source: 'PETTY_CASH', payee: `${BRANCH_CODE[branch]} Petty Cash`,
         paymentAccount: e.reimbursement?.debitAccount || '',
         paymentDate: e.date ? new Date(e.date).toISOString().slice(0, 10) : '',
-        paymentMethod: e.reimbursement?.paymentMethod || '', pcvNumber: e.pcvNumber, accountTitle: e.accountTitle || '',
+        paymentMethod: pm, pcvNumber: e.pcvNumber, accountTitle: e.accountTitle || '',
         description: e.description || '', netOfVat: netOf(e.vatable, gross),
-        checkInfo: '', validity: e.validity || '', filingStatus: e.filingStatus || 'FOR_FILING',
+        checkInfo: isCheck && chk ? `${e.reimbursement?.debitAccount || ''} ${chk}`.trim() : '',
+        validity: e.validity || '', filingStatus: e.filingStatus || 'FOR_FILING',
       }
     }),
   ].sort((a, b) => (a.paymentDate < b.paymentDate ? -1 : a.paymentDate > b.paymentDate ? 1 : 0))

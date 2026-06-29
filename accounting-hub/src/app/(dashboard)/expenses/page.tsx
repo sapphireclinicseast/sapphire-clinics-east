@@ -1021,6 +1021,33 @@ function CcReportTab({ branch, cards, canWrite }: { branch: string; cards: Card[
     try { await fetch(`/api/expenses/cc-reports?id=${id}`, { method: 'DELETE' }) } catch { /* ignore */ }
   }
 
+  const CC_COLS = ['PCV Number', 'Payee', 'Expense Date', 'Description', 'Account Title', 'Charged On', 'Amount']
+  const ccCells = (t: CcTxn) => [t.pcvNumber, t.requestor || '', t.date ? String(t.date).slice(0, 10) : '', t.description || '', t.accountTitle || '', t.paidAt ? String(t.paidAt).slice(0, 10) : '', num(t.grossAmount).toFixed(2)]
+  const ccTitle = () => `${cardOf(cardId) ? cardLabel(cardOf(cardId)!) : ''} · ${MONTHS[month - 1]} ${year}${report ? ` · ${report.refNumber}` : ''}`
+  const exportCcExcel = async () => {
+    const XLSX = await import('xlsx')
+    const aoa = [[ccTitle()], CC_COLS, ...txns.map(ccCells), ['', '', '', '', '', 'TOTAL', total.toFixed(2)]]
+    const ws = XLSX.utils.aoa_to_sheet(aoa)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'CC Report')
+    XLSX.writeFile(wb, `${report ? report.refNumber : 'cc-report'}.xlsx`)
+  }
+  const exportCcPdf = async () => {
+    const { jsPDF } = await import('jspdf')
+    const autoTable = (await import('jspdf-autotable')).default
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+    doc.setFont('helvetica', 'bold').setFontSize(13).text('Credit Card Report', 14, 14)
+    doc.setFont('helvetica', 'normal').setFontSize(9).text(ccTitle(), 14, 20)
+    autoTable(doc, {
+      startY: 24, head: [CC_COLS], body: txns.map(ccCells),
+      foot: [['', '', '', '', '', 'TOTAL', total.toFixed(2)]],
+      styles: { fontSize: 7.5, cellPadding: 1.5 }, headStyles: { fillColor: [36, 73, 82], textColor: 255 },
+      footStyles: { fillColor: [237, 243, 217], textColor: [30, 30, 30], fontStyle: 'bold' },
+      columnStyles: { 6: { halign: 'right' } }, margin: { left: 10, right: 10 },
+    })
+    doc.save(`${report ? report.refNumber : 'cc-report'}.pdf`)
+  }
+
   const years: number[] = []
   for (let y = now.getFullYear() + 1; y >= now.getFullYear() - 4; y--) years.push(y)
 
@@ -1076,6 +1103,12 @@ function CcReportTab({ branch, cards, canWrite }: { branch: string; cards: Card[
               <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{txns.length} transaction(s) · Total <strong style={{ color: 'var(--charcoal)' }}>₱{peso(total)}</strong></p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
+              <button onClick={exportCcPdf} disabled={txns.length === 0} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border disabled:opacity-40" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                <Download size={14} /> PDF
+              </button>
+              <button onClick={exportCcExcel} disabled={txns.length === 0} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border disabled:opacity-40" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                <Download size={14} /> Excel
+              </button>
               {!report && canWrite && (
                 <button onClick={createReport} disabled={creating}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
@@ -1229,7 +1262,8 @@ function ExpenseReportTab({ branch, canWrite }: { branch: string; canWrite: bool
   }, [branch, from, to])
   useEffect(() => { load() }, [load])
 
-  const valid = rows.filter(r => r.validity === 'Valid')
+  // Treat anything not explicitly Invalid/Cancelled (incl. blank validity) as Valid.
+  const valid = rows.filter(r => r.validity !== 'Invalid' && r.validity !== 'Cancelled')
   const invalid = rows.filter(r => r.validity === 'Invalid')
   const totalValid = valid.reduce((s, r) => s + r.netOfVat, 0)
   const totalInvalid = invalid.reduce((s, r) => s + r.netOfVat, 0)
@@ -1238,6 +1272,35 @@ function ExpenseReportTab({ branch, canWrite }: { branch: string; canWrite: bool
   const setStatus = async (id: string, filingStatus: string) => {
     setRows(prev => prev.map(r => (r.id === id ? { ...r, filingStatus } : r)))
     try { await fetch('/api/expenses/filing-status', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, filingStatus }) }) } catch { /* ignore */ }
+  }
+
+  const COLS_ER = ['Payee', 'Payment Account', 'Payment Date', 'Payment Method', 'PCV Number', 'Account Title', 'Description', 'Net of VAT', 'Check Number', 'Status']
+  const rowCells = (r: ErRow) => [r.payee, r.paymentAccount, r.paymentDate, r.paymentMethod, r.pcvNumber, r.accountTitle, r.description, r.netOfVat.toFixed(2), r.checkInfo, r.filingStatus === 'FILED' ? 'Filed' : 'For Filing']
+  const exportExcel = async () => {
+    const XLSX = await import('xlsx')
+    const total = view === 'Valid' ? totalValid : totalInvalid
+    const aoa = [COLS_ER, ...shown.map(rowCells), ['', '', '', '', '', '', `TOTAL ${view}`, total.toFixed(2), '', '']]
+    const ws = XLSX.utils.aoa_to_sheet(aoa)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, `${view} Expenses`)
+    XLSX.writeFile(wb, `expense-report-${view.toLowerCase()}.xlsx`)
+  }
+  const exportPdf = async () => {
+    const { jsPDF } = await import('jspdf')
+    const autoTable = (await import('jspdf-autotable')).default
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+    doc.setFont('helvetica', 'bold').setFontSize(13).text(`Expense Report — ${view} Expenses`, 14, 14)
+    doc.setFont('helvetica', 'normal').setFontSize(8.5)
+    doc.text(`Range: ${from || 'start'} → ${to || 'end'}   ·   ${shown.length} item(s)`, 14, 20)
+    const total = view === 'Valid' ? totalValid : totalInvalid
+    autoTable(doc, {
+      startY: 24, head: [COLS_ER], body: shown.map(rowCells),
+      foot: [['', '', '', '', '', '', `TOTAL ${view}`, total.toFixed(2), '', '']],
+      styles: { fontSize: 7, cellPadding: 1.5 }, headStyles: { fillColor: [36, 73, 82], textColor: 255 },
+      footStyles: { fillColor: [237, 243, 217], textColor: [30, 30, 30], fontStyle: 'bold' },
+      columnStyles: { 7: { halign: 'right' } }, margin: { left: 10, right: 10 },
+    })
+    doc.save(`expense-report-${view.toLowerCase()}.pdf`)
   }
 
   return (
@@ -1253,6 +1316,13 @@ function ExpenseReportTab({ branch, canWrite }: { branch: string; canWrite: bool
           <input type="date" value={to} onChange={e => setTo(e.target.value)} className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} />
         </div>
         {(from || to) && <button onClick={() => { setFrom(''); setTo('') }} className="px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Clear</button>}
+        <div className="flex-1" />
+        <button onClick={exportPdf} disabled={shown.length === 0} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border disabled:opacity-40" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+          <Download size={14} /> PDF
+        </button>
+        <button onClick={exportExcel} disabled={shown.length === 0} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border disabled:opacity-40" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+          <Download size={14} /> Excel
+        </button>
       </div>
 
       {/* Summary totals */}

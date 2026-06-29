@@ -27,7 +27,7 @@ export async function GET(req: Request) {
   const reports = await prisma.reimbursementReport.findMany({
     where: { branch },
     select: {
-      id: true, refNumber: true, grossTotal: true, status: true, paidAt: true, paymentMethod: true,
+      id: true, refNumber: true, grossTotal: true, status: true, paidAt: true, paymentMethod: true, checkNumber: true,
       debitAccount: true, depositAccount: true, proofUrl: true, createdAt: true,
       _count: { select: { entries: true } },
     },
@@ -102,6 +102,7 @@ export async function PATCH(req: Request) {
           status: 'PAID',
           paidAt: body.datePaid ? new Date(body.datePaid) : new Date(),
           paymentMethod: body.paymentMethod || null,
+          checkNumber: body.checkNumber || null,
           debitAccount: body.debitAccount || null,
           depositAccount: body.depositAccount || null,
           proofUrl: body.proofUrl || null,
@@ -112,7 +113,7 @@ export async function PATCH(req: Request) {
     if (action === 'unpay') {
       await prisma.reimbursementReport.update({
         where: { id },
-        data: { status: 'PENDING', paidAt: null, paymentMethod: null, debitAccount: null, depositAccount: null, proofUrl: null },
+        data: { status: 'PENDING', paidAt: null, paymentMethod: null, checkNumber: null, debitAccount: null, depositAccount: null, proofUrl: null },
       })
       return NextResponse.json({ success: true })
     }

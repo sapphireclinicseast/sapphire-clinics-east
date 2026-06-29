@@ -1671,6 +1671,7 @@ model ReimbursementReport {
   pdfData        String?  // base64 data URI
   paidAt         DateTime?
   paymentMethod  String?
+  checkNumber    String?
   debitAccount   String?
   depositAccount String?
   proofUrl       String?
