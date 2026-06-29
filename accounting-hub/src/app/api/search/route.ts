@@ -27,9 +27,25 @@ export async function GET(req: Request) {
   const n = Number(clean)
   const ci = { contains: q, mode: 'insensitive' as const }
 
+  // Branch scoping: admin/accountant/viewer see all; branch admins & front desk see only their branch.
+  // Branch is stored inconsistently across models, so match every known code per branch.
+  const BRANCH_SETS: Record<string, string[]> = {
+    SANDBOX_EAST: ['SANDBOX_EAST', 'SBEA', 'AHEA'],
+    SANDBOX_GREENHILLS: ['SANDBOX_GREENHILLS', 'SBGH', 'AHGH'],
+    VERDANA_STORE: ['VERDANA_STORE', 'VER', 'VERDANA'],
+  }
+  const ROLE_BRANCH: Record<string, string> = {
+    SBEA_ADMIN: 'SANDBOX_EAST', SBGH_ADMIN: 'SANDBOX_GREENHILLS', VERDANA_ADMIN: 'VERDANA_STORE',
+    SBEA_FRONTDESK: 'SANDBOX_EAST', SBGH_FRONTDESK: 'SANDBOX_GREENHILLS',
+  }
+  const scopeBranch = ROLE_BRANCH[(session.user.role as string) || '']
+  const scope = scopeBranch ? BRANCH_SETS[scopeBranch] : null
+  const oBranch: Record<string, unknown> = scope ? { branch: { in: scope } } : {}
+  const jBranch: Record<string, unknown> = scope ? { branch: { in: [...scope, 'ALL'] } } : {}
+
   const [orders, pcEntries, reimbs, ccReports, expSuppliers, suppliers, inv, accounts, journals, assets] = await Promise.all([
     prisma.order.findMany({
-      where: { OR: [
+      where: { ...oBranch, OR: [
         ...(isNum ? [{ orderNumber: Math.round(n) }, { netAmount: n }] : []),
         { patientName: ci }, { clinicianName: ci }, { salesInvoiceNumber: ci }, { referenceNumber: ci },
       ] },
@@ -37,7 +53,7 @@ export async function GET(req: Request) {
       select: { id: true, orderNumber: true, patientName: true, netAmount: true, salesInvoiceNumber: true, referenceNumber: true, branch: true, transactionDate: true, platform: true },
     }),
     prisma.pettyCashEntry.findMany({
-      where: { OR: [
+      where: { ...oBranch, OR: [
         ...(isNum ? [{ grossAmount: n }] : []),
         { pcvNumber: ci }, { requestor: ci }, { registeredName: ci }, { description: ci }, { accountTitle: ci }, { siNumber: ci }, { tinNumber: ci },
       ] },
@@ -45,16 +61,16 @@ export async function GET(req: Request) {
       select: { id: true, pcvNumber: true, requestor: true, registeredName: true, description: true, accountTitle: true, grossAmount: true, branch: true, date: true, recordType: true },
     }),
     prisma.reimbursementReport.findMany({
-      where: { OR: [...(isNum ? [{ grossTotal: n }] : []), { refNumber: ci }] },
+      where: { ...oBranch, OR: [...(isNum ? [{ grossTotal: n }] : []), { refNumber: ci }] },
       take: TAKE, orderBy: { createdAt: 'desc' },
       select: { id: true, refNumber: true, grossTotal: true, branch: true, status: true, createdAt: true },
     }),
     prisma.creditCardReport.findMany({
-      where: { refNumber: ci }, take: TAKE, orderBy: { createdAt: 'desc' },
+      where: { ...oBranch, refNumber: ci }, take: TAKE, orderBy: { createdAt: 'desc' },
       select: { id: true, refNumber: true, bankCode: true, branch: true, periodMonth: true, periodYear: true, status: true },
     }),
     prisma.expenseSupplier.findMany({
-      where: { OR: [{ registeredName: ci }, { tin: ci }, { registeredAddress: ci }] },
+      where: { ...oBranch, OR: [{ registeredName: ci }, { tin: ci }, { registeredAddress: ci }] },
       take: TAKE, orderBy: { registeredName: 'asc' },
       select: { id: true, registeredName: true, registeredAddress: true, tin: true, branch: true },
     }),
@@ -74,7 +90,7 @@ export async function GET(req: Request) {
       select: { id: true, accountNumber: true, accountTitle: true, subType: true },
     }),
     prisma.journalEntry.findMany({
-      where: { OR: [...(isNum ? [{ totalAmount: n }] : []), { description: ci }, { referenceType: ci }, { referenceId: ci }] },
+      where: { ...jBranch, OR: [...(isNum ? [{ totalAmount: n }] : []), { description: ci }, { referenceType: ci }, { referenceId: ci }] },
       take: TAKE, orderBy: { entryDate: 'desc' },
       select: { id: true, description: true, referenceType: true, totalAmount: true, branch: true, entryDate: true },
     }),
