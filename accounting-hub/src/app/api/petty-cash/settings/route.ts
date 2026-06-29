@@ -40,7 +40,7 @@ export async function PUT(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { branch, nextPcvSeq, requestors } = await req.json()
+    const { branch, nextPcvSeq, requestors, prepaidAccount } = await req.json()
     if (!VALID_BRANCHES.includes(branch)) {
       return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
     }
@@ -55,6 +55,7 @@ export async function PUT(req: Request) {
       if (!Array.isArray(requestors)) return NextResponse.json({ error: 'requestors must be an array' }, { status: 400 })
       data.requestors = requestors.map((r: unknown) => String(r).trim()).filter(Boolean)
     }
+    if (prepaidAccount !== undefined) data.prepaidAccount = prepaidAccount ? String(prepaidAccount) : null
     const settings = await prisma.pettyCashSettings.upsert({
       where: { branch },
       update: data,

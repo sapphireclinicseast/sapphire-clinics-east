@@ -1636,6 +1636,11 @@ model PettyCashEntry {
   branchAllocations Json?
   recordType        String   @default("PETTY_CASH")
   finalized         Boolean  @default(false)
+  recurFrequency    String?
+  recurDeadlineDay  Int?
+  distributeMonthly Boolean  @default(false)
+  distributeStart   DateTime?
+  distributeEnd     DateTime?
   paidAt            DateTime?
   paymentMethod     String?
   checkNumber       String?
@@ -1682,6 +1687,7 @@ model PettyCashSettings {
   nextPcvSeq Int      @default(1)
   nextReimbSeq Int   @default(1)
   requestors Json     @default("[]")
+  prepaidAccount String?
   updatedAt  DateTime @updatedAt @default(now())
 }
 

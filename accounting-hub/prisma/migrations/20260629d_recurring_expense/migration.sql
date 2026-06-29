@@ -1,0 +1,6 @@
+ALTER TABLE "PettyCashEntry" ADD COLUMN IF NOT EXISTS "recurFrequency" TEXT;
+ALTER TABLE "PettyCashEntry" ADD COLUMN IF NOT EXISTS "recurDeadlineDay" INTEGER;
+ALTER TABLE "PettyCashEntry" ADD COLUMN IF NOT EXISTS "distributeMonthly" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "PettyCashEntry" ADD COLUMN IF NOT EXISTS "distributeStart" TIMESTAMP(3);
+ALTER TABLE "PettyCashEntry" ADD COLUMN IF NOT EXISTS "distributeEnd" TIMESTAMP(3);
+ALTER TABLE "PettyCashSettings" ADD COLUMN IF NOT EXISTS "prepaidAccount" TEXT;

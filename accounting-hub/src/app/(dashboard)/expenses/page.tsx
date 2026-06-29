@@ -14,6 +14,12 @@ const DEPARTMENTS = ['ADMIN', 'PT', 'OT', 'SLP', 'SPED', 'PSYCH', 'MD', 'ORTHOSI
 const VATABLE = ['VAT', 'Non-VAT']
 const VALIDITY = ['Valid', 'Invalid', 'Cancelled']
 const PAYMENT_METHODS = ['Check deposit', 'Check encashment to deposit as cash', 'Credit card', "Deposit to admin officer's bank account"]
+const RECUR_FREQ = [
+  { v: 'MONTHLY', label: 'Monthly' },
+  { v: 'QUARTERLY', label: 'Quarterly' },
+  { v: 'BIANNUALLY', label: 'Biannually' },
+  { v: 'ANNUALLY', label: 'Annually' },
+]
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
 const TABS = [
@@ -52,6 +58,11 @@ interface Entry {
   payrollAccount: string | null
   paymentBankAccount: string | null
   finalized: boolean
+  recurFrequency: string | null
+  recurDeadlineDay: number | null
+  distributeMonthly: boolean
+  distributeStart: string | null
+  distributeEnd: string | null
 }
 
 interface Card { id: string; branch: string; bank: string; cardNumber: string; bankCode: string }
@@ -73,6 +84,18 @@ const vatAmount = (e: Entry) => num(e.grossAmount) - netOfVat(e)
 const descForHub = (e: Entry) => (e.description ? `${e.pcvNumber}; ${e.description}` : e.pcvNumber)
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const cardLabel = (c: Card) => `${c.bank} •••• ${c.cardNumber.slice(-4)} (${c.bankCode})`
+const monthInput = (d: string | null) => (d ? String(d).slice(0, 7) : '')
+const monthsInWindow = (startISO: string | null, endISO: string | null) => {
+  if (!startISO || !endISO) return 0
+  const s = new Date(startISO), e = new Date(endISO)
+  const c = (e.getUTCFullYear() * 12 + e.getUTCMonth()) - (s.getUTCFullYear() * 12 + s.getUTCMonth()) + 1
+  return c > 0 ? c : 0
+}
+const monthlyAmt = (e: Entry) => {
+  if (!e.distributeMonthly) return 0
+  const c = monthsInWindow(e.distributeStart, e.distributeEnd)
+  return c > 0 ? num(e.grossAmount) / c : 0
+}
 
 // Upload via XHR so we can report upload progress (0–100%).
 function uploadWithProgress(file: File, onProgress: (pct: number) => void): Promise<{ ok: boolean; url?: string; error?: string }> {
@@ -103,6 +126,7 @@ export default function ExpensesPage() {
   const [bankOptions, setBankOptions] = useState<string[]>([])
   const [cards, setCards] = useState<Card[]>([])
   const [nextPcvSeq, setNextPcvSeq] = useState<number>(1)
+  const [prepaidAccount, setPrepaidAccount] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -115,6 +139,7 @@ export default function ExpensesPage() {
 
   const recordType = TABS.find(t => t.key === tab)?.recordType || ''
   const isRecording = recordType === 'RECURRING' || recordType === 'ONE_TIME'
+  const isRecurringTab = recordType === 'RECURRING'
 
   const loadEntries = useCallback(async (br: string, rt: string) => {
     if (!rt) { setEntries([]); setLoading(false); return }
@@ -129,7 +154,7 @@ export default function ExpensesPage() {
   const loadSettings = useCallback(async (br: string) => {
     try {
       const r = await fetch(`/api/petty-cash/settings?branch=${br}`)
-      if (r.ok) { const s = await r.json(); setNextPcvSeq(s.nextPcvSeq || 1) }
+      if (r.ok) { const s = await r.json(); setNextPcvSeq(s.nextPcvSeq || 1); setPrepaidAccount(s.prepaidAccount || '') }
     } catch { /* ignore */ }
   }, [])
 
@@ -367,7 +392,7 @@ export default function ExpensesPage() {
             {loading ? (
               <div className="flex items-center justify-center py-16"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} /></div>
             ) : (
-              <table className="text-xs" style={{ borderCollapse: 'collapse', minWidth: 2360 }}>
+              <table className="text-xs" style={{ borderCollapse: 'collapse', minWidth: isRecurringTab ? 3160 : 2360 }}>
                 <thead className="sticky top-0 z-10">
                   <tr style={{ background: 'var(--off-white)' }}>
                     <th className="border-r border-b px-2 py-2 text-center" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
@@ -375,7 +400,9 @@ export default function ExpensesPage() {
                     </th>
                     {['PCV Number', 'Payee', 'Department', 'Date', 'Description', 'Description for Hub',
                       'Valid/Invalid', 'Vatable', 'SI Number', 'TIN Number', 'TIN Number 2', 'Branch Code', 'Registered name',
-                      'Registered Address', 'Gross Amount', 'Net of VAT', 'VAT Amount', 'Account Title', 'Payment', 'Proof', ''
+                      'Registered Address', 'Gross Amount', 'Net of VAT', 'VAT Amount', 'Account Title',
+                      ...(isRecurringTab ? ['Recurs', 'Deadline (day)', 'Distribute monthly?', 'Monthly Amount', 'Charge from', 'Charge to'] : []),
+                      'Payment', 'Proof', ''
                     ].map((h, i) => (
                       <th key={i} className="border-r border-b px-2 py-2 text-left font-semibold whitespace-nowrap"
                         style={{ color: 'var(--charcoal)', borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>{h}</th>
@@ -490,6 +517,59 @@ export default function ExpensesPage() {
                             {e.accountTitle && !coaOptions.includes(e.accountTitle) && <option value={e.accountTitle}>{e.accountTitle}</option>}
                           </select>
                         </td>
+                        {isRecurringTab && (() => {
+                          const freqMonthly = e.recurFrequency === 'MONTHLY'
+                          const canDistribute = !!e.recurFrequency && !freqMonthly
+                          return (
+                            <>
+                              <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                                <select className={cellCls} value={e.recurFrequency || ''} disabled={lk} style={{ minWidth: 120 }}
+                                  onChange={ev => {
+                                    const v = ev.target.value
+                                    const patch: Partial<Entry> = { recurFrequency: v }
+                                    if (v === 'MONTHLY' || !v) { patch.distributeMonthly = false; patch.distributeStart = null; patch.distributeEnd = null }
+                                    saveField(e.id, patch, false)
+                                  }}>
+                                  <option value=""></option>
+                                  {RECUR_FREQ.map(f => <option key={f.v} value={f.v}>{f.label}</option>)}
+                                </select>
+                              </td>
+                              <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                                <input type="number" min="1" max="31" className={`${cellCls} text-center`} disabled={lk} placeholder="nth"
+                                  value={e.recurDeadlineDay ?? ''} style={{ minWidth: 80 }}
+                                  onChange={ev => patchLocal(e.id, { recurDeadlineDay: ev.target.value ? Number(ev.target.value) : null })}
+                                  onBlur={ev => saveField(e.id, { recurDeadlineDay: ev.target.value ? Number(ev.target.value) : null }, false)} />
+                              </td>
+                              <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : (canDistribute ? '#fff' : '#f3f4f6') }}>
+                                <select className={cellCls} value={e.distributeMonthly ? 'Yes' : 'No'} disabled={lk || !canDistribute} style={{ minWidth: 80 }}
+                                  onChange={ev => {
+                                    const yes = ev.target.value === 'Yes'
+                                    const patch: Partial<Entry> = { distributeMonthly: yes }
+                                    if (!yes) { patch.distributeStart = null; patch.distributeEnd = null }
+                                    saveField(e.id, patch, false)
+                                  }}>
+                                  <option value="No">No</option>
+                                  <option value="Yes">Yes</option>
+                                </select>
+                              </td>
+                              <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : '#fafafa' }}>
+                                <span className="px-2 py-1.5 block text-right" style={{ color: 'var(--mid-gray)', minWidth: 100 }}>
+                                  {e.distributeMonthly ? peso(monthlyAmt(e)) : '—'}
+                                </span>
+                              </td>
+                              <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : (e.distributeMonthly ? '#fff' : '#f3f4f6') }}>
+                                <input type="month" className={cellCls} disabled={lk || !e.distributeMonthly} style={{ minWidth: 130 }}
+                                  value={monthInput(e.distributeStart)}
+                                  onChange={ev => saveField(e.id, { distributeStart: ev.target.value ? `${ev.target.value}-01` : null }, false)} />
+                              </td>
+                              <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : (e.distributeMonthly ? '#fff' : '#f3f4f6') }}>
+                                <input type="month" className={cellCls} disabled={lk || !e.distributeMonthly} style={{ minWidth: 130 }}
+                                  value={monthInput(e.distributeEnd)}
+                                  onChange={ev => saveField(e.id, { distributeEnd: ev.target.value ? `${ev.target.value}-01` : null }, false)} />
+                              </td>
+                            </>
+                          )
+                        })()}
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
                           {e.paidAt ? (
                             <div className="px-2 py-1 text-[11px]" style={{ minWidth: 160, color: 'var(--charcoal)' }}>
@@ -552,7 +632,7 @@ export default function ExpensesPage() {
                     )
                   })}
                   {shown.length === 0 && (
-                    <tr><td colSpan={22} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>
+                    <tr><td colSpan={isRecurringTab ? 28 : 22} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>
                       {q ? 'No entries match your search.' : 'No entries yet. Click "Add Row" to start.'}
                     </td></tr>
                   )}
@@ -580,7 +660,17 @@ export default function ExpensesPage() {
 
       {showSettings && (
         <CreditCardSettings branch={branch} cards={cards} canWrite={canWrite}
-          onClose={() => setShowSettings(false)} onAdd={addCard} onDelete={deleteCard} />
+          bankOptions={bankOptions} prepaidAccount={prepaidAccount}
+          onClose={() => setShowSettings(false)} onAdd={addCard} onDelete={deleteCard}
+          onSavePrepaid={async (acct) => {
+            setPrepaidAccount(acct)
+            try {
+              await fetch('/api/petty-cash/settings', {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ branch, prepaidAccount: acct }),
+              })
+            } catch { /* ignore */ }
+          }} />
       )}
 
       {showPayModal && (
@@ -706,9 +796,10 @@ function ForPaymentModal({ count, bankOptions, cards, paying, onClose, onAddCard
 }
 
 // ── Credit Card settings ───────────────────────────────────────
-function CreditCardSettings({ branch, cards, canWrite, onClose, onAdd, onDelete }: {
-  branch: string; cards: Card[]; canWrite: boolean
+function CreditCardSettings({ branch, cards, canWrite, bankOptions, prepaidAccount, onClose, onAdd, onDelete, onSavePrepaid }: {
+  branch: string; cards: Card[]; canWrite: boolean; bankOptions: string[]; prepaidAccount: string
   onClose: () => void; onAdd: (bank: string, cardNumber: string, bankCode: string) => Promise<Card | null>; onDelete: (id: string) => void
+  onSavePrepaid: (acct: string) => void
 }) {
   const [bank, setBank] = useState(''); const [number, setNumber] = useState(''); const [code, setCode] = useState('')
   const [saving, setSaving] = useState(false)
@@ -731,6 +822,19 @@ function CreditCardSettings({ branch, cards, canWrite, onClose, onAdd, onDelete 
           </h2>
           <button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
         </div>
+
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Prepaid Expense account (for amortized recurring expenses)</label>
+        <select value={prepaidAccount} onChange={e => onSavePrepaid(e.target.value)} disabled={!canWrite}
+          className="w-full px-3 py-2 rounded-xl border text-sm mb-1" style={{ borderColor: 'var(--light-gray)' }}>
+          <option value="">Select asset account…</option>
+          {bankOptions.map(a => <option key={a} value={a}>{a}</option>)}
+          {prepaidAccount && !bankOptions.includes(prepaidAccount) && <option value={prepaidAccount}>{prepaidAccount}</option>}
+        </select>
+        <p className="text-[11px] mb-4" style={{ color: 'var(--mid-gray)' }}>
+          When a recurring expense is set to distribute monthly, its net is parked here (Balance Sheet asset) and recognized as expense each month in Reports.
+        </p>
+
+        <h3 className="text-sm font-bold mb-1" style={{ color: 'var(--charcoal)' }}>Credit Cards</h3>
         <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>
           Pre-set the bank, credit card number and bank code (e.g. BDO → &quot;BDO&quot;, Chinabank → &quot;CBC&quot;). These appear in the For Payment credit-card dropdown.
         </p>
