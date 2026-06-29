@@ -7,6 +7,15 @@ export const dynamic = 'force-dynamic'
 const TAKE = 6
 const num = (v: unknown) => Number(v) || 0
 const dstr = (d: Date | null | undefined) => (d ? new Date(d).toISOString().slice(0, 10) : '')
+// Friendly branch labels — DB stores mixed codes (SANDBOX_EAST / SBEA / AHEA). Never rename the
+// stored keys; only map them for display here.
+const BRANCH_LABEL: Record<string, string> = {
+  SANDBOX_EAST: 'AHEA', SBEA: 'AHEA', AHEA: 'AHEA',
+  SANDBOX_GREENHILLS: 'AHGH', SBGH: 'AHGH', AHGH: 'AHGH',
+  VERDANA_STORE: 'VERDANA', VER: 'VERDANA', VERDANA: 'VERDANA',
+  CEO: 'CEO', ALL: 'All Branches',
+}
+const bl = (b: string | null | undefined) => (b ? (BRANCH_LABEL[b] || b) : '')
 
 // Unified search hit
 interface Hit {
@@ -105,34 +114,34 @@ export async function GET(req: Request) {
 
   for (const o of orders) results.push({
     id: o.id, type: 'Sale / Order', title: `Order #${o.orderNumber}${o.patientName ? ` · ${o.patientName}` : ''}`,
-    subtitle: `${o.branch}${o.platform ? ` · ${o.platform}` : ''} · ${dstr(o.transactionDate)}`,
+    subtitle: `${bl(o.branch)}${o.platform ? ` · ${o.platform}` : ''} · ${dstr(o.transactionDate)}`,
     amount: num(o.netAmount), reference: o.salesInvoiceNumber || o.referenceNumber || '', date: dstr(o.transactionDate), href: '/sales-summary',
-    detail: { 'Order #': String(o.orderNumber), Customer: o.patientName || '—', Branch: o.branch, Platform: o.platform || '—', 'SI #': o.salesInvoiceNumber || '—', Reference: o.referenceNumber || '—', 'Net Amount': num(o.netAmount).toFixed(2), Date: dstr(o.transactionDate) },
+    detail: { 'Order #': String(o.orderNumber), Customer: o.patientName || '—', Branch: bl(o.branch), Platform: o.platform || '—', 'SI #': o.salesInvoiceNumber || '—', Reference: o.referenceNumber || '—', 'Net Amount': num(o.netAmount).toFixed(2), Date: dstr(o.transactionDate) },
   })
   for (const e of pcEntries) {
     const isPc = e.recordType === 'PETTY_CASH'
     results.push({
       id: e.id, type: isPc ? 'Petty Cash' : (e.recordType === 'RECURRING' ? 'Expense (Recurring)' : 'Expense (One-time)'),
       title: `${e.pcvNumber} · ${e.registeredName || e.requestor || e.description || 'Entry'}`,
-      subtitle: `${e.branch} · ${e.accountTitle || ''} · ${dstr(e.date)}`,
+      subtitle: `${bl(e.branch)} · ${e.accountTitle || ''} · ${dstr(e.date)}`,
       amount: num(e.grossAmount), reference: e.pcvNumber, date: dstr(e.date), href: isPc ? '/petty-cash' : '/expenses',
-      detail: { 'PCV #': e.pcvNumber, Payee: e.requestor || '—', 'Registered Name': e.registeredName || '—', 'Account Title': e.accountTitle || '—', Description: e.description || '—', Branch: e.branch, 'Gross Amount': num(e.grossAmount).toFixed(2), Date: dstr(e.date) },
+      detail: { 'PCV #': e.pcvNumber, Payee: e.requestor || '—', 'Registered Name': e.registeredName || '—', 'Account Title': e.accountTitle || '—', Description: e.description || '—', Branch: bl(e.branch), 'Gross Amount': num(e.grossAmount).toFixed(2), Date: dstr(e.date) },
     })
   }
   for (const r of reimbs) results.push({
-    id: r.id, type: 'Reimbursement', title: r.refNumber, subtitle: `${r.branch} · ${r.status} · ${dstr(r.createdAt)}`,
+    id: r.id, type: 'Reimbursement', title: r.refNumber, subtitle: `${bl(r.branch)} · ${r.status} · ${dstr(r.createdAt)}`,
     amount: num(r.grossTotal), reference: r.refNumber, date: dstr(r.createdAt), href: '/petty-cash',
-    detail: { Reference: r.refNumber, Branch: r.branch, Status: r.status, 'Gross Total': num(r.grossTotal).toFixed(2), Created: dstr(r.createdAt) },
+    detail: { Reference: r.refNumber, Branch: bl(r.branch), Status: r.status, 'Gross Total': num(r.grossTotal).toFixed(2), Created: dstr(r.createdAt) },
   })
   for (const c of ccReports) results.push({
-    id: c.id, type: 'Credit Card Report', title: c.refNumber, subtitle: `${c.branch} · ${c.periodMonth}/${c.periodYear} · ${c.status}`,
+    id: c.id, type: 'Credit Card Report', title: c.refNumber, subtitle: `${bl(c.branch)} · ${c.periodMonth}/${c.periodYear} · ${c.status}`,
     amount: null, reference: c.refNumber, date: '', href: '/expenses',
-    detail: { Reference: c.refNumber, 'Bank Code': c.bankCode, Branch: c.branch, Period: `${c.periodMonth}/${c.periodYear}`, Status: c.status },
+    detail: { Reference: c.refNumber, 'Bank Code': c.bankCode, Branch: bl(c.branch), Period: `${c.periodMonth}/${c.periodYear}`, Status: c.status },
   })
   for (const s of expSuppliers) results.push({
-    id: s.id || s.registeredName, type: 'Supplier (Expense)', title: s.registeredName, subtitle: `${s.branch}${s.tin ? ` · TIN ${s.tin}` : ''}`,
+    id: s.id || s.registeredName, type: 'Supplier (Expense)', title: s.registeredName, subtitle: `${bl(s.branch)}${s.tin ? ` · TIN ${s.tin}` : ''}`,
     amount: null, reference: s.tin || '', date: '', href: '/expenses',
-    detail: { 'Registered Name': s.registeredName, 'Registered Address': s.registeredAddress || '—', TIN: s.tin || '—', Branch: s.branch },
+    detail: { 'Registered Name': s.registeredName, 'Registered Address': s.registeredAddress || '—', TIN: s.tin || '—', Branch: bl(s.branch) },
   })
   for (const s of suppliers) results.push({
     id: s.id, type: 'Supplier (Procurement)', title: s.supplierName, subtitle: s.contactNumber || s.email || '',
@@ -150,9 +159,9 @@ export async function GET(req: Request) {
     detail: { 'Account #': a.accountNumber, Title: a.accountTitle, Type: a.subType || '—' },
   })
   for (const j of journals) results.push({
-    id: j.id, type: 'Journal Entry', title: j.description, subtitle: `${j.referenceType} · ${j.branch} · ${dstr(j.entryDate)}`,
+    id: j.id, type: 'Journal Entry', title: j.description, subtitle: `${j.referenceType} · ${bl(j.branch)} · ${dstr(j.entryDate)}`,
     amount: num(j.totalAmount), reference: j.referenceType, date: dstr(j.entryDate), href: '/reports/v2',
-    detail: { Description: j.description, 'Reference Type': j.referenceType, Branch: j.branch, 'Total Amount': num(j.totalAmount).toFixed(2), Date: dstr(j.entryDate) },
+    detail: { Description: j.description, 'Reference Type': j.referenceType, Branch: bl(j.branch), 'Total Amount': num(j.totalAmount).toFixed(2), Date: dstr(j.entryDate) },
   })
   for (const a of assets) results.push({
     id: a.id, type: 'Asset', title: `${a.name}${a.controlNumber ? ` · ${a.controlNumber}` : ''}`, subtitle: `Class ${a.classification} · ${dstr(a.dateBought)}`,
