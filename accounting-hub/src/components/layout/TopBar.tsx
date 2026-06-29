@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { signOut } from 'next-auth/react'
-import { Menu, LogOut, User, ChevronDown } from 'lucide-react'
+import { Menu, LogOut, ChevronDown } from 'lucide-react'
+import GlobalSearch from './GlobalSearch'
 
 interface TopBarProps {
   user: {
@@ -58,7 +59,9 @@ export default function TopBar({ user, onMenuClick }: TopBarProps) {
         <Menu size={22} />
       </button>
 
-      <div className="flex-1" />
+      <div className="flex-1 flex justify-center px-2 lg:px-4">
+        <GlobalSearch />
+      </div>
 
       {/* User menu */}
       <div className="relative" ref={dropdownRef}>
