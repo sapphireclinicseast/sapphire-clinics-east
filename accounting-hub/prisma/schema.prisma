@@ -1641,6 +1641,7 @@ model PettyCashEntry {
   distributeMonthly Boolean  @default(false)
   distributeStart   DateTime?
   distributeEnd     DateTime?
+  filingStatus      String?  @default("FOR_FILING")
   paidAt            DateTime?
   paymentMethod     String?
   checkNumber       String?

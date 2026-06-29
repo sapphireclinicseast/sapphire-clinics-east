@@ -655,7 +655,11 @@ export default function ExpensesPage() {
         <CcReportTab branch={branch} cards={cards} canWrite={canWrite} />
       )}
 
-      {!isRecording && tab !== 'cc-report' && (
+      {tab === 'expense-report' && (
+        <ExpenseReportTab branch={branch} canWrite={canWrite} />
+      )}
+
+      {!isRecording && tab !== 'cc-report' && tab !== 'expense-report' && (
         <div className="rounded-2xl border bg-white py-20 text-center" style={{ borderColor: 'var(--light-gray)' }}>
           <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{TABS.find(t => t.key === tab)?.label}</p>
           <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Coming soon — instructions pending.</p>
@@ -1131,6 +1135,143 @@ function CcReportTab({ branch, cards, canWrite }: { branch: string; cards: Card[
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Expense Report tab ─────────────────────────────────────────
+interface ErRow {
+  id: string; source: string; payee: string; paymentAccount: string; paymentDate: string
+  paymentMethod: string; pcvNumber: string; accountTitle: string; description: string
+  netOfVat: number; checkInfo: string; validity: string; filingStatus: string
+}
+
+function ExpenseReportTab({ branch, canWrite }: { branch: string; canWrite: boolean }) {
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [rows, setRows] = useState<ErRow[]>([])
+  const [loading, setLoading] = useState(false)
+  const [view, setView] = useState<'Valid' | 'Invalid'>('Valid')
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const qs = new URLSearchParams({ branch })
+      if (from) qs.set('from', from)
+      if (to) qs.set('to', to)
+      const r = await fetch(`/api/expenses/expense-report?${qs.toString()}`)
+      const d = r.ok ? await r.json() : { rows: [] }
+      setRows(d.rows || [])
+    } catch { setRows([]) }
+    setLoading(false)
+  }, [branch, from, to])
+  useEffect(() => { load() }, [load])
+
+  const valid = rows.filter(r => r.validity === 'Valid')
+  const invalid = rows.filter(r => r.validity === 'Invalid')
+  const totalValid = valid.reduce((s, r) => s + r.netOfVat, 0)
+  const totalInvalid = invalid.reduce((s, r) => s + r.netOfVat, 0)
+  const shown = view === 'Valid' ? valid : invalid
+
+  const setStatus = async (id: string, filingStatus: string) => {
+    setRows(prev => prev.map(r => (r.id === id ? { ...r, filingStatus } : r)))
+    try { await fetch('/api/expenses/filing-status', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, filingStatus }) }) } catch { /* ignore */ }
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Date filters */}
+      <div className="flex items-end gap-3 flex-wrap">
+        <div>
+          <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>From (payment date)</label>
+          <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} />
+        </div>
+        <div>
+          <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>To</label>
+          <input type="date" value={to} onChange={e => setTo(e.target.value)} className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} />
+        </div>
+        {(from || to) && <button onClick={() => { setFrom(''); setTo('') }} className="px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Clear</button>}
+      </div>
+
+      {/* Summary totals */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+          <p className="text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Total Valid Expenses (net of VAT) · {valid.length} item(s)</p>
+          <p className="text-xl font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(totalValid)}</p>
+        </div>
+        <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+          <p className="text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Total Invalid Expenses (net of VAT) · {invalid.length} item(s)</p>
+          <p className="text-xl font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(totalInvalid)}</p>
+        </div>
+      </div>
+
+      {/* Valid / Invalid toggle */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
+          {(['Valid', 'Invalid'] as const).map(v => (
+            <button key={v} onClick={() => setView(v)}
+              className="px-4 py-2 text-xs font-semibold transition-colors"
+              style={view === v ? { background: 'var(--deep-teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
+              {v} ({v === 'Valid' ? valid.length : invalid.length})
+            </button>
+          ))}
+        </div>
+        <span className="text-[11px] flex items-center gap-1" style={{ color: 'var(--mid-gray)' }}>
+          <span className="inline-block w-3 h-3 rounded" style={{ background: '#dbeafe' }} /> Petty cash (reimbursement)
+        </span>
+      </div>
+
+      {/* Table */}
+      <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)', maxHeight: '62vh' }}>
+        {loading ? (
+          <div className="flex items-center justify-center py-12"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} /></div>
+        ) : (
+          <table className="text-xs" style={{ borderCollapse: 'collapse', minWidth: 1700 }}>
+            <thead className="sticky top-0 z-10">
+              <tr style={{ background: 'var(--off-white)' }}>
+                {['Payee', 'Payment Account', 'Payment Date', 'Payment Method', 'PCV Number', 'Account Title', 'Description', 'Amount Net of VAT', 'Check Number', 'Status'].map((h, i) => (
+                  <th key={i} className="border-r border-b px-3 py-2 text-left font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)', borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map(r => {
+                const pc = r.source === 'PETTY_CASH'
+                return (
+                  <tr key={r.id} style={{ background: pc ? '#dbeafe' : '#fff' }}>
+                    <td className="border-r border-b px-3 py-2 whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', color: pc ? '#1e40af' : 'var(--charcoal)', fontWeight: pc ? 600 : 400 }}>{r.payee}</td>
+                    <td className="border-r border-b px-3 py-2" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>{r.paymentAccount}</td>
+                    <td className="border-r border-b px-3 py-2 whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>{r.paymentDate}</td>
+                    <td className="border-r border-b px-3 py-2" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>{r.paymentMethod}</td>
+                    <td className="border-r border-b px-3 py-2 font-mono whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>{r.pcvNumber}</td>
+                    <td className="border-r border-b px-3 py-2" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>{r.accountTitle}</td>
+                    <td className="border-r border-b px-3 py-2" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>{r.description}</td>
+                    <td className="border-r border-b px-3 py-2 text-right whitespace-nowrap font-semibold" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>₱{peso(r.netOfVat)}</td>
+                    <td className="border-r border-b px-3 py-2 whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>{r.checkInfo}</td>
+                    <td className="border-r border-b px-3 py-2" style={{ borderColor: 'var(--light-gray)' }}>
+                      <select value={r.filingStatus} disabled={!canWrite} onChange={e => setStatus(r.id, e.target.value)}
+                        className="px-2 py-1 rounded-lg border text-[11px] font-semibold" style={{ borderColor: 'var(--light-gray)', color: r.filingStatus === 'FILED' ? '#166534' : '#92400e' }}>
+                        <option value="FOR_FILING">For Filing</option>
+                        <option value="FILED">Filed</option>
+                      </select>
+                    </td>
+                  </tr>
+                )
+              })}
+              {shown.length === 0 && (
+                <tr><td colSpan={10} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>No {view.toLowerCase()} paid expenses{(from || to) ? ' in this date range' : ''}.</td></tr>
+              )}
+              {shown.length > 0 && (
+                <tr style={{ background: 'var(--off-white)' }}>
+                  <td colSpan={7} className="border-r border-b px-3 py-2 text-right font-bold" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>TOTAL {view}</td>
+                  <td className="border-r border-b px-3 py-2 text-right font-bold whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>₱{peso(view === 'Valid' ? totalValid : totalInvalid)}</td>
+                  <td className="border-r border-b" style={{ borderColor: 'var(--light-gray)' }} colSpan={2}></td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   )
