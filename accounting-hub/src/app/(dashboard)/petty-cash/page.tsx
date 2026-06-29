@@ -16,7 +16,7 @@ const DEPARTMENTS = ['ADMIN', 'PT', 'OT', 'SLP', 'SPED', 'PSYCH', 'MD', 'ORTHOSI
 const PCF_STATUS = ['Unliquidated', 'For Replenishment', 'Cancelled', 'Missing']
 const VATABLE = ['VAT', 'Non-VAT']
 const VALIDITY = ['Valid', 'Invalid', 'Cancelled']
-const PAYMENT_METHODS = ['Check deposit', 'Check encashment to deposit as cash', 'Online Fund Transfer', "Deposit to admin officer's bank account"]
+const PAYMENT_METHODS = ['Check deposit', 'Check encashment to deposit as cash', 'Online Fund Transfer']
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
 interface Entry {
