@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
-import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Search, ArrowUp, ArrowDown, Upload, Eye, Wallet, CreditCard, CheckCircle2, Pencil } from 'lucide-react'
+import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Search, ArrowUp, ArrowDown, Upload, Download, Eye, Wallet, CreditCard, CheckCircle2, Pencil } from 'lucide-react'
 
 // ── Constants ──────────────────────────────────────────────────
 const BRANCHES = [
@@ -66,6 +66,7 @@ interface Entry {
 }
 
 interface Card { id: string; branch: string; bank: string; cardNumber: string; bankCode: string }
+interface Supplier { id: string | null; registeredName: string; registeredAddress: string; tin: string; branch: string; branchLabel: string; firstAppeared: string | null }
 
 // ── Computed helpers ───────────────────────────────────────────
 const digitsOnly = (s: string | null) => (s || '').replace(/\D/g, '')
@@ -127,6 +128,8 @@ export default function ExpensesPage() {
   const [cards, setCards] = useState<Card[]>([])
   const [nextPcvSeq, setNextPcvSeq] = useState<number>(1)
   const [prepaidAccount, setPrepaidAccount] = useState('')
+  const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [newSupplierPrompt, setNewSupplierPrompt] = useState<{ registeredName: string; registeredAddress: string; tin: string } | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -165,10 +168,18 @@ export default function ExpensesPage() {
     } catch { setCards([]) }
   }, [])
 
+  const loadSuppliers = useCallback(async (br: string) => {
+    try {
+      const r = await fetch(`/api/expenses/suppliers?branch=${br}&all=1`)
+      const d = r.ok ? await r.json() : { suppliers: [] }
+      setSuppliers(d.suppliers || [])
+    } catch { setSuppliers([]) }
+  }, [])
+
   useEffect(() => {
     setSelected(new Set())
-    loadEntries(branch, recordType); loadSettings(branch); loadCards(branch)
-  }, [branch, recordType, loadEntries, loadSettings, loadCards])
+    loadEntries(branch, recordType); loadSettings(branch); loadCards(branch); loadSuppliers(branch)
+  }, [branch, recordType, loadEntries, loadSettings, loadCards, loadSuppliers])
 
   useEffect(() => {
     fetch('/api/chart-of-accounts')
@@ -293,6 +304,26 @@ export default function ExpensesPage() {
       })
       await loadEntries(branch, recordType)
     } catch { /* ignore */ }
+  }
+
+  const supplierByName = new Map(suppliers.map(s => [s.registeredName.trim().toLowerCase(), s]))
+  const finalizeEntry = (e: Entry) => {
+    saveField(e.id, { finalized: true }, false)
+    const name = (e.registeredName || '').trim()
+    if (name && !supplierByName.has(name.toLowerCase())) {
+      setNewSupplierPrompt({ registeredName: name, registeredAddress: e.registeredAddress || '', tin: e.tinNumber || '' })
+    }
+  }
+  const confirmAddSupplier = async () => {
+    if (!newSupplierPrompt) return
+    try {
+      const r = await fetch('/api/expenses/suppliers', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch, ...newSupplierPrompt }),
+      })
+      if (r.ok) await loadSuppliers(branch)
+    } catch { /* ignore */ }
+    setNewSupplierPrompt(null)
   }
 
   const cellCls = 'w-full bg-transparent px-2 py-1.5 text-xs outline-none focus:bg-[var(--pale-teal)] rounded'
@@ -423,9 +454,19 @@ export default function ExpensesPage() {
                           <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--charcoal)' }}>{e.pcvNumber}</span>
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <input className={cellCls} disabled={lk} value={e.requestor || ''} placeholder="Payee" style={{ minWidth: 170 }}
+                          <input list="exp-supplier-names" className={cellCls} disabled={lk} value={e.requestor || ''} placeholder="Payee" style={{ minWidth: 170 }}
                             onChange={ev => patchLocal(e.id, { requestor: ev.target.value })}
-                            onBlur={ev => saveField(e.id, { requestor: ev.target.value }, false)} />
+                            onBlur={ev => {
+                              const val = ev.target.value
+                              const sup = supplierByName.get(val.trim().toLowerCase())
+                              const patch: Partial<Entry> = { requestor: val }
+                              if (sup) {
+                                patch.registeredName = sup.registeredName
+                                if (sup.registeredAddress) patch.registeredAddress = sup.registeredAddress
+                                if (!e.tinNumber && sup.tin) patch.tinNumber = sup.tin
+                              }
+                              saveField(e.id, patch, false)
+                            }} />
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
                           <select className={cellCls} value={e.department || ''} disabled={lk}
@@ -614,7 +655,7 @@ export default function ExpensesPage() {
                         <td className="border-b px-1 text-center" style={{ borderColor: 'var(--light-gray)' }}>
                           {canWrite && !e.paidAt && (
                             <div className="flex items-center justify-center gap-0.5 whitespace-nowrap">
-                              <button onClick={() => saveField(e.id, { finalized: true }, false)} disabled={!!e.finalized}
+                              <button onClick={() => finalizeEntry(e)} disabled={!!e.finalized}
                                 title={e.finalized ? 'Finalized' : 'Mark as finalized'} className="p-1 rounded hover:bg-green-50">
                                 <CheckCircle2 size={14} style={{ color: e.finalized ? '#16a34a' : '#9ca3af' }} />
                               </button>
@@ -659,11 +700,8 @@ export default function ExpensesPage() {
         <ExpenseReportTab branch={branch} canWrite={canWrite} />
       )}
 
-      {!isRecording && tab !== 'cc-report' && tab !== 'expense-report' && (
-        <div className="rounded-2xl border bg-white py-20 text-center" style={{ borderColor: 'var(--light-gray)' }}>
-          <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{TABS.find(t => t.key === tab)?.label}</p>
-          <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Coming soon — instructions pending.</p>
-        </div>
+      {tab === 'suppliers' && (
+        <SuppliersTab branch={branch} canWrite={canWrite} />
       )}
 
       {showSettings && (
@@ -684,6 +722,29 @@ export default function ExpensesPage() {
       {showPayModal && (
         <ForPaymentModal count={selected.size} bankOptions={bankOptions} cards={cards} paying={paying}
           onClose={() => setShowPayModal(false)} onAddCard={addCard} onSubmit={submitPayment} />
+      )}
+
+      {/* Registered-name suggestions for the Payee field */}
+      <datalist id="exp-supplier-names">
+        {suppliers.map(s => <option key={(s.id || '') + s.registeredName} value={s.registeredName} />)}
+      </datalist>
+
+      {newSupplierPrompt && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setNewSupplierPrompt(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Add to Suppliers?</h2>
+            <p className="text-sm mb-1" style={{ color: 'var(--mid-gray)' }}>This supplier isn&apos;t in your Suppliers list yet:</p>
+            <div className="rounded-xl px-3 py-2 mb-4 text-sm" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>
+              <div className="font-semibold">{newSupplierPrompt.registeredName}</div>
+              {newSupplierPrompt.registeredAddress && <div className="text-xs" style={{ color: 'var(--mid-gray)' }}>{newSupplierPrompt.registeredAddress}</div>}
+              {newSupplierPrompt.tin && <div className="text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>TIN {newSupplierPrompt.tin}</div>}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setNewSupplierPrompt(null)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>No, skip</button>
+              <button onClick={confirmAddSupplier} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>Yes, add</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -1273,6 +1334,222 @@ function ExpenseReportTab({ branch, canWrite }: { branch: string; canWrite: bool
           </table>
         )}
       </div>
+    </div>
+  )
+}
+
+// ── Suppliers tab ──────────────────────────────────────────────
+type SupSortKey = 'tin' | 'branchLabel' | 'registeredName' | 'registeredAddress'
+
+function SuppliersTab({ branch, canWrite }: { branch: string; canWrite: boolean }) {
+  const [rows, setRows] = useState<Supplier[]>([])
+  const [loading, setLoading] = useState(false)
+  const [search, setSearch] = useState('')
+  const [from, setFrom] = useState(''); const [to, setTo] = useState(''); const [seeAll, setSeeAll] = useState(true)
+  const [sortKey, setSortKey] = useState<SupSortKey>('registeredName')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [colFilter, setColFilter] = useState<Record<SupSortKey, string>>({ tin: '', branchLabel: '', registeredName: '', registeredAddress: '' })
+  const [showAdd, setShowAdd] = useState(false)
+  const [na, setNa] = useState(''); const [nad, setNad] = useState(''); const [nt, setNt] = useState('')
+  const [importing, setImporting] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const qs = new URLSearchParams({ branch })
+      if (seeAll) qs.set('all', '1'); else { if (from) qs.set('from', from); if (to) qs.set('to', to) }
+      const r = await fetch(`/api/expenses/suppliers?${qs.toString()}`)
+      const d = r.ok ? await r.json() : { suppliers: [] }
+      setRows(d.suppliers || [])
+    } catch { setRows([]) }
+    setLoading(false)
+  }, [branch, seeAll, from, to])
+  useEffect(() => { load() }, [load])
+
+  const addSupplier = async () => {
+    if (!na.trim()) { alert('Registered Name is required.'); return }
+    try {
+      const r = await fetch('/api/expenses/suppliers', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch, registeredName: na.trim(), registeredAddress: nad.trim(), tin: nt.trim() }),
+      })
+      if (r.ok) { setShowAdd(false); setNa(''); setNad(''); setNt(''); await load() }
+      else alert((await r.json()).error || 'Failed to add')
+    } catch { alert('Failed to add') }
+  }
+  const deleteSupplier = async (id: string | null) => {
+    if (!id) { alert('This supplier is derived from expense entries and has no saved record to delete.'); return }
+    if (!confirm('Remove this saved supplier? (Entries that reference it are not affected.)')) return
+    setRows(prev => prev.filter(s => s.id !== id))
+    try { await fetch(`/api/expenses/suppliers?id=${id}`, { method: 'DELETE' }) } catch { /* ignore */ }
+  }
+
+  const downloadTemplate = async () => {
+    const XLSX = await import('xlsx')
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['Registered Name', 'Registered Address', 'TIN'],
+      ['SAMPLE VENDOR INC', 'SAMPLE ADDRESS, CITY', '000-000-000-00000'],
+    ])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Suppliers')
+    XLSX.writeFile(wb, 'suppliers-import-template.xlsx')
+  }
+  const handleImportFile = async (file: File) => {
+    setImporting(true)
+    try {
+      const XLSX = await import('xlsx')
+      const wb = XLSX.read(await file.arrayBuffer(), { cellDates: true })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const json: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' })
+      const map: Record<string, string> = { registeredname: 'registeredName', name: 'registeredName', registeredaddress: 'registeredAddress', address: 'registeredAddress', tin: 'tin' }
+      const out = json.map(raw => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const o: any = {}
+        for (const k of Object.keys(raw)) { const f = map[k.toLowerCase().replace(/[^a-z0-9]/g, '')]; if (f) o[f] = String(raw[k]).trim() }
+        return o
+      }).filter(o => o.registeredName)
+      if (out.length === 0) { alert('No supplier rows found.'); setImporting(false); return }
+      const r = await fetch('/api/expenses/suppliers/import', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ branch, rows: out }),
+      })
+      if (r.ok) { const d = await r.json(); await load(); alert(`Imported ${d.created} supplier(s).`) }
+      else alert((await r.json()).error || 'Import failed')
+    } catch { alert('Could not read the file. Use the template (.xlsx or .csv).') }
+    setImporting(false)
+  }
+
+  const toggleSort = (k: SupSortKey) => {
+    if (sortKey === k) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
+    else { setSortKey(k); setSortDir('asc') }
+  }
+
+  const q = search.trim().toLowerCase()
+  let shown = rows.filter(s => {
+    if (q && ![s.tin, s.registeredName, s.registeredAddress, s.branchLabel].some(v => (v || '').toLowerCase().includes(q))) return false
+    for (const k of ['tin', 'branchLabel', 'registeredName', 'registeredAddress'] as SupSortKey[]) {
+      const f = colFilter[k].trim().toLowerCase()
+      if (f && !((s[k] || '') as string).toLowerCase().includes(f)) return false
+    }
+    return true
+  })
+  shown = [...shown].sort((a, b) => {
+    const av = ((a[sortKey] || '') as string).toLowerCase(), bv = ((b[sortKey] || '') as string).toLowerCase()
+    return (av < bv ? -1 : av > bv ? 1 : 0) * (sortDir === 'asc' ? 1 : -1)
+  })
+
+  const COLS: { key: SupSortKey; label: string }[] = [
+    { key: 'tin', label: 'TIN' }, { key: 'branchLabel', label: 'Branch' },
+    { key: 'registeredName', label: 'Registered Name' }, { key: 'registeredAddress', label: 'Registered Address' },
+  ]
+
+  return (
+    <div className="space-y-4">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="relative flex-1 min-w-[220px] max-w-md">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search suppliers…"
+            className="w-full pl-9 pr-8 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+          {search && <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2"><X size={15} style={{ color: 'var(--mid-gray)' }} /></button>}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={downloadTemplate} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+            <Download size={14} /> Template
+          </button>
+          {canWrite && (
+            <button onClick={() => fileRef.current?.click()} disabled={importing} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+              {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} Import CSV/Excel
+            </button>
+          )}
+          <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleImportFile(f); e.target.value = '' }} />
+          {canWrite && (
+            <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>
+              <Plus size={15} /> Add
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Date filter */}
+      <div className="flex items-end gap-3 flex-wrap">
+        <label className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>
+          <input type="checkbox" checked={seeAll} onChange={e => setSeeAll(e.target.checked)} /> See All
+        </label>
+        <div>
+          <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>From (first appeared)</label>
+          <input type="date" value={from} disabled={seeAll} onChange={e => setFrom(e.target.value)} className="px-3 py-2 rounded-xl border text-sm disabled:opacity-50" style={{ borderColor: 'var(--light-gray)' }} />
+        </div>
+        <div>
+          <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>To</label>
+          <input type="date" value={to} disabled={seeAll} onChange={e => setTo(e.target.value)} className="px-3 py-2 rounded-xl border text-sm disabled:opacity-50" style={{ borderColor: 'var(--light-gray)' }} />
+        </div>
+        <span className="text-xs pb-2" style={{ color: 'var(--mid-gray)' }}>{shown.length} supplier(s)</span>
+      </div>
+
+      {/* Table */}
+      <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)', maxHeight: '60vh' }}>
+        {loading ? (
+          <div className="flex items-center justify-center py-12"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} /></div>
+        ) : (
+          <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
+            <thead className="sticky top-0 z-10">
+              <tr style={{ background: 'var(--off-white)' }}>
+                {COLS.map(c => (
+                  <th key={c.key} className="border-r border-b px-3 py-2 text-left font-semibold" style={{ color: 'var(--charcoal)', borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                    <button onClick={() => toggleSort(c.key)} className="flex items-center gap-1">
+                      {c.label}
+                      <span style={{ color: sortKey === c.key ? 'var(--teal)' : 'var(--light-gray)' }}>{sortKey === c.key ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span>
+                    </button>
+                    <input value={colFilter[c.key]} onChange={e => setColFilter(f => ({ ...f, [c.key]: e.target.value }))} placeholder="filter…"
+                      className="mt-1 w-full px-2 py-1 rounded border text-[11px] font-normal" style={{ borderColor: 'var(--light-gray)' }} />
+                  </th>
+                ))}
+                <th className="border-b px-3 py-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((s, i) => (
+                <tr key={(s.id || '') + s.registeredName + i} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                  <td className="border-r border-b px-3 py-2 font-mono whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>{s.tin || '—'}</td>
+                  <td className="border-r border-b px-3 py-2 whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>{s.branchLabel}</td>
+                  <td className="border-r border-b px-3 py-2" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)', fontWeight: 600 }}>{s.registeredName}</td>
+                  <td className="border-r border-b px-3 py-2" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>{s.registeredAddress || '—'}</td>
+                  <td className="border-b px-3 py-2 text-right" style={{ borderColor: 'var(--light-gray)' }}>
+                    {canWrite && s.id && (
+                      <button onClick={() => deleteSupplier(s.id)} title="Remove saved supplier" className="p-1 rounded hover:bg-red-50">
+                        <Trash2 size={13} style={{ color: '#dc2626' }} />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {shown.length === 0 && (
+                <tr><td colSpan={5} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>No suppliers{q || !seeAll ? ' match the filters' : ' yet'}.</td></tr>
+              )}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {showAdd && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setShowAdd(false)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Add Supplier</h2>
+              <button onClick={() => setShowAdd(false)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+            </div>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Registered Name</label>
+            <input value={na} onChange={e => setNa(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Registered Address</label>
+            <input value={nad} onChange={e => setNad(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>TIN</label>
+            <input value={nt} onChange={e => setNt(e.target.value)} placeholder="XXX-XXX-XXX-XXXXX" className="w-full px-3 py-2 rounded-xl border text-sm mb-4 font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+            <button onClick={addSupplier} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>Add Supplier</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

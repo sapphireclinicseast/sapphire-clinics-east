@@ -1721,3 +1721,15 @@ model CreditCardReport {
   @@unique([branch, cardId, periodMonth, periodYear])
   @@index([branch])
 }
+
+model ExpenseSupplier {
+  id                String   @id @default(cuid())
+  branch            String
+  registeredName    String
+  registeredAddress String?
+  tin               String?
+  createdAt         DateTime @default(now())
+
+  @@unique([branch, registeredName])
+  @@index([branch])
+}

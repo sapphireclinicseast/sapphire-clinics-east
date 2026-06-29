@@ -127,6 +127,8 @@ export default function PettyCashPage() {
   const [payTarget, setPayTarget] = useState<Reimb | null>(null)
   const [uploadingProof, setUploadingProof] = useState('')
   const [uploadPct, setUploadPct] = useState<Record<string, number>>({})
+  const [supplierNames, setSupplierNames] = useState<Set<string>>(new Set())
+  const [newSupplierPrompt, setNewSupplierPrompt] = useState<{ registeredName: string; registeredAddress: string; tin: string } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadEntries = useCallback(async (br: string) => {
@@ -155,6 +157,14 @@ export default function PettyCashPage() {
   useEffect(() => {
     setSelected(new Set())
     loadEntries(branch); loadSettings(branch); loadReimbursements(branch)
+    // Suppliers list is only defined for the expense branches (not CEO).
+    if (['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE'].includes(branch)) {
+      fetch(`/api/expenses/suppliers?branch=${branch}&all=1`)
+        .then(r => (r.ok ? r.json() : { suppliers: [] }))
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .then((d: any) => setSupplierNames(new Set((d.suppliers || []).map((s: any) => String(s.registeredName).trim().toLowerCase()))))
+        .catch(() => setSupplierNames(new Set()))
+    } else setSupplierNames(new Set())
   }, [branch, loadEntries, loadSettings, loadReimbursements])
 
   useEffect(() => {
@@ -412,6 +422,25 @@ export default function PettyCashPage() {
       await fetch(`/api/petty-cash/reimbursements?id=${rep.id}`, { method: 'DELETE' })
       await loadReimbursements(branch); await loadEntries(branch)
     } catch { /* ignore */ }
+  }
+
+  const finalizeEntry = (e: Entry) => {
+    saveField(e.id, { finalized: true }, false)
+    const name = (e.registeredName || '').trim()
+    if (name && ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE'].includes(branch) && !supplierNames.has(name.toLowerCase())) {
+      setNewSupplierPrompt({ registeredName: name, registeredAddress: e.registeredAddress || '', tin: e.tinNumber || '' })
+    }
+  }
+  const confirmAddSupplier = async () => {
+    if (!newSupplierPrompt) return
+    try {
+      const r = await fetch('/api/expenses/suppliers', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch, ...newSupplierPrompt }),
+      })
+      if (r.ok) setSupplierNames(prev => new Set(prev).add(newSupplierPrompt.registeredName.trim().toLowerCase()))
+    } catch { /* ignore */ }
+    setNewSupplierPrompt(null)
   }
 
   const cellCls = 'w-full bg-transparent px-2 py-1.5 text-xs outline-none focus:bg-[var(--pale-teal)] rounded'
@@ -689,7 +718,7 @@ export default function PettyCashPage() {
                         <td className="border-b px-1 text-center" style={{ borderColor: 'var(--light-gray)' }}>
                           {canWrite && !e.reimbursementId && (
                             <div className="flex items-center justify-center gap-0.5 whitespace-nowrap">
-                              <button onClick={() => saveField(e.id, { finalized: true }, false)} disabled={!!e.finalized}
+                              <button onClick={() => finalizeEntry(e)} disabled={!!e.finalized}
                                 title={e.finalized ? 'Finalized' : 'Mark as finalized'} className="p-1 rounded hover:bg-green-50">
                                 <CheckCircle2 size={14} style={{ color: e.finalized ? '#16a34a' : '#9ca3af' }} />
                               </button>
@@ -823,6 +852,24 @@ export default function PettyCashPage() {
       {payTarget && (
         <RecordPaidModal report={payTarget} bankOptions={bankOptions}
           onClose={() => setPayTarget(null)} onPay={recordPaid} />
+      )}
+
+      {newSupplierPrompt && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setNewSupplierPrompt(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Add to Suppliers?</h2>
+            <p className="text-sm mb-1" style={{ color: 'var(--mid-gray)' }}>This supplier isn&apos;t in your Suppliers list yet:</p>
+            <div className="rounded-xl px-3 py-2 mb-4 text-sm" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>
+              <div className="font-semibold">{newSupplierPrompt.registeredName}</div>
+              {newSupplierPrompt.registeredAddress && <div className="text-xs" style={{ color: 'var(--mid-gray)' }}>{newSupplierPrompt.registeredAddress}</div>}
+              {newSupplierPrompt.tin && <div className="text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>TIN {newSupplierPrompt.tin}</div>}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setNewSupplierPrompt(null)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>No, skip</button>
+              <button onClick={confirmAddSupplier} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>Yes, add</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
