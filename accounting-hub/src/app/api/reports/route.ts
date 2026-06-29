@@ -668,6 +668,29 @@ export async function GET(req: Request) {
       }
     }
 
+    /* ── Petty cash entries → expense (net of VAT) by Date's month;
+          VAT portion → 1040 Input VAT (current asset). ── */
+    const pettyCashEntries = await prisma.pettyCashEntry.findMany({
+      where: {
+        date: { gte: startDate, lt: endDate },
+        ...(branch !== 'ALL' ? { branch: orderBranch } : {}),
+        pcfStatus: { not: 'Cancelled' },
+        NOT: { vatable: 'Cancelled' },
+      },
+      select: { accountTitle: true, date: true, vatable: true, grossAmount: true },
+    })
+    for (const e of pettyCashEntries) {
+      if (!e.accountTitle || !e.date) continue
+      const gross = Number(e.grossAmount)
+      if (!gross) continue
+      const net = e.vatable === 'VAT' ? gross / 1.12 : gross
+      const vat = gross - net
+      const m = new Date(e.date).getUTCMonth() + 1
+      if (!monthly[m]) continue
+      monthly[m].expenseByAccount[e.accountTitle] = (monthly[m].expenseByAccount[e.accountTitle] || 0) + net
+      if (vat > 0) monthly[m].deductionsByAccount['1040 Input VAT'] = (monthly[m].deductionsByAccount['1040 Input VAT'] || 0) + vat
+    }
+
     /* ── Payroll expense from direct payslip sums ───────────────
        Consultant grossPay → professionalFeesAccount
        Employee grossPay  → salaryExpenseAccount

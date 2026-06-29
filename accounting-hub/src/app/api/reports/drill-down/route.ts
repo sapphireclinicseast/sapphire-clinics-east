@@ -361,6 +361,30 @@ export async function GET(req: Request) {
         }
       })
 
+      // Also include petty cash entries classified to this expense account (net of VAT).
+      const pcRows = await prisma.pettyCashEntry.findMany({
+        where: {
+          accountTitle: accountKey,
+          date: { gte: startDate, lt: endDate },
+          ...(branch !== 'ALL' ? { branch: orderBranch } : {}),
+          pcfStatus: { not: 'Cancelled' },
+          NOT: { vatable: 'Cancelled' },
+        },
+        orderBy: { date: 'asc' },
+      })
+      for (const e of pcRows) {
+        const gross = Number(e.grossAmount)
+        const net = e.vatable === 'VAT' ? gross / 1.12 : gross
+        if (!net) continue
+        items.push({
+          date: e.date ? e.date.toISOString().split('T')[0] : '',
+          type: `${e.pcvNumber} — ${e.description || ''} · Petty Cash`,
+          branch: 'PETTY CASH',
+          amount: net,
+        })
+      }
+      items.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+
       return NextResponse.json({ items, total: items.reduce((s, i) => s + i.amount, 0) })
     }
 
