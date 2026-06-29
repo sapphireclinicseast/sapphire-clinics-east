@@ -44,13 +44,13 @@ export async function POST(req: NextRequest) {
   const dayStart = new Date(`${date}T00:00:00.000Z`)
   const dayEnd   = new Date(`${date}T23:59:59.999Z`)
   const schedules = await prisma.schedule.findMany({
-    where:   { staffId, date: { gte: dayStart, lte: dayEnd } },
+    where:   { staffId, date: { gte: dayStart, lte: dayEnd }, status: 'CONFIRMED' },
     include: { patient: true },
     orderBy: { startTime: 'asc' },
   })
 
   if (schedules.length === 0)
-    return NextResponse.json({ error: 'No schedules found for this day' }, { status: 400 })
+    return NextResponse.json({ error: 'No confirmed schedules found for this day' }, { status: 400 })
 
   const branch    = BRANCH_SHORT[staff.branch] ?? staff.branch
   const shortDate = new Date(date + 'T12:00:00').toLocaleDateString('en-PH', {
