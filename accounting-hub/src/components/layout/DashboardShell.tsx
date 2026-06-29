@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Sidebar from './Sidebar'
 import TopBar from './TopBar'
+import { ReminderPopup } from '@/components/dashboard/RecurringReminders'
 
 interface DashboardShellProps {
   user: {
@@ -33,6 +34,8 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
           {children}
         </main>
       </div>
+
+      <ReminderPopup />
     </div>
   )
 }

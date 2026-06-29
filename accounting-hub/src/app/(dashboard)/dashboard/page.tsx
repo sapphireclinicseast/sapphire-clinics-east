@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { auth } from '@/lib/auth'
 import PendingQueueWidget from '@/components/dashboard/PendingQueueWidget'
+import { ReminderCard } from '@/components/dashboard/RecurringReminders'
 
 const FRONT_DESK_ROLES = ['SBEA_FRONTDESK', 'SBGH_FRONTDESK']
 
@@ -123,6 +124,9 @@ export default async function DashboardPage() {
           SAPPHIRE Accounting Hub — Module Overview
         </p>
       </div>
+
+      {/* Recurring expense reminders — shown to admins/accountants per branch scope */}
+      <ReminderCard />
 
       {/* Pending Queue Widget — shown to front desk users */}
       {isFrontDesk && (

@@ -675,11 +675,13 @@ export async function GET(req: Request) {
         date: { gte: startDate, lt: endDate },
         ...(branch !== 'ALL' ? { branch: orderBranch } : { branch: { not: 'CEO' } }),
       },
-      select: { accountTitle: true, date: true, vatable: true, grossAmount: true, validity: true, pcfStatus: true },
+      select: { accountTitle: true, date: true, vatable: true, grossAmount: true, validity: true, pcfStatus: true, recordType: true, distributeMonthly: true },
     })
     for (const e of pettyCashEntries) {
       if (!e.accountTitle || !e.date) continue
       if (e.pcfStatus === 'Cancelled' || e.validity === 'Cancelled' || e.vatable === 'Cancelled') continue
+      // Distributed recurring expenses are amortized separately below (prepaid model).
+      if (e.recordType === 'RECURRING' && e.distributeMonthly) continue
       const gross = Number(e.grossAmount)
       if (!gross) continue
       const net = e.vatable === 'VAT' ? gross / 1.12 : gross
@@ -688,6 +690,59 @@ export async function GET(req: Request) {
       if (!monthly[m]) continue
       monthly[m].expenseByAccount[e.accountTitle] = (monthly[m].expenseByAccount[e.accountTitle] || 0) + net
       if (vat > 0) monthly[m].deductionsByAccount['1040 Input VAT'] = (monthly[m].deductionsByAccount['1040 Input VAT'] || 0) + vat
+    }
+
+    /* ── Distributed recurring expenses → prepaid amortization ──
+       At payment (Date month, if in year): Prepaid Expense asset += net,
+       Input VAT += vat. Each month in [distributeStart, distributeEnd] that
+       falls in this report year: Expense += net/n and Prepaid Expense −= net/n.
+       The Prepaid account is configured per-branch in PettyCashSettings. ── */
+    const pcSettings = await prisma.pettyCashSettings.findMany({ select: { branch: true, prepaidAccount: true } })
+    const prepaidByBranch: Record<string, string | null> = {}
+    for (const s of pcSettings) prepaidByBranch[s.branch] = s.prepaidAccount
+    const distEntries = await prisma.pettyCashEntry.findMany({
+      where: {
+        recordType: 'RECURRING',
+        distributeMonthly: true,
+        distributeStart: { not: null },
+        distributeEnd: { not: null },
+        ...(branch !== 'ALL' ? { branch: orderBranch } : { branch: { not: 'CEO' } }),
+      },
+      select: { accountTitle: true, date: true, vatable: true, grossAmount: true, validity: true, pcfStatus: true, distributeStart: true, distributeEnd: true, branch: true },
+    })
+    for (const e of distEntries) {
+      if (!e.accountTitle || !e.distributeStart || !e.distributeEnd) continue
+      if (e.pcfStatus === 'Cancelled' || e.validity === 'Cancelled' || e.vatable === 'Cancelled') continue
+      const gross = Number(e.grossAmount)
+      if (!gross) continue
+      const net = e.vatable === 'VAT' ? gross / 1.12 : gross
+      const vat = gross - net
+      const sd = new Date(e.distributeStart), ed = new Date(e.distributeEnd)
+      const sIdx = sd.getUTCFullYear() * 12 + sd.getUTCMonth()
+      const eIdx = ed.getUTCFullYear() * 12 + ed.getUTCMonth()
+      const count = eIdx - sIdx + 1
+      if (count <= 0) continue
+      const monthlyNet = net / count
+      const prepaidKey = prepaidByBranch[e.branch] || null
+      // Payment-month recognition (Prepaid asset created + Input VAT)
+      if (e.date) {
+        const pd = new Date(e.date)
+        if (pd.getUTCFullYear() === year) {
+          const pm = pd.getUTCMonth() + 1
+          if (monthly[pm]) {
+            if (prepaidKey) monthly[pm].deductionsByAccount[prepaidKey] = (monthly[pm].deductionsByAccount[prepaidKey] || 0) + net
+            if (vat > 0) monthly[pm].deductionsByAccount['1040 Input VAT'] = (monthly[pm].deductionsByAccount['1040 Input VAT'] || 0) + vat
+          }
+        }
+      }
+      // Monthly amortization within the report year
+      for (let idx = sIdx; idx <= eIdx; idx++) {
+        if (Math.floor(idx / 12) !== year) continue
+        const mm = (idx % 12) + 1
+        if (!monthly[mm]) continue
+        monthly[mm].expenseByAccount[e.accountTitle] = (monthly[mm].expenseByAccount[e.accountTitle] || 0) + monthlyNet
+        if (prepaidKey) monthly[mm].deductionsByAccount[prepaidKey] = (monthly[mm].deductionsByAccount[prepaidKey] || 0) - monthlyNet
+      }
     }
 
     /* ── CEO petty cash → allocated per branch (Gross split across branches) ── */
