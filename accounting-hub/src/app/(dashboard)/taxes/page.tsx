@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Landmark, ExternalLink, CalendarClock, Info } from 'lucide-react'
 import { computeTaxDue, TAX_PORTALS, type TaxDueInfo } from '@/lib/taxes'
+import WithholdingCompensation from './WithholdingCompensation'
 
 type Tab = 'guide' | 'compensation' | 'ewt' | 'business' | 'rfp' | 'paid'
 
@@ -142,11 +143,7 @@ export default function TaxesPage() {
         </div>
       )}
 
-      {tab === 'compensation' && (
-        <Placeholder title="Withholding Tax on Compensation">
-          Tracks tax withheld from employees&apos; salaries (BIR 1601-C), moved here from Payroll. Each period totals up into an RFP for remittance — continuous with the petty-cash / expense RFP numbering — with a month/year filter.
-        </Placeholder>
-      )}
+      {tab === 'compensation' && <WithholdingCompensation />}
       {tab === 'ewt' && (
         <Placeholder title="Expanded / Creditable Withholding Tax (EWT)">
           Consolidates EWT withheld on consultants (5%) and on recurring / one-time expenses, per transaction and per payee, with a month/year filter and an RFP button.

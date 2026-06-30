@@ -1681,6 +1681,7 @@ model ReimbursementReport {
   transferRef    String?
   kind           String?
   module         String   @default("PETTY_CASH")
+  meta           Json?    // tax RFPs: { taxType, period, payrollBranch, items:[{id,name,gross,tax}] }
   creditCardId   String?
   debitAccount   String?
   depositAccount String?
