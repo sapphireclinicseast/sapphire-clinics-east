@@ -559,7 +559,7 @@ export default function ExpensesPage() {
               </>
             ) : (
               <>
-                <span className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Select {rfpMode === 'VALID' ? 'valid' : 'invalid'} entries…</span>
+                <span className="text-xs font-bold" style={{ color: '#dc2626' }}>Select {rfpMode === 'VALID' ? 'Valid' : 'Invalid'} Entries</span>
                 <button onClick={() => setShowRfpModal(true)} disabled={selected.size === 0}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40" style={{ background: 'var(--teal)' }}>
                   <CreditCard size={15} /> Generate RFP ({rfpMode === 'VALID' ? 'Valid' : 'Invalid'}){selected.size > 0 ? ` · ${selected.size}` : ''}
