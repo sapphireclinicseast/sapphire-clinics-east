@@ -3257,6 +3257,25 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
               className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium text-white transition-all hover:opacity-90 active:scale-[0.97]" style={{ background: 'var(--teal)' }}>
               <Search size={13} /> Load
             </button>
+            {canWrite && (
+              <button onClick={async (e) => {
+                if (!confirm('Re-sync holidays for the loaded date range from the branch-tagged holiday list? This re-marks each day as a holiday only if it applies to this branch (e.g. clears a holiday tagged for another branch).')) return
+                const btn = e.currentTarget; btn.disabled = true
+                try {
+                  const r = await fetch('/api/payroll/timekeeping/resync-holidays', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ branch, startDate: tkStartDate, endDate: tkEndDate }),
+                  })
+                  const d = await r.json()
+                  if (r.ok) { await fetchTimekeeping(); alert(`Re-synced holidays — ${d.updated} record(s) updated. Regenerate payslips to apply.`) }
+                  else alert(d.error || 'Failed to re-sync holidays')
+                } catch { alert('Failed to re-sync holidays') }
+                finally { btn.disabled = false }
+              }}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium border transition-all hover:opacity-80 active:scale-[0.97]" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                <RefreshCw size={13} /> Re-sync holidays
+              </button>
+            )}
             {canWrite && pastUploads.some(u => u.status === 'UPLOADED') && (
               <button onClick={async () => {
                 if (!confirm('Accept all uploaded TK data? Accepted records will appear in the table below.')) return
