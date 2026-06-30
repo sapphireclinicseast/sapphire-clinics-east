@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Download, Upload, FileDown, FileText, CheckCircle2, Paperclip, Eye, Pencil } from 'lucide-react'
+import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 
 // ── Constants ──────────────────────────────────────────────────
 const BRANCHES = [
@@ -122,6 +123,25 @@ export default function PettyCashPage() {
   const [tab, setTab] = useState<'entries' | 'reimbursements' | 'flowchart'>('entries')
   const [entries, setEntries] = useState<Entry[]>([])
   const [reimbursements, setReimbursements] = useState<Reimb[]>([])
+  // RFP list sort/filter
+  const [rfpSort, setRfpSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'date', dir: 'desc' })
+  const [rfpFilters, setRfpFilters] = useState<Record<string, string>>({})
+  const rfpToggleSort = (k: string) => setRfpSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
+  const rfpCols = [
+    { key: 'refNumber', label: 'Reference Number' },
+    { key: 'date', label: 'Date' },
+    { key: 'entries', label: 'Entries' },
+    { key: 'grossTotal', label: 'Gross Total' },
+    { key: 'status', label: 'Status' },
+  ]
+  const rfpGet = (r: Reimb, k: string): string | number =>
+    k === 'refNumber' ? r.refNumber
+      : k === 'date' ? new Date(r.createdAt).toISOString().slice(0, 10)
+      : k === 'entries' ? r._count.entries
+      : k === 'grossTotal' ? num(r.grossTotal)
+      : k === 'status' ? (r.status === 'PAID' ? 'Paid' : 'Pending')
+      : ''
+  const shownReimb = applySortFilter(reimbursements, rfpGet, rfpSort.key, rfpSort.dir, rfpFilters)
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
   const [coaOptions, setCoaOptions] = useState<string[]>([])
@@ -852,16 +872,10 @@ export default function PettyCashPage() {
       {tab === 'reimbursements' && (
         <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
           <table className="w-full text-sm">
-            <thead>
-              <tr style={{ background: 'var(--off-white)' }}>
-                {['Reference Number', 'Date', 'Entries', 'Gross Total', 'Status', ''].map((h, i) => (
-                  <th key={i} className="px-4 py-2.5 text-left text-xs font-semibold whitespace-nowrap"
-                    style={{ color: 'var(--charcoal)' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
+            <SortFilterHead cols={rfpCols} sortKey={rfpSort.key} sortDir={rfpSort.dir} filters={rfpFilters}
+              onToggleSort={rfpToggleSort} onFilter={(k, v) => setRfpFilters(f => ({ ...f, [k]: v }))} trailing />
             <tbody>
-              {reimbursements.map(r => (
+              {shownReimb.map(r => (
                 <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                   <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{r.refNumber}</td>
                   <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{new Date(r.createdAt).toLocaleDateString('en-PH')}</td>
@@ -922,9 +936,9 @@ export default function PettyCashPage() {
                   </td>
                 </tr>
               ))}
-              {reimbursements.length === 0 && (
+              {shownReimb.length === 0 && (
                 <tr><td colSpan={6} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>
-                  No RFPs yet. Click &quot;RFP (Valid)&quot; or &quot;RFP (Invalid)&quot;, then select entries.
+                  {reimbursements.length === 0 ? 'No RFPs yet. Click "RFP (Valid)" or "RFP (Invalid)", then select entries.' : 'No RFPs match the current filters.'}
                 </td></tr>
               )}
             </tbody>

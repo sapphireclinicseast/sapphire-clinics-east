@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Search, ArrowUp, ArrowDown, Upload, Download, Eye, Wallet, CreditCard, CheckCircle2, Pencil } from 'lucide-react'
+import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 
 // ── Constants ──────────────────────────────────────────────────
 const BRANCHES = [
@@ -169,6 +170,27 @@ export default function ExpensesPage() {
   const [rfpManualSeq, setRfpManualSeq] = useState('')
   const [generatingRfp, setGeneratingRfp] = useState(false)
   const [rfps, setRfps] = useState<Rfp[]>([])
+  // RFP list sort/filter
+  const [rfpSort, setRfpSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'date', dir: 'desc' })
+  const [rfpFilters, setRfpFilters] = useState<Record<string, string>>({})
+  const rfpToggleSort = (k: string) => setRfpSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
+  const rfpCols = [
+    { key: 'refNumber', label: 'Reference Number' },
+    { key: 'date', label: 'Date' },
+    { key: 'kind', label: 'Kind' },
+    { key: 'entries', label: 'Entries' },
+    { key: 'grossTotal', label: 'Gross Total' },
+    { key: 'status', label: 'Status' },
+  ]
+  const rfpGet = (r: Rfp, k: string): string | number =>
+    k === 'refNumber' ? r.refNumber
+      : k === 'date' ? new Date(r.createdAt).toISOString().slice(0, 10)
+      : k === 'kind' ? (r.kind === 'INVALID' ? 'Invalid' : 'Valid')
+      : k === 'entries' ? r._count.entries
+      : k === 'grossTotal' ? num(r.grossTotal)
+      : k === 'status' ? (r.status === 'PAID' ? 'Paid' : 'For Payment')
+      : ''
+  const shownRfps = applySortFilter(rfps, rfpGet, rfpSort.key, rfpSort.dir, rfpFilters)
   const [recurringDue, setRecurringDue] = useState<{ id: string; payee: string | null; accountTitle: string | null; description: string | null; grossAmount: number; frequency: string; nextDue: string; daysUntil: number; amountVaries?: boolean }[]>([])
   const [genFromRecurring, setGenFromRecurring] = useState('')
   const [payTarget, setPayTarget] = useState<Rfp | null>(null)
@@ -959,15 +981,10 @@ export default function ExpensesPage() {
       {tab === 'rfp' && (
         <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
           <table className="w-full text-sm">
-            <thead>
-              <tr style={{ background: 'var(--off-white)' }}>
-                {['Reference Number', 'Date', 'Kind', 'Entries', 'Gross Total', 'Status', ''].map((h, i) => (
-                  <th key={i} className="px-4 py-2.5 text-left text-xs font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
+            <SortFilterHead cols={rfpCols} sortKey={rfpSort.key} sortDir={rfpSort.dir} filters={rfpFilters}
+              onToggleSort={rfpToggleSort} onFilter={(k, v) => setRfpFilters(f => ({ ...f, [k]: v }))} trailing />
             <tbody>
-              {rfps.map(r => (
+              {shownRfps.map(r => (
                 <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                   <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{r.refNumber}</td>
                   <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{new Date(r.createdAt).toLocaleDateString('en-PH')}</td>
@@ -1022,9 +1039,9 @@ export default function ExpensesPage() {
                   </td>
                 </tr>
               ))}
-              {rfps.length === 0 && (
+              {shownRfps.length === 0 && (
                 <tr><td colSpan={7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>
-                  No RFPs yet. In Recurring/One-time expense, click &quot;RFP (Valid)&quot; or &quot;RFP (Invalid)&quot;, select entries, then Generate RFP.
+                  {rfps.length === 0 ? 'No RFPs yet. In Recurring/One-time expense, click "RFP (Valid)" or "RFP (Invalid)", select entries, then Generate RFP.' : 'No RFPs match the current filters.'}
                 </td></tr>
               )}
             </tbody>
