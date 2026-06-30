@@ -936,7 +936,7 @@ export default function PettyCashPage() {
         <div className="rounded-2xl border bg-white p-6" style={{ borderColor: 'var(--light-gray)' }}>
           <h2 className="text-lg font-bold mb-1" style={{ color: 'var(--charcoal)' }}>Petty Cash Workflow</h2>
           <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>From entry to reimbursement to the Expense Report.</p>
-          <p className="text-xs mb-6 font-semibold" style={{ color: 'var(--teal)' }}>For expenses less than ₱2,000.</p>
+          <p className="text-xs mb-6 font-semibold" style={{ color: 'var(--teal)' }}>For expenses less than or equal to ₱2,000.</p>
           <div className="flex flex-col items-center">
             {([
               { n: 1, title: 'Petty cash entry', who: 'Bookkeeper', desc: 'Encode entries in the Entries tab.' },
