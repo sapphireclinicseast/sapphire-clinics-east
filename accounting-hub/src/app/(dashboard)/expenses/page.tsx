@@ -916,7 +916,7 @@ export default function ExpensesPage() {
       )}
 
       {tab === 'cc-report' && (
-        <CcReportTab branch={branch} cards={cards} canWrite={canWrite} />
+        <CcReportTab branch={branch} cards={cards} canWrite={canWrite} canEdit={canAudit} />
       )}
 
       {tab === 'rfp' && (
@@ -996,7 +996,7 @@ export default function ExpensesPage() {
       )}
 
       {tab === 'expense-report' && (
-        <ExpenseReportTab branch={branch} canWrite={canWrite} />
+        <ExpenseReportTab branch={branch} canWrite={canWrite} canEdit={canAudit} />
       )}
 
       {tab === 'suppliers' && (
@@ -1315,7 +1315,7 @@ interface CcTxn {
   description: string | null; accountTitle: string | null; grossAmount: string | number; paidAt: string | null
 }
 
-function CcReportTab({ branch, cards, canWrite }: { branch: string; cards: Card[]; canWrite: boolean }) {
+function CcReportTab({ branch, cards, canWrite, canEdit }: { branch: string; cards: Card[]; canWrite: boolean; canEdit: boolean }) {
   const now = new Date()
   const [cardId, setCardId] = useState('')
   const [month, setMonth] = useState(now.getMonth() + 1)
@@ -1325,6 +1325,13 @@ function CcReportTab({ branch, cards, canWrite }: { branch: string; cards: Card[
   const [loadingTxns, setLoadingTxns] = useState(false)
   const [creating, setCreating] = useState(false)
   const [uploadingStmt, setUploadingStmt] = useState('')
+  const [txnRefresh, setTxnRefresh] = useState(0)
+  const [editRow, setEditRow] = useState<{ id: string; date: string; accountTitle: string; description: string; gross: number } | null>(null)
+  const deleteTxn = async (id: string) => {
+    if (!confirm('Delete this entry? It will be removed from the report and any RFP it was in.')) return
+    setTxns(prev => prev.filter(t => t.id !== id))
+    try { await fetch(`/api/expenses/report-entry?id=${id}`, { method: 'DELETE' }) } catch { /* ignore */ }
+  }
 
   const loadReports = useCallback(async () => {
     try { const r = await fetch(`/api/expenses/cc-reports?branch=${branch}`); setReports(r.ok ? await r.json() : []) }
@@ -1342,7 +1349,7 @@ function CcReportTab({ branch, cards, canWrite }: { branch: string; cards: Card[
       .catch(() => { if (alive) setTxns([]) })
       .finally(() => { if (alive) setLoadingTxns(false) })
     return () => { alive = false }
-  }, [branch, cardId, month, year])
+  }, [branch, cardId, month, year, txnRefresh])
 
   const report = reports.find(r => r.cardId === cardId && r.periodMonth === month && r.periodYear === year) || null
   const total = txns.reduce((s, t) => s + num(t.grossAmount), 0)
@@ -1516,6 +1523,7 @@ function CcReportTab({ branch, cards, canWrite }: { branch: string; cards: Card[
                     {['Reference Number', 'Payee', 'Expense Date', 'Description', 'Account Title', 'Charged On', 'Amount'].map((h, i) => (
                       <th key={i} className="px-3 py-2 text-left font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{h}</th>
                     ))}
+                    {canEdit && <th className="px-3 py-2" />}
                   </tr>
                 </thead>
                 <tbody>
@@ -1528,15 +1536,23 @@ function CcReportTab({ branch, cards, canWrite }: { branch: string; cards: Card[
                       <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{t.accountTitle || ''}</td>
                       <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{t.paidAt ? String(t.paidAt).slice(0, 10) : ''}</td>
                       <td className="px-3 py-2 text-right font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(num(t.grossAmount))}</td>
+                      {canEdit && (
+                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                          <button onClick={() => setEditRow({ id: t.id, date: t.date ? String(t.date).slice(0, 10) : '', accountTitle: t.accountTitle || '', description: t.description || '', gross: num(t.grossAmount) })}
+                            title="Edit" className="p-1 rounded hover:bg-teal-50 mr-1"><Pencil size={13} style={{ color: 'var(--teal)' }} /></button>
+                          <button onClick={() => deleteTxn(t.id)} title="Delete" className="p-1 rounded hover:bg-red-50"><Trash2 size={13} style={{ color: '#dc2626' }} /></button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                   {txns.length === 0 && (
-                    <tr><td colSpan={7} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No credit-card charges for this card in {MONTHS[month - 1]} {year}.</td></tr>
+                    <tr><td colSpan={canEdit ? 8 : 7} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No credit-card charges for this card in {MONTHS[month - 1]} {year}.</td></tr>
                   )}
                   {txns.length > 0 && (
                     <tr className="border-t-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                       <td colSpan={6} className="px-3 py-2 text-right font-bold" style={{ color: 'var(--charcoal)' }}>TOTAL</td>
                       <td className="px-3 py-2 text-right font-bold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(total)}</td>
+                      {canEdit && <td />}
                     </tr>
                   )}
                 </tbody>
@@ -1594,6 +1610,10 @@ function CcReportTab({ branch, cards, canWrite }: { branch: string; cards: Card[
           </table>
         </div>
       </div>
+
+      {editRow && (
+        <ReportEntryEditModal row={editRow} onClose={() => setEditRow(null)} onSaved={() => { setEditRow(null); setTxnRefresh(x => x + 1) }} />
+      )}
     </div>
   )
 }
@@ -1602,13 +1622,19 @@ function CcReportTab({ branch, cards, canWrite }: { branch: string; cards: Card[
 interface ErRow {
   id: string; source: string; payee: string; paymentAccount: string; paymentDate: string
   paymentMethod: string; pcvNumber: string; accountTitle: string; description: string
-  netOfVat: number; checkInfo: string; validity: string; filingStatus: string
+  netOfVat: number; gross: number; checkInfo: string; validity: string; filingStatus: string
 }
 
-function ExpenseReportTab({ branch, canWrite }: { branch: string; canWrite: boolean }) {
+function ExpenseReportTab({ branch, canWrite, canEdit }: { branch: string; canWrite: boolean; canEdit: boolean }) {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [rows, setRows] = useState<ErRow[]>([])
+  const [editRow, setEditRow] = useState<{ id: string; date: string; accountTitle: string; description: string; gross: number } | null>(null)
+  const deleteEntry = async (id: string) => {
+    if (!confirm('Delete this entry? It will be removed from the report and any RFP it was in.')) return
+    setRows(prev => prev.filter(r => r.id !== id))
+    try { await fetch(`/api/expenses/report-entry?id=${id}`, { method: 'DELETE' }) } catch { /* ignore */ }
+  }
   const [loading, setLoading] = useState(false)
   const [view, setView] = useState<'Valid' | 'Invalid'>('Valid')
 
@@ -1728,6 +1754,7 @@ function ExpenseReportTab({ branch, canWrite }: { branch: string; canWrite: bool
                 {['Payee', 'Payment Account', 'Payment Date', 'Payment Method', 'Reference Number', 'Account Title', 'Description', 'Amount Net of VAT', 'Check Number', 'Status'].map((h, i) => (
                   <th key={i} className="border-r border-b px-3 py-2 text-left font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)', borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>{h}</th>
                 ))}
+                {canEdit && <th className="border-b px-3 py-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}></th>}
               </tr>
             </thead>
             <tbody>
@@ -1751,22 +1778,76 @@ function ExpenseReportTab({ branch, canWrite }: { branch: string; canWrite: bool
                         <option value="FILED">Filed</option>
                       </select>
                     </td>
+                    {canEdit && (
+                      <td className="border-b px-2 py-2 text-right whitespace-nowrap" style={{ borderColor: 'var(--light-gray)' }}>
+                        <button onClick={() => setEditRow({ id: r.id, date: r.paymentDate, accountTitle: r.accountTitle, description: r.description, gross: r.gross })}
+                          title="Edit" className="p-1 rounded hover:bg-teal-50 mr-1"><Pencil size={13} style={{ color: 'var(--teal)' }} /></button>
+                        <button onClick={() => deleteEntry(r.id)} title="Delete" className="p-1 rounded hover:bg-red-50"><Trash2 size={13} style={{ color: '#dc2626' }} /></button>
+                      </td>
+                    )}
                   </tr>
                 )
               })}
               {shown.length === 0 && (
-                <tr><td colSpan={10} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>No {view.toLowerCase()} paid expenses{(from || to) ? ' in this date range' : ''}.</td></tr>
+                <tr><td colSpan={canEdit ? 11 : 10} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>No {view.toLowerCase()} paid expenses{(from || to) ? ' in this date range' : ''}.</td></tr>
               )}
               {shown.length > 0 && (
                 <tr style={{ background: 'var(--off-white)' }}>
                   <td colSpan={7} className="border-r border-b px-3 py-2 text-right font-bold" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>TOTAL {view}</td>
                   <td className="border-r border-b px-3 py-2 text-right font-bold whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>₱{peso(view === 'Valid' ? totalValid : totalInvalid)}</td>
-                  <td className="border-r border-b" style={{ borderColor: 'var(--light-gray)' }} colSpan={2}></td>
+                  <td className="border-r border-b" style={{ borderColor: 'var(--light-gray)' }} colSpan={canEdit ? 3 : 2}></td>
                 </tr>
               )}
             </tbody>
           </table>
         )}
+      </div>
+
+      {editRow && (
+        <ReportEntryEditModal row={editRow} onClose={() => setEditRow(null)} onSaved={() => { setEditRow(null); load() }} />
+      )}
+    </div>
+  )
+}
+
+// ── Edit an entry from a report (bypasses the paid/RFP lock) ──
+function ReportEntryEditModal({ row, onClose, onSaved }: {
+  row: { id: string; date: string; accountTitle: string; description: string; gross: number }
+  onClose: () => void; onSaved: () => void
+}) {
+  const [date, setDate] = useState(row.date || '')
+  const [accountTitle, setAccountTitle] = useState(row.accountTitle || '')
+  const [description, setDescription] = useState(row.description || '')
+  const [gross, setGross] = useState(String(row.gross || ''))
+  const [saving, setSaving] = useState(false)
+  const save = async () => {
+    setSaving(true)
+    try {
+      const r = await fetch('/api/expenses/report-entry', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: row.id, date: date || null, accountTitle, description, grossAmount: Number(gross) || 0 }),
+      })
+      if (r.ok) onSaved()
+      else alert((await r.json()).error || 'Failed to save')
+    } catch { alert('Failed to save') }
+    setSaving(false)
+  }
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Edit Entry</h2>
+          <button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+        </div>
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Date</label>
+        <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Account Title</label>
+        <input value={accountTitle} onChange={e => setAccountTitle(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Description</label>
+        <input value={description} onChange={e => setDescription(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Gross Amount</label>
+        <input type="number" step="0.01" value={gross} onChange={e => setGross(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-4 text-right" style={{ borderColor: 'var(--light-gray)' }} />
+        <button onClick={save} disabled={saving} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{saving ? 'Saving…' : 'Save Changes'}</button>
       </div>
     </div>
   )

@@ -49,7 +49,7 @@ export async function GET(req: Request) {
         id: e.id, source: e.recordType, payee: e.requestor || '', paymentAccount: acct,
         paymentDate: e.date ? new Date(e.date).toISOString().slice(0, 10) : '',
         paymentMethod: e.paymentMethod || '', pcvNumber: e.pcvNumber, accountTitle: e.accountTitle || '',
-        description: e.description || '', netOfVat: netOf(e.vatable, gross),
+        description: e.description || '', netOfVat: netOf(e.vatable, gross), gross,
         checkInfo: e.checkNumber ? `${e.paymentBankAccount || ''} ${e.checkNumber}`.trim() : '',
         validity: e.validity || '', filingStatus: e.filingStatus || 'FOR_FILING',
       }
@@ -66,7 +66,7 @@ export async function GET(req: Request) {
         paymentAccount: e.reimbursement?.debitAccount || '',
         paymentDate: e.date ? new Date(e.date).toISOString().slice(0, 10) : '',
         paymentMethod: pm, pcvNumber: e.pcvNumber, accountTitle: e.accountTitle || '',
-        description: e.description || '', netOfVat: netOf(e.vatable, gross),
+        description: e.description || '', netOfVat: netOf(e.vatable, gross), gross,
         checkInfo: isCheck && chk ? `${debit} ${chk}`.trim() : (pm === 'Online Fund Transfer' && tref ? `${debit} · Ref ${tref}`.trim() : ''),
         validity: e.validity || '', filingStatus: e.filingStatus || 'FOR_FILING',
       }
