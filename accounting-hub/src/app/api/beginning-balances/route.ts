@@ -19,7 +19,7 @@ export async function GET(req: Request) {
   const [accounts, balances] = await Promise.all([
     prisma.account.findMany({
       where: { isActive: true },
-      select: { id: true, accountNumber: true, accountTitle: true, accountType: true, subType: true, normalBalance: true },
+      select: { id: true, accountNumber: true, accountTitle: true, accountType: true, subType: true, normalBalance: true, isBankAccount: true },
       orderBy: { accountNumber: 'asc' },
     }),
     prisma.beginningBalance.findMany({ where: { periodYear: year } }),
@@ -37,6 +37,8 @@ export async function GET(req: Request) {
       normalBalance: a.normalBalance,
       amount: b ? Number(b.amount) : 0,
       notes: b?.notes || '',
+      startDate: b?.startDate ? new Date(b.startDate).toISOString().slice(0, 10) : '',
+      isBankAccount: a.isBankAccount,
       hasRow: !!b,
     }
   })
@@ -55,7 +57,7 @@ export async function POST(req: Request) {
   try {
     const { year, entries } = await req.json() as {
       year: number
-      entries: { accountId: string; amount: number; notes?: string }[]
+      entries: { accountId: string; amount: number; notes?: string; startDate?: string | null }[]
     }
     if (!year || !Array.isArray(entries)) {
       return NextResponse.json({ error: 'year and entries are required' }, { status: 400 })
@@ -64,12 +66,13 @@ export async function POST(req: Request) {
     const results = await prisma.$transaction(entries.map(e =>
       prisma.beginningBalance.upsert({
         where: { accountId_periodYear: { accountId: e.accountId, periodYear: year } },
-        update: { amount: e.amount, notes: e.notes || null },
+        update: { amount: e.amount, notes: e.notes || null, startDate: e.startDate ? new Date(e.startDate) : null },
         create: {
           accountId: e.accountId,
           periodYear: year,
           amount: e.amount,
           notes: e.notes || null,
+          startDate: e.startDate ? new Date(e.startDate) : null,
           createdById: session.user.id,
         },
       })

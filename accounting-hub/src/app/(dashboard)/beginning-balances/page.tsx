@@ -13,6 +13,8 @@ interface Row {
   normalBalance: string
   amount: number
   notes: string
+  startDate: string
+  isBankAccount: boolean
   hasRow: boolean
 }
 
@@ -27,7 +29,7 @@ export default function BeginningBalancesPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [rows, setRows] = useState<Row[]>([])
-  const [edits, setEdits] = useState<Record<string, { amount: number; notes: string }>>({})
+  const [edits, setEdits] = useState<Record<string, { amount: number; notes: string; startDate: string }>>({})
   const [filter, setFilter] = useState('')
 
   const load = useCallback(async () => {
@@ -68,15 +70,19 @@ export default function BeginningBalancesPage() {
     return { dr, cr, diff: dr - cr }
   }, [rows, edits])
 
-  const setAmount = (id: string, amount: number) => {
-    setEdits(p => ({ ...p, [id]: { amount, notes: p[id]?.notes ?? rows.find(r => r.accountId === id)?.notes ?? '' } }))
+  const patchEdit = (id: string, partial: Partial<{ amount: number; notes: string; startDate: string }>) => {
+    setEdits(p => {
+      const r = rows.find(x => x.accountId === id)
+      const cur = p[id] ?? { amount: r?.amount ?? 0, notes: r?.notes ?? '', startDate: r?.startDate ?? '' }
+      return { ...p, [id]: { ...cur, ...partial } }
+    })
   }
-  const setNotes = (id: string, notes: string) => {
-    setEdits(p => ({ ...p, [id]: { amount: p[id]?.amount ?? rows.find(r => r.accountId === id)?.amount ?? 0, notes } }))
-  }
+  const setAmount = (id: string, amount: number) => patchEdit(id, { amount })
+  const setNotes = (id: string, notes: string) => patchEdit(id, { notes })
+  const setStartDate = (id: string, startDate: string) => patchEdit(id, { startDate })
 
   const save = async () => {
-    const entries = Object.entries(edits).map(([accountId, v]) => ({ accountId, amount: v.amount, notes: v.notes }))
+    const entries = Object.entries(edits).map(([accountId, v]) => ({ accountId, amount: v.amount, notes: v.notes, startDate: v.startDate || null }))
     if (!entries.length) return
     setSaving(true)
     try {
@@ -140,6 +146,7 @@ export default function BeginningBalancesPage() {
                       <th className="text-left px-4 py-2 w-32">Account #</th>
                       <th className="text-left px-4 py-2">Title</th>
                       <th className="text-right px-4 py-2 w-48">Opening Balance (PHP)</th>
+                      <th className="text-left px-4 py-2 w-40">Start Date</th>
                       <th className="text-left px-4 py-2 w-72">Notes</th>
                     </tr>
                   </thead>
@@ -147,15 +154,21 @@ export default function BeginningBalancesPage() {
                     {grouped[t].map(r => {
                       const amt = edits[r.accountId]?.amount ?? r.amount
                       const notes = edits[r.accountId]?.notes ?? r.notes
+                      const startDate = edits[r.accountId]?.startDate ?? r.startDate
                       const dirty = !!edits[r.accountId]
                       return (
                         <tr key={r.accountId} className={`border-t border-gray-100 ${dirty ? 'bg-amber-50' : ''}`}>
                           <td className="px-4 py-1.5 font-mono text-xs text-gray-600">{r.accountNumber}</td>
-                          <td className="px-4 py-1.5">{r.accountTitle}</td>
+                          <td className="px-4 py-1.5">{r.accountTitle}{r.isBankAccount && <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>BANK</span>}</td>
                           <td className="px-4 py-1.5 text-right">
                             <input type="number" step="0.01" value={amt}
                               onChange={e => setAmount(r.accountId, parseFloat(e.target.value) || 0)}
                               className="w-40 text-right font-mono text-xs px-2 py-1 border border-gray-200 rounded" />
+                          </td>
+                          <td className="px-4 py-1.5">
+                            <input type="date" value={startDate} onChange={e => setStartDate(r.accountId, e.target.value)}
+                              title="Bank reconciliation considers Hub entries on/after this date"
+                              className="w-36 text-xs px-2 py-1 border border-gray-200 rounded" />
                           </td>
                           <td className="px-4 py-1.5">
                             <input type="text" value={notes} onChange={e => setNotes(r.accountId, e.target.value)}

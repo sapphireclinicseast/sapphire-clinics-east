@@ -1532,6 +1532,7 @@ model BeginningBalance {
   account     Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
   periodYear  Int
   amount      Decimal @default(0)
+  startDate   DateTime?  // bank reconciliation only considers Hub entries on/after this date
   notes       String?
   createdById String
   createdAt   DateTime @default(now())
@@ -1773,4 +1774,29 @@ model FundTransferSettings {
   id        String   @id @default("singleton")
   nextSeq   Int      @default(1)
   updatedAt DateTime @updatedAt @default(now())
+}
+
+model BankTransaction {
+  id                String   @id @default(cuid())
+  bankAccountId     String   // Account.id (a Chart-of-Accounts bank account)
+  date              DateTime
+  description       String
+  spent             Decimal  @default(0)
+  received          Decimal  @default(0)
+  status            String   @default("PENDING")  // PENDING | POSTED | EXCLUDED
+  fromToName        String?
+  categoryAccountId String?  // Categorise target account
+  matchType         String?  // FUND_TRANSFER | RFP | ORDER | CC_REPORT | ...
+  matchId           String?
+  matchLabel        String?
+  journalEntryId    String?  // GL journal posted on Categorise
+  note              String?
+  proofUrl          String?
+  importBatch       String?
+  createdById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([bankAccountId, status])
+  @@index([date])
 }
