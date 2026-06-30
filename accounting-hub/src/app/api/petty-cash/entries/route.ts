@@ -11,6 +11,7 @@ const EDITABLE = [
   'siNumber', 'tinNumber', 'registeredName', 'registeredAddress', 'grossAmount',
   'accountTitle', 'referenceNumber', 'proofUrl', 'proofUrls', 'validity', 'finalized',
   'recurFrequency', 'recurDeadlineDay', 'distributeMonthly', 'amountVaries', 'distributeStart', 'distributeEnd',
+  'hasEwt', 'ewtRate',
 ] as const
 
 const PCV_BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VER', CEO: 'CEO' }
@@ -115,7 +116,8 @@ export async function PUT(req: Request) {
         else if (f === 'date') data.date = body.date ? new Date(body.date) : null
         else if (f === 'distributeStart' || f === 'distributeEnd') data[f] = body[f] ? new Date(body[f]) : null
         else if (f === 'recurDeadlineDay') data[f] = (body[f] === '' || body[f] == null) ? null : Number(body[f])
-        else if (f === 'distributeMonthly' || f === 'amountVaries') data[f] = !!body[f]
+        else if (f === 'distributeMonthly' || f === 'amountVaries' || f === 'hasEwt') data[f] = !!body[f]
+        else if (f === 'ewtRate') data[f] = (body[f] === '' || body[f] == null) ? null : Number(body[f])
         else data[f] = body[f] === '' ? null : body[f]
       }
     }

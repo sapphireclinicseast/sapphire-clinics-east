@@ -68,6 +68,8 @@ interface Entry {
   recurDeadlineDay: number | null
   distributeMonthly: boolean
   amountVaries: boolean
+  hasEwt: boolean
+  ewtRate: number | null
   distributeStart: string | null
   distributeEnd: string | null
 }
@@ -116,6 +118,9 @@ const monthsInWindow = (startISO: string | null, endISO: string | null) => {
   const c = (e.getUTCFullYear() * 12 + e.getUTCMonth()) - (s.getUTCFullYear() * 12 + s.getUTCMonth()) + 1
   return c > 0 ? c : 0
 }
+// EWT is computed on the net of VAT; it reduces the cash payable (not the expense).
+const ewtAmount = (e: Entry) => (e.hasEwt && e.ewtRate ? netOfVat(e) * (e.ewtRate / 100) : 0)
+const payableOf = (e: Entry) => netOfVat(e) - ewtAmount(e)
 const monthlyAmt = (e: Entry) => {
   if (!e.distributeMonthly) return 0
   const c = monthsInWindow(e.distributeStart, e.distributeEnd)
@@ -444,14 +449,16 @@ export default function ExpensesPage() {
     const tG = rows.reduce((s, e) => s + num(e.grossAmount), 0)
     const tN = rows.reduce((s, e) => s + netOfVat(e), 0)
     const tV = rows.reduce((s, e) => s + vatAmount(e), 0)
+    const tE = rows.reduce((s, e) => s + ewtAmount(e), 0)
+    const tP = rows.reduce((s, e) => s + payableOf(e), 0)
     autoTable(doc, {
       startY: 33,
-      head: [['PCV Number', 'Payee', 'Date', 'Account Title', 'Description', 'Vatable', 'Gross Amount', 'Net of VAT', 'VAT Amount']],
-      body: rows.map(e => [e.pcvNumber, e.requestor || '', e.date ? String(e.date).slice(0, 10) : '', e.accountTitle || '', e.description || '', e.vatable || '', peso(num(e.grossAmount)), peso(netOfVat(e)), peso(vatAmount(e))]),
-      foot: [['', '', '', '', '', 'TOTAL', peso(tG), peso(tN), peso(tV)]],
+      head: [['PCV Number', 'Payee', 'Date', 'Account Title', 'Description', 'Vatable', 'Gross Amount', 'Net of VAT', 'VAT Amount', 'EWT', 'Amount Payable']],
+      body: rows.map(e => [e.pcvNumber, e.requestor || '', e.date ? String(e.date).slice(0, 10) : '', e.accountTitle || '', e.description || '', e.vatable || '', peso(num(e.grossAmount)), peso(netOfVat(e)), peso(vatAmount(e)), e.hasEwt ? `${peso(ewtAmount(e))} (${e.ewtRate}%)` : '', peso(payableOf(e))]),
+      foot: [['', '', '', '', '', 'TOTAL', peso(tG), peso(tN), peso(tV), peso(tE), peso(tP)]],
       styles: { fontSize: 7, cellPadding: 1.5 }, headStyles: { fillColor: [36, 73, 82], textColor: 255 },
       footStyles: { fillColor: [237, 243, 217], textColor: [30, 30, 30], fontStyle: 'bold' },
-      columnStyles: { 6: { halign: 'right' }, 7: { halign: 'right' }, 8: { halign: 'right' } },
+      columnStyles: { 6: { halign: 'right' }, 7: { halign: 'right' }, 8: { halign: 'right' }, 9: { halign: 'right' }, 10: { halign: 'right' } },
       margin: { left: 10, right: 10 },
     })
     doc.save(`${refNumber}.pdf`)
@@ -648,7 +655,7 @@ export default function ExpensesPage() {
                     </th>
                     {['Reference Number', 'Payee', 'Department', 'Date', 'Description', 'Description for Hub',
                       'Valid/Invalid', 'Vatable', 'SI Number', 'TIN Number', 'TIN Number 2', 'Branch Code', 'Registered name',
-                      'Registered Address', 'Gross Amount', 'Net of VAT', 'VAT Amount', 'Account Title',
+                      'Registered Address', 'Gross Amount', 'Net of VAT', 'VAT Amount', 'Account Title', 'Has EWT?', 'EWT %',
                       ...(isRecurringTab ? ['Recurs', 'Deadline (day)', 'Amount changes monthly?', 'Distribute monthly?', 'Monthly Amount', 'Charge from', 'Charge to'] : []),
                       'Payment', 'Proof', ...(recordType === 'ONE_TIME' ? ['Audited'] : []), ''
                     ].map((h, i) => (
@@ -770,6 +777,21 @@ export default function ExpensesPage() {
                             <option value=""></option>
                             {coaOptions.map(c => <option key={c} value={c}>{c}</option>)}
                             {e.accountTitle && !coaOptions.includes(e.accountTitle) && <option value={e.accountTitle}>{e.accountTitle}</option>}
+                          </select>
+                        </td>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                          <select className={cellCls} value={e.hasEwt ? 'Yes' : 'No'} disabled={lk} style={{ minWidth: 70 }}
+                            onChange={ev => { const yes = ev.target.value === 'Yes'; saveField(e.id, { hasEwt: yes, ewtRate: yes ? (e.ewtRate || 5) : null }, false) }}>
+                            <option value="No">No</option>
+                            <option value="Yes">Yes</option>
+                          </select>
+                        </td>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : (e.hasEwt ? '#fff' : '#f3f4f6') }}>
+                          <select className={cellCls} value={e.ewtRate ?? ''} disabled={lk || !e.hasEwt} style={{ minWidth: 70 }}
+                            onChange={ev => saveField(e.id, { ewtRate: ev.target.value ? Number(ev.target.value) : null }, false)}>
+                            <option value=""></option>
+                            <option value="5">5%</option>
+                            <option value="10">10%</option>
                           </select>
                         </td>
                         {isRecurringTab && (() => {
@@ -911,7 +933,7 @@ export default function ExpensesPage() {
                     )
                   })}
                   {shown.length === 0 && (
-                    <tr><td colSpan={isRecurringTab ? 29 : 23} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>
+                    <tr><td colSpan={isRecurringTab ? 31 : 25} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>
                       {q ? 'No entries match your search.' : 'No entries yet. Click "Add Row" to start.'}
                     </td></tr>
                   )}
