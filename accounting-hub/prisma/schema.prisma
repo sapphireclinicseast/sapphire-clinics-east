@@ -1637,6 +1637,7 @@ model PettyCashEntry {
   branchAllocations Json?
   recordType        String   @default("PETTY_CASH")
   finalized         Boolean  @default(false)
+  audited           Boolean  @default(false)
   recurFrequency    String?
   recurDeadlineDay  Int?
   distributeMonthly Boolean  @default(false)

@@ -44,6 +44,7 @@ interface Entry {
   branchAllocations: { branch: string; amount: number }[] | null
   reimbursementId: string | null
   finalized: boolean
+  audited: boolean
 }
 
 interface Reimb {
@@ -474,6 +475,11 @@ export default function PettyCashPage() {
     .map(([seq, label]) => ({ seq, label }))
     .sort((a, b) => a.seq - b.seq)
   const confirmAddRow = () => { setShowAddPopup(false); addRow(addSameSeq ? Number(addSameSeq) : null); setAddSameSeq('') }
+  // Audit status updates even on locked rows (audit happens after RFP).
+  const setAudited = async (id: string, audited: boolean) => {
+    patchLocal(id, { audited })
+    try { await fetch('/api/petty-cash/audited', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, audited }) }) } catch { /* ignore */ }
+  }
 
   return (
     <div className={expanded ? 'fixed inset-0 z-50 overflow-auto p-6 space-y-4' : 'space-y-4'} style={expanded ? { background: 'var(--off-white)' } : undefined}>
@@ -582,7 +588,7 @@ export default function PettyCashPage() {
                     </th>
                     {['Reference Number', 'Requestor', 'Department', 'PCF Status', 'Date', 'Description', 'Description for Hub',
                       'Valid/Invalid', 'Vatable', 'SI Number', 'TIN Number', 'TIN Number 2', 'Branch Code', 'Registered name',
-                      'Registered Address', 'Gross Amount', 'Net of VAT', 'VAT Amount', 'Account Title', ...(branch === 'CEO' ? ['Branch (allocations)'] : []), 'Proof', ''
+                      'Registered Address', 'Gross Amount', 'Net of VAT', 'VAT Amount', 'Account Title', ...(branch === 'CEO' ? ['Branch (allocations)'] : []), 'Proof', 'Audited', ''
                     ].map((h, i) => (
                       <th key={i} className="border-r border-b px-2 py-2 text-left font-semibold whitespace-nowrap"
                         style={{ color: 'var(--charcoal)', borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
@@ -760,6 +766,13 @@ export default function PettyCashPage() {
                             )}
                           </div>
                         </td>
+                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                          <select className={cellCls} value={e.audited ? 'Yes' : 'No'} disabled={!canWrite}
+                            onChange={ev => setAudited(e.id, ev.target.value === 'Yes')} style={{ minWidth: 70 }}>
+                            <option value="No">No</option>
+                            <option value="Yes">Yes</option>
+                          </select>
+                        </td>
                         <td className="border-b px-1 text-center" style={{ borderColor: 'var(--light-gray)' }}>
                           {canWrite && !e.reimbursementId && (
                             <div className="flex items-center justify-center gap-0.5 whitespace-nowrap">
@@ -781,7 +794,7 @@ export default function PettyCashPage() {
                     )
                   })}
                   {entries.length === 0 && (
-                    <tr><td colSpan={branch === 'CEO' ? 23 : 22} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>
+                    <tr><td colSpan={branch === 'CEO' ? 24 : 23} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>
                       No entries yet. Click &quot;Add Row&quot; to start.
                     </td></tr>
                   )}
