@@ -38,6 +38,7 @@ export async function GET(req: Request) {
       taxAmount: Number(e.taxAmount),
       netPay: Number(e.netPay),
       salariesRemitted: e.salariesRemitted,
+      salaryRfpId: e.salaryRfpId,
       status: e.status,
       isConsultantEntry: true,
     })))
@@ -66,6 +67,7 @@ export async function GET(req: Request) {
     taxAmount: Number(p.taxDeduction),
     netPay: Number(p.netPay),
     salariesRemitted: p.salariesRemitted,
+    salaryRfpId: p.salaryRfpId,
     isEmployeePayslip: true,
   })))
 }

@@ -11,7 +11,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { employeePayslipIds, payableId, payableIds, paymentDate, fromAccountId, proofUrl, notes } = await req.json()
+    const { employeePayslipIds, payableId, payableIds, paymentDate, fromAccountId, proofUrl, notes, remarks } = await req.json()
 
     if (!paymentDate || !fromAccountId) {
       return NextResponse.json({ error: 'paymentDate and fromAccountId are required' }, { status: 400 })
@@ -63,6 +63,7 @@ export async function POST(req: Request) {
             fromAccountId,
             proofUrl: proofUrl || null,
             notes: notes || null,
+            remarks: remarks || null,
             cutoffPeriod: [...new Set(payslips.map(p => p.cutoffPeriod))].join(', '),
             branch: payslips[0].branch,
             journalEntryId: journalEntry.id,

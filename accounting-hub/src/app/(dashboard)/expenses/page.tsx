@@ -79,6 +79,7 @@ interface Card { id: string; branch: string; bank: string; cardNumber: string; b
 interface Supplier { id: string | null; registeredName: string; registeredAddress: string; tin: string; branch: string; branchLabel: string; firstAppeared: string | null }
 interface Rfp {
   id: string; refNumber: string; grossTotal: string | number; payableTotal: string | number; status: string; kind: string | null
+  module?: string; meta?: { source?: string; payableType?: string; idKind?: string; ids?: string[]; cutoffPeriod?: string; netTotal?: number; paymentId?: string } | null
   paidAt: string | null; paymentMethod: string | null; checkNumber: string | null; debitAccount: string | null
   creditCardId: string | null; proofUrl: string | null; createdAt: string; _count: { entries: number }
 }
@@ -186,8 +187,8 @@ export default function ExpensesPage() {
   const rfpGet = (r: Rfp, k: string): string | number =>
     k === 'refNumber' ? r.refNumber
       : k === 'date' ? new Date(r.createdAt).toISOString().slice(0, 10)
-      : k === 'kind' ? (r.kind === 'INVALID' ? 'Invalid' : 'Valid')
-      : k === 'entries' ? r._count.entries
+      : k === 'kind' ? (r.module === 'PAYROLL_SALARY' ? 'Salaries' : r.module === 'PAYROLL_BENEFIT' ? 'Benefits' : r.kind === 'INVALID' ? 'Invalid' : 'Valid')
+      : k === 'entries' ? (r.module && r.module.startsWith('PAYROLL') ? (r.meta?.ids?.length || 0) : r._count.entries)
       : k === 'grossTotal' ? num(r.grossTotal)
       : k === 'payableTotal' ? num(r.payableTotal)
       : k === 'status' ? (r.status === 'PAID' ? 'Paid' : 'For Payment')
@@ -196,6 +197,7 @@ export default function ExpensesPage() {
   const [recurringDue, setRecurringDue] = useState<{ id: string; payee: string | null; accountTitle: string | null; description: string | null; grossAmount: number; frequency: string; nextDue: string; daysUntil: number; amountVaries?: boolean }[]>([])
   const [genFromRecurring, setGenFromRecurring] = useState('')
   const [payTarget, setPayTarget] = useState<Rfp | null>(null)
+  const [payrollPayTarget, setPayrollPayTarget] = useState<Rfp | null>(null)
   const [paying, setPaying] = useState(false)
   const [search, setSearch] = useState('')
   const [uploadingProof, setUploadingProof] = useState('')
@@ -420,18 +422,32 @@ export default function ExpensesPage() {
     setPaying(false)
   }
 
+  const isPayrollRfp = (r: Rfp) => r.module === 'PAYROLL_SALARY' || r.module === 'PAYROLL_BENEFIT'
+  // Reverse a paid payroll RFP's underlying salary/benefit payment (deletes its journal + un-remits).
+  const reversePayrollPayment = async (rfp: Rfp) => {
+    const pid = rfp.meta?.paymentId
+    if (!pid) return
+    const url = rfp.module === 'PAYROLL_SALARY' ? `/api/payroll/salary-payments?id=${pid}` : `/api/payroll/benefit-payments?id=${pid}`
+    await fetch(url, { method: 'DELETE' })
+  }
+
   const unpayRfp = async (rfp: Rfp) => {
-    if (!confirm(`Unmark ${rfp.refNumber} as paid? Payment details on its entries are cleared.`)) return
+    if (!confirm(`Unmark ${rfp.refNumber} as paid?${isPayrollRfp(rfp) ? ' The recorded payment + its journal entry are reversed.' : ' Payment details on its entries are cleared.'}`)) return
     try {
+      if (isPayrollRfp(rfp)) await reversePayrollPayment(rfp)
       await fetch('/api/expenses/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: rfp.id, action: 'unpay' }) })
       await loadRfps(branch); await loadEntries(branch, recordType)
     } catch { /* ignore */ }
   }
 
   const deleteRfp = async (rfp: Rfp) => {
-    if (!confirm(`Delete RFP ${rfp.refNumber}? Its ${rfp._count.entries} entr${rfp._count.entries === 1 ? 'y' : 'ies'} will be released back for a new RFP.`)) return
-    setRfps(prev => prev.filter(r => r.id !== rfp.id))
-    try { await fetch(`/api/expenses/rfp?id=${rfp.id}`, { method: 'DELETE' }); await loadEntries(branch, recordType) } catch { /* ignore */ }
+    const payrollNote = isPayrollRfp(rfp) ? ' The payroll rows return to Payable (any recorded payment is reversed).' : ` Its ${rfp._count.entries} entr${rfp._count.entries === 1 ? 'y' : 'ies'} will be released back for a new RFP.`
+    if (!confirm(`Delete RFP ${rfp.refNumber}?${payrollNote}`)) return
+    try {
+      if (isPayrollRfp(rfp) && rfp.status === 'PAID') await reversePayrollPayment(rfp)
+      setRfps(prev => prev.filter(r => r.id !== rfp.id))
+      await fetch(`/api/expenses/rfp?id=${rfp.id}`, { method: 'DELETE' }); await loadEntries(branch, recordType)
+    } catch { /* ignore */ }
   }
 
   const downloadRfpPdf = async (rfp: Rfp) => {
@@ -1056,8 +1072,8 @@ export default function ExpensesPage() {
                 <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                   <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{r.refNumber}</td>
                   <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{new Date(r.createdAt).toLocaleDateString('en-PH')}</td>
-                  <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.kind === 'INVALID' ? 'Invalid' : 'Valid'}</td>
-                  <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{r._count.entries}</td>
+                  <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.module === 'PAYROLL_SALARY' ? 'Salaries' : r.module === 'PAYROLL_BENEFIT' ? 'Benefits' : r.kind === 'INVALID' ? 'Invalid' : 'Valid'}</td>
+                  <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.module && r.module.startsWith('PAYROLL') ? (r.meta?.ids?.length || 0) : r._count.entries}</td>
                   <td className="px-4 py-2.5 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>₱{peso(num(r.grossTotal))}</td>
                   <td className="px-4 py-2.5 text-right font-semibold" style={{ color: 'var(--deep-teal)' }}>₱{peso(num(r.payableTotal))}</td>
                   <td className="px-4 py-2.5">
@@ -1082,12 +1098,12 @@ export default function ExpensesPage() {
                       </a>
                     )}
                     {canWrite && r.status !== 'PAID' && (
-                      <button onClick={() => setPayTarget(r)} title="Record as Paid"
+                      <button onClick={() => isPayrollRfp(r) ? setPayrollPayTarget(r) : setPayTarget(r)} title="Record as Paid"
                         className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-white mr-1" style={{ background: 'var(--teal)' }}>
-                        <CreditCard size={13} /> Record as Paid
+                        <CreditCard size={13} /> {isPayrollRfp(r) ? 'Paid' : 'Record as Paid'}
                       </button>
                     )}
-                    {canWrite && r.status === 'PAID' && (
+                    {canWrite && r.status === 'PAID' && !isPayrollRfp(r) && (
                       <button onClick={() => setPayTarget(r)} title="Edit payment"
                         className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
                         <Pencil size={13} /> Edit
@@ -1217,6 +1233,12 @@ export default function ExpensesPage() {
         <ForPaymentModal count={payTarget._count.entries} bankOptions={bankOptions} cards={cards} paying={paying}
           title={`Record RFP as Paid — ${payTarget.refNumber}`} confirmLabel="Confirm Payment"
           onClose={() => setPayTarget(null)} onAddCard={addCard} onSubmit={p => recordRfpPaid(payTarget, p)} />
+      )}
+
+      {payrollPayTarget && (
+        <RecordPayrollPaymentModal rfp={payrollPayTarget}
+          onClose={() => setPayrollPayTarget(null)}
+          onDone={async () => { setPayrollPayTarget(null); await loadRfps(branch) }} />
       )}
 
       {newSupplierPrompt && (
@@ -2335,5 +2357,106 @@ function SupplierCombo({ value, disabled, placeholder, suppliers, onCommit }: {
         </div>
       )}
     </>
+  )
+}
+
+// Record payment for a payroll-sourced RFP (Salaries / Benefits Payable).
+function RecordPayrollPaymentModal({ rfp, onClose, onDone }: { rfp: Rfp; onClose: () => void; onDone: () => void }) {
+  const isSalary = rfp.module === 'PAYROLL_SALARY'
+  const total = typeof rfp.grossTotal === 'number' ? rfp.grossTotal : parseFloat(rfp.grossTotal)
+  const count = rfp.meta?.ids?.length || 0
+  const [assets, setAssets] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
+  const [q, setQ] = useState('')
+  const [feeQ, setFeeQ] = useState('')
+  const [datePaid, setDatePaid] = useState(new Date().toISOString().slice(0, 10))
+  const [fromAccountId, setFromAccountId] = useState('')
+  const [bankRef, setBankRef] = useState('')
+  const [remarks, setRemarks] = useState('')
+  const [proofUrl, setProofUrl] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [feeAmount, setFeeAmount] = useState('')
+  const [feeExpenseAccountId, setFeeExpenseAccountId] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => { fetch('/api/chart-of-accounts?pageSize=1000').then(r => r.ok ? r.json() : { data: [] }).then(d => setAssets((d.data || []).filter((a: { accountType: string }) => a.accountType === 'ASSET').map((a: { id: string; accountNumber: string; accountTitle: string }) => ({ id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle })))).catch(() => {}) }, [])
+  const allAccts = assets
+  const filtered = allAccts.filter(a => !q || `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(q.toLowerCase()))
+  const feeFiltered = allAccts.filter(a => !feeQ || `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(feeQ.toLowerCase()))
+
+  const upload = async (file: File | null) => {
+    if (!file) return
+    setUploading(true)
+    try { const fd = new FormData(); fd.append('file', file); const r = await fetch('/api/upload', { method: 'POST', body: fd }); if (r.ok) { const d = await r.json(); setProofUrl(d.url || d.fileUrl || '') } else alert('Upload failed') } catch { alert('Upload failed') } finally { setUploading(false) }
+  }
+
+  const submit = async () => {
+    if (!fromAccountId) { alert('Choose a source account.'); return }
+    setBusy(true)
+    try {
+      const ids = rfp.meta?.ids || []
+      const useEmployee = isSalary ? (rfp.meta?.payableType === 'EMPLOYEE') : true
+      const idBody = useEmployee ? { employeePayslipIds: ids } : { payrollEntryIds: ids }
+      const hasFee = isSalary && Number(feeAmount) > 0 && feeExpenseAccountId
+      const endpoint = isSalary ? '/api/payroll/salary-payments' : '/api/payroll/benefit-payments'
+      const res = await fetch(endpoint, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...idBody, paymentDate: datePaid, fromAccountId, proofUrl: proofUrl || null,
+          notes: bankRef || null, remarks: remarks || null,
+          ...(hasFee ? { feeAmount: Number(feeAmount), feeExpenseAccountId, feeCashAccountId: fromAccountId } : {}),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) { alert(data.error || 'Failed to record payment'); return }
+      const paymentId = data?.payment?.id || null
+      await fetch('/api/expenses/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: rfp.id, action: 'pay-payroll', paymentId, datePaid, paymentMethod: 'Bank/Cash', proofUrl: proofUrl || null }) })
+      onDone()
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md max-h-[88vh] overflow-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3"><h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Record {isSalary ? 'Salary' : 'Benefit'} Payment</h2><button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button></div>
+        <div className="rounded-xl px-4 py-2.5 mb-4 text-sm font-semibold" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{count} entries — Net Pay: ₱{peso(total)} · {rfp.refNumber}</div>
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Payment Date</label>
+        <input type="date" value={datePaid} onChange={e => setDatePaid(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Source Account (Cash/Bank)</label>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search asset accounts…" className="w-full px-3 py-2 rounded-xl border text-sm mb-1" style={{ borderColor: 'var(--light-gray)' }} />
+        <select value={fromAccountId} onChange={e => setFromAccountId(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }}>
+          <option value="">— Select Account —</option>{filtered.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
+        </select>
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Bank transaction reference number</label>
+        <input value={bankRef} onChange={e => setBankRef(e.target.value)} placeholder="Reference / check number" className="w-full px-3 py-2 rounded-xl border text-sm mb-3 font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Remarks</label>
+        <input value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Anything else to note for this transaction" className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Proof of Remittance (optional)</label>
+        <div className="flex items-center gap-2 mb-3">
+          <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white cursor-pointer" style={{ background: 'var(--teal)' }}>
+            {uploading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />} {proofUrl ? 'Replace' : 'Upload proof file (image or PDF)'}
+            <input type="file" className="hidden" accept="image/*,.pdf" onChange={e => { upload(e.target.files?.[0] || null); e.target.value = '' }} />
+          </label>
+          {proofUrl && <a href={proofUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs" style={{ color: 'var(--teal)' }}><Eye size={13} /> View</a>}
+        </div>
+        {isSalary && (
+          <div className="rounded-xl border p-3 mb-4" style={{ borderColor: 'var(--light-gray)' }}>
+            <p className="text-[11px] font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--mid-gray)' }}>Remittance Fee (optional)</p>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Fee Amount</label>
+            <input value={feeAmount} onChange={e => setFeeAmount(e.target.value)} inputMode="decimal" placeholder="0.00" className="w-full px-3 py-2 rounded-xl border text-sm mb-2 font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+            {Number(feeAmount) > 0 && (<>
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Fee Expense Account</label>
+              <input value={feeQ} onChange={e => setFeeQ(e.target.value)} placeholder="Search accounts…" className="w-full px-3 py-2 rounded-xl border text-sm mb-1" style={{ borderColor: 'var(--light-gray)' }} />
+              <select value={feeExpenseAccountId} onChange={e => setFeeExpenseAccountId(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
+                <option value="">— Select Account —</option>{feeFiltered.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
+              </select>
+            </>)}
+          </div>
+        )}
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>Cancel</button>
+          <button onClick={submit} disabled={busy} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : `Record Payment — ₱${peso(total)}`}</button>
+        </div>
+      </div>
+    </div>
   )
 }

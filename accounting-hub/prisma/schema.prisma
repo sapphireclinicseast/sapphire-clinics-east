@@ -929,6 +929,7 @@ model PayrollEntry {
   taxRemitted      Boolean    @default(false)
   salariesRemitted Boolean    @default(false)
   salaryPaymentId  String?    // set when salary is remitted
+  salaryRfpId      String?    // set when included in a Salaries-Payable RFP (locked until paid/deleted)
   createdById     String
   createdBy       User       @relation("PayrollCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   createdAt       DateTime   @default(now())
@@ -1282,8 +1283,10 @@ model EmployeePayslip {
   taxRemitted      Boolean      @default(false)
   salariesRemitted Boolean      @default(false)
   salaryPaymentId  String?      // set when salary is remitted
+  salaryRfpId      String?      // set when included in a Salaries-Payable RFP
   benefitsRemitted Boolean      @default(false)
   benefitPaymentId String?      // set when SSS/PHIC/HDMF is remitted
+  benefitRfpId     String?      // set when included in a Benefits-Payable RFP
   computeTaxNow    Boolean      @default(false) // For cutoff 1 resignations: compute monthly tax now instead of waiting for cutoff 2
   createdById      String
   createdAt        DateTime     @default(now())
@@ -1435,6 +1438,7 @@ model SalaryPayment {
   fromAccount    Account  @relation("SalaryPaymentFrom", fields: [fromAccountId], references: [id], onDelete: Restrict)
   proofUrl       String?
   notes          String?
+  remarks        String?
   paymentType    String   @default("EMPLOYEE") // EMPLOYEE or CONSULTANT
   cutoffPeriod   String
   branch         String
@@ -1456,6 +1460,7 @@ model BenefitPayment {
   fromAccount    Account  @relation("BenefitPaymentFrom", fields: [fromAccountId], references: [id], onDelete: Restrict)
   proofUrl       String?
   notes          String?
+  remarks        String?
   cutoffPeriod   String
   branch         String
   journalEntryId String?

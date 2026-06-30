@@ -55,6 +55,7 @@ export async function GET(req: Request) {
       totalBenefitsPayable: sssEE + sssER + philEE + philER + pagEE + pagER,
       benefitsRemitted: p.benefitsRemitted,
       benefitPaymentId: p.benefitPaymentId,
+      benefitRfpId: p.benefitRfpId,
     }
   }))
 }

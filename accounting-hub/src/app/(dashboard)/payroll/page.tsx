@@ -176,6 +176,7 @@ interface SalaryPayableEntry {
   taxAmount: number | null
   netPay: number
   salariesRemitted: boolean
+  salaryRfpId?: string | null
   status?: string
   isAggregateRow?: boolean
   isConsultantEntry?: boolean
@@ -200,6 +201,7 @@ interface BenefitEmployeeEntry {
   totalBenefitsPayable: number
   benefitsRemitted: boolean
   benefitPaymentId: string | null
+  benefitRfpId?: string | null
 }
 
 interface AccountBrief {
@@ -957,6 +959,10 @@ export default function PayrollPage() {
 
   // Remit modal state (shared between salary and benefit payments)
   const [showRemitModal, setShowRemitModal] = useState<'salary' | 'benefit' | null>(null)
+  // Payable → RFP (Expenses) flow
+  const [payableRfp, setPayableRfp] = useState<null | { source: 'salary' | 'benefit'; payableType: 'CONSULTANT' | 'EMPLOYEE'; ids: string[]; branch: string; cutoffPeriod: string; total: number }>(null)
+  const [rfpManualSeq, setRfpManualSeq] = useState('')
+  const [creatingRfp, setCreatingRfp] = useState(false)
   const [remitPayableId, setRemitPayableId] = useState('')
   const [remitDate, setRemitDate] = useState(new Date().toISOString().slice(0, 10))
   const [remitFromAccountId, setRemitFromAccountId] = useState('')
@@ -1376,6 +1382,33 @@ export default function PayrollPage() {
       if (mainTab === 'benefits-payable') fetchBenefitsPayable()
     } catch (e) { setError(String(e)) }
     finally { setRemitting(false); setRemitUploading(false) }
+  }
+
+  // Open the "Generate RFP" dialog for selected payable rows (one branch only).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const openPayableRfp = (source: 'salary' | 'benefit', payableType: 'CONSULTANT' | 'EMPLOYEE', rows: any[], ids: string[]) => {
+    const chosen = rows.filter(r => ids.includes(r.id))
+    const branches = [...new Set(chosen.map(r => r.branch))]
+    if (branches.length !== 1) { setError('Select entries from a single branch for one RFP.'); return }
+    const total = chosen.reduce((s, r) => s + (source === 'benefit' ? (r.totalBenefitsPayable || 0) : r.netPay), 0)
+    const cutoffPeriod = [...new Set(chosen.map(r => r.cutoffPeriod))].join(', ')
+    setRfpManualSeq('')
+    setPayableRfp({ source, payableType, ids, branch: branches[0], cutoffPeriod, total })
+  }
+  const createPayableRfp = async () => {
+    if (!payableRfp) return
+    setCreatingRfp(true)
+    try {
+      const res = await fetch('/api/payroll/payable-rfp', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: payableRfp.source, payableType: payableRfp.payableType, ids: payableRfp.ids, branch: payableRfp.branch, cutoffPeriod: payableRfp.cutoffPeriod, manualSeq: rfpManualSeq.trim() || undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Failed to create RFP'); return }
+      setPayableRfp(null); setSelectedSalaryPayableIds([]); setSelectedEmpSalPayableIds([]); setSelectedBenefitPayableIds([])
+      if (mainTab === 'salaries-payable') { fetchSalariesPayable(); fetchEmpSalPayable() }
+      if (mainTab === 'benefits-payable') fetchBenefitsPayable()
+    } catch (e) { setError(String(e)) } finally { setCreatingRfp(false) }
   }
 
   /* ── Record tax as Other Income ── */
@@ -4804,19 +4837,22 @@ export default function PayrollPage() {
         const activePayables = isEmpTab ? empSalPayables : salariesPayables
         const activeSelected = isEmpTab ? selectedEmpSalPayableIds : selectedSalaryPayableIds
         const setActiveSelected = isEmpTab ? setSelectedEmpSalPayableIds : setSelectedSalaryPayableIds
-        const unremitted = activePayables.filter(p => !p.salariesRemitted)
+        const unremitted = activePayables.filter(p => !p.salariesRemitted && !p.salaryRfpId)
         const selectedTotal = activePayables.filter(p => activeSelected.includes(p.id)).reduce((s, p) => s + p.netPay, 0)
         const isLoading = isEmpTab ? loadingEmpSalPayable : loadingSalPayable
         return (
         <div className="space-y-4">
+          <div className="rounded-xl border px-4 py-2.5 text-xs font-semibold" style={{ borderColor: '#fca5a5', background: '#fef2f2', color: '#b91c1c' }}>
+            RFP should be done separately for payroll accounts, fund transfer to other account, and outward payments (to match bank reconciliation).
+          </div>
           <div className="flex items-center justify-between flex-wrap gap-3">
             <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Salaries Payable</h2>
             <div className="flex items-center gap-3">
               {activeSelected.length > 0 && (
-                <button onClick={() => { setShowRemitModal('salary'); setRemitFromAccountId(''); setRemitFromSearch(''); setRemitProofUrl(''); setRemitNotes(''); setRemitFeeAmount(''); setRemitFeeExpenseAccountId(''); setRemitFeeExpenseSearch(''); setRemitFeeCashAccountId(''); setRemitFeeCashSearch('') }}
+                <button onClick={() => openPayableRfp('salary', isEmpTab ? 'EMPLOYEE' : 'CONSULTANT', activePayables, activeSelected)}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
                   style={{ background: 'var(--teal)' }}>
-                  <BadgeDollarSign size={14} /> Remit Selected ({activeSelected.length})
+                  <BadgeDollarSign size={14} /> RFP ({activeSelected.length})
                 </button>
               )}
               <label className="flex items-center gap-2 text-xs cursor-pointer" style={{ color: 'var(--mid-gray)' }}>
@@ -4876,7 +4912,7 @@ export default function PayrollPage() {
                   {activePayables.map(p => (
                     <tr key={p.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                       <td className="px-3 py-2.5">
-                        {!p.salariesRemitted && (
+                        {!p.salariesRemitted && !p.salaryRfpId && (
                           <input type="checkbox"
                             checked={activeSelected.includes(p.id)}
                             onChange={e => setActiveSelected(prev =>
@@ -4896,8 +4932,8 @@ export default function PayrollPage() {
                       <td className="px-3 py-2.5 text-right font-mono" style={{ color: '#c44b00' }}>{p.taxAmount != null && p.taxAmount > 0 ? formatCurrency(p.taxAmount) : '—'}</td>
                       <td className="px-3 py-2.5 text-right font-mono font-semibold" style={{ color: 'var(--teal)' }}>{formatCurrency(p.netPay)}</td>
                       <td className="px-3 py-2.5 text-center">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={p.salariesRemitted ? { background: '#dcfce7', color: '#16a34a' } : { background: '#fef3c7', color: '#d97706' }}>
-                          {p.salariesRemitted ? 'REMITTED' : 'PENDING'}
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={p.salariesRemitted ? { background: '#dcfce7', color: '#16a34a' } : p.salaryRfpId ? { background: '#ffedd5', color: '#c2410c' } : { background: '#fef3c7', color: '#d97706' }}>
+                          {p.salariesRemitted ? 'REMITTED' : p.salaryRfpId ? 'IN RFP' : 'PENDING'}
                         </span>
                       </td>
                     </tr>
@@ -4912,10 +4948,10 @@ export default function PayrollPage() {
                   {activeSelected.length > 0 && <span className="ml-3">Selected: <span style={{ color: 'var(--deep-teal)' }}>{formatCurrency(selectedTotal)}</span></span>}
                 </span>
                 {activeSelected.length > 0 && (
-                  <button onClick={() => { setShowRemitModal('salary'); setRemitFromAccountId(''); setRemitFromSearch(''); setRemitProofUrl(''); setRemitNotes(''); setRemitFeeAmount(''); setRemitFeeExpenseAccountId(''); setRemitFeeExpenseSearch(''); setRemitFeeCashAccountId(''); setRemitFeeCashSearch('') }}
+                  <button onClick={() => openPayableRfp('salary', isEmpTab ? 'EMPLOYEE' : 'CONSULTANT', activePayables, activeSelected)}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
                     style={{ background: 'var(--teal)' }}>
-                    <BadgeDollarSign size={14} /> Remit Selected ({activeSelected.length} payslips)
+                    <BadgeDollarSign size={14} /> RFP ({activeSelected.length} payslips)
                   </button>
                 )}
               </div>
@@ -4986,7 +5022,7 @@ export default function PayrollPage() {
          TAB: BENEFITS PAYABLE
          ═══════════════════════════════════════════════════════════ */}
       {mainTab === 'benefits-payable' && (() => {
-        const benUnremitted = benefitsPayables.filter(p => !p.benefitsRemitted)
+        const benUnremitted = benefitsPayables.filter(p => !p.benefitsRemitted && !p.benefitRfpId)
         const benSelectedTotal = benefitsPayables.filter(p => selectedBenefitPayableIds.includes(p.id)).reduce((s, p) => s + p.totalBenefitsPayable, 0)
         return (
         <div className="space-y-4">
@@ -4994,10 +5030,10 @@ export default function PayrollPage() {
             <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Benefits Payable (SSS, PHIC, HDMF)</h2>
             <div className="flex items-center gap-3">
               {selectedBenefitPayableIds.length > 0 && (
-                <button onClick={() => { setShowRemitModal('benefit'); setRemitFromAccountId(''); setRemitFromSearch(''); setRemitProofUrl(''); setRemitNotes('') }}
+                <button onClick={() => openPayableRfp('benefit', 'EMPLOYEE', benefitsPayables, selectedBenefitPayableIds)}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
                   style={{ background: 'var(--teal)' }}>
-                  <BadgeDollarSign size={14} /> Remit Selected ({selectedBenefitPayableIds.length})
+                  <BadgeDollarSign size={14} /> RFP ({selectedBenefitPayableIds.length})
                 </button>
               )}
               <label className="flex items-center gap-2 text-xs cursor-pointer" style={{ color: 'var(--mid-gray)' }}>
@@ -5041,7 +5077,7 @@ export default function PayrollPage() {
                   {benefitsPayables.map(p => (
                     <tr key={p.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                       <td className="px-3 py-2.5">
-                        {!p.benefitsRemitted && (
+                        {!p.benefitsRemitted && !p.benefitRfpId && (
                           <input type="checkbox"
                             checked={selectedBenefitPayableIds.includes(p.id)}
                             onChange={e => setSelectedBenefitPayableIds(prev =>
@@ -5063,8 +5099,8 @@ export default function PayrollPage() {
                       <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{p.pagER > 0 ? formatCurrency(p.pagER) : '—'}</td>
                       <td className="px-3 py-2.5 text-right font-mono font-semibold" style={{ color: 'var(--teal)' }}>{formatCurrency(p.totalBenefitsPayable)}</td>
                       <td className="px-3 py-2.5 text-center">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={p.benefitsRemitted ? { background: '#dcfce7', color: '#16a34a' } : { background: '#fef3c7', color: '#d97706' }}>
-                          {p.benefitsRemitted ? 'REMITTED' : 'PENDING'}
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={p.benefitsRemitted ? { background: '#dcfce7', color: '#16a34a' } : p.benefitRfpId ? { background: '#ffedd5', color: '#c2410c' } : { background: '#fef3c7', color: '#d97706' }}>
+                          {p.benefitsRemitted ? 'REMITTED' : p.benefitRfpId ? 'IN RFP' : 'PENDING'}
                         </span>
                       </td>
                     </tr>
@@ -5079,10 +5115,10 @@ export default function PayrollPage() {
                   {selectedBenefitPayableIds.length > 0 && <span className="ml-3">Selected: <span style={{ color: 'var(--deep-teal)' }}>{formatCurrency(benSelectedTotal)}</span></span>}
                 </span>
                 {selectedBenefitPayableIds.length > 0 && (
-                  <button onClick={() => { setShowRemitModal('benefit'); setRemitFromAccountId(''); setRemitFromSearch(''); setRemitProofUrl(''); setRemitNotes('') }}
+                  <button onClick={() => openPayableRfp('benefit', 'EMPLOYEE', benefitsPayables, selectedBenefitPayableIds)}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
                     style={{ background: 'var(--teal)' }}>
-                    <BadgeDollarSign size={14} /> Remit Selected ({selectedBenefitPayableIds.length} employees)
+                    <BadgeDollarSign size={14} /> RFP ({selectedBenefitPayableIds.length} employees)
                   </button>
                 )}
               </div>
@@ -5176,6 +5212,19 @@ export default function PayrollPage() {
       {/* ═══════════════════════════════════════════════════════════
          REMIT PAYMENT MODAL
          ═══════════════════════════════════════════════════════════ */}
+      {payableRfp && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setPayableRfp(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3"><h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Generate {payableRfp.source === 'salary' ? 'Salaries' : 'Benefits'} Payable RFP</h2><button onClick={() => setPayableRfp(null)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button></div>
+            <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>{payableRfp.ids.length} entr{payableRfp.ids.length === 1 ? 'y' : 'ies'} · total <strong>{formatCurrency(payableRfp.total)}</strong>. This creates an RFP in Expenses and locks these rows until paid there (or the RFP is deleted).</p>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>RFP Number (optional)</label>
+            <p className="text-[11px] mb-1" style={{ color: 'var(--mid-gray)' }}>From your pre-printed form. Leave blank to auto-number. Keep leading zeros.</p>
+            <input value={rfpManualSeq} onChange={e => setRfpManualSeq(e.target.value.replace(/[^0-9]/g, ''))} placeholder="e.g. 000007" className="w-full px-3 py-2 rounded-xl border text-sm font-mono mb-4" style={{ borderColor: 'var(--light-gray)' }} />
+            <button onClick={createPayableRfp} disabled={creatingRfp} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{creatingRfp ? <Loader2 size={15} className="inline animate-spin" /> : 'Generate RFP'}</button>
+          </div>
+        </div>
+      )}
+
       {showRemitModal && (() => {
         const isEmpSalaryModal = showRemitModal === 'salary' && salPayableSubTab === 'employees'
         const ids = showRemitModal === 'salary'

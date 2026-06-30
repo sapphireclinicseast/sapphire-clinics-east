@@ -20,23 +20,25 @@ export async function GET(req: Request) {
   const branch = sp.get('branch') || ''
   if (!VALID_BRANCHES.includes(branch)) return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
   const reports = await prisma.reimbursementReport.findMany({
-    where: { branch, module: 'EXPENSE' },
+    where: { branch, module: { in: ['EXPENSE', 'PAYROLL_SALARY', 'PAYROLL_BENEFIT'] } },
     select: {
-      id: true, refNumber: true, grossTotal: true, status: true, kind: true, paidAt: true, paymentMethod: true,
+      id: true, refNumber: true, grossTotal: true, status: true, kind: true, module: true, meta: true, paidAt: true, paymentMethod: true,
       checkNumber: true, debitAccount: true, creditCardId: true, proofUrl: true, createdAt: true,
       _count: { select: { entries: true } },
       entries: { select: { vatable: true, grossAmount: true, hasEwt: true, ewtRate: true } },
     },
     orderBy: { createdAt: 'desc' },
   })
-  // Amount Payable = (gross − VAT) − EWT, summed across the RFP's entries.
+  // Amount Payable = (gross − VAT) − EWT for expense RFPs; payroll RFPs use meta.netTotal.
   const withPayable = reports.map(r => {
-    const payableTotal = r.entries.reduce((sum, e) => {
-      const g = Number(e.grossAmount)
-      const net = e.vatable === 'VAT' ? g / 1.12 : g
-      const ewt = e.hasEwt && e.ewtRate ? net * (e.ewtRate / 100) : 0
-      return sum + (net - ewt)
-    }, 0)
+    const payableTotal = r.module === 'EXPENSE'
+      ? r.entries.reduce((sum, e) => {
+          const g = Number(e.grossAmount)
+          const net = e.vatable === 'VAT' ? g / 1.12 : g
+          const ewt = e.hasEwt && e.ewtRate ? net * (e.ewtRate / 100) : 0
+          return sum + (net - ewt)
+        }, 0)
+      : Number(r.grossTotal)
     const { entries, ...rest } = r
     void entries
     return { ...rest, payableTotal }
@@ -132,13 +134,29 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ success: true })
     }
 
+    // Payroll RFP paid via the salary/benefit-payments endpoint; record on the RFP + stash the payment id.
+    if (action === 'pay-payroll') {
+      const rep = await prisma.reimbursementReport.findUnique({ where: { id } })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const meta = { ...((rep?.meta || {}) as any), paymentId: body.paymentId || null }
+      await prisma.reimbursementReport.update({
+        where: { id },
+        data: { status: 'PAID', paidAt: body.datePaid ? new Date(body.datePaid) : new Date(), paymentMethod: body.paymentMethod || null, proofUrl: body.proofUrl || null, meta },
+      })
+      return NextResponse.json({ success: true })
+    }
+
     if (action === 'unpay') {
+      const rep = await prisma.reimbursementReport.findUnique({ where: { id } })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const meta = (rep?.meta || {}) as any
+      const isPayroll = rep?.module === 'PAYROLL_SALARY' || rep?.module === 'PAYROLL_BENEFIT'
       await prisma.$transaction(async (tx) => {
         await tx.reimbursementReport.update({
           where: { id },
-          data: { status: 'PENDING', paidAt: null, paymentMethod: null, checkNumber: null, debitAccount: null, creditCardId: null, proofUrl: null },
+          data: { status: 'PENDING', paidAt: null, paymentMethod: null, checkNumber: null, debitAccount: null, creditCardId: null, proofUrl: null, ...(isPayroll ? { meta: { ...meta, paymentId: null } } : {}) },
         })
-        await tx.pettyCashEntry.updateMany({
+        if (!isPayroll) await tx.pettyCashEntry.updateMany({
           where: { reimbursementId: id },
           data: { paidAt: null, paymentMethod: null, checkNumber: null, paymentBankAccount: null, creditCard: null, creditCardId: null, payrollAccount: null },
         })
@@ -163,6 +181,20 @@ export async function DELETE(req: Request) {
   const id = new URL(req.url).searchParams.get('id') || ''
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
   try {
+    const rep = await prisma.reimbursementReport.findUnique({ where: { id } })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const meta = (rep?.meta || {}) as any
+    if (rep?.module === 'PAYROLL_SALARY' || rep?.module === 'PAYROLL_BENEFIT') {
+      // Reactivate the locked payroll entries. (A paid payroll RFP must be unpaid first.)
+      const ids: string[] = Array.isArray(meta.ids) ? meta.ids : []
+      const field = rep.module === 'PAYROLL_SALARY' ? 'salaryRfpId' : 'benefitRfpId'
+      if (ids.length) {
+        if (meta.idKind === 'payrollEntry') await prisma.payrollEntry.updateMany({ where: { id: { in: ids } }, data: { [field]: null } })
+        else await prisma.employeePayslip.updateMany({ where: { id: { in: ids } }, data: { [field]: null } })
+      }
+      await prisma.reimbursementReport.delete({ where: { id } })
+      return NextResponse.json({ success: true })
+    }
     await prisma.pettyCashEntry.updateMany({
       where: { reimbursementId: id },
       data: { paidAt: null, paymentMethod: null, checkNumber: null, paymentBankAccount: null, creditCard: null, creditCardId: null, payrollAccount: null },
