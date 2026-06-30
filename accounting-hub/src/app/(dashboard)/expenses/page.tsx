@@ -161,6 +161,7 @@ export default function ExpensesPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [rfpMode, setRfpMode] = useState<'VALID' | 'INVALID' | null>(null)
   const [showRfpModal, setShowRfpModal] = useState(false)
+  const [rfpManualSeq, setRfpManualSeq] = useState('')
   const [generatingRfp, setGeneratingRfp] = useState(false)
   const [rfps, setRfps] = useState<Rfp[]>([])
   const [recurringDue, setRecurringDue] = useState<{ id: string; payee: string | null; accountTitle: string | null; description: string | null; grossAmount: number; frequency: string; nextDue: string; daysUntil: number; amountVaries?: boolean }[]>([])
@@ -354,14 +355,14 @@ export default function ExpensesPage() {
   const startRfp = (mode: 'VALID' | 'INVALID') => { setRfpMode(mode); setSelected(new Set()) }
   const cancelRfp = () => { setRfpMode(null); setSelected(new Set()) }
 
-  const generateRfp = async () => {
+  const generateRfp = async (manualSeq?: string) => {
     setGeneratingRfp(true)
     try {
       const ids = [...selected]
       const sel = entries.filter(e => selected.has(e.id))
       const res = await fetch('/api/expenses/rfp', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ branch, entryIds: ids, kind: rfpMode || 'VALID' }),
+        body: JSON.stringify({ branch, entryIds: ids, kind: rfpMode || 'VALID', manualSeq: manualSeq || null }),
       })
       if (!res.ok) { alert((await res.json()).error || 'Failed to generate RFP'); setGeneratingRfp(false); return }
       const { id, refNumber } = await res.json()
@@ -369,7 +370,7 @@ export default function ExpensesPage() {
         const pdfData = await buildRfpPdf(refNumber, branch, sel)
         await fetch('/api/expenses/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, pdfData }) })
       } catch { /* pdf best-effort */ }
-      setShowRfpModal(false); setRfpMode(null); setSelected(new Set())
+      setShowRfpModal(false); setRfpMode(null); setSelected(new Set()); setRfpManualSeq('')
       await loadEntries(branch, recordType); await loadRfps(branch)
       setTab('rfp')
     } catch { alert('Failed to generate RFP') }
@@ -1092,7 +1093,10 @@ export default function ExpensesPage() {
               <p className="text-sm mb-4" style={{ color: 'var(--mid-gray)' }}>
                 {sel.length} {rfpMode === 'VALID' ? 'valid' : 'invalid'} entr{sel.length === 1 ? 'y' : 'ies'} will be grouped into one RFP and locked. Total <strong style={{ color: 'var(--charcoal)' }}>₱{peso(tG)}</strong>. Record the payment afterwards in the RFP tab.
               </p>
-              <button onClick={generateRfp} disabled={generatingRfp || sel.length === 0}
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>RFP Number (optional)</label>
+              <input type="text" inputMode="numeric" value={rfpManualSeq} onChange={ev => setRfpManualSeq(ev.target.value.replace(/\D/g, ''))}
+                placeholder="e.g. 000007 — leave blank to auto-number" className="w-full px-3 py-2 rounded-xl border text-sm mb-4 font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+              <button onClick={() => generateRfp(rfpManualSeq)} disabled={generatingRfp || sel.length === 0}
                 className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>
                 {generatingRfp ? <Loader2 size={15} className="animate-spin" /> : <CreditCard size={15} />} {generatingRfp ? 'Generating…' : 'Generate RFP'}
               </button>

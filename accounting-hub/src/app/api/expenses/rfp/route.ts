@@ -38,10 +38,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { branch, entryIds, kind } = await req.json()
+    const { branch, entryIds, kind, manualSeq } = await req.json()
     if (!VALID_BRANCHES.includes(branch)) return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
     if (!Array.isArray(entryIds) || entryIds.length === 0) return NextResponse.json({ error: 'Select at least one entry' }, { status: 400 })
     const k = kind === 'INVALID' ? 'INVALID' : 'VALID'
+    const mseq = manualSeq != null && String(manualSeq).trim() !== '' ? parseInt(String(manualSeq), 10) : null
 
     const report = await prisma.$transaction(async (tx) => {
       const entries = await tx.pettyCashEntry.findMany({
@@ -56,8 +57,9 @@ export async function POST(req: Request) {
 
       let settings = await tx.pettyCashSettings.findUnique({ where: { branch } })
       if (!settings) settings = await tx.pettyCashSettings.create({ data: { branch, nextPcvSeq: 1 } })
-      const seq = settings.nextReimbSeq   // shared counter → continuous with petty cash RFP
-      await tx.pettyCashSettings.update({ where: { branch }, data: { nextReimbSeq: seq + 1 } })
+      // Manual seq (pre-printed form) overrides the shared counter; keep the counter ahead.
+      const seq = (mseq != null && !isNaN(mseq) && mseq > 0) ? mseq : settings.nextReimbSeq
+      await tx.pettyCashSettings.update({ where: { branch }, data: { nextReimbSeq: Math.max(settings.nextReimbSeq, seq + 1) } })
 
       const yy = new Date().getFullYear() % 100
       const suffix = k === 'VALID' ? 'VAL' : 'INV'

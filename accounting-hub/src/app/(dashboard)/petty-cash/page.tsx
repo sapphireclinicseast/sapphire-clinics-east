@@ -380,14 +380,14 @@ export default function PettyCashPage() {
     return doc.output('datauristring')
   }
 
-  const generateReimbursement = async () => {
+  const generateReimbursement = async (manualSeq?: string) => {
     setGenerating(true)
     try {
       const ids = [...selected]
       const sel = entries.filter(e => selected.has(e.id))
       const res = await fetch('/api/petty-cash/reimbursements', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ branch, entryIds: ids, kind: rfpMode || 'VALID' }),
+        body: JSON.stringify({ branch, entryIds: ids, kind: rfpMode || 'VALID', manualSeq: manualSeq || null }),
       })
       if (!res.ok) { alert((await res.json()).error || 'Failed to generate'); setGenerating(false); return }
       const { id, refNumber } = await res.json()
@@ -1032,8 +1032,9 @@ export default function PettyCashPage() {
 
 // ── Reimbursement modal ────────────────────────────────────────
 function ReimbModal({ entries, generating, onClose, onGenerate }: {
-  entries: Entry[]; generating: boolean; onClose: () => void; onGenerate: () => void
+  entries: Entry[]; generating: boolean; onClose: () => void; onGenerate: (manualSeq?: string) => void
 }) {
+  const [manualSeq, setManualSeq] = useState('')
   const tG = entries.reduce((s, e) => s + num(e.grossAmount), 0)
   const tN = entries.reduce((s, e) => s + netOfVat(e), 0)
   const tV = entries.reduce((s, e) => s + vatAmount(e), 0)
@@ -1047,7 +1048,7 @@ function ReimbModal({ entries, generating, onClose, onGenerate }: {
         <p className="text-sm mb-4" style={{ color: 'var(--mid-gray)' }}>
           {entries.length} selected entr{entries.length === 1 ? 'y' : 'ies'} will be included and locked.
         </p>
-        <div className="grid grid-cols-3 gap-3 mb-5">
+        <div className="grid grid-cols-3 gap-3 mb-4">
           {[['Gross Amount', tG], ['Net of VAT', tN], ['VAT Amount', tV]].map(([lbl, v]) => (
             <div key={lbl as string} className="rounded-xl p-3 text-center" style={{ background: 'var(--off-white)' }}>
               <p className="text-[11px] mb-1" style={{ color: 'var(--mid-gray)' }}>{lbl as string}</p>
@@ -1055,7 +1056,10 @@ function ReimbModal({ entries, generating, onClose, onGenerate }: {
             </div>
           ))}
         </div>
-        <button onClick={onGenerate} disabled={generating || entries.length === 0}
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>RFP Number (optional)</label>
+        <input type="text" inputMode="numeric" value={manualSeq} onChange={e => setManualSeq(e.target.value.replace(/\D/g, ''))}
+          placeholder="e.g. 000007 — leave blank to auto-number" className="w-full px-3 py-2 rounded-xl border text-sm mb-5 font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+        <button onClick={() => onGenerate(manualSeq)} disabled={generating || entries.length === 0}
           className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2"
           style={{ background: 'var(--teal)' }}>
           {generating ? <Loader2 size={15} className="animate-spin" /> : <FileDown size={15} />}
