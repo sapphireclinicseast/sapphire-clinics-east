@@ -33,6 +33,7 @@ export default function ExpandedWithholding() {
   const [loading, setLoading] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [showRfpModal, setShowRfpModal] = useState(false)
+  const [showOtherIncome, setShowOtherIncome] = useState(false)
   const [manualSeq, setManualSeq] = useState('')
   const [busy, setBusy] = useState(false)
   const [payTarget, setPayTarget] = useState<TaxRfp | null>(null)
@@ -143,7 +144,10 @@ export default function ExpandedWithholding() {
           <button onClick={() => { fetchItems(); fetchRfps() }} className="p-1.5 rounded-lg hover:bg-gray-100"><RefreshCw size={14} style={{ color: 'var(--mid-gray)' }} /></button>
         </div>
         {canWrite && selected.size > 0 && (
-          <button onClick={() => setShowRfpModal(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: '#c44b00' }}>Generate EWT RFP ({selected.size}) · ₱{peso(selectedTotal)}</button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setShowRfpModal(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: '#c44b00' }}>Generate EWT RFP ({selected.size}) · ₱{peso(selectedTotal)}</button>
+            <button onClick={() => setShowOtherIncome(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: '#6d28d9' }}>Declare as Other Income</button>
+          </div>
         )}
       </div>
 
@@ -220,6 +224,42 @@ export default function ExpandedWithholding() {
         </div>
       )}
       {payTarget && <RecordPaidModal rfp={payTarget} onClose={() => setPayTarget(null)} onSaved={async () => { setPayTarget(null); await fetchRfps() }} />}
+      {showOtherIncome && (
+        <OtherIncomeModal payrollBranch={branch} total={selectedTotal}
+          consultantIds={filtered.filter(e => selected.has(e.id) && e.source === 'CONSULTANT').map(e => e.id)}
+          expenseIds={filtered.filter(e => selected.has(e.id) && e.source === 'EXPENSE').map(e => e.id)}
+          onClose={() => setShowOtherIncome(false)}
+          onDone={async () => { setShowOtherIncome(false); setSelected(new Set()); await fetchItems() }} />
+      )}
+    </div>
+  )
+}
+
+function OtherIncomeModal({ payrollBranch, total, consultantIds, expenseIds, onClose, onDone }: { payrollBranch: string; total: number; consultantIds: string[]; expenseIds: string[]; onClose: () => void; onDone: () => void }) {
+  const [accts, setAccts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
+  const [q, setQ] = useState('')
+  const [incomeAccountId, setAcct] = useState('')
+  const [busy, setBusy] = useState(false)
+  useEffect(() => { fetch('/api/chart-of-accounts?pageSize=1000').then(r => r.ok ? r.json() : { data: [] }).then(d => setAccts((d.data || []).filter((a: { accountType: string }) => a.accountType === 'REVENUE').map((a: { id: string; accountNumber: string; accountTitle: string }) => ({ id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle })))).catch(() => {}) }, [])
+  const filtered = accts.filter(a => !q || `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(q.toLowerCase())).slice(0, 50)
+  const save = async () => {
+    if (!incomeAccountId) { alert('Choose the Other Income account.'); return }
+    setBusy(true)
+    try { const r = await fetch('/api/taxes/ewt-other-income', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payrollBranch, consultantIds, expenseIds, incomeAccountId }) }); if (!r.ok) { alert((await r.json()).error || 'Failed'); return } onDone() } finally { setBusy(false) }
+  }
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3"><h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Declare as Other Income</h2><button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button></div>
+        <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>{consultantIds.length + expenseIds.length} item(s) · total <strong>₱{peso(total)}</strong>. Posts Dr Withholding Tax Payable / Cr the chosen income account — <strong>no bank movement</strong>.</p>
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Other Income account title</label>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search income accounts…" className="w-full px-3 py-2 rounded-xl border text-sm mb-1" style={{ borderColor: 'var(--light-gray)' }} />
+        <div className="rounded-xl border overflow-auto mb-4" style={{ borderColor: 'var(--light-gray)', maxHeight: 220 }}>
+          {filtered.map(a => <button key={a.id} onClick={() => setAcct(a.id)} className="block w-full text-left px-3 py-1.5 text-xs" style={{ background: incomeAccountId === a.id ? 'var(--pale-teal)' : '#fff', color: 'var(--charcoal)' }}>{a.accountNumber} — {a.accountTitle}</button>)}
+          {filtered.length === 0 && <p className="px-3 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>No revenue accounts found.</p>}
+        </div>
+        <button onClick={save} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#6d28d9' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : 'Declare as Other Income'}</button>
+      </div>
     </div>
   )
 }
