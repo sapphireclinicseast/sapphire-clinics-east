@@ -1728,6 +1728,9 @@ model CreditCardReport {
   periodYear   Int
   statementUrl String?
   status       String   @default("FOR_FILING")
+  paidAt       DateTime?  // when the credit-card bill itself was settled
+  paymentForm  String?    // Check Deposit | Cash Deposit | Online Fund Transfer
+  paymentRef   String?    // check number / transfer reference for the CC bill payment
   createdAt    DateTime @default(now())
 
   @@unique([branch, cardId, periodMonth, periodYear])

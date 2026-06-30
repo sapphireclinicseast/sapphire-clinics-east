@@ -60,10 +60,20 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { id, status, statementUrl } = await req.json()
+    const { id, status, statementUrl, action, datePaid, paymentForm, paymentRef } = await req.json()
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = {}
+    if (action === 'pay') {
+      // Settle the credit-card bill (date + form of payment). Only then do its
+      // charged expenses surface in the Expense Report.
+      if (!paymentForm) return NextResponse.json({ error: 'Form of payment is required' }, { status: 400 })
+      data.paidAt = datePaid ? new Date(datePaid) : new Date()
+      data.paymentForm = paymentForm
+      data.paymentRef = paymentRef || null
+    } else if (action === 'unpay') {
+      data.paidAt = null; data.paymentForm = null; data.paymentRef = null
+    }
     if (status !== undefined) {
       if (!['FILED', 'FOR_FILING'].includes(status)) return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
       data.status = status

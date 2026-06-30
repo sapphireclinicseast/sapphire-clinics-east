@@ -1366,6 +1366,7 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 interface CcReport {
   id: string; branch: string; cardId: string; bankCode: string; refNumber: string
   periodMonth: number; periodYear: number; statementUrl: string | null; status: string; createdAt: string
+  paidAt: string | null; paymentForm: string | null; paymentRef: string | null
 }
 interface CcTxn {
   id: string; pcvNumber: string; requestor: string | null; date: string | null
@@ -1384,6 +1385,7 @@ function CcReportTab({ branch, cards, canWrite, canEdit }: { branch: string; car
   const [uploadingStmt, setUploadingStmt] = useState('')
   const [txnRefresh, setTxnRefresh] = useState(0)
   const [editRow, setEditRow] = useState<{ id: string; date: string; accountTitle: string; description: string; gross: number } | null>(null)
+  const [payCcTarget, setPayCcTarget] = useState<CcReport | null>(null)
   const deleteTxn = async (id: string) => {
     if (!confirm('Delete this entry? It will be removed from the report and any RFP it was in.')) return
     setTxns(prev => prev.filter(t => t.id !== id))
@@ -1428,6 +1430,15 @@ function CcReportTab({ branch, cards, canWrite, canEdit }: { branch: string; car
   const setStatus = async (id: string, status: string) => {
     setReports(prev => prev.map(r => (r.id === id ? { ...r, status } : r)))
     try { await fetch('/api/expenses/cc-reports', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, status }) }) } catch { /* ignore */ }
+  }
+  const markPaid = async (id: string, p: { datePaid: string; paymentForm: string; paymentRef: string }) => {
+    const r = await fetch('/api/expenses/cc-reports', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, action: 'pay', ...p }) })
+    if (r.ok) { const rep = await r.json(); setReports(prev => prev.map(x => (x.id === id ? { ...x, ...rep } : x))) }
+    else alert((await r.json()).error || 'Failed to record payment')
+  }
+  const unpay = async (id: string) => {
+    const r = await fetch('/api/expenses/cc-reports', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, action: 'unpay' }) })
+    if (r.ok) { const rep = await r.json(); setReports(prev => prev.map(x => (x.id === id ? { ...x, ...rep } : x))) }
   }
   const uploadStatement = async (id: string, file: File | null) => {
     if (!file) return
@@ -1529,6 +1540,9 @@ function CcReportTab({ branch, cards, canWrite, canEdit }: { branch: string; car
                 <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>No CC report generated for this card &amp; month yet.</p>
               )}
               <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{txns.length} transaction(s) · Total <strong style={{ color: 'var(--charcoal)' }}>₱{peso(total)}</strong></p>
+              {report && !report.paidAt && (
+                <p className="text-[11px] mt-1" style={{ color: '#92400e' }}>These charges appear in the Expense Report only after the card bill is marked paid.</p>
+              )}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <button onClick={exportCcPdf} disabled={txns.length === 0} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border disabled:opacity-40" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
@@ -1563,6 +1577,19 @@ function CcReportTab({ branch, cards, canWrite, canEdit }: { branch: string; car
                       <input type="file" className="hidden" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv"
                         onChange={ev => { uploadStatement(report.id, ev.target.files?.[0] || null); ev.target.value = '' }} />
                     </label>
+                  )}
+                  {report.paidAt ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold" style={{ background: '#dcfce7', color: '#166534' }}>
+                      <CheckCircle2 size={14} /> Paid {String(report.paidAt).slice(0, 10)}{report.paymentForm ? ` · ${report.paymentForm}` : ''}{report.paymentRef ? ` · ${report.paymentRef}` : ''}
+                      {canWrite && <button onClick={() => setPayCcTarget(report)} title="Edit / unpay" className="ml-1"><Pencil size={12} /></button>}
+                    </span>
+                  ) : canWrite ? (
+                    <button onClick={() => setPayCcTarget(report)}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: '#c44b00' }}>
+                      <CheckCircle2 size={14} /> Mark Card Bill Paid
+                    </button>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold" style={{ background: '#fef3c7', color: '#92400e' }}>Card bill unpaid</span>
                   )}
                 </>
               )}
@@ -1671,6 +1698,44 @@ function CcReportTab({ branch, cards, canWrite, canEdit }: { branch: string; car
       {editRow && (
         <ReportEntryEditModal row={editRow} onClose={() => setEditRow(null)} onSaved={() => { setEditRow(null); setTxnRefresh(x => x + 1) }} />
       )}
+      {payCcTarget && (
+        <CcPaidModal report={payCcTarget} onClose={() => setPayCcTarget(null)}
+          onPay={async p => { await markPaid(payCcTarget.id, p); setPayCcTarget(null) }}
+          onUnpay={async () => { await unpay(payCcTarget.id); setPayCcTarget(null) }} />
+      )}
+    </div>
+  )
+}
+
+// Record settlement of the credit-card bill (date + form of payment).
+function CcPaidModal({ report, onClose, onPay, onUnpay }: {
+  report: CcReport; onClose: () => void
+  onPay: (p: { datePaid: string; paymentForm: string; paymentRef: string }) => Promise<void>; onUnpay: () => Promise<void>
+}) {
+  const [datePaid, setDatePaid] = useState(report.paidAt ? String(report.paidAt).slice(0, 10) : new Date().toISOString().slice(0, 10))
+  const [form, setForm] = useState(report.paymentForm || 'Check Deposit')
+  const [ref, setRef] = useState(report.paymentRef || '')
+  const [busy, setBusy] = useState(false)
+  const refLabel = form === 'Online Fund Transfer' ? 'Transfer reference number' : form === 'Cash Deposit' ? 'Deposit slip / reference (optional)' : 'Check number'
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3"><h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Mark Credit Card Bill Paid</h2><button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button></div>
+        <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>{report.refNumber} — settle how the card bill was paid. Its charged expenses then appear in the Expense Report.</p>
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Date of payment</label>
+        <input type="date" value={datePaid} onChange={e => setDatePaid(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Form of payment</label>
+        <select value={form} onChange={e => setForm(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }}>
+          <option>Check Deposit</option><option>Cash Deposit</option><option>Online Fund Transfer</option>
+        </select>
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>{refLabel}</label>
+        <input value={ref} onChange={e => setRef(e.target.value)} placeholder="Leading zeros preserved" className="w-full px-3 py-2 rounded-xl border text-sm font-mono mb-4" style={{ borderColor: 'var(--light-gray)' }} />
+        <div className="flex gap-2">
+          <button onClick={async () => { setBusy(true); try { await onPay({ datePaid, paymentForm: form, paymentRef: ref }) } finally { setBusy(false) } }} disabled={busy}
+            className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : 'Save payment'}</button>
+          {report.paidAt && <button onClick={async () => { setBusy(true); try { await onUnpay() } finally { setBusy(false) } }} disabled={busy} className="px-4 py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: '#fca5a5', color: '#b91c1c' }}>Unpay</button>}
+        </div>
+      </div>
     </div>
   )
 }
@@ -1727,7 +1792,7 @@ function ExpenseReportTab({ branch, canWrite, canEdit }: { branch: string; canWr
     try { await fetch('/api/expenses/filing-status', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, filingStatus }) }) } catch { /* ignore */ }
   }
 
-  const COLS_ER = ['Payee', 'Payment Account', 'Payment Date', 'Payment Method', 'Reference Number', 'Account Title', 'Description', 'Net of VAT', 'Check Number', 'Status']
+  const COLS_ER = ['Payee', 'Payment Account', 'Payment Date', 'Payment Method', 'Reference Number', 'Account Title', 'Description', 'Net of VAT', 'Check Number / Online Transfer Ref. No.', 'Status']
   const rowCells = (r: ErRow) => [r.payee, r.paymentAccount, r.paymentDate, r.paymentMethod, r.pcvNumber, r.accountTitle, r.description, r.netOfVat.toFixed(2), r.checkInfo, r.filingStatus === 'FILED' ? 'Filed' : 'For Filing']
   const exportExcel = async () => {
     const XLSX = await import('xlsx')
@@ -1814,7 +1879,7 @@ function ExpenseReportTab({ branch, canWrite, canEdit }: { branch: string; canWr
           <table className="text-xs" style={{ borderCollapse: 'collapse', minWidth: 1700 }}>
             <thead className="sticky top-0 z-10">
               <tr style={{ background: 'var(--off-white)' }}>
-                {['Payee', 'Payment Account', 'Payment Date', 'Payment Method', 'Reference Number', 'Account Title', 'Description', 'Amount Net of VAT', 'Check Number', 'Status'].map((h, i) => (
+                {['Payee', 'Payment Account', 'Payment Date', 'Payment Method', 'Reference Number', 'Account Title', 'Description', 'Amount Net of VAT', 'Check Number / Online Transfer Ref. No.', 'Status'].map((h, i) => (
                   <th key={i} className="border-r border-b px-3 py-2 text-left font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)', borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>{h}</th>
                 ))}
                 {canEdit && <th className="border-b px-3 py-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}></th>}
