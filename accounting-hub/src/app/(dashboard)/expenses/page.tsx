@@ -478,7 +478,8 @@ export default function ExpensesPage() {
 
   const cellCls = 'w-full bg-transparent px-2 py-1.5 text-xs outline-none focus:bg-[var(--pale-teal)] rounded'
   const tdCls = 'border-r border-b align-top'
-  const locked = (e: Entry) => !!e.reimbursementId || !!e.paidAt || !!e.finalized || !canWrite
+  // Recurring entries are setups (no payment), so a stale paidAt shouldn't lock them.
+  const locked = (e: Entry) => !!e.reimbursementId || (e.recordType !== 'RECURRING' && !!e.paidAt) || !!e.finalized || !canWrite
   const vatEditable = (e: Entry) => e.vatable === 'VAT' || e.vatable === 'Non-VAT' || e.vatable === 'NV'
 
   const q = search.trim().toLowerCase()
@@ -875,7 +876,7 @@ export default function ExpensesPage() {
                           </td>
                         )}
                         <td className="border-b px-1 text-center" style={{ borderColor: 'var(--light-gray)' }}>
-                          {canWrite && !e.paidAt && (
+                          {canWrite && !e.reimbursementId && (e.recordType === 'RECURRING' || !e.paidAt) && (
                             <div className="flex items-center justify-center gap-0.5 whitespace-nowrap">
                               <button onClick={() => finalizeEntry(e)} disabled={!!e.finalized}
                                 title={e.finalized ? 'Finalized' : 'Mark as finalized'} className="p-1 rounded hover:bg-green-50">
