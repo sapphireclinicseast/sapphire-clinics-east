@@ -947,7 +947,9 @@ function IncomeStatement({ data, viewMode, onDrillDown, revenueOnly = false }: {
   const cogsAccts = accounts.EXPENSE?.COGS || []
   const costOfSalesAccts = [...directExpenseAccts, ...cogsAccts]
   const indirectExpenseAccts = accounts.EXPENSE?.INDIRECT_EXPENSES || []
-  const nonOpExpenseAccts = accounts.EXPENSE?.NON_OPERATING_EXPENSES || []
+  // 8070 Depreciation Expense is shown in its own Depreciation section, so keep
+  // it out of Non-Operating Expenses to avoid listing it twice.
+  const nonOpExpenseAccts = (accounts.EXPENSE?.NON_OPERATING_EXPENSES || []).filter(a => a.accountNumber !== '8070')
 
   // Collect revenue by account keys from monthly data
   const allRevenueKeys = new Set<string>()
