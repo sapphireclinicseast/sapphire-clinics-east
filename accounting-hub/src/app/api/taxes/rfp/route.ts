@@ -22,12 +22,18 @@ export async function GET(req: Request) {
     if (!r) return NextResponse.json({ error: 'Not found' }, { status: 404 })
     return NextResponse.json(r)
   }
-  const taxType = sp.get('taxType') || 'WC'
-  const moduleName = TAX_MODULE[taxType]
-  if (!moduleName) return NextResponse.json({ error: 'Invalid taxType' }, { status: 400 })
   const payrollBranch = sp.get('payrollBranch') || ''
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const where: any = { module: moduleName }
+  const where: any = {}
+  if (sp.get('all')) {
+    // Consolidated view: every tax RFP type.
+    where.module = { in: Object.values(TAX_MODULE) }
+  } else {
+    const taxType = sp.get('taxType') || 'WC'
+    const moduleName = TAX_MODULE[taxType]
+    if (!moduleName) return NextResponse.json({ error: 'Invalid taxType' }, { status: 400 })
+    where.module = moduleName
+  }
   if (payrollBranch && PAYROLL_TO_PC[payrollBranch]) where.branch = PAYROLL_TO_PC[payrollBranch]
   const reports = await prisma.reimbursementReport.findMany({
     where,
@@ -47,10 +53,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { taxType, payrollBranch, ids, consultantIds, expenseIds, manualSeq } = await req.json()
+    const { taxType, payrollBranch, ids, consultantIds, expenseIds, amount, period, manualSeq } = await req.json()
     const moduleName = TAX_MODULE[taxType]
     if (!moduleName) return NextResponse.json({ error: 'Invalid taxType' }, { status: 400 })
-    if (taxType !== 'WC' && taxType !== 'EWT') return NextResponse.json({ error: `${taxType} RFP not yet supported` }, { status: 400 })
+    if (!['WC', 'EWT', 'VAT'].includes(taxType)) return NextResponse.json({ error: `${taxType} RFP not yet supported` }, { status: 400 })
     const pcBranch = PAYROLL_TO_PC[payrollBranch]
     if (!pcBranch) return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
     const mseq = manualSeq != null && String(manualSeq).trim() !== '' ? parseInt(String(manualSeq), 10) : null
@@ -59,8 +65,16 @@ export async function POST(req: Request) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let items: any[] = []
       let markRemitted: () => Promise<void> = async () => {}
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let extraMeta: any = {}
 
-      if (taxType === 'WC') {
+      if (taxType === 'VAT') {
+        // Manual VAT payable (2550Q) keyed by the accountant — no line items.
+        const amt = Number(amount)
+        if (!amt || amt <= 0) throw new Error('Enter the VAT payable amount')
+        items = []
+        extraMeta = { period: period || null, vatAmount: amt }
+      } else if (taxType === 'WC') {
         // Employee withholding (1601-C) from EmployeePayslip.
         if (!Array.isArray(ids) || ids.length === 0) throw new Error('Select at least one entry')
         const slips = await tx.employeePayslip.findMany({
@@ -91,7 +105,7 @@ export async function POST(req: Request) {
           if (exps.length) await tx.pettyCashEntry.updateMany({ where: { id: { in: exps.map(x => x.id) } }, data: { ewtRemitted: true } })
         }
       }
-      const grossTotal = items.reduce((sum, i) => sum + (taxType === 'WC' ? i.tax : i.ewt), 0)
+      const grossTotal = taxType === 'VAT' ? Number(amount) : items.reduce((sum, i) => sum + (taxType === 'WC' ? i.tax : i.ewt), 0)
 
       let settings = await tx.pettyCashSettings.findUnique({ where: { branch: pcBranch } })
       if (!settings) settings = await tx.pettyCashSettings.create({ data: { branch: pcBranch, nextPcvSeq: 1 } })
@@ -104,7 +118,7 @@ export async function POST(req: Request) {
       const created = await tx.reimbursementReport.create({
         data: {
           branch: pcBranch, refNumber, refSeq: seq, grossTotal, module: moduleName,
-          meta: { taxType, payrollBranch, items }, createdById: session.user.id ?? null,
+          meta: { taxType, payrollBranch, items, ...extraMeta }, createdById: session.user.id ?? null,
         },
       })
       await markRemitted()

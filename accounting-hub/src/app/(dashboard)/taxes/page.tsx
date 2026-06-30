@@ -1,10 +1,13 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Landmark, ExternalLink, CalendarClock, Info } from 'lucide-react'
+import { Landmark, ExternalLink, CalendarClock } from 'lucide-react'
 import { computeTaxDue, TAX_PORTALS, type TaxDueInfo } from '@/lib/taxes'
 import WithholdingCompensation from './WithholdingCompensation'
 import ExpandedWithholding from './ExpandedWithholding'
+import BusinessTax from './BusinessTax'
+import TaxesRfp from './TaxesRfp'
+import TaxesPaid from './TaxesPaid'
 
 type Tab = 'guide' | 'compensation' | 'ewt' | 'business' | 'rfp' | 'paid'
 
@@ -22,19 +25,6 @@ const dueBadge = (d: number) =>
     : d <= 5 ? { background: '#fee2e2', color: '#b91c1c', text: d === 0 ? 'Due today' : d === 1 ? 'Due tomorrow' : `Due in ${d} days` }
     : d <= 15 ? { background: '#fef3c7', color: '#92400e', text: `Due in ${d} days` }
     : { background: '#dcfce7', color: '#166534', text: `Due in ${d} days` }
-
-function Placeholder({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl border bg-white p-8 text-center" style={{ borderColor: 'var(--light-gray)' }}>
-      <Info size={26} style={{ color: 'var(--teal)' }} className="mx-auto mb-2" />
-      <h2 className="text-base font-bold mb-1" style={{ color: 'var(--charcoal)' }}>{title}</h2>
-      <p className="text-sm max-w-xl mx-auto" style={{ color: 'var(--mid-gray)' }}>{children}</p>
-      <p className="text-xs mt-3 inline-block px-2 py-0.5 rounded-full" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-        Coming in the next update
-      </p>
-    </div>
-  )
-}
 
 export default function TaxesPage() {
   const [tab, setTab] = useState<Tab>('guide')
@@ -146,21 +136,9 @@ export default function TaxesPage() {
 
       {tab === 'compensation' && <WithholdingCompensation />}
       {tab === 'ewt' && <ExpandedWithholding />}
-      {tab === 'business' && (
-        <Placeholder title="Business Tax (VAT)">
-          Lists Output VAT (from POS sales) and creditable Input VAT (from expenses) so the accountant can key the final VAT payable (2550Q), then raise an RFP.
-        </Placeholder>
-      )}
-      {tab === 'rfp' && (
-        <Placeholder title="Taxes — RFP">
-          All tax RFP transactions, the same as petty cash / expense RFPs: manual RFP number entry, sortable / filterable headers, record-as-paid, and PDF.
-        </Placeholder>
-      )}
-      {tab === 'paid' && (
-        <Placeholder title="Taxes Paid">
-          A months-of-the-year grid per tax type showing pending vs. paid, driven by the &quot;Paid&quot; status of the tax RFPs.
-        </Placeholder>
-      )}
+      {tab === 'business' && <BusinessTax />}
+      {tab === 'rfp' && <TaxesRfp />}
+      {tab === 'paid' && <TaxesPaid />}
     </div>
   )
 }
