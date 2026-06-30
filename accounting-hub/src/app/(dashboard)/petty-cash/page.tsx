@@ -345,7 +345,7 @@ export default function PettyCashPage() {
     const tV = rows.reduce((s, e) => s + vatAmount(e), 0)
     autoTable(doc, {
       startY: 33,
-      head: [['PCV Number', 'Requestor', 'Department', 'PCF Status', 'Date', 'Description', 'Vatable', 'Gross Amount', 'Net of VAT', 'VAT Amount']],
+      head: [['Reference Number', 'Requestor', 'Department', 'PCF Status', 'Date', 'Description', 'Vatable', 'Gross Amount', 'Net of VAT', 'VAT Amount']],
       body: rows.map(e => [
         e.pcvNumber, e.requestor || '', e.department || '', e.pcfStatus || '',
         e.date ? String(e.date).slice(0, 10) : '', e.description || '', e.vatable || '',
@@ -537,7 +537,7 @@ export default function PettyCashPage() {
                     <th className="border-r border-b px-2 py-2 text-center" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                       <input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={!canWrite || selectableIds.length === 0} title="Select all" />
                     </th>
-                    {['PCV Number', 'Requestor', 'Department', 'PCF Status', 'Date', 'Description', 'Description for Hub',
+                    {['Reference Number', 'Requestor', 'Department', 'PCF Status', 'Date', 'Description', 'Description for Hub',
                       'Valid/Invalid', 'Vatable', 'SI Number', 'TIN Number', 'TIN Number 2', 'Branch Code', 'Registered name',
                       'Registered Address', 'Gross Amount', 'Net of VAT', 'VAT Amount', 'Account Title', ...(branch === 'CEO' ? ['Branch (allocations)'] : []), 'Proof', ''
                     ].map((h, i) => (

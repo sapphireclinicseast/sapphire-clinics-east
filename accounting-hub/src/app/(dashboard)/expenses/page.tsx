@@ -429,7 +429,7 @@ export default function ExpensesPage() {
                     <th className="border-r border-b px-2 py-2 text-center" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                       <input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={!canWrite || selectableIds.length === 0} title="Select all" />
                     </th>
-                    {['PCV Number', 'Payee', 'Department', 'Date', 'Description', 'Description for Hub',
+                    {['Reference Number', 'Payee', 'Department', 'Date', 'Description', 'Description for Hub',
                       'Valid/Invalid', 'Vatable', 'SI Number', 'TIN Number', 'TIN Number 2', 'Branch Code', 'Registered name',
                       'Registered Address', 'Gross Amount', 'Net of VAT', 'VAT Amount', 'Account Title',
                       ...(isRecurringTab ? ['Recurs', 'Deadline (day)', 'Distribute monthly?', 'Monthly Amount', 'Charge from', 'Charge to'] : []),
@@ -1021,7 +1021,7 @@ function CcReportTab({ branch, cards, canWrite }: { branch: string; cards: Card[
     try { await fetch(`/api/expenses/cc-reports?id=${id}`, { method: 'DELETE' }) } catch { /* ignore */ }
   }
 
-  const CC_COLS = ['PCV Number', 'Payee', 'Expense Date', 'Description', 'Account Title', 'Charged On', 'Amount']
+  const CC_COLS = ['Reference Number', 'Payee', 'Expense Date', 'Description', 'Account Title', 'Charged On', 'Amount']
   const ccCells = (t: CcTxn) => [t.pcvNumber, t.requestor || '', t.date ? String(t.date).slice(0, 10) : '', t.description || '', t.accountTitle || '', t.paidAt ? String(t.paidAt).slice(0, 10) : '', num(t.grossAmount).toFixed(2)]
   const ccTitle = () => `${cardOf(cardId) ? cardLabel(cardOf(cardId)!) : ''} · ${MONTHS[month - 1]} ${year}${report ? ` · ${report.refNumber}` : ''}`
   const exportCcExcel = async () => {
@@ -1149,7 +1149,7 @@ function CcReportTab({ branch, cards, canWrite }: { branch: string; cards: Card[
               <table className="w-full text-xs">
                 <thead className="sticky top-0">
                   <tr style={{ background: 'var(--off-white)' }}>
-                    {['PCV Number', 'Payee', 'Expense Date', 'Description', 'Account Title', 'Charged On', 'Amount'].map((h, i) => (
+                    {['Reference Number', 'Payee', 'Expense Date', 'Description', 'Account Title', 'Charged On', 'Amount'].map((h, i) => (
                       <th key={i} className="px-3 py-2 text-left font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{h}</th>
                     ))}
                   </tr>
@@ -1274,7 +1274,7 @@ function ExpenseReportTab({ branch, canWrite }: { branch: string; canWrite: bool
     try { await fetch('/api/expenses/filing-status', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, filingStatus }) }) } catch { /* ignore */ }
   }
 
-  const COLS_ER = ['Payee', 'Payment Account', 'Payment Date', 'Payment Method', 'PCV Number', 'Account Title', 'Description', 'Net of VAT', 'Check Number', 'Status']
+  const COLS_ER = ['Payee', 'Payment Account', 'Payment Date', 'Payment Method', 'Reference Number', 'Account Title', 'Description', 'Net of VAT', 'Check Number', 'Status']
   const rowCells = (r: ErRow) => [r.payee, r.paymentAccount, r.paymentDate, r.paymentMethod, r.pcvNumber, r.accountTitle, r.description, r.netOfVat.toFixed(2), r.checkInfo, r.filingStatus === 'FILED' ? 'Filed' : 'For Filing']
   const exportExcel = async () => {
     const XLSX = await import('xlsx')
@@ -1361,7 +1361,7 @@ function ExpenseReportTab({ branch, canWrite }: { branch: string; canWrite: bool
           <table className="text-xs" style={{ borderCollapse: 'collapse', minWidth: 1700 }}>
             <thead className="sticky top-0 z-10">
               <tr style={{ background: 'var(--off-white)' }}>
-                {['Payee', 'Payment Account', 'Payment Date', 'Payment Method', 'PCV Number', 'Account Title', 'Description', 'Amount Net of VAT', 'Check Number', 'Status'].map((h, i) => (
+                {['Payee', 'Payment Account', 'Payment Date', 'Payment Method', 'Reference Number', 'Account Title', 'Description', 'Amount Net of VAT', 'Check Number', 'Status'].map((h, i) => (
                   <th key={i} className="border-r border-b px-3 py-2 text-left font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)', borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>{h}</th>
                 ))}
               </tr>
