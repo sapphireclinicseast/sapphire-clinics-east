@@ -481,7 +481,7 @@ export default function PettyCashPage() {
   // Distinct existing PCV bases (for "same PCV as a previous entry").
   const pcvBases = Array.from(new Map(entries.map(e => [e.pcvSeq, e.pcvNumber.replace(/-\d{2}$/, '')])).entries())
     .map(([seq, label]) => ({ seq, label }))
-    .sort((a, b) => a.seq - b.seq)
+    .sort((a, b) => b.seq - a.seq)   // most recent PCV first
   const confirmAddRow = () => { setShowAddPopup(false); addRow(addSameSeq ? Number(addSameSeq) : null); setAddSameSeq('') }
   const supplierByName = new Map(suppliers.map(s => [s.registeredName.trim().toLowerCase(), s]))
   // Audit status updates even on locked rows (audit happens after RFP).
