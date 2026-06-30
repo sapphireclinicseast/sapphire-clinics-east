@@ -34,6 +34,9 @@ export default function ExpandedWithholding() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [showRfpModal, setShowRfpModal] = useState(false)
   const [showOtherIncome, setShowOtherIncome] = useState(false)
+  const [siStatus, setSiStatus] = useState<Record<string, string>>({}) // `${ym}|${NAME}` → Submitted|Pending|No SI
+  const [syncing, setSyncing] = useState(false)
+  const [syncedAt, setSyncedAt] = useState('')
   const [manualSeq, setManualSeq] = useState('')
   const [busy, setBusy] = useState(false)
   const [payTarget, setPayTarget] = useState<TaxRfp | null>(null)
@@ -72,6 +75,30 @@ export default function ExpandedWithholding() {
   const toggleOne = (id: string) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   const selectedTotal = filtered.filter(e => selected.has(e.id)).reduce((s, e) => s + e.ewt, 0)
   const years = useMemo(() => { const ys = new Set<string>([String(now.getFullYear())]); items.forEach(e => e.ym && ys.add(e.ym.slice(0, 4))); return [...ys].sort().reverse() }, [items, now])
+
+  const normName = (s: string) => s.toUpperCase().replace(/\s+/g, ' ').trim()
+  const siOf = (e: Item) => e.source === 'CONSULTANT' ? (siStatus[`${e.ym}|${normName(e.name)}`] || '') : ''
+  // Pull consultant Service-Invoice submission status from the HR Hub for the
+  // months currently shown (matched per consultant + EWT month).
+  const syncHrHub = async () => {
+    const months = [...new Set(filtered.filter(e => e.source === 'CONSULTANT').map(e => e.ym).filter(Boolean))]
+    if (months.length === 0) { alert('No consultant EWT rows in view to match.'); return }
+    setSyncing(true)
+    try {
+      const map: Record<string, string> = {}
+      let reached = false
+      for (const m of months) {
+        const r = await fetch(`/api/taxes/ewt-si-status?month=${m}`)
+        if (!r.ok) continue
+        reached = true
+        const d = await r.json()
+        for (const s of (d.statuses || [])) map[`${m}|${normName(s.name)}`] = s.status
+      }
+      if (!reached) { alert('Could not reach the HR Hub. Check the connection / API key.'); return }
+      setSiStatus(prev => ({ ...prev, ...map }))
+      setSyncedAt(new Date().toLocaleTimeString('en-PH'))
+    } finally { setSyncing(false) }
+  }
 
   const buildPdf = (r: TaxRfp): jsPDF => {
     const doc = new jsPDF()
@@ -142,6 +169,10 @@ export default function ExpandedWithholding() {
           </select>
           <label className="flex items-center gap-1.5 text-xs cursor-pointer" style={{ color: 'var(--mid-gray)' }}><input type="checkbox" checked={showRemitted} onChange={e => setShowRemitted(e.target.checked)} /> Show remitted</label>
           <button onClick={() => { fetchItems(); fetchRfps() }} className="p-1.5 rounded-lg hover:bg-gray-100"><RefreshCw size={14} style={{ color: 'var(--mid-gray)' }} /></button>
+          <button onClick={syncHrHub} disabled={syncing} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border disabled:opacity-50" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+            {syncing ? <Loader2 size={13} className="inline animate-spin" /> : <RefreshCw size={13} />} Sync with HR Hub
+          </button>
+          {syncedAt && <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>synced {syncedAt}</span>}
         </div>
         {canWrite && selected.size > 0 && (
           <div className="flex items-center gap-2">
@@ -156,14 +187,14 @@ export default function ExpandedWithholding() {
           <thead>
             <tr style={{ background: 'var(--off-white)' }}>
               <th className="px-4 py-2.5 w-10">{canWrite && <input type="checkbox" checked={allSel} onChange={toggleAll} />}</th>
-              {['Source', 'Payee', 'Period', 'Tax Base', 'EWT %', 'EWT Amount', 'Status'].map(h => <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{h}</th>)}
+              {['Source', 'Payee', 'Period', 'Tax Base', 'EWT %', 'EWT Amount', 'SI (HR Hub)', 'Status'].map(h => <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={8} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+              <tr><td colSpan={9} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={8} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>{showRemitted ? 'No EWT records for this period.' : 'No unremitted EWT — all caught up.'}</td></tr>
+              <tr><td colSpan={9} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>{showRemitted ? 'No EWT records for this period.' : 'No unremitted EWT — all caught up.'}</td></tr>
             ) : filtered.map(e => {
               const b = srcBadge(e.source)
               return (
@@ -175,6 +206,7 @@ export default function ExpandedWithholding() {
                   <td className="px-4 py-2.5 text-right text-xs" style={{ color: 'var(--charcoal)' }}>₱{peso(e.base)}</td>
                   <td className="px-4 py-2.5 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>{e.rate != null ? `${e.rate}%` : ''}</td>
                   <td className="px-4 py-2.5 text-right font-semibold text-xs" style={{ color: '#c44b00' }}>₱{peso(e.ewt)}</td>
+                  <td className="px-4 py-2.5">{e.source === 'CONSULTANT' ? (() => { const st = siOf(e); const sty = st === 'Submitted' ? { background: '#dcfce7', color: '#166534' } : st === 'No SI' ? { background: '#e5e7eb', color: '#374151' } : st === 'Pending' ? { background: '#fef3c7', color: '#92400e' } : null; return sty ? <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={sty}>{st}</span> : <span className="text-[11px]" style={{ color: 'var(--light-gray)' }}>—</span> })() : <span className="text-[11px]" style={{ color: 'var(--light-gray)' }}>n/a</span>}</td>
                   <td className="px-4 py-2.5"><span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={e.remitted ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>{e.remitted ? 'In RFP / Remitted' : 'Unremitted'}</span></td>
                 </tr>
               )
