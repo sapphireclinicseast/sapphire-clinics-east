@@ -12,6 +12,22 @@ export async function GET(req: Request) {
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const sp = new URL(req.url).searchParams
   const id = sp.get('id')
+  // Line items for an RFP (Billing Voucher). EXPENSE → member entries; payroll → meta.items.
+  if (id && sp.get('items')) {
+    const r = await prisma.reimbursementReport.findUnique({ where: { id }, select: { module: true, meta: true, grossTotal: true } })
+    if (!r) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    if (r.module === 'EXPENSE') {
+      const entries = await prisma.pettyCashEntry.findMany({ where: { reimbursementId: id }, select: { accountTitle: true, description: true, requestor: true, grossAmount: true } })
+      return NextResponse.json({ lines: entries.map(e => ({ account: e.accountTitle || '', description: e.description || e.requestor || '', amount: Number(e.grossAmount) })) })
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const meta = (r.meta || {}) as any
+    const isSalary = r.module === 'PAYROLL_SALARY'
+    const acct = isSalary ? 'Salaries Payable' : 'Benefits Payable'
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const lines = Array.isArray(meta.items) ? meta.items.map((i: any) => ({ account: acct, description: `${i.name}${meta.cutoffPeriod ? ` — ${meta.cutoffPeriod}` : ''}`, amount: Number(i.amount || 0) })) : []
+    return NextResponse.json({ lines })
+  }
   if (id) {
     const r = await prisma.reimbursementReport.findUnique({ where: { id }, select: { pdfData: true, refNumber: true } })
     if (!r) return NextResponse.json({ error: 'Not found' }, { status: 404 })

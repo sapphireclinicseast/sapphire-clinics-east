@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
-import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Search, ArrowUp, ArrowDown, Upload, Download, Eye, Wallet, CreditCard, CheckCircle2, Pencil } from 'lucide-react'
+import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Search, ArrowUp, ArrowDown, Upload, Download, Eye, Wallet, CreditCard, CheckCircle2, Pencil, FileText } from 'lucide-react'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
+import { BillingVoucherModal } from '@/components/BillingVoucherModal'
+import type { BVLine } from '@/lib/billing-voucher'
 
 // ── Constants ──────────────────────────────────────────────────
 const BRANCHES = [
@@ -198,6 +200,7 @@ export default function ExpensesPage() {
   const [genFromRecurring, setGenFromRecurring] = useState('')
   const [payTarget, setPayTarget] = useState<Rfp | null>(null)
   const [payrollPayTarget, setPayrollPayTarget] = useState<Rfp | null>(null)
+  const [bvTarget, setBvTarget] = useState<{ refNumber: string; date: string; lines: BVLine[] } | null>(null)
   const [paying, setPaying] = useState(false)
   const [search, setSearch] = useState('')
   const [uploadingProof, setUploadingProof] = useState('')
@@ -420,6 +423,14 @@ export default function ExpensesPage() {
       await loadRfps(branch); await loadEntries(branch, recordType)
     } catch { alert('Failed to record payment') }
     setPaying(false)
+  }
+
+  const openBillingVoucher = async (rfp: Rfp) => {
+    try {
+      const res = await fetch(`/api/expenses/rfp?id=${rfp.id}&items=1`)
+      const d = res.ok ? await res.json() : { lines: [] }
+      setBvTarget({ refNumber: rfp.refNumber, date: new Date(rfp.createdAt).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' }), lines: d.lines || [] })
+    } catch { alert('Could not load RFP line items.') }
   }
 
   const isPayrollRfp = (r: Rfp) => r.module === 'PAYROLL_SALARY' || r.module === 'PAYROLL_BENEFIT'
@@ -1092,6 +1103,10 @@ export default function ExpensesPage() {
                       className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
                       <Download size={13} /> PDF
                     </button>
+                    <button onClick={() => openBillingVoucher(r)} title="Billing Voucher"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                      <FileText size={13} /> Billing Voucher
+                    </button>
                     {r.proofUrl && (
                       <a href={r.proofUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
                         <Eye size={13} /> Proof
@@ -1240,6 +1255,8 @@ export default function ExpensesPage() {
           onClose={() => setPayrollPayTarget(null)}
           onDone={async () => { setPayrollPayTarget(null); await loadRfps(branch) }} />
       )}
+
+      {bvTarget && <BillingVoucherModal refNumber={bvTarget.refNumber} date={bvTarget.date} lines={bvTarget.lines} onClose={() => setBvTarget(null)} />}
 
       {newSupplierPrompt && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setNewSupplierPrompt(null)}>
