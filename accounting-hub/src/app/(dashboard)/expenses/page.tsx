@@ -23,15 +23,16 @@ const RECUR_FREQ = [
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
 const TABS = [
-  { key: 'recurring', label: 'Recurring expense', recordType: 'RECURRING' },
-  { key: 'onetime', label: 'One-time expense', recordType: 'ONE_TIME' },
-  { key: 'cc-report', label: 'Credit Card Report', recordType: '' },
-  { key: 'rfp', label: 'RFP', recordType: '' },
-  { key: 'expense-report', label: 'Expense Report', recordType: '' },
-  { key: 'suppliers', label: 'Suppliers', recordType: '' },
-  { key: 'flowchart', label: 'Flowchart', recordType: '' },
+  { key: 'recurring', label: 'Recurring expense', recordType: 'RECURRING', group: 'Expense Recording' },
+  { key: 'onetime', label: 'One-time expense', recordType: 'ONE_TIME', group: 'Expense Recording' },
+  { key: 'rfp', label: 'RFP', recordType: '', group: 'Expense Recording' },
+  { key: 'cc-report', label: 'Credit Card Report', recordType: '', group: 'Expense Reports' },
+  { key: 'expense-report', label: 'Expense Report', recordType: '', group: 'Expense Reports' },
+  { key: 'suppliers', label: 'Suppliers', recordType: '', group: 'Suppliers' },
+  { key: 'flowchart', label: 'Flowchart', recordType: '', group: 'Help' },
 ] as const
 type TabKey = typeof TABS[number]['key']
+const TAB_GROUPS = ['Expense Recording', 'Expense Reports', 'Suppliers', 'Help'] as const
 
 interface Entry {
   id: string
@@ -95,6 +96,18 @@ const vatAmount = (e: Entry) => num(e.grossAmount) - netOfVat(e)
 const descForHub = (e: Entry) => (e.description ? `${e.pcvNumber}; ${e.description}` : e.pcvNumber)
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const cardLabel = (c: Card) => `${c.bank} •••• ${c.cardNumber.slice(-4)} (${c.bankCode})`
+const fetchDataUrl = async (url: string): Promise<string | null> => {
+  try {
+    const res = await fetch(url); if (!res.ok) return null
+    const blob = await res.blob()
+    return await new Promise<string | null>(resolve => {
+      const fr = new FileReader()
+      fr.onloadend = () => resolve(fr.result as string)
+      fr.onerror = () => resolve(null)
+      fr.readAsDataURL(blob)
+    })
+  } catch { return null }
+}
 const monthInput = (d: string | null) => (d ? String(d).slice(0, 7) : '')
 const monthsInWindow = (startISO: string | null, endISO: string | null) => {
   if (!startISO || !endISO) return 0
@@ -405,7 +418,22 @@ export default function ExpensesPage() {
     const { jsPDF } = await import('jspdf')
     const autoTable = (await import('jspdf-autotable')).default
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+    const pageW = doc.internal.pageSize.getWidth()
     const branchLabel = BRANCHES.find(b => b.value === br)?.label || br
+    // 3-logo header (SCEI · Aura · Verdana), top-right.
+    const logoH = 12
+    let lx = pageW - 10
+    for (const src of ['/login-verdana.png', '/login-aura.png', '/login-scei.png']) {
+      const data = await fetchDataUrl(src)
+      if (!data) continue
+      try {
+        const props = doc.getImageProperties(data)
+        const w = (props.width / props.height) * logoH
+        lx -= w
+        doc.addImage(data, 'PNG', lx, 8, w, logoH)
+        lx -= 4
+      } catch { /* skip bad logo */ }
+    }
     doc.setFont('helvetica', 'bold').setFontSize(13).text('Request for Payment (RFP)', 14, 15)
     doc.setFont('helvetica', 'normal').setFontSize(8.5)
     doc.text(`Branch: ${branchLabel}`, 14, 20)
@@ -494,16 +522,27 @@ export default function ExpensesPage() {
         </div>
       </div>
 
-      {/* Sub-tabs */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex rounded-xl overflow-hidden border flex-wrap" style={{ borderColor: 'var(--light-gray)' }}>
-          {TABS.map(t => (
-            <button key={t.key} onClick={() => setTab(t.key)}
-              className="px-4 py-2 text-xs font-semibold transition-colors"
-              style={tab === t.key ? { background: 'var(--deep-teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
-              {t.label}
-            </button>
-          ))}
+      {/* Sub-tabs, grouped */}
+      <div className="flex items-end justify-between flex-wrap gap-3">
+        <div className="flex items-end flex-wrap gap-4">
+          {TAB_GROUPS.map(g => {
+            const groupTabs = TABS.filter(t => t.group === g)
+            if (groupTabs.length === 0) return null
+            return (
+              <div key={g}>
+                <p className="text-[10px] font-semibold uppercase tracking-wide mb-1 ml-1" style={{ color: 'var(--mid-gray)' }}>{g}</p>
+                <div className="flex rounded-xl overflow-hidden border flex-wrap" style={{ borderColor: 'var(--light-gray)' }}>
+                  {groupTabs.map(t => (
+                    <button key={t.key} onClick={() => setTab(t.key)}
+                      className="px-4 py-2 text-xs font-semibold transition-colors"
+                      style={tab === t.key ? { background: 'var(--deep-teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
         </div>
         {recordType === 'ONE_TIME' && canWrite && (
           <div className="flex items-center gap-2 flex-wrap">
