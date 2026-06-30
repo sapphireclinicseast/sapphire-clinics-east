@@ -21,8 +21,8 @@ const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2
 interface Header { name: string; lines: string[]; email: string }
 const EAST_ADDR = ['Level 4, Robinsons Metro East, Marcos Highway, Brgy. Dela Paz, Santolan', 'Pasig, Metro Manila  1600 PHL', '+639955403624']
 const HEADERS: Record<string, Header> = {
-  EAST: { name: 'Sapphire Clinics East Inc.', lines: EAST_ADDR, email: 'east@sapphireclinicseast.org' },
-  GREENHILLS: { name: 'Sapphire Clinics East Inc.', lines: EAST_ADDR, email: 'greenhills@sapphireclinicseast.org' },
+  EAST: { name: 'Aura Health Rehab - East', lines: EAST_ADDR, email: 'east@sapphireclinicseast.org' },
+  GREENHILLS: { name: 'Aura Health Rehab - Greenhills', lines: EAST_ADDR, email: 'greenhills@sapphireclinicseast.org' },
   VERDANA: { name: 'Verdana', lines: EAST_ADDR, email: 'verdanatrading@gmail.com' },
 }
 function resolveHeader(branch?: string): Header {
