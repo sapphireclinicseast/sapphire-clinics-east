@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Landmark, ExternalLink, CalendarClock, Info } from 'lucide-react'
 import { computeTaxDue, TAX_PORTALS, type TaxDueInfo } from '@/lib/taxes'
 import WithholdingCompensation from './WithholdingCompensation'
+import ExpandedWithholding from './ExpandedWithholding'
 
 type Tab = 'guide' | 'compensation' | 'ewt' | 'business' | 'rfp' | 'paid'
 
@@ -144,11 +145,7 @@ export default function TaxesPage() {
       )}
 
       {tab === 'compensation' && <WithholdingCompensation />}
-      {tab === 'ewt' && (
-        <Placeholder title="Expanded / Creditable Withholding Tax (EWT)">
-          Consolidates EWT withheld on consultants (5%) and on recurring / one-time expenses, per transaction and per payee, with a month/year filter and an RFP button.
-        </Placeholder>
-      )}
+      {tab === 'ewt' && <ExpandedWithholding />}
       {tab === 'business' && (
         <Placeholder title="Business Tax (VAT)">
           Lists Output VAT (from POS sales) and creditable Input VAT (from expenses) so the accountant can key the final VAT payable (2550Q), then raise an RFP.

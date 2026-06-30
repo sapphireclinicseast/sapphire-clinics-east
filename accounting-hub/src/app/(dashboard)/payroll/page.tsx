@@ -2443,8 +2443,8 @@ export default function PayrollPage() {
             <Users size={16} /> {t}
           </button>
         ))}
-        {(['tax-payable', 'salaries-payable', 'benefits-payable', 'payroll-settings'] as const).map(t => {
-          const labels: Record<string, string> = { 'tax-payable': 'Tax Payable', 'salaries-payable': 'Salaries Payable', 'benefits-payable': 'Benefits Payable', 'payroll-settings': 'Payroll Settings' }
+        {(['salaries-payable', 'benefits-payable', 'payroll-settings'] as const).map(t => {
+          const labels: Record<string, string> = { 'salaries-payable': 'Salaries Payable', 'benefits-payable': 'Benefits Payable', 'payroll-settings': 'Payroll Settings' }
           return (
             <button key={t} onClick={() => setMainTab(t)}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-colors"

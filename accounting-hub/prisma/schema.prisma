@@ -1645,6 +1645,7 @@ model PettyCashEntry {
   amountVaries      Boolean  @default(false)
   hasEwt            Boolean  @default(false)
   ewtRate           Int?
+  ewtRemitted       Boolean  @default(false)  // EWT withheld on this expense has been remitted via a Taxes EWT RFP
   distributeStart   DateTime?
   distributeEnd     DateTime?
   filingStatus      String?  @default("FOR_FILING")

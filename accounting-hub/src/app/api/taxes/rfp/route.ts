@@ -47,27 +47,51 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { taxType, payrollBranch, ids, manualSeq } = await req.json()
+    const { taxType, payrollBranch, ids, consultantIds, expenseIds, manualSeq } = await req.json()
     const moduleName = TAX_MODULE[taxType]
     if (!moduleName) return NextResponse.json({ error: 'Invalid taxType' }, { status: 400 })
-    if (taxType !== 'WC') return NextResponse.json({ error: `${taxType} RFP not yet supported` }, { status: 400 })
+    if (taxType !== 'WC' && taxType !== 'EWT') return NextResponse.json({ error: `${taxType} RFP not yet supported` }, { status: 400 })
     const pcBranch = PAYROLL_TO_PC[payrollBranch]
     if (!pcBranch) return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
-    if (!Array.isArray(ids) || ids.length === 0) return NextResponse.json({ error: 'Select at least one entry' }, { status: 400 })
     const mseq = manualSeq != null && String(manualSeq).trim() !== '' ? parseInt(String(manualSeq), 10) : null
 
     const report = await prisma.$transaction(async (tx) => {
-      // WC = employee withholding (1601-C) from EmployeePayslip.
-      const slips = await tx.employeePayslip.findMany({
-        where: { id: { in: ids }, branch: payrollBranch, status: 'LOCKED', taxRemitted: false, taxDeduction: { gt: 0 } },
-        include: { employee: { select: { firstName: true, lastName: true } } },
-      })
-      if (slips.length === 0) throw new Error('No eligible unremitted employee withholding entries found')
-      const items = slips.map(s => ({
-        id: s.id, name: `${s.employee.firstName} ${s.employee.lastName}`,
-        period: s.cutoffPeriod, gross: Number(s.grossPay), tax: Number(s.taxDeduction),
-      }))
-      const grossTotal = items.reduce((sum, i) => sum + i.tax, 0)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let items: any[] = []
+      let markRemitted: () => Promise<void> = async () => {}
+
+      if (taxType === 'WC') {
+        // Employee withholding (1601-C) from EmployeePayslip.
+        if (!Array.isArray(ids) || ids.length === 0) throw new Error('Select at least one entry')
+        const slips = await tx.employeePayslip.findMany({
+          where: { id: { in: ids }, branch: payrollBranch, status: 'LOCKED', taxRemitted: false, taxDeduction: { gt: 0 } },
+          include: { employee: { select: { firstName: true, lastName: true } } },
+        })
+        if (slips.length === 0) throw new Error('No eligible unremitted employee withholding entries found')
+        items = slips.map(s => ({ id: s.id, name: `${s.employee.firstName} ${s.employee.lastName}`, period: s.cutoffPeriod, gross: Number(s.grossPay), tax: Number(s.taxDeduction) }))
+        markRemitted = async () => { await tx.employeePayslip.updateMany({ where: { id: { in: slips.map(s => s.id) } }, data: { taxRemitted: true } }) }
+      } else {
+        // EWT = consultant professional-fee withholding + expense EWT.
+        const cids: string[] = Array.isArray(consultantIds) ? consultantIds : []
+        const eids: string[] = Array.isArray(expenseIds) ? expenseIds : []
+        if (cids.length === 0 && eids.length === 0) throw new Error('Select at least one entry')
+        const cons = cids.length ? await tx.payrollEntry.findMany({
+          where: { id: { in: cids }, branch: payrollBranch, status: 'LOCKED', taxRemitted: false, taxAmount: { gt: 0 } },
+          include: { consultant: { select: { name: true } } },
+        }) : []
+        const exps = eids.length ? await tx.pettyCashEntry.findMany({
+          where: { id: { in: eids }, branch: pcBranch, recordType: 'ONE_TIME', hasEwt: true, ewtRemitted: false, paidAt: { not: null } },
+        }) : []
+        if (cons.length === 0 && exps.length === 0) throw new Error('No eligible unremitted EWT items found')
+        const consItems = cons.map(e => { const base = Number(e.grossPay), ewt = Number(e.taxAmount); return { id: e.id, source: 'CONSULTANT', name: e.consultant.name, period: e.cutoffPeriod, base, rate: base > 0 ? Math.round((ewt / base) * 100) : null, ewt } })
+        const expItems = exps.map(e => { const g = Number(e.grossAmount); const net = e.vatable === 'VAT' ? g / 1.12 : g; const rate = e.ewtRate || 0; return { id: e.id, source: 'EXPENSE', name: e.requestor || e.pcvNumber, period: e.paidAt ? new Date(e.paidAt).toISOString().slice(0, 10) : '', base: net, rate, ewt: net * (rate / 100) } })
+        items = [...consItems, ...expItems]
+        markRemitted = async () => {
+          if (cons.length) await tx.payrollEntry.updateMany({ where: { id: { in: cons.map(c => c.id) } }, data: { taxRemitted: true } })
+          if (exps.length) await tx.pettyCashEntry.updateMany({ where: { id: { in: exps.map(x => x.id) } }, data: { ewtRemitted: true } })
+        }
+      }
+      const grossTotal = items.reduce((sum, i) => sum + (taxType === 'WC' ? i.tax : i.ewt), 0)
 
       let settings = await tx.pettyCashSettings.findUnique({ where: { branch: pcBranch } })
       if (!settings) settings = await tx.pettyCashSettings.create({ data: { branch: pcBranch, nextPcvSeq: 1 } })
@@ -83,7 +107,7 @@ export async function POST(req: Request) {
           meta: { taxType, payrollBranch, items }, createdById: session.user.id ?? null,
         },
       })
-      await tx.employeePayslip.updateMany({ where: { id: { in: slips.map(s => s.id) } }, data: { taxRemitted: true } })
+      await markRemitted()
       return created
     })
     return NextResponse.json({ id: report.id, refNumber: report.refNumber, grossTotal: report.grossTotal })
@@ -143,10 +167,16 @@ export async function DELETE(req: Request) {
     if (!report) return NextResponse.json({ error: 'Not found' }, { status: 404 })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const meta = (report.meta || {}) as any
-    const itemIds: string[] = Array.isArray(meta.items) ? meta.items.map((i: { id: string }) => i.id) : []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const metaItems: any[] = Array.isArray(meta.items) ? meta.items : []
     await prisma.$transaction(async (tx) => {
-      if (meta.taxType === 'WC' && itemIds.length) {
-        await tx.employeePayslip.updateMany({ where: { id: { in: itemIds } }, data: { taxRemitted: false } })
+      if (meta.taxType === 'WC' && metaItems.length) {
+        await tx.employeePayslip.updateMany({ where: { id: { in: metaItems.map(i => i.id) } }, data: { taxRemitted: false } })
+      } else if (meta.taxType === 'EWT') {
+        const consIds = metaItems.filter(i => i.source === 'CONSULTANT').map(i => i.id)
+        const expIds = metaItems.filter(i => i.source === 'EXPENSE').map(i => i.id)
+        if (consIds.length) await tx.payrollEntry.updateMany({ where: { id: { in: consIds } }, data: { taxRemitted: false } })
+        if (expIds.length) await tx.pettyCashEntry.updateMany({ where: { id: { in: expIds } }, data: { ewtRemitted: false } })
       }
       await tx.reimbursementReport.delete({ where: { id } })
     })
