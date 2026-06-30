@@ -14,9 +14,12 @@ const EDITABLE = [
 ] as const
 
 const PCV_BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VER', CEO: 'CEO' }
-function pcvNumber(branch: string, seq: number): string {
+// Petty cash entries carry a "-NN" sub-sequence (entries sharing one PCV);
+// expense entries (RECURRING/ONE_TIME) keep the plain base number.
+function pcvNumber(branch: string, seq: number, sub: number, withSub: boolean): string {
   const yy = new Date().getFullYear() % 100
-  return `${PCV_BRANCH_CODE[branch] || branch}-PCV${yy}-${String(seq).padStart(6, '0')}`
+  const base = `${PCV_BRANCH_CODE[branch] || branch}-PCV${yy}-${String(seq).padStart(6, '0')}`
+  return withSub ? `${base}-${String(sub).padStart(2, '0')}` : base
 }
 
 // GET /api/petty-cash/entries?branch=SANDBOX_EAST
@@ -32,7 +35,7 @@ export async function GET(req: Request) {
   }
   const entries = await prisma.pettyCashEntry.findMany({
     where: { branch, recordType },
-    orderBy: { pcvSeq: 'asc' },
+    orderBy: [{ pcvSeq: 'asc' }, { pcvSub: 'asc' }],
   })
   return NextResponse.json(entries)
 }
@@ -47,21 +50,33 @@ export async function POST(req: Request) {
     const body = await req.json()
     const branch = body.branch
     const recordType = ['PETTY_CASH', 'RECURRING', 'ONE_TIME'].includes(body.recordType) ? body.recordType : 'PETTY_CASH'
+    // When provided, the new row shares this existing PCV base (a new "-NN" sub).
+    const samePcvSeq = body.samePcvSeq != null && body.samePcvSeq !== '' ? Number(body.samePcvSeq) : null
     if (!VALID_BRANCHES.includes(branch)) {
       return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
     }
-    // Atomically claim the next PCV sequence for this branch.
+    const withSub = recordType === 'PETTY_CASH'
     const entry = await prisma.$transaction(async (tx) => {
       let settings = await tx.pettyCashSettings.findUnique({ where: { branch } })
       if (!settings) settings = await tx.pettyCashSettings.create({ data: { branch, nextPcvSeq: 1 } })
-      const seq = settings.nextPcvSeq
-      await tx.pettyCashSettings.update({ where: { branch }, data: { nextPcvSeq: seq + 1 } })
+      let baseSeq: number, sub: number
+      if (samePcvSeq != null && !isNaN(samePcvSeq)) {
+        // Reuse an existing PCV base — bump its sub-sequence; don't claim a new number.
+        baseSeq = samePcvSeq
+        const agg = await tx.pettyCashEntry.aggregate({ where: { branch, recordType, pcvSeq: baseSeq }, _max: { pcvSub: true } })
+        sub = (agg._max.pcvSub || 0) + 1
+      } else {
+        baseSeq = settings.nextPcvSeq
+        await tx.pettyCashSettings.update({ where: { branch }, data: { nextPcvSeq: baseSeq + 1 } })
+        sub = 1
+      }
       return tx.pettyCashEntry.create({
         data: {
           branch,
           recordType,
-          pcvNumber: pcvNumber(branch, seq),
-          pcvSeq: seq,
+          pcvNumber: pcvNumber(branch, baseSeq, sub, withSub),
+          pcvSeq: baseSeq,
+          pcvSub: sub,
           date: new Date(),
           createdById: session.user.id ?? null,
         },

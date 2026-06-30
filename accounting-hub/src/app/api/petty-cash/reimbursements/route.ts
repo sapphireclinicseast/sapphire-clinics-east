@@ -27,7 +27,7 @@ export async function GET(req: Request) {
   const reports = await prisma.reimbursementReport.findMany({
     where: { branch },
     select: {
-      id: true, refNumber: true, grossTotal: true, status: true, paidAt: true, paymentMethod: true, checkNumber: true,
+      id: true, refNumber: true, grossTotal: true, status: true, kind: true, paidAt: true, paymentMethod: true, checkNumber: true,
       debitAccount: true, depositAccount: true, proofUrl: true, createdAt: true,
       _count: { select: { entries: true } },
     },
@@ -43,20 +43,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { branch, entryIds } = await req.json()
+    const { branch, entryIds, kind } = await req.json()
     if (!VALID_BRANCHES.includes(branch)) {
       return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
     }
     if (!Array.isArray(entryIds) || entryIds.length === 0) {
       return NextResponse.json({ error: 'Select at least one entry' }, { status: 400 })
     }
+    const k = kind === 'INVALID' ? 'INVALID' : 'VALID'   // RFP (Valid) | RFP (Invalid)
 
     const report = await prisma.$transaction(async (tx) => {
-      // Only entries that are in this branch AND not already reimbursed.
+      // Only entries in this branch, not yet reimbursed, matching the RFP kind's validity.
       const entries = await tx.pettyCashEntry.findMany({
-        where: { id: { in: entryIds }, branch, reimbursementId: null },
+        where: { id: { in: entryIds }, branch, reimbursementId: null, validity: k === 'VALID' ? 'Valid' : 'Invalid' },
       })
-      if (entries.length === 0) throw new Error('No eligible entries (already reimbursed?)')
+      if (entries.length === 0) throw new Error(`No eligible ${k === 'VALID' ? 'valid' : 'invalid'} entries (already reimbursed?)`)
       const grossTotal = entries.reduce((s, e) => s + Number(e.grossAmount), 0)
 
       let settings = await tx.pettyCashSettings.findUnique({ where: { branch } })
@@ -65,10 +66,11 @@ export async function POST(req: Request) {
       await tx.pettyCashSettings.update({ where: { branch }, data: { nextReimbSeq: seq + 1 } })
 
       const yy = new Date().getFullYear() % 100
-      const refNumber = `${BRANCH_CODE[branch]}${yy}-${String(seq).padStart(6, '0')}`
+      const suffix = k === 'VALID' ? 'VAL' : 'INV'
+      const refNumber = `${BRANCH_CODE[branch]}-RFP${yy}-${String(seq).padStart(6, '0')}-${suffix}`
 
       const created = await tx.reimbursementReport.create({
-        data: { branch, refNumber, refSeq: seq, grossTotal, createdById: session.user.id ?? null },
+        data: { branch, refNumber, refSeq: seq, grossTotal, kind: k, createdById: session.user.id ?? null },
       })
       await tx.pettyCashEntry.updateMany({
         where: { id: { in: entries.map(e => e.id) } },

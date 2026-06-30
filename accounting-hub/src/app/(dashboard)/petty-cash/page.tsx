@@ -24,6 +24,7 @@ interface Entry {
   branch: string
   pcvNumber: string
   pcvSeq: number
+  pcvSub: number
   requestor: string | null
   department: string | null
   pcfStatus: string | null
@@ -50,6 +51,7 @@ interface Reimb {
   refNumber: string
   grossTotal: string | number
   status: string
+  kind: string | null
   paidAt: string | null
   paymentMethod: string | null
   checkNumber: string | null
@@ -74,7 +76,9 @@ const branchCodeOf = (tin: string | null) => digitsOnly(tin).slice(9, 14)
 const num = (v: string | number | null) => Number(v) || 0
 const netOfVat = (e: Entry) => (e.vatable === 'VAT' ? num(e.grossAmount) / 1.12 : num(e.grossAmount))
 const vatAmount = (e: Entry) => num(e.grossAmount) - netOfVat(e)
-const descForHub = (e: Entry) => (e.description ? `${e.pcvNumber}; ${e.description}` : e.pcvNumber)
+// Reference number shown to users: PCV base-sub + VAL/INV once validity is set.
+const refOf = (e: Entry) => `${e.pcvNumber}${e.validity === 'Valid' ? '-VAL' : e.validity === 'Invalid' ? '-INV' : ''}`
+const descForHub = (e: Entry) => (e.description ? `${refOf(e)}; ${e.description}` : refOf(e))
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fetchDataUrl = async (url: string): Promise<string | null> => {
   try {
@@ -122,6 +126,9 @@ export default function PettyCashPage() {
   const [expanded, setExpanded] = useState(false)
   const [importing, setImporting] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [rfpMode, setRfpMode] = useState<'VALID' | 'INVALID' | null>(null)
+  const [showAddPopup, setShowAddPopup] = useState(false)
+  const [addSameSeq, setAddSameSeq] = useState('')
   const [showReimbModal, setShowReimbModal] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [bankOptions, setBankOptions] = useState<string[]>([])
@@ -265,14 +272,15 @@ export default function PettyCashPage() {
     setImporting(false)
   }
 
-  const addRow = async () => {
+  const addRow = async (samePcvSeq?: number | null) => {
     setAdding(true)
     try {
       const r = await fetch('/api/petty-cash/entries', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ branch }),
+        body: JSON.stringify({ branch, samePcvSeq: samePcvSeq ?? null }),
       })
-      if (r.ok) { const e = await r.json(); setEntries(prev => [...prev, e]); setNextPcvSeq(s => s + 1) }
+      // Only a brand-new PCV consumes the next sequence number.
+      if (r.ok) { const e = await r.json(); setEntries(prev => [...prev, e]); if (samePcvSeq == null) setNextPcvSeq(s => s + 1) }
       else alert((await r.json()).error || 'Failed to add row')
     } catch { /* ignore */ }
     setAdding(false)
@@ -335,7 +343,7 @@ export default function PettyCashPage() {
     const logo = await fetchDataUrl('/aura-logo.png')
     let tx = 14
     if (logo) { doc.addImage(logo, 'PNG', 14, 9, 18, 18); tx = 36 }
-    doc.setFont('helvetica', 'bold').setFontSize(13).text('Request for Reimbursement', tx, 15)
+    doc.setFont('helvetica', 'bold').setFontSize(13).text('Request for Payment (RFP)', tx, 15)
     doc.setFont('helvetica', 'normal').setFontSize(8.5)
     doc.text(`Branch: ${branchLabel}`, tx, 20)
     doc.text(`Ref No: ${refNumber}`, tx, 24)
@@ -347,7 +355,7 @@ export default function PettyCashPage() {
       startY: 33,
       head: [['Reference Number', 'Requestor', 'Department', 'PCF Status', 'Date', 'Description', 'Vatable', 'Gross Amount', 'Net of VAT', 'VAT Amount']],
       body: rows.map(e => [
-        e.pcvNumber, e.requestor || '', e.department || '', e.pcfStatus || '',
+        refOf(e), e.requestor || '', e.department || '', e.pcfStatus || '',
         e.date ? String(e.date).slice(0, 10) : '', e.description || '', e.vatable || '',
         peso(num(e.grossAmount)), peso(netOfVat(e)), peso(vatAmount(e)),
       ]),
@@ -369,7 +377,7 @@ export default function PettyCashPage() {
       const sel = entries.filter(e => selected.has(e.id))
       const res = await fetch('/api/petty-cash/reimbursements', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ branch, entryIds: ids }),
+        body: JSON.stringify({ branch, entryIds: ids, kind: rfpMode || 'VALID' }),
       })
       if (!res.ok) { alert((await res.json()).error || 'Failed to generate'); setGenerating(false); return }
       const { id, refNumber } = await res.json()
@@ -382,6 +390,7 @@ export default function PettyCashPage() {
       } catch { /* pdf storage best-effort */ }
       setSelected(new Set())
       setShowReimbModal(false)
+      setRfpMode(null)
       await loadEntries(branch)
       await loadReimbursements(branch)
       setTab('reimbursements')
@@ -450,10 +459,21 @@ export default function PettyCashPage() {
   const vatEditable = (e: Entry) => e.vatable === 'VAT' || e.vatable === 'Non-VAT' || e.vatable === 'NV'
   const totalGross = entries.reduce((s, e) => s + num(e.grossAmount), 0)
 
-  const selectableIds = entries.filter(e => !e.reimbursementId).map(e => e.id)
+  // Entries are only selectable after an RFP button is clicked, and only those
+  // matching the chosen kind's validity (and not already in an RFP).
+  const rfpValidity = rfpMode === 'VALID' ? 'Valid' : rfpMode === 'INVALID' ? 'Invalid' : null
+  const isSelectable = (e: Entry) => !e.reimbursementId && rfpValidity != null && e.validity === rfpValidity
+  const selectableIds = entries.filter(isSelectable).map(e => e.id)
   const allSelected = selectableIds.length > 0 && selectableIds.every(id => selected.has(id))
   const toggleAll = () => setSelected(allSelected ? new Set() : new Set(selectableIds))
   const toggleOne = (id: string) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const startRfp = (mode: 'VALID' | 'INVALID') => { setRfpMode(mode); setSelected(new Set()); if (tab !== 'entries') setTab('entries') }
+  const cancelRfp = () => { setRfpMode(null); setSelected(new Set()) }
+  // Distinct existing PCV bases (for "same PCV as a previous entry").
+  const pcvBases = Array.from(new Map(entries.map(e => [e.pcvSeq, e.pcvNumber.replace(/-\d{2}$/, '')])).entries())
+    .map(([seq, label]) => ({ seq, label }))
+    .sort((a, b) => a.seq - b.seq)
+  const confirmAddRow = () => { setShowAddPopup(false); addRow(addSameSeq ? Number(addSameSeq) : null); setAddSameSeq('') }
 
   return (
     <div className={expanded ? 'fixed inset-0 z-50 overflow-auto p-6 space-y-4' : 'space-y-4'} style={expanded ? { background: 'var(--off-white)' } : undefined}>
@@ -500,10 +520,10 @@ export default function PettyCashPage() {
         </div>
       </div>
 
-      {/* Tabs + Request for Reimbursement */}
+      {/* Tabs + RFP actions */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
-          {([['entries', 'Entries'], ['reimbursements', `For Reimbursement (${reimbursements.length})`]] as const).map(([k, lbl]) => (
+          {([['entries', 'Entries'], ['reimbursements', `RFP (${reimbursements.length})`]] as const).map(([k, lbl]) => (
             <button key={k} onClick={() => setTab(k)}
               className="px-4 py-2 text-xs font-semibold transition-colors"
               style={tab === k ? { background: 'var(--deep-teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
@@ -512,11 +532,34 @@ export default function PettyCashPage() {
           ))}
         </div>
         {tab === 'entries' && canWrite && (
-          <button onClick={() => setShowReimbModal(true)} disabled={selected.size === 0}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40"
-            style={{ background: 'var(--teal)' }}>
-            <FileText size={15} /> Request for Reimbursement{selected.size > 0 ? ` (${selected.size})` : ''}
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {rfpMode === null ? (
+              <>
+                <button onClick={() => startRfp('VALID')}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>
+                  <FileText size={15} /> RFP (Valid)
+                </button>
+                <button onClick={() => startRfp('INVALID')}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                  <FileText size={15} /> RFP (Invalid)
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>
+                  Select {rfpMode === 'VALID' ? 'valid' : 'invalid'} entries…
+                </span>
+                <button onClick={() => setShowReimbModal(true)} disabled={selected.size === 0}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40" style={{ background: 'var(--teal)' }}>
+                  <FileText size={15} /> Generate RFP ({rfpMode === 'VALID' ? 'Valid' : 'Invalid'}){selected.size > 0 ? ` · ${selected.size}` : ''}
+                </button>
+                <button onClick={cancelRfp}
+                  className="px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                  Cancel
+                </button>
+              </>
+            )}
+          </div>
         )}
       </div>
 
@@ -555,11 +598,12 @@ export default function PettyCashPage() {
                     return (
                       <tr key={e.id} style={{ background: e.reimbursementId ? '#c3ccd6' : (e.finalized ? '#eaf7ee' : '#fff') }}>
                         <td className="border-r border-b text-center" style={{ borderColor: 'var(--light-gray)' }}>
-                          <input type="checkbox" checked={selected.has(e.id)} disabled={!canWrite || !!e.reimbursementId}
-                            onChange={() => toggleOne(e.id)} title={e.reimbursementId ? 'Locked (in a reimbursement report)' : ''} />
+                          <input type="checkbox" checked={selected.has(e.id)} disabled={!canWrite || !isSelectable(e)}
+                            onChange={() => toggleOne(e.id)}
+                            title={e.reimbursementId ? 'Locked (in an RFP)' : rfpMode === null ? 'Click RFP (Valid) or RFP (Invalid) first' : e.validity !== rfpValidity ? `Only ${rfpMode === 'VALID' ? 'valid' : 'invalid'} entries can be selected` : ''} />
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--charcoal)' }}>{e.pcvNumber}</span>
+                          <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--charcoal)' }}>{refOf(e)}</span>
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
                           <select className={cellCls} value={e.requestor || ''} disabled={lk}
@@ -747,7 +791,7 @@ export default function PettyCashPage() {
           </div>
 
           {canWrite && (
-            <button onClick={addRow} disabled={adding}
+            <button onClick={() => setShowAddPopup(true)} disabled={adding}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
               style={{ background: 'var(--teal)' }}>
               {adding ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Add Row
@@ -761,7 +805,7 @@ export default function PettyCashPage() {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: 'var(--off-white)' }}>
-                {['Reimbursement Ref', 'Date', 'Entries', 'Gross Total', 'Status', ''].map((h, i) => (
+                {['Reference Number', 'Date', 'Entries', 'Gross Total', 'Status', ''].map((h, i) => (
                   <th key={i} className="px-4 py-2.5 text-left text-xs font-semibold whitespace-nowrap"
                     style={{ color: 'var(--charcoal)' }}>{h}</th>
                 ))}
@@ -831,11 +875,33 @@ export default function PettyCashPage() {
               ))}
               {reimbursements.length === 0 && (
                 <tr><td colSpan={6} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>
-                  No reimbursement reports yet. Select entries and click &quot;Request for Reimbursement&quot;.
+                  No RFPs yet. Click &quot;RFP (Valid)&quot; or &quot;RFP (Invalid)&quot;, then select entries.
                 </td></tr>
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {showAddPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowAddPopup(false)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Add Entry</h2>
+              <button onClick={() => setShowAddPopup(false)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+            </div>
+            <p className="text-sm mb-2" style={{ color: 'var(--mid-gray)' }}>Is it in the same PCV as a previous entry?</p>
+            <select value={addSameSeq} onChange={e => setAddSameSeq(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border text-sm mb-2 font-mono" style={{ borderColor: 'var(--light-gray)' }}>
+              <option value="">No — new PCV ({BRANCHES.find(b => b.value === branch)?.code || branch}-PCV{new Date().getFullYear() % 100}-{String(nextPcvSeq).padStart(6, '0')}-01)</option>
+              {pcvBases.map(b => <option key={b.seq} value={b.seq}>Yes — same as {b.label}</option>)}
+            </select>
+            <p className="text-[11px] mb-4" style={{ color: 'var(--mid-gray)' }}>Choosing an existing PCV adds the next sub-number (-02, -03, …).</p>
+            <button onClick={confirmAddRow} disabled={adding}
+              className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>
+              {adding ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Add Row
+            </button>
+          </div>
         </div>
       )}
 
@@ -887,7 +953,7 @@ function ReimbModal({ entries, generating, onClose, onGenerate }: {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl p-6 w-full max-w-lg" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Request for Reimbursement</h2>
+          <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Request for Payment (RFP)</h2>
           <button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
         </div>
         <p className="text-sm mb-4" style={{ color: 'var(--mid-gray)' }}>

@@ -1617,6 +1617,7 @@ model PettyCashEntry {
   branch            String   // SANDBOX_EAST | SANDBOX_GREENHILLS | VERDANA_STORE
   pcvNumber         String   // e.g. PCV26-001794
   pcvSeq            Int
+  pcvSub            Int      @default(1)
   requestor         String?
   department        String?  // ADMIN, PT, OT, SLP, SPED, PSYCH, MD, ORTHOSIS
   pcfStatus         String?  // Unliquidated | For Replenishment | Cancelled | Missing
@@ -1672,6 +1673,7 @@ model ReimbursementReport {
   paidAt         DateTime?
   paymentMethod  String?
   checkNumber    String?
+  kind           String?
   debitAccount   String?
   depositAccount String?
   proofUrl       String?
