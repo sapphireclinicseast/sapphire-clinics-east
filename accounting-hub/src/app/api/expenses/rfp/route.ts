@@ -46,12 +46,12 @@ export async function POST(req: Request) {
     const report = await prisma.$transaction(async (tx) => {
       const entries = await tx.pettyCashEntry.findMany({
         where: {
-          id: { in: entryIds }, branch, reimbursementId: null,
+          id: { in: entryIds }, branch, reimbursementId: null, audited: true,
           recordType: { in: ['ONE_TIME', 'RECURRING'] },
           validity: k === 'VALID' ? 'Valid' : 'Invalid',
         },
       })
-      if (entries.length === 0) throw new Error(`No eligible ${k === 'VALID' ? 'valid' : 'invalid'} expense entries (already in an RFP?)`)
+      if (entries.length === 0) throw new Error(`No eligible audited ${k === 'VALID' ? 'valid' : 'invalid'} expense entries (already in an RFP / not audited?)`)
       const grossTotal = entries.reduce((s, e) => s + Number(e.grossAmount), 0)
 
       let settings = await tx.pettyCashSettings.findUnique({ where: { branch } })

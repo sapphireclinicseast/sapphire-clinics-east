@@ -110,6 +110,8 @@ export async function PATCH(req: Request) {
           proofUrl: body.proofUrl || null,
         },
       })
+      // Paid → its entries are reimbursed/replenished.
+      await prisma.pettyCashEntry.updateMany({ where: { reimbursementId: id }, data: { pcfStatus: 'Replenished' } })
       return NextResponse.json({ success: true })
     }
     if (action === 'unpay') {
@@ -117,6 +119,7 @@ export async function PATCH(req: Request) {
         where: { id },
         data: { status: 'PENDING', paidAt: null, paymentMethod: null, checkNumber: null, debitAccount: null, depositAccount: null, proofUrl: null },
       })
+      await prisma.pettyCashEntry.updateMany({ where: { reimbursementId: id }, data: { pcfStatus: 'For Replenishment' } })
       return NextResponse.json({ success: true })
     }
     await prisma.reimbursementReport.update({ where: { id }, data: { pdfData: body.pdfData || null } })

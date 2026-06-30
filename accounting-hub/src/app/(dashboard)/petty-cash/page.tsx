@@ -580,6 +580,18 @@ export default function PettyCashPage() {
 
       {tab === 'entries' && (
         <>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {([
+              ['Unliquidated Total', entries.filter(e => e.pcfStatus === 'Unliquidated').reduce((s, e) => s + num(e.grossAmount), 0)],
+              ['For Replenishment Total', entries.filter(e => e.pcfStatus === 'For Replenishment').reduce((s, e) => s + num(e.grossAmount), 0)],
+              ['Liquidated Total', entries.filter(e => e.pcfStatus === 'Replenished').reduce((s, e) => s + num(e.grossAmount), 0)],
+            ] as const).map(([lbl, v]) => (
+              <div key={lbl} className="rounded-2xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                <p className="text-[11px] mb-1" style={{ color: 'var(--mid-gray)' }}>{lbl}</p>
+                <p className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(v as number)}</p>
+              </div>
+            ))}
+          </div>
           <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
             {entries.length} entries · {selected.size} selected · Total Gross <strong style={{ color: 'var(--charcoal)' }}>₱{peso(totalGross)}</strong>
             {' · '}Next PCV #{nextPcvSeq}
@@ -611,7 +623,7 @@ export default function PettyCashPage() {
                     const lk = locked(e)
                     const ve = vatEditable(e)
                     return (
-                      <tr key={e.id} style={{ background: e.reimbursementId ? '#c3ccd6' : (e.finalized ? '#eaf7ee' : '#fff') }}>
+                      <tr key={e.id} style={{ background: e.pcfStatus === 'Replenished' ? '#dcfce7' : e.reimbursementId ? '#ffedd5' : e.finalized ? '#fef9c3' : '#fff' }}>
                         <td className="border-r border-b text-center" style={{ borderColor: 'var(--light-gray)' }}>
                           <input type="checkbox" checked={selected.has(e.id)} disabled={!canWrite || !isSelectable(e)}
                             onChange={() => toggleOne(e.id)}
@@ -636,11 +648,15 @@ export default function PettyCashPage() {
                           </select>
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <select className={cellCls} value={e.pcfStatus || ''} disabled={lk}
-                            onChange={ev => saveField(e.id, { pcfStatus: ev.target.value }, false)} style={{ minWidth: 140 }}>
-                            <option value=""></option>
-                            {PCF_STATUS.map(s => <option key={s} value={s}>{s}</option>)}
-                          </select>
+                          {e.pcfStatus === 'Replenished' ? (
+                            <span className="px-2 py-1.5 block whitespace-nowrap font-semibold" style={{ color: '#166534', minWidth: 140 }}>Replenished</span>
+                          ) : (
+                            <select className={cellCls} value={e.pcfStatus || ''} disabled={lk}
+                              onChange={ev => saveField(e.id, { pcfStatus: ev.target.value }, false)} style={{ minWidth: 140 }}>
+                              <option value=""></option>
+                              {PCF_STATUS.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                          )}
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
                           <input type="date" className={cellCls} disabled={lk}
@@ -918,7 +934,8 @@ export default function PettyCashPage() {
       {tab === 'flowchart' && (
         <div className="rounded-2xl border bg-white p-6" style={{ borderColor: 'var(--light-gray)' }}>
           <h2 className="text-lg font-bold mb-1" style={{ color: 'var(--charcoal)' }}>Petty Cash Workflow</h2>
-          <p className="text-xs mb-6" style={{ color: 'var(--mid-gray)' }}>From entry to reimbursement to the Expense Report.</p>
+          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>From entry to reimbursement to the Expense Report.</p>
+          <p className="text-xs mb-6 font-semibold" style={{ color: 'var(--teal)' }}>For expenses less than ₱2,000.</p>
           <div className="flex flex-col items-center">
             {([
               { n: 1, title: 'Petty cash entry', who: 'Bookkeeper', desc: 'Encode entries in the Entries tab.' },

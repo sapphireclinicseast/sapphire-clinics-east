@@ -29,6 +29,7 @@ const TABS = [
   { key: 'rfp', label: 'RFP', recordType: '' },
   { key: 'expense-report', label: 'Expense Report', recordType: '' },
   { key: 'suppliers', label: 'Suppliers', recordType: '' },
+  { key: 'flowchart', label: 'Flowchart', recordType: '' },
 ] as const
 type TabKey = typeof TABS[number]['key']
 
@@ -59,6 +60,7 @@ interface Entry {
   payrollAccount: string | null
   paymentBankAccount: string | null
   finalized: boolean
+  audited: boolean
   reimbursementId: string | null
   reimbursement: { refNumber: string } | null
   recurFrequency: string | null
@@ -124,7 +126,9 @@ function uploadWithProgress(file: File, onProgress: (pct: number) => void): Prom
 
 export default function ExpensesPage() {
   const { data: session } = useSession()
-  const canWrite = WRITE_ROLES.includes((session?.user as { role?: string })?.role || '')
+  const role = (session?.user as { role?: string })?.role || ''
+  const canWrite = WRITE_ROLES.includes(role)
+  const canAudit = role === 'ADMIN' || role === 'ACCOUNTANT'
 
   const [branch, setBranch] = useState('SANDBOX_EAST')
   const [tab, setTab] = useState<TabKey>('recurring')
@@ -328,7 +332,11 @@ export default function ExpensesPage() {
 
   // ── RFP (replaces the old per-entry "For Payment") ──
   const rfpValidity = rfpMode === 'VALID' ? 'Valid' : rfpMode === 'INVALID' ? 'Invalid' : null
-  const isSelectable = (e: Entry) => !e.reimbursementId && rfpValidity != null && e.validity === rfpValidity
+  const isSelectable = (e: Entry) => !e.reimbursementId && !!e.audited && rfpValidity != null && e.validity === rfpValidity
+  const setAudited = async (id: string, audited: boolean) => {
+    patchLocal(id, { audited })
+    try { await fetch('/api/petty-cash/audited', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, audited }) }) } catch { /* ignore */ }
+  }
   const startRfp = (mode: 'VALID' | 'INVALID') => { setRfpMode(mode); setSelected(new Set()) }
   const cancelRfp = () => { setRfpMode(null); setSelected(new Set()) }
 
@@ -600,7 +608,7 @@ export default function ExpensesPage() {
                       'Valid/Invalid', 'Vatable', 'SI Number', 'TIN Number', 'TIN Number 2', 'Branch Code', 'Registered name',
                       'Registered Address', 'Gross Amount', 'Net of VAT', 'VAT Amount', 'Account Title',
                       ...(isRecurringTab ? ['Recurs', 'Deadline (day)', 'Distribute monthly?', 'Monthly Amount', 'Charge from', 'Charge to'] : []),
-                      'Payment', 'Proof', ''
+                      'Payment', 'Proof', ...(recordType === 'ONE_TIME' ? ['Audited'] : []), ''
                     ].map((h, i) => (
                       <th key={i} className="border-r border-b px-2 py-2 text-left font-semibold whitespace-nowrap"
                         style={{ color: 'var(--charcoal)', borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>{h}</th>
@@ -612,7 +620,7 @@ export default function ExpensesPage() {
                     const lk = locked(e)
                     const ve = vatEditable(e)
                     return (
-                      <tr key={e.id} style={{ background: (e.reimbursementId || e.paidAt) ? '#c3ccd6' : (e.finalized ? '#eaf7ee' : '#fff') }}>
+                      <tr key={e.id} style={{ background: e.paidAt ? '#dcfce7' : e.reimbursementId ? '#ffedd5' : e.finalized ? '#fef9c3' : '#fff' }}>
                         <td className="border-r border-b text-center" style={{ borderColor: 'var(--light-gray)' }}>
                           <input type="checkbox" checked={selected.has(e.id)} disabled={!isSelectable(e)}
                             onChange={() => toggleOne(e.id)} title={e.paidAt ? 'Locked (paid)' : ''} />
@@ -817,6 +825,16 @@ export default function ExpensesPage() {
                             )}
                           </div>
                         </td>
+                        {recordType === 'ONE_TIME' && (
+                          <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                            <select className={cellCls} value={e.audited ? 'Yes' : 'No'} disabled={!canAudit}
+                              title={!canAudit ? 'Only an Accountant or Admin can change the audit status' : ''}
+                              onChange={ev => setAudited(e.id, ev.target.value === 'Yes')} style={{ minWidth: 70 }}>
+                              <option value="No">No</option>
+                              <option value="Yes">Yes</option>
+                            </select>
+                          </td>
+                        )}
                         <td className="border-b px-1 text-center" style={{ borderColor: 'var(--light-gray)' }}>
                           {canWrite && !e.paidAt && (
                             <div className="flex items-center justify-center gap-0.5 whitespace-nowrap">
@@ -838,7 +856,7 @@ export default function ExpensesPage() {
                     )
                   })}
                   {shown.length === 0 && (
-                    <tr><td colSpan={isRecurringTab ? 28 : 22} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>
+                    <tr><td colSpan={isRecurringTab ? 28 : 23} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>
                       {q ? 'No entries match your search.' : 'No entries yet. Click "Add Row" to start.'}
                     </td></tr>
                   )}
@@ -943,6 +961,53 @@ export default function ExpensesPage() {
 
       {tab === 'suppliers' && (
         <SuppliersTab branch={branch} canWrite={canWrite} />
+      )}
+
+      {tab === 'flowchart' && (
+        <div className="rounded-2xl border bg-white p-6" style={{ borderColor: 'var(--light-gray)' }}>
+          <h2 className="text-lg font-bold mb-1" style={{ color: 'var(--charcoal)' }}>Expenses Workflow</h2>
+          <p className="text-xs font-semibold mb-6" style={{ color: 'var(--teal)' }}>For expenses more than ₱2,000.</p>
+
+          <h3 className="text-sm font-bold mb-3" style={{ color: 'var(--charcoal)' }}>Recurring Expense</h3>
+          <div className="flex flex-col items-center mb-8">
+            {([
+              { n: 1, title: 'Set up a recurring expense', desc: 'Especially prepaid ones (e.g. annual subscription). Distributed/prepaid auto-amortizes in the income statement.' },
+              { n: 2, title: 'Renewal / monthly alert', desc: 'Prepaid: alerts to renew on expiry. Monthly: a monthly alert.' },
+              { n: 3, title: 'Convert to One-time expense', desc: 'The alert lets you enter it as a One-time expense (top of the One-time tab).' },
+            ] as const).map((s, i, arr) => (
+              <div key={s.n} className="w-full max-w-xl flex flex-col items-center">
+                <div className="w-full rounded-2xl border p-4 flex items-start gap-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{ background: 'var(--teal)' }}>{s.n}</div>
+                  <div className="min-w-0"><p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>{s.title}</p><p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{s.desc}</p></div>
+                </div>
+                {i < arr.length - 1 && <div className="text-xl leading-none my-1" style={{ color: 'var(--teal)' }}>↓</div>}
+              </div>
+            ))}
+          </div>
+
+          <h3 className="text-sm font-bold mb-3" style={{ color: 'var(--charcoal)' }}>One-time Expense</h3>
+          <div className="flex flex-col items-center">
+            {([
+              { n: 1, title: 'Expense entry', who: 'Bookkeeper', desc: 'Encode the one-time expense.' },
+              { n: 2, title: 'Audited', who: 'Accountant', desc: 'Accountant sets Audited = Yes.' },
+              { n: 3, title: 'Filed for RFP', who: 'Accountant', desc: 'Group audited entries via RFP (Valid) or RFP (Invalid).' },
+              { n: 4, title: 'Print & submit for approval', who: '', desc: 'Print the reimbursement (RFP) report and submit for approval.' },
+              { n: 5, title: 'Mark as Paid', who: '', desc: 'Once reimbursed & replenished, open the RFP and click “Record as Paid”.' },
+              { n: 6, title: 'Expense Report', who: '', desc: 'The paid entries appear in the Expense Report.' },
+            ] as const).map((s, i, arr) => (
+              <div key={s.n} className="w-full max-w-xl flex flex-col items-center">
+                <div className="w-full rounded-2xl border p-4 flex items-start gap-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{ background: 'var(--teal)' }}>{s.n}</div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>{s.title}{s.who && <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-semibold align-middle" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{s.who}</span>}</p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{s.desc}</p>
+                  </div>
+                </div>
+                {i < arr.length - 1 && <div className="text-xl leading-none my-1" style={{ color: 'var(--teal)' }}>↓</div>}
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {showSettings && (
