@@ -454,11 +454,8 @@ export default function ExpensesPage() {
                           <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--charcoal)' }}>{e.pcvNumber}</span>
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <input list="exp-supplier-names" className={cellCls} disabled={lk} value={e.requestor || ''} placeholder="Payee" style={{ minWidth: 170 }}
-                            onChange={ev => patchLocal(e.id, { requestor: ev.target.value })}
-                            onBlur={ev => {
-                              const val = ev.target.value
-                              const sup = supplierByName.get(val.trim().toLowerCase())
+                          <SupplierCombo value={e.requestor || ''} disabled={lk} placeholder="Payee" suppliers={suppliers}
+                            onCommit={(val, sup) => {
                               const patch: Partial<Entry> = { requestor: val }
                               if (sup) {
                                 patch.registeredName = sup.registeredName
@@ -723,11 +720,6 @@ export default function ExpensesPage() {
         <ForPaymentModal count={selected.size} bankOptions={bankOptions} cards={cards} paying={paying}
           onClose={() => setShowPayModal(false)} onAddCard={addCard} onSubmit={submitPayment} />
       )}
-
-      {/* Registered-name suggestions for the Payee field */}
-      <datalist id="exp-supplier-names">
-        {suppliers.map(s => <option key={(s.id || '') + s.registeredName} value={s.registeredName} />)}
-      </datalist>
 
       {newSupplierPrompt && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setNewSupplierPrompt(null)}>
@@ -1621,5 +1613,63 @@ function SuppliersTab({ branch, canWrite }: { branch: string; canWrite: boolean 
         </div>
       )}
     </div>
+  )
+}
+
+// ── Payee autocomplete (styled combobox over the Suppliers list) ──
+function SupplierCombo({ value, disabled, placeholder, suppliers, onCommit }: {
+  value: string; disabled: boolean; placeholder?: string; suppliers: Supplier[]
+  onCommit: (val: string, sup: Supplier | null) => void
+}) {
+  const inputCls = 'w-full bg-transparent px-2 py-1.5 text-xs outline-none focus:bg-[var(--pale-teal)] rounded'
+  const [draft, setDraft] = useState(value)
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null)
+  const ref = useRef<HTMLInputElement>(null)
+  useEffect(() => { setDraft(value) }, [value])
+
+  const place = () => { const r = ref.current?.getBoundingClientRect(); if (r) setPos({ top: r.bottom + 2, left: r.left, width: r.width }) }
+  useEffect(() => {
+    if (!open) return
+    const close = () => setOpen(false)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => { window.removeEventListener('scroll', close, true); window.removeEventListener('resize', close) }
+  }, [open])
+
+  const q = draft.trim().toLowerCase()
+  const matches = suppliers.filter(s => !q || s.registeredName.toLowerCase().includes(q)).slice(0, 40)
+  const commit = (val: string) => {
+    const sup = suppliers.find(s => s.registeredName.trim().toLowerCase() === val.trim().toLowerCase()) || null
+    onCommit(val, sup)
+  }
+  const pick = (s: Supplier) => { setDraft(s.registeredName); setOpen(false); onCommit(s.registeredName, s) }
+
+  return (
+    <>
+      <input ref={ref} className={inputCls} disabled={disabled} value={draft} placeholder={placeholder} style={{ minWidth: 170 }}
+        onFocus={() => { place(); setOpen(true) }}
+        onChange={e => { setDraft(e.target.value); place(); setOpen(true) }}
+        onBlur={() => { window.setTimeout(() => setOpen(false), 120); commit(draft) }}
+        onKeyDown={e => {
+          if (e.key === 'Escape') setOpen(false)
+          else if (e.key === 'Enter') { setOpen(false); commit(draft); (e.target as HTMLInputElement).blur() }
+        }} />
+      {open && !disabled && pos && matches.length > 0 && (
+        <div className="fixed z-[80] rounded-xl border bg-white shadow-xl overflow-auto"
+          style={{ top: pos.top, left: pos.left, width: Math.max(pos.width, 220), maxHeight: 240, borderColor: 'var(--light-gray)' }}>
+          {matches.map(s => (
+            <button key={(s.id || '') + s.registeredName} type="button"
+              onMouseDown={e => { e.preventDefault(); pick(s) }}
+              className="w-full text-left px-3 py-2 hover:bg-[var(--pale-teal)] border-b last:border-b-0" style={{ borderColor: 'var(--light-gray)' }}>
+              <div className="text-xs font-medium truncate" style={{ color: 'var(--charcoal)' }}>{s.registeredName}</div>
+              {(s.tin || s.registeredAddress) && (
+                <div className="text-[10px] truncate" style={{ color: 'var(--mid-gray)' }}>{[s.tin, s.registeredAddress].filter(Boolean).join(' · ')}</div>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
   )
 }
