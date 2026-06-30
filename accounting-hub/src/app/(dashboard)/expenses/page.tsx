@@ -509,6 +509,10 @@ export default function ExpensesPage() {
 
   const cellCls = 'w-full bg-transparent px-2 py-1.5 text-xs outline-none focus:bg-[var(--pale-teal)] rounded'
   const tdCls = 'border-r border-b align-top'
+  // Column sort/filter for the recording grid.
+  const [gridSort, setGridSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: '', dir: 'asc' })
+  const [gridFilters, setGridFilters] = useState<Record<string, string>>({})
+  const gridToggleSort = (k: string) => setGridSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
   // Recurring entries are setups (no payment), so a stale paidAt shouldn't lock them.
   const locked = (e: Entry) => !!e.reimbursementId || (e.recordType !== 'RECURRING' && !!e.paidAt) || !!e.finalized || !canWrite
   const vatEditable = (e: Entry) => e.vatable === 'VAT' || e.vatable === 'Non-VAT' || e.vatable === 'NV'
@@ -518,9 +522,62 @@ export default function ExpensesPage() {
     ? entries.filter(e => [e.pcvNumber, e.requestor, e.description, e.accountTitle, e.siNumber, e.registeredName, e.tinNumber, e.paymentMethod]
         .some(v => (v || '').toString().toLowerCase().includes(q)))
     : entries
-  const totalGross = shown.reduce((s, e) => s + num(e.grossAmount), 0)
 
-  const selectableIds = shown.filter(isSelectable).map(e => e.id)
+  // Per-column header sort/filter. `plain` columns (proof/actions) get no controls.
+  const gridCols: { key: string; label: string; plain?: boolean }[] = [
+    { key: 'refNumber', label: 'Reference Number' }, { key: 'requestor', label: 'Payee' }, { key: 'department', label: 'Department' },
+    { key: 'date', label: 'Date' }, { key: 'description', label: 'Description' }, { key: 'descHub', label: 'Description for Hub' },
+    { key: 'validity', label: 'Valid/Invalid' }, { key: 'vatable', label: 'Vatable' }, { key: 'siNumber', label: 'SI Number' },
+    { key: 'tinNumber', label: 'TIN Number' }, { key: 'tinNumber2', label: 'TIN Number 2' }, { key: 'branchCode', label: 'Branch Code' },
+    { key: 'registeredName', label: 'Registered name' }, { key: 'registeredAddress', label: 'Registered Address' },
+    { key: 'grossAmount', label: 'Gross Amount' }, { key: 'netOfVat', label: 'Net of VAT' }, { key: 'vatAmount', label: 'VAT Amount' },
+    { key: 'accountTitle', label: 'Account Title' }, { key: 'hasEwt', label: 'Has EWT?' }, { key: 'ewtRate', label: 'EWT %' },
+    ...(isRecurringTab ? [
+      { key: 'recurFrequency', label: 'Recurs' }, { key: 'recurDeadlineDay', label: 'Deadline (day)' },
+      { key: 'amountVaries', label: 'Amount changes monthly?' }, { key: 'distributeMonthly', label: 'Distribute monthly?' },
+      { key: 'monthlyAmount', label: 'Monthly Amount' }, { key: 'distributeStart', label: 'Charge from' }, { key: 'distributeEnd', label: 'Charge to' },
+    ] : []),
+    { key: 'payment', label: 'Payment' }, { key: 'proof', label: 'Proof', plain: true },
+    ...(recordType === 'ONE_TIME' ? [{ key: 'audited', label: 'Audited' }] : []),
+  ]
+  const gridGet = (e: Entry, k: string): string | number => {
+    switch (k) {
+      case 'refNumber': return e.reimbursement?.refNumber || e.pcvNumber || ''
+      case 'requestor': return e.requestor || ''
+      case 'department': return e.department || ''
+      case 'date': return e.date ? String(e.date).slice(0, 10) : ''
+      case 'description': return e.description || ''
+      case 'descHub': return descForHub(e) || ''
+      case 'validity': return e.validity || ''
+      case 'vatable': return e.vatable || ''
+      case 'siNumber': return e.siNumber || ''
+      case 'tinNumber': return e.tinNumber || ''
+      case 'tinNumber2': return tinNumber2(e.tinNumber) || ''
+      case 'branchCode': return branchCodeOf(e.tinNumber) || ''
+      case 'registeredName': return e.registeredName || ''
+      case 'registeredAddress': return e.registeredAddress || ''
+      case 'grossAmount': return num(e.grossAmount)
+      case 'netOfVat': return netOfVat(e)
+      case 'vatAmount': return vatAmount(e)
+      case 'accountTitle': return e.accountTitle || ''
+      case 'hasEwt': return e.hasEwt ? 'Yes' : 'No'
+      case 'ewtRate': return e.ewtRate ?? ''
+      case 'recurFrequency': return e.recurFrequency || ''
+      case 'recurDeadlineDay': return e.recurDeadlineDay ?? ''
+      case 'amountVaries': return e.amountVaries ? 'Yes' : 'No'
+      case 'distributeMonthly': return e.distributeMonthly ? 'Yes' : 'No'
+      case 'monthlyAmount': return e.distributeMonthly ? monthlyAmt(e) : ''
+      case 'distributeStart': return e.distributeStart ? String(e.distributeStart).slice(0, 7) : ''
+      case 'distributeEnd': return e.distributeEnd ? String(e.distributeEnd).slice(0, 7) : ''
+      case 'payment': return e.paidAt ? `${new Date(e.paidAt).toLocaleDateString('en-PH')} ${e.paymentMethod || ''}` : (e.reimbursementId ? 'In RFP' : 'Not yet in RFP')
+      case 'audited': return e.audited ? 'Yes' : 'No'
+      default: return ''
+    }
+  }
+  const displayed = applySortFilter(shown, gridGet, gridSort.key, gridSort.dir, gridFilters)
+  const totalGross = displayed.reduce((s, e) => s + num(e.grossAmount), 0)
+
+  const selectableIds = displayed.filter(isSelectable).map(e => e.id)
   const allSelected = selectableIds.length > 0 && selectableIds.every(id => selected.has(id))
   const toggleAll = () => setSelected(allSelected ? new Set() : new Set(selectableIds))
   const toggleOne = (id: string) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -675,19 +732,28 @@ export default function ExpensesPage() {
                     <th className="border-r border-b px-2 py-2 text-center" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                       <input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={!canWrite || selectableIds.length === 0} title="Select all" />
                     </th>
-                    {['Reference Number', 'Payee', 'Department', 'Date', 'Description', 'Description for Hub',
-                      'Valid/Invalid', 'Vatable', 'SI Number', 'TIN Number', 'TIN Number 2', 'Branch Code', 'Registered name',
-                      'Registered Address', 'Gross Amount', 'Net of VAT', 'VAT Amount', 'Account Title', 'Has EWT?', 'EWT %',
-                      ...(isRecurringTab ? ['Recurs', 'Deadline (day)', 'Amount changes monthly?', 'Distribute monthly?', 'Monthly Amount', 'Charge from', 'Charge to'] : []),
-                      'Payment', 'Proof', ...(recordType === 'ONE_TIME' ? ['Audited'] : []), ''
-                    ].map((h, i) => (
-                      <th key={i} className="border-r border-b px-2 py-2 text-left font-semibold whitespace-nowrap"
-                        style={{ color: 'var(--charcoal)', borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>{h}</th>
+                    {gridCols.map(col => (
+                      <th key={col.key} className="border-r border-b px-2 py-2 text-left align-top whitespace-nowrap"
+                        style={{ color: 'var(--charcoal)', borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                        {col.plain ? (
+                          <span className="font-semibold">{col.label}</span>
+                        ) : (
+                          <>
+                            <button onClick={() => gridToggleSort(col.key)} className="flex items-center gap-1 font-semibold">
+                              {col.label}
+                              <span style={{ color: gridSort.key === col.key ? 'var(--teal)' : 'var(--light-gray)' }}>{gridSort.key === col.key ? (gridSort.dir === 'asc' ? '▲' : '▼') : '↕'}</span>
+                            </button>
+                            <input value={gridFilters[col.key] || ''} onChange={ev => setGridFilters(f => ({ ...f, [col.key]: ev.target.value }))} placeholder="filter…"
+                              className="mt-1 w-full px-1.5 py-0.5 rounded border text-[11px] font-normal" style={{ borderColor: 'var(--light-gray)' }} />
+                          </>
+                        )}
+                      </th>
                     ))}
+                    <th className="border-r border-b px-2 py-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }} />
                   </tr>
                 </thead>
                 <tbody>
-                  {shown.map(e => {
+                  {displayed.map(e => {
                     const lk = locked(e)
                     const ve = vatEditable(e)
                     return (
@@ -954,9 +1020,9 @@ export default function ExpensesPage() {
                       </tr>
                     )
                   })}
-                  {shown.length === 0 && (
+                  {displayed.length === 0 && (
                     <tr><td colSpan={isRecurringTab ? 31 : 25} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>
-                      {q ? 'No entries match your search.' : 'No entries yet. Click "Add Row" to start.'}
+                      {q || Object.values(gridFilters).some(Boolean) ? 'No entries match your search/filters.' : 'No entries yet. Click "Add Row" to start.'}
                     </td></tr>
                   )}
                 </tbody>
@@ -1386,6 +1452,17 @@ function CcReportTab({ branch, cards, canWrite, canEdit }: { branch: string; car
   const [txnRefresh, setTxnRefresh] = useState(0)
   const [editRow, setEditRow] = useState<{ id: string; date: string; accountTitle: string; description: string; gross: number } | null>(null)
   const [payCcTarget, setPayCcTarget] = useState<CcReport | null>(null)
+  const [txnSort, setTxnSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'date', dir: 'asc' })
+  const [txnFilters, setTxnFilters] = useState<Record<string, string>>({})
+  const txnToggleSort = (k: string) => setTxnSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
+  const txnCols = [
+    { key: 'pcvNumber', label: 'Reference Number' }, { key: 'requestor', label: 'Payee' }, { key: 'date', label: 'Expense Date' },
+    { key: 'description', label: 'Description' }, { key: 'accountTitle', label: 'Account Title' }, { key: 'paidAt', label: 'Charged On' }, { key: 'amount', label: 'Amount' },
+  ]
+  const txnGet = (t: CcTxn, k: string): string | number =>
+    k === 'pcvNumber' ? t.pcvNumber : k === 'requestor' ? (t.requestor || '') : k === 'date' ? (t.date ? String(t.date).slice(0, 10) : '')
+      : k === 'description' ? (t.description || '') : k === 'accountTitle' ? (t.accountTitle || '') : k === 'paidAt' ? (t.paidAt ? String(t.paidAt).slice(0, 10) : '')
+      : k === 'amount' ? num(t.grossAmount) : ''
   const deleteTxn = async (id: string) => {
     if (!confirm('Delete this entry? It will be removed from the report and any RFP it was in.')) return
     setTxns(prev => prev.filter(t => t.id !== id))
@@ -1412,6 +1489,7 @@ function CcReportTab({ branch, cards, canWrite, canEdit }: { branch: string; car
 
   const report = reports.find(r => r.cardId === cardId && r.periodMonth === month && r.periodYear === year) || null
   const total = txns.reduce((s, t) => s + num(t.grossAmount), 0)
+  const shownTxns = applySortFilter(txns, txnGet, txnSort.key, txnSort.dir, txnFilters)
   const cardOf = (id: string) => cards.find(c => c.id === id)
 
   const createReport = async () => {
@@ -1602,16 +1680,10 @@ function CcReportTab({ branch, cards, canWrite, canEdit }: { branch: string; car
               <div className="flex items-center justify-center py-12"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} /></div>
             ) : (
               <table className="w-full text-xs">
-                <thead className="sticky top-0">
-                  <tr style={{ background: 'var(--off-white)' }}>
-                    {['Reference Number', 'Payee', 'Expense Date', 'Description', 'Account Title', 'Charged On', 'Amount'].map((h, i) => (
-                      <th key={i} className="px-3 py-2 text-left font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{h}</th>
-                    ))}
-                    {canEdit && <th className="px-3 py-2" />}
-                  </tr>
-                </thead>
+                <SortFilterHead cols={txnCols} sortKey={txnSort.key} sortDir={txnSort.dir} filters={txnFilters}
+                  onToggleSort={txnToggleSort} onFilter={(k, v) => setTxnFilters(f => ({ ...f, [k]: v }))} trailing={canEdit} />
                 <tbody>
-                  {txns.map(t => (
+                  {shownTxns.map(t => (
                     <tr key={t.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                       <td className="px-3 py-2 font-mono whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{t.pcvNumber}</td>
                       <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{t.requestor || ''}</td>
@@ -1629,10 +1701,10 @@ function CcReportTab({ branch, cards, canWrite, canEdit }: { branch: string; car
                       )}
                     </tr>
                   ))}
-                  {txns.length === 0 && (
-                    <tr><td colSpan={canEdit ? 8 : 7} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No credit-card charges for this card in {MONTHS[month - 1]} {year}.</td></tr>
+                  {shownTxns.length === 0 && (
+                    <tr><td colSpan={canEdit ? 8 : 7} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>{txns.length === 0 ? `No credit-card charges for this card in ${MONTHS[month - 1]} ${year}.` : 'No charges match the current filters.'}</td></tr>
                   )}
-                  {txns.length > 0 && (
+                  {shownTxns.length > 0 && (
                     <tr className="border-t-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                       <td colSpan={6} className="px-3 py-2 text-right font-bold" style={{ color: 'var(--charcoal)' }}>TOTAL</td>
                       <td className="px-3 py-2 text-right font-bold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(total)}</td>
@@ -1785,7 +1857,21 @@ function ExpenseReportTab({ branch, canWrite, canEdit }: { branch: string; canWr
   const invalid = rows.filter(r => r.validity === 'Invalid')
   const totalValid = valid.reduce((s, r) => s + r.netOfVat, 0)
   const totalInvalid = invalid.reduce((s, r) => s + r.netOfVat, 0)
-  const shown = view === 'Valid' ? valid : invalid
+  const base = view === 'Valid' ? valid : invalid
+
+  const [erSort, setErSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'paymentDate', dir: 'asc' })
+  const [erFilters, setErFilters] = useState<Record<string, string>>({})
+  const erToggleSort = (k: string) => setErSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
+  const erCols = [
+    { key: 'payee', label: 'Payee' }, { key: 'paymentAccount', label: 'Payment Account' }, { key: 'paymentDate', label: 'Payment Date' },
+    { key: 'paymentMethod', label: 'Payment Method' }, { key: 'pcvNumber', label: 'Reference Number' }, { key: 'accountTitle', label: 'Account Title' },
+    { key: 'description', label: 'Description' }, { key: 'netOfVat', label: 'Amount Net of VAT' }, { key: 'checkInfo', label: 'Check Number / Online Transfer Ref. No.' }, { key: 'status', label: 'Status' },
+  ]
+  const erGet = (r: ErRow, k: string): string | number =>
+    k === 'netOfVat' ? r.netOfVat : k === 'status' ? (r.filingStatus === 'FILED' ? 'Filed' : 'For Filing')
+      : (r[k as keyof ErRow] as string | number) ?? ''
+  const shown = applySortFilter(base, erGet, erSort.key, erSort.dir, erFilters)
+  const shownTotal = shown.reduce((s, r) => s + r.netOfVat, 0)
 
   const setStatus = async (id: string, filingStatus: string) => {
     setRows(prev => prev.map(r => (r.id === id ? { ...r, filingStatus } : r)))
@@ -1877,14 +1963,8 @@ function ExpenseReportTab({ branch, canWrite, canEdit }: { branch: string; canWr
           <div className="flex items-center justify-center py-12"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} /></div>
         ) : (
           <table className="text-xs" style={{ borderCollapse: 'collapse', minWidth: 1700 }}>
-            <thead className="sticky top-0 z-10">
-              <tr style={{ background: 'var(--off-white)' }}>
-                {['Payee', 'Payment Account', 'Payment Date', 'Payment Method', 'Reference Number', 'Account Title', 'Description', 'Amount Net of VAT', 'Check Number / Online Transfer Ref. No.', 'Status'].map((h, i) => (
-                  <th key={i} className="border-r border-b px-3 py-2 text-left font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)', borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>{h}</th>
-                ))}
-                {canEdit && <th className="border-b px-3 py-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}></th>}
-              </tr>
-            </thead>
+            <SortFilterHead cols={erCols} sortKey={erSort.key} sortDir={erSort.dir} filters={erFilters}
+              onToggleSort={erToggleSort} onFilter={(k, v) => setErFilters(f => ({ ...f, [k]: v }))} trailing={canEdit} />
             <tbody>
               {shown.map(r => {
                 const pc = r.source === 'PETTY_CASH'
@@ -1917,12 +1997,12 @@ function ExpenseReportTab({ branch, canWrite, canEdit }: { branch: string; canWr
                 )
               })}
               {shown.length === 0 && (
-                <tr><td colSpan={canEdit ? 11 : 10} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>No {view.toLowerCase()} paid expenses{(from || to) ? ' in this date range' : ''}.</td></tr>
+                <tr><td colSpan={canEdit ? 11 : 10} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>{base.length === 0 ? `No ${view.toLowerCase()} paid expenses${(from || to) ? ' in this date range' : ''}.` : 'No rows match the current filters.'}</td></tr>
               )}
               {shown.length > 0 && (
                 <tr style={{ background: 'var(--off-white)' }}>
                   <td colSpan={7} className="border-r border-b px-3 py-2 text-right font-bold" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>TOTAL {view}</td>
-                  <td className="border-r border-b px-3 py-2 text-right font-bold whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>₱{peso(view === 'Valid' ? totalValid : totalInvalid)}</td>
+                  <td className="border-r border-b px-3 py-2 text-right font-bold whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>₱{peso(shownTotal)}</td>
                   <td className="border-r border-b" style={{ borderColor: 'var(--light-gray)' }} colSpan={canEdit ? 3 : 2}></td>
                 </tr>
               )}

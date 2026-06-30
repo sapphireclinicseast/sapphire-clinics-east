@@ -100,9 +100,14 @@ export function ReminderPopup() {
         <div className="space-y-2">
           {reminders.map(r => <Row key={r.id} r={r} />)}
         </div>
-        <button onClick={close} className="w-full mt-5 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>
-          Got it
-        </button>
+        <div className="flex gap-2 mt-5">
+          <a href="/expenses" onClick={close} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white text-center" style={{ background: 'var(--teal)' }}>
+            Go to Expenses
+          </a>
+          <button onClick={close} className="px-4 py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+            Got it
+          </button>
+        </div>
       </div>
     </div>
   )
