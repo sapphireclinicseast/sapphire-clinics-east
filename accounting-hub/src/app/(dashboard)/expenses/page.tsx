@@ -1620,7 +1620,7 @@ function CcReportTab({ branch, cards, canWrite, canEdit }: { branch: string; car
 
 // ── Expense Report tab ─────────────────────────────────────────
 interface ErRow {
-  id: string; source: string; payee: string; paymentAccount: string; paymentDate: string
+  id: string; source: string; reimbursementId: string | null; refNumber: string; payee: string; paymentAccount: string; paymentDate: string
   paymentMethod: string; pcvNumber: string; accountTitle: string; description: string
   netOfVat: number; gross: number; checkInfo: string; validity: string; filingStatus: string
 }
@@ -1630,10 +1630,16 @@ function ExpenseReportTab({ branch, canWrite, canEdit }: { branch: string; canWr
   const [to, setTo] = useState('')
   const [rows, setRows] = useState<ErRow[]>([])
   const [editRow, setEditRow] = useState<{ id: string; date: string; accountTitle: string; description: string; gross: number } | null>(null)
-  const deleteEntry = async (id: string) => {
-    if (!confirm('Delete this entry? It will be removed from the report and any RFP it was in.')) return
-    setRows(prev => prev.filter(r => r.id !== id))
-    try { await fetch(`/api/expenses/report-entry?id=${id}`, { method: 'DELETE' }) } catch { /* ignore */ }
+  // "Delete" from the Expense Report returns the entry's RFP to the RFP tab (un-pays it).
+  const returnToRfp = async (r: ErRow) => {
+    if (!r.reimbursementId) { alert('No RFP linked to this entry.'); return }
+    if (!confirm(`Return RFP ${r.refNumber || ''} to the RFP tab? It will be marked unpaid and its entries go back "for payment". Continue?`)) return
+    const url = r.source === 'PETTY_CASH' ? '/api/petty-cash/reimbursements' : '/api/expenses/rfp'
+    try {
+      const res = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: r.reimbursementId, action: 'unpay' }) })
+      if (res.ok) load()
+      else alert((await res.json()).error || 'Failed')
+    } catch { alert('Failed') }
   }
   const [loading, setLoading] = useState(false)
   const [view, setView] = useState<'Valid' | 'Invalid'>('Valid')
@@ -1782,7 +1788,7 @@ function ExpenseReportTab({ branch, canWrite, canEdit }: { branch: string; canWr
                       <td className="border-b px-2 py-2 text-right whitespace-nowrap" style={{ borderColor: 'var(--light-gray)' }}>
                         <button onClick={() => setEditRow({ id: r.id, date: r.paymentDate, accountTitle: r.accountTitle, description: r.description, gross: r.gross })}
                           title="Edit" className="p-1 rounded hover:bg-teal-50 mr-1"><Pencil size={13} style={{ color: 'var(--teal)' }} /></button>
-                        <button onClick={() => deleteEntry(r.id)} title="Delete" className="p-1 rounded hover:bg-red-50"><Trash2 size={13} style={{ color: '#dc2626' }} /></button>
+                        <button onClick={() => returnToRfp(r)} title="Return to RFP (un-pay)" className="p-1 rounded hover:bg-amber-50"><Trash2 size={13} style={{ color: '#dc2626' }} /></button>
                       </td>
                     )}
                   </tr>

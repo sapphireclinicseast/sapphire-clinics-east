@@ -140,6 +140,8 @@ export async function DELETE(req: Request) {
   const id = new URL(req.url).searchParams.get('id') || ''
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
   try {
+    // Released entries go back to Petty Cash Entries as "For Replenishment".
+    await prisma.pettyCashEntry.updateMany({ where: { reimbursementId: id }, data: { pcfStatus: 'For Replenishment' } })
     await prisma.reimbursementReport.delete({ where: { id } })
     return NextResponse.json({ success: true })
   } catch (e) {

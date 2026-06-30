@@ -437,7 +437,7 @@ export default function PettyCashPage() {
   }
 
   const deleteReimbursement = async (rep: Reimb) => {
-    if (!confirm(`Delete reimbursement ${rep.refNumber}? Its ${rep._count.entries} entries will be unlocked for future replenishment.`)) return
+    if (!confirm(`Delete RFP ${rep.refNumber}? Its ${rep._count.entries} entr${rep._count.entries === 1 ? 'y' : 'ies'} will go back to Petty Cash Entries as "For Replenishment".`)) return
     try {
       await fetch(`/api/petty-cash/reimbursements?id=${rep.id}`, { method: 'DELETE' })
       await loadReimbursements(branch); await loadEntries(branch)

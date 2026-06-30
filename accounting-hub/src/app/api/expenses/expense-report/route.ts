@@ -27,16 +27,16 @@ export async function GET(req: Request) {
     select: {
       id: true, recordType: true, requestor: true, paymentBankAccount: true, creditCard: true, payrollAccount: true,
       date: true, paymentMethod: true, checkNumber: true, pcvNumber: true, accountTitle: true, description: true,
-      vatable: true, grossAmount: true, validity: true, filingStatus: true,
+      vatable: true, grossAmount: true, validity: true, filingStatus: true, reimbursementId: true,
     },
     orderBy: { date: 'asc' },
   })
-  // Petty cash entries that are part of a reimbursement report (paid or not)
+  // Petty cash entries in a reimbursement report that has been PAID.
   const pc = await prisma.pettyCashEntry.findMany({
-    where: { branch, recordType: 'PETTY_CASH', reimbursementId: { not: null }, ...dateWhere },
+    where: { branch, recordType: 'PETTY_CASH', reimbursement: { is: { paidAt: { not: null } } }, ...dateWhere },
     select: {
       id: true, date: true, pcvNumber: true, accountTitle: true, description: true, vatable: true, grossAmount: true,
-      validity: true, filingStatus: true, reimbursement: { select: { paymentMethod: true, checkNumber: true, transferRef: true, debitAccount: true, refNumber: true } },
+      validity: true, filingStatus: true, reimbursementId: true, reimbursement: { select: { paymentMethod: true, checkNumber: true, transferRef: true, debitAccount: true, refNumber: true } },
     },
     orderBy: { date: 'asc' },
   })
@@ -46,7 +46,7 @@ export async function GET(req: Request) {
       const gross = Number(e.grossAmount)
       const acct = e.paymentBankAccount || e.creditCard || (e.payrollAccount ? `Acct ${e.payrollAccount}` : '')
       return {
-        id: e.id, source: e.recordType, payee: e.requestor || '', paymentAccount: acct,
+        id: e.id, source: e.recordType, reimbursementId: e.reimbursementId, refNumber: '', payee: e.requestor || '', paymentAccount: acct,
         paymentDate: e.date ? new Date(e.date).toISOString().slice(0, 10) : '',
         paymentMethod: e.paymentMethod || '', pcvNumber: e.pcvNumber, accountTitle: e.accountTitle || '',
         description: e.description || '', netOfVat: netOf(e.vatable, gross), gross,
@@ -62,7 +62,7 @@ export async function GET(req: Request) {
       const tref = e.reimbursement?.transferRef || ''
       const debit = e.reimbursement?.debitAccount || ''
       return {
-        id: e.id, source: 'PETTY_CASH', payee: `${BRANCH_CODE[branch]} Petty Cash`,
+        id: e.id, source: 'PETTY_CASH', reimbursementId: e.reimbursementId, refNumber: e.reimbursement?.refNumber || '', payee: `${BRANCH_CODE[branch]} Petty Cash`,
         paymentAccount: e.reimbursement?.debitAccount || '',
         paymentDate: e.date ? new Date(e.date).toISOString().slice(0, 10) : '',
         paymentMethod: pm, pcvNumber: e.pcvNumber, accountTitle: e.accountTitle || '',
