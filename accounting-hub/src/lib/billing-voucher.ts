@@ -19,10 +19,11 @@ const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2
 // Branch header (name / address / phone / email). Address + phone are the SCEI
 // principal office; per-branch email per finance. Keyed by any branch alias.
 interface Header { name: string; lines: string[]; email: string }
-const EAST_ADDR = ['Level 4, Robinsons Metro East, Marcos Highway, Brgy. Dela Paz, Santolan', 'Pasig, Metro Manila  1600 PHL', '+639955403624']
+const EAST_ADDR = ['Level 4, Robinsons Metro East, Marcos Highway, Brgy. Dela Paz, Santolan, Pasig', '+63 917 118 9289 | (02) 5310-4991']
+const GREENHILLS_ADDR = ['Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City', '+63 917 770 1686 | (02) 8529-1590']
 const HEADERS: Record<string, Header> = {
   EAST: { name: 'Aura Health Rehab - East', lines: EAST_ADDR, email: 'east@sapphireclinicseast.org' },
-  GREENHILLS: { name: 'Aura Health Rehab - Greenhills', lines: EAST_ADDR, email: 'greenhills@sapphireclinicseast.org' },
+  GREENHILLS: { name: 'Aura Health Rehab - Greenhills', lines: GREENHILLS_ADDR, email: 'greenhills@sapphireclinicseast.org' },
   VERDANA: { name: 'Verdana', lines: EAST_ADDR, email: 'verdanatrading@gmail.com' },
 }
 function resolveHeader(branch?: string): Header {
