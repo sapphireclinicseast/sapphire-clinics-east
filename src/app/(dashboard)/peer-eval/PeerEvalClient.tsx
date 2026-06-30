@@ -1965,7 +1965,7 @@ function PerDepartmentRankings({
                           ? (r.responseCount + ' eval' + (r.responseCount !== 1 ? 's' : ''))
                           : 'No evaluations yet'}
                         {' · '}
-                        <span style={{ color: '#9ca3af' }}>{r.branch}</span>
+                        <span style={{ color: '#9ca3af' }}>{BRANCH_LABELS[r.branch] ?? r.branch}</span>
                       </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -2201,7 +2201,7 @@ function LeaderboardSection({
                       </div>
                     ) : (
                       <div style={{ fontSize: '0.68rem', color: '#6b7280', marginTop: 2 }}>
-                        {g.members[0].department}{g.members[0].branch ? ' · ' + g.members[0].branch : ''} · {g.members[0].responseCount} eval{g.members[0].responseCount !== 1 ? 's' : ''}
+                        {g.members[0].department}{g.members[0].branch ? ' · ' + (BRANCH_LABELS[g.members[0].branch] ?? g.members[0].branch) : ''} · {g.members[0].responseCount} eval{g.members[0].responseCount !== 1 ? 's' : ''}
                       </div>
                     )}
                   </div>
@@ -2222,7 +2222,7 @@ function LeaderboardSection({
                         padding: '6px 0', borderTop: '1px dashed #FDE4CC', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: 8,
                       }}>
                         <span style={{ color: '#1f2937', flex: 1, fontWeight: 600 }}>{m.name}</span>
-                        <span style={{ color: '#6b7280', fontSize: '0.7rem' }}>{m.department}{m.branch ? ' · ' + m.branch : ''}</span>
+                        <span style={{ color: '#6b7280', fontSize: '0.7rem' }}>{m.department}{m.branch ? ' · ' + (BRANCH_LABELS[m.branch] ?? m.branch) : ''}</span>
                         <span style={{ color: '#6b7280', fontSize: '0.7rem' }}>{m.responseCount} eval{m.responseCount !== 1 ? 's' : ''}</span>
                       </div>
                     ))}
