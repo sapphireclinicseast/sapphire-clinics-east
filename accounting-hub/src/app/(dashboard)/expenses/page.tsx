@@ -67,6 +67,7 @@ interface Entry {
   recurFrequency: string | null
   recurDeadlineDay: number | null
   distributeMonthly: boolean
+  amountVaries: boolean
   distributeStart: string | null
   distributeEnd: string | null
 }
@@ -162,7 +163,7 @@ export default function ExpensesPage() {
   const [showRfpModal, setShowRfpModal] = useState(false)
   const [generatingRfp, setGeneratingRfp] = useState(false)
   const [rfps, setRfps] = useState<Rfp[]>([])
-  const [recurringDue, setRecurringDue] = useState<{ id: string; payee: string | null; accountTitle: string | null; description: string | null; grossAmount: number; frequency: string; nextDue: string; daysUntil: number }[]>([])
+  const [recurringDue, setRecurringDue] = useState<{ id: string; payee: string | null; accountTitle: string | null; description: string | null; grossAmount: number; frequency: string; nextDue: string; daysUntil: number; amountVaries?: boolean }[]>([])
   const [genFromRecurring, setGenFromRecurring] = useState('')
   const [payTarget, setPayTarget] = useState<Rfp | null>(null)
   const [paying, setPaying] = useState(false)
@@ -587,7 +588,7 @@ export default function ExpensesPage() {
                   <p className="text-sm font-medium truncate" style={{ color: 'var(--charcoal)' }}>{d.payee || d.description || d.accountTitle || 'Recurring expense'}</p>
                   <p className="text-[11px] truncate" style={{ color: 'var(--mid-gray)' }}>
                     {({ MONTHLY: 'Monthly', QUARTERLY: 'Quarterly', BIANNUALLY: 'Biannually', ANNUALLY: 'Annually' } as Record<string, string>)[d.frequency] || d.frequency}
-                    {d.accountTitle ? ` · ${d.accountTitle}` : ''} · ₱{peso(d.grossAmount)}
+                    {d.accountTitle ? ` · ${d.accountTitle}` : ''} · {d.amountVaries ? 'amount varies' : `₱${peso(d.grossAmount)}`}
                   </p>
                 </div>
                 <div className="text-right whitespace-nowrap">
@@ -647,7 +648,7 @@ export default function ExpensesPage() {
                     {['Reference Number', 'Payee', 'Department', 'Date', 'Description', 'Description for Hub',
                       'Valid/Invalid', 'Vatable', 'SI Number', 'TIN Number', 'TIN Number 2', 'Branch Code', 'Registered name',
                       'Registered Address', 'Gross Amount', 'Net of VAT', 'VAT Amount', 'Account Title',
-                      ...(isRecurringTab ? ['Recurs', 'Deadline (day)', 'Distribute monthly?', 'Monthly Amount', 'Charge from', 'Charge to'] : []),
+                      ...(isRecurringTab ? ['Recurs', 'Deadline (day)', 'Amount changes monthly?', 'Distribute monthly?', 'Monthly Amount', 'Charge from', 'Charge to'] : []),
                       'Payment', 'Proof', ...(recordType === 'ONE_TIME' ? ['Audited'] : []), ''
                     ].map((h, i) => (
                       <th key={i} className="border-r border-b px-2 py-2 text-left font-semibold whitespace-nowrap"
@@ -793,8 +794,21 @@ export default function ExpensesPage() {
                                   onChange={ev => patchLocal(e.id, { recurDeadlineDay: ev.target.value ? Number(ev.target.value) : null })}
                                   onBlur={ev => saveField(e.id, { recurDeadlineDay: ev.target.value ? Number(ev.target.value) : null }, false)} />
                               </td>
-                              <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : (canDistribute ? '#fff' : '#f3f4f6') }}>
-                                <select className={cellCls} value={e.distributeMonthly ? 'Yes' : 'No'} disabled={lk || !canDistribute} style={{ minWidth: 80 }}
+                              <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                                <select className={cellCls} value={e.amountVaries ? 'Yes' : 'No'} disabled={lk} style={{ minWidth: 80 }}
+                                  title="e.g. rent that changes each month — the generated One-time entry's amount is left blank for the accountant"
+                                  onChange={ev => {
+                                    const yes = ev.target.value === 'Yes'
+                                    const patch: Partial<Entry> = { amountVaries: yes }
+                                    if (yes) { patch.distributeMonthly = false; patch.distributeStart = null; patch.distributeEnd = null }
+                                    saveField(e.id, patch, false)
+                                  }}>
+                                  <option value="No">No</option>
+                                  <option value="Yes">Yes</option>
+                                </select>
+                              </td>
+                              <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : (canDistribute && !e.amountVaries ? '#fff' : '#f3f4f6') }}>
+                                <select className={cellCls} value={e.distributeMonthly ? 'Yes' : 'No'} disabled={lk || !canDistribute || e.amountVaries} style={{ minWidth: 80 }}
                                   onChange={ev => {
                                     const yes = ev.target.value === 'Yes'
                                     const patch: Partial<Entry> = { distributeMonthly: yes }
@@ -896,7 +910,7 @@ export default function ExpensesPage() {
                     )
                   })}
                   {shown.length === 0 && (
-                    <tr><td colSpan={isRecurringTab ? 28 : 23} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>
+                    <tr><td colSpan={isRecurringTab ? 29 : 23} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>
                       {q ? 'No entries match your search.' : 'No entries yet. Click "Add Row" to start.'}
                     </td></tr>
                   )}

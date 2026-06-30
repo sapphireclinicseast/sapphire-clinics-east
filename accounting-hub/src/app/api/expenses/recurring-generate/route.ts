@@ -31,7 +31,7 @@ export async function POST(req: Request) {
         data: {
           branch, recordType: 'ONE_TIME', pcvNumber, pcvSeq: seq, pcvSub: 1, date: new Date(),
           requestor: src.requestor, department: src.department, accountTitle: src.accountTitle,
-          description: src.description, grossAmount: src.grossAmount, vatable: src.vatable,
+          description: src.description, grossAmount: src.amountVaries ? 0 : src.grossAmount, vatable: src.vatable,
           siNumber: src.siNumber, tinNumber: src.tinNumber, registeredName: src.registeredName,
           registeredAddress: src.registeredAddress,
           createdById: session.user.id ?? null,

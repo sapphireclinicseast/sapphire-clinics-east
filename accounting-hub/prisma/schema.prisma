@@ -1642,6 +1642,7 @@ model PettyCashEntry {
   recurFrequency    String?
   recurDeadlineDay  Int?
   distributeMonthly Boolean  @default(false)
+  amountVaries      Boolean  @default(false)
   distributeStart   DateTime?
   distributeEnd     DateTime?
   filingStatus      String?  @default("FOR_FILING")

@@ -26,7 +26,7 @@ export async function GET(req: Request) {
     select: {
       id: true, requestor: true, department: true, accountTitle: true, description: true, grossAmount: true,
       vatable: true, siNumber: true, tinNumber: true, registeredName: true, registeredAddress: true,
-      recurFrequency: true, recurDeadlineDay: true, date: true,
+      recurFrequency: true, recurDeadlineDay: true, date: true, amountVaries: true,
     },
     orderBy: { pcvSeq: 'asc' },
   })
@@ -47,7 +47,7 @@ export async function GET(req: Request) {
     if (daysUntil <= WINDOW_DAYS) {
       due.push({
         id: e.id, payee: e.requestor, accountTitle: e.accountTitle, description: e.description,
-        grossAmount: Number(e.grossAmount), frequency: e.recurFrequency,
+        grossAmount: Number(e.grossAmount), frequency: e.recurFrequency, amountVaries: e.amountVaries,
         nextDue: new Date(nextDue).toISOString().slice(0, 10), daysUntil,
       })
     }

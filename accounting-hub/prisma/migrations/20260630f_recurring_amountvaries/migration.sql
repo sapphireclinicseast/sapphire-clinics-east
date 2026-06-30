@@ -1,0 +1,1 @@
+ALTER TABLE "PettyCashEntry" ADD COLUMN IF NOT EXISTS "amountVaries" BOOLEAN NOT NULL DEFAULT false;
