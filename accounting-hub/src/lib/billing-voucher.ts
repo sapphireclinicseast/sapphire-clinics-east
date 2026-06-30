@@ -21,10 +21,11 @@ const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2
 interface Header { name: string; lines: string[]; email: string }
 const EAST_ADDR = ['Level 4, Robinsons Metro East, Marcos Highway, Brgy. Dela Paz, Santolan, Pasig', '+63 917 118 9289 | (02) 5310-4991']
 const GREENHILLS_ADDR = ['Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City', '+63 917 770 1686 | (02) 8529-1590']
+const VERDANA_ADDR = ['210B Henry’s Building, 80 Ortigas Avenue, Greenhills, San Juan City, Metro Manila, Philippines, 1502', '+63 917 173 1368']
 const HEADERS: Record<string, Header> = {
   EAST: { name: 'Aura Health Rehab - East', lines: EAST_ADDR, email: 'east@sapphireclinicseast.org' },
   GREENHILLS: { name: 'Aura Health Rehab - Greenhills', lines: GREENHILLS_ADDR, email: 'greenhills@sapphireclinicseast.org' },
-  VERDANA: { name: 'Verdana', lines: EAST_ADDR, email: 'verdanatrading@gmail.com' },
+  VERDANA: { name: 'Verdana', lines: VERDANA_ADDR, email: 'verdanatrading@gmail.com' },
 }
 function resolveHeader(branch?: string): Header {
   const b = (branch || '').toUpperCase()
