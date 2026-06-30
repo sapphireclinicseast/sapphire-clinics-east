@@ -114,6 +114,7 @@ model Account {
   currency      String        @default("PHP")   // PHP, USD, CNY, EUR, JPY, etc.
   description   String?
   isActive      Boolean       @default(true)
+  isBankAccount Boolean       @default(false)  // Current-asset account that is a bank account (shows in Fund Transfer dropdowns)
   createdById   String
   createdBy     User          @relation(fields: [createdById], references: [id], onDelete: Restrict)
   createdAt     DateTime      @default(now())
@@ -1748,4 +1749,28 @@ model ExpenseSupplier {
 
   @@unique([branch, registeredName])
   @@index([branch])
+}
+
+model FundTransfer {
+  id            String   @id @default(cuid())
+  refNumber     String   @unique  // FTYY-000001
+  refSeq        Int
+  date          DateTime
+  fromAccountId String
+  toAccountId   String
+  amount        Decimal
+  checkNumber   String?
+  description   String?
+  proofUrl      String?
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([date])
+}
+
+model FundTransferSettings {
+  id        String   @id @default("singleton")
+  nextSeq   Int      @default(1)
+  updatedAt DateTime @updatedAt @default(now())
 }

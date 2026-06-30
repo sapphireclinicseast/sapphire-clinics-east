@@ -31,6 +31,7 @@ interface Account {
   currency: string
   description: string | null
   isActive: boolean
+  isBankAccount?: boolean
   createdAt: string
   createdBy: { name: string }
 }
@@ -248,6 +249,7 @@ export default function ChartOfAccountsPage() {
   const [formBalance, setFormBalance] = useState('DEBIT')
   const [formDescription, setFormDescription] = useState('')
   const [formCurrency, setFormCurrency] = useState('PHP')
+  const [formIsBankAccount, setFormIsBankAccount] = useState(false)
 
   // Delete confirmation
   const [deleteConfirm, setDeleteConfirm] = useState<Account | null>(null)
@@ -303,6 +305,7 @@ export default function ChartOfAccountsPage() {
     setFormBalance('DEBIT')
     setFormCurrency('PHP')
     setFormDescription('')
+    setFormIsBankAccount(false)
     setError('')
     setModalOpen(true)
   }
@@ -317,6 +320,7 @@ export default function ChartOfAccountsPage() {
     setFormBalance(account.normalBalance)
     setFormCurrency(account.currency || 'PHP')
     setFormDescription(account.description || '')
+    setFormIsBankAccount(!!account.isBankAccount)
     setError('')
     setModalOpen(true)
   }
@@ -326,11 +330,13 @@ export default function ChartOfAccountsPage() {
     setFormSubType('')
     setFormSubSubType('')
     setFormBalance(DEFAULT_BALANCE[type] || 'DEBIT')
+    setFormIsBankAccount(false)
   }
 
   function handleSubTypeChange(subType: string) {
     setFormSubType(subType)
     setFormSubSubType('') // Reset sub-sub type when sub type changes
+    if (subType !== 'CURRENT_ASSETS') setFormIsBankAccount(false)
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -338,7 +344,7 @@ export default function ChartOfAccountsPage() {
     setSaving(true)
     setError('')
 
-    const body: Record<string, string> = {
+    const body: Record<string, string | boolean> = {
       accountNumber: formNumber,
       accountTitle: formTitle,
       accountType: formType,
@@ -347,6 +353,7 @@ export default function ChartOfAccountsPage() {
       normalBalance: formBalance,
       currency: formCurrency,
       description: formDescription,
+      isBankAccount: formSubType === 'CURRENT_ASSETS' ? formIsBankAccount : false,
     }
 
     if (editingAccount) body.id = editingAccount.id
@@ -848,6 +855,16 @@ export default function ChartOfAccountsPage() {
                     ))}
                   </select>
                 </div>
+              )}
+
+              {formSubType === 'CURRENT_ASSETS' && (
+                <label className="flex items-start gap-2 rounded-xl border p-3 cursor-pointer" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                  <input type="checkbox" checked={formIsBankAccount} onChange={(e) => setFormIsBankAccount(e.target.checked)} className="mt-0.5" />
+                  <span>
+                    <span className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>Is this a bank account?</span>
+                    <span className="block text-xs" style={{ color: 'var(--mid-gray)' }}>If ticked, this account appears in the Fund Transfer &quot;From&quot; / &quot;To&quot; dropdowns.</span>
+                  </span>
+                </label>
               )}
 
               <div>

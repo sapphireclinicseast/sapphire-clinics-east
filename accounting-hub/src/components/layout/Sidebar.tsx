@@ -21,6 +21,7 @@ import {
   PackageSearch,
   TrendingUp,
   Landmark,
+  Repeat,
   X,
 } from 'lucide-react'
 
@@ -78,6 +79,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/accounts-receivable', icon: FileCheck, label: 'Accounts Receivable', roles: AR_ACCESS },
       { href: '/payroll', icon: BadgeDollarSign, label: 'Payroll', roles: FULL_ACCESS },
       { href: '/taxes', icon: Landmark, label: 'Taxes', roles: TAX_ACCESS },
+      { href: '/fund-transfer', icon: Repeat, label: 'Fund Transfer', roles: TAX_ACCESS },
     ],
   },
   {

@@ -65,6 +65,7 @@ export async function GET(req: Request) {
         currency: true,
         description: true,
         isActive: true,
+        isBankAccount: true,
         createdAt: true,
         createdBy: { select: { name: true } },
       },
@@ -86,7 +87,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { accountNumber, accountTitle, accountType, subType, subSubType, normalBalance, currency, description } = await req.json()
+    const { accountNumber, accountTitle, accountType, subType, subSubType, normalBalance, currency, description, isBankAccount } = await req.json()
 
     if (!accountNumber?.trim() || !accountTitle?.trim() || !accountType) {
       return NextResponse.json({ error: 'Account number, title, and type are required' }, { status: 400 })
@@ -118,6 +119,7 @@ export async function POST(req: Request) {
         normalBalance: balance,
         currency: currency?.trim() || 'PHP',
         description: description?.trim() || null,
+        isBankAccount: subType?.trim() === 'CURRENT_ASSETS' ? !!isBankAccount : false,
         createdById: session.user.id,
       },
     })
@@ -146,7 +148,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, accountNumber, accountTitle, accountType, subType, subSubType, normalBalance, currency, description } = await req.json()
+    const { id, accountNumber, accountTitle, accountType, subType, subSubType, normalBalance, currency, description, isBankAccount } = await req.json()
 
     if (!id) {
       return NextResponse.json({ error: 'Account ID is required' }, { status: 400 })
@@ -178,6 +180,12 @@ export async function PUT(req: Request) {
     if (normalBalance) updateData.normalBalance = normalBalance
     if (currency !== undefined) updateData.currency = currency?.trim() || 'PHP'
     if (description !== undefined) updateData.description = description?.trim() || null
+    // Only Current-Asset accounts can be flagged as bank accounts.
+    if (isBankAccount !== undefined || subType !== undefined) {
+      const st = subType !== undefined ? (subType?.trim() || null) : undefined
+      if (st !== undefined) updateData.isBankAccount = st === 'CURRENT_ASSETS' ? !!isBankAccount : false
+      else if (isBankAccount !== undefined) updateData.isBankAccount = !!isBankAccount
+    }
 
     const account = await prisma.account.update({
       where: { id },
