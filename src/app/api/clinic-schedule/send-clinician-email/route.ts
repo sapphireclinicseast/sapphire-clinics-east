@@ -247,7 +247,10 @@ export async function POST(req: NextRequest) {
   const text    = buildClinicianEmailPlainText(emailOpts)
   const subject = `Your Schedule for ${formatDate(date)} – ${cfg.teamName}`
 
-  const gmailAcct = await prisma.gmailAccount.findFirst()
+  // Prefer the branch inbox; fall back to any connected Gmail account
+  const gmailAcct =
+    await prisma.gmailAccount.findUnique({ where: { email: cfg.ccEmail } }) ??
+    await prisma.gmailAccount.findFirst()
   if (!gmailAcct) {
     return NextResponse.json({ error: 'No Gmail account configured for sending' }, { status: 500 })
   }
