@@ -1,0 +1,2 @@
+ALTER TABLE "ReimbursementReport" ADD COLUMN IF NOT EXISTS "module" TEXT NOT NULL DEFAULT 'PETTY_CASH';
+ALTER TABLE "ReimbursementReport" ADD COLUMN IF NOT EXISTS "creditCardId" TEXT;

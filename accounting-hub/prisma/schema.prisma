@@ -1676,6 +1676,8 @@ model ReimbursementReport {
   paymentMethod  String?
   checkNumber    String?
   kind           String?
+  module         String   @default("PETTY_CASH")
+  creditCardId   String?
   debitAccount   String?
   depositAccount String?
   proofUrl       String?

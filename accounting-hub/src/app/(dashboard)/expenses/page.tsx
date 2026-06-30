@@ -26,6 +26,7 @@ const TABS = [
   { key: 'recurring', label: 'Recurring expense', recordType: 'RECURRING' },
   { key: 'onetime', label: 'One-time expense', recordType: 'ONE_TIME' },
   { key: 'cc-report', label: 'Credit Card Report', recordType: '' },
+  { key: 'rfp', label: 'RFP', recordType: '' },
   { key: 'expense-report', label: 'Expense Report', recordType: '' },
   { key: 'suppliers', label: 'Suppliers', recordType: '' },
 ] as const
@@ -58,6 +59,8 @@ interface Entry {
   payrollAccount: string | null
   paymentBankAccount: string | null
   finalized: boolean
+  reimbursementId: string | null
+  reimbursement: { refNumber: string } | null
   recurFrequency: string | null
   recurDeadlineDay: number | null
   distributeMonthly: boolean
@@ -67,6 +70,11 @@ interface Entry {
 
 interface Card { id: string; branch: string; bank: string; cardNumber: string; bankCode: string }
 interface Supplier { id: string | null; registeredName: string; registeredAddress: string; tin: string; branch: string; branchLabel: string; firstAppeared: string | null }
+interface Rfp {
+  id: string; refNumber: string; grossTotal: string | number; status: string; kind: string | null
+  paidAt: string | null; paymentMethod: string | null; checkNumber: string | null; debitAccount: string | null
+  creditCardId: string | null; proofUrl: string | null; createdAt: string; _count: { entries: number }
+}
 
 // ── Computed helpers ───────────────────────────────────────────
 const digitsOnly = (s: string | null) => (s || '').replace(/\D/g, '')
@@ -133,7 +141,11 @@ export default function ExpensesPage() {
   const [showSettings, setShowSettings] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [showPayModal, setShowPayModal] = useState(false)
+  const [rfpMode, setRfpMode] = useState<'VALID' | 'INVALID' | null>(null)
+  const [showRfpModal, setShowRfpModal] = useState(false)
+  const [generatingRfp, setGeneratingRfp] = useState(false)
+  const [rfps, setRfps] = useState<Rfp[]>([])
+  const [payTarget, setPayTarget] = useState<Rfp | null>(null)
   const [paying, setPaying] = useState(false)
   const [search, setSearch] = useState('')
   const [uploadingProof, setUploadingProof] = useState('')
@@ -176,10 +188,17 @@ export default function ExpensesPage() {
     } catch { setSuppliers([]) }
   }, [])
 
+  const loadRfps = useCallback(async (br: string) => {
+    try {
+      const r = await fetch(`/api/expenses/rfp?branch=${br}`)
+      setRfps(r.ok ? await r.json() : [])
+    } catch { setRfps([]) }
+  }, [])
+
   useEffect(() => {
-    setSelected(new Set())
-    loadEntries(branch, recordType); loadSettings(branch); loadCards(branch); loadSuppliers(branch)
-  }, [branch, recordType, loadEntries, loadSettings, loadCards, loadSuppliers])
+    setSelected(new Set()); setRfpMode(null)
+    loadEntries(branch, recordType); loadSettings(branch); loadCards(branch); loadSuppliers(branch); loadRfps(branch)
+  }, [branch, recordType, loadEntries, loadSettings, loadCards, loadSuppliers, loadRfps])
 
   useEffect(() => {
     fetch('/api/chart-of-accounts?pageSize=1000')
@@ -281,29 +300,98 @@ export default function ExpensesPage() {
     try { await fetch(`/api/expenses/credit-cards?id=${id}`, { method: 'DELETE' }) } catch { /* ignore */ }
   }
 
-  const submitPayment = async (p: { datePaid: string; paymentMethod: string; checkNumber: string; paymentBankAccount: string; creditCard: string; creditCardId: string; payrollAccount: string }) => {
+  // ── RFP (replaces the old per-entry "For Payment") ──
+  const rfpValidity = rfpMode === 'VALID' ? 'Valid' : rfpMode === 'INVALID' ? 'Invalid' : null
+  const isSelectable = (e: Entry) => !e.reimbursementId && rfpValidity != null && e.validity === rfpValidity
+  const startRfp = (mode: 'VALID' | 'INVALID') => { setRfpMode(mode); setSelected(new Set()) }
+  const cancelRfp = () => { setRfpMode(null); setSelected(new Set()) }
+
+  const generateRfp = async () => {
+    setGeneratingRfp(true)
+    try {
+      const ids = [...selected]
+      const sel = entries.filter(e => selected.has(e.id))
+      const res = await fetch('/api/expenses/rfp', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch, entryIds: ids, kind: rfpMode || 'VALID' }),
+      })
+      if (!res.ok) { alert((await res.json()).error || 'Failed to generate RFP'); setGeneratingRfp(false); return }
+      const { id, refNumber } = await res.json()
+      try {
+        const pdfData = await buildRfpPdf(refNumber, branch, sel)
+        await fetch('/api/expenses/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, pdfData }) })
+      } catch { /* pdf best-effort */ }
+      setShowRfpModal(false); setRfpMode(null); setSelected(new Set())
+      await loadEntries(branch, recordType); await loadRfps(branch)
+      setTab('rfp')
+    } catch { alert('Failed to generate RFP') }
+    setGeneratingRfp(false)
+  }
+
+  const recordRfpPaid = async (rfp: Rfp, p: { datePaid: string; paymentMethod: string; checkNumber: string; paymentBankAccount: string; creditCard: string; creditCardId: string; payrollAccount: string; proofUrl?: string | null }) => {
     setPaying(true)
     try {
-      const res = await fetch('/api/expenses/pay', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entryIds: [...selected], ...p }),
+      const res = await fetch('/api/expenses/rfp', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: rfp.id, action: 'pay', ...p }),
       })
       if (!res.ok) { alert((await res.json()).error || 'Failed to record payment'); setPaying(false); return }
-      setShowPayModal(false); setSelected(new Set())
-      await loadEntries(branch, recordType)
+      setPayTarget(null)
+      await loadRfps(branch); await loadEntries(branch, recordType)
     } catch { alert('Failed to record payment') }
     setPaying(false)
   }
 
-  const unpay = async (id: string) => {
-    if (!confirm('Unlock this entry? Its payment details will be cleared.')) return
+  const unpayRfp = async (rfp: Rfp) => {
+    if (!confirm(`Unmark ${rfp.refNumber} as paid? Payment details on its entries are cleared.`)) return
     try {
-      await fetch('/api/expenses/pay', {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entryIds: [id] }),
-      })
-      await loadEntries(branch, recordType)
+      await fetch('/api/expenses/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: rfp.id, action: 'unpay' }) })
+      await loadRfps(branch); await loadEntries(branch, recordType)
     } catch { /* ignore */ }
+  }
+
+  const deleteRfp = async (rfp: Rfp) => {
+    if (!confirm(`Delete RFP ${rfp.refNumber}? Its ${rfp._count.entries} entr${rfp._count.entries === 1 ? 'y' : 'ies'} will be released back for a new RFP.`)) return
+    setRfps(prev => prev.filter(r => r.id !== rfp.id))
+    try { await fetch(`/api/expenses/rfp?id=${rfp.id}`, { method: 'DELETE' }); await loadEntries(branch, recordType) } catch { /* ignore */ }
+  }
+
+  const downloadRfpPdf = async (rfp: Rfp) => {
+    try {
+      const r = await fetch(`/api/expenses/rfp?id=${rfp.id}`)
+      if (!r.ok) return
+      const { pdfData } = await r.json()
+      if (!pdfData) { alert('No PDF stored for this RFP.'); return }
+      const a = document.createElement('a'); a.href = pdfData; a.download = `${rfp.refNumber}.pdf`
+      document.body.appendChild(a); a.click(); a.remove()
+    } catch { /* ignore */ }
+  }
+
+  const buildRfpPdf = async (refNumber: string, br: string, rows: Entry[]): Promise<string> => {
+    const { jsPDF } = await import('jspdf')
+    const autoTable = (await import('jspdf-autotable')).default
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+    const branchLabel = BRANCHES.find(b => b.value === br)?.label || br
+    doc.setFont('helvetica', 'bold').setFontSize(13).text('Request for Payment (RFP)', 14, 15)
+    doc.setFont('helvetica', 'normal').setFontSize(8.5)
+    doc.text(`Branch: ${branchLabel}`, 14, 20)
+    doc.text(`Ref No: ${refNumber}`, 14, 24)
+    doc.text(`Date: ${new Date().toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}`, 14, 28)
+    const tG = rows.reduce((s, e) => s + num(e.grossAmount), 0)
+    const tN = rows.reduce((s, e) => s + netOfVat(e), 0)
+    const tV = rows.reduce((s, e) => s + vatAmount(e), 0)
+    autoTable(doc, {
+      startY: 33,
+      head: [['PCV Number', 'Payee', 'Date', 'Account Title', 'Description', 'Vatable', 'Gross Amount', 'Net of VAT', 'VAT Amount']],
+      body: rows.map(e => [e.pcvNumber, e.requestor || '', e.date ? String(e.date).slice(0, 10) : '', e.accountTitle || '', e.description || '', e.vatable || '', peso(num(e.grossAmount)), peso(netOfVat(e)), peso(vatAmount(e))]),
+      foot: [['', '', '', '', '', 'TOTAL', peso(tG), peso(tN), peso(tV)]],
+      styles: { fontSize: 7, cellPadding: 1.5 }, headStyles: { fillColor: [36, 73, 82], textColor: 255 },
+      footStyles: { fillColor: [237, 243, 217], textColor: [30, 30, 30], fontStyle: 'bold' },
+      columnStyles: { 6: { halign: 'right' }, 7: { halign: 'right' }, 8: { halign: 'right' } },
+      margin: { left: 10, right: 10 },
+    })
+    doc.save(`${refNumber}.pdf`)
+    return doc.output('datauristring')
   }
 
   const supplierByName = new Map(suppliers.map(s => [s.registeredName.trim().toLowerCase(), s]))
@@ -328,7 +416,7 @@ export default function ExpensesPage() {
 
   const cellCls = 'w-full bg-transparent px-2 py-1.5 text-xs outline-none focus:bg-[var(--pale-teal)] rounded'
   const tdCls = 'border-r border-b align-top'
-  const locked = (e: Entry) => !!e.paidAt || !!e.finalized || !canWrite
+  const locked = (e: Entry) => !!e.reimbursementId || !!e.paidAt || !!e.finalized || !canWrite
   const vatEditable = (e: Entry) => e.vatable === 'VAT' || e.vatable === 'Non-VAT' || e.vatable === 'NV'
 
   const q = search.trim().toLowerCase()
@@ -338,7 +426,7 @@ export default function ExpensesPage() {
     : entries
   const totalGross = shown.reduce((s, e) => s + num(e.grossAmount), 0)
 
-  const selectableIds = shown.filter(e => !e.paidAt).map(e => e.id)
+  const selectableIds = shown.filter(isSelectable).map(e => e.id)
   const allSelected = selectableIds.length > 0 && selectableIds.every(id => selected.has(id))
   const toggleAll = () => setSelected(allSelected ? new Set() : new Set(selectableIds))
   const toggleOne = (id: string) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -384,11 +472,29 @@ export default function ExpensesPage() {
           ))}
         </div>
         {isRecording && canWrite && (
-          <button onClick={() => setShowPayModal(true)} disabled={selected.size === 0}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40"
-            style={{ background: 'var(--teal)' }}>
-            <CreditCard size={15} /> For Payment{selected.size > 0 ? ` (${selected.size})` : ''}
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {rfpMode === null ? (
+              <>
+                <button onClick={() => startRfp('VALID')}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>
+                  <CreditCard size={15} /> RFP (Valid)
+                </button>
+                <button onClick={() => startRfp('INVALID')}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                  <CreditCard size={15} /> RFP (Invalid)
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Select {rfpMode === 'VALID' ? 'valid' : 'invalid'} entries…</span>
+                <button onClick={() => setShowRfpModal(true)} disabled={selected.size === 0}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40" style={{ background: 'var(--teal)' }}>
+                  <CreditCard size={15} /> Generate RFP ({rfpMode === 'VALID' ? 'Valid' : 'Invalid'}){selected.size > 0 ? ` · ${selected.size}` : ''}
+                </button>
+                <button onClick={cancelRfp} className="px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+              </>
+            )}
+          </div>
         )}
       </div>
 
@@ -445,13 +551,13 @@ export default function ExpensesPage() {
                     const lk = locked(e)
                     const ve = vatEditable(e)
                     return (
-                      <tr key={e.id} style={{ background: e.paidAt ? '#c3ccd6' : (e.finalized ? '#eaf7ee' : '#fff') }}>
+                      <tr key={e.id} style={{ background: (e.reimbursementId || e.paidAt) ? '#c3ccd6' : (e.finalized ? '#eaf7ee' : '#fff') }}>
                         <td className="border-r border-b text-center" style={{ borderColor: 'var(--light-gray)' }}>
-                          <input type="checkbox" checked={selected.has(e.id)} disabled={!canWrite || !!e.paidAt}
+                          <input type="checkbox" checked={selected.has(e.id)} disabled={!isSelectable(e)}
                             onChange={() => toggleOne(e.id)} title={e.paidAt ? 'Locked (paid)' : ''} />
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--charcoal)' }}>{e.pcvNumber}</span>
+                          <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--charcoal)' }}>{e.reimbursement?.refNumber || e.pcvNumber}</span>
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
                           <SupplierCombo value={e.requestor || ''} disabled={lk} placeholder="Payee" suppliers={suppliers}
@@ -617,10 +723,11 @@ export default function ExpensesPage() {
                               {e.creditCard && <div style={{ color: 'var(--mid-gray)' }}>{e.creditCard}</div>}
                               {e.payrollAccount && <div style={{ color: 'var(--mid-gray)' }}>Acct {e.payrollAccount}</div>}
                               {e.paymentBankAccount && <div style={{ color: 'var(--mid-gray)' }}>{e.paymentBankAccount}</div>}
-                              {canWrite && <button onClick={() => unpay(e.id)} className="mt-0.5 underline" style={{ color: '#dc2626' }}>Unlock</button>}
                             </div>
+                          ) : e.reimbursementId ? (
+                            <span className="px-2 py-1.5 block text-[11px]" style={{ color: '#92400e', minWidth: 160 }}>In RFP — for payment</span>
                           ) : (
-                            <span className="px-2 py-1.5 block text-[11px]" style={{ color: 'var(--mid-gray)', minWidth: 160 }}>Unpaid</span>
+                            <span className="px-2 py-1.5 block text-[11px]" style={{ color: 'var(--mid-gray)', minWidth: 160 }}>Not yet in RFP</span>
                           )}
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
@@ -693,6 +800,82 @@ export default function ExpensesPage() {
         <CcReportTab branch={branch} cards={cards} canWrite={canWrite} />
       )}
 
+      {tab === 'rfp' && (
+        <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ background: 'var(--off-white)' }}>
+                {['Reference Number', 'Date', 'Kind', 'Entries', 'Gross Total', 'Status', ''].map((h, i) => (
+                  <th key={i} className="px-4 py-2.5 text-left text-xs font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rfps.map(r => (
+                <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                  <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{r.refNumber}</td>
+                  <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{new Date(r.createdAt).toLocaleDateString('en-PH')}</td>
+                  <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.kind === 'INVALID' ? 'Invalid' : 'Valid'}</td>
+                  <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{r._count.entries}</td>
+                  <td className="px-4 py-2.5 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>₱{peso(num(r.grossTotal))}</td>
+                  <td className="px-4 py-2.5">
+                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                      style={r.status === 'PAID' ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>
+                      {r.status === 'PAID' ? 'Paid' : 'For Payment'}
+                    </span>
+                    {r.status === 'PAID' && r.paidAt && (
+                      <div className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                        {new Date(r.paidAt).toLocaleDateString('en-PH')}{r.paymentMethod ? ` · ${r.paymentMethod}` : ''}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                    <button onClick={() => downloadRfpPdf(r)} title="Download PDF"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                      <Download size={13} /> PDF
+                    </button>
+                    {r.proofUrl && (
+                      <a href={r.proofUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                        <Eye size={13} /> Proof
+                      </a>
+                    )}
+                    {canWrite && r.status !== 'PAID' && (
+                      <button onClick={() => setPayTarget(r)} title="Record as Paid"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-white mr-1" style={{ background: 'var(--teal)' }}>
+                        <CreditCard size={13} /> Record as Paid
+                      </button>
+                    )}
+                    {canWrite && r.status === 'PAID' && (
+                      <button onClick={() => setPayTarget(r)} title="Edit payment"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                        <Pencil size={13} /> Edit
+                      </button>
+                    )}
+                    {canWrite && r.status === 'PAID' && (
+                      <button onClick={() => unpayRfp(r)} title="Unmark paid"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                        Unpay
+                      </button>
+                    )}
+                    {canWrite && (
+                      <button onClick={() => deleteRfp(r)} title="Delete (releases entries)"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border" style={{ borderColor: '#fecaca', color: '#dc2626' }}>
+                        <Trash2 size={13} /> Delete
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {rfps.length === 0 && (
+                <tr><td colSpan={7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>
+                  No RFPs yet. In Recurring/One-time expense, click &quot;RFP (Valid)&quot; or &quot;RFP (Invalid)&quot;, select entries, then Generate RFP.
+                </td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {tab === 'expense-report' && (
         <ExpenseReportTab branch={branch} canWrite={canWrite} />
       )}
@@ -716,9 +899,32 @@ export default function ExpensesPage() {
           }} />
       )}
 
-      {showPayModal && (
-        <ForPaymentModal count={selected.size} bankOptions={bankOptions} cards={cards} paying={paying}
-          onClose={() => setShowPayModal(false)} onAddCard={addCard} onSubmit={submitPayment} />
+      {showRfpModal && (() => {
+        const sel = entries.filter(e => selected.has(e.id))
+        const tG = sel.reduce((s, e) => s + num(e.grossAmount), 0)
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowRfpModal(false)}>
+            <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={ev => ev.stopPropagation()}>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Generate RFP ({rfpMode === 'VALID' ? 'Valid' : 'Invalid'})</h2>
+                <button onClick={() => setShowRfpModal(false)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+              </div>
+              <p className="text-sm mb-4" style={{ color: 'var(--mid-gray)' }}>
+                {sel.length} {rfpMode === 'VALID' ? 'valid' : 'invalid'} entr{sel.length === 1 ? 'y' : 'ies'} will be grouped into one RFP and locked. Total <strong style={{ color: 'var(--charcoal)' }}>₱{peso(tG)}</strong>. Record the payment afterwards in the RFP tab.
+              </p>
+              <button onClick={generateRfp} disabled={generatingRfp || sel.length === 0}
+                className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>
+                {generatingRfp ? <Loader2 size={15} className="animate-spin" /> : <CreditCard size={15} />} {generatingRfp ? 'Generating…' : 'Generate RFP'}
+              </button>
+            </div>
+          </div>
+        )
+      })()}
+
+      {payTarget && (
+        <ForPaymentModal count={payTarget._count.entries} bankOptions={bankOptions} cards={cards} paying={paying}
+          title={`Record RFP as Paid — ${payTarget.refNumber}`} confirmLabel="Confirm Payment"
+          onClose={() => setPayTarget(null)} onAddCard={addCard} onSubmit={p => recordRfpPaid(payTarget, p)} />
       )}
 
       {newSupplierPrompt && (
@@ -743,8 +949,8 @@ export default function ExpensesPage() {
 }
 
 // ── For Payment modal ──────────────────────────────────────────
-function ForPaymentModal({ count, bankOptions, cards, paying, onClose, onAddCard, onSubmit }: {
-  count: number; bankOptions: string[]; cards: Card[]; paying: boolean
+function ForPaymentModal({ count, bankOptions, cards, paying, title, confirmLabel, onClose, onAddCard, onSubmit }: {
+  count: number; bankOptions: string[]; cards: Card[]; paying: boolean; title?: string; confirmLabel?: string
   onClose: () => void; onAddCard: (bank: string, cardNumber: string, bankCode: string) => Promise<Card | null>
   onSubmit: (p: { datePaid: string; paymentMethod: string; checkNumber: string; paymentBankAccount: string; creditCard: string; creditCardId: string; payrollAccount: string }) => void
 }) {
@@ -781,11 +987,11 @@ function ForPaymentModal({ count, bankOptions, cards, paying, onClose, onAddCard
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl p-6 w-full max-w-md max-h-[88vh] overflow-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>For Payment</h2>
+          <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{title || 'For Payment'}</h2>
           <button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
         </div>
         <p className="text-sm mb-4" style={{ color: 'var(--mid-gray)' }}>
-          {count} selected entr{count === 1 ? 'y' : 'ies'} will be marked paid and locked.
+          {count} entr{count === 1 ? 'y' : 'ies'} in this RFP. Enter the payment details below.
         </p>
 
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Date of Payment</label>
@@ -850,7 +1056,7 @@ function ForPaymentModal({ count, bankOptions, cards, paying, onClose, onAddCard
           className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2"
           style={{ background: 'var(--teal)' }}>
           {paying ? <Loader2 size={15} className="animate-spin" /> : <CreditCard size={15} />}
-          {paying ? 'Recording…' : 'Confirm Payment'}
+          {paying ? 'Recording…' : (confirmLabel || 'Confirm Payment')}
         </button>
       </div>
     </div>

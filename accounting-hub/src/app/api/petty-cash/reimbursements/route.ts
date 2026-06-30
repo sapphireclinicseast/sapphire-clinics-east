@@ -25,7 +25,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
   }
   const reports = await prisma.reimbursementReport.findMany({
-    where: { branch },
+    where: { branch, module: { not: 'EXPENSE' } },
     select: {
       id: true, refNumber: true, grossTotal: true, status: true, kind: true, paidAt: true, paymentMethod: true, checkNumber: true,
       debitAccount: true, depositAccount: true, proofUrl: true, createdAt: true,

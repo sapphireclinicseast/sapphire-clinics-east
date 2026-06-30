@@ -36,6 +36,7 @@ export async function GET(req: Request) {
   const entries = await prisma.pettyCashEntry.findMany({
     where: { branch, recordType },
     orderBy: [{ pcvSeq: 'asc' }, { pcvSub: 'asc' }],
+    include: { reimbursement: { select: { refNumber: true } } },
   })
   return NextResponse.json(entries)
 }
