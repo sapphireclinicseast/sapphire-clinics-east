@@ -21,56 +21,56 @@ function buildEmailHtml(firstName: string, periodLabel: string, branch: string) 
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Your Payslip — ${periodLabel}</title>
 </head>
-<body style="margin:0;padding:0;background:#fff8f3;font-family:'Helvetica Neue',Arial,sans-serif;">
+<body style="margin:0;padding:0;background:#edf3d9;font-family:'Helvetica Neue',Arial,sans-serif;">
   <div style="max-width:600px;margin:0 auto;background:#fff;">
 
     <!-- Header -->
-    <div style="background:linear-gradient(135deg,#c44b00,#e8650a,#f4832a);padding:40px 40px 30px;text-align:center;">
+    <div style="background:linear-gradient(135deg,#244952,#4a8073);padding:40px 40px 30px;text-align:center;">
       <p style="color:rgba(255,255,255,0.85);font-size:13px;margin:0;letter-spacing:2px;text-transform:uppercase;">
-        ${branch || 'Sapphire Clinics East Inc.'}
+        ${branch || 'Aura Health Rehab'}
       </p>
     </div>
 
     <!-- Content -->
     <div style="padding:40px;">
-      <h1 style="color:#c44b00;font-size:22px;margin:0 0 18px;font-weight:700;">
+      <h1 style="color:#244952;font-size:22px;margin:0 0 18px;font-weight:700;">
         Dear ${firstName},
       </h1>
 
-      <p style="color:#3d2200;line-height:1.8;font-size:15px;margin:0 0 18px;">
+      <p style="color:#333333;line-height:1.8;font-size:15px;margin:0 0 18px;">
         As another cutoff draws to a close, we want to take a moment to
-        <strong style="color:#c44b00;">genuinely thank you</strong> for the incredible work you bring
-        to Sapphire Clinics East Inc. every single day.
+        <strong style="color:#244952;">genuinely thank you</strong> for the incredible work you bring
+        to Aura Health Rehab every single day.
       </p>
 
-      <p style="color:#3d2200;line-height:1.8;font-size:15px;margin:0 0 18px;">
-        Your dedication to Sapphire Clinics East Inc. — the hard work, the attention to detail, and the
+      <p style="color:#333333;line-height:1.8;font-size:15px;margin:0 0 18px;">
+        Your dedication to Aura Health Rehab — the hard work, the attention to detail, and the
         commitment you bring every day — does not go unnoticed. The success of our clinic is a direct
         reflection of the effort and care you pour into your work. We are proud and grateful to
         have you on our team.
       </p>
 
-      <p style="color:#3d2200;line-height:1.8;font-size:15px;margin:0 0 18px;">
+      <p style="color:#333333;line-height:1.8;font-size:15px;margin:0 0 18px;">
         Your detailed payslip is <strong>attached to this email as a PDF</strong>.
         It contains a full breakdown of your earnings, any adjustments, and your final take-home pay
         for this cutoff. Please keep it for your records.
       </p>
 
-      <p style="color:#3d2200;line-height:1.8;font-size:15px;margin:0 0 18px;">
+      <p style="color:#333333;line-height:1.8;font-size:15px;margin:0 0 18px;">
         If you have any questions or concerns about your payslip, please don't hesitate to reach out
         to the clinic administration. We are always here to help.
       </p>
 
       <!-- Staff Payroll Revision Request -->
-      <div style="background:#fff8f3;border:1px solid #ffdec8;border-radius:12px;padding:24px;margin:0 0 24px;text-align:center;">
-        <p style="color:#c44b00;font-weight:700;font-size:14px;margin:0 0 8px;">
+      <div style="background:#edf3d9;border:1px solid #cf9d88;border-radius:12px;padding:24px;margin:0 0 24px;text-align:center;">
+        <p style="color:#244952;font-weight:700;font-size:14px;margin:0 0 8px;">
           Staff Payroll Revision Request
         </p>
-        <p style="color:#3d2200;font-size:13px;line-height:1.6;margin:0 0 16px;">
+        <p style="color:#333333;font-size:13px;line-height:1.6;margin:0 0 16px;">
           Need to request a revision to your payslip? Use the link or scan the QR code below.
         </p>
         <a href="https://hr.sapphireclinicseast.org/forms/fill/byKlxWS6"
-           style="display:inline-block;background:#c44b00;color:#fff;font-size:13px;font-weight:600;padding:10px 24px;border-radius:8px;text-decoration:none;margin:0 0 16px;">
+           style="display:inline-block;background:#244952;color:#fff;font-size:13px;font-weight:600;padding:10px 24px;border-radius:8px;text-decoration:none;margin:0 0 16px;">
           Open Revision Request Form
         </a>
         <div style="margin:0 auto;">
@@ -79,19 +79,19 @@ function buildEmailHtml(firstName: string, periodLabel: string, branch: string) 
         </div>
       </div>
 
-      <p style="color:#3d2200;line-height:1.8;font-size:15px;margin:0 0 4px;">
+      <p style="color:#333333;line-height:1.8;font-size:15px;margin:0 0 4px;">
         With gratitude and appreciation,
       </p>
-      <p style="color:#c44b00;font-weight:700;font-size:16px;margin:0 0 4px;">
-        The Sapphire Clinics East Inc. Administration Team
+      <p style="color:#244952;font-weight:700;font-size:16px;margin:0 0 4px;">
+        The Aura Health Rehab Administration Team
       </p>
       <p style="color:#888;font-size:13px;margin:0;">
-        ${branch || 'Sapphire Clinics East Inc.'}
+        ${branch || 'Aura Health Rehab'}
       </p>
     </div>
 
     <!-- Divider -->
-    <div style="height:1px;background:#ffdec8;margin:0 40px;"></div>
+    <div style="height:1px;background:#cf9d88;margin:0 40px;"></div>
 
     <!-- Footer -->
     <div style="padding:24px 40px;text-align:center;">
@@ -140,9 +140,9 @@ export async function POST(req: Request) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'Sapphire Clinics East Inc. Payroll <noreply@do-not-reply.sapphireclinicseast.org>',
+        from: 'Aura Health Rehab Payroll <noreply@do-not-reply.sapphireclinicseast.org>',
         to: [email],
-        subject: `Your Payslip — ${periodLabel} | Sapphire Clinics East Inc.`,
+        subject: `Your Payslip — ${periodLabel} | Aura Health Rehab`,
         html: buildEmailHtml(displayName, periodLabel, branch || ''),
         attachments: [
           {

@@ -1577,7 +1577,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
         body: JSON.stringify({
           consultantName: `${p.employee.lastName}, ${p.employee.firstName}`,
           firstName: p.employee.firstName,
-          branch: BRANCH_INFO[p.branch]?.name || branchLabel,
+          branch: (BRANCH_INFO[p.branch]?.name || branchLabel).replace('Sapphire Clinics East Inc.', 'Aura Health Rehab'),
           cutoffPeriod: p.cutoffPeriod,
           netPay: formatCurrency(toNum(p.netPay)),
           email,

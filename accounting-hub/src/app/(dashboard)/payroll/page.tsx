@@ -2342,7 +2342,7 @@ export default function PayrollPage() {
         body: JSON.stringify({
           consultantName: p.consultantName,
           firstName,
-          branch: BRANCH_INFO[p.branch]?.name || p.branch,
+          branch: (BRANCH_INFO[p.branch]?.name || p.branch).replace('Sapphire Clinics East Inc.', 'Aura Health Rehab'),
           cutoffPeriod,
           netPay: formatCurrency(totals.net),
           email,
