@@ -7,7 +7,7 @@ const BRANCH_CONFIG: Record<string, { httpSmsKey: string; phone: string }> = {
   SBGH: { httpSmsKey: process.env.HTTPSMS_API_KEY_SBGH ?? '', phone: '+639177701686' },
 }
 
-const BRANCH_SHORT: Record<string, string> = { SBEA: 'East', SBGH: 'GH' }
+const BRANCH_SHORT: Record<string, string> = { SBEA: 'Rehab East', SBGH: 'Rehab Greenhills' }
 
 function formatTime(t: string): string {
   const [h, m] = t.split(':').map(Number)
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
   })
 
   const allLines = [
-    `Hi ${staff.firstName}! Your schedule for ${shortDate} at Sandbox ${branch}:`,
+    `Hi ${staff.firstName}! Your schedule for ${shortDate} at Aura Health ${branch}:`,
     ...patientLines,
     `${schedules.length} patient${schedules.length !== 1 ? 's' : ''} total.`,
   ]
