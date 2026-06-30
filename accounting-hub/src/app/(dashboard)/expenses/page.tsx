@@ -182,7 +182,7 @@ export default function ExpensesPage() {
   }, [branch, recordType, loadEntries, loadSettings, loadCards, loadSuppliers])
 
   useEffect(() => {
-    fetch('/api/chart-of-accounts')
+    fetch('/api/chart-of-accounts?pageSize=1000')
       .then(r => r.ok ? r.json() : [])
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .then((d: any) => {
@@ -191,7 +191,7 @@ export default function ExpensesPage() {
         setCoaOptions(list.map((a: any) => `${a.accountNumber} ${a.accountTitle}`))
       })
       .catch(() => setCoaOptions([]))
-    fetch('/api/chart-of-accounts?accountType=ASSET')
+    fetch('/api/chart-of-accounts?accountType=ASSET&pageSize=1000')
       .then(r => r.ok ? r.json() : [])
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .then((d: any) => {

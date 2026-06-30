@@ -169,7 +169,7 @@ export default function PettyCashPage() {
   }, [branch, loadEntries, loadSettings, loadReimbursements])
 
   useEffect(() => {
-    fetch('/api/chart-of-accounts')
+    fetch('/api/chart-of-accounts?pageSize=1000')
       .then(r => r.ok ? r.json() : [])
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .then((d: any) => {
@@ -181,7 +181,7 @@ export default function PettyCashPage() {
   }, [])
 
   useEffect(() => {
-    fetch('/api/chart-of-accounts?accountType=ASSET')
+    fetch('/api/chart-of-accounts?accountType=ASSET&pageSize=1000')
       .then(r => r.ok ? r.json() : [])
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .then((d: any) => {
