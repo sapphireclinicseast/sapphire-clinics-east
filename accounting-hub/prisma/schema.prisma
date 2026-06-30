@@ -1675,6 +1675,7 @@ model ReimbursementReport {
   paidAt         DateTime?
   paymentMethod  String?
   checkNumber    String?
+  transferRef    String?
   kind           String?
   module         String   @default("PETTY_CASH")
   creditCardId   String?

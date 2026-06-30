@@ -56,6 +56,7 @@ interface Reimb {
   paidAt: string | null
   paymentMethod: string | null
   checkNumber: string | null
+  transferRef: string | null
   debitAccount: string | null
   depositAccount: string | null
   proofUrl: string | null
@@ -419,7 +420,7 @@ export default function PettyCashPage() {
     } catch { /* ignore */ }
   }
 
-  const recordPaid = async (rep: Reimb, debitAccount: string, depositAccount: string, file: File | null, datePaid: string, paymentMethod: string, checkNumber: string) => {
+  const recordPaid = async (rep: Reimb, debitAccount: string, depositAccount: string, file: File | null, datePaid: string, paymentMethod: string, checkNumber: string, transferRef: string) => {
     let proofUrl: string | null = rep.proofUrl ?? null
     if (file) {
       const fd = new FormData(); fd.append('file', file)
@@ -429,7 +430,7 @@ export default function PettyCashPage() {
     }
     const res = await fetch('/api/petty-cash/reimbursements', {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: rep.id, action: 'pay', debitAccount, depositAccount, proofUrl, datePaid, paymentMethod, checkNumber }),
+      body: JSON.stringify({ id: rep.id, action: 'pay', debitAccount, depositAccount, proofUrl, datePaid, paymentMethod, checkNumber, transferRef }),
     })
     if (!res.ok) { alert((await res.json()).error || 'Failed to record payment'); throw new Error('pay') }
     await loadReimbursements(branch)
@@ -1067,7 +1068,7 @@ function ReimbModal({ entries, generating, onClose, onGenerate }: {
 
 function RecordPaidModal({ report, bankOptions, onClose, onPay }: {
   report: Reimb; bankOptions: string[]
-  onClose: () => void; onPay: (rep: Reimb, debit: string, deposit: string, file: File | null, datePaid: string, paymentMethod: string, checkNumber: string) => Promise<void>
+  onClose: () => void; onPay: (rep: Reimb, debit: string, deposit: string, file: File | null, datePaid: string, paymentMethod: string, checkNumber: string, transferRef: string) => Promise<void>
 }) {
   const isEdit = report.status === 'PAID'
   const [debit, setDebit] = useState(report.debitAccount || '')
@@ -1075,16 +1076,19 @@ function RecordPaidModal({ report, bankOptions, onClose, onPay }: {
   const [datePaid, setDatePaid] = useState(report.paidAt ? String(report.paidAt).slice(0, 10) : new Date().toISOString().slice(0, 10))
   const [paymentMethod, setPaymentMethod] = useState(report.paymentMethod || '')
   const [checkNumber, setCheckNumber] = useState(report.checkNumber || '')
+  const [transferRef, setTransferRef] = useState(report.transferRef || '')
   const [file, setFile] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
   const isCheck = paymentMethod === 'Check deposit' || paymentMethod === 'Check encashment to deposit as cash'
+  const isTransfer = paymentMethod === 'Online Fund Transfer'
   const submit = async () => {
     if (!datePaid) { alert('Enter the Date Paid.'); return }
     if (!paymentMethod) { alert('Select a Payment Method.'); return }
     if (isCheck && !checkNumber.trim()) { alert('Enter the Check Number.'); return }
+    if (isTransfer && !transferRef.trim()) { alert('Enter the transfer Reference Number.'); return }
     if (!debit || !deposit) { alert('Select both the debit (from) and deposit (to) accounts.'); return }
     setSaving(true)
-    try { await onPay(report, debit, deposit, file, datePaid, paymentMethod, isCheck ? checkNumber.trim() : ''); onClose() } catch { /* handled in onPay */ }
+    try { await onPay(report, debit, deposit, file, datePaid, paymentMethod, isCheck ? checkNumber.trim() : '', isTransfer ? transferRef.trim() : ''); onClose() } catch { /* handled in onPay */ }
     setSaving(false)
   }
   return (
@@ -1112,6 +1116,14 @@ function RecordPaidModal({ report, bankOptions, onClose, onPay }: {
             <input type="text" inputMode="numeric" value={checkNumber} onChange={e => setCheckNumber(e.target.value)}
               placeholder="e.g. 0001234" className="w-full px-3 py-2 rounded-xl border text-sm mb-1 font-mono" style={{ borderColor: 'var(--light-gray)' }} />
             <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>Leading zeros are preserved. The check&apos;s bank is the &quot;Debited from&quot; account below.</p>
+          </>
+        )}
+
+        {isTransfer && (
+          <>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Reference Number</label>
+            <input type="text" value={transferRef} onChange={e => setTransferRef(e.target.value)}
+              placeholder="Transfer reference no." className="w-full px-3 py-2 rounded-xl border text-sm mb-3 font-mono" style={{ borderColor: 'var(--light-gray)' }} />
           </>
         )}
 

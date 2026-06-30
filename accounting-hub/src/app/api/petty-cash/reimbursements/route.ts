@@ -27,7 +27,7 @@ export async function GET(req: Request) {
   const reports = await prisma.reimbursementReport.findMany({
     where: { branch, module: { not: 'EXPENSE' } },
     select: {
-      id: true, refNumber: true, grossTotal: true, status: true, kind: true, paidAt: true, paymentMethod: true, checkNumber: true,
+      id: true, refNumber: true, grossTotal: true, status: true, kind: true, paidAt: true, paymentMethod: true, checkNumber: true, transferRef: true,
       debitAccount: true, depositAccount: true, proofUrl: true, createdAt: true,
       _count: { select: { entries: true } },
     },
@@ -105,6 +105,7 @@ export async function PATCH(req: Request) {
           paidAt: body.datePaid ? new Date(body.datePaid) : new Date(),
           paymentMethod: body.paymentMethod || null,
           checkNumber: body.checkNumber || null,
+          transferRef: body.transferRef || null,
           debitAccount: body.debitAccount || null,
           depositAccount: body.depositAccount || null,
           proofUrl: body.proofUrl || null,
@@ -117,7 +118,7 @@ export async function PATCH(req: Request) {
     if (action === 'unpay') {
       await prisma.reimbursementReport.update({
         where: { id },
-        data: { status: 'PENDING', paidAt: null, paymentMethod: null, checkNumber: null, debitAccount: null, depositAccount: null, proofUrl: null },
+        data: { status: 'PENDING', paidAt: null, paymentMethod: null, checkNumber: null, transferRef: null, debitAccount: null, depositAccount: null, proofUrl: null },
       })
       await prisma.pettyCashEntry.updateMany({ where: { reimbursementId: id }, data: { pcfStatus: 'For Replenishment' } })
       return NextResponse.json({ success: true })

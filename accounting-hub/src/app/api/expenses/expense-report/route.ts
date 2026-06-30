@@ -36,7 +36,7 @@ export async function GET(req: Request) {
     where: { branch, recordType: 'PETTY_CASH', reimbursementId: { not: null }, ...dateWhere },
     select: {
       id: true, date: true, pcvNumber: true, accountTitle: true, description: true, vatable: true, grossAmount: true,
-      validity: true, filingStatus: true, reimbursement: { select: { paymentMethod: true, checkNumber: true, debitAccount: true, refNumber: true } },
+      validity: true, filingStatus: true, reimbursement: { select: { paymentMethod: true, checkNumber: true, transferRef: true, debitAccount: true, refNumber: true } },
     },
     orderBy: { date: 'asc' },
   })
@@ -59,13 +59,15 @@ export async function GET(req: Request) {
       const pm = e.reimbursement?.paymentMethod || ''
       const isCheck = pm === 'Check deposit' || pm === 'Check encashment to deposit as cash'
       const chk = e.reimbursement?.checkNumber || ''
+      const tref = e.reimbursement?.transferRef || ''
+      const debit = e.reimbursement?.debitAccount || ''
       return {
         id: e.id, source: 'PETTY_CASH', payee: `${BRANCH_CODE[branch]} Petty Cash`,
         paymentAccount: e.reimbursement?.debitAccount || '',
         paymentDate: e.date ? new Date(e.date).toISOString().slice(0, 10) : '',
         paymentMethod: pm, pcvNumber: e.pcvNumber, accountTitle: e.accountTitle || '',
         description: e.description || '', netOfVat: netOf(e.vatable, gross),
-        checkInfo: isCheck && chk ? `${e.reimbursement?.debitAccount || ''} ${chk}`.trim() : '',
+        checkInfo: isCheck && chk ? `${debit} ${chk}`.trim() : (pm === 'Online Fund Transfer' && tref ? `${debit} · Ref ${tref}`.trim() : ''),
         validity: e.validity || '', filingStatus: e.filingStatus || 'FOR_FILING',
       }
     }),
