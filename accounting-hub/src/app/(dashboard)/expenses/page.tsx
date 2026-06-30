@@ -200,7 +200,7 @@ export default function ExpensesPage() {
   const [genFromRecurring, setGenFromRecurring] = useState('')
   const [payTarget, setPayTarget] = useState<Rfp | null>(null)
   const [payrollPayTarget, setPayrollPayTarget] = useState<Rfp | null>(null)
-  const [bvTarget, setBvTarget] = useState<{ refNumber: string; date: string; lines: BVLine[] } | null>(null)
+  const [bvTarget, setBvTarget] = useState<{ refNumber: string; date: string; lines: BVLine[]; branch: string } | null>(null)
   const [paying, setPaying] = useState(false)
   const [search, setSearch] = useState('')
   const [uploadingProof, setUploadingProof] = useState('')
@@ -429,7 +429,7 @@ export default function ExpensesPage() {
     try {
       const res = await fetch(`/api/expenses/rfp?id=${rfp.id}&items=1`)
       const d = res.ok ? await res.json() : { lines: [] }
-      setBvTarget({ refNumber: rfp.refNumber, date: new Date(rfp.createdAt).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' }), lines: d.lines || [] })
+      setBvTarget({ refNumber: rfp.refNumber, date: new Date(rfp.createdAt).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' }), lines: d.lines || [], branch })
     } catch { alert('Could not load RFP line items.') }
   }
 
@@ -1256,7 +1256,7 @@ export default function ExpensesPage() {
           onDone={async () => { setPayrollPayTarget(null); await loadRfps(branch) }} />
       )}
 
-      {bvTarget && <BillingVoucherModal refNumber={bvTarget.refNumber} date={bvTarget.date} lines={bvTarget.lines} onClose={() => setBvTarget(null)} />}
+      {bvTarget && <BillingVoucherModal refNumber={bvTarget.refNumber} date={bvTarget.date} lines={bvTarget.lines} branch={bvTarget.branch} onClose={() => setBvTarget(null)} />}
 
       {newSupplierPrompt && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setNewSupplierPrompt(null)}>

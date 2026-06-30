@@ -40,7 +40,7 @@ export default function WithholdingCompensation() {
   const [manualSeq, setManualSeq] = useState('')
   const [busy, setBusy] = useState(false)
   const [payTarget, setPayTarget] = useState<TaxRfp | null>(null)
-  const [bv, setBv] = useState<{ refNumber: string; date: string; lines: BVLine[] } | null>(null)
+  const [bv, setBv] = useState<{ refNumber: string; date: string; lines: BVLine[]; branch: string } | null>(null)
 
   // RFP list sort/filter
   const [rfpSort, setRfpSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'date', dir: 'desc' })
@@ -234,7 +234,7 @@ export default function WithholdingCompensation() {
                   </td>
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
                     <button onClick={() => downloadPdf(r)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Download size={13} /> PDF</button>
-                    <button onClick={() => setBv({ refNumber: r.refNumber, date: new Date(r.createdAt).toLocaleDateString('en-PH'), lines: taxRfpLines(r.meta, num(r.grossTotal)) })} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><FileText size={13} /> Billing Voucher</button>
+                    <button onClick={() => setBv({ refNumber: r.refNumber, date: new Date(r.createdAt).toLocaleDateString("en-PH"), lines: taxRfpLines(r.meta, num(r.grossTotal)), branch })} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><FileText size={13} /> Billing Voucher</button>
                     {r.proofUrl && <a href={r.proofUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Eye size={13} /> Proof</a>}
                     {canWrite && r.status !== 'PAID' && <button onClick={() => setPayTarget(r)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-white mr-1" style={{ background: 'var(--teal)' }}><CheckCircle2 size={13} /> Record as Paid</button>}
                     {canWrite && r.status === 'PAID' && <button onClick={() => setPayTarget(r)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><Pencil size={13} /> Edit</button>}
@@ -262,7 +262,7 @@ export default function WithholdingCompensation() {
       )}
 
       {payTarget && <RecordPaidModal rfp={payTarget} onClose={() => setPayTarget(null)} onSaved={async () => { setPayTarget(null); await fetchRfps() }} />}
-      {bv && <BillingVoucherModal refNumber={bv.refNumber} date={bv.date} lines={bv.lines} onClose={() => setBv(null)} />}
+      {bv && <BillingVoucherModal refNumber={bv.refNumber} date={bv.date} lines={bv.lines} branch={bv.branch} onClose={() => setBv(null)} />}
     </div>
   )
 }

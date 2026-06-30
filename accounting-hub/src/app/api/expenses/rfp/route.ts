@@ -17,15 +17,21 @@ export async function GET(req: Request) {
     const r = await prisma.reimbursementReport.findUnique({ where: { id }, select: { module: true, meta: true, grossTotal: true } })
     if (!r) return NextResponse.json({ error: 'Not found' }, { status: 404 })
     if (r.module === 'EXPENSE') {
-      const entries = await prisma.pettyCashEntry.findMany({ where: { reimbursementId: id }, select: { accountTitle: true, description: true, requestor: true, grossAmount: true } })
-      return NextResponse.json({ lines: entries.map(e => ({ account: e.accountTitle || '', description: e.description || e.requestor || '', amount: Number(e.grossAmount) })) })
+      const entries = await prisma.pettyCashEntry.findMany({ where: { reimbursementId: id }, select: { accountTitle: true, description: true, requestor: true, grossAmount: true, vatable: true, hasEwt: true, ewtRate: true } })
+      return NextResponse.json({ lines: entries.map(e => {
+        const gross = Number(e.grossAmount)
+        const netVat = e.vatable === 'VAT' ? gross / 1.12 : gross
+        const vat = gross - netVat
+        const ewt = e.hasEwt && e.ewtRate ? netVat * (e.ewtRate / 100) : 0
+        return { account: e.accountTitle || '', description: e.description || e.requestor || '', gross, vat, netVat, netEwt: netVat - ewt }
+      }) })
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const meta = (r.meta || {}) as any
     const isSalary = r.module === 'PAYROLL_SALARY'
     const acct = isSalary ? 'Salaries Payable' : 'Benefits Payable'
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const lines = Array.isArray(meta.items) ? meta.items.map((i: any) => ({ account: acct, description: `${i.name}${meta.cutoffPeriod ? ` — ${meta.cutoffPeriod}` : ''}`, amount: Number(i.amount || 0) })) : []
+    const lines = Array.isArray(meta.items) ? meta.items.map((i: any) => { const a = Number(i.amount || 0); return { account: acct, description: `${i.name}${meta.cutoffPeriod ? ` — ${meta.cutoffPeriod}` : ''}`, gross: a, vat: 0, netVat: a, netEwt: a } }) : []
     return NextResponse.json({ lines })
   }
   if (id) {
