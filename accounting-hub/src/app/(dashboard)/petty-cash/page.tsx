@@ -118,7 +118,7 @@ export default function PettyCashPage() {
   const canAudit = role === 'ADMIN' || role === 'ACCOUNTANT'
 
   const [branch, setBranch] = useState('SANDBOX_EAST')
-  const [tab, setTab] = useState<'entries' | 'reimbursements'>('entries')
+  const [tab, setTab] = useState<'entries' | 'reimbursements' | 'flowchart'>('entries')
   const [entries, setEntries] = useState<Entry[]>([])
   const [reimbursements, setReimbursements] = useState<Reimb[]>([])
   const [loading, setLoading] = useState(true)
@@ -538,7 +538,7 @@ export default function PettyCashPage() {
       {/* Tabs + RFP actions */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
-          {([['entries', 'Entries'], ['reimbursements', `RFP (${reimbursements.length})`]] as const).map(([k, lbl]) => (
+          {([['entries', 'Entries'], ['reimbursements', `RFP (${reimbursements.length})`], ['flowchart', 'Flowchart']] as const).map(([k, lbl]) => (
             <button key={k} onClick={() => setTab(k)}
               className="px-4 py-2 text-xs font-semibold transition-colors"
               style={tab === k ? { background: 'var(--deep-teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
@@ -912,6 +912,39 @@ export default function PettyCashPage() {
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {tab === 'flowchart' && (
+        <div className="rounded-2xl border bg-white p-6" style={{ borderColor: 'var(--light-gray)' }}>
+          <h2 className="text-lg font-bold mb-1" style={{ color: 'var(--charcoal)' }}>Petty Cash Workflow</h2>
+          <p className="text-xs mb-6" style={{ color: 'var(--mid-gray)' }}>From entry to reimbursement to the Expense Report.</p>
+          <div className="flex flex-col items-center">
+            {([
+              { n: 1, title: 'Petty cash entry', who: 'Bookkeeper', desc: 'Encode entries in the Entries tab.' },
+              { n: 2, title: 'Audited', who: 'Accountant', desc: 'Accountant reviews and sets Audited = Yes.' },
+              { n: 3, title: 'Filed for RFP', who: 'Accountant', desc: 'Group audited entries via RFP (Valid) or RFP (Invalid).' },
+              { n: 4, title: 'Print & submit for approval', who: '', desc: 'Print the petty cash / RFP report and submit it for approval.' },
+              { n: 5, title: 'Mark as Paid', who: '', desc: 'Once reimbursed & replenished, open the RFP and click “Record as Paid”.' },
+              { n: 6, title: 'Expense Report', who: '', desc: 'The paid entries appear in the Expense Report (Expenses section).' },
+            ] as const).map((s, i, arr) => (
+              <div key={s.n} className="w-full max-w-xl flex flex-col items-center">
+                <div className="w-full rounded-2xl border p-4 flex items-start gap-3"
+                  style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{ background: 'var(--teal)' }}>{s.n}</div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
+                      {s.title}{s.who && <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-semibold align-middle" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{s.who}</span>}
+                    </p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{s.desc}</p>
+                  </div>
+                </div>
+                {i < arr.length - 1 && (
+                  <div className="text-xl leading-none my-1" style={{ color: 'var(--teal)' }}>↓</div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
