@@ -85,6 +85,22 @@ export async function DELETE(req: Request) {
   }
   const id = new URL(req.url).searchParams.get('id') || ''
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+  const report = await prisma.creditCardReport.findUnique({ where: { id } })
+  if (!report) return NextResponse.json({ ok: true })
+  // Release the one-time expenses this report covered back to editable drafts:
+  // clear their payment + RFP lock so they reappear as editable in One-time.
+  const start = new Date(Date.UTC(report.periodYear, report.periodMonth - 1, 1))
+  const end = new Date(Date.UTC(report.periodYear, report.periodMonth, 1))
+  const released = await prisma.pettyCashEntry.updateMany({
+    where: {
+      branch: report.branch, recordType: 'ONE_TIME', creditCardId: report.cardId,
+      paidAt: { gte: start, lt: end },
+    },
+    data: {
+      paidAt: null, paymentMethod: null, checkNumber: null, paymentBankAccount: null,
+      creditCard: null, creditCardId: null, payrollAccount: null, reimbursementId: null,
+    },
+  })
   await prisma.creditCardReport.delete({ where: { id } })
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, released: released.count })
 }

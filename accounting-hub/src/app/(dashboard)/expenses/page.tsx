@@ -1275,7 +1275,7 @@ function CcReportTab({ branch, cards, canWrite }: { branch: string; cards: Card[
     setUploadingStmt('')
   }
   const deleteReport = async (id: string) => {
-    if (!confirm('Delete this CC report? The expense transactions themselves are not deleted.')) return
+    if (!confirm('Delete this CC report? Its one-time expenses are released back to One-time expense as editable entries (payment cleared).')) return
     setReports(prev => prev.filter(r => r.id !== id))
     try { await fetch(`/api/expenses/cc-reports?id=${id}`, { method: 'DELETE' }) } catch { /* ignore */ }
   }
