@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT']
 
 // PATCH /api/petty-cash/audited  { id, audited }
 // Audit status is set after review (often once the entry is already in an RFP),

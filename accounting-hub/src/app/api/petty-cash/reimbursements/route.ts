@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'CEO']
 const BRANCH_CODE: Record<string, string> = {
   SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VER', CEO: 'CEO',
@@ -53,11 +53,11 @@ export async function POST(req: Request) {
     const k = kind === 'INVALID' ? 'INVALID' : 'VALID'   // RFP (Valid) | RFP (Invalid)
 
     const report = await prisma.$transaction(async (tx) => {
-      // Only entries in this branch, not yet reimbursed, matching the RFP kind's validity.
+      // Only audited entries in this branch, not yet reimbursed, matching the RFP kind's validity.
       const entries = await tx.pettyCashEntry.findMany({
-        where: { id: { in: entryIds }, branch, reimbursementId: null, validity: k === 'VALID' ? 'Valid' : 'Invalid' },
+        where: { id: { in: entryIds }, branch, reimbursementId: null, audited: true, validity: k === 'VALID' ? 'Valid' : 'Invalid' },
       })
-      if (entries.length === 0) throw new Error(`No eligible ${k === 'VALID' ? 'valid' : 'invalid'} entries (already reimbursed?)`)
+      if (entries.length === 0) throw new Error(`No eligible audited ${k === 'VALID' ? 'valid' : 'invalid'} entries (already reimbursed / not audited?)`)
       const grossTotal = entries.reduce((s, e) => s + Number(e.grossAmount), 0)
 
       let settings = await tx.pettyCashSettings.findUnique({ where: { branch } })

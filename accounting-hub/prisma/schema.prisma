@@ -12,6 +12,7 @@ datasource db {
 enum Role {
   ADMIN
   ACCOUNTANT
+  BOOKKEEPER
   VIEWER
   SBEA_ADMIN
   SBGH_ADMIN

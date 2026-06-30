@@ -20,7 +20,7 @@ const RECUR_FREQ = [
   { v: 'BIANNUALLY', label: 'Biannually' },
   { v: 'ANNUALLY', label: 'Annually' },
 ]
-const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
 const TABS = [
   { key: 'recurring', label: 'Recurring expense', recordType: 'RECURRING' },

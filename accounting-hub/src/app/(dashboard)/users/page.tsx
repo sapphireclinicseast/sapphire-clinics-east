@@ -27,6 +27,7 @@ interface User {
 const ROLE_OPTIONS = [
   { value: 'ADMIN', label: 'Administrator' },
   { value: 'ACCOUNTANT', label: 'Accountant' },
+  { value: 'BOOKKEEPER', label: 'Bookkeeper (Petty Cash & Expenses entry)' },
   { value: 'VIEWER', label: 'Viewer' },
   { value: 'SBEA_ADMIN', label: 'AHEA Admin' },
   { value: 'SBGH_ADMIN', label: 'AHGH Admin' },
@@ -47,6 +48,7 @@ const BRANCH_OPTIONS = [
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: 'Administrator',
   ACCOUNTANT: 'Accountant',
+  BOOKKEEPER: 'Bookkeeper',
   VIEWER: 'Viewer',
   SBEA_ADMIN: 'AHEA Admin',
   SBGH_ADMIN: 'AHGH Admin',

@@ -25,10 +25,12 @@ import {
 
 // Roles that see all accounting modules (excludes front desk and HMO Officer)
 const FULL_ACCESS = ['ADMIN', 'ACCOUNTANT', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+// Bookkeeper is limited to Petty Cash + Expenses data entry.
+const ENTRY_ACCESS = [...FULL_ACCESS, 'BOOKKEEPER']
 // Roles that see Services + POS (front desk + full access)
 const SERVICES_POS_ACCESS = [...FULL_ACCESS, 'SBEA_FRONTDESK', 'SBGH_FRONTDESK']
 // Roles that see the Dashboard overview (all except HMO Officer)
-const DASHBOARD_ACCESS = SERVICES_POS_ACCESS
+const DASHBOARD_ACCESS = [...SERVICES_POS_ACCESS, 'BOOKKEEPER']
 // Roles that can view Accounts Receivable
 const AR_ACCESS = [...FULL_ACCESS, 'HMO_OFFICER']
 // Roles that can view Chart of Accounts (full access only — HMO Officer gets it via COA_WITH_HMO)
@@ -64,8 +66,8 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Transactions',
     items: [
-      { href: '/petty-cash', icon: Wallet, label: 'Petty Cash', roles: FULL_ACCESS },
-      { href: '/expenses', icon: CreditCard, label: 'Expenses', roles: FULL_ACCESS },
+      { href: '/petty-cash', icon: Wallet, label: 'Petty Cash', roles: ENTRY_ACCESS },
+      { href: '/expenses', icon: CreditCard, label: 'Expenses', roles: ENTRY_ACCESS },
       { href: '/inventory', icon: Package, label: 'Inventory & Procurement', roles: FULL_ACCESS },
       { href: '/asset-management', icon: Building2, label: 'Asset Management', roles: SERVICES_POS_ACCESS },
       { href: '/services', icon: Stethoscope, label: 'Services', roles: SERVICES_POS_ACCESS },

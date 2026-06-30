@@ -17,7 +17,7 @@ const PCF_STATUS = ['Unliquidated', 'For Replenishment', 'Cancelled', 'Missing']
 const VATABLE = ['VAT', 'Non-VAT']
 const VALIDITY = ['Valid', 'Invalid', 'Cancelled']
 const PAYMENT_METHODS = ['Check deposit', 'Check encashment to deposit as cash', 'Online Fund Transfer']
-const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
 interface Entry {
   id: string
@@ -112,7 +112,10 @@ function uploadWithProgress(file: File, onProgress: (pct: number) => void): Prom
 
 export default function PettyCashPage() {
   const { data: session } = useSession()
-  const canWrite = WRITE_ROLES.includes((session?.user as { role?: string })?.role || '')
+  const role = (session?.user as { role?: string })?.role || ''
+  const canWrite = WRITE_ROLES.includes(role)
+  // Only Accountant + main Admin may set the Audited flag.
+  const canAudit = role === 'ADMIN' || role === 'ACCOUNTANT'
 
   const [branch, setBranch] = useState('SANDBOX_EAST')
   const [tab, setTab] = useState<'entries' | 'reimbursements'>('entries')
@@ -137,6 +140,7 @@ export default function PettyCashPage() {
   const [uploadingProof, setUploadingProof] = useState('')
   const [uploadPct, setUploadPct] = useState<Record<string, number>>({})
   const [supplierNames, setSupplierNames] = useState<Set<string>>(new Set())
+  const [suppliers, setSuppliers] = useState<{ registeredName: string; registeredAddress: string; tin: string }[]>([])
   const [newSupplierPrompt, setNewSupplierPrompt] = useState<{ registeredName: string; registeredAddress: string; tin: string } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -171,9 +175,13 @@ export default function PettyCashPage() {
       fetch(`/api/expenses/suppliers?branch=${branch}&all=1`)
         .then(r => (r.ok ? r.json() : { suppliers: [] }))
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .then((d: any) => setSupplierNames(new Set((d.suppliers || []).map((s: any) => String(s.registeredName).trim().toLowerCase()))))
-        .catch(() => setSupplierNames(new Set()))
-    } else setSupplierNames(new Set())
+        .then((d: any) => {
+          const list = (d.suppliers || []) as { registeredName: string; registeredAddress?: string; tin?: string }[]
+          setSuppliers(list.map(s => ({ registeredName: s.registeredName, registeredAddress: s.registeredAddress || '', tin: s.tin || '' })))
+          setSupplierNames(new Set(list.map(s => String(s.registeredName).trim().toLowerCase())))
+        })
+        .catch(() => { setSuppliers([]); setSupplierNames(new Set()) })
+    } else { setSuppliers([]); setSupplierNames(new Set()) }
   }, [branch, loadEntries, loadSettings, loadReimbursements])
 
   useEffect(() => {
@@ -463,7 +471,7 @@ export default function PettyCashPage() {
   // Entries are only selectable after an RFP button is clicked, and only those
   // matching the chosen kind's validity (and not already in an RFP).
   const rfpValidity = rfpMode === 'VALID' ? 'Valid' : rfpMode === 'INVALID' ? 'Invalid' : null
-  const isSelectable = (e: Entry) => !e.reimbursementId && rfpValidity != null && e.validity === rfpValidity
+  const isSelectable = (e: Entry) => !e.reimbursementId && !!e.audited && rfpValidity != null && e.validity === rfpValidity
   const selectableIds = entries.filter(isSelectable).map(e => e.id)
   const allSelected = selectableIds.length > 0 && selectableIds.every(id => selected.has(id))
   const toggleAll = () => setSelected(allSelected ? new Set() : new Set(selectableIds))
@@ -475,6 +483,7 @@ export default function PettyCashPage() {
     .map(([seq, label]) => ({ seq, label }))
     .sort((a, b) => a.seq - b.seq)
   const confirmAddRow = () => { setShowAddPopup(false); addRow(addSameSeq ? Number(addSameSeq) : null); setAddSameSeq('') }
+  const supplierByName = new Map(suppliers.map(s => [s.registeredName.trim().toLowerCase(), s]))
   // Audit status updates even on locked rows (audit happens after RFP).
   const setAudited = async (id: string, audited: boolean) => {
     patchLocal(id, { audited })
@@ -606,7 +615,7 @@ export default function PettyCashPage() {
                         <td className="border-r border-b text-center" style={{ borderColor: 'var(--light-gray)' }}>
                           <input type="checkbox" checked={selected.has(e.id)} disabled={!canWrite || !isSelectable(e)}
                             onChange={() => toggleOne(e.id)}
-                            title={e.reimbursementId ? 'Locked (in an RFP)' : rfpMode === null ? 'Click RFP (Valid) or RFP (Invalid) first' : e.validity !== rfpValidity ? `Only ${rfpMode === 'VALID' ? 'valid' : 'invalid'} entries can be selected` : ''} />
+                            title={e.reimbursementId ? 'Locked (in an RFP)' : rfpMode === null ? 'Click RFP (Valid) or RFP (Invalid) first' : e.validity !== rfpValidity ? `Only ${rfpMode === 'VALID' ? 'valid' : 'invalid'} entries can be selected` : !e.audited ? 'Entry must be Audited = Yes first' : ''} />
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
                           <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--charcoal)' }}>{refOf(e)}</span>
@@ -688,9 +697,18 @@ export default function PettyCashPage() {
                           <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--mid-gray)' }}>{branchCodeOf(e.tinNumber)}</span>
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <input className={cellCls} disabled={lk} value={e.registeredName || ''} style={{ minWidth: 180 }}
+                          <input list="pc-supplier-names" className={cellCls} disabled={lk} value={e.registeredName || ''} style={{ minWidth: 180 }}
                             onChange={ev => patchLocal(e.id, { registeredName: ev.target.value })}
-                            onBlur={ev => saveField(e.id, { registeredName: ev.target.value }, false)} />
+                            onBlur={ev => {
+                              const val = ev.target.value
+                              const sup = supplierByName.get(val.trim().toLowerCase())
+                              const patch: Partial<Entry> = { registeredName: val }
+                              if (sup) {
+                                if (sup.registeredAddress) patch.registeredAddress = sup.registeredAddress
+                                if (!e.tinNumber && sup.tin) patch.tinNumber = formatTin(sup.tin)
+                              }
+                              saveField(e.id, patch, false)
+                            }} />
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
                           <input className={cellCls} disabled={lk} value={e.registeredAddress || ''} style={{ minWidth: 220 }}
@@ -767,7 +785,8 @@ export default function PettyCashPage() {
                           </div>
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <select className={cellCls} value={e.audited ? 'Yes' : 'No'} disabled={!canWrite}
+                          <select className={cellCls} value={e.audited ? 'Yes' : 'No'} disabled={!canAudit}
+                            title={!canAudit ? 'Only an Accountant or Admin can change the audit status' : ''}
                             onChange={ev => setAudited(e.id, ev.target.value === 'Yes')} style={{ minWidth: 70 }}>
                             <option value="No">No</option>
                             <option value="Yes">Yes</option>
@@ -895,6 +914,11 @@ export default function PettyCashPage() {
           </table>
         </div>
       )}
+
+      {/* Registered-name suggestions from Suppliers */}
+      <datalist id="pc-supplier-names">
+        {suppliers.map(s => <option key={s.registeredName} value={s.registeredName} />)}
+      </datalist>
 
       {showAddPopup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowAddPopup(false)}>

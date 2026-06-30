@@ -17,6 +17,7 @@ interface TopBarProps {
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: 'Administrator',
   ACCOUNTANT: 'Accountant',
+  BOOKKEEPER: 'Bookkeeper',
   VIEWER: 'Viewer',
   SBEA_ADMIN: 'AHEA Admin',
   SBGH_ADMIN: 'AHGH Admin',
