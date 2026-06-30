@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { ArrowLeftRight, Upload, Plus, Loader2, X, Search, Check, Link2, Ban, RotateCcw, Trash2 } from 'lucide-react'
+import { ArrowLeftRight, Upload, Plus, Loader2, X, Search, Check, Link2, Ban, RotateCcw, Trash2, Download } from 'lucide-react'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -214,17 +214,21 @@ function UploadModal({ bankAccountId, onClose, onDone }: { bankAccountId: string
     setHeaders(hdrs); setRows(json)
     const find = (kw: string[]) => hdrs.find(h => kw.some(k => h.toLowerCase().includes(k))) || ''
     setMap({
-      date: find(['date']), description: find(['description', 'desc', 'details', 'narration', 'particular']),
+      // Description: BDO "Memo", AUB "TXN code", plus common bank labels.
+      date: find(['txn date', 'transaction date', 'date']),
+      description: find(['description', 'desc', 'memo', 'txn code', 'particular', 'narration', 'details', 'remarks', 'code']),
       spent: find(['spent', 'debit', 'withdraw', 'paid out', 'out']), received: find(['received', 'credit', 'deposit', 'paid in']),
     })
   }
   const toNum = (v: unknown) => { const n = parseFloat(String(v).replace(/[^0-9.-]/g, '')); return isNaN(n) ? 0 : Math.abs(n) }
-  const toDate = (v: unknown) => { if (v instanceof Date) return v.toISOString().slice(0, 10); const d = new Date(String(v)); return isNaN(+d) ? '' : d.toISOString().slice(0, 10) }
-  const preview = useMemo(() => rows.slice(0, 5).map(r => ({ date: toDate(r[map.date]), description: String(r[map.description] || ''), spent: toNum(r[map.spent]), received: toNum(r[map.received]) })), [rows, map])
+  // Use LOCAL date components (avoids a UTC off-by-one for midnight dates like "2/3/25").
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const toDate = (v: unknown) => { const d = v instanceof Date ? v : new Date(String(v)); return isNaN(+d) ? '' : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` }
+  const preview = useMemo(() => rows.slice(0, 5).map(r => ({ date: toDate(r[map.date]), description: String(r[map.description] || '').trim(), spent: toNum(r[map.spent]), received: toNum(r[map.received]) })), [rows, map])
 
   const importRows = async () => {
     if (!map.date || !map.description || (!map.spent && !map.received)) { alert('Map Date, Description, and at least one of Spent / Received.'); return }
-    const payload = rows.map(r => ({ date: toDate(r[map.date]), description: String(r[map.description] || ''), spent: toNum(r[map.spent]), received: toNum(r[map.received]) })).filter(r => r.date && (r.spent > 0 || r.received > 0))
+    const payload = rows.map(r => ({ date: toDate(r[map.date]), description: String(r[map.description] || '').trim(), spent: toNum(r[map.spent]), received: toNum(r[map.received]) })).filter(r => r.date && (r.spent > 0 || r.received > 0))
     if (!payload.length) { alert('No valid rows after mapping.'); return }
     setBusy(true)
     try {
@@ -241,10 +245,25 @@ function UploadModal({ bankAccountId, onClose, onDone }: { bankAccountId: string
       </select>
     </div>
   )
+  const downloadTemplate = () => {
+    const csv = [
+      'Date,Description,Spent,Received',
+      '2025-02-03,Sample payment out (e.g. ONLINE TRANSFER / check),1000.00,',
+      '2025-02-04,Sample deposit in (e.g. CD / collection),,2500.00',
+    ].join('\n')
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+    a.download = 'bank-statement-template.csv'; a.click(); URL.revokeObjectURL(a.href)
+  }
   return (
     <Modal title="Upload bank statement" onClose={onClose} wide>
-      <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>Upload a CSV or Excel statement. The first sheet&apos;s header row is used; map the columns below.</p>
-      <input type="file" accept=".csv,.xlsx,.xls" onChange={e => onFile(e.target.files?.[0] || null)} className="mb-3 text-xs" />
+      <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>Upload a CSV or Excel statement (BDO, AUB, etc.). The first sheet&apos;s header row is read; columns are auto-mapped and you can adjust them below. <strong>Spent</strong> = money out (debit), <strong>Received</strong> = money in (credit).</p>
+      <div className="flex items-center gap-3 mb-3 flex-wrap">
+        <input type="file" accept=".csv,.xlsx,.xls" onChange={e => onFile(e.target.files?.[0] || null)} className="text-xs" />
+        <button onClick={downloadTemplate} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+          <Download size={13} /> Download Template
+        </button>
+      </div>
       {headers.length > 0 && (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
