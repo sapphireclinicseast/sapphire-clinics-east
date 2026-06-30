@@ -680,8 +680,10 @@ export async function GET(req: Request) {
     for (const e of pettyCashEntries) {
       if (!e.accountTitle || !e.date) continue
       if (e.pcfStatus === 'Cancelled' || e.validity === 'Cancelled' || e.vatable === 'Cancelled') continue
-      // Distributed recurring expenses are amortized separately below (prepaid model).
-      if (e.recordType === 'RECURRING' && e.distributeMonthly) continue
+      // Recurring entries are SETUPS, not actual expenses: distributed (prepaid)
+      // ones are amortized separately below; non-distributed ones are templates
+      // (the real expense is the One-time entry generated from them). Skip both.
+      if (e.recordType === 'RECURRING') continue
       const gross = Number(e.grossAmount)
       if (!gross) continue
       const net = e.vatable === 'VAT' ? gross / 1.12 : gross

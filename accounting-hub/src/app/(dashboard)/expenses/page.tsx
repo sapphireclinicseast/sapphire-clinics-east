@@ -145,6 +145,8 @@ export default function ExpensesPage() {
   const [showRfpModal, setShowRfpModal] = useState(false)
   const [generatingRfp, setGeneratingRfp] = useState(false)
   const [rfps, setRfps] = useState<Rfp[]>([])
+  const [recurringDue, setRecurringDue] = useState<{ id: string; payee: string | null; accountTitle: string | null; description: string | null; grossAmount: number; frequency: string; nextDue: string; daysUntil: number }[]>([])
+  const [genFromRecurring, setGenFromRecurring] = useState('')
   const [payTarget, setPayTarget] = useState<Rfp | null>(null)
   const [paying, setPaying] = useState(false)
   const [search, setSearch] = useState('')
@@ -195,10 +197,34 @@ export default function ExpensesPage() {
     } catch { setRfps([]) }
   }, [])
 
+  const loadRecurringDue = useCallback(async (br: string) => {
+    try {
+      const r = await fetch(`/api/expenses/recurring-due?branch=${br}`)
+      const d = r.ok ? await r.json() : { due: [] }
+      setRecurringDue(d.due || [])
+    } catch { setRecurringDue([]) }
+  }, [])
+
   useEffect(() => {
     setSelected(new Set()); setRfpMode(null)
-    loadEntries(branch, recordType); loadSettings(branch); loadCards(branch); loadSuppliers(branch); loadRfps(branch)
-  }, [branch, recordType, loadEntries, loadSettings, loadCards, loadSuppliers, loadRfps])
+    loadEntries(branch, recordType); loadSettings(branch); loadCards(branch); loadSuppliers(branch); loadRfps(branch); loadRecurringDue(branch)
+  }, [branch, recordType, loadEntries, loadSettings, loadCards, loadSuppliers, loadRfps, loadRecurringDue])
+
+  const generateFromRecurring = async (recurringId: string) => {
+    setGenFromRecurring(recurringId)
+    try {
+      const r = await fetch('/api/expenses/recurring-generate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recurringId }),
+      })
+      if (r.ok) {
+        if (tab !== 'onetime') setTab('onetime')
+        await loadEntries(branch, 'ONE_TIME')
+        setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }), 80)
+      } else alert((await r.json()).error || 'Failed to generate entry')
+    } catch { alert('Failed to generate entry') }
+    setGenFromRecurring('')
+  }
 
   useEffect(() => {
     fetch('/api/chart-of-accounts?pageSize=1000')
@@ -471,7 +497,7 @@ export default function ExpensesPage() {
             </button>
           ))}
         </div>
-        {isRecording && canWrite && (
+        {recordType === 'ONE_TIME' && canWrite && (
           <div className="flex items-center gap-2 flex-wrap">
             {rfpMode === null ? (
               <>
@@ -497,6 +523,41 @@ export default function ExpensesPage() {
           </div>
         )}
       </div>
+
+      {recordType === 'ONE_TIME' && recurringDue.length > 0 && (
+        <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+          <div className="flex items-center gap-2 mb-2">
+            <CreditCard size={16} style={{ color: 'var(--teal)' }} />
+            <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Recurring expenses to enter</h3>
+            <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{recurringDue.length}</span>
+          </div>
+          <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>Due soon (from Recurring setups). Click Enter to create a One-time entry pre-filled for the accountant to validate.</p>
+          <div className="space-y-2">
+            {recurringDue.map(d => (
+              <div key={d.id} className="flex items-center justify-between gap-3 rounded-xl px-3 py-2 bg-white border" style={{ borderColor: 'var(--light-gray)' }}>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate" style={{ color: 'var(--charcoal)' }}>{d.payee || d.description || d.accountTitle || 'Recurring expense'}</p>
+                  <p className="text-[11px] truncate" style={{ color: 'var(--mid-gray)' }}>
+                    {({ MONTHLY: 'Monthly', QUARTERLY: 'Quarterly', BIANNUALLY: 'Biannually', ANNUALLY: 'Annually' } as Record<string, string>)[d.frequency] || d.frequency}
+                    {d.accountTitle ? ` · ${d.accountTitle}` : ''} · ₱{peso(d.grossAmount)}
+                  </p>
+                </div>
+                <div className="text-right whitespace-nowrap">
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={d.daysUntil <= 0 ? { background: '#fee2e2', color: '#b91c1c' } : { background: '#fef3c7', color: '#92400e' }}>
+                    {d.daysUntil <= 0 ? 'Due now' : `Due in ${d.daysUntil}d`} · {d.nextDue}
+                  </span>
+                  {canWrite && (
+                    <button onClick={() => generateFromRecurring(d.id)} disabled={genFromRecurring === d.id}
+                      className="ml-2 inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+                      {genFromRecurring === d.id ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} Enter
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {isRecording && (
         <>

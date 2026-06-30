@@ -366,6 +366,7 @@ export async function GET(req: Request) {
         where: {
           accountTitle: accountKey,
           date: { gte: startDate, lt: endDate },
+          recordType: { not: 'RECURRING' },   // recurring = setups, not actual expenses
           ...(branch !== 'ALL' ? { branch: orderBranch } : { branch: { not: 'CEO' } }),
         },
         orderBy: { date: 'asc' },
