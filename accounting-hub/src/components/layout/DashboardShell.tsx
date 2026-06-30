@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Sidebar from './Sidebar'
 import TopBar from './TopBar'
 import { ReminderPopup } from '@/components/dashboard/RecurringReminders'
+import { TaxDeadlinePopup } from '@/components/dashboard/TaxDeadlinePopup'
 
 interface DashboardShellProps {
   user: {
@@ -36,6 +37,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
       </div>
 
       <ReminderPopup />
+      <TaxDeadlinePopup role={user.role} />
     </div>
   )
 }

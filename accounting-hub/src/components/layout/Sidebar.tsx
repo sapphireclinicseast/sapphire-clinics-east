@@ -20,6 +20,7 @@ import {
   Building2,
   PackageSearch,
   TrendingUp,
+  Landmark,
   X,
 } from 'lucide-react'
 
@@ -35,6 +36,8 @@ const DASHBOARD_ACCESS = [...SERVICES_POS_ACCESS, 'BOOKKEEPER']
 const AR_ACCESS = [...FULL_ACCESS, 'HMO_OFFICER']
 // Roles that can view Chart of Accounts (full access only — HMO Officer gets it via COA_WITH_HMO)
 const COA_ACCESS = [...FULL_ACCESS, 'HMO_OFFICER']
+// Taxes module: main admin, accountant, bookkeeper.
+const TAX_ACCESS = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
 interface NavItem {
   href: string
@@ -74,6 +77,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/pos', icon: ShoppingCart, label: 'Point of Sale', roles: SERVICES_POS_ACCESS },
       { href: '/accounts-receivable', icon: FileCheck, label: 'Accounts Receivable', roles: AR_ACCESS },
       { href: '/payroll', icon: BadgeDollarSign, label: 'Payroll', roles: FULL_ACCESS },
+      { href: '/taxes', icon: Landmark, label: 'Taxes', roles: TAX_ACCESS },
     ],
   },
   {
