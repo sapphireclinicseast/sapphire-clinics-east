@@ -30,10 +30,23 @@ export async function GET(req: Request) {
       id: true, refNumber: true, grossTotal: true, status: true, kind: true, paidAt: true, paymentMethod: true, checkNumber: true, transferRef: true,
       debitAccount: true, depositAccount: true, proofUrl: true, createdAt: true,
       _count: { select: { entries: true } },
+      entries: { select: { vatable: true, grossAmount: true, hasEwt: true, ewtRate: true } },
     },
     orderBy: { createdAt: 'desc' },
   })
-  return NextResponse.json(reports)
+  // Amount Payable = (gross − VAT) − EWT, summed across the RFP's entries.
+  const withPayable = reports.map(r => {
+    const payableTotal = r.entries.reduce((sum, e) => {
+      const g = Number(e.grossAmount)
+      const net = e.vatable === 'VAT' ? g / 1.12 : g
+      const ewt = e.hasEwt && e.ewtRate ? net * (e.ewtRate / 100) : 0
+      return sum + (net - ewt)
+    }, 0)
+    const { entries, ...rest } = r
+    void entries
+    return { ...rest, payableTotal }
+  })
+  return NextResponse.json(withPayable)
 }
 
 // POST { branch, entryIds } → create report, lock the entries, return { id, refNumber, grossTotal }

@@ -78,7 +78,7 @@ interface Entry {
 interface Card { id: string; branch: string; bank: string; cardNumber: string; bankCode: string }
 interface Supplier { id: string | null; registeredName: string; registeredAddress: string; tin: string; branch: string; branchLabel: string; firstAppeared: string | null }
 interface Rfp {
-  id: string; refNumber: string; grossTotal: string | number; status: string; kind: string | null
+  id: string; refNumber: string; grossTotal: string | number; payableTotal: string | number; status: string; kind: string | null
   paidAt: string | null; paymentMethod: string | null; checkNumber: string | null; debitAccount: string | null
   creditCardId: string | null; proofUrl: string | null; createdAt: string; _count: { entries: number }
 }
@@ -180,6 +180,7 @@ export default function ExpensesPage() {
     { key: 'kind', label: 'Kind' },
     { key: 'entries', label: 'Entries' },
     { key: 'grossTotal', label: 'Gross Total' },
+    { key: 'payableTotal', label: 'Amount Payable' },
     { key: 'status', label: 'Status' },
   ]
   const rfpGet = (r: Rfp, k: string): string | number =>
@@ -188,6 +189,7 @@ export default function ExpensesPage() {
       : k === 'kind' ? (r.kind === 'INVALID' ? 'Invalid' : 'Valid')
       : k === 'entries' ? r._count.entries
       : k === 'grossTotal' ? num(r.grossTotal)
+      : k === 'payableTotal' ? num(r.payableTotal)
       : k === 'status' ? (r.status === 'PAID' ? 'Paid' : 'For Payment')
       : ''
   const shownRfps = applySortFilter(rfps, rfpGet, rfpSort.key, rfpSort.dir, rfpFilters)
@@ -1057,6 +1059,7 @@ export default function ExpensesPage() {
                   <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.kind === 'INVALID' ? 'Invalid' : 'Valid'}</td>
                   <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{r._count.entries}</td>
                   <td className="px-4 py-2.5 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>₱{peso(num(r.grossTotal))}</td>
+                  <td className="px-4 py-2.5 text-right font-semibold" style={{ color: 'var(--deep-teal)' }}>₱{peso(num(r.payableTotal))}</td>
                   <td className="px-4 py-2.5">
                     <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
                       style={r.status === 'PAID' ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>
@@ -1106,7 +1109,7 @@ export default function ExpensesPage() {
                 </tr>
               ))}
               {shownRfps.length === 0 && (
-                <tr><td colSpan={7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>
+                <tr><td colSpan={8} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>
                   {rfps.length === 0 ? 'No RFPs yet. In Recurring/One-time expense, click "RFP (Valid)" or "RFP (Invalid)", select entries, then Generate RFP.' : 'No RFPs match the current filters.'}
                 </td></tr>
               )}
