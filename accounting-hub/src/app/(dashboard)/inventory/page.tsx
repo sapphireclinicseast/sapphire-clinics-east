@@ -682,6 +682,8 @@ export default function InventoryPage() {
 
   // ── Freight batch adjustment state
   const [fbOpen, setFbOpen] = useState(false)
+  const [fbEditId, setFbEditId] = useState<string | null>(null)
+  const [fbLoadingEdit, setFbLoadingEdit] = useState(false)
   const [fbDate, setFbDate] = useState(new Date().toISOString().split('T')[0])
   const [fbRemarks, setFbRemarks] = useState('')
   const [fbHasForeign, setFbHasForeign] = useState(true)
@@ -1328,6 +1330,7 @@ export default function InventoryPage() {
   }
 
   function openFbModal() {
+    setFbEditId(null)
     setFbDate(new Date().toISOString().split('T')[0])
     setFbRemarks(''); setFbHasForeign(true); setFbCurrency('CNY'); setFbExRate('')
     setFbFreight1(''); setFbFreight1Foreign(false)
@@ -1336,6 +1339,40 @@ export default function InventoryPage() {
     setFbRows([{ itemId: '', itemName: '', itemSku: '', dimL: '', dimW: '', dimH: '', manPrice: '', manPriceIsForeign: true, quantity: '' }])
     setFbProofUrls([]); setError('')
     setFbOpen(true)
+  }
+
+  // Open the freight-batch modal prefilled with an existing batch, for editing.
+  async function openFbEdit(batchRefId: string) {
+    setFbLoadingEdit(true); setError('')
+    try {
+      const res = await fetch(`/api/inventory/adjustments/batch?id=${batchRefId}`)
+      const d = await res.json()
+      if (!res.ok) { setError(d.error || 'Failed to load batch'); return }
+      const b = d.batch
+      setFbEditId(b.id)
+      setFbDate(new Date(b.adjustmentDate).toISOString().split('T')[0])
+      setFbRemarks(b.remarks || '')
+      setFbHasForeign(!!b.hasForeignPurchase)
+      setFbCurrency(b.foreignCurrency || 'CNY')
+      setFbExRate(b.exchangeRate != null ? String(b.exchangeRate) : '')
+      setFbFreight1(b.freight1Amount != null ? String(b.freight1Amount) : ''); setFbFreight1Foreign(!!b.freight1IsForeign)
+      setFbFreight2(b.freight2Amount != null ? String(b.freight2Amount) : ''); setFbFreight2Foreign(!!b.freight2IsForeign)
+      setFbFreight3(b.freight3Amount != null ? String(b.freight3Amount) : ''); setFbFreight3Foreign(!!b.freight3IsForeign)
+      setFbProofUrls(Array.isArray(b.proofUrls) ? b.proofUrls : [])
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setFbRows((b.adjustments || []).map((a: any) => {
+        const qty = a.quantityChange || 0
+        const freightPerUnit = qty > 0 && a.freightAllocation != null ? Number(a.freightAllocation) / qty : 0
+        const isForeign = a.foreignCost != null
+        const manPrice = isForeign ? Number(a.foreignCost) : Math.max(0, Number(a.localCost || 0) - freightPerUnit)
+        return {
+          itemId: a.itemId, itemName: a.item?.name || '', itemSku: a.item?.sku || '',
+          dimL: a.item?.dimensionLength ? String(a.item.dimensionLength) : '', dimW: a.item?.dimensionWidth ? String(a.item.dimensionWidth) : '', dimH: a.item?.dimensionHeight ? String(a.item.dimensionHeight) : '',
+          manPrice: manPrice ? String(Number(manPrice.toFixed(4))) : '', manPriceIsForeign: isForeign, quantity: String(qty),
+        }
+      }))
+      setFbOpen(true)
+    } catch { setError('Network error') } finally { setFbLoadingEdit(false) }
   }
 
   async function handleFbUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -1363,9 +1400,10 @@ export default function InventoryPage() {
     setFbSaving(true); setError('')
     try {
       const res = await fetch('/api/inventory/adjustments/batch', {
-        method: 'POST',
+        method: fbEditId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          ...(fbEditId ? { id: fbEditId } : {}),
           adjustmentDate: fbDate,
           hasForeignPurchase: fbHasForeign,
           foreignCurrency: fbCurrency,
@@ -3036,7 +3074,12 @@ setTimeout(()=>window.print(),500);
                       <td className="px-4 py-3 text-xs max-w-[180px] truncate" style={{ color: 'var(--mid-gray)' }}>{adj.remarks || '—'}</td>
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{adj.adjustedBy?.name || '—'}</td>
                       {canWrite && (
-                        <td className="px-4 py-3 text-right">
+                        <td className="px-4 py-3 text-right whitespace-nowrap">
+                          {adj.batchRefId && (
+                            <button onClick={() => openFbEdit(adj.batchRefId!)} disabled={fbLoadingEdit} className="p-2 rounded-lg hover:bg-teal-50 transition-colors disabled:opacity-50 mr-1" title="Edit freight batch">
+                              <Pencil size={15} style={{ color: 'var(--teal)' }} />
+                            </button>
+                          )}
                           <button onClick={() => setDeleteAdjConfirm(adj.id)} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Delete Adjustment">
                             <Trash2 size={15} className="text-red-500" />
                           </button>
@@ -3391,8 +3434,8 @@ setTimeout(()=>window.print(),500);
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--light-gray)' }}>
                   <div>
-                    <h3 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>New Adjustment — Freight Purchase</h3>
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>Enter items, manufacturer prices, freight costs, and the system will compute unit costs proportionally by CBM.</p>
+                    <h3 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{fbEditId ? 'Edit Adjustment — Freight Purchase' : 'New Adjustment — Freight Purchase'}</h3>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{fbEditId ? 'Editing reverses this batch and re-applies the rows below (blocked if any item was already sold). Unit costs recompute by CBM.' : 'Enter items, manufacturer prices, freight costs, and the system will compute unit costs proportionally by CBM.'}</p>
                   </div>
                   <button onClick={() => setFbOpen(false)} className="p-1 hover:bg-gray-100 rounded-lg ml-4">
                     <X size={20} style={{ color: 'var(--mid-gray)' }} />
@@ -3640,7 +3683,7 @@ setTimeout(()=>window.print(),500);
                     <button type="submit" disabled={fbSaving || fbRows.filter(r => r.itemId && r.quantity).length === 0}
                       className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
                       style={{ background: 'var(--teal)' }}>
-                      {fbSaving ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : 'Record Freight Batch'}
+                      {fbSaving ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : (fbEditId ? 'Save Changes' : 'Record Freight Batch')}
                     </button>
                   </div>
                 </form>
