@@ -56,11 +56,17 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
       for (const r of data) { const id = String(r['Order ID']).trim(); if (!byOrder.has(id)) byOrder.set(id, []); byOrder.get(id)!.push(r) }
       const allIds = [...byOrder.keys()]
       say(`Found ${allIds.length} completed order(s).`)
+      // Date window (for the fallback legacy match) from the file's order dates.
+      const dates = allIds.map(id => toYmd(byOrder.get(id)![0]['Paid Time'] || byOrder.get(id)![0]['Created Time'])).filter(Boolean).sort()
+      const from = dates[0] || '', to = dates[dates.length - 1] || ''
       // Dedupe against already-imported Tiktok orders + find legacy (e.g. CASH-
-      // tagged) orders under the same reference to replace.
+      // tagged) orders to replace — by reference OR (net + items + date ±3 days).
       let existing = new Set<string>()
-      let legacy: { id: string; referenceNumber: string; netAmount: number }[] = []
-      try { const ex = await fetch(`/api/pos/tiktok/existing?ids=${encodeURIComponent(allIds.join(','))}`); const ed = await ex.json(); existing = new Set(ed.existing || []); legacy = ed.legacy || [] } catch { /* ignore */ }
+      let legacy: { id: string; referenceNumber: string | null; netAmount: number; ymd: string; itemIds: string[] }[] = []
+      try { const ex = await fetch(`/api/pos/tiktok/existing?ids=${encodeURIComponent(allIds.join(','))}&from=${from}&to=${to}`); const ed = await ex.json(); existing = new Set(ed.existing || []); legacy = ed.legacyCandidates || [] } catch { /* ignore */ }
+      const usedLegacy = new Set<string>()
+      const sameItems = (a: string[], b: string[]) => a.length === b.length && a.every((v, i) => v === b[i])
+      const withinDays = (a: string, b: string, n: number) => !!a && !!b && Math.abs((+new Date(a) - +new Date(b)) / 86400000) <= n
       let ok = 0, dup = 0, skipped = 0, replaced = 0
       const unmatched = new Set<string>()
       for (const id of allIds) {
@@ -85,12 +91,18 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
         if (lines.length === 0) { skipped++; continue }              // whole order fully returned
         const subtotal = lines.reduce((s, l) => s + l._before, 0)
         const net = lines.reduce((s, l) => s + l.lineTotal, 0)
-        // Replace a matching legacy (non-Tiktok) order first — voids it (reverses inventory).
-        const match = legacy.find(l => l.referenceNumber === id && Math.abs(l.netAmount - net) < 0.5)
+        const txnDate = toYmd(rs[0]['Paid Time'] || rs[0]['Created Time']) || new Date().toISOString().slice(0, 10)
+        const orderItemIds = [...new Set(lines.map(l => l.inventoryItemId))].sort()
+        // Replace a matching legacy (non-Tiktok) order first — voids it (reverses
+        // inventory). Match by reference, or by net + same items + date ±3 days.
+        const match = legacy.find(l => !usedLegacy.has(l.id) && (
+          (l.referenceNumber && l.referenceNumber === id) ||
+          (Math.abs(l.netAmount - net) < 0.5 && withinDays(l.ymd, txnDate, 3) && sameItems(l.itemIds, orderItemIds))
+        ))
         if (match) {
+          usedLegacy.add(match.id)
           try { const v = await fetch(`/api/pos/orders/${match.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'void' }) }); if (v.ok) replaced++ } catch { /* ignore */ }
         }
-        const txnDate = toYmd(rs[0]['Paid Time'] || rs[0]['Created Time']) || new Date().toISOString().slice(0, 10)
         const body = {
           orderType: 'PRODUCT', branch: BRANCH, platform: 'Tiktok', transactionDate: txnDate,
           subtotal, discountType: subtotal > net ? 'FIXED' : 'NONE', discountAmount: Math.max(0, subtotal - net), discountLabel: subtotal > net ? 'TikTok seller discount' : null,
