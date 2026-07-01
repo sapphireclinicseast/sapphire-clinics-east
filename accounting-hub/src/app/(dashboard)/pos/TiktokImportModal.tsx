@@ -5,6 +5,9 @@ import { X, Loader2, Upload, CheckCircle2 } from 'lucide-react'
 
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const BRANCH = 'VERDANA_STORE'
+// Sentinel for the unmatched-product resolver: "classify this product as not-imported".
+// Its line(s) are dropped; any order left with no lines is skipped entirely.
+const SKIP = '__SKIP__'
 
 interface Coa { id: string; accountNumber: string; accountTitle: string; accountType: string }
 interface Mode { id: string; name: string; paymentMethod: string | null; account: { id: string; accountNumber: string; accountTitle: string } | null }
@@ -119,12 +122,13 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
         let anyReturn = false
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const its = rs.map((r: any) => {
-          const item = itemFor(r, mmap)
+          const classifiedSkip = mmap[rowKey(r)] === SKIP   // uploader chose "do not import"
+          const item = classifiedSkip ? undefined : itemFor(r, mmap)
           const qty = Math.max(0, Math.round(numAt(r, 'Quantity')))
           const ret = Math.max(0, Math.round(numAt(r, 'Sku Quantity of return')))
           const sold = qty - ret
           if (ret > 0) anyReturn = true
-          if (sold <= 0) return { skip: true }   // fully returned → not sold, stays in stock
+          if (classifiedSkip || sold <= 0) return { skip: true }   // skipped product, or fully returned → not sold
           const frac = qty > 0 ? sold / qty : 1
           return item ? { inventoryItemId: item.id, name: item.name, quantity: sold, unitPrice: numAt(r, 'SKU Unit Original Price'), lineTotal: numAt(r, 'SKU Subtotal After Discount') * frac, _before: numAt(r, 'SKU Subtotal Before Discount') * frac } : null
         })
@@ -163,7 +167,7 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
           if (res.ok) ok++; else { skipped++; say(`Order ${id}: ${(await res.json()).error || 'failed'}`) }
         } catch { skipped++ }
       }
-      say(`Imported ${ok} order(s). Replaced ${replaced} legacy (e.g. CASH) order(s) — their stock was restored, then re-deducted correctly. Skipped ${dup} already-imported, ${skipped} empty/fully-returned.`)
+      say(`Imported ${ok} order(s). Replaced ${replaced} legacy (e.g. CASH) order(s) — their stock was restored, then re-deducted correctly. Skipped ${dup} already-imported, ${skipped} empty/fully-returned/skipped.`)
       setParsedOrders(null); setUnmatched([])
       onDone()
     } finally { setBusy(false) }
@@ -264,7 +268,7 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
         {/* Unmatched-product resolver — import is blocked until every one is mapped */}
         {unmatched.length > 0 && (
           <div className="rounded-xl border p-3 mb-3" style={{ borderColor: '#fca5a5', background: '#fef2f2' }}>
-            <p className="text-sm font-semibold mb-2" style={{ color: '#b91c1c' }}>{unmatched.length} product(s) not found in Inventory — match each to continue</p>
+            <p className="text-sm font-semibold mb-2" style={{ color: '#b91c1c' }}>{unmatched.length} product(s) not found in Inventory — for each, pick an inventory item or choose Skip to continue</p>
             <div className="space-y-2 max-h-60 overflow-auto">
               {unmatched.map(u => (
                 <div key={u.key} className="grid grid-cols-2 gap-2 items-center">
@@ -274,6 +278,7 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
                   </div>
                   <select value={manualMap[u.key] || ''} onChange={e => setManualMap(m => ({ ...m, [u.key]: e.target.value }))} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: manualMap[u.key] ? 'var(--teal)' : '#fca5a5' }}>
                     <option value="">— Select inventory item —</option>
+                    <option value={SKIP}>— Skip (do not import this product) —</option>
                     {items.map(i => <option key={i.id} value={i.id}>{i.sku} — {i.name}</option>)}
                   </select>
                 </div>
