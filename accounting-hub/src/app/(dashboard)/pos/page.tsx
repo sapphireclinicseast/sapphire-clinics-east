@@ -514,7 +514,7 @@ function userBranch(session: any): string {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function isAdmin(session: any): boolean {
   const r = session?.user?.role || ''
-  return ['ADMIN', 'ACCOUNTANT'].includes(r) || r.endsWith('_ADMIN')
+  return ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER'].includes(r) || r.endsWith('_ADMIN')
 }
 
 /* ─────────────────────────── HELPERS ─────────────────────────── */

@@ -5,7 +5,7 @@ import { parsePagination, paginatedResult } from '@/lib/pagination'
 
 const VALID_TYPES = ['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE']
 const VALID_BALANCES = ['DEBIT', 'CREDIT']
-const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
 const DEFAULT_BALANCE: Record<string, string> = {
   ASSET: 'DEBIT',

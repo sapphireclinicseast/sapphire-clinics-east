@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { postInventoryAdjustmentJournal } from '@/lib/accounting/post-inventory-adjustment'
 import { recalcWeightedUnitCost } from '@/lib/fifo'
 
-const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
 /**
  * POST /api/inventory/adjustments/bulk

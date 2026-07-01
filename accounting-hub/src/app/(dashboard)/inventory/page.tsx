@@ -762,7 +762,7 @@ export default function InventoryPage() {
   const [bundleComponentId, setBundleComponentId] = useState('')
   const [bundleComponentQty, setBundleComponentQty] = useState(1)
 
-  const canWrite = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN'].includes(session?.user?.role as string)
+  const canWrite = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN'].includes(session?.user?.role as string)
 
   // Memoized grouping for consignments (used by both render & download)
   const groupedConsignments = useMemo(() => {

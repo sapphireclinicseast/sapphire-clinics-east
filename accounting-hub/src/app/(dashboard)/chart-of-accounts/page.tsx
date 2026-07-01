@@ -259,7 +259,7 @@ export default function ChartOfAccountsPage() {
   const [importRows, setImportRows] = useState<ImportRow[]>([])
   const [importResult, setImportResult] = useState<{ imported: number; errors: { accountNumber: string; error: string }[] } | null>(null)
 
-  const canWrite = session?.user?.role && ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN'].includes(session.user.role)
+  const canWrite = session?.user?.role && ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN'].includes(session.user.role)
 
   const fetchAccounts = useCallback(async () => {
     try {

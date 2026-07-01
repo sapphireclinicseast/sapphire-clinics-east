@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { runDepreciationCatchUp } from '@/lib/accounting/post-depreciation'
 
-const RUN_ROLES = ['ADMIN', 'ACCOUNTANT']
+const RUN_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
 /**
  * POST /api/depreciation/run

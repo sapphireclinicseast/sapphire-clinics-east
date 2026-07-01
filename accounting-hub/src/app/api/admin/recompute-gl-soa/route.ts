@@ -25,7 +25,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-const RUN_ROLES = ['ADMIN', 'ACCOUNTANT']
+const RUN_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
 export async function POST(req: Request) {
   const session = await auth()

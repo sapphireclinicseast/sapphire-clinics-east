@@ -24,7 +24,7 @@ import { prisma } from '@/lib/prisma'
 import { computeTrialBalance } from '@/lib/accounting/trial-balance'
 import { computeIndirectCashFlow } from '@/lib/accounting/cash-flow'
 
-const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 
 const isCash = (n: string, t: string) => /^10/.test(n) || /cash|bank/i.test(t)
 

@@ -26,8 +26,9 @@ interface User {
 
 const ROLE_OPTIONS = [
   { value: 'ADMIN', label: 'Administrator' },
-  { value: 'ACCOUNTANT', label: 'Accountant' },
-  { value: 'BOOKKEEPER', label: 'Bookkeeper (Petty Cash & Expenses entry)' },
+  { value: 'ACCOUNTANT', label: 'Accountant (all modules except Analysis)' },
+  { value: 'BOOKKEEPER', label: 'Bookkeeper (all modules except Analysis; no audit)' },
+  { value: 'PAYROLL_OFFICER', label: 'Payroll Officer (Services, POS, Payroll)' },
   { value: 'VIEWER', label: 'Viewer' },
   { value: 'SBEA_ADMIN', label: 'AHEA Admin' },
   { value: 'SBGH_ADMIN', label: 'AHGH Admin' },
@@ -35,7 +36,7 @@ const ROLE_OPTIONS = [
   { value: 'SBEA_FRONTDESK', label: 'AHEA Front Desk' },
   { value: 'SBGH_FRONTDESK', label: 'AHGH Front Desk' },
   { value: 'HMO_OFFICER', label: 'HMO Officer' },
-  { value: 'MEDREP', label: 'Med Rep (Reports — Gross Revenue only)' },
+  { value: 'MEDREP', label: 'Medical Representative (Reports — Gross Revenue only)' },
 ]
 
 const BRANCH_OPTIONS = [
@@ -49,6 +50,7 @@ const ROLE_LABELS: Record<string, string> = {
   ADMIN: 'Administrator',
   ACCOUNTANT: 'Accountant',
   BOOKKEEPER: 'Bookkeeper',
+  PAYROLL_OFFICER: 'Payroll Officer',
   VIEWER: 'Viewer',
   SBEA_ADMIN: 'AHEA Admin',
   SBGH_ADMIN: 'AHGH Admin',
@@ -56,7 +58,7 @@ const ROLE_LABELS: Record<string, string> = {
   SBEA_FRONTDESK: 'AHEA Front Desk',
   SBGH_FRONTDESK: 'AHGH Front Desk',
   HMO_OFFICER: 'HMO Officer',
-  MEDREP: 'Med Rep',
+  MEDREP: 'Medical Representative',
 }
 
 const BRANCH_LABELS: Record<string, string> = {

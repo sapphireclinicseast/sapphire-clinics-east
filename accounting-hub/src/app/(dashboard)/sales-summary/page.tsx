@@ -268,7 +268,7 @@ export default function SalesSummaryPage() {
   const [fetched, setFetched] = useState(false)
   const [error, setError] = useState('')
 
-  const allowed = ['ADMIN', 'ACCOUNTANT', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+  const allowed = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
   if (!session?.user || !allowed.includes((session.user as { role?: string }).role || '')) {
     return (
       <div className="p-8 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>

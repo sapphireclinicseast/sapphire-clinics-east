@@ -24,7 +24,7 @@ import { postARPaymentJournal } from '@/lib/accounting/post-ar-payment'
 import { postInventoryAdjustmentJournal } from '@/lib/accounting/post-inventory-adjustment'
 import { postAssetJournal } from '@/lib/accounting/post-asset'
 
-const RUN_ROLES = ['ADMIN', 'ACCOUNTANT']
+const RUN_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
 interface BackfillBucket {
   scanned: number

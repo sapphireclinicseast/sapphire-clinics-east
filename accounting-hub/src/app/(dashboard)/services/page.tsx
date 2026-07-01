@@ -138,7 +138,7 @@ export default function ServicesPage() {
   const [eligibleResults, setEligibleResults] = useState<Service[]>([])
   const [eligibleLoading, setEligibleLoading] = useState(false)
 
-  const canWrite = session?.user?.role && ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN'].includes(session.user.role as string)
+  const canWrite = session?.user?.role && ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN'].includes(session.user.role as string)
 
   const fetchServices = useCallback(async () => {
     try {

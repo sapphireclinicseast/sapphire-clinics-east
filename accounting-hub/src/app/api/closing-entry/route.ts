@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { postClosingEntry, reverseClosingEntry } from '@/lib/accounting/post-closing-entry'
 
-const RUN_ROLES = ['ADMIN', 'ACCOUNTANT']
+const RUN_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
 /**
  * POST /api/closing-entry      — close the books for { year, branch? }
