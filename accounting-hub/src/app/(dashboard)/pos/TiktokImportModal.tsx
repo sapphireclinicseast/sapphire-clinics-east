@@ -62,10 +62,11 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
       // Dedupe against already-imported Tiktok orders + find legacy (e.g. CASH-
       // tagged) orders to replace — by reference OR (net + items + date ±3 days).
       let existing = new Set<string>()
-      let legacy: { id: string; referenceNumber: string | null; netAmount: number; ymd: string; itemIds: string[] }[] = []
+      let legacy: { id: string; referenceNumber: string | null; netAmount: number; ymd: string; itemIds: string[]; itemNames: string[] }[] = []
       try { const ex = await fetch(`/api/pos/tiktok/existing?ids=${encodeURIComponent(allIds.join(','))}&from=${from}&to=${to}`); const ed = await ex.json(); existing = new Set(ed.existing || []); legacy = ed.legacyCandidates || [] } catch { /* ignore */ }
       const usedLegacy = new Set<string>()
-      const sameItems = (a: string[], b: string[]) => a.length === b.length && a.every((v, i) => v === b[i])
+      const norm = (s: string) => s.toUpperCase().replace(/\s+/g, ' ').trim()
+      const sameSet = (a: string[], b: string[]) => a.length > 0 && a.length === b.length && a.every((v, i) => v === b[i])
       const withinDays = (a: string, b: string, n: number) => !!a && !!b && Math.abs((+new Date(a) - +new Date(b)) / 86400000) <= n
       let ok = 0, dup = 0, skipped = 0, replaced = 0
       const unmatched = new Set<string>()
@@ -93,12 +94,18 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
         const net = lines.reduce((s, l) => s + l.lineTotal, 0)
         const txnDate = toYmd(rs[0]['Paid Time'] || rs[0]['Created Time']) || new Date().toISOString().slice(0, 10)
         const orderItemIds = [...new Set(lines.map(l => l.inventoryItemId))].sort()
-        // Replace a matching legacy (non-Tiktok) order first — voids it (reverses
-        // inventory). Match by reference, or by net + same items + date ±3 days.
-        const match = legacy.find(l => !usedLegacy.has(l.id) && (
-          (l.referenceNumber && l.referenceNumber === id) ||
-          (Math.abs(l.netAmount - net) < 0.5 && withinDays(l.ymd, txnDate, 3) && sameItems(l.itemIds, orderItemIds))
-        ))
+        const orderNames = [...new Set(lines.map(l => norm(l.name)))].sort()
+        // Replace a matching legacy (non-Tiktok) order first — voids it (reverses inventory).
+        // Rule: reference  OR  (net + date)  OR  (net + product name)  OR  (date + SKU)  OR  (date + product name).
+        const match = legacy.find(l => {
+          if (usedLegacy.has(l.id)) return false
+          const refM = !!l.referenceNumber && l.referenceNumber === id
+          const netM = Math.abs(l.netAmount - net) < 0.5
+          const dateM = withinDays(l.ymd, txnDate, 3)
+          const skuM = sameSet(l.itemIds, orderItemIds)
+          const nameM = sameSet(l.itemNames, orderNames)
+          return refM || (netM && dateM) || (netM && nameM) || (dateM && skuM) || (dateM && nameM)
+        })
         if (match) {
           usedLegacy.add(match.id)
           try { const v = await fetch(`/api/pos/orders/${match.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'void' }) }); if (v.ok) replaced++ } catch { /* ignore */ }

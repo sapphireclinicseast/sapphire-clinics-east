@@ -36,15 +36,17 @@ export async function GET(req: Request) {
       NOT: { platform: 'Tiktok' },
       OR: orClauses,
     },
-    select: { id: true, referenceNumber: true, netAmount: true, transactionDate: true, items: { select: { inventoryItemId: true } } },
+    select: { id: true, referenceNumber: true, netAmount: true, transactionDate: true, items: { select: { inventoryItemId: true, name: true } } },
   }) : []
 
+  const norm = (s: string) => s.toUpperCase().replace(/\s+/g, ' ').trim()
   return NextResponse.json({
     existing: existRows.map(o => o.referenceNumber).filter(Boolean),
     legacyCandidates: candidates.map(o => ({
       id: o.id, referenceNumber: o.referenceNumber, netAmount: Number(o.netAmount),
       ymd: o.transactionDate.toISOString().slice(0, 10),
       itemIds: [...new Set(o.items.map(i => i.inventoryItemId).filter(Boolean))].sort(),
+      itemNames: [...new Set(o.items.map(i => norm(i.name)))].sort(),
     })),
   })
 }
