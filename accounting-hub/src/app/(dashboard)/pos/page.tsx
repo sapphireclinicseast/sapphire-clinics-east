@@ -2294,6 +2294,12 @@ function OrderFormModal({
               <div className="flex justify-between text-sm"><span style={{ color: 'var(--mid-gray)' }}>Discount ({discountLabel})</span><span className="text-red-600">-{formatCurrency(discountAmount)}</span></div>
             )}
             <div className="flex justify-between text-sm font-bold"><span style={{ color: 'var(--charcoal)' }}>Net Amount</span><span style={{ color: 'var(--deep-teal)' }}>{formatCurrency(netAmount)}</span></div>
+            {orderType === 'PRODUCT' && (
+              <>
+                <div className="flex justify-between text-xs"><span style={{ color: 'var(--mid-gray)' }}>VAT (12%)</span><span style={{ color: 'var(--mid-gray)' }}>{formatCurrency(netAmount * 12 / 112)}</span></div>
+                <div className="flex justify-between text-xs"><span style={{ color: 'var(--mid-gray)' }}>Net of VAT</span><span style={{ color: 'var(--mid-gray)' }}>{formatCurrency(netAmount / 1.12)}</span></div>
+              </>
+            )}
             <div className="flex justify-between text-sm"><span style={{ color: 'var(--mid-gray)' }}>Total Payments</span><span style={{ color: 'var(--charcoal)' }}>{formatCurrency(totalPayments)}</span></div>
             {changeDue >= 0 ? (
               <div className="flex justify-between text-sm"><span style={{ color: 'var(--mid-gray)' }}>Change</span><span className="text-green-700">{formatCurrency(changeDue)}</span></div>

@@ -18,9 +18,10 @@ export async function GET(req: Request) {
   if (from) range.gte = new Date(from)
   if (to) { const d = new Date(to); d.setUTCDate(d.getUTCDate() + 1); range.lt = d }
 
-  // Output VAT: completed sales in the period (VAT-inclusive).
+  // Output VAT: PRODUCT sales only (medical Services are VAT-exempt). Net of
+  // platform discounts (Order.netAmount), VAT-inclusive.
   const orders = await prisma.order.findMany({
-    where: { branch: pcBranch, status: 'COMPLETED', returnedByBuyer: false, ...(from || to ? { transactionDate: range } : {}) },
+    where: { branch: pcBranch, orderType: 'PRODUCT', status: 'COMPLETED', returnedByBuyer: false, ...(from || to ? { transactionDate: range } : {}) },
     select: { netAmount: true },
   })
   const outputGross = orders.reduce((s, o) => s + Number(o.netAmount), 0)

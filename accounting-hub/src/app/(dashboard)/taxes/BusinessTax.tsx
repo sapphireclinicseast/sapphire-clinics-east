@@ -142,7 +142,7 @@ export default function BusinessTax() {
       ) : sum && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Card label={`Output VAT (12%) · ${sum.orderCount} sale(s)`} gross={sum.outputGross} vat={sum.outputVat} sub="VAT-inclusive sales" />
+            <Card label={`Output VAT (12%) · ${sum.orderCount} product sale(s)`} gross={sum.outputGross} vat={sum.outputVat} sub="Product sales, net of platform discounts (services VAT-exempt)" />
             <Card label={`Creditable Input VAT · ${sum.expenseCount} expense(s)`} gross={sum.inputGross} vat={sum.inputVat} sub="VAT-inclusive purchases" />
             <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--deep-teal)', background: 'var(--pale-teal)' }}>
               <p className="text-xs mb-1" style={{ color: 'var(--deep-teal)' }}>Computed VAT Payable (Output − Input)</p>
