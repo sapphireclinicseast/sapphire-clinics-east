@@ -334,6 +334,23 @@ export default function ExpensesPage() {
     setAdding(false)
   }
 
+  // Duplicate the most-recent entry (fresh number) so only the amount needs changing.
+  const duplicateLast = async () => {
+    const src = entries[entries.length - 1]
+    if (!src) { alert('No previous entry to duplicate yet.'); return }
+    setAdding(true)
+    try {
+      const r = await fetch('/api/petty-cash/entries', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ branch, recordType }) })
+      if (!r.ok) { alert((await r.json()).error || 'Failed to add row'); return }
+      const e = await r.json()
+      const copy = { requestor: src.requestor, department: src.department, date: src.date, description: src.description, vatable: src.vatable, siNumber: src.siNumber, tinNumber: src.tinNumber, registeredName: src.registeredName, registeredAddress: src.registeredAddress, grossAmount: src.grossAmount, accountTitle: src.accountTitle, validity: src.validity, hasEwt: src.hasEwt, ewtRate: src.ewtRate }
+      const pr = await fetch('/api/petty-cash/entries', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: e.id, ...copy }) })
+      const updated = pr.ok ? await pr.json() : { ...e, ...copy }
+      setEntries(prev => [...prev, updated]); setNextPcvSeq(s => s + 1)
+      setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }), 60)
+    } catch { /* ignore */ } finally { setAdding(false) }
+  }
+
   const proofsOf = (e: Entry): string[] => {
     const arr = Array.isArray(e.proofUrls) ? e.proofUrls : []
     if (arr.length) return arr
@@ -1060,11 +1077,18 @@ export default function ExpensesPage() {
           </div>
 
           {canWrite && (
-            <button onClick={addRow} disabled={adding}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
-              style={{ background: 'var(--teal)' }}>
-              {adding ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Add Row
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={addRow} disabled={adding}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+                style={{ background: 'var(--teal)' }}>
+                {adding ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Add Row
+              </button>
+              <button onClick={duplicateLast} disabled={adding || entries.length === 0}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border disabled:opacity-50"
+                style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }} title="Copy the last entry's details into a new row (change the amount)">
+                <Plus size={14} /> Duplicate previous entry
+              </button>
+            </div>
           )}
         </>
       )}
