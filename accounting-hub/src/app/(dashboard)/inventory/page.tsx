@@ -418,6 +418,7 @@ interface InventoryItem {
   sku: string
   name: string
   barcode?: string | null
+  imageUrl?: string | null
   branch: string
   skuDepartment: string
   skuCategory: string
@@ -461,6 +462,7 @@ interface Adjustment {
   batchRefId?: string | null
   batch?: { referenceNumber: string } | null
   displayRef?: string | null
+  localCost?: number | string | null
 }
 
 interface FbRow {
@@ -652,6 +654,22 @@ export default function InventoryPage() {
 
   // ── Adjustment state
   const [adjustments, setAdjustments] = useState<Adjustment[]>([])
+  const [expandedBatches, setExpandedBatches] = useState<Set<string>>(new Set())
+  const toggleBatch = (id: string) => setExpandedBatches(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  // Collapse freight-batch adjustments into one row each (expandable); others stay standalone.
+  const groupedAdjustments = useMemo(() => {
+    const out: Array<{ kind: 'batch'; batchRefId: string; ref: string; date: string; by: string; items: Adjustment[] } | { kind: 'single'; adj: Adjustment }> = []
+    const seen = new Set<string>()
+    for (const a of adjustments) {
+      if (a.batchRefId) {
+        if (seen.has(a.batchRefId)) continue
+        seen.add(a.batchRefId)
+        const items = adjustments.filter(x => x.batchRefId === a.batchRefId)
+        out.push({ kind: 'batch', batchRefId: a.batchRefId, ref: a.batch?.referenceNumber || a.referenceNumber || '', date: a.adjustmentDate as unknown as string, by: a.adjustedBy?.name || '—', items })
+      } else out.push({ kind: 'single', adj: a })
+    }
+    return out
+  }, [adjustments])
   const [adjModalOpen, setAdjModalOpen] = useState(false)
   // Bulk upload state
   const [bulkModalOpen, setBulkModalOpen] = useState(false)
@@ -684,6 +702,7 @@ export default function InventoryPage() {
   const [fbOpen, setFbOpen] = useState(false)
   const [fbEditId, setFbEditId] = useState<string | null>(null)
   const [fbLoadingEdit, setFbLoadingEdit] = useState(false)
+  const [uploadingPhotoId, setUploadingPhotoId] = useState<string | null>(null)
   const [fbDate, setFbDate] = useState(new Date().toISOString().split('T')[0])
   const [fbRemarks, setFbRemarks] = useState('')
   const [fbHasForeign, setFbHasForeign] = useState(true)
@@ -1427,6 +1446,20 @@ export default function InventoryPage() {
     finally { setFbSaving(false) }
   }
 
+  async function uploadItemPhoto(itemId: string, file: File | null) {
+    if (!file) return
+    setUploadingPhotoId(itemId)
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const up = await fetch('/api/upload', { method: 'POST', body: fd })
+      const ud = await up.json()
+      if (!up.ok || !ud.url) { setError(ud.error || 'Upload failed'); return }
+      const res = await fetch('/api/inventory', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: itemId, imageUrl: ud.url }) })
+      if (!res.ok) { setError('Failed to save photo'); return }
+      fetchItems()
+    } catch { setError('Upload failed') } finally { setUploadingPhotoId(null) }
+  }
+
   async function handleAdjDelete(id: string) {
     setDeletingAdj(true)
     try {
@@ -1718,6 +1751,7 @@ setTimeout(()=>window.print(),500);
                           className="rounded" style={{ accentColor: 'var(--teal)' }} />
                       </th>
                     )}
+                    <th className="text-left px-3 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Photo</th>
                     {([
                       { key: 'sku', label: 'SKU', align: 'left' },
                       { key: 'name', label: 'Name', align: 'left' },
@@ -1743,7 +1777,7 @@ setTimeout(()=>window.print(),500);
                 <tbody>
                   {items.length === 0 ? (
                     <tr>
-                      <td colSpan={canWrite ? 9 : 7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
+                      <td colSpan={canWrite ? 10 : 8} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
                         <Package size={32} className="mx-auto mb-2 opacity-40" />
                         <p>No inventory items</p>
                       </td>
@@ -1758,6 +1792,21 @@ setTimeout(()=>window.print(),500);
                             className="rounded" style={{ accentColor: 'var(--teal)' }} />
                         </td>
                       )}
+                      <td className="px-3 py-2">
+                        {item.imageUrl ? (
+                          <a href={item.imageUrl} target="_blank" rel="noopener noreferrer" title="View photo">
+                            <img src={item.imageUrl} alt={item.name} className="w-10 h-10 rounded-lg object-cover border" style={{ borderColor: 'var(--light-gray)' }} />
+                          </a>
+                        ) : (
+                          <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: 'var(--off-white)', color: 'var(--light-gray)' }}><Package size={16} /></div>
+                        )}
+                        {canWrite && (
+                          <label className="block mt-1 text-[10px] cursor-pointer text-center" style={{ color: 'var(--teal)' }}>
+                            {uploadingPhotoId === item.id ? '…' : (item.imageUrl ? 'Change' : 'Add')}
+                            <input type="file" accept="image/*" className="hidden" onChange={e => { uploadItemPhoto(item.id, e.target.files?.[0] || null); e.target.value = '' }} />
+                          </label>
+                        )}
+                      </td>
                       <td className="px-4 py-3 font-mono text-xs font-medium" style={{ color: 'var(--charcoal)' }}>{item.sku}</td>
                       <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>
                         {item.name}
@@ -3045,7 +3094,8 @@ setTimeout(()=>window.print(),500);
                         <p>No adjustments</p>
                       </td>
                     </tr>
-                  ) : adjustments.slice((adjPage - 1) * adjPageSize, adjPage * adjPageSize).map((adj) => (
+                  ) : groupedAdjustments.slice((adjPage - 1) * adjPageSize, adjPage * adjPageSize).map((g) => (
+                    g.kind === 'single' ? (() => { const adj = g.adj; return (
                     <tr key={adj.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
                       <td className="px-4 py-3">
                         {(adj.displayRef || adj.batch?.referenceNumber || adj.referenceNumber) ? (
@@ -3075,23 +3125,60 @@ setTimeout(()=>window.print(),500);
                       <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{adj.adjustedBy?.name || '—'}</td>
                       {canWrite && (
                         <td className="px-4 py-3 text-right whitespace-nowrap">
-                          {adj.batchRefId && (
-                            <button onClick={() => openFbEdit(adj.batchRefId!)} disabled={fbLoadingEdit} className="p-2 rounded-lg hover:bg-teal-50 transition-colors disabled:opacity-50 mr-1" title="Edit freight batch">
-                              <Pencil size={15} style={{ color: 'var(--teal)' }} />
-                            </button>
-                          )}
                           <button onClick={() => setDeleteAdjConfirm(adj.id)} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Delete Adjustment">
                             <Trash2 size={15} className="text-red-500" />
                           </button>
                         </td>
                       )}
                     </tr>
+                    ) })() : (() => {
+                      const open = expandedBatches.has(g.batchRefId)
+                      const totalQty = g.items.reduce((s, x) => s + x.quantityChange, 0)
+                      return (
+                    <React.Fragment key={g.batchRefId}>
+                      <tr className="border-t hover:bg-gray-50/50 transition-colors cursor-pointer" style={{ borderColor: 'var(--light-gray)' }} onClick={() => toggleBatch(g.batchRefId)}>
+                        <td className="px-4 py-3">
+                          <span className="mr-1" style={{ color: 'var(--mid-gray)' }}>{open ? '▾' : '▸'}</span>
+                          <span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: '#f0fdfa', color: 'var(--teal)' }}>{g.ref}</span>
+                        </td>
+                        <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{formatDate(g.date)}</td>
+                        <td className="px-4 py-3 text-xs" style={{ color: 'var(--charcoal)' }}>{g.items.length} product{g.items.length === 1 ? '' : 's'}</td>
+                        <td className="px-4 py-3"><span className="px-2 py-1 rounded-md text-xs font-medium" style={{ background: '#e0f2fe', color: '#075985' }}>FREIGHT</span></td>
+                        <td className="px-4 py-3 text-right font-medium" style={{ color: '#166534' }}>+{totalQty}</td>
+                        <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>—</td>
+                        <td className="px-4 py-3 text-xs max-w-[180px] truncate" style={{ color: 'var(--mid-gray)' }}>{g.items[0]?.remarks || '—'}</td>
+                        <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{g.by}</td>
+                        {canWrite && (
+                          <td className="px-4 py-3 text-right whitespace-nowrap">
+                            <button onClick={(e) => { e.stopPropagation(); openFbEdit(g.batchRefId) }} disabled={fbLoadingEdit} className="p-2 rounded-lg hover:bg-teal-50 transition-colors disabled:opacity-50" title="Edit freight batch">
+                              <Pencil size={15} style={{ color: 'var(--teal)' }} />
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                      {open && g.items.map(it => (
+                        <tr key={it.id} style={{ background: '#fafafa', borderColor: 'var(--light-gray)' }} className="border-t">
+                          <td className="px-4 py-2"></td>
+                          <td className="px-4 py-2"></td>
+                          <td className="px-4 py-2 pl-8">
+                            <span className="font-mono text-xs" style={{ color: 'var(--charcoal)' }}>{it.item?.sku}</span>
+                            <span className="text-xs ml-2" style={{ color: 'var(--mid-gray)' }}>{it.item?.name}</span>
+                          </td>
+                          <td className="px-4 py-2"></td>
+                          <td className="px-4 py-2 text-right font-medium text-xs" style={{ color: '#166534' }}>+{it.quantityChange}</td>
+                          <td className="px-4 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{it.previousQuantity} → {it.newQuantity}</td>
+                          <td className="px-4 py-2 text-xs" style={{ color: 'var(--mid-gray)' }} colSpan={canWrite ? 3 : 2}>{it.localCost != null ? `Unit cost ₱${Number(it.localCost).toLocaleString('en-PH', { minimumFractionDigits: 2 })}` : ''}</td>
+                        </tr>
+                      ))}
+                    </React.Fragment>
+                      )
+                    })()
                   ))}
                 </tbody>
               </table>
             </div>
             {adjustments.length > 0 && (
-              <Pagination totalItems={adjustments.length} page={adjPage} pageSize={adjPageSize}
+              <Pagination totalItems={groupedAdjustments.length} page={adjPage} pageSize={adjPageSize}
                 onPageChange={setAdjPage} onPageSizeChange={setAdjPageSize} />
             )}
           </div>
@@ -3556,6 +3643,8 @@ setTimeout(()=>window.print(),500);
                                   <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                                     {/* Item selector */}
                                     <td className="px-2 py-1.5">
+                                      <div className="flex items-center gap-2">
+                                      {(() => { const img = allItems.find(it => it.id === row.itemId)?.imageUrl; return img ? <img src={img} alt="" className="w-8 h-8 rounded object-cover border shrink-0" style={{ borderColor: 'var(--light-gray)' }} /> : null })()}
                                       <select value={row.itemId}
                                         onChange={e => {
                                           const selected = allItems.find(it => it.id === e.target.value)
@@ -3573,6 +3662,7 @@ setTimeout(()=>window.print(),500);
                                         <option value="">— Select item —</option>
                                         {allItems.map(it => <option key={it.id} value={it.id}>{it.sku} — {it.name}</option>)}
                                       </select>
+                                      </div>
                                     </td>
                                     {/* Manufacturer price + currency toggle */}
                                     <td className="px-2 py-1.5">

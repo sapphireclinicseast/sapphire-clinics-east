@@ -298,6 +298,7 @@ model InventoryItem {
   skuSubcategory       String
   skuSequence          Int
   barcode              String?
+  imageUrl             String?   // product photo (shown in Inventory + adjustment rows)
   branch               Branch
   accountSubType       String?
   unitCost             Decimal   @default(0)
