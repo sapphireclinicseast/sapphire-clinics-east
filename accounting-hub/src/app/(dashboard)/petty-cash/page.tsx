@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
+import { userBranchScope } from '@/lib/branch-scope'
 import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Download, Upload, FileDown, FileText, CheckCircle2, Paperclip, Eye, Pencil } from 'lucide-react'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 
@@ -119,8 +120,12 @@ export default function PettyCashPage() {
   const canWrite = WRITE_ROLES.includes(role)
   // Only Accountant + main Admin may set the Audited flag.
   const canAudit = role === 'ADMIN' || role === 'ACCOUNTANT'
+  // Users assigned to a single branch only see that branch here.
+  const scope = userBranchScope((session?.user as { branch?: string })?.branch)
 
-  const [branch, setBranch] = useState('SANDBOX_EAST')
+  const [branch, setBranch] = useState(scope.enum || 'SANDBOX_EAST')
+  // Session loads async — once we know the user is branch-locked, force their branch.
+  useEffect(() => { if (scope.enum && branch !== scope.enum) setBranch(scope.enum) }, [scope.enum]) // eslint-disable-line react-hooks/exhaustive-deps
   const [tab, setTab] = useState<'entries' | 'reimbursements' | 'flowchart'>('entries')
   const [entries, setEntries] = useState<Entry[]>([])
   const [reimbursements, setReimbursements] = useState<Reimb[]>([])
@@ -579,7 +584,7 @@ export default function PettyCashPage() {
         </h1>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
-            {BRANCHES.map(b => (
+            {(scope.enum ? BRANCHES.filter(b => b.value === scope.enum) : BRANCHES).map(b => (
               <button key={b.value} onClick={() => setBranch(b.value)}
                 className="px-4 py-2 text-xs font-semibold transition-colors"
                 style={branch === b.value

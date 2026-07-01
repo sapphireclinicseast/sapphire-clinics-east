@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
+import { userBranchScope } from '@/lib/branch-scope'
 import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Search, ArrowUp, ArrowDown, Upload, Download, Eye, Wallet, CreditCard, CheckCircle2, Pencil, FileText } from 'lucide-react'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 import { BillingVoucherModal } from '@/components/BillingVoucherModal'
@@ -152,8 +153,10 @@ export default function ExpensesPage() {
   const role = (session?.user as { role?: string })?.role || ''
   const canWrite = WRITE_ROLES.includes(role)
   const canAudit = role === 'ADMIN' || role === 'ACCOUNTANT'
+  const scope = userBranchScope((session?.user as { branch?: string })?.branch)
 
-  const [branch, setBranch] = useState('SANDBOX_EAST')
+  const [branch, setBranch] = useState(scope.enum || 'SANDBOX_EAST')
+  useEffect(() => { if (scope.enum && branch !== scope.enum) setBranch(scope.enum) }, [scope.enum]) // eslint-disable-line react-hooks/exhaustive-deps
   const [tab, setTab] = useState<TabKey>('recurring')
   const [entries, setEntries] = useState<Entry[]>([])
   const [loading, setLoading] = useState(true)
@@ -636,7 +639,7 @@ export default function ExpensesPage() {
         </h1>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
-            {BRANCHES.map(b => (
+            {(scope.enum ? BRANCHES.filter(b => b.value === scope.enum) : BRANCHES).map(b => (
               <button key={b.value} onClick={() => setBranch(b.value)}
                 className="px-4 py-2 text-xs font-semibold transition-colors"
                 style={branch === b.value ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
