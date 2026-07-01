@@ -359,3 +359,37 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Internal server error' }, { status: 500 })
   }
 }
+
+// DELETE ?id=<batchId> — remove a whole freight batch: reverse each item's stock
+// and delete the adjustments + batch. Blocked if any lot was already consumed.
+export async function DELETE(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+  const id = new URL(req.url).searchParams.get('id') || ''
+  if (!id) return NextResponse.json({ error: 'Batch id is required' }, { status: 400 })
+  try {
+    const batch = await prisma.inventoryAdjustmentBatch.findUnique({ where: { id }, include: { adjustments: true } })
+    if (!batch) return NextResponse.json({ error: 'Batch not found' }, { status: 404 })
+    const consumed = batch.adjustments.find(a => a.type !== 'INCREASE' || (a.remainingQuantity ?? a.quantityChange) !== a.quantityChange)
+    if (consumed) return NextResponse.json({ error: 'Cannot delete: some items from this batch have already been sold/consumed. Reverse those sales first.' }, { status: 409 })
+    const itemIds = [...new Set(batch.adjustments.map(a => a.itemId))]
+    await prisma.$transaction(async (tx) => {
+      for (const a of batch.adjustments) {
+        await tx.inventoryItem.update({ where: { id: a.itemId }, data: { quantity: { decrement: a.quantityChange } } })
+      }
+      await tx.inventoryAdjustment.deleteMany({ where: { batchRefId: id } })
+      await tx.inventoryAdjustmentBatch.delete({ where: { id } })
+      for (const itemId of itemIds) {
+        const c = await recalcWeightedUnitCost(tx, itemId)
+        if (c > 0) await tx.inventoryItem.update({ where: { id: itemId }, data: { unitCost: c } })
+      }
+    })
+    await prisma.auditLog.create({ data: { userId: session.user.id, action: 'FREIGHT_BATCH_DELETE', entity: 'inventoryAdjustmentBatch', entityId: id, details: { referenceNumber: batch.referenceNumber, itemCount: batch.adjustments.length } } })
+    return NextResponse.json({ ok: true })
+  } catch (err) {
+    console.error('[Freight Batch] Delete error:', err)
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Internal server error' }, { status: 500 })
+  }
+}

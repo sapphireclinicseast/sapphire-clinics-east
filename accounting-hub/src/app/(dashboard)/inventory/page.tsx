@@ -1446,6 +1446,15 @@ export default function InventoryPage() {
     finally { setFbSaving(false) }
   }
 
+  async function handleBatchDelete(batchRefId: string, ref: string, count: number) {
+    if (!confirm(`Delete freight batch ${ref}? Its ${count} product line(s) will be reversed and removed. Blocked if any item was already sold.`)) return
+    try {
+      const res = await fetch(`/api/inventory/adjustments/batch?id=${batchRefId}`, { method: 'DELETE' })
+      if (res.ok) { fetchAdjustments(); fetchItems(); fetchAllItems() }
+      else setError((await res.json()).error || 'Failed to delete batch')
+    } catch { setError('Network error') }
+  }
+
   async function uploadItemPhoto(itemId: string, file: File | null) {
     if (!file) return
     setUploadingPhotoId(itemId)
@@ -3150,8 +3159,11 @@ setTimeout(()=>window.print(),500);
                         <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{g.by}</td>
                         {canWrite && (
                           <td className="px-4 py-3 text-right whitespace-nowrap">
-                            <button onClick={(e) => { e.stopPropagation(); openFbEdit(g.batchRefId) }} disabled={fbLoadingEdit} className="p-2 rounded-lg hover:bg-teal-50 transition-colors disabled:opacity-50" title="Edit freight batch">
+                            <button onClick={(e) => { e.stopPropagation(); openFbEdit(g.batchRefId) }} disabled={fbLoadingEdit} className="p-2 rounded-lg hover:bg-teal-50 transition-colors disabled:opacity-50 mr-1" title="Edit freight batch">
                               <Pencil size={15} style={{ color: 'var(--teal)' }} />
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); handleBatchDelete(g.batchRefId, g.ref, g.items.length) }} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Delete freight batch">
+                              <Trash2 size={15} className="text-red-500" />
                             </button>
                           </td>
                         )}
