@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
+import { userBranchScope } from '@/lib/branch-scope'
 import {
   FileText, Download, Printer, Loader2, ChevronDown,
   Calendar, Building2, LayoutList, BarChart3, X,
@@ -1535,10 +1536,12 @@ function CashFlowStatement({ data, viewMode, onDrillDown }: { data: ReportData; 
 
 export default function ReportsPage() {
   const { data: session } = useSession()
+  const scope = userBranchScope((session?.user as { branch?: string })?.branch)
   const [activeTab, setActiveTab] = useState<ReportTab>('income-statement')
   const [year, setYear] = useState(new Date().getFullYear())
   const [viewMode, setViewMode] = useState<ViewMode>('annual')
-  const [branch, setBranch] = useState('ALL')
+  const [branch, setBranch] = useState(scope.short || 'ALL')
+  useEffect(() => { if (scope.short && branch !== scope.short) setBranch(scope.short) }, [scope.short]) // eslint-disable-line react-hooks/exhaustive-deps
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<ReportData | null>(null)
   const [drillDown, setDrillDown] = useState<DrillDownState | null>(null)
@@ -1851,7 +1854,7 @@ export default function ReportsPage() {
               className="appearance-none pl-3 pr-8 py-2 rounded-lg text-sm font-medium cursor-pointer"
               style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)', background: 'white' }}
             >
-              {BRANCHES.map((b) => (
+              {(scope.short ? BRANCHES.filter(b => b.value === scope.short) : BRANCHES).map((b) => (
                 <option key={b.value} value={b.value}>{b.label}</option>
               ))}
             </select>

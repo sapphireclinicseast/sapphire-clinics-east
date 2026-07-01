@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
+import { userBranchScope } from '@/lib/branch-scope'
 import {
   PackageSearch, Filter, Loader2, BarChart3, TrendingUp, TrendingDown,
   PackageX, Gift, Sparkles, CreditCard, Globe,
@@ -77,8 +78,10 @@ function Empty({ text }: { text: string }) {
 
 export default function ProductsAnalysisPage() {
   const { data: session } = useSession()
+  const scope = userBranchScope((session?.user as { branch?: string })?.branch)
 
-  const [branch, setBranch] = useState('ALL')
+  const [branch, setBranch] = useState(scope.enum || 'ALL')
+  useEffect(() => { if (scope.enum && branch !== scope.enum) setBranch(scope.enum) }, [scope.enum]) // eslint-disable-line react-hooks/exhaustive-deps
   const [dateFrom, setDateFrom] = useState(firstOfMonth())
   const [dateTo, setDateTo] = useState(today())
   const [loading, setLoading] = useState(false)
@@ -140,7 +143,7 @@ export default function ProductsAnalysisPage() {
           <div>
             <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Branch</label>
             <select value={branch} onChange={e => setBranch(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-              {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+              {(scope.enum ? BRANCHES.filter(b => b.value === scope.enum) : BRANCHES).map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
             </select>
           </div>
           <div>

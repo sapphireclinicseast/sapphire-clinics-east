@@ -551,7 +551,10 @@ export default function POSPage() {
   }
 
   const branch = userBranch(session)
-  const canSelectBranch = isAdmin(session)
+  // A user assigned to a single branch (branch != ALL) is locked to it, even if their role
+  // would otherwise let them pick a branch.
+  const branchLocked = !!session?.user?.branch && session.user.branch !== 'ALL'
+  const canSelectBranch = isAdmin(session) && !branchLocked
 
   const mainTabs = [
     { key: 'services' as const, label: 'Services', icon: <CreditCard size={16} /> },
@@ -1116,7 +1119,7 @@ function OrderFormModal({
     try {
       const params = new URLSearchParams({ walletType: 'HMO' })
       if (q) params.set('search', q)
-      if (!isAdmin(session)) params.set('branch', userBranch(session))
+      if (!isAdmin(session) || (session?.user?.branch && session.user.branch !== 'ALL')) params.set('branch', userBranch(session))
       const r = await fetch(`/api/pos/wallets?${params}`)
       const d = await r.json()
       setHmoWallets(normalize(d) as DigitalWallet[])
@@ -1128,7 +1131,7 @@ function OrderFormModal({
     try {
       const params = new URLSearchParams({ walletType: 'GL' })
       if (q) params.set('search', q)
-      if (!isAdmin(session)) params.set('branch', userBranch(session))
+      if (!isAdmin(session) || (session?.user?.branch && session.user.branch !== 'ALL')) params.set('branch', userBranch(session))
       const r = await fetch(`/api/pos/wallets?${params}`)
       const d = await r.json()
       setGlWallets(normalize(d) as DigitalWallet[])

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
+import { userBranchScope } from '@/lib/branch-scope'
 import { useSearchParams } from 'next/navigation'
 import {
   FileCheck, Search, ChevronUp, ChevronDown, ArrowUpDown,
@@ -338,13 +339,15 @@ function ProofCell({ orderId, currentUrl, onChange }: {
 export default function AccountsReceivablePage() {
   const { data: session } = useSession()
   const isHmoOfficer = session?.user?.role === 'HMO_OFFICER'
+  const scope = userBranchScope((session?.user as { branch?: string })?.branch)
   const searchParams = useSearchParams()
   // HMO Officers are locked to the HMO tab only
   const initialType = !isHmoOfficer && searchParams.get('type') === 'GL' ? 'GL' : 'HMO'
   const initialWallet = searchParams.get('wallet') || ''
 
   const [tab, setTab] = useState<'HMO' | 'GL'>(initialType as 'HMO' | 'GL')
-  const [branch, setBranch] = useState('')
+  const [branch, setBranch] = useState(scope.enum || '')
+  useEffect(() => { if (scope.enum && branch !== scope.enum) setBranch(scope.enum) }, [scope.enum]) // eslint-disable-line react-hooks/exhaustive-deps
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [walletFilter, setWalletFilter] = useState(initialWallet)
@@ -701,7 +704,7 @@ export default function AccountsReceivablePage() {
           { value: 'SANDBOX_EAST', label: 'East Branch' },
           { value: 'SANDBOX_GREENHILLS', label: 'Greenhills Branch' },
           { value: 'VERDANA_STORE', label: 'Verdana' },
-        ] as const).map(b => (
+        ] as const).filter(b => !scope.enum || b.value === scope.enum).map(b => (
           <button
             key={b.value}
             onClick={() => setBranch(b.value)}

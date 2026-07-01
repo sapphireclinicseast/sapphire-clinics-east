@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { userBranchScope } from '@/lib/branch-scope'
 import { useSession } from 'next-auth/react'
 import {
   Plus, Pencil, Trash2, X, Search, Stethoscope,
@@ -92,6 +93,9 @@ export default function ServicesPage() {
   const [filterDept, setFilterDept] = useState('')
   const isFrontDesk = session?.user?.role && ['SBEA_FRONTDESK', 'SBGH_FRONTDESK'].includes(session.user.role as string)
   const userBranch = session?.user?.branch as string | undefined
+  const scope = userBranchScope(userBranch)
+  // Any branch-locked user (or front desk) is pinned to their branch.
+  const lockBranch = scope.enum || (isFrontDesk ? userBranch : null) || null
   const [filterBranch, setFilterBranch] = useState('')
   const [sortField, setSortField] = useState('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
@@ -153,19 +157,19 @@ export default function ServicesPage() {
     finally { setLoading(false) }
   }, [search, filterDept, filterBranch, sortField, sortDir])
 
-  // Lock branch filter for front desk users
+  // Lock branch filter for branch-locked users (single-branch assignment or front desk)
   useEffect(() => {
-    if (isFrontDesk && userBranch && filterBranch !== userBranch) {
-      setFilterBranch(userBranch)
+    if (lockBranch && filterBranch !== lockBranch) {
+      setFilterBranch(lockBranch)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFrontDesk, userBranch])
+  }, [lockBranch])
 
   // Initial load
   useEffect(() => {
     if (!sessionUserId || initialLoaded.current) return
-    // Wait for branch to be set for front desk before first fetch
-    if (isFrontDesk && userBranch && !filterBranch) return
+    // Wait for branch to be set for locked users before first fetch
+    if (lockBranch && !filterBranch) return
     initialLoaded.current = true
     fetchServices()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -438,11 +442,11 @@ export default function ServicesPage() {
             {BRANCHES.find(b => b.value === filterBranch)?.label || filterBranch}
           </span>
         ) : (
-          <select value={filterBranch} onChange={(e) => setFilterBranch(e.target.value)}
+          <select value={filterBranch} onChange={(e) => setFilterBranch(e.target.value)} disabled={!!lockBranch}
             className="px-3 py-2.5 rounded-xl border text-sm outline-none"
             style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-            <option value="">All Branches</option>
-            {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+            {!lockBranch && <option value="">All Branches</option>}
+            {(lockBranch ? BRANCHES.filter(b => b.value === lockBranch) : BRANCHES).map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
           </select>
         )}
       </div>

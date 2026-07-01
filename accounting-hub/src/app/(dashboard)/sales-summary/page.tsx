@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
+import { userBranchScope } from '@/lib/branch-scope'
 import {
   Receipt, Download, Printer, Loader2, Filter, FileText,
   CheckCircle2, XCircle,
@@ -257,8 +258,10 @@ function ReportTable({
 ───────────────────────────────────────────── */
 export default function SalesSummaryPage() {
   const { data: session } = useSession()
+  const scope = userBranchScope((session?.user as { branch?: string })?.branch)
 
-  const [branch, setBranch] = useState('ALL')
+  const [branch, setBranch] = useState(scope.enum || 'ALL')
+  useEffect(() => { if (scope.enum && branch !== scope.enum) setBranch(scope.enum) }, [scope.enum]) // eslint-disable-line react-hooks/exhaustive-deps
   const [dateFrom, setDateFrom] = useState(firstOfMonth())
   const [dateTo, setDateTo] = useState(today())
   const [showWithInvoice, setShowWithInvoice] = useState(true)
@@ -361,7 +364,7 @@ export default function SalesSummaryPage() {
               className="w-full px-3 py-2 rounded-xl border text-sm outline-none bg-white"
               style={{ borderColor: 'var(--light-gray)' }}
             >
-              {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+              {(scope.enum ? BRANCHES.filter(b => b.value === scope.enum) : BRANCHES).map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
             </select>
           </div>
           <div>
