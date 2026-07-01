@@ -1447,7 +1447,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     // Footer note
     doc.setFontSize(7)
     doc.setTextColor(150, 150, 150)
-    doc.text('This is a computer-generated document.', pageW / 2, y, { align: 'center' })
+    doc.text('This is a computer-generated document. For hard copy, not valid without company seal.', pageW / 2, y, { align: 'center' })
     y += 4
     doc.text(`Generated: ${issuedDate}`, pageW / 2, y, { align: 'center' })
 
@@ -1535,7 +1535,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     // Footer note
     doc.setFontSize(7)
     doc.setTextColor(150, 150, 150)
-    doc.text('This is a computer-generated document.', pageW / 2, y, { align: 'center' })
+    doc.text('This is a computer-generated document. For hard copy, not valid without company seal.', pageW / 2, y, { align: 'center' })
     y += 4
     doc.text(`Generated: ${issuedDate}`, pageW / 2, y, { align: 'center' })
 
