@@ -732,6 +732,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
       tinNumber: emp.tinNumber || '', scheduleIn: emp.scheduleIn, scheduleOut: emp.scheduleOut,
       daySchedules: emp.daySchedules || null, restDay: emp.restDay,
       ignoreTimekeeping: emp.ignoreTimekeeping ?? false,
+      dateHired: emp.dateHired ? String(emp.dateHired).slice(0, 10) : '',
     })
     setShowForm(true)
   }
@@ -1339,6 +1340,19 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     if (!emp) {
       setError('Employee data not found. Please go to the Employee List tab first to load employee data, then return here.')
       return
+    }
+
+    // Warn if data that would print as "N/A" on the certificate is missing, so the
+    // user can update the employee's record (Employee List → edit) before generating.
+    const missing: string[] = []
+    if (!emp.dateHired) missing.push('Date Hired')
+    if (!emp.jobTitle) missing.push('Job Title')
+    if (missing.length > 0) {
+      const proceed = window.confirm(
+        `The following information is missing for ${emp.firstName} ${emp.lastName} and will appear as "N/A" on the certificate:\n\n• ${missing.join('\n• ')}\n\n`
+        + `Click Cancel to update the employee's record first (Employee List → edit the employee), or click OK to generate the certificate anyway.`
+      )
+      if (!proceed) return
     }
 
     const { jsPDF } = await import('jspdf')
@@ -2357,6 +2371,12 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Biometric ID</label>
                     <input type="number" value={formData.employeeBioId || ''} onChange={e => setFormData(p => ({ ...p, employeeBioId: parseInt(e.target.value) || null }))}
                       className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                  <div>
+                    <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Date Hired</label>
+                    <input type="date" value={formData.dateHired ? String(formData.dateHired).slice(0, 10) : ''} onChange={e => setFormData(p => ({ ...p, dateHired: e.target.value || null }))}
+                      className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
+                    <span className="block text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>Used on the Certificate of Employment. Not provided by HR sync — set it here.</span>
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Rest Day(s)</label>
