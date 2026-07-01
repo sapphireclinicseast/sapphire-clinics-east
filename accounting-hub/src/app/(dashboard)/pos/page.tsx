@@ -8,9 +8,10 @@ import {
   RefreshCw, Ban, Star, Filter, Undo2,
   Loader2, AlertCircle, ScanLine, UserPlus,
   Pencil, PlusCircle, ToggleLeft, ToggleRight, Eye, CheckCircle, Gift,
-  Globe, Truck, Phone, MapPin, Package, Clock,
+  Globe, Truck, Phone, MapPin, Package, Clock, Upload,
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { TiktokImportModal } from './TiktokImportModal'
 import Pagination from '@/components/ui/Pagination'
 
 /* ─────────────────────────── TYPES ─────────────────────────── */
@@ -6449,6 +6450,7 @@ function ProductsSection({
 }) {
   const [products, setProducts] = useState<InventoryProduct[]>([])
   const [productSearch, setProductSearch] = useState('')
+  const [showTiktokImport, setShowTiktokImport] = useState(false)
   const [cart, setCart] = useState<OrderLineItem[]>([])
   const [loading, setLoading] = useState(true)
   const [showOrderForm, setShowOrderForm] = useState(false)
@@ -6902,6 +6904,9 @@ function ProductsSection({
               <ShoppingCart size={16} /> Cart ({cart.length})
             </h3>
             <div className="flex items-center gap-1.5">
+              <button onClick={() => setShowTiktokImport(true)} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }} title="Bulk upload TikTok Shop orders + settlement">
+                <Upload size={13} /> TikTok Bulk Upload
+              </button>
               <label className="text-xs font-medium" style={{ color: 'var(--mid-gray)' }}>Date</label>
               <input
                 type="date"
@@ -7268,6 +7273,8 @@ function ProductsSection({
         </div>
       </div>
     </div>
+
+    {showTiktokImport && <TiktokImportModal onClose={() => setShowTiktokImport(false)} onDone={() => { fetch('/api/inventory?all=true&branch=VERDANA_STORE').then(r => r.json()).then(d => setProducts(normalize(d) as InventoryProduct[])).catch(() => {}) }} />}
 
     {/* ── Variant Picker Modal ─────────────────────────────────── */}
     {variantPickerProduct && (
