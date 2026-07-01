@@ -33,8 +33,13 @@ export async function GET(req: Request) {
   const candidates = orClauses.length ? await prisma.order.findMany({
     where: {
       orderType: 'PRODUCT', branch: 'VERDANA_STORE', status: 'COMPLETED',
-      NOT: { platform: 'Tiktok' },
-      OR: orClauses,
+      // "not Tiktok" must INCLUDE platform=null (e.g. legacy CASH orders). A bare
+      // NOT/{not:'Tiktok'} filter drops NULL rows in SQL (NULL != 'Tiktok' is not TRUE),
+      // which silently skipped every null-platform legacy order and risked double-counting.
+      AND: [
+        { OR: [{ platform: null }, { NOT: { platform: 'Tiktok' } }] },
+        { OR: orClauses },
+      ],
     },
     select: { id: true, referenceNumber: true, netAmount: true, transactionDate: true, items: { select: { inventoryItemId: true, name: true } } },
   }) : []
