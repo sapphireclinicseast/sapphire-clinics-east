@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { fetchExternalStaffForSync } from '@/lib/external-staff'
+import { fetchHrStaffForSync } from '@/lib/external-staff'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 const READ_ROLES = [...WRITE_ROLES, 'VIEWER']
@@ -26,10 +26,12 @@ export async function GET(req: Request) {
   const sync = searchParams.get('sync') === 'true'
   const includeInactive = searchParams.get('includeInactive') === 'true'
 
-  // Sync external staff (Operations for Aura Health branches, HR Platform for Verdana)
+  // Sync employees straight from the HR Platform (authoritative for all branches).
+  // Aura Health employees are filtered by employmentType='employee'; Verdana staff
+  // are all included (handled below).
   if (sync) {
     try {
-      const staff = await fetchExternalStaffForSync()
+      const staff = await fetchHrStaffForSync()
       if (staff.length > 0) {
         // Track which externalStaffIds are valid employees (for purge step below)
         const validExternalIds = new Set<string>()

@@ -23,6 +23,12 @@ services:
       dockerfile: docker/Dockerfile
     container_name: accounting_app
     restart: always
+    # host.docker.internal must resolve to the host gateway on Linux so the app
+    # can reach the HR Platform (pm2 on the host :3457) for payroll staff sync
+    # and the taxes Service-Invoice status. Without this the hostname does not
+    # resolve inside the container and those HR fetches fail silently.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy

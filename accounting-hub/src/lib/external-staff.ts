@@ -24,6 +24,34 @@ export type ExternalStaff = Record<string, any>
 
 const isVerdanaBranch = (b: string) => ['VDNA', 'VERDANA'].includes((b || '').toUpperCase())
 
+/**
+ * All staff straight from the HR Platform (hr.sapphireclinicseast.org).
+ * Used by the Employees sync — HR is the authoritative employee system of record
+ * for every branch, so employees come from HR (not Operations). Maps HR's `hrId`
+ * to `id` and normalizes the `VDNA` branch code to `VERDANA`.
+ */
+export async function fetchHrStaffForSync(): Promise<ExternalStaff[]> {
+  try {
+    const res = await fetch(`${HR_PLATFORM_URL}/staff/external`, {
+      headers: { Authorization: `Bearer ${EXTERNAL_API_KEY}` },
+      cache: 'no-store',
+    })
+    if (!res.ok) {
+      console.error(`[external-staff] HR Platform returned ${res.status}`)
+      return []
+    }
+    const data = await res.json()
+    return (data.staff || []).map((s: ExternalStaff) => ({
+      ...s,
+      id: s.id || s.hrId,
+      branch: isVerdanaBranch(s.branch) ? 'VERDANA' : s.branch,
+    }))
+  } catch (e) {
+    console.error('[external-staff] HR staff fetch error:', e)
+    return []
+  }
+}
+
 export async function fetchExternalStaffForSync(): Promise<ExternalStaff[]> {
   let staff: ExternalStaff[] = []
 

@@ -2177,7 +2177,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                 </thead>
                 <tbody>
                   {filteredEmployees.length === 0 ? (
-                    <tr><td colSpan={canWrite ? 20 : 18} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No employees found. Sync from CRM or add manually.</td></tr>
+                    <tr><td colSpan={canWrite ? 20 : 18} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No employees found. Sync from Hub or add manually.</td></tr>
                   ) : sortRows(filteredEmployees, (e) => {
                     if (sortField === 'empName') return `${e.lastName} ${e.firstName}`
                     if (sortField === 'empDept') return e.department
