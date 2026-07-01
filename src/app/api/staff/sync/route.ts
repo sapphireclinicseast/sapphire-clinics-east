@@ -185,6 +185,31 @@ export async function POST() {
     }
   }
 
-  console.log('[staff-sync] Done:', { created, updated, deleted, deactivated, nameChanges, errors: errors.length })
-  return NextResponse.json({ synced: created + updated, created, updated, deleted, deactivated, nameChanges, errors, total: hrStaff.length })
+  // ── Keep staff-portal logins in step with the synced staff email ──────────
+  // Staff emails are managed in HR and flow here on sync. When a staff member's
+  // email changes, their Staff Portal login (TherapistAccount, same shared DB —
+  // not in this app's Prisma schema, so updated by raw SQL) must follow it
+  // automatically, keeping the SAME password. Match by the linked staffId;
+  // store lower-cased to match the login lookup; skip any target email that
+  // already belongs to a different account (email is unique).
+  let loginEmailsUpdated = 0
+  try {
+    loginEmailsUpdated = await prisma.$executeRaw`
+      UPDATE "TherapistAccount" ta
+      SET email = lower(btrim(s.email)), "updatedAt" = NOW()
+      FROM "Staff" s
+      WHERE ta."staffId" = s.id
+        AND s.email IS NOT NULL AND btrim(s.email) <> ''
+        AND lower(ta.email) <> lower(btrim(s.email))
+        AND NOT EXISTS (
+          SELECT 1 FROM "TherapistAccount" x
+          WHERE lower(x.email) = lower(btrim(s.email)) AND x.id <> ta.id
+        )
+    `
+  } catch (err) {
+    errors.push('Login-email reconcile: ' + (err instanceof Error ? err.message : String(err)))
+  }
+
+  console.log('[staff-sync] Done:', { created, updated, deleted, deactivated, loginEmailsUpdated, nameChanges, errors: errors.length })
+  return NextResponse.json({ synced: created + updated, created, updated, deleted, deactivated, loginEmailsUpdated, nameChanges, errors, total: hrStaff.length })
 }
