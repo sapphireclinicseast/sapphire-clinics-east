@@ -24,6 +24,12 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
   const [bankAcct, setBankAcct] = useState('')
   const [busy, setBusy] = useState(false)
   const [log, setLog] = useState<string[]>([])
+  // Unmatched-product resolution: parsed orders held until the uploader maps every
+  // unknown SKU/product to an inventory item.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [parsedOrders, setParsedOrders] = useState<[string, any[]][] | null>(null)
+  const [unmatched, setUnmatched] = useState<{ key: string; sku: string; name: string }[]>([])
+  const [manualMap, setManualMap] = useState<Record<string, string>>({})
 
   useEffect(() => {
     fetch('/api/chart-of-accounts?pageSize=1000').then(r => r.ok ? r.json() : { data: [] }).then(d => setCoa(d.data || [])).catch(() => {})
@@ -37,8 +43,20 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
     const counts = new Map<string, number>(); items.forEach(i => { const k = i.name.toUpperCase().replace(/\s+/g, ' ').trim(); counts.set(k, (counts.get(k) || 0) + 1) })
     const m = new Map<string, Item>(); items.forEach(i => { const k = i.name.toUpperCase().replace(/\s+/g, ' ').trim(); if (counts.get(k) === 1) m.set(k, i) }); return m
   }, [items])
+  const itemById = useMemo(() => { const m = new Map<string, Item>(); items.forEach(i => m.set(i.id, i)); return m }, [items])
   const banks = coa.filter(c => c.accountType === 'ASSET')
   const say = (s: string) => setLog(l => [...l, s])
+  const normS = (s: string) => s.toUpperCase().replace(/\s+/g, ' ').trim()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rowKey = (r: any) => String(r['Seller SKU'] || '').trim().toUpperCase() || `NAME:${normS(String(r['Product Name'] || ''))}`
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const itemFor = (r: any, mmap: Record<string, string>): Item | undefined => {
+    const mapped = mmap[rowKey(r)]
+    if (mapped) return itemById.get(mapped)
+    const sku = String(r['Seller SKU'] || '').trim().toUpperCase()
+    const pname = normS(String(r['Product Name'] || ''))
+    return skuMap.get(sku) || (pname ? nameMap.get(pname) : undefined)
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const readSheet = async (file: File, sheetIndex = 0): Promise<any[]> => {
@@ -48,19 +66,40 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
     return XLSX.utils.sheet_to_json(ws, { defval: '' })
   }
 
-  async function importOrders(file: File) {
+  // Parse the file, then either open the unmatched-product resolver or import directly.
+  async function onOrdersFile(file: File) {
     if (!modeId) { alert('Choose the TikTok payment mode first.'); return }
-    setBusy(true); setLog([])
+    setBusy(true); setLog([]); setUnmatched([]); setParsedOrders(null)
     try {
       const rows = await readSheet(file)
-      // Skip TikTok's description row (Order ID cell reads "Platform unique order ID.")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const data = rows.filter((r: any) => r['Order ID'] && !String(r['Order ID']).startsWith('Platform') && String(r['Order Status']).toLowerCase() === 'completed')
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const byOrder = new Map<string, any[]>()
       for (const r of data) { const id = String(r['Order ID']).trim(); if (!byOrder.has(id)) byOrder.set(id, []); byOrder.get(id)!.push(r) }
+      const entries = [...byOrder.entries()]
+      // Distinct products with no match (skip fully-returned lines — not sold).
+      const seen = new Set<string>()
+      const missing: { key: string; sku: string; name: string }[] = []
+      for (const [, rs] of entries) for (const r of rs) {
+        const qty = Math.max(0, Math.round(numAt(r, 'Quantity'))), ret = Math.max(0, Math.round(numAt(r, 'Sku Quantity of return')))
+        if (qty - ret <= 0) continue
+        if (!itemFor(r, {})) { const k = rowKey(r); if (!seen.has(k)) { seen.add(k); missing.push({ key: k, sku: String(r['Seller SKU'] || '').trim(), name: String(r['Product Name'] || '') }) } }
+      }
+      say(`Found ${entries.length} completed order(s).`)
+      setParsedOrders(entries)
+      if (missing.length > 0) { setUnmatched(missing); setManualMap({}); say(`${missing.length} product(s) are not in Inventory — match each below, then click Confirm & Import.`); return }
+      await runOrdersImport(entries, {})
+    } finally { setBusy(false) }
+  }
+
+  async function runOrdersImport(orders: [string, unknown[]][], mmap: Record<string, string>) {
+    if (!modeId) { alert('Choose the TikTok payment mode first.'); return }
+    setBusy(true)
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const byOrder = new Map<string, any[]>(orders as [string, any[]][])
       const allIds = [...byOrder.keys()]
-      say(`Found ${allIds.length} completed order(s).`)
       // Date window (for the fallback legacy match) from the file's order dates.
       const dates = allIds.map(id => toYmd(byOrder.get(id)![0]['Paid Time'] || byOrder.get(id)![0]['Created Time'])).filter(Boolean).sort()
       const from = dates[0] || '', to = dates[dates.length - 1] || ''
@@ -74,17 +113,13 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
       const sameSet = (a: string[], b: string[]) => a.length > 0 && a.length === b.length && a.every((v, i) => v === b[i])
       const withinDays = (a: string, b: string, n: number) => !!a && !!b && Math.abs((+new Date(a) - +new Date(b)) / 86400000) <= n
       let ok = 0, dup = 0, skipped = 0, replaced = 0
-      const unmatched = new Set<string>()
       for (const id of allIds) {
         if (existing.has(id)) { dup++; continue }
         const rs = byOrder.get(id)!
         let anyReturn = false
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const its = rs.map((r: any) => {
-          const sku = String(r['Seller SKU'] || '').trim().toUpperCase()
-          const pname = String(r['Product Name'] || '').toUpperCase().replace(/\s+/g, ' ').trim()
-          const item = skuMap.get(sku) || (pname ? nameMap.get(pname) : undefined)
-          if (!item) unmatched.add(sku || (pname ? `name:${String(r['Product Name']).slice(0, 40)}` : '(blank)'))
+          const item = itemFor(r, mmap)
           const qty = Math.max(0, Math.round(numAt(r, 'Quantity')))
           const ret = Math.max(0, Math.round(numAt(r, 'Sku Quantity of return')))
           const sold = qty - ret
@@ -128,8 +163,8 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
           if (res.ok) ok++; else { skipped++; say(`Order ${id}: ${(await res.json()).error || 'failed'}`) }
         } catch { skipped++ }
       }
-      say(`Imported ${ok} order(s). Replaced ${replaced} legacy (e.g. CASH) order(s) — their stock was restored, then re-deducted correctly. Skipped ${dup} already-imported, ${skipped} unmatched/empty.`)
-      if (unmatched.size) say(`Unmatched Seller SKUs (add them to Inventory, then re-upload): ${[...unmatched].join(', ')}`)
+      say(`Imported ${ok} order(s). Replaced ${replaced} legacy (e.g. CASH) order(s) — their stock was restored, then re-deducted correctly. Skipped ${dup} already-imported, ${skipped} empty/fully-returned.`)
+      setParsedOrders(null); setUnmatched([])
       onDone()
     } finally { setBusy(false) }
   }
@@ -216,7 +251,7 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
             <Upload size={18} className="mx-auto mb-1" style={{ color: 'var(--teal)' }} />
             <span className="block text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>1. Completed Orders</span>
             <span className="block text-[11px]" style={{ color: 'var(--mid-gray)' }}>Records sales</span>
-            <input type="file" accept=".xlsx,.xls,.csv" className="hidden" disabled={busy} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) importOrders(f) }} />
+            <input type="file" accept=".xlsx,.xls,.csv" className="hidden" disabled={busy} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onOrdersFile(f) }} />
           </label>
           <label className="rounded-xl border-2 border-dashed p-4 text-center cursor-pointer" style={{ borderColor: 'var(--deep-teal)' }}>
             <Upload size={18} className="mx-auto mb-1" style={{ color: 'var(--deep-teal)' }} />
@@ -225,6 +260,34 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
             <input type="file" accept=".xlsx,.xls,.csv" className="hidden" disabled={busy} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) importSettlement(f) }} />
           </label>
         </div>
+
+        {/* Unmatched-product resolver — import is blocked until every one is mapped */}
+        {unmatched.length > 0 && (
+          <div className="rounded-xl border p-3 mb-3" style={{ borderColor: '#fca5a5', background: '#fef2f2' }}>
+            <p className="text-sm font-semibold mb-2" style={{ color: '#b91c1c' }}>{unmatched.length} product(s) not found in Inventory — match each to continue</p>
+            <div className="space-y-2 max-h-60 overflow-auto">
+              {unmatched.map(u => (
+                <div key={u.key} className="grid grid-cols-2 gap-2 items-center">
+                  <div className="text-xs" style={{ color: 'var(--charcoal)' }}>
+                    <span className="font-mono">{u.sku || '(no SKU)'}</span>
+                    <span className="block truncate" style={{ color: 'var(--mid-gray)' }} title={u.name}>{u.name || '(no name)'}</span>
+                  </div>
+                  <select value={manualMap[u.key] || ''} onChange={e => setManualMap(m => ({ ...m, [u.key]: e.target.value }))} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: manualMap[u.key] ? 'var(--teal)' : '#fca5a5' }}>
+                    <option value="">— Select inventory item —</option>
+                    {items.map(i => <option key={i.id} value={i.id}>{i.sku} — {i.name}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={async () => { if (parsedOrders) await runOrdersImport(parsedOrders as [string, unknown[]][], manualMap) }}
+              disabled={busy || unmatched.some(u => !manualMap[u.key])}
+              className="w-full mt-3 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+              {busy ? <Loader2 size={15} className="inline animate-spin" /> : `Confirm & Import ${parsedOrders?.length || 0} order(s)`}
+            </button>
+            <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Tip: instead of mapping here every time, set each product&apos;s Seller SKU in TikTok (or match the Inventory item name) so future uploads auto-match.</p>
+          </div>
+        )}
 
         {busy && <p className="text-sm mb-2" style={{ color: 'var(--teal)' }}><Loader2 size={14} className="inline animate-spin" /> Processing…</p>}
         {log.length > 0 && (
