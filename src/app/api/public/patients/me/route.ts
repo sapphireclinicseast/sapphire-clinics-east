@@ -67,7 +67,7 @@ export async function GET(req: NextRequest) {
       id: true, firstName: true, lastName: true, dob: true, sex: true,
       patientType: true, diagnosis: true, city: true, branch: true,
       email: true, phone: true, address: true, civilStatus: true,
-      pwdSeniorId: true,
+      pwdSeniorId: true, username: true, profilePhoto: true,
     },
   })
   if (!patient) {
@@ -191,6 +191,8 @@ export async function GET(req: NextRequest) {
     address: addressLine,
     civilStatus: patient.civilStatus ? titleCase(patient.civilStatus) : null,
     pwdSeniorId: patient.pwdSeniorId ? patient.pwdSeniorId.trim() : null,
+    username: patient.username ?? null,
+    profilePhoto: patient.profilePhoto ?? null,
   }
 
   return withCors(NextResponse.json({ profile, servicesAvailed, sessions, surveys }), origin)
