@@ -200,9 +200,11 @@ function UploadModal({ bankAccountId, onClose, onDone }: { bankAccountId: string
   const [headers, setHeaders] = useState<string[]>([])
   const [map, setMap] = useState<{ date: string; description: string; spent: string; received: string }>({ date: '', description: '', spent: '', received: '' })
   const [busy, setBusy] = useState(false)
+  const [fileName, setFileName] = useState('')
 
   const onFile = async (file: File | null) => {
     if (!file) return
+    setFileName(file.name)
     const XLSX = await import('xlsx')
     const buf = await file.arrayBuffer()
     const wb = XLSX.read(buf, { type: 'array', cellDates: true })
@@ -259,8 +261,12 @@ function UploadModal({ bankAccountId, onClose, onDone }: { bankAccountId: string
     <Modal title="Upload bank statement" onClose={onClose} wide>
       <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>Upload a CSV or Excel statement (BDO, AUB, etc.). The first sheet&apos;s header row is read; columns are auto-mapped and you can adjust them below. <strong>Spent</strong> = money out (debit), <strong>Received</strong> = money in (credit).</p>
       <div className="flex items-center gap-3 mb-3 flex-wrap">
-        <input type="file" accept=".csv,.xlsx,.xls" onChange={e => onFile(e.target.files?.[0] || null)} className="text-xs" />
-        <button onClick={downloadTemplate} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+        <label className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white cursor-pointer" style={{ background: 'var(--teal)' }}>
+          <Upload size={15} /> Choose File
+          <input type="file" accept=".csv,.xlsx,.xls" onChange={e => onFile(e.target.files?.[0] || null)} className="hidden" />
+        </label>
+        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{fileName || 'No file chosen (CSV or Excel)'}</span>
+        <button onClick={downloadTemplate} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border ml-auto" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
           <Download size={13} /> Download Template
         </button>
       </div>
