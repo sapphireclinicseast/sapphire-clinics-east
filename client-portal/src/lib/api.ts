@@ -161,6 +161,8 @@ export interface PatientProfile {
   address: string | null
   civilStatus: string | null
   pwdSeniorId: string | null
+  username: string | null
+  profilePhoto: string | null
 }
 export interface PatientSessionRecord {
   id: string
@@ -187,6 +189,22 @@ export interface MeResult {
 
 export function getMe(token: string) {
   return jsonFetch<MeResult>(`/patients/me?token=${encodeURIComponent(token)}`)
+}
+
+// Update the signed-in patient's own account (photo / username / password).
+export function updatePatientProfile(
+  token: string,
+  payload: {
+    username?: string
+    photo?: string | null
+    currentPassword?: string
+    newPassword?: string
+  },
+) {
+  return jsonFetch<{ ok: boolean; username: string | null; profilePhoto: string | null }>(
+    `/patients/update`,
+    { method: 'POST', body: JSON.stringify({ token, ...payload }) },
+  )
 }
 
 export interface SlotChoice {

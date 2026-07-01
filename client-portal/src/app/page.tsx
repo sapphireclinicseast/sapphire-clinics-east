@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { QRCodeSVG } from 'qrcode.react'
 import {
@@ -8,6 +8,7 @@ import {
   registerPatient,
   setPatientPassword,
   getMe,
+  updatePatientProfile,
   InvalidTokenError,
   type MeResult,
 } from '@/lib/api'
@@ -439,7 +440,15 @@ function PortalDashboard({
         <div className="grid gap-6 lg:grid-cols-[200px_minmax(0,1fr)] items-start">
           <SidebarNav section={section} onChange={setSection} />
           <div className="min-w-0">
-            {section === 'profile' && <ProfileSection data={data} />}
+            {section === 'profile' && (
+              <ProfileSection
+                data={data}
+                token={token}
+                onUpdated={(patch) =>
+                  setData((d) => (d ? { ...d, profile: { ...d.profile, ...patch } } : d))
+                }
+              />
+            )}
             {section === 'sessions' && <SessionsSection sessions={data.sessions} />}
             {section === 'feedback' && <FeedbackSection surveys={data.surveys} />}
             {section === 'rewards' && (
@@ -492,28 +501,242 @@ function SidebarNav({ section, onChange }: { section: Section; onChange: (s: Sec
 
 // ── Profile ──────────────────────────────────────────────────────────────────
 
-function ProfileSection({ data }: { data: MeResult }) {
+function ProfileSection({
+  data,
+  token,
+  onUpdated,
+}: {
+  data: MeResult
+  token: string
+  onUpdated: (patch: Partial<MeResult['profile']>) => void
+}) {
   const p = data.profile
   return (
-    <div className="card-static">
-      <h3 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">Patient Profile</h3>
-      <p className="text-sm text-[color:var(--mid-gray)] mt-1">Your demographics as recorded in our Patient CRM.</p>
-      <dl className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
-        <Detail label="Full Name" value={p.fullName} />
-        <Detail label="Date of Birth" value={p.dob ? `${fmtDate(p.dob)}${p.age != null ? ` (${p.age} yrs)` : ''}` : null} />
-        <Detail label="Cellphone No." value={p.phone} />
-        <Detail label="Email" value={p.email} />
-        <Detail label="Address" value={p.address} />
-        <Detail label="Diagnosis" value={p.diagnosis} />
-        <Detail label="Civil Status" value={p.civilStatus} />
-        <Detail label="PWD / Senior ID No." value={p.pwdSeniorId} />
-        <Detail label="Branch" value={p.branch} />
-      </dl>
-      <p className="mt-5 text-[12px] text-[color:var(--mid-gray)] leading-relaxed border-t border-[color:var(--light-gray)] pt-3">
-        To update your Patient Profile, please inform the front desk so they can edit your details in the Operations Hub.
-      </p>
+    <div className="space-y-6">
+      <ProfileHeaderCard
+        token={token}
+        photo={p.profilePhoto}
+        fullName={p.fullName}
+        username={p.username}
+        onUpdated={onUpdated}
+      />
+
+      {/* Demographics (read-only — edited by the front desk in the CRM) */}
+      <div className="card-static">
+        <h3 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">Patient Profile</h3>
+        <p className="text-sm text-[color:var(--mid-gray)] mt-1">Your demographics as recorded in our Patient CRM.</p>
+        <dl className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+          <Detail label="Full Name" value={p.fullName} />
+          <Detail label="Date of Birth" value={p.dob ? `${fmtDate(p.dob)}${p.age != null ? ` (${p.age} yrs)` : ''}` : null} />
+          <Detail label="Cellphone No." value={p.phone} />
+          <Detail label="Email" value={p.email} />
+          <Detail label="Address" value={p.address} />
+          <Detail label="Diagnosis" value={p.diagnosis} />
+          <Detail label="Civil Status" value={p.civilStatus} />
+          <Detail label="PWD / Senior ID No." value={p.pwdSeniorId} />
+          <Detail label="Branch" value={p.branch} />
+        </dl>
+        <p className="mt-5 text-[12px] text-[color:var(--mid-gray)] leading-relaxed border-t border-[color:var(--light-gray)] pt-3">
+          To update your Patient Profile, please inform the front desk so they can edit your details in the Operations Hub.
+        </p>
+      </div>
+
+      <AccountSettings token={token} currentUsername={p.username} onUpdated={onUpdated} />
     </div>
   )
+}
+
+function ProfileHeaderCard({
+  token,
+  photo,
+  fullName,
+  username,
+  onUpdated,
+}: {
+  token: string
+  photo: string | null
+  fullName: string
+  username: string | null
+  onUpdated: (patch: Partial<MeResult['profile']>) => void
+}) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const initials =
+    fullName.split(/\s+/).filter(Boolean).slice(0, 2).map((s) => s[0]).join('').toUpperCase() || '🙂'
+
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (!file.type.startsWith('image/')) { setErr('Please choose an image file.'); return }
+    setBusy(true); setErr(null)
+    try {
+      const dataUrl = await resizeToDataUrl(file, 256)
+      const res = await updatePatientProfile(token, { photo: dataUrl })
+      onUpdated({ profilePhoto: res.profilePhoto })
+    } catch (e) {
+      if (e instanceof InvalidTokenError) return
+      setErr((e as Error).message || 'Could not upload photo.')
+    } finally { setBusy(false) }
+  }
+
+  async function removePhoto() {
+    setBusy(true); setErr(null)
+    try {
+      const res = await updatePatientProfile(token, { photo: '' })
+      onUpdated({ profilePhoto: res.profilePhoto })
+    } catch (e) {
+      if (!(e instanceof InvalidTokenError)) setErr((e as Error).message)
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="card-static">
+      <div className="flex items-center gap-5">
+        <div className="w-20 h-20 shrink-0 rounded-full overflow-hidden bg-[color:var(--pale-teal)] flex items-center justify-center border border-[color:var(--light-gray)]">
+          {photo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={photo} alt="Profile" className="w-full h-full object-cover" />
+          ) : (
+            <span className="text-[22px] font-semibold text-[color:var(--teal)]" style={{ fontFamily: 'var(--font-display)' }}>{initials}</span>
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[18px] font-semibold text-[color:var(--deep-teal)] truncate">{fullName}</div>
+          <div className="text-sm text-[color:var(--mid-gray)] truncate">{username ? `@${username}` : 'No username set'}</div>
+          <input ref={fileRef} type="file" accept="image/*" onChange={onFile} className="hidden" />
+          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => fileRef.current?.click()} disabled={busy} className="btn-secondary text-sm py-1.5">
+              {busy ? 'Saving…' : photo ? 'Change photo' : 'Upload photo'}
+            </button>
+            {photo && !busy && (
+              <button type="button" onClick={removePhoto} className="text-sm text-[color:var(--mid-gray)] hover:text-rose-600 px-2">Remove</button>
+            )}
+          </div>
+        </div>
+      </div>
+      {err && <p className="text-[12px] text-rose-600 mt-3">{err}</p>}
+    </div>
+  )
+}
+
+function AccountSettings({
+  token,
+  currentUsername,
+  onUpdated,
+}: {
+  token: string
+  currentUsername: string | null
+  onUpdated: (patch: Partial<MeResult['profile']>) => void
+}) {
+  const [username, setUsername] = useState(currentUsername ?? '')
+  const [uBusy, setUBusy] = useState(false)
+  const [uMsg, setUMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  const [cur, setCur] = useState('')
+  const [nw, setNw] = useState('')
+  const [conf, setConf] = useState('')
+  const [pBusy, setPBusy] = useState(false)
+  const [pMsg, setPMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  async function saveUsername(e: React.FormEvent) {
+    e.preventDefault()
+    setUBusy(true); setUMsg(null)
+    try {
+      const res = await updatePatientProfile(token, { username })
+      onUpdated({ username: res.username })
+      if (res.username) setUsername(res.username)
+      setUMsg({ ok: true, text: 'Username updated.' })
+    } catch (e) {
+      setUMsg({ ok: false, text: (e as Error).message })
+    } finally { setUBusy(false) }
+  }
+
+  async function savePassword(e: React.FormEvent) {
+    e.preventDefault()
+    if (nw.length < 8) { setPMsg({ ok: false, text: 'New password must be at least 8 characters.' }); return }
+    if (nw !== conf) { setPMsg({ ok: false, text: 'New passwords do not match.' }); return }
+    setPBusy(true); setPMsg(null)
+    try {
+      await updatePatientProfile(token, { currentPassword: cur, newPassword: nw })
+      setPMsg({ ok: true, text: 'Password changed.' })
+      setCur(''); setNw(''); setConf('')
+    } catch (e) {
+      setPMsg({ ok: false, text: (e as Error).message })
+    } finally { setPBusy(false) }
+  }
+
+  return (
+    <div className="card-static">
+      <h3 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">Account &amp; security</h3>
+      <p className="text-sm text-[color:var(--mid-gray)] mt-1">Change your login username and password.</p>
+
+      <form onSubmit={saveUsername} className="mt-5">
+        <span className="label">Username</span>
+        <div className="flex gap-2">
+          <input
+            required
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            autoCapitalize="none"
+            autoCorrect="off"
+            className="input flex-1"
+            placeholder="your username"
+          />
+          <button type="submit" disabled={uBusy} className="btn-secondary">{uBusy ? 'Saving…' : 'Save'}</button>
+        </div>
+        {uMsg && <SettingMsg m={uMsg} />}
+      </form>
+
+      <form onSubmit={savePassword} className="mt-6 border-t border-[color:var(--light-gray)] pt-5 space-y-3.5">
+        <div className="text-[13px] font-semibold text-[color:var(--deep-teal)]">Change password</div>
+        <Field label="Current password">
+          <input required type="password" value={cur} onChange={(e) => setCur(e.target.value)} className="input" placeholder="••••••••" />
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="New password">
+            <input required type="password" value={nw} onChange={(e) => setNw(e.target.value)} className="input" placeholder="At least 8 characters" />
+          </Field>
+          <Field label="Confirm new password">
+            <input required type="password" value={conf} onChange={(e) => setConf(e.target.value)} className="input" placeholder="Re-enter password" />
+          </Field>
+        </div>
+        <button type="submit" disabled={pBusy} className="btn-primary">{pBusy ? 'Saving…' : 'Change password'}</button>
+        {pMsg && <SettingMsg m={pMsg} />}
+      </form>
+    </div>
+  )
+}
+
+function SettingMsg({ m }: { m: { ok: boolean; text: string } }) {
+  return (
+    <p className={`text-[12px] mt-2 ${m.ok ? 'text-emerald-700' : 'text-rose-600'}`}>{m.text}</p>
+  )
+}
+
+// Read an image file, cover-crop to a square, and return a compact JPEG data URL.
+function resizeToDataUrl(file: File, size: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const canvas = document.createElement('canvas')
+      canvas.width = size
+      canvas.height = size
+      const ctx = canvas.getContext('2d')
+      if (!ctx) { reject(new Error('Image processing not supported on this device.')); return }
+      const scale = Math.max(size / img.width, size / img.height)
+      const w = img.width * scale
+      const h = img.height * scale
+      ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h)
+      resolve(canvas.toDataURL('image/jpeg', 0.85))
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read that image.')) }
+    img.src = url
+  })
 }
 
 // ── Sessions ─────────────────────────────────────────────────────────────────

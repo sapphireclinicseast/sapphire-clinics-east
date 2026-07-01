@@ -208,6 +208,7 @@ model Patient {
   phone       String?
   username    String?     @unique  // portal login handle; lets siblings sharing one email pick distinct logins
   passwordHash String?         // optional self-service portal login (bcrypt); null = no portal account yet
+  profilePhoto String?        // patient-uploaded avatar, stored as a resized base64 data URL
   dob         DateTime?
   patientType PatientType
   branch      Branch?          // legacy single-branch (kept for backward compat)
