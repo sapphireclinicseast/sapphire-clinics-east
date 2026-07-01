@@ -71,6 +71,7 @@ export async function GET(req: Request) {
               inventoryItemId: true,
               quantity: true,
               lineTotal: true,
+              refundAmount: true,
               service: { select: { department: true, revenueAccount: { select: { accountNumber: true, accountTitle: true, accountType: true } } } },
               cogsCost: true,
               inventoryItem: { select: { unitCost: true, skuDepartment: true, revenueAccount: { select: { accountNumber: true, accountTitle: true, accountType: true } }, expenseAccount: { select: { accountNumber: true, accountTitle: true } } } },
@@ -292,6 +293,11 @@ export async function GET(req: Request) {
     const empHdmfERKey = payrollCOAMappingRaw?.hdmfERAccountId
       ? accountIdToKey.get(payrollCOAMappingRaw.hdmfERAccountId) : undefined
 
+    // 7160 Refunds account key — order-item refunds are grossed up into revenue and
+    // shown here as a deduction (net income unchanged, refund rate becomes visible).
+    const refundsAcct = accounts.find(a => a.accountNumber === '7160')
+    const refundsAcctKey = refundsAcct ? `${refundsAcct.accountNumber} ${refundsAcct.accountTitle}` : null
+
     // Build discount label → COA account key map from DiscountSettings
     const discountLabelToAccount: Record<string, string> = {}
     let pwdScAccountKey = ''
@@ -429,7 +435,14 @@ export async function GET(req: Request) {
             || item.inventoryItem?.revenueAccount?.accountType
           if (itemRevenueAcctType !== 'LIABILITY') {
             const acctKey = resolveItemAccount(item)
-            m.revenueByAccount[acctKey] = (m.revenueByAccount[acctKey] || 0) + lineAmt
+            const refund = Number(item.refundAmount || 0)
+            // Gross up revenue by the refunded portion, then book the same amount as a
+            // Refund deduction (7160) — net stays the same, but refunds become visible.
+            m.revenueByAccount[acctKey] = (m.revenueByAccount[acctKey] || 0) + lineAmt + refund
+            if (refund > 0 && refundsAcctKey) {
+              m.revenueByAccount[refundsAcctKey] = (m.revenueByAccount[refundsAcctKey] || 0) + refund
+              m.deductionsByAccount[refundsAcctKey] = (m.deductionsByAccount[refundsAcctKey] || 0) + refund
+            }
           }
         }
 

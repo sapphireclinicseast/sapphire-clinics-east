@@ -683,6 +683,8 @@ model OrderItem {
   lineTotal       Decimal
   cogsCost        Decimal?       // FIFO cost of goods sold for this line item
   isFreeSample    Boolean        @default(false) // Inventory out to marketing expense (8120)
+  returnedQuantity Int           @default(0)     // units returned/refunded (buyer return)
+  refundAmount    Decimal        @default(0)     // ₱ refunded for this line — grossed up into revenue + shown under 7160 Refunds
   variantId       String?        // Which variant was sold (if product has variants)
   variantLabel    String?        // e.g. "Red / Large"
   createdAt       DateTime       @default(now())

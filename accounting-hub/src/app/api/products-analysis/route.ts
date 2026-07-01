@@ -41,7 +41,7 @@ export async function GET(req: Request) {
         platform: true,
         items: {
           where: { inventoryItemId: { not: null } },
-          select: { inventoryItemId: true, name: true, quantity: true, lineTotal: true, isFreeSample: true },
+          select: { inventoryItemId: true, name: true, quantity: true, lineTotal: true, isFreeSample: true, returnedQuantity: true, refundAmount: true },
         },
         payments: { select: { method: true, amount: true } },
       },
@@ -53,6 +53,7 @@ export async function GET(req: Request) {
     const rewardBuys = new Map<string, { name: string; qty: number }>()
     const payModes = new Map<string, { amount: number; count: number }>()
     const platformUnits = new Map<string, number>()   // product units purchased per sales channel
+    const refunded = new Map<string, { name: string; units: number; amount: number }>()  // per-product refunds
 
     for (const order of orders) {
       const orderGross = Number(order.subtotal)
@@ -77,6 +78,15 @@ export async function GET(req: Request) {
         const s = sold.get(id) || { id, name: item.name, units: 0, gross: 0, net: 0 }
         s.units += qty; s.gross += itemGross; s.net += itemNet; s.name = item.name
         sold.set(id, s)
+
+        // Refunds: line lineTotal is the sold (net-of-return) amount; refundAmount is the
+        // returned portion. Gross product sales = lineTotal + refundAmount.
+        const ref = Number(item.refundAmount || 0)
+        if (ref > 0 || (item.returnedQuantity || 0) > 0) {
+          const rf = refunded.get(id) || { name: item.name, units: 0, amount: 0 }
+          rf.units += item.returnedQuantity || 0; rf.amount += ref; rf.name = item.name
+          refunded.set(id, rf)
+        }
         platformUnits.set(platformKey, (platformUnits.get(platformKey) || 0) + qty)
 
         if (usesRewardPoints) {
@@ -100,6 +110,13 @@ export async function GET(req: Request) {
     const unitsSold = soldList.reduce((a, s) => a + s.units, 0)
     const totalGross = soldList.reduce((a, s) => a + s.gross, 0)
     const totalNet = soldList.reduce((a, s) => a + s.net, 0)
+
+    // Refunds: rate = refunded ÷ overall product sales (gross-of-returns = sold gross + refunds).
+    const refundList = [...refunded.values()]
+    const totalRefundAmount = refundList.reduce((a, r) => a + r.amount, 0)
+    const totalReturnedUnits = refundList.reduce((a, r) => a + r.units, 0)
+    const grossWithReturns = totalGross + totalRefundAmount
+    const grossUnitsWithReturns = unitsSold + totalReturnedUnits
 
     // Active product catalog (branch-scoped; include ALL-branch items) → for "no purchase" + canonical names.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -143,6 +160,14 @@ export async function GET(req: Request) {
         totalNet: round2(totalNet),
         avgGrossPerUnit: unitsSold > 0 ? round2(totalGross / unitsSold) : 0,
         avgNetPerUnit: unitsSold > 0 ? round2(totalNet / unitsSold) : 0,
+      },
+      refunds: {
+        grossProductSales: round2(grossWithReturns),
+        refundedAmount: round2(totalRefundAmount),
+        returnedUnits: totalReturnedUnits,
+        refundRateAmount: grossWithReturns > 0 ? round2((totalRefundAmount / grossWithReturns) * 100) : 0,
+        refundRateUnits: grossUnitsWithReturns > 0 ? round2((totalReturnedUnits / grossUnitsWithReturns) * 100) : 0,
+        topRefunded: [...refunded.entries()].map(([id, r]) => ({ name: r.name, sku: skuById.get(id) || '', units: r.units, amount: round2(r.amount) })).sort((a, b) => b.amount - a.amount).slice(0, 10),
       },
       fastMoving,
       slowMoving,

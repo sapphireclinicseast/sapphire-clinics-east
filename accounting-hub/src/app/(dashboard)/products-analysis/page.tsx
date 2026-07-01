@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
 import {
   PackageSearch, Filter, Loader2, BarChart3, TrendingUp, TrendingDown,
-  PackageX, Gift, Sparkles, CreditCard, Globe,
+  PackageX, Gift, Sparkles, CreditCard, Globe, RotateCcw,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
@@ -22,6 +22,14 @@ interface AnalysisData {
     totalNet: number
     avgGrossPerUnit: number
     avgNetPerUnit: number
+  }
+  refunds: {
+    grossProductSales: number
+    refundedAmount: number
+    returnedUnits: number
+    refundRateAmount: number
+    refundRateUnits: number
+    topRefunded: { name: string; sku: string; units: number; amount: number }[]
   }
   fastMoving: ProductRow[]
   slowMoving: ProductRow[]
@@ -179,6 +187,42 @@ export default function ProductsAnalysisPage() {
             <Kpi label="Avg Net Sales / Unit" value={formatCurrency(data.summary.avgNetPerUnit)} sub={`Total net ${formatCurrency(data.summary.totalNet)} (gross less discounts)`} accent />
           </div>
           <p className="text-xs mb-6" style={{ color: 'var(--mid-gray)' }}>{dateFrom} to {dateTo}{branchLabel}. Free samples are excluded from sold/average figures and shown separately below.</p>
+
+          {/* Refund rate */}
+          <div className="rounded-2xl border p-4 mb-6" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+            <div className="flex items-center gap-2 mb-3">
+              <RotateCcw size={16} style={{ color: 'var(--teal)' }} />
+              <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Refund Rate</h3>
+              <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>(refunded ÷ gross product sales)</span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <Kpi label="Refund Rate (by ₱)" value={`${data.refunds.refundRateAmount}%`} sub={`${formatCurrency(data.refunds.refundedAmount)} of ${formatCurrency(data.refunds.grossProductSales)}`} accent />
+              <Kpi label="Refund Rate (by units)" value={`${data.refunds.refundRateUnits}%`} sub={`${data.refunds.returnedUnits} unit${data.refunds.returnedUnits !== 1 ? 's' : ''} returned`} />
+              <Kpi label="Refunded Amount" value={formatCurrency(data.refunds.refundedAmount)} />
+              <Kpi label="Gross Product Sales" value={formatCurrency(data.refunds.grossProductSales)} sub="incl. returned items" />
+            </div>
+            {data.refunds.topRefunded.length > 0 && (
+              <div className="mt-4 overflow-auto">
+                <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--mid-gray)' }}>Most Refunded Products</p>
+                <table className="w-full text-sm">
+                  <thead><tr className="text-left" style={{ color: 'var(--mid-gray)' }}>
+                    <th className="py-1.5 pr-3 font-semibold">Product</th><th className="py-1.5 pr-3 font-semibold">SKU</th>
+                    <th className="py-1.5 pr-3 font-semibold text-right">Units Returned</th><th className="py-1.5 font-semibold text-right">Refunded</th>
+                  </tr></thead>
+                  <tbody>
+                    {data.refunds.topRefunded.map((r, i) => (
+                      <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className="py-1.5 pr-3" style={{ color: 'var(--charcoal)' }}>{r.name}</td>
+                        <td className="py-1.5 pr-3 font-mono text-xs" style={{ color: 'var(--mid-gray)' }}>{r.sku}</td>
+                        <td className="py-1.5 pr-3 text-right" style={{ color: 'var(--charcoal)' }}>{r.units}</td>
+                        <td className="py-1.5 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>{formatCurrency(r.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* Fast moving */}

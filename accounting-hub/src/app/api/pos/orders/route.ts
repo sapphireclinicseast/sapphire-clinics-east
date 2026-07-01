@@ -218,16 +218,21 @@ export async function POST(req: Request) {
               isFreeSample?: boolean
               variantId?: string
               variantLabel?: string
+              returnedQuantity?: number
+              refundAmount?: number
             }) => ({
               serviceId: item.serviceId || null,
               inventoryItemId: item.inventoryItemId || null,
               name: item.name,
-              quantity: item.quantity || 1,
+              // Preserve an explicit 0 (fully-returned line: gross sale + full refund, no net units)
+              quantity: typeof item.quantity === 'number' ? item.quantity : 1,
               unitPrice: Number(item.unitPrice),
               lineTotal: Number(item.lineTotal),
               isFreeSample: !!item.isFreeSample,
               variantId: item.variantId || null,
               variantLabel: item.variantLabel || null,
+              returnedQuantity: Math.max(0, Math.round(Number(item.returnedQuantity) || 0)),
+              refundAmount: Number(item.refundAmount) || 0,
             })),
           },
         },
@@ -260,6 +265,8 @@ export async function POST(req: Request) {
     if (orderType === 'PRODUCT') {
       for (const item of items) {
         if (!item.inventoryItemId) continue
+        // Fully-returned lines (quantity 0) don't move stock — the product went out and came back.
+        if (typeof item.quantity === 'number' && item.quantity <= 0) continue
         const invItem = await prisma.inventoryItem.findUnique({
           where: { id: item.inventoryItemId },
           include: { bundleComponents: true },
