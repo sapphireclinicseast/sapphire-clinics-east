@@ -1,12 +1,10 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { fetchExternalStaffForSync } from '@/lib/external-staff'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
 const READ_ROLES = [...WRITE_ROLES, 'VIEWER']
-const MARKETING_HUB_URL = process.env.MARKETING_HUB_URL || 'https://operations.sapphireclinicseast.org'
-const HR_PLATFORM_URL = process.env.HR_PLATFORM_URL || 'http://127.0.0.1:3457'
-const EXTERNAL_API_KEY = process.env.EXTERNAL_API_KEY || ''
 
 /** Branch-specific roles can only see their branch + VERDANA */
 function allowedBranches(role: string): string[] | null {
@@ -28,17 +26,11 @@ export async function GET(req: Request) {
   const sync = searchParams.get('sync') === 'true'
   const includeInactive = searchParams.get('includeInactive') === 'true'
 
-  // Sync from marketing hub
+  // Sync external staff (Operations for Aura Health branches, HR Platform for Verdana)
   if (sync) {
     try {
-      const res = await fetch(`${MARKETING_HUB_URL}/api/staff/external?includeHR=true`, {
-        headers: { 'Authorization': `Bearer ${EXTERNAL_API_KEY}` },
-        cache: 'no-store',
-      })
-      if (res.ok) {
-        const data = await res.json()
-        const staff = data.staff || []
-
+      const staff = await fetchExternalStaffForSync()
+      if (staff.length > 0) {
         // Track which externalStaffIds are valid employees (for purge step below)
         const validExternalIds = new Set<string>()
 

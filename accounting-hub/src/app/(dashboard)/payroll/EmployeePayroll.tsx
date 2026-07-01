@@ -2068,7 +2068,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
   const SUB_TABS: { key: typeof subTab; label: string; icon: typeof Users }[] = [
     { key: 'list', label: 'Employee List', icon: Users },
     { key: 'settings', label: 'Employee Settings', icon: Settings },
-    { key: 'requests', label: 'Employee Requests', icon: ClipboardList },
+    { key: 'requests', label: 'Staff Requests', icon: ClipboardList },
     { key: 'tk-upload', label: 'Timekeeping Upload', icon: Upload },
     { key: 'tk-data', label: 'Timekeeping Data', icon: Clock },
     { key: 'benefits', label: 'Benefits Setting', icon: Shield },
@@ -2827,16 +2827,16 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
               <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Employee Request Link</h3>
+                  <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Staff Request Link</h3>
                   <button onClick={() => setShowRequestLink(false)}><X size={16} /></button>
                 </div>
                 <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>
-                  Share this link or QR code with employees so they can submit requests (leave, overtime, etc.).
+                  Share this link or QR code with staff so they can submit requests (leave, overtime, etc.).
                 </p>
                 <div className="rounded-lg border p-3 mb-3 text-xs font-mono break-all" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)', color: 'var(--charcoal)' }}>
-                  {typeof window !== 'undefined' ? `${window.location.origin}/employee-request` : '/employee-request'}
+                  {typeof window !== 'undefined' ? `${window.location.origin}/staff-request` : '/staff-request'}
                 </div>
-                <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/employee-request`); }}
+                <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/staff-request`); }}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border mb-4 w-full justify-center"
                   style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
                   Copy Link
@@ -2844,8 +2844,8 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                 <div className="flex justify-center">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}/employee-request` : '')}`}
-                    alt="QR Code for employee request link"
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(typeof window !== 'undefined' ? `${window.location.origin}/staff-request` : '')}`}
+                    alt="QR Code for staff request link"
                     width={200} height={200}
                   />
                 </div>

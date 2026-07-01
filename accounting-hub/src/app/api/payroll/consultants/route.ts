@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { fetchExternalStaffForSync } from '@/lib/external-staff'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
-const MARKETING_HUB_URL = process.env.MARKETING_HUB_URL || 'https://operations.sapphireclinicseast.org'
-const EXTERNAL_API_KEY = process.env.EXTERNAL_API_KEY || ''
 
 /** Branch-specific roles can only see their branch + VERDANA */
 function allowedBranches(role: string): string[] | null {
@@ -30,16 +29,11 @@ export async function GET(req: Request) {
   const department = searchParams.get('department') || ''
   const sync = searchParams.get('sync') === 'true'
 
-  // Optionally sync from marketing hub
+  // Optionally sync external staff (Operations for Aura Health branches, HR Platform for Verdana)
   if (sync) {
     try {
-      const res = await fetch(`${MARKETING_HUB_URL}/api/staff/external?includeHR=true`, {
-        headers: { 'Authorization': `Bearer ${EXTERNAL_API_KEY}` },
-        cache: 'no-store',
-      })
-      if (res.ok) {
-        const data = await res.json()
-        const staff = data.staff || []
+      const staff = await fetchExternalStaffForSync()
+      if (staff.length > 0) {
         const syncedExternalIds = new Set<string>()
 
         // Phase 1: Clean existing duplicates (same name + same branch, prefer one with externalStaffId)
