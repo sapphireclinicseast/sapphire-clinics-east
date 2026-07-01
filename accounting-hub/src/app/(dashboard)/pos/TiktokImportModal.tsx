@@ -32,6 +32,11 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
   }, [])
 
   const skuMap = useMemo(() => { const m = new Map<string, Item>(); items.forEach(i => m.set(i.sku.trim().toUpperCase(), i)); return m }, [items])
+  // Fallback: match by product name when Seller SKU is blank/unknown (unique names only).
+  const nameMap = useMemo(() => {
+    const counts = new Map<string, number>(); items.forEach(i => { const k = i.name.toUpperCase().replace(/\s+/g, ' ').trim(); counts.set(k, (counts.get(k) || 0) + 1) })
+    const m = new Map<string, Item>(); items.forEach(i => { const k = i.name.toUpperCase().replace(/\s+/g, ' ').trim(); if (counts.get(k) === 1) m.set(k, i) }); return m
+  }, [items])
   const banks = coa.filter(c => c.accountType === 'ASSET')
   const say = (s: string) => setLog(l => [...l, s])
 
@@ -77,8 +82,9 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const its = rs.map((r: any) => {
           const sku = String(r['Seller SKU'] || '').trim().toUpperCase()
-          const item = skuMap.get(sku)
-          if (!item) unmatched.add(sku || '(blank)')
+          const pname = String(r['Product Name'] || '').toUpperCase().replace(/\s+/g, ' ').trim()
+          const item = skuMap.get(sku) || (pname ? nameMap.get(pname) : undefined)
+          if (!item) unmatched.add(sku || (pname ? `name:${String(r['Product Name']).slice(0, 40)}` : '(blank)'))
           const qty = Math.max(0, Math.round(numAt(r, 'Quantity')))
           const ret = Math.max(0, Math.round(numAt(r, 'Sku Quantity of return')))
           const sold = qty - ret
@@ -138,21 +144,31 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
       const hdrs = rows.length ? Object.keys(rows[0]) : []
       const cwtKey = hdrs.find(h => /withhold|cwt/i.test(h)) || ''
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const payload = rows.filter((r: any) => String(r['Transaction type'] || 'Order').toLowerCase() === 'order' && r['Order/Adjustment ID']).map((r: any) => ({
+      const isType = (r: any, t: string) => String(r['Transaction type'] || '').toLowerCase() === t
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const payload = rows.filter((r: any) => isType(r, 'order') && r['Order/Adjustment ID']).map((r: any) => ({
         orderId: String(r['Order/Adjustment ID']).trim(),
         settlement: numAt(r, 'Total settlement amount'),
         totalFees: Math.abs(numAt(r, 'Total Fees')),
         cwt: cwtKey ? Math.abs(numAt(r, cwtKey)) : 0,
         settledDate: toYmd(r['Order settled time']),
-      })).filter((r: { settlement: number }) => r.settlement !== 0 || true)
-      say(`Found ${payload.length} settlement row(s)${cwtKey ? ` (CWT column: ${cwtKey})` : ' (no CWT column — recording 0)'}.`)
+      }))
+      // TikTok posts creditable withholding tax as its own "Withholding tax" adjustment rows.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const cwtPayload = rows.filter((r: any) => isType(r, 'withholding tax') && r['Order/Adjustment ID']).map((r: any) => ({
+        adjId: String(r['Order/Adjustment ID']).trim(),
+        amount: Math.abs(numAt(r, 'Adjustment amount') || numAt(r, 'Total settlement amount')),
+        settledDate: toYmd(r['Order settled time'] || r['Order created time']),
+      }))
+      say(`Found ${payload.length} order settlement(s) and ${cwtPayload.length} withholding-tax adjustment(s).`)
+      if (cwtPayload.length && !cwtAcct) { say('⚠ Withholding-tax rows found but no CWT account selected — pick one to record them.'); return }
       const res = await fetch('/api/pos/tiktok/settlement', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows: payload, feesAccountId: feesAcct, cwtAccountId: cwtAcct || null, bankAccountId: bankAcct, clearingAccountId: clearing, branch: BRANCH }),
+        body: JSON.stringify({ rows: payload, cwtRows: cwtPayload, feesAccountId: feesAcct, cwtAccountId: cwtAcct || null, bankAccountId: bankAcct, clearingAccountId: clearing, branch: BRANCH }),
       })
       const d = await res.json()
       if (!res.ok) { say(`Error: ${d.error || 'failed'}`); return }
-      say(`Booked ${d.created} settlement(s), skipped ${d.skipped} already-recorded.`)
+      say(`Booked ${d.created} settlement(s) + ${d.cwtBooked || 0} withholding-tax entr(y/ies), skipped ${d.skipped} already-recorded.`)
       if (d.errors?.length) d.errors.forEach((e: string) => say(e))
       onDone()
     } finally { setBusy(false) }

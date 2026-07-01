@@ -15,13 +15,35 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { rows, feesAccountId, cwtAccountId, bankAccountId, clearingAccountId, branch } = await req.json()
-    if (!Array.isArray(rows) || rows.length === 0) return NextResponse.json({ error: 'No settlement rows' }, { status: 400 })
+    const { rows, cwtRows, feesAccountId, cwtAccountId, bankAccountId, clearingAccountId, branch } = await req.json()
+    if ((!Array.isArray(rows) || rows.length === 0) && (!Array.isArray(cwtRows) || cwtRows.length === 0)) return NextResponse.json({ error: 'No settlement rows' }, { status: 400 })
     if (!feesAccountId || !bankAccountId || !clearingAccountId) return NextResponse.json({ error: 'Marketplace Fees, Bank, and Clearing accounts are required' }, { status: 400 })
 
-    let created = 0, skipped = 0
+    let created = 0, skipped = 0, cwtBooked = 0
     const errors: string[] = []
-    for (const r of rows) {
+
+    // Withholding-tax adjustment rows (Transaction type "Withholding tax"): Dr CWT / Cr Bank.
+    for (const w of (Array.isArray(cwtRows) ? cwtRows : [])) {
+      const adjId = String(w.adjId || '').trim()
+      const amt = Math.abs(Number(w.amount) || 0)
+      if (!adjId || amt <= 0) continue
+      if (!cwtAccountId) { errors.push(`${adjId}: withholding tax present but no CWT account chosen`); continue }
+      try {
+        const ex = await prisma.journalEntry.findFirst({ where: { referenceType: 'TIKTOK_WHT', referenceId: adjId }, select: { id: true } })
+        if (ex) { skipped++; continue }
+        const d = w.settledDate ? new Date(w.settledDate) : new Date()
+        await prisma.$transaction(async (tx) => {
+          await tx.journalEntry.create({ data: {
+            entryDate: d, description: `TikTok creditable withholding tax — ${adjId}`, referenceType: 'TIKTOK_WHT', referenceId: adjId,
+            totalAmount: amt, branch: branch || 'VERDANA_STORE', createdById: session.user!.id as string,
+            lines: { create: [ { accountId: cwtAccountId, debit: amt, credit: 0, description: 'Creditable withholding tax (TikTok)' }, { accountId: bankAccountId, debit: 0, credit: amt, description: 'TikTok withholding — reduced payout' } ] },
+          } })
+          await tx.bankTransaction.create({ data: { bankAccountId, date: d, description: `TikTok withholding tax · ${adjId}`, spent: amt, received: 0, status: 'POSTED', matchType: 'TIKTOK_WHT', matchId: adjId, matchLabel: `TikTok WHT ${adjId}`, fromToName: 'TikTok Shop', createdById: session.user!.id ?? null } })
+        })
+        cwtBooked++
+      } catch (e) { errors.push(`${adjId}: ${e instanceof Error ? e.message : 'failed'}`) }
+    }
+    for (const r of (Array.isArray(rows) ? rows : [])) {
       const orderId = String(r.orderId || '').trim()
       if (!orderId) continue
       const settlement = Number(r.settlement) || 0
@@ -60,7 +82,7 @@ export async function POST(req: Request) {
         created++
       } catch (e) { errors.push(`${orderId}: ${e instanceof Error ? e.message : 'failed'}`) }
     }
-    return NextResponse.json({ created, skipped, errors })
+    return NextResponse.json({ created, skipped, cwtBooked, errors })
   } catch (e) {
     console.error('TikTok settlement error:', e)
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed' }, { status: 500 })
