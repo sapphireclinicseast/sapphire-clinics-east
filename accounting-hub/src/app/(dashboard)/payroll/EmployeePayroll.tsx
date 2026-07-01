@@ -1241,8 +1241,11 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
   type CertBrand = {
     entity: string
     logo: string
+    website: string
+    branchName?: string
+    address: string
     email: string
-    address?: string
+    phones: string
     primary: [number, number, number]
     accent: [number, number, number]
   }
@@ -1251,16 +1254,36 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
       return {
         entity: 'Verdana',
         logo: '/login-verdana.png',
+        website: 'verdanarehab.com',
+        address: '210B Henry’s Building, 80 Ortigas Avenue, Greenhills, San Juan City, Metro Manila, Philippines 1502',
         email: 'verdanatrading@gmail.com',
+        phones: '+63 917 173 1368',
         primary: [15, 65, 76],   // #0f414c
         accent: [218, 127, 39],  // #da7f27
       }
     }
+    if (branch === 'SBGH') {
+      return {
+        entity: 'Aura Health Rehab',
+        logo: '/login-aura.png',
+        website: 'www.sapphireclinicseast.org',
+        branchName: 'Greenhills Branch',
+        address: 'Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City',
+        email: 'hr.gh@sapphireclinicseast.org',
+        phones: '+63 917 770 1686   |   (02) 8529-1590',
+        primary: [36, 73, 82],   // #244952
+        accent: [74, 128, 115],  // #4a8073
+      }
+    }
+    // Default: East Branch (SBEA)
     return {
       entity: 'Aura Health Rehab',
       logo: '/login-aura.png',
-      email: 'main@sapphireclinicseast.org',
-      address: '4th Floor Robinsons Metro East, Marcos Highway, Dela Paz, Pasig City',
+      website: 'www.sapphireclinicseast.org',
+      branchName: 'East Branch',
+      address: 'Level 4, Robinsons Metro East, Marcos Highway, Brgy. Dela Paz, Santolan, Pasig',
+      email: 'hr.east@sapphireclinicseast.org',
+      phones: '+63 917 118 9289   |   (02) 5310-4991',
       primary: [36, 73, 82],   // #244952
       accent: [74, 128, 115],  // #4a8073
     }
@@ -1291,48 +1314,108 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
 
   const buildCertificateLetterhead = async (doc: import('jspdf').jsPDF, brand: CertBrand) => {
     const pageW = doc.internal.pageSize.getWidth()
-    let y = 18
+    const [pr, pg, pb] = brand.primary
+    const [ar, ag, ab] = brand.accent
+
+    // Thin brand-colored accent band across the very top
+    doc.setFillColor(pr, pg, pb)
+    doc.rect(0, 0, pageW, 4, 'F')
+
+    let y = 16
 
     // Brand logo (centered), scaled to a fixed height preserving aspect ratio
     const img = await loadImageData(brand.logo)
     if (img && img.height > 0) {
-      const logoH = 20
+      const logoH = 18
       const logoW = (img.width / img.height) * logoH
       doc.addImage(img.dataUrl, 'PNG', (pageW - logoW) / 2, y, logoW, logoH)
-      y += logoH + 6
+      y += logoH + 5
     } else {
-      y = 30
+      y = 28
     }
 
     // Brand name
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(18)
-    doc.setTextColor(brand.primary[0], brand.primary[1], brand.primary[2])
+    doc.setFontSize(19)
+    doc.setTextColor(pr, pg, pb)
     doc.text(brand.entity.toUpperCase(), pageW / 2, y, { align: 'center' })
     y += 6
 
-    // Email
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(9)
-    doc.setTextColor(80, 80, 80)
-    doc.text(brand.email, pageW / 2, y, { align: 'center' })
-    y += 5
-
-    // Address (Aura only — Verdana has no fixed office address on file)
-    if (brand.address) {
-      doc.text(brand.address, pageW / 2, y, { align: 'center' })
-      y += 10
-    } else {
+    // Branch name (accent color)
+    if (brand.branchName) {
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(10)
+      doc.setTextColor(ar, ag, ab)
+      doc.text(brand.branchName.toUpperCase(), pageW / 2, y, { align: 'center' })
       y += 5
     }
 
-    // Divider line in brand color
-    doc.setDrawColor(brand.primary[0], brand.primary[1], brand.primary[2])
-    doc.setLineWidth(0.5)
+    // Website
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    doc.setTextColor(110, 110, 110)
+    doc.text(brand.website, pageW / 2, y, { align: 'center' })
+    y += 6
+
+    // Double rule: thick brand line + thin accent line
+    doc.setDrawColor(pr, pg, pb)
+    doc.setLineWidth(1.0)
     doc.line(30, y, pageW - 30, y)
-    y += 5
+    y += 1.6
+    doc.setDrawColor(ar, ag, ab)
+    doc.setLineWidth(0.4)
+    doc.line(30, y, pageW - 30, y)
+    y += 7
 
     return y
+  }
+
+  // Professional footer with branch contact details + validity note, anchored to the page bottom.
+  const buildCertificateFooter = (doc: import('jspdf').jsPDF, brand: CertBrand, issuedDate: string) => {
+    const pageW = doc.internal.pageSize.getWidth()
+    const pageH = doc.internal.pageSize.getHeight()
+    const [pr, pg, pb] = brand.primary
+    const [ar, ag, ab] = brand.accent
+
+    // Validity note (just above the footer rule)
+    doc.setFont('helvetica', 'italic')
+    doc.setFontSize(7)
+    doc.setTextColor(150, 150, 150)
+    doc.text('This is a computer-generated document. For hard copy, not valid without company seal.', pageW / 2, pageH - 34, { align: 'center' })
+    doc.setFont('helvetica', 'normal')
+    doc.text(`Generated: ${issuedDate}`, pageW / 2, pageH - 30.5, { align: 'center' })
+
+    // Footer accent rule
+    let fy = pageH - 25
+    doc.setDrawColor(ar, ag, ab)
+    doc.setLineWidth(0.4)
+    doc.line(30, fy, pageW - 30, fy)
+    fy += 4.5
+
+    // Branch identity line
+    const title = brand.branchName
+      ? `${brand.entity.toUpperCase()}  •  ${brand.branchName.toUpperCase()}`
+      : brand.entity.toUpperCase()
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7.5)
+    doc.setTextColor(pr, pg, pb)
+    doc.text(title, pageW / 2, fy, { align: 'center' })
+    fy += 3.4
+
+    // Address / email+phone / website
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7)
+    doc.setTextColor(90, 90, 90)
+    doc.text(brand.address, pageW / 2, fy, { align: 'center' })
+    fy += 3.2
+    doc.text(`${brand.email}   |   ${brand.phones}`, pageW / 2, fy, { align: 'center' })
+    fy += 3.2
+    doc.setTextColor(ar, ag, ab)
+    doc.text(brand.website, pageW / 2, fy, { align: 'center' })
+
+    // Thin brand band at the very bottom
+    doc.setFillColor(pr, pg, pb)
+    doc.rect(0, pageH - 3, pageW, 3, 'F')
   }
 
   const generateCoePdf = async (req: EmployeeRequest) => {
@@ -1442,14 +1525,9 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     doc.setFontSize(9)
     doc.setTextColor(100, 100, 100)
     doc.text('HR Officer', margin, y)
-    y += 20
 
-    // Footer note
-    doc.setFontSize(7)
-    doc.setTextColor(150, 150, 150)
-    doc.text('This is a computer-generated document. For hard copy, not valid without company seal.', pageW / 2, y, { align: 'center' })
-    y += 4
-    doc.text(`Generated: ${issuedDate}`, pageW / 2, y, { align: 'center' })
+    // Professional footer with branch contact details
+    buildCertificateFooter(doc, brand, issuedDate)
 
     doc.save(`COE-${emp.lastName}-${emp.firstName}-${issuedDate.replace(/\s/g, '-')}.pdf`)
   }
@@ -1530,14 +1608,9 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     doc.setFontSize(9)
     doc.setTextColor(100, 100, 100)
     doc.text('HR Officer', margin, y)
-    y += 20
 
-    // Footer note
-    doc.setFontSize(7)
-    doc.setTextColor(150, 150, 150)
-    doc.text('This is a computer-generated document. For hard copy, not valid without company seal.', pageW / 2, y, { align: 'center' })
-    y += 4
-    doc.text(`Generated: ${issuedDate}`, pageW / 2, y, { align: 'center' })
+    // Professional footer with branch contact details
+    buildCertificateFooter(doc, brand, issuedDate)
 
     const nameParts = req.consultant.name.split(',').map(s => s.trim())
     const fileLabel = nameParts.join('-') || 'consultant'
