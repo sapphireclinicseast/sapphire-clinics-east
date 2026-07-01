@@ -70,6 +70,9 @@ export async function GET(req: Request) {
             if (s.tin) syncData.tinNumber = s.tin
             if (s.bankName) syncData.bankName = s.bankName
             if (s.bankAccountNo) syncData.bankAccountNo = s.bankAccountNo
+            // Date Hired from HR staff profile (used on the Certificate of Employment).
+            // Only set when HR has a value so a manually-entered date is never wiped.
+            if (s.dateHired) { const dh = new Date(s.dateHired); if (!isNaN(+dh)) syncData.dateHired = dh }
 
             // ── Find existing record (priority: Bio ID → externalStaffId → name+branch) ──
             // This prevents duplicate creation when the same person already exists.
