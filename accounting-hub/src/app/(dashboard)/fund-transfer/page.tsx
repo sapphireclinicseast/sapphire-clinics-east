@@ -2,13 +2,13 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Repeat, Plus, Settings, Loader2, X, Eye, Upload, Pencil, Trash2 } from 'lucide-react'
+import { Repeat, Plus, Settings, Loader2, X, Eye, Upload, Pencil, Trash2, ListChecks } from 'lucide-react'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-interface Bank { id: string; accountNumber: string; accountTitle: string; currency: string }
+interface Bank { id: string; accountNumber: string; accountTitle: string; currency: string; isCheckingAccount?: boolean }
 interface Transfer { id: string; refNumber: string; date: string; fromAccountId: string; toAccountId: string; fromLabel: string; toLabel: string; amount: number; checkNumber: string | null; description: string | null; proofUrl: string | null }
 
 export default function FundTransferPage() {
@@ -21,6 +21,7 @@ export default function FundTransferPage() {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Transfer | null>(null)
   const [showSettings, setShowSettings] = useState(false)
+  const [view, setView] = useState<'transfers' | 'checks'>('transfers')
 
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'date', dir: 'desc' })
   const [filters, setFilters] = useState<Record<string, string>>({})
@@ -53,10 +54,23 @@ export default function FundTransferPage() {
           <Repeat size={22} style={{ color: 'var(--teal)' }} /> Fund Transfer
         </h1>
         <div className="flex items-center gap-2">
-          {canWrite && <button onClick={() => { setEditing(null); setShowForm(true) }} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> New Transfer</button>}
-          {canWrite && <button onClick={() => setShowSettings(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}><Settings size={14} /> Settings</button>}
+          {view === 'transfers' && canWrite && <button onClick={() => { setEditing(null); setShowForm(true) }} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> New Transfer</button>}
+          {view === 'transfers' && canWrite && <button onClick={() => setShowSettings(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}><Settings size={14} /> Settings</button>}
         </div>
       </div>
+
+      {/* Sub-section tabs */}
+      <div className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+        {([['transfers', 'Fund Transfers', Repeat], ['checks', 'Check Release Monitoring', ListChecks]] as const).map(([v, label, Icon]) => (
+          <button key={v} onClick={() => setView(v)}
+            className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors"
+            style={{ borderColor: view === v ? 'var(--teal)' : 'transparent', color: view === v ? 'var(--teal)' : 'var(--mid-gray)' }}>
+            <Icon size={15} /> {label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'checks' ? <CheckReleaseMonitoring /> : (<>
 
       {banks.length === 0 && !loading && (
         <div className="rounded-2xl border p-4 text-sm" style={{ borderColor: '#fde68a', background: '#fffbeb', color: '#92400e' }}>
@@ -92,9 +106,86 @@ export default function FundTransferPage() {
           </tbody>
         </table>
       </div>
+      </>)}
 
       {showForm && <TransferForm banks={banks} editing={editing} onClose={() => setShowForm(false)} onSaved={async () => { setShowForm(false); await load() }} />}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+    </div>
+  )
+}
+
+interface CheckRow { source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string }
+
+function CheckReleaseMonitoring() {
+  const [accounts, setAccounts] = useState<{ id: string; label: string }[]>([])
+  const [accountId, setAccountId] = useState('all')
+  const [checks, setChecks] = useState<CheckRow[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const r = await fetch(`/api/fund-transfers/checks?accountId=${encodeURIComponent(accountId)}`)
+      const d = r.ok ? await r.json() : { checks: [], accounts: [] }
+      setChecks(d.checks || [])
+      setAccounts(d.accounts || [])
+    } catch { /* ignore */ } finally { setLoading(false) }
+  }, [accountId])
+  useEffect(() => { load() }, [load])
+
+  const total = checks.reduce((s, c) => s + c.amount, 0)
+  const srcColor: Record<string, string> = { 'Petty Cash': '#0f766e', Expense: '#b45309', 'RFP / Tax': '#7c3aed', 'Fund Transfer': '#2563eb' }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-3 flex-wrap">
+        <label className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Checking Account:</label>
+        <select value={accountId} onChange={e => setAccountId(e.target.value)} className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)', minWidth: 260 }}>
+          <option value="all">All checking accounts</option>
+          {accounts.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
+        </select>
+        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{checks.length} check(s) · Total ₱{peso(total)}</span>
+      </div>
+
+      {accounts.length === 0 && !loading && (
+        <div className="rounded-2xl border p-4 text-sm" style={{ borderColor: '#fde68a', background: '#fffbeb', color: '#92400e' }}>
+          No checking accounts yet. In <strong>Chart of Accounts</strong>, edit a bank account and tick <strong>&quot;Is this a checking account?&quot;</strong>.
+        </div>
+      )}
+
+      <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+              <th className="px-3 py-2.5 font-semibold">#</th>
+              <th className="px-3 py-2.5 font-semibold">Check No.</th>
+              <th className="px-3 py-2.5 font-semibold">Date</th>
+              <th className="px-3 py-2.5 font-semibold">Source</th>
+              <th className="px-3 py-2.5 font-semibold">Reference</th>
+              <th className="px-3 py-2.5 font-semibold">Payee / Description</th>
+              <th className="px-3 py-2.5 font-semibold">Bank Account</th>
+              <th className="px-3 py-2.5 font-semibold text-right">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={8} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+            ) : checks.map((c, i) => (
+              <tr key={`${c.source}-${c.reference}-${c.checkNumber}-${i}`} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{i + 1}</td>
+                <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{c.checkNumber}</td>
+                <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{c.date || ''}</td>
+                <td className="px-3 py-2.5 text-xs whitespace-nowrap"><span className="px-2 py-0.5 rounded-full text-[11px] font-medium" style={{ background: (srcColor[c.source] || '#64748b') + '1a', color: srcColor[c.source] || '#64748b' }}>{c.source}</span></td>
+                <td className="px-3 py-2.5 text-xs font-mono" style={{ color: 'var(--charcoal)' }}>{c.reference}</td>
+                <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--charcoal)' }}>{c.payee}</td>
+                <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{c.bankAccount}</td>
+                <td className="px-3 py-2.5 text-right font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(c.amount)}</td>
+              </tr>
+            ))}
+            {!loading && checks.length === 0 && accounts.length > 0 && <tr><td colSpan={8} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>No checks recorded for the selected checking account(s).</td></tr>}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

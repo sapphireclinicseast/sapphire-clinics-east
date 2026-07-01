@@ -66,6 +66,7 @@ export async function GET(req: Request) {
         description: true,
         isActive: true,
         isBankAccount: true,
+        isCheckingAccount: true,
         createdAt: true,
         createdBy: { select: { name: true } },
       },
@@ -87,7 +88,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { accountNumber, accountTitle, accountType, subType, subSubType, normalBalance, currency, description, isBankAccount } = await req.json()
+    const { accountNumber, accountTitle, accountType, subType, subSubType, normalBalance, currency, description, isBankAccount, isCheckingAccount } = await req.json()
 
     if (!accountNumber?.trim() || !accountTitle?.trim() || !accountType) {
       return NextResponse.json({ error: 'Account number, title, and type are required' }, { status: 400 })
@@ -120,6 +121,7 @@ export async function POST(req: Request) {
         currency: currency?.trim() || 'PHP',
         description: description?.trim() || null,
         isBankAccount: subType?.trim() === 'CURRENT_ASSETS' ? !!isBankAccount : false,
+        isCheckingAccount: subType?.trim() === 'CURRENT_ASSETS' && !!isBankAccount ? !!isCheckingAccount : false,
         createdById: session.user.id,
       },
     })
@@ -148,7 +150,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, accountNumber, accountTitle, accountType, subType, subSubType, normalBalance, currency, description, isBankAccount } = await req.json()
+    const { id, accountNumber, accountTitle, accountType, subType, subSubType, normalBalance, currency, description, isBankAccount, isCheckingAccount } = await req.json()
 
     if (!id) {
       return NextResponse.json({ error: 'Account ID is required' }, { status: 400 })
@@ -185,6 +187,11 @@ export async function PUT(req: Request) {
       const st = subType !== undefined ? (subType?.trim() || null) : undefined
       if (st !== undefined) updateData.isBankAccount = st === 'CURRENT_ASSETS' ? !!isBankAccount : false
       else if (isBankAccount !== undefined) updateData.isBankAccount = !!isBankAccount
+    }
+    // Checking flag only valid when the account is (or becomes) a bank account.
+    if (isCheckingAccount !== undefined || isBankAccount !== undefined || subType !== undefined) {
+      const bankFinal = updateData.isBankAccount ?? !!isBankAccount
+      updateData.isCheckingAccount = bankFinal ? !!isCheckingAccount : false
     }
 
     const account = await prisma.account.update({

@@ -32,6 +32,7 @@ interface Account {
   description: string | null
   isActive: boolean
   isBankAccount?: boolean
+  isCheckingAccount?: boolean
   createdAt: string
   createdBy: { name: string }
 }
@@ -250,6 +251,7 @@ export default function ChartOfAccountsPage() {
   const [formDescription, setFormDescription] = useState('')
   const [formCurrency, setFormCurrency] = useState('PHP')
   const [formIsBankAccount, setFormIsBankAccount] = useState(false)
+  const [formIsChecking, setFormIsChecking] = useState(false)
 
   // Delete confirmation
   const [deleteConfirm, setDeleteConfirm] = useState<Account | null>(null)
@@ -306,6 +308,7 @@ export default function ChartOfAccountsPage() {
     setFormCurrency('PHP')
     setFormDescription('')
     setFormIsBankAccount(false)
+    setFormIsChecking(false)
     setError('')
     setModalOpen(true)
   }
@@ -321,6 +324,7 @@ export default function ChartOfAccountsPage() {
     setFormCurrency(account.currency || 'PHP')
     setFormDescription(account.description || '')
     setFormIsBankAccount(!!account.isBankAccount)
+    setFormIsChecking(!!account.isCheckingAccount)
     setError('')
     setModalOpen(true)
   }
@@ -331,12 +335,13 @@ export default function ChartOfAccountsPage() {
     setFormSubSubType('')
     setFormBalance(DEFAULT_BALANCE[type] || 'DEBIT')
     setFormIsBankAccount(false)
+    setFormIsChecking(false)
   }
 
   function handleSubTypeChange(subType: string) {
     setFormSubType(subType)
     setFormSubSubType('') // Reset sub-sub type when sub type changes
-    if (subType !== 'CURRENT_ASSETS') setFormIsBankAccount(false)
+    if (subType !== 'CURRENT_ASSETS') { setFormIsBankAccount(false); setFormIsChecking(false) }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -354,6 +359,7 @@ export default function ChartOfAccountsPage() {
       currency: formCurrency,
       description: formDescription,
       isBankAccount: formSubType === 'CURRENT_ASSETS' ? formIsBankAccount : false,
+      isCheckingAccount: formSubType === 'CURRENT_ASSETS' && formIsBankAccount ? formIsChecking : false,
     }
 
     if (editingAccount) body.id = editingAccount.id
@@ -858,13 +864,24 @@ export default function ChartOfAccountsPage() {
               )}
 
               {formSubType === 'CURRENT_ASSETS' && (
-                <label className="flex items-start gap-2 rounded-xl border p-3 cursor-pointer" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-                  <input type="checkbox" checked={formIsBankAccount} onChange={(e) => setFormIsBankAccount(e.target.checked)} className="mt-0.5" />
-                  <span>
-                    <span className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>Is this a bank account?</span>
-                    <span className="block text-xs" style={{ color: 'var(--mid-gray)' }}>If ticked, this account appears in the Fund Transfer &quot;From&quot; / &quot;To&quot; dropdowns.</span>
-                  </span>
-                </label>
+                <div className="space-y-2">
+                  <label className="flex items-start gap-2 rounded-xl border p-3 cursor-pointer" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                    <input type="checkbox" checked={formIsBankAccount} onChange={(e) => { setFormIsBankAccount(e.target.checked); if (!e.target.checked) setFormIsChecking(false) }} className="mt-0.5" />
+                    <span>
+                      <span className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>Is this a bank account?</span>
+                      <span className="block text-xs" style={{ color: 'var(--mid-gray)' }}>If ticked, this account appears in the Fund Transfer &quot;From&quot; / &quot;To&quot; dropdowns.</span>
+                    </span>
+                  </label>
+                  {formIsBankAccount && (
+                    <label className="flex items-start gap-2 rounded-xl border p-3 cursor-pointer ml-6" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                      <input type="checkbox" checked={formIsChecking} onChange={(e) => setFormIsChecking(e.target.checked)} className="mt-0.5" />
+                      <span>
+                        <span className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>Is this a checking account?</span>
+                        <span className="block text-xs" style={{ color: 'var(--mid-gray)' }}>If ticked, checks drawn from this account appear in Fund Transfer &rarr; Check Release Monitoring.</span>
+                      </span>
+                    </label>
+                  )}
+                </div>
               )}
 
               <div>

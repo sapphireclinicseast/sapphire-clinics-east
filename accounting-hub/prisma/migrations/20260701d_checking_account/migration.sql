@@ -1,0 +1,1 @@
+ALTER TABLE "Account" ADD COLUMN IF NOT EXISTS "isCheckingAccount" BOOLEAN NOT NULL DEFAULT false;

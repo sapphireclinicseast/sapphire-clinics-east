@@ -115,6 +115,7 @@ model Account {
   description   String?
   isActive      Boolean       @default(true)
   isBankAccount Boolean       @default(false)  // Current-asset account that is a bank account (shows in Fund Transfer dropdowns)
+  isCheckingAccount Boolean   @default(false)  // Bank account that is specifically a checking account (Check Release Monitoring)
   createdById   String
   createdBy     User          @relation(fields: [createdById], references: [id], onDelete: Restrict)
   createdAt     DateTime      @default(now())
