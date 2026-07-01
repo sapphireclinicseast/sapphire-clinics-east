@@ -736,8 +736,8 @@ function CashierPanel({
             className="px-3 py-2.5 rounded-xl border text-sm outline-none"
             style={{ borderColor: 'var(--light-gray)' }}
           >
-            <option value="SANDBOX_EAST">SBEA</option>
-            <option value="SANDBOX_GREENHILLS">SBGH</option>
+            <option value="SANDBOX_EAST">Aura Health Rehab - East</option>
+            <option value="SANDBOX_GREENHILLS">Aura Health Rehab - Greenhills</option>
             <option value="VERDANA_STORE">Verdana</option>
           </select>
         )}
