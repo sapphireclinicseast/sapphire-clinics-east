@@ -490,13 +490,54 @@ export default function PettyCashPage() {
   const tdCls = 'border-r border-b align-top'
   const locked = (e: Entry) => !!e.reimbursementId || !!e.finalized || !canWrite
   const vatEditable = (e: Entry) => e.vatable === 'VAT' || e.vatable === 'Non-VAT' || e.vatable === 'NV'
-  const totalGross = entries.reduce((s, e) => s + num(e.grossAmount), 0)
+
+  // Per-column header sort/filter for the entries grid.
+  const [gridSort, setGridSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: '', dir: 'asc' })
+  const [gridFilters, setGridFilters] = useState<Record<string, string>>({})
+  const gridToggleSort = (k: string) => setGridSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
+  const gridCols: { key: string; label: string; plain?: boolean }[] = [
+    { key: 'refNumber', label: 'Reference Number' }, { key: 'requestor', label: 'Requestor' }, { key: 'department', label: 'Department' },
+    { key: 'pcfStatus', label: 'PCF Status' }, { key: 'date', label: 'Date' }, { key: 'description', label: 'Description' }, { key: 'descHub', label: 'Description for Hub' },
+    { key: 'validity', label: 'Valid/Invalid' }, { key: 'vatable', label: 'Vatable' }, { key: 'siNumber', label: 'SI Number' },
+    { key: 'tinNumber', label: 'TIN Number' }, { key: 'tinNumber2', label: 'TIN Number 2' }, { key: 'branchCode', label: 'Branch Code' },
+    { key: 'registeredName', label: 'Registered name' }, { key: 'registeredAddress', label: 'Registered Address' },
+    { key: 'grossAmount', label: 'Gross Amount' }, { key: 'netOfVat', label: 'Net of VAT' }, { key: 'vatAmount', label: 'VAT Amount' }, { key: 'accountTitle', label: 'Account Title' },
+    ...(branch === 'CEO' ? [{ key: 'branchAlloc', label: 'Branch (allocations)', plain: true }] : []),
+    { key: 'proof', label: 'Proof', plain: true }, { key: 'audited', label: 'Audited' },
+  ]
+  const gridGet = (e: Entry, k: string): string | number => {
+    switch (k) {
+      case 'refNumber': return refOf(e)
+      case 'requestor': return e.requestor || ''
+      case 'department': return e.department || ''
+      case 'pcfStatus': return e.pcfStatus || ''
+      case 'date': return e.date ? String(e.date).slice(0, 10) : ''
+      case 'description': return e.description || ''
+      case 'descHub': return descForHub(e) || ''
+      case 'validity': return e.validity || ''
+      case 'vatable': return e.vatable || ''
+      case 'siNumber': return e.siNumber || ''
+      case 'tinNumber': return e.tinNumber || ''
+      case 'tinNumber2': return tinNumber2(e.tinNumber) || ''
+      case 'branchCode': return branchCodeOf(e.tinNumber) || ''
+      case 'registeredName': return e.registeredName || ''
+      case 'registeredAddress': return e.registeredAddress || ''
+      case 'grossAmount': return num(e.grossAmount)
+      case 'netOfVat': return netOfVat(e)
+      case 'vatAmount': return vatAmount(e)
+      case 'accountTitle': return e.accountTitle || ''
+      case 'audited': return e.audited ? 'Yes' : 'No'
+      default: return ''
+    }
+  }
+  const displayed = applySortFilter(entries, gridGet, gridSort.key, gridSort.dir, gridFilters)
+  const totalGross = displayed.reduce((s, e) => s + num(e.grossAmount), 0)
 
   // Entries are only selectable after an RFP button is clicked, and only those
   // matching the chosen kind's validity (and not already in an RFP).
   const rfpValidity = rfpMode === 'VALID' ? 'Valid' : rfpMode === 'INVALID' ? 'Invalid' : null
   const isSelectable = (e: Entry) => !e.reimbursementId && !!e.audited && rfpValidity != null && e.validity === rfpValidity
-  const selectableIds = entries.filter(isSelectable).map(e => e.id)
+  const selectableIds = displayed.filter(isSelectable).map(e => e.id)
   const allSelected = selectableIds.length > 0 && selectableIds.every(id => selected.has(id))
   const toggleAll = () => setSelected(allSelected ? new Set() : new Set(selectableIds))
   const toggleOne = (id: string) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -631,19 +672,28 @@ export default function PettyCashPage() {
                     <th className="border-r border-b px-2 py-2 text-center" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                       <input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={!canWrite || selectableIds.length === 0} title="Select all" />
                     </th>
-                    {['Reference Number', 'Requestor', 'Department', 'PCF Status', 'Date', 'Description', 'Description for Hub',
-                      'Valid/Invalid', 'Vatable', 'SI Number', 'TIN Number', 'TIN Number 2', 'Branch Code', 'Registered name',
-                      'Registered Address', 'Gross Amount', 'Net of VAT', 'VAT Amount', 'Account Title', ...(branch === 'CEO' ? ['Branch (allocations)'] : []), 'Proof', 'Audited', ''
-                    ].map((h, i) => (
-                      <th key={i} className="border-r border-b px-2 py-2 text-left font-semibold whitespace-nowrap"
+                    {gridCols.map(col => (
+                      <th key={col.key} className="border-r border-b px-2 py-2 text-left align-top whitespace-nowrap"
                         style={{ color: 'var(--charcoal)', borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-                        {h}
+                        {col.plain ? (
+                          <span className="font-semibold">{col.label}</span>
+                        ) : (
+                          <>
+                            <button onClick={() => gridToggleSort(col.key)} className="flex items-center gap-1 font-semibold">
+                              {col.label}
+                              <span style={{ color: gridSort.key === col.key ? 'var(--teal)' : 'var(--light-gray)' }}>{gridSort.key === col.key ? (gridSort.dir === 'asc' ? '▲' : '▼') : '↕'}</span>
+                            </button>
+                            <input value={gridFilters[col.key] || ''} onChange={ev => setGridFilters(f => ({ ...f, [col.key]: ev.target.value }))} placeholder="filter…"
+                              className="mt-1 w-full px-1.5 py-0.5 rounded border text-[11px] font-normal" style={{ borderColor: 'var(--light-gray)' }} />
+                          </>
+                        )}
                       </th>
                     ))}
+                    <th className="border-r border-b px-2 py-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }} />
                   </tr>
                 </thead>
                 <tbody>
-                  {entries.map(e => {
+                  {displayed.map(e => {
                     const lk = locked(e)
                     const ve = vatEditable(e)
                     return (
@@ -852,9 +902,9 @@ export default function PettyCashPage() {
                       </tr>
                     )
                   })}
-                  {entries.length === 0 && (
+                  {displayed.length === 0 && (
                     <tr><td colSpan={branch === 'CEO' ? 24 : 23} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>
-                      No entries yet. Click &quot;Add Row&quot; to start.
+                      {entries.length === 0 ? 'No entries yet. Click "Add Row" to start.' : 'No entries match the current filters.'}
                     </td></tr>
                   )}
                 </tbody>
