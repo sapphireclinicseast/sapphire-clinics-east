@@ -1325,21 +1325,26 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
 
     // Brand logo (centered), scaled to a fixed height preserving aspect ratio
     const img = await loadImageData(brand.logo)
+    let logoLoaded = false
     if (img && img.height > 0) {
-      const logoH = 18
+      logoLoaded = true
+      const logoH = 20
       const logoW = (img.width / img.height) * logoH
       doc.addImage(img.dataUrl, 'PNG', (pageW - logoW) / 2, y, logoW, logoH)
-      y += logoH + 5
+      y += logoH + 8
     } else {
       y = 28
     }
 
-    // Brand name
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(19)
-    doc.setTextColor(pr, pg, pb)
-    doc.text(brand.entity.toUpperCase(), pageW / 2, y, { align: 'center' })
-    y += 6
+    // Brand name — only when the logo could NOT be drawn. The logo image already
+    // contains the brand name, so re-printing it here would overlap/duplicate it.
+    if (!logoLoaded) {
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(19)
+      doc.setTextColor(pr, pg, pb)
+      doc.text(brand.entity.toUpperCase(), pageW / 2, y, { align: 'center' })
+      y += 6
+    }
 
     // Branch name (accent color)
     if (brand.branchName) {
@@ -1499,9 +1504,12 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
       bodyText += `\n\nThe above-named employee receives a gross monthly compensation of ${compensation}.`
     }
 
-    // Purpose
-    const purpose = req.reason || 'the purpose stated'
-    bodyText += `\n\nThis certificate is issued upon the request of the above-named employee for ${purpose}.`
+    // Purpose — framed with "for the purpose of …" so any dropdown value reads correctly
+    // (e.g. "Government Transaction" → "for the purpose of Government Transaction.").
+    const purpose = req.reason
+    bodyText += purpose
+      ? `\n\nThis certificate is issued upon the request of the above-named employee for the purpose of ${purpose}.`
+      : `\n\nThis certificate is issued upon the request of the above-named employee for the purpose stated.`
 
     // Render body text with word wrap
     const lines = doc.splitTextToSize(bodyText, contentW)
@@ -1582,9 +1590,11 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
 
     let bodyText = `This is to certify that ${consultantName} has been engaged with ${brand.entity} on a consultancy basis under the ${branchLabel}.`
 
-    // Purpose
-    const purpose = req.reason || 'the purpose stated'
-    bodyText += `\n\nThis certificate is issued upon the request of the above-named consultant for ${purpose}.`
+    // Purpose — framed with "for the purpose of …" so any dropdown value reads correctly.
+    const purpose = req.reason
+    bodyText += purpose
+      ? `\n\nThis certificate is issued upon the request of the above-named consultant for the purpose of ${purpose}.`
+      : `\n\nThis certificate is issued upon the request of the above-named consultant for the purpose stated.`
 
     // Render body text with word wrap
     const lines = doc.splitTextToSize(bodyText, contentW)

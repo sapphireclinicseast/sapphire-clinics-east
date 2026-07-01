@@ -50,7 +50,7 @@ const COE_PURPOSES = [
   { value: 'Bank/Loan Application', label: 'Bank/Loan Application' },
   { value: 'Government Transaction', label: 'Government Transaction' },
   { value: 'Visa/Travel Application', label: 'Visa/Travel Application' },
-  { value: 'School/Educational Purposes', label: 'School/Educational Purposes' },
+  { value: 'School/Educational Requirements', label: 'School/Educational Requirements' },
   { value: 'Other', label: 'Other (please specify)' },
 ]
 
