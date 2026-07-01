@@ -1236,30 +1236,97 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     return ''
   }
 
-  const buildCertificateLetterhead = (doc: import('jspdf').jsPDF) => {
-    const pageW = doc.internal.pageSize.getWidth()
-    let y = 30
+  // Brand identity for certificates — East/Greenhills use Aura Health, Verdana uses Verdana.
+  type CertBrand = {
+    entity: string
+    logo: string
+    email: string
+    address?: string
+    primary: [number, number, number]
+    accent: [number, number, number]
+  }
+  const certBrandForBranch = (branch: string): CertBrand => {
+    if (['VERDANA', 'VDNA'].includes(branch)) {
+      return {
+        entity: 'Verdana',
+        logo: '/login-verdana.png',
+        email: 'verdanatrading@gmail.com',
+        primary: [15, 65, 76],   // #0f414c
+        accent: [218, 127, 39],  // #da7f27
+      }
+    }
+    return {
+      entity: 'Aura Health Rehab',
+      logo: '/login-aura.png',
+      email: 'main@sapphireclinicseast.org',
+      address: '4th Floor Robinsons Metro East, Marcos Highway, Dela Paz, Pasig City',
+      primary: [36, 73, 82],   // #244952
+      accent: [74, 128, 115],  // #4a8073
+    }
+  }
 
-    // Company Name
+  const loadImageData = async (url: string): Promise<{ dataUrl: string; width: number; height: number } | null> => {
+    try {
+      const res = await fetch(url)
+      if (!res.ok) return null
+      const blob = await res.blob()
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onloadend = () => resolve(reader.result as string)
+        reader.onerror = reject
+        reader.readAsDataURL(blob)
+      })
+      const dims = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+        const img = new Image()
+        img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight })
+        img.onerror = reject
+        img.src = dataUrl
+      })
+      return { dataUrl, ...dims }
+    } catch {
+      return null
+    }
+  }
+
+  const buildCertificateLetterhead = async (doc: import('jspdf').jsPDF, brand: CertBrand) => {
+    const pageW = doc.internal.pageSize.getWidth()
+    let y = 18
+
+    // Brand logo (centered), scaled to a fixed height preserving aspect ratio
+    const img = await loadImageData(brand.logo)
+    if (img && img.height > 0) {
+      const logoH = 20
+      const logoW = (img.width / img.height) * logoH
+      doc.addImage(img.dataUrl, 'PNG', (pageW - logoW) / 2, y, logoW, logoH)
+      y += logoH + 6
+    } else {
+      y = 30
+    }
+
+    // Brand name
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(18)
-    doc.setTextColor(13, 148, 136)
-    doc.text('SAPPHIRE CLINICS EAST INCORPORATED', pageW / 2, y, { align: 'center' })
+    doc.setTextColor(brand.primary[0], brand.primary[1], brand.primary[2])
+    doc.text(brand.entity.toUpperCase(), pageW / 2, y, { align: 'center' })
     y += 6
 
     // Email
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(9)
     doc.setTextColor(80, 80, 80)
-    doc.text('main@sapphireclinicseast.org', pageW / 2, y, { align: 'center' })
+    doc.text(brand.email, pageW / 2, y, { align: 'center' })
     y += 5
 
-    // Main Office address (used in COE letterhead — defaults to SBEA)
-    doc.text('4th Floor Robinsons Metro East, Marcos Highway, Dela Paz, Pasig City', pageW / 2, y, { align: 'center' })
-    y += 10
+    // Address (Aura only — Verdana has no fixed office address on file)
+    if (brand.address) {
+      doc.text(brand.address, pageW / 2, y, { align: 'center' })
+      y += 10
+    } else {
+      y += 5
+    }
 
-    // Divider line
-    doc.setDrawColor(13, 148, 136)
+    // Divider line in brand color
+    doc.setDrawColor(brand.primary[0], brand.primary[1], brand.primary[2])
     doc.setLineWidth(0.5)
     doc.line(30, y, pageW - 30, y)
     y += 5
@@ -1280,13 +1347,14 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     const margin = 30
     const contentW = pageW - margin * 2
 
-    let y = buildCertificateLetterhead(doc)
+    const brand = certBrandForBranch(emp.branch)
+    let y = await buildCertificateLetterhead(doc, brand)
     y += 15
 
     // Title
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(16)
-    doc.setTextColor(30, 30, 30)
+    doc.setTextColor(brand.primary[0], brand.primary[1], brand.primary[2])
     doc.text('CERTIFICATE OF EMPLOYMENT', pageW / 2, y, { align: 'center' })
     y += 20
 
@@ -1319,7 +1387,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     const jobTitle = formatJobTitle(emp.jobTitle) || 'N/A'
     const branchLabel = BRANCHES.find(b => b.value === emp.branch)?.label || emp.branch
 
-    let bodyText = `This is to certify that ${empName} has been employed with Sapphire Clinics East Incorporated since ${dateHired} as ${jobTitle} under the ${branchLabel} branch.`
+    let bodyText = `This is to certify that ${empName} has been employed with ${brand.entity} since ${dateHired} as ${jobTitle} under the ${branchLabel}.`
 
     // Compensation
     let compensation = ''
@@ -1384,13 +1452,14 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     const margin = 30
     const contentW = pageW - margin * 2
 
-    let y = buildCertificateLetterhead(doc)
+    const brand = certBrandForBranch(req.consultant.branch)
+    let y = await buildCertificateLetterhead(doc, brand)
     y += 15
 
     // Title
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(16)
-    doc.setTextColor(30, 30, 30)
+    doc.setTextColor(brand.primary[0], brand.primary[1], brand.primary[2])
     doc.text('CERTIFICATE OF CONSULTATION', pageW / 2, y, { align: 'center' })
     y += 20
 
@@ -1419,7 +1488,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     const consultantName = req.consultant.name.toUpperCase()
     const branchLabel = BRANCHES.find(b => b.value === req.consultant!.branch)?.label || req.consultant.branch
 
-    let bodyText = `This is to certify that ${consultantName} has been engaged with Sapphire Clinics East Incorporated on a consultancy basis under the ${branchLabel} branch.`
+    let bodyText = `This is to certify that ${consultantName} has been engaged with ${brand.entity} on a consultancy basis under the ${branchLabel}.`
 
     // Purpose
     const purpose = req.reason || 'the purpose stated'
