@@ -56,30 +56,46 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
       for (const r of data) { const id = String(r['Order ID']).trim(); if (!byOrder.has(id)) byOrder.set(id, []); byOrder.get(id)!.push(r) }
       const allIds = [...byOrder.keys()]
       say(`Found ${allIds.length} completed order(s).`)
-      // Dedupe against already-imported
+      // Dedupe against already-imported Tiktok orders + find legacy (e.g. CASH-
+      // tagged) orders under the same reference to replace.
       let existing = new Set<string>()
-      try { const ex = await fetch(`/api/pos/tiktok/existing?ids=${encodeURIComponent(allIds.join(','))}`); const ed = await ex.json(); existing = new Set(ed.existing || []) } catch { /* ignore */ }
-      let ok = 0, dup = 0, skipped = 0
+      let legacy: { id: string; referenceNumber: string; netAmount: number }[] = []
+      try { const ex = await fetch(`/api/pos/tiktok/existing?ids=${encodeURIComponent(allIds.join(','))}`); const ed = await ex.json(); existing = new Set(ed.existing || []); legacy = ed.legacy || [] } catch { /* ignore */ }
+      let ok = 0, dup = 0, skipped = 0, replaced = 0
       const unmatched = new Set<string>()
       for (const id of allIds) {
         if (existing.has(id)) { dup++; continue }
         const rs = byOrder.get(id)!
+        let anyReturn = false
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const its = rs.map((r: any) => {
           const sku = String(r['Seller SKU'] || '').trim().toUpperCase()
           const item = skuMap.get(sku)
           if (!item) unmatched.add(sku || '(blank)')
-          const qty = Math.max(1, Math.round(numAt(r, 'Quantity')))
-          return item ? { inventoryItemId: item.id, name: item.name, quantity: qty, unitPrice: numAt(r, 'SKU Unit Original Price'), lineTotal: numAt(r, 'SKU Subtotal After Discount') } : null
+          const qty = Math.max(0, Math.round(numAt(r, 'Quantity')))
+          const ret = Math.max(0, Math.round(numAt(r, 'Sku Quantity of return')))
+          const sold = qty - ret
+          if (ret > 0) anyReturn = true
+          if (sold <= 0) return { skip: true }   // fully returned → not sold, stays in stock
+          const frac = qty > 0 ? sold / qty : 1
+          return item ? { inventoryItemId: item.id, name: item.name, quantity: sold, unitPrice: numAt(r, 'SKU Unit Original Price'), lineTotal: numAt(r, 'SKU Subtotal After Discount') * frac, _before: numAt(r, 'SKU Subtotal Before Discount') * frac } : null
         })
-        if (its.some(x => x === null)) { skipped++; continue }
-        const subtotal = rs.reduce((s, r) => s + numAt(r, 'SKU Subtotal Before Discount'), 0)
-        const net = rs.reduce((s, r) => s + numAt(r, 'SKU Subtotal After Discount'), 0)
+        if (its.some(x => x === null)) { skipped++; continue }       // unmatched SKU
+        const lines = its.filter((x): x is { inventoryItemId: string; name: string; quantity: number; unitPrice: number; lineTotal: number; _before: number } => !!x && !('skip' in x))
+        if (lines.length === 0) { skipped++; continue }              // whole order fully returned
+        const subtotal = lines.reduce((s, l) => s + l._before, 0)
+        const net = lines.reduce((s, l) => s + l.lineTotal, 0)
+        // Replace a matching legacy (non-Tiktok) order first — voids it (reverses inventory).
+        const match = legacy.find(l => l.referenceNumber === id && Math.abs(l.netAmount - net) < 0.5)
+        if (match) {
+          try { const v = await fetch(`/api/pos/orders/${match.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'void' }) }); if (v.ok) replaced++ } catch { /* ignore */ }
+        }
         const txnDate = toYmd(rs[0]['Paid Time'] || rs[0]['Created Time']) || new Date().toISOString().slice(0, 10)
         const body = {
           orderType: 'PRODUCT', branch: BRANCH, platform: 'Tiktok', transactionDate: txnDate,
           subtotal, discountType: subtotal > net ? 'FIXED' : 'NONE', discountAmount: Math.max(0, subtotal - net), discountLabel: subtotal > net ? 'TikTok seller discount' : null,
-          netAmount: net, referenceNumber: id, items: its,
+          netAmount: net, referenceNumber: id, notes: anyReturn ? 'Includes returned item(s) — net of returns' : null,
+          items: lines.map(l => ({ inventoryItemId: l.inventoryItemId, name: l.name, quantity: l.quantity, unitPrice: l.unitPrice, lineTotal: l.lineTotal })),
           payments: [{ method: 'TIKTOK', amount: net, paymentModeId: modeId, reference: id }],
         }
         try {
@@ -87,7 +103,7 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
           if (res.ok) ok++; else { skipped++; say(`Order ${id}: ${(await res.json()).error || 'failed'}`) }
         } catch { skipped++ }
       }
-      say(`Imported ${ok} order(s). Skipped ${dup} already-imported, ${skipped} error/unmatched.`)
+      say(`Imported ${ok} order(s). Replaced ${replaced} legacy (e.g. CASH) order(s) — their stock was restored, then re-deducted correctly. Skipped ${dup} already-imported, ${skipped} unmatched/empty.`)
       if (unmatched.size) say(`Unmatched Seller SKUs (add them to Inventory, then re-upload): ${[...unmatched].join(', ')}`)
       onDone()
     } finally { setBusy(false) }
