@@ -162,7 +162,7 @@ export async function GET(req: Request) {
           debit: true,
           credit: true,
           description: true,
-          account: { select: { id: true, accountNumber: true, accountTitle: true, accountType: true } },
+          account: { select: { id: true, accountNumber: true, accountTitle: true, accountType: true, normalBalance: true } },
           journalEntry: { select: { id: true, entryDate: true, description: true, referenceType: true, referenceId: true } },
         },
       }),
@@ -638,7 +638,11 @@ export async function GET(req: Request) {
       const month = new Date(line.journalEntry.entryDate).getMonth() + 1
       const credit = Number(line.credit) || 0
       const debit = Number(line.debit) || 0
-      const amt = credit - debit // REVENUE: credit increases
+      // Store as a POSITIVE magnitude consistent with order-derived amounts:
+      // credit-normal revenue → credit-debit; DEBIT-normal contra-revenue (e.g. 7250
+      // TikTok Marketplace Fees, 7240 Processor Commission Discounts) → debit-credit,
+      // so the Discounts & Refunds section subtracts it instead of adding it.
+      const amt = line.account.normalBalance === 'DEBIT' ? (debit - credit) : (credit - debit)
       if (amt !== 0 && monthly[month]) {
         monthly[month].revenueByAccount[key] = (monthly[month].revenueByAccount[key] || 0) + amt
         journalRevenueKeys.add(key)
