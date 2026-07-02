@@ -40,7 +40,7 @@ export async function GET(req: Request) {
   const strKeys = [...strMap.keys()]
   const labelFor = (s: string | null) => (s && strMap.has(s) ? strMap.get(s)!.label : s || '')
 
-  type Row = { source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string }
+  type Row = { id?: string; source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string }
   const rows: Row[] = []
 
   // 1. Petty Cash + Expenses
@@ -96,6 +96,24 @@ export async function GET(req: Request) {
     })
   }
 
+  // 4. Manually-recorded cancelled checks
+  const cancelled = await prisma.cancelledCheck.findMany({
+    where: { accountId: { in: [...idSet] } },
+    select: { id: true, checkNumber: true, date: true, amount: true, reason: true, payee: true, accountId: true },
+  })
+  for (const cc of cancelled) {
+    rows.push({
+      id: cc.id,
+      source: 'Cancelled',
+      checkNumber: cc.checkNumber || '',
+      date: cc.date?.toISOString().slice(0, 10) || null,
+      amount: Number(cc.amount || 0),
+      reference: cc.reason || '',
+      payee: cc.payee || '',
+      bankAccount: acctById.get(cc.accountId) || '',
+    })
+  }
+
   // Enumerate by check number (numeric-aware sort)
   rows.sort((a, b) => {
     const na = parseInt(a.checkNumber.replace(/\D/g, '') || '0', 10)
@@ -104,4 +122,49 @@ export async function GET(req: Request) {
   })
 
   return NextResponse.json({ checks: rows, accounts: accountsList })
+}
+
+const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
+
+// POST — record a cancelled check for a checking account.
+export async function POST(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes((session.user as { role?: string }).role || '')) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+  try {
+    const { accountId, checkNumber, date, reason, payee, amount } = await req.json()
+    if (!accountId || !checkNumber?.trim() || !date) {
+      return NextResponse.json({ error: 'Checking account, check number and date are required' }, { status: 400 })
+    }
+    const acct = await prisma.account.findFirst({ where: { id: accountId, isCheckingAccount: true } })
+    if (!acct) return NextResponse.json({ error: 'Not a valid checking account' }, { status: 400 })
+    const created = await prisma.cancelledCheck.create({
+      data: {
+        accountId,
+        checkNumber: String(checkNumber).trim(),
+        date: new Date(date),
+        reason: reason?.trim() || null,
+        payee: payee?.trim() || null,
+        amount: Number(amount) || 0,
+        createdById: session.user.id as string,
+      },
+    })
+    return NextResponse.json({ ok: true, id: created.id })
+  } catch (e) {
+    console.error('Cancelled check create error:', e)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+// DELETE — remove a mistakenly-recorded cancelled check by id.
+export async function DELETE(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes((session.user as { role?: string }).role || '')) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+  const id = new URL(req.url).searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+  await prisma.cancelledCheck.deleteMany({ where: { id } })
+  return NextResponse.json({ ok: true })
 }

@@ -70,7 +70,7 @@ export default function FundTransferPage() {
         ))}
       </div>
 
-      {view === 'checks' ? <CheckReleaseMonitoring /> : (<>
+      {view === 'checks' ? <CheckReleaseMonitoring canWrite={canWrite} /> : (<>
 
       {banks.length === 0 && !loading && (
         <div className="rounded-2xl border p-4 text-sm" style={{ borderColor: '#fde68a', background: '#fffbeb', color: '#92400e' }}>
@@ -114,13 +114,25 @@ export default function FundTransferPage() {
   )
 }
 
-interface CheckRow { source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string }
+interface CheckRow { id?: string; source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string }
 
-function CheckReleaseMonitoring() {
+function CheckReleaseMonitoring({ canWrite }: { canWrite: boolean }) {
   const [accounts, setAccounts] = useState<{ id: string; label: string }[]>([])
   const [accountId, setAccountId] = useState('all')
   const [checks, setChecks] = useState<CheckRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [showCancel, setShowCancel] = useState(false)
+
+  const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'checkNumber', dir: 'asc' })
+  const [filters, setFilters] = useState<Record<string, string>>({})
+  const toggleSort = (k: string) => setSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
+  const cols = [
+    { key: 'checkNumber', label: 'Check No.' }, { key: 'date', label: 'Date' }, { key: 'source', label: 'Source' },
+    { key: 'reference', label: 'Reference' }, { key: 'payee', label: 'Payee / Description' },
+    { key: 'bankAccount', label: 'Bank Account' }, { key: 'amount', label: 'Amount' },
+  ]
+  const get = (c: CheckRow, k: string): string | number => k === 'amount' ? c.amount : ((c[k as keyof CheckRow] as string | number) ?? '')
+  const shown = applySortFilter(checks, get, sort.key, sort.dir, filters)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -133,8 +145,14 @@ function CheckReleaseMonitoring() {
   }, [accountId])
   useEffect(() => { load() }, [load])
 
-  const total = checks.reduce((s, c) => s + c.amount, 0)
-  const srcColor: Record<string, string> = { 'Petty Cash': '#0f766e', Expense: '#b45309', 'RFP / Tax': '#7c3aed', 'Fund Transfer': '#2563eb' }
+  const total = shown.reduce((s, c) => s + c.amount, 0)
+  const srcColor: Record<string, string> = { 'Petty Cash': '#0f766e', Expense: '#b45309', 'RFP / Tax': '#7c3aed', 'Fund Transfer': '#2563eb', Cancelled: '#dc2626' }
+
+  const removeCancelled = async (id: string) => {
+    if (!confirm('Remove this cancelled-check record?')) return
+    await fetch(`/api/fund-transfers/checks?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+    await load()
+  }
 
   return (
     <div className="space-y-3">
@@ -144,7 +162,12 @@ function CheckReleaseMonitoring() {
           <option value="all">All checking accounts</option>
           {accounts.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
         </select>
-        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{checks.length} check(s) · Total ₱{peso(total)}</span>
+        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{shown.length} check(s) · Total ₱{peso(total)}</span>
+        {canWrite && accounts.length > 0 && (
+          <button onClick={() => setShowCancel(true)} className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white" style={{ background: '#dc2626' }}>
+            <Plus size={14} /> Record Cancelled Check
+          </button>
+        )}
       </div>
 
       {accounts.length === 0 && !loading && (
@@ -155,36 +178,74 @@ function CheckReleaseMonitoring() {
 
       <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
         <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-              <th className="px-3 py-2.5 font-semibold">#</th>
-              <th className="px-3 py-2.5 font-semibold">Check No.</th>
-              <th className="px-3 py-2.5 font-semibold">Date</th>
-              <th className="px-3 py-2.5 font-semibold">Source</th>
-              <th className="px-3 py-2.5 font-semibold">Reference</th>
-              <th className="px-3 py-2.5 font-semibold">Payee / Description</th>
-              <th className="px-3 py-2.5 font-semibold">Bank Account</th>
-              <th className="px-3 py-2.5 font-semibold text-right">Amount</th>
-            </tr>
-          </thead>
+          <SortFilterHead cols={cols} sortKey={sort.key} sortDir={sort.dir} filters={filters} onToggleSort={toggleSort} onFilter={(k, v) => setFilters(f => ({ ...f, [k]: v }))} trailing={canWrite} />
           <tbody>
             {loading ? (
               <tr><td colSpan={8} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
-            ) : checks.map((c, i) => (
-              <tr key={`${c.source}-${c.reference}-${c.checkNumber}-${i}`} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{i + 1}</td>
-                <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{c.checkNumber}</td>
+            ) : shown.map((c, i) => {
+              const isCancelled = c.source === 'Cancelled'
+              return (
+              <tr key={`${c.source}-${c.reference}-${c.checkNumber}-${i}`} className="border-t" style={{ borderColor: 'var(--light-gray)', background: isCancelled ? '#fef2f2' : undefined }}>
+                <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)', textDecoration: isCancelled ? 'line-through' : undefined }}>{c.checkNumber}</td>
                 <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{c.date || ''}</td>
                 <td className="px-3 py-2.5 text-xs whitespace-nowrap"><span className="px-2 py-0.5 rounded-full text-[11px] font-medium" style={{ background: (srcColor[c.source] || '#64748b') + '1a', color: srcColor[c.source] || '#64748b' }}>{c.source}</span></td>
                 <td className="px-3 py-2.5 text-xs font-mono" style={{ color: 'var(--charcoal)' }}>{c.reference}</td>
                 <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--charcoal)' }}>{c.payee}</td>
                 <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{c.bankAccount}</td>
                 <td className="px-3 py-2.5 text-right font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(c.amount)}</td>
+                {canWrite && <td className="px-3 py-2.5 text-right whitespace-nowrap">{isCancelled && c.id && <button onClick={() => removeCancelled(c.id!)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} style={{ color: '#dc2626' }} /></button>}</td>}
               </tr>
-            ))}
-            {!loading && checks.length === 0 && accounts.length > 0 && <tr><td colSpan={8} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>No checks recorded for the selected checking account(s).</td></tr>}
+            )})}
+            {!loading && shown.length === 0 && accounts.length > 0 && <tr><td colSpan={8} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>{checks.length === 0 ? 'No checks recorded for the selected checking account(s).' : 'No checks match the current filters.'}</td></tr>}
           </tbody>
         </table>
+      </div>
+
+      {showCancel && <CancelledCheckModal accounts={accounts} defaultAccountId={accountId !== 'all' ? accountId : ''} onClose={() => setShowCancel(false)} onSaved={async () => { setShowCancel(false); await load() }} />}
+    </div>
+  )
+}
+
+function CancelledCheckModal({ accounts, defaultAccountId, onClose, onSaved }: { accounts: { id: string; label: string }[]; defaultAccountId: string; onClose: () => void; onSaved: () => void }) {
+  const [accountId, setAccountId] = useState(defaultAccountId || (accounts[0]?.id ?? ''))
+  const [checkNumber, setCheckNumber] = useState('')
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [payee, setPayee] = useState('')
+  const [reason, setReason] = useState('')
+  const [amount, setAmount] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const save = async () => {
+    if (!accountId || !checkNumber.trim() || !date) { alert('Checking account, check number and date are required.'); return }
+    setBusy(true)
+    try {
+      const res = await fetch('/api/fund-transfers/checks', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId, checkNumber, date, payee, reason, amount: Number(amount) || 0 }),
+      })
+      if (!res.ok) { alert((await res.json()).error || 'Failed'); return }
+      onSaved()
+    } finally { setBusy(false) }
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md max-h-[88vh] overflow-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Record Cancelled Check</h2><button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button></div>
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Checking Account</label>
+        <select value={accountId} onChange={e => setAccountId(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }}>
+          <option value="">Select account…</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
+        </select>
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Check Number</label>
+        <input value={checkNumber} onChange={e => setCheckNumber(e.target.value)} placeholder="Leading zeros preserved" className="w-full px-3 py-2 rounded-xl border text-sm font-mono mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Date Cancelled</label>
+        <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Payee (optional)</label>
+        <input value={payee} onChange={e => setPayee(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Reason (optional)</label>
+        <input value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. spoiled, wrong amount, reissued" className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Amount (optional)</label>
+        <input value={amount} onChange={e => setAmount(e.target.value)} inputMode="decimal" placeholder="0.00" className="w-full px-3 py-2 rounded-xl border text-sm font-mono mb-4" style={{ borderColor: 'var(--light-gray)' }} />
+        <button onClick={save} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#dc2626' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : 'Record cancelled check'}</button>
       </div>
     </div>
   )

@@ -1788,6 +1788,22 @@ model FundTransferSettings {
   updatedAt DateTime @updatedAt @default(now())
 }
 
+// Manually-recorded cancelled/voided checks, kept per checking account so the
+// Check Release Monitoring log has a record of checks that were spoiled/cancelled.
+model CancelledCheck {
+  id          String   @id @default(cuid())
+  accountId   String   // Account.id of the checking account the check was drawn on
+  checkNumber String
+  date        DateTime
+  reason      String?
+  payee       String?
+  amount      Decimal  @default(0)
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([accountId])
+}
+
 model BankTransaction {
   id                String   @id @default(cuid())
   bankAccountId     String   // Account.id (a Chart-of-Accounts bank account)
