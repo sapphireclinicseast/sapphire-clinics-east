@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { productSubtypeLabel } from '@/lib/sku-taxonomy'
 
 const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN', 'MEDREP']
 
@@ -74,7 +75,7 @@ export async function GET(req: Request) {
               refundAmount: true,
               service: { select: { department: true, revenueAccount: { select: { accountNumber: true, accountTitle: true, accountType: true } } } },
               cogsCost: true,
-              inventoryItem: { select: { unitCost: true, skuDepartment: true, revenueAccount: { select: { accountNumber: true, accountTitle: true, accountType: true } }, expenseAccount: { select: { accountNumber: true, accountTitle: true } } } },
+              inventoryItem: { select: { unitCost: true, skuDepartment: true, skuCategory: true, revenueAccount: { select: { accountNumber: true, accountTitle: true, accountType: true } }, expenseAccount: { select: { accountNumber: true, accountTitle: true } } } },
             },
           },
           payments: {
@@ -193,6 +194,7 @@ export async function GET(req: Request) {
         select: {
           name: true,
           skuDepartment: true,
+          skuCategory: true,
           revenueAccount: { select: { accountNumber: true, accountTitle: true } },
           expenseAccount: { select: { accountNumber: true, accountTitle: true } },
           unitCost: true,
@@ -298,6 +300,11 @@ export async function GET(req: Request) {
     const refundsAcct = accounts.find(a => a.accountNumber === '7160')
     const refundsAcctKey = refundsAcct ? `${refundsAcct.accountNumber} ${refundsAcct.accountTitle}` : null
 
+    // 7080 Sales of Product Income — the line we sub-classify by product subtype
+    // (Department · Category). Sub-row amounts sum back to this account's total.
+    const productIncomeAcct = accounts.find(a => a.accountNumber === '7080')
+    const productIncomeAcctKey = productIncomeAcct ? `${productIncomeAcct.accountNumber} ${productIncomeAcct.accountTitle}` : null
+
     // Build discount label → COA account key map from DiscountSettings
     const discountLabelToAccount: Record<string, string> = {}
     let pwdScAccountKey = ''
@@ -331,12 +338,13 @@ export async function GET(req: Request) {
         }
       }
     }
-    const inventoryNameToAccount: Record<string, { accountKey: string; department: string; expenseKey: string | null; unitCost: number }> = {}
+    const inventoryNameToAccount: Record<string, { accountKey: string; department: string; category: string; expenseKey: string | null; unitCost: number }> = {}
     for (const inv of allInventory) {
       if (inv.revenueAccount) {
         inventoryNameToAccount[inv.name.trim().toUpperCase()] = {
           accountKey: `${inv.revenueAccount.accountNumber} ${inv.revenueAccount.accountTitle}`,
           department: inv.skuDepartment,
+          category: inv.skuCategory,
           expenseKey: inv.expenseAccount ? `${inv.expenseAccount.accountNumber} ${inv.expenseAccount.accountTitle}` : null,
           unitCost: Number(inv.unitCost),
         }
@@ -368,6 +376,7 @@ export async function GET(req: Request) {
       cogs: number
       revenueByDept: Record<string, number>
       revenueByAccount: Record<string, number>
+      productRevenueBySubtype: Record<string, number>  // 7080 broken out by product Department · Category
       revenueByBranch: Record<string, number>
       cogsByDept: Record<string, number>
       cogsByAccount: Record<string, number>
@@ -384,7 +393,7 @@ export async function GET(req: Request) {
     for (let m = 1; m <= 12; m++) {
       monthly[m] = {
         serviceRevenue: 0, productRevenue: 0, unearnedRevenue: 0,
-        cogs: 0, revenueByDept: {}, revenueByAccount: {},
+        cogs: 0, revenueByDept: {}, revenueByAccount: {}, productRevenueBySubtype: {},
         revenueByBranch: {}, cogsByDept: {}, cogsByAccount: {}, cashReceived: 0,
         paymentsByMethod: {}, deductionsByMethod: {}, deductionsByType: {},
         deductionsByAccount: {}, cashByAccount: {}, expenseByAccount: {},
@@ -439,6 +448,12 @@ export async function GET(req: Request) {
             // lineTotal is the full gross sale (incl. returned units). Revenue = lineTotal;
             // the refunded portion is booked as a Refund deduction (7160). Net = gross − refund.
             m.revenueByAccount[acctKey] = (m.revenueByAccount[acctKey] || 0) + lineAmt
+            // Sub-classify the product-income line (7080) by product subtype (Dept · Category).
+            if (productIncomeAcctKey && acctKey === productIncomeAcctKey) {
+              const catCode = item.inventoryItem?.skuCategory || inventoryNameToAccount[nameKey]?.category
+              const subLabel = productSubtypeLabel(dept, catCode)
+              m.productRevenueBySubtype[subLabel] = (m.productRevenueBySubtype[subLabel] || 0) + lineAmt
+            }
             if (refund > 0 && refundsAcctKey) {
               m.revenueByAccount[refundsAcctKey] = (m.revenueByAccount[refundsAcctKey] || 0) + refund
               m.deductionsByAccount[refundsAcctKey] = (m.deductionsByAccount[refundsAcctKey] || 0) + refund
@@ -943,6 +958,7 @@ export async function GET(req: Request) {
       branch,
       accounts: groupedAccounts,
       monthly,
+      productIncomeAcctKey,
       inventory: { total: totalInventory, byDepartment: inventoryByDept },
       wallets: { total: totalWalletBalance, byType: walletByType },
       accountsReceivable: {

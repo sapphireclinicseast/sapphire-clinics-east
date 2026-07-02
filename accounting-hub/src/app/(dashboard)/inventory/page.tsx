@@ -35,6 +35,7 @@ import {
 import JsBarcode from 'jsbarcode'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
+import { SKU_HIERARCHY } from '@/lib/sku-taxonomy'
 import DownloadMenu from '@/components/ui/DownloadMenu'
 import Pagination from '@/components/ui/Pagination'
 
@@ -302,52 +303,6 @@ function generateTransmittalPDF(data: TransmittalData) {
    CONSTANTS
    ═══════════════════════════════════════════════════════════ */
 
-const SKU_HIERARCHY: Record<string, { label: string; categories: Record<string, { label: string; subcategories: Record<string, string> }> }> = {
-  PT: { label: 'Physical Therapy', categories: {
-    EQP: { label: 'Equipment', subcategories: { MOB: 'Mobility', STR: 'Strength', BAL: 'Balance' } },
-    ACC: { label: 'Accessories', subcategories: { TAP: 'Taping' } },
-    MAT: { label: 'Materials', subcategories: { MAS: 'Massage' } },
-  }},
-  OT: { label: 'Occupational Therapy', categories: {
-    EQP: { label: 'Equipment', subcategories: { FUN: 'Functional', FIN: 'Fine Motor' } },
-    SEN: { label: 'Sensory', subcategories: { INT: 'Integration' } },
-    TOY: { label: 'Toys', subcategories: { THP: 'Therapeutic' } },
-    ACC: { label: 'Accessories', subcategories: { GRI: 'Grip' } },
-  }},
-  ST: { label: 'Speech Therapy', categories: {
-    EQP: { label: 'Equipment', subcategories: { ORA: 'Oral Motor' } },
-    MAT: { label: 'Materials', subcategories: { LAN: 'Language', SND: 'Sound' } },
-    TOY: { label: 'Toys', subcategories: { COM: 'Communication' } },
-    ACC: { label: 'Accessories', subcategories: { DEV: 'Devices' } },
-  }},
-  SP: { label: 'Special Education', categories: {
-    MAT: { label: 'Materials', subcategories: { LRN: 'Learning' } },
-    EQP: { label: 'Equipment', subcategories: { BEH: 'Behavior' } },
-    TOY: { label: 'Toys', subcategories: { EDU: 'General' } },
-  }},
-  PSY: { label: 'Psychology & Assessment', categories: {
-    ASM: { label: 'Assessment', subcategories: { STD: 'Standardized Tests', SCR: 'Screening Tests' } },
-    MAT: { label: 'Materials', subcategories: { THP: 'Therapy Aids' } },
-  }},
-  CLI: { label: 'Clinic & Institutional', categories: {
-    FUR: { label: 'Furniture', subcategories: { GEN: 'General' } },
-    EQP: { label: 'Equipment', subcategories: { MON: 'Monitoring Devices' } },
-    ACC: { label: 'Accessories', subcategories: { SAN: 'Sanitary and Safety' } },
-  }},
-  DIG: { label: 'Digital & Tech', categories: {
-    APP: { label: 'Application', subcategories: { TRN: 'Training & Simulation Apps' } },
-    EQP: { label: 'Equipment', subcategories: { AUG: 'Augmentative & Assistive Tech' } },
-    SUB: { label: 'Subscription', subcategories: { SFT: 'Software Subscriptions' } },
-  }},
-  EDU: { label: 'Training & Education', categories: {
-    MAT: { label: 'Materials', subcategories: { BOK: 'Books & Manuals' } },
-    KIT: { label: 'Kit', subcategories: { TRN: 'Training Kits' } },
-    ACC: { label: 'Accessories', subcategories: { CER: 'Certification Materials' } },
-  }},
-  MER: { label: 'Merchandise', categories: {
-    GEN: { label: 'General', subcategories: { STK: 'Stickers', EMB: 'Car Emblems', TLS: 'Tagless Shirt', PCH: 'Pouch', PBG: 'Paper Bags' } },
-  }},
-}
 
 const INV_SUB_TYPES = [
   { value: 'INV_PT', label: 'Inventory — Physical Therapy' },

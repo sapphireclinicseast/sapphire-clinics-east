@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Fragment } from 'react'
 import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
 import {
@@ -21,6 +21,7 @@ interface MonthData {
   cogs: number
   revenueByDept: Record<string, number>
   revenueByAccount: Record<string, number>
+  productRevenueBySubtype: Record<string, number>
   revenueByBranch: Record<string, number>
   cogsByDept: Record<string, number>
   cogsByAccount: Record<string, number>
@@ -46,6 +47,7 @@ interface ReportData {
   branch: string
   accounts: Record<string, Record<string, AccountEntry[]>>
   monthly: Record<number, MonthData>
+  productIncomeAcctKey?: string | null
   inventory: { total: number; byDepartment: Record<string, number> }
   wallets: { total: number; byType: Record<string, number> }
   accountsReceivable?: {
@@ -305,10 +307,10 @@ function SubSectionHeader({ label }: { label: string }) {
 /* ── Annual row (label + amount) ──────────────────────────────── */
 
 function AnnualRow({
-  label, amount, indent = 0, bold = false, isTotal = false, isGrandTotal = false, negative = false, onDrillDown,
+  label, amount, indent = 0, bold = false, isTotal = false, isGrandTotal = false, negative = false, muted = false, onDrillDown,
 }: {
   label: string; amount: number; indent?: number; bold?: boolean
-  isTotal?: boolean; isGrandTotal?: boolean; negative?: boolean; onDrillDown?: () => void
+  isTotal?: boolean; isGrandTotal?: boolean; negative?: boolean; muted?: boolean; onDrillDown?: () => void
 }) {
   const isNeg = negative && amount < 0
   return (
@@ -319,12 +321,13 @@ function AnnualRow({
         alignItems: 'center',
         padding: '3px 12px',
         paddingLeft: `${0.75 + indent * 1.2}rem`,
-        fontSize: ROW_FONT,
+        fontSize: muted ? 'calc(0.95 * 1em)' : ROW_FONT,
         fontWeight: isGrandTotal || isTotal || bold ? 600 : 400,
+        fontStyle: muted ? 'italic' : undefined,
         borderTop: isGrandTotal ? '2px solid #111827' : isTotal ? '1px solid #d1d5db' : undefined,
         borderBottom: isGrandTotal ? '3px double #111827' : isTotal ? '1px solid #d1d5db' : undefined,
         background: isGrandTotal ? '#f0f9f8' : undefined,
-        color: '#111827',
+        color: muted ? '#6b7280' : '#111827',
       }}
     >
       <span>{label}</span>
@@ -333,7 +336,7 @@ function AnnualRow({
           textAlign: 'right',
           fontFamily: 'inherit',
           fontSize: ROW_FONT_MONO,
-          color: isNeg ? '#dc2626' : (onDrillDown && amount !== 0 ? '#0d9488' : amount === 0 && !isTotal && !isGrandTotal ? '#c4c9d0' : '#111827'),
+          color: isNeg ? '#dc2626' : muted ? '#6b7280' : (onDrillDown && amount !== 0 ? '#0d9488' : amount === 0 && !isTotal && !isGrandTotal ? '#c4c9d0' : '#111827'),
           cursor: onDrillDown ? 'pointer' : undefined,
           textDecoration: 'none',
         }}
@@ -350,10 +353,10 @@ function AnnualRow({
 /* ── Monthly row (label + 12 months + total) ──────────────────── */
 
 function MonthlyRow({
-  label, values, total, indent = 0, bold = false, isTotal = false, isGrandTotal = false, negative = false, onClickCell,
+  label, values, total, indent = 0, bold = false, isTotal = false, isGrandTotal = false, negative = false, muted = false, onClickCell,
 }: {
   label: string; values: number[]; total: number; indent?: number; bold?: boolean
-  isTotal?: boolean; isGrandTotal?: boolean; negative?: boolean
+  isTotal?: boolean; isGrandTotal?: boolean; negative?: boolean; muted?: boolean
   onClickCell?: (month: number | null) => void
 }) {
   return (
@@ -366,10 +369,11 @@ function MonthlyRow({
         paddingLeft: `${0.5 + indent * 0.85}rem`,
         fontSize: ROW_FONT,
         fontWeight: isGrandTotal || isTotal || bold ? 600 : 400,
+        fontStyle: muted ? 'italic' : undefined,
         borderTop: isGrandTotal ? '2px solid #111827' : isTotal ? '1px solid #d1d5db' : undefined,
         borderBottom: isGrandTotal ? '3px double #111827' : isTotal ? '1px solid #d1d5db' : undefined,
         background: isGrandTotal ? '#f0f9f8' : undefined,
-        color: '#111827',
+        color: muted ? '#6b7280' : '#111827',
         minWidth: '1100px',
       }}
     >
@@ -981,6 +985,18 @@ function IncomeStatement({ data, viewMode, onDrillDown, revenueOnly = false }: {
     return sumMonths(monthly, (m) => (m.revenueByAccount || {})[key] || 0)
   }
 
+  // Product-income (7080) sub-classification by product subtype (Department · Category).
+  const productIncomeAcctKey = data.productIncomeAcctKey || null
+  const productSubtypeAnnual: [string, number][] = (() => {
+    const agg: Record<string, number> = {}
+    for (let m = 1; m <= 12; m++) {
+      for (const [k, v] of Object.entries(monthly[m]?.productRevenueBySubtype || {})) agg[k] = (agg[k] || 0) + v
+    }
+    return Object.entries(agg).filter(([, v]) => Math.abs(v) > 0.005).sort((a, b) => b[1] - a[1])
+  })()
+  const subtypeMonthly = (label: string) =>
+    getMonthlyArray(monthly, (m) => (m.productRevenueBySubtype || {})[label] || 0)
+
   // Helper: get amount for a COA expense account from expenseByAccount (journal entries)
   const expenseAmount = (acctNum: string, acctTitle: string) => {
     const key = `${acctNum} ${acctTitle}`
@@ -1014,9 +1030,15 @@ function IncomeStatement({ data, viewMode, onDrillDown, revenueOnly = false }: {
           <>
             {grossRevenueAccts.map((a) => {
               const acctKey = `${a.accountNumber} ${a.accountTitle}`
+              const isProductIncome = productIncomeAcctKey === acctKey && productSubtypeAnnual.length > 0
               return (
-                <AnnualRow key={a.accountNumber} label={acctKey} amount={acctAmount(a.accountNumber, a.accountTitle)} indent={1}
-                  onDrillDown={() => onDrillDown(a.accountTitle, 'REVENUE', 0, acctKey)} />
+                <Fragment key={a.accountNumber}>
+                  <AnnualRow label={acctKey} amount={acctAmount(a.accountNumber, a.accountTitle)} indent={1}
+                    onDrillDown={() => onDrillDown(a.accountTitle, 'REVENUE', 0, acctKey)} />
+                  {isProductIncome && productSubtypeAnnual.map(([label, amt]) => (
+                    <AnnualRow key={`${a.accountNumber}-${label}`} label={label} amount={amt} indent={2} muted />
+                  ))}
+                </Fragment>
               )
             })}
             {unmatchedRevenueKeys.map((key) => {
@@ -1137,11 +1159,18 @@ function IncomeStatement({ data, viewMode, onDrillDown, revenueOnly = false }: {
         <>
           {grossRevenueAccts.map((a) => {
             const acctKey = `${a.accountNumber} ${a.accountTitle}`
+            const isProductIncome = productIncomeAcctKey === acctKey && productSubtypeAnnual.length > 0
             return (
-              <MonthlyRow key={a.accountNumber} label={acctKey}
-                values={acctMonthly(a.accountNumber, a.accountTitle)}
-                total={acctAmount(a.accountNumber, a.accountTitle)} indent={1}
-                onClickCell={(m) => onDrillDown(a.accountTitle, 'REVENUE', m ?? 0, acctKey)} />
+              <Fragment key={a.accountNumber}>
+                <MonthlyRow label={acctKey}
+                  values={acctMonthly(a.accountNumber, a.accountTitle)}
+                  total={acctAmount(a.accountNumber, a.accountTitle)} indent={1}
+                  onClickCell={(m) => onDrillDown(a.accountTitle, 'REVENUE', m ?? 0, acctKey)} />
+                {isProductIncome && productSubtypeAnnual.map(([label, amt]) => (
+                  <MonthlyRow key={`${a.accountNumber}-${label}`} label={label}
+                    values={subtypeMonthly(label)} total={amt} indent={2} muted />
+                ))}
+              </Fragment>
             )
           })}
           {unmatchedRevenueKeys.map((key) => {
