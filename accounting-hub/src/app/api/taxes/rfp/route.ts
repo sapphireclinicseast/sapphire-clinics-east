@@ -8,7 +8,7 @@ const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const PAYROLL_TO_PC: Record<string, string> = { SBEA: 'SANDBOX_EAST', SBGH: 'SANDBOX_GREENHILLS', VERDANA: 'VERDANA_STORE' }
 const BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VER' }
 // taxType → ReimbursementReport.module + refNumber suffix
-const TAX_MODULE: Record<string, string> = { WC: 'TAX_WC', EWT: 'TAX_EWT', VAT: 'TAX_VAT' }
+const TAX_MODULE: Record<string, string> = { WC: 'TAX_WC', EWT: 'TAX_EWT', VAT: 'TAX_VAT', IT: 'TAX_IT' }
 
 // GET ?id=...  → single report pdfData
 // GET ?taxType=WC[&payrollBranch=SBEA] → list tax RFPs of that type
@@ -39,7 +39,7 @@ export async function GET(req: Request) {
     where,
     select: {
       id: true, refNumber: true, grossTotal: true, status: true, paidAt: true, paymentMethod: true,
-      checkNumber: true, transferRef: true, debitAccount: true, proofUrl: true, payableTo: true, meta: true, createdAt: true,
+      checkNumber: true, transferRef: true, debitAccount: true, proofUrl: true, payableTo: true, filingStatus: true, meta: true, createdAt: true,
     },
     orderBy: { createdAt: 'desc' },
   })
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
     const { taxType, payrollBranch, ids, consultantIds, expenseIds, amount, period, manualSeq } = await req.json()
     const moduleName = TAX_MODULE[taxType]
     if (!moduleName) return NextResponse.json({ error: 'Invalid taxType' }, { status: 400 })
-    if (!['WC', 'EWT', 'VAT'].includes(taxType)) return NextResponse.json({ error: `${taxType} RFP not yet supported` }, { status: 400 })
+    if (!['WC', 'EWT', 'VAT', 'IT'].includes(taxType)) return NextResponse.json({ error: `${taxType} RFP not yet supported` }, { status: 400 })
     const pcBranch = PAYROLL_TO_PC[payrollBranch]
     if (!pcBranch) return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
     const mseq = manualSeq != null && String(manualSeq).trim() !== '' ? parseInt(String(manualSeq), 10) : null
@@ -68,12 +68,12 @@ export async function POST(req: Request) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let extraMeta: any = {}
 
-      if (taxType === 'VAT') {
-        // Manual VAT payable (2550Q) keyed by the accountant — no line items.
+      if (taxType === 'VAT' || taxType === 'IT') {
+        // Manual VAT (2550Q) / Corporate Income Tax (1702) payable keyed by the accountant — no line items.
         const amt = Number(amount)
-        if (!amt || amt <= 0) throw new Error('Enter the VAT payable amount')
+        if (!amt || amt <= 0) throw new Error(`Enter the ${taxType === 'IT' ? 'income tax' : 'VAT'} payable amount`)
         items = []
-        extraMeta = { period: period || null, vatAmount: amt }
+        extraMeta = { period: period || null, [taxType === 'IT' ? 'itAmount' : 'vatAmount']: amt }
       } else if (taxType === 'WC') {
         // Employee withholding (1601-C) from EmployeePayslip.
         if (!Array.isArray(ids) || ids.length === 0) throw new Error('Select at least one entry')
@@ -105,7 +105,7 @@ export async function POST(req: Request) {
           if (exps.length) await tx.pettyCashEntry.updateMany({ where: { id: { in: exps.map(x => x.id) } }, data: { ewtRemitted: true } })
         }
       }
-      const grossTotal = taxType === 'VAT' ? Number(amount) : items.reduce((sum, i) => sum + (taxType === 'WC' ? i.tax : i.ewt), 0)
+      const grossTotal = (taxType === 'VAT' || taxType === 'IT') ? Number(amount) : items.reduce((sum, i) => sum + (taxType === 'WC' ? i.tax : i.ewt), 0)
 
       let settings = await tx.pettyCashSettings.findUnique({ where: { branch: pcBranch } })
       if (!settings) settings = await tx.pettyCashSettings.create({ data: { branch: pcBranch, nextPcvSeq: 1 } })
@@ -162,6 +162,10 @@ export async function PATCH(req: Request) {
     }
     if (action === 'set-payable') {
       await prisma.reimbursementReport.update({ where: { id }, data: { payableTo: (body.payableTo ?? '').trim() || null } })
+      return NextResponse.json({ success: true })
+    }
+    if (action === 'set-filing') {
+      await prisma.reimbursementReport.update({ where: { id }, data: { filingStatus: body.filingStatus === 'FILED' ? 'FILED' : 'FOR_FILING' } })
       return NextResponse.json({ success: true })
     }
     await prisma.reimbursementReport.update({ where: { id }, data: { pdfData: body.pdfData || null } })

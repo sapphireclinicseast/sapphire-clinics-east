@@ -1,0 +1,1 @@
+ALTER TABLE "ReimbursementReport" ADD COLUMN IF NOT EXISTS "filingStatus" TEXT DEFAULT 'FOR_FILING';

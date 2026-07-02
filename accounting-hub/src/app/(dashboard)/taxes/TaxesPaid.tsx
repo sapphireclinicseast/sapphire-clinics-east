@@ -8,11 +8,11 @@ const BRANCHES = [{ value: '', label: 'All' }, { value: 'SBEA', label: 'East' },
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 const num = (v: string | number) => (typeof v === 'number' ? v : parseFloat(v) || 0)
 const TYPES: { key: string; label: string }[] = [
-  { key: 'WC', label: 'Withholding — Compensation' }, { key: 'EWT', label: 'Expanded Withholding (EWT)' }, { key: 'VAT', label: 'Value-Added Tax' },
+  { key: 'WC', label: 'Withholding — Compensation' }, { key: 'EWT', label: 'Expanded Withholding (EWT)' }, { key: 'VAT', label: 'Value-Added Tax' }, { key: 'IT', label: 'Corporate Income Tax' },
 ]
 
 interface TaxRfp { id: string; refNumber: string; grossTotal: string | number; status: string; paidAt: string | null; meta: { taxType?: string } | null; createdAt: string }
-const typeOf = (r: TaxRfp) => r.meta?.taxType || (r.refNumber.endsWith('-WC') ? 'WC' : r.refNumber.endsWith('-EWT') ? 'EWT' : r.refNumber.endsWith('-VAT') ? 'VAT' : '')
+const typeOf = (r: TaxRfp) => r.meta?.taxType || (r.refNumber.endsWith('-WC') ? 'WC' : r.refNumber.endsWith('-EWT') ? 'EWT' : r.refNumber.endsWith('-VAT') ? 'VAT' : r.refNumber.endsWith('-IT') ? 'IT' : '')
 
 export default function TaxesPaid() {
   const now = new Date()

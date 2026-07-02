@@ -45,6 +45,7 @@ export function taxRfpLines(meta: any, grossTotal: number): BVLine[] {
   if (t === 'WC') return items.map((i: { name: string; period: string; tax: number }) => flat('Withholding Tax — Compensation', `${i.name}${i.period ? ` — ${i.period}` : ''}`, Number(i.tax || 0)))
   if (t === 'EWT') return items.map((i: { name: string; period: string; rate: number | null; ewt: number; source: string }) => flat(i.source === 'CONSULTANT' ? 'EWT — Consultant' : 'EWT — Expense', `${i.name}${i.rate != null ? ` (${i.rate}%)` : ''}${i.period ? ` · ${i.period}` : ''}`, Number(i.ewt || 0)))
   if (t === 'VAT') return [flat('Value-Added Tax (2550Q)', meta?.period ? `VAT payable · ${meta.period.from} to ${meta.period.to}` : 'VAT payable', Number(grossTotal || 0))]
+  if (t === 'IT') return [flat('Corporate Income Tax (1702)', meta?.period ? `Income tax payable · ${meta.period.from} to ${meta.period.to}` : 'Income tax payable', Number(grossTotal || 0))]
   return items.map((i: { name?: string; description?: string; amount?: number }) => flat('Tax', i.name || i.description || '', Number(i.amount || 0)))
 }
 

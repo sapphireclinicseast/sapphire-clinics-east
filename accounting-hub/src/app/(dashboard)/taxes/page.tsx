@@ -6,18 +6,22 @@ import { computeTaxDue, TAX_PORTALS, type TaxDueInfo } from '@/lib/taxes'
 import WithholdingCompensation from './WithholdingCompensation'
 import ExpandedWithholding from './ExpandedWithholding'
 import BusinessTax from './BusinessTax'
+import IncomeTaxCorporate from './IncomeTaxCorporate'
 import TaxesRfp from './TaxesRfp'
 import TaxesPaid from './TaxesPaid'
+import TaxesReport from './TaxesReport'
 
-type Tab = 'guide' | 'compensation' | 'ewt' | 'business' | 'rfp' | 'paid'
+type Tab = 'guide' | 'compensation' | 'ewt' | 'business' | 'income-tax' | 'rfp' | 'paid' | 'report'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'guide', label: 'Guide & Summary' },
   { key: 'compensation', label: 'Withholding on Compensation' },
   { key: 'ewt', label: 'Expanded Withholding (EWT)' },
   { key: 'business', label: 'Business Tax (VAT)' },
+  { key: 'income-tax', label: 'Income Tax (Corporate)' },
   { key: 'rfp', label: 'RFP' },
   { key: 'paid', label: 'Taxes Paid' },
+  { key: 'report', label: 'Taxes Report' },
 ]
 
 const dueBadge = (d: number) =>
@@ -137,8 +141,10 @@ export default function TaxesPage() {
       {tab === 'compensation' && <WithholdingCompensation />}
       {tab === 'ewt' && <ExpandedWithholding />}
       {tab === 'business' && <BusinessTax />}
+      {tab === 'income-tax' && <IncomeTaxCorporate />}
       {tab === 'rfp' && <TaxesRfp />}
       {tab === 'paid' && <TaxesPaid />}
+      {tab === 'report' && <TaxesReport />}
     </div>
   )
 }

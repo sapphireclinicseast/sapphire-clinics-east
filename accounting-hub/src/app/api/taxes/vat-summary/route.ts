@@ -11,8 +11,12 @@ export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const sp = new URL(req.url).searchParams
-  const pcBranch = PAYROLL_TO_PC[sp.get('payrollBranch') || '']
-  if (!pcBranch) return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
+  // payrollBranch optional: omitted (or 'ALL') = whole corporation (VAT is filed as one entity).
+  const pbRaw = sp.get('payrollBranch') || ''
+  const allBranches = pbRaw === '' || pbRaw.toUpperCase() === 'ALL'
+  const pcBranch = allBranches ? null : PAYROLL_TO_PC[pbRaw]
+  if (!allBranches && !pcBranch) return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
+  const branchWhere = pcBranch ? { branch: pcBranch } : {}
   const from = sp.get('from'), to = sp.get('to')
   const range: { gte?: Date; lt?: Date } = {}
   if (from) range.gte = new Date(from)
@@ -21,7 +25,7 @@ export async function GET(req: Request) {
   // Output VAT: PRODUCT sales only (medical Services are VAT-exempt). Net of
   // platform discounts (Order.netAmount), VAT-inclusive.
   const orders = await prisma.order.findMany({
-    where: { branch: pcBranch, orderType: 'PRODUCT', status: 'COMPLETED', returnedByBuyer: false, ...(from || to ? { transactionDate: range } : {}) },
+    where: { ...branchWhere, orderType: 'PRODUCT', status: 'COMPLETED', returnedByBuyer: false, ...(from || to ? { transactionDate: range } : {}) },
     select: { netAmount: true },
   })
   const outputGross = orders.reduce((s, o) => s + Number(o.netAmount), 0)
@@ -29,7 +33,7 @@ export async function GET(req: Request) {
 
   // Input VAT: paid VATable expenses in the period (VAT-inclusive gross).
   const exps = await prisma.pettyCashEntry.findMany({
-    where: { branch: pcBranch, recordType: { in: ['ONE_TIME', 'RECURRING'] }, vatable: 'VAT', paidAt: { not: null }, ...(from || to ? { date: range } : {}) },
+    where: { ...branchWhere, recordType: { in: ['ONE_TIME', 'RECURRING'] }, vatable: 'VAT', paidAt: { not: null }, ...(from || to ? { date: range } : {}) },
     select: { grossAmount: true },
   })
   const inputGross = exps.reduce((s, e) => s + Number(e.grossAmount), 0)

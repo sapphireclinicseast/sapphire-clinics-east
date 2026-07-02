@@ -1698,6 +1698,7 @@ model ReimbursementReport {
   kind           String?
   module         String   @default("PETTY_CASH")
   payableTo      String?  // who the payment is payable to → surfaces as Payee in the Expense Report
+  filingStatus   String?  @default("FOR_FILING") // FOR_FILING | FILED — used by the Taxes Report
   meta           Json?    // tax RFPs: { taxType, period, payrollBranch, items:[{id,name,gross,tax}] }
   creditCardId   String?
   debitAccount   String?
