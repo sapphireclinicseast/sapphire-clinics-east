@@ -2,14 +2,14 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Repeat, Plus, Settings, Loader2, X, Eye, Upload, Pencil, Trash2, ListChecks } from 'lucide-react'
+import { Repeat, Plus, Settings, Loader2, X, Eye, Upload, Pencil, Trash2, ListChecks, Info } from 'lucide-react'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 interface Bank { id: string; accountNumber: string; accountTitle: string; currency: string; isCheckingAccount?: boolean }
-interface Transfer { id: string; refNumber: string; date: string; fromAccountId: string; toAccountId: string; fromLabel: string; toLabel: string; amount: number; checkNumber: string | null; description: string | null; proofUrl: string | null }
+interface Transfer { id: string; refNumber: string; date: string; fromAccountId: string; toAccountId: string; fromLabel: string; toLabel: string; amount: number; checkNumber: string | null; description: string | null; proofUrl: string | null; proofUrls?: string[] | null }
 
 export default function FundTransferPage() {
   const { data: session } = useSession()
@@ -72,6 +72,11 @@ export default function FundTransferPage() {
 
       {view === 'checks' ? <CheckReleaseMonitoring canWrite={canWrite} /> : (<>
 
+      <div className="rounded-xl border px-4 py-2.5 text-sm flex items-start gap-2" style={{ borderColor: '#bfdbfe', background: '#eff6ff', color: '#1e3a8a' }}>
+        <Info size={16} className="mt-0.5 flex-shrink-0" />
+        <span>Record the transaction under the branch that is the <strong>RECEIVER</strong> of the fund transfer.</span>
+      </div>
+
       {banks.length === 0 && !loading && (
         <div className="rounded-2xl border p-4 text-sm" style={{ borderColor: '#fde68a', background: '#fffbeb', color: '#92400e' }}>
           No bank accounts yet. In <strong>Chart of Accounts</strong>, add/edit a Current-Asset account and tick <strong>&quot;Is this a bank account?&quot;</strong> to make it selectable here.
@@ -93,7 +98,13 @@ export default function FundTransferPage() {
                 <td className="px-3 py-2.5 text-right font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(t.amount)}</td>
                 <td className="px-3 py-2.5 text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>{t.checkNumber || ''}</td>
                 <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{t.description || ''}</td>
-                <td className="px-3 py-2.5">{t.proofUrl && <a href={t.proofUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[11px]" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Eye size={12} /> View</a>}</td>
+                <td className="px-3 py-2.5">
+                  <div className="flex flex-wrap gap-1">
+                    {(t.proofUrls && t.proofUrls.length ? t.proofUrls : (t.proofUrl ? [t.proofUrl] : [])).map((url, i) => (
+                      <a key={url} href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[11px]" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Eye size={12} /> {i + 1}</a>
+                    ))}
+                  </div>
+                </td>
                 {canWrite && (
                   <td className="px-3 py-2.5 text-right whitespace-nowrap">
                     <button onClick={() => { setEditing(t); setShowForm(true) }} className="p-1 rounded hover:bg-teal-50 mr-1"><Pencil size={13} style={{ color: 'var(--teal)' }} /></button>
@@ -258,14 +269,14 @@ function TransferForm({ banks, editing, onClose, onSaved }: { banks: Bank[]; edi
   const [amount, setAmount] = useState(editing ? String(editing.amount) : '')
   const [checkNumber, setCheckNumber] = useState(editing?.checkNumber || '')
   const [description, setDescription] = useState(editing?.description || '')
-  const [proofUrl, setProofUrl] = useState(editing?.proofUrl || '')
+  const [proofUrls, setProofUrls] = useState<string[]>(editing?.proofUrls?.length ? editing.proofUrls : (editing?.proofUrl ? [editing.proofUrl] : []))
   const [uploading, setUploading] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const upload = async (file: File | null) => {
     if (!file) return
     setUploading(true)
-    try { const fd = new FormData(); fd.append('file', file); const r = await fetch('/api/upload', { method: 'POST', body: fd }); if (r.ok) setProofUrl((await r.json()).url); else alert('Upload failed') } catch { alert('Upload failed') } finally { setUploading(false) }
+    try { const fd = new FormData(); fd.append('file', file); const r = await fetch('/api/upload', { method: 'POST', body: fd }); if (r.ok) { const u = (await r.json()).url; if (u) setProofUrls(prev => [...prev, u]) } else alert('Upload failed') } catch { alert('Upload failed') } finally { setUploading(false) }
   }
   const save = async () => {
     if (!date || !fromAccountId || !toAccountId) { alert('Date, From and To are required.'); return }
@@ -273,7 +284,7 @@ function TransferForm({ banks, editing, onClose, onSaved }: { banks: Bank[]; edi
     if (!(Number(amount) > 0)) { alert('Enter a valid amount.'); return }
     setBusy(true)
     try {
-      const body = { date, fromAccountId, toAccountId, amount: Number(amount), checkNumber, description, proofUrl }
+      const body = { date, fromAccountId, toAccountId, amount: Number(amount), checkNumber, description, proofUrls }
       const res = editing
         ? await fetch('/api/fund-transfers', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editing.id, ...body }) })
         : await fetch('/api/fund-transfers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -301,13 +312,20 @@ function TransferForm({ banks, editing, onClose, onSaved }: { banks: Bank[]; edi
         <input value={checkNumber} onChange={e => setCheckNumber(e.target.value)} placeholder="Leading zeros preserved" className="w-full px-3 py-2 rounded-xl border text-sm font-mono mb-3" style={{ borderColor: 'var(--light-gray)' }} />
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Description / Purpose</label>
         <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
-        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Proof</label>
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Proof (you can add multiple)</label>
+        <div className="space-y-1 mb-2">
+          {proofUrls.map((url, i) => (
+            <div key={url} className="flex items-center gap-2 text-xs">
+              <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> Proof {i + 1}</a>
+              <button onClick={() => setProofUrls(prev => prev.filter(u => u !== url))} className="text-[11px]" style={{ color: '#dc2626' }}><X size={12} className="inline" /></button>
+            </div>
+          ))}
+        </div>
         <div className="flex items-center gap-2 mb-4">
           <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white cursor-pointer" style={{ background: 'var(--teal)' }}>
-            {uploading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />} {proofUrl ? 'Replace' : 'Upload'}
+            {uploading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />} {proofUrls.length ? 'Add another' : 'Upload'}
             <input type="file" className="hidden" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv" onChange={e => { upload(e.target.files?.[0] || null); e.target.value = '' }} />
           </label>
-          {proofUrl && <a href={proofUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs" style={{ color: 'var(--teal)' }}><Eye size={13} /> View</a>}
         </div>
         <button onClick={save} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : (editing ? 'Save changes' : 'Save transfer')}</button>
       </div>

@@ -95,7 +95,7 @@ export default function TaxesRfp() {
         </table>
       </div>
       {payTarget && <RecordPaidModal rfp={payTarget} onClose={() => setPayTarget(null)} onSaved={async () => { setPayTarget(null); await fetchRfps() }} />}
-      {bv && <BillingVoucherModal refNumber={bv.refNumber} date={bv.date} lines={bv.lines} branch={bv.branch} onClose={() => setBv(null)} />}
+      {bv && <BillingVoucherModal refNumber={bv.refNumber} date={bv.date} lines={bv.lines} branch={bv.branch} preparedBy={session?.user?.name || ''} onClose={() => setBv(null)} />}
     </div>
   )
 }

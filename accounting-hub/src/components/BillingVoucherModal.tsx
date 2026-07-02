@@ -8,9 +8,9 @@ const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2
 
 // Prompts for "Billed to" + "Description" (memo), then generates the A4 Billing
 // Voucher PDF for the given RFP line items.
-export function BillingVoucherModal({ refNumber, date, lines, branch, defaultBilledTo, defaultMemo, onClose }: {
+export function BillingVoucherModal({ refNumber, date, lines, branch, defaultBilledTo, defaultMemo, preparedBy, onClose }: {
   refNumber: string; date: string; lines: BVLine[]; branch?: string
-  defaultBilledTo?: string; defaultMemo?: string; onClose: () => void
+  defaultBilledTo?: string; defaultMemo?: string; preparedBy?: string; onClose: () => void
 }) {
   const [billedTo, setBilledTo] = useState(defaultBilledTo || '')
   const [memo, setMemo] = useState(defaultMemo || '')
@@ -20,7 +20,7 @@ export function BillingVoucherModal({ refNumber, date, lines, branch, defaultBil
   const generate = async () => {
     setBusy(true)
     try {
-      const doc = await buildBillingVoucher({ refNumber, date, billedTo, memo, lines, branch })
+      const doc = await buildBillingVoucher({ refNumber, date, billedTo, memo, lines, branch, preparedBy })
       doc.save(`Billing-Voucher-${refNumber}.pdf`)
       onClose()
     } finally { setBusy(false) }

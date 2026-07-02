@@ -454,7 +454,7 @@ export default function ExpensesPage() {
       if (!res.ok) { alert((await res.json()).error || 'Failed to generate RFP'); setGeneratingRfp(false); return }
       const { id, refNumber } = await res.json()
       try {
-        const pdfData = await buildRfpPdf(refNumber, branch, sel)
+        const pdfData = await buildRfpPdf(refNumber, branch, sel, { preparedBy: preparedByName })
         await fetch('/api/expenses/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, pdfData }) })
       } catch { /* pdf best-effort */ }
       setShowRfpModal(false); setRfpMode(null); setSelected(new Set()); setRfpManualSeq('')
@@ -552,18 +552,28 @@ export default function ExpensesPage() {
     } catch { /* ignore */ }
   }
 
+  const preparedByName = session?.user?.name || ''
   const downloadRfpPdf = async (rfp: Rfp) => {
     try {
+      // Expense RFPs: rebuild the summary fresh so it reflects the current "Payable to" + preparer.
+      if (rfp.module === 'EXPENSE' || !rfp.module) {
+        const r = await fetch(`/api/expenses/rfp?id=${rfp.id}&entries=1`)
+        if (!r.ok) { alert('Could not load RFP entries.'); return }
+        const d = await r.json()
+        await buildRfpPdf(rfp.refNumber, branch, d.entries as Entry[], { payableTo: d.payableTo || '', preparedBy: preparedByName })
+        return
+      }
+      // Payroll / other RFPs: serve the stored snapshot.
       const r = await fetch(`/api/expenses/rfp?id=${rfp.id}`)
       if (!r.ok) return
       const { pdfData } = await r.json()
       if (!pdfData) { alert('No PDF stored for this RFP.'); return }
-      const a = document.createElement('a'); a.href = pdfData; a.download = `${rfp.refNumber}.pdf`
+      const a = document.createElement('a'); a.href = pdfData; a.download = `RFP-Summary-${rfp.refNumber}.pdf`
       document.body.appendChild(a); a.click(); a.remove()
     } catch { /* ignore */ }
   }
 
-  const buildRfpPdf = async (refNumber: string, br: string, rows: Entry[]): Promise<string> => {
+  const buildRfpPdf = async (refNumber: string, br: string, rows: Entry[], opts?: { payableTo?: string; preparedBy?: string }): Promise<string> => {
     const { jsPDF } = await import('jspdf')
     const autoTable = (await import('jspdf-autotable')).default
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
@@ -588,13 +598,14 @@ export default function ExpensesPage() {
     doc.text(`Branch: ${branchLabel}`, 14, 20)
     doc.text(`Ref No: ${refNumber}`, 14, 24)
     doc.text(`Date: ${new Date().toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}`, 14, 28)
+    if (opts?.payableTo) { doc.setFont('helvetica', 'bold').text(`Payable to: ${opts.payableTo}`, 14, 32); doc.setFont('helvetica', 'normal') }
     const tG = rows.reduce((s, e) => s + num(e.grossAmount), 0)
     const tN = rows.reduce((s, e) => s + netOfVat(e), 0)
     const tV = rows.reduce((s, e) => s + vatAmount(e), 0)
     const tE = rows.reduce((s, e) => s + ewtAmount(e), 0)
     const tP = rows.reduce((s, e) => s + payableOf(e), 0)
     autoTable(doc, {
-      startY: 33,
+      startY: opts?.payableTo ? 37 : 33,
       head: [['PCV Number', 'Payee', 'Date', 'Account Title', 'Description', 'Vatable', 'Gross Amount', 'Net of VAT', 'VAT Amount', 'EWT', 'Amount Payable']],
       body: rows.map(e => [e.pcvNumber, e.requestor || '', e.date ? String(e.date).slice(0, 10) : '', e.accountTitle || '', e.description || '', e.vatable || '', peso(num(e.grossAmount)), peso(netOfVat(e)), peso(vatAmount(e)), e.hasEwt ? `${peso(ewtAmount(e))} (${e.ewtRate}%)` : '', peso(payableOf(e))]),
       foot: [['', '', '', '', '', 'TOTAL', peso(tG), peso(tN), peso(tV), peso(tE), peso(tP)]],
@@ -603,7 +614,14 @@ export default function ExpensesPage() {
       columnStyles: { 6: { halign: 'right' }, 7: { halign: 'right' }, 8: { halign: 'right' }, 9: { halign: 'right' }, 10: { halign: 'right' } },
       margin: { left: 10, right: 10 },
     })
-    doc.save(`${refNumber}.pdf`)
+    // Prepared By — wet-signature line (printed), name underneath.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const endY = (doc as any).lastAutoTable?.finalY as number || 60
+    const sigY = Math.min(endY + 24, doc.internal.pageSize.getHeight() - 18)
+    doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(30, 30, 30).text(opts?.preparedBy || '', 14, sigY - 1)
+    doc.setDrawColor(120, 120, 120).setLineWidth(0.3).line(14, sigY, 74, sigY)
+    doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(120, 120, 120).text('Prepared By (signature over printed name)', 14, sigY + 4)
+    doc.save(`RFP-Summary-${refNumber}.pdf`)
     return doc.output('datauristring')
   }
 
@@ -1227,9 +1245,9 @@ export default function ExpensesPage() {
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
-                    <button onClick={() => downloadRfpPdf(r)} title="Download PDF"
+                    <button onClick={() => downloadRfpPdf(r)} title="Download RFP Summary"
                       className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
-                      <Download size={13} /> PDF
+                      <Download size={13} /> RFP Summary
                     </button>
                     <button onClick={() => openBillingVoucher(r)} title="Billing Voucher"
                       className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
@@ -1435,7 +1453,7 @@ export default function ExpensesPage() {
           onDone={async () => { setPayrollPayTarget(null); await loadRfps(branch) }} />
       )}
 
-      {bvTarget && <BillingVoucherModal refNumber={bvTarget.refNumber} date={bvTarget.date} lines={bvTarget.lines} branch={bvTarget.branch} onClose={() => setBvTarget(null)} />}
+      {bvTarget && <BillingVoucherModal refNumber={bvTarget.refNumber} date={bvTarget.date} lines={bvTarget.lines} branch={bvTarget.branch} preparedBy={session?.user?.name || ''} onClose={() => setBvTarget(null)} />}
 
       {newSupplierPrompt && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setNewSupplierPrompt(null)}>

@@ -1804,6 +1804,7 @@ model FundTransfer {
   checkNumber   String?
   description   String?
   proofUrl      String?
+  proofUrls     Json?     // multiple attachments (proofUrl kept = first, for back-compat)
   createdById   String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

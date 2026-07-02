@@ -1,0 +1,1 @@
+ALTER TABLE "FundTransfer" ADD COLUMN IF NOT EXISTS "proofUrls" JSONB;

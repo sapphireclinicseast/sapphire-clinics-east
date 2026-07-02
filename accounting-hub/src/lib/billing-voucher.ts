@@ -12,6 +12,7 @@ export interface BillingVoucherOpts {
   memo: string          // description shown in grey, lower-left
   lines: BVLine[]
   branch?: string       // SANDBOX_EAST | SBEA | AHEA | … selects the header
+  preparedBy?: string   // printed under the "Prepared By" signature line
 }
 
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -115,6 +116,12 @@ export async function buildBillingVoucher(opts: BillingVoucherOpts): Promise<JsP
   doc.text(doc.splitTextToSize(`Memo: ${opts.memo || ''}`, 110), left, endY + 11)
   doc.setFontSize(10).setTextColor(60, 60, 60).text('BALANCE DUE (Net of EWT)', 130, endY + 11)
   doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(30, 30, 30).text(`PHP ${peso(tot('netEwt'))}`, right, endY + 16, { align: 'right' })
+
+  // Prepared By — wet-signature line (they print this), name printed underneath.
+  const sigY = Math.min(endY + 40, 272)
+  doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(30, 30, 30).text(opts.preparedBy || '', left, sigY - 1)
+  doc.setDrawColor(120, 120, 120).setLineWidth(0.3).line(left, sigY, left + 62, sigY)
+  doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(120, 120, 120).text('Prepared By (signature over printed name)', left, sigY + 4)
 
   doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(150, 150, 150)
   doc.text('Page 1 of 1', pageW / 2, 287, { align: 'center' })

@@ -16,6 +16,7 @@ export async function GET() {
     id: t.id, refNumber: t.refNumber, date: t.date.toISOString().slice(0, 10),
     fromAccountId: t.fromAccountId, toAccountId: t.toAccountId, fromLabel: label(t.fromAccountId), toLabel: label(t.toAccountId),
     amount: Number(t.amount), checkNumber: t.checkNumber, description: t.description, proofUrl: t.proofUrl,
+    proofUrls: Array.isArray(t.proofUrls) ? t.proofUrls : (t.proofUrl ? [t.proofUrl] : []),
   })))
 }
 
@@ -26,8 +27,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { date, fromAccountId, toAccountId, amount, checkNumber, description, proofUrl } = await req.json()
+    const { date, fromAccountId, toAccountId, amount, checkNumber, description, proofUrl, proofUrls } = await req.json()
     if (!date || !fromAccountId || !toAccountId) return NextResponse.json({ error: 'Date, From and To accounts are required' }, { status: 400 })
+    const urls: string[] = Array.isArray(proofUrls) ? proofUrls.filter(Boolean) : (proofUrl ? [proofUrl] : [])
     if (fromAccountId === toAccountId) return NextResponse.json({ error: 'From and To must be different accounts' }, { status: 400 })
     const amt = Number(amount)
     if (!amt || amt <= 0) return NextResponse.json({ error: 'Enter a valid amount' }, { status: 400 })
@@ -42,7 +44,8 @@ export async function POST(req: Request) {
       return tx.fundTransfer.create({
         data: {
           refNumber, refSeq: seq, date: new Date(date), fromAccountId, toAccountId, amount: amt,
-          checkNumber: checkNumber || null, description: description || null, proofUrl: proofUrl || null,
+          checkNumber: checkNumber || null, description: description || null,
+          proofUrl: urls[0] || null, proofUrls: urls,
           createdById: session.user.id ?? null,
         },
       })
@@ -61,7 +64,7 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { id, date, fromAccountId, toAccountId, amount, checkNumber, description, proofUrl } = await req.json()
+    const { id, date, fromAccountId, toAccountId, amount, checkNumber, description, proofUrl, proofUrls } = await req.json()
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = {}
@@ -71,7 +74,8 @@ export async function PATCH(req: Request) {
     if (amount !== undefined) data.amount = Number(amount) || 0
     if (checkNumber !== undefined) data.checkNumber = checkNumber || null
     if (description !== undefined) data.description = description || null
-    if (proofUrl !== undefined) data.proofUrl = proofUrl || null
+    if (proofUrls !== undefined) { const urls: string[] = Array.isArray(proofUrls) ? proofUrls.filter(Boolean) : []; data.proofUrls = urls; data.proofUrl = urls[0] || null }
+    else if (proofUrl !== undefined) data.proofUrl = proofUrl || null
     const t = await prisma.fundTransfer.update({ where: { id }, data })
     return NextResponse.json({ id: t.id })
   } catch (e) {

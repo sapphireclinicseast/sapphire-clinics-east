@@ -34,6 +34,17 @@ export async function GET(req: Request) {
     const lines = Array.isArray(meta.items) ? meta.items.map((i: any) => { const a = Number(i.amount || 0); return { account: acct, description: `${i.name}${meta.cutoffPeriod ? ` — ${meta.cutoffPeriod}` : ''}`, gross: a, vat: 0, netVat: a, netEwt: a } }) : []
     return NextResponse.json({ lines })
   }
+  // Full member entries for rebuilding the RFP Summary PDF (with current payableTo).
+  if (id && sp.get('entries')) {
+    const rep = await prisma.reimbursementReport.findUnique({ where: { id }, select: { payableTo: true, refNumber: true, branch: true } })
+    if (!rep) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    const entries = await prisma.pettyCashEntry.findMany({
+      where: { reimbursementId: id },
+      select: { pcvNumber: true, requestor: true, date: true, accountTitle: true, description: true, vatable: true, grossAmount: true, hasEwt: true, ewtRate: true },
+      orderBy: { pcvSeq: 'asc' },
+    })
+    return NextResponse.json({ payableTo: rep.payableTo, refNumber: rep.refNumber, branch: rep.branch, entries: entries.map(e => ({ ...e, grossAmount: Number(e.grossAmount), date: e.date ? e.date.toISOString().slice(0, 10) : null })) })
+  }
   if (id) {
     const r = await prisma.reimbursementReport.findUnique({ where: { id }, select: { pdfData: true, refNumber: true } })
     if (!r) return NextResponse.json({ error: 'Not found' }, { status: 404 })
