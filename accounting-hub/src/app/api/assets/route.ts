@@ -4,6 +4,18 @@ import { prisma } from '@/lib/prisma'
 import { postAssetJournal, reverseAssetJournal } from '@/lib/accounting/post-asset'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+const ASSET_BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VERD' }
+
+// Auto control number: BRANCH-YEAR-000x, sequence per (branch, purchase year).
+async function nextControlNumber(branch: string, dateBought: string | Date): Promise<string> {
+  const code = ASSET_BRANCH_CODE[branch] || branch
+  const year = new Date(dateBought).getFullYear()
+  const prefix = `${code}-${year}-`
+  const existing = await prisma.asset.findMany({ where: { branch: branch as never, controlNumber: { startsWith: prefix } }, select: { controlNumber: true } })
+  let max = 0
+  for (const e of existing) { const m = e.controlNumber?.match(/-(\d+)$/); if (m) max = Math.max(max, parseInt(m[1], 10)) }
+  return `${prefix}${String(max + 1).padStart(4, '0')}`
+}
 
 function getBranchForRole(role: string): string | null {
   if (role === 'SBEA_FRONTDESK' || role === 'SBEA_ADMIN') return 'SANDBOX_EAST'
@@ -71,10 +83,11 @@ export async function POST(req: Request) {
       photoUrl,
       departments,
       utilized,
-      controlNumber,
+      accountableName,
       remarks,
     } = body
 
+    const controlNumber = await nextControlNumber(branch, dateBought)
     const asset = await prisma.asset.create({
       data: {
         branch,
@@ -91,7 +104,8 @@ export async function POST(req: Request) {
         photoUrl: photoUrl || null,
         departments: departments ?? [],
         utilized: utilized ?? true,
-        controlNumber: controlNumber || null,
+        controlNumber,
+        accountableName: accountableName || null,
         remarks: remarks || null,
         createdById: session.user.id,
       },
@@ -152,7 +166,7 @@ export async function PUT(req: Request) {
       photoUrl,
       departments,
       utilized,
-      controlNumber,
+      accountableName,
       remarks,
     } = body
 
@@ -179,7 +193,7 @@ export async function PUT(req: Request) {
         photoUrl: photoUrl || null,
         departments: departments ?? [],
         utilized: utilized ?? true,
-        controlNumber: controlNumber || null,
+        accountableName: accountableName || null,
         remarks: remarks || null,
       },
       include: {

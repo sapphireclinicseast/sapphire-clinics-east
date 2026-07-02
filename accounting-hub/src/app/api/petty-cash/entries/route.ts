@@ -15,7 +15,7 @@ const EDITABLE = [
   'hasEwt', 'ewtRate',
 ] as const
 
-const PCV_BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VER', CEO: 'CEO' }
+const PCV_BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VERD', CEO: 'CEO' }
 // Petty cash entries carry a "-NN" sub-sequence (entries sharing one PCV);
 // expense entries (RECURRING/ONE_TIME) keep the plain base number.
 function pcvNumber(branch: string, seq: number, sub: number, withSub: boolean): string {

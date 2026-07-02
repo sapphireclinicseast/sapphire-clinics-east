@@ -1516,6 +1516,7 @@ model Asset {
   departments         Json      @default("[]")  // string[] of dept names
   utilized            Boolean   @default(true)
   controlNumber       String?
+  accountableName     String?   // staff accountable/custodian (from HR Hub)
   remarks             String?
   createdById         String
   createdBy           User      @relation("AssetCreatedBy", fields: [createdById], references: [id])

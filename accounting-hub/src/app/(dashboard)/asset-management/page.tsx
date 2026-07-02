@@ -45,6 +45,7 @@ interface Asset {
   departments: string[]
   utilized: boolean
   controlNumber: string | null
+  accountableName: string | null
   remarks: string | null
   createdById: string
   createdBy: { id: string; name: string }
@@ -135,6 +136,7 @@ function emptyForm(branch: string) {
     departments: [] as string[],
     utilized: true,
     controlNumber: '',
+    accountableName: '',
     remarks: '',
   }
 }
@@ -169,6 +171,15 @@ export default function AssetManagementPage() {
   const [form, setForm] = useState(emptyForm(isBranchRestricted ? userBranch : 'SANDBOX_EAST'))
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
+  // HR-Hub staff names for the Accountability typeahead (loaded when the form's branch is known).
+  const [staffNames, setStaffNames] = useState<string[]>([])
+  useEffect(() => {
+    if (!showModal) return
+    const b = form.branch === 'SANDBOX_EAST' ? 'SBEA' : form.branch === 'SANDBOX_GREENHILLS' ? 'SBGH' : form.branch === 'VERDANA_STORE' ? 'VERDANA' : ''
+    fetch(`/api/pos/staff${b ? `?branch=${b}` : ''}`).then(r => r.ok ? r.json() : { staff: [] })
+      .then(d => setStaffNames([...new Set(((d.staff || []) as { name: string }[]).map(s => s.name).filter(Boolean))]))
+      .catch(() => setStaffNames([]))
+  }, [showModal, form.branch])
 
   // Photo upload
   const [uploading, setUploading] = useState(false)
@@ -287,6 +298,7 @@ export default function AssetManagementPage() {
       departments: Array.isArray(asset.departments) ? (asset.departments as string[]) : [],
       utilized: asset.utilized,
       controlNumber: asset.controlNumber ?? '',
+      accountableName: asset.accountableName ?? '',
       remarks: asset.remarks ?? '',
     })
     if (asset.photoUrl) {
@@ -415,7 +427,7 @@ export default function AssetManagementPage() {
         photoUrl: form.photoUrl || null,
         departments: form.departments,
         utilized: form.utilized,
-        controlNumber: form.controlNumber.trim() || null,
+        accountableName: form.accountableName.trim() || null,
         remarks: form.remarks.trim() || null,
       }
 
@@ -762,6 +774,7 @@ export default function AssetManagementPage() {
                     </button>
                   </th>
 
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Accountability</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Departments</th>
                   {canWrite && (
                     <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
@@ -815,7 +828,8 @@ export default function AssetManagementPage() {
                         {asset.utilized ? 'Yes' : 'No'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-600">{asset.controlNumber ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-600 font-mono text-xs">{asset.controlNumber ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-600">{asset.accountableName ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-600 max-w-[160px]">
                       <span className="truncate block" title={(asset.departments as string[]).join(', ')}>
                         {(asset.departments as string[]).length > 0
@@ -1120,18 +1134,36 @@ export default function AssetManagementPage() {
                 </div>
               </div>
 
-              {/* Control Number + Remarks */}
+              {/* Accountability + Control Number */}
               <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Accountability</label>
+                  <input
+                    type="text"
+                    list="asset-staff-list"
+                    value={form.accountableName}
+                    onChange={(e) => setForm((f) => ({ ...f, accountableName: e.target.value }))}
+                    placeholder="Type or pick a staff name…"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                  <datalist id="asset-staff-list">
+                    {staffNames.map((n) => <option key={n} value={n} />)}
+                  </datalist>
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Control Number</label>
                   <input
                     type="text"
-                    value={form.controlNumber}
-                    onChange={(e) => setForm((f) => ({ ...f, controlNumber: e.target.value }))}
-                    placeholder="e.g. SBEA-2025-001"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    value={editingAsset ? (form.controlNumber || '—') : 'Auto-generated on save'}
+                    readOnly disabled
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-500 font-mono"
                   />
+                  <p className="text-[11px] text-gray-400 mt-1">Format: BRANCH-YEAR-000x (e.g. AHEA-2026-0001)</p>
                 </div>
+              </div>
+
+              {/* Remarks */}
+              <div className="grid grid-cols-1 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Remarks</label>
                   <textarea
