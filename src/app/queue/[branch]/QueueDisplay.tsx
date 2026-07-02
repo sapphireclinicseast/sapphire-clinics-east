@@ -473,9 +473,10 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
               <p style={{ fontSize: '0.85rem', fontWeight: 600 }}>No ads uploaded</p>
             </div>
           ) : (
-            /* Fade wrapper */
+            /* Fade wrapper — flex column so the square ad centerer can stretch */
             <div style={{
               flex: 1, position: 'relative',
+              display: 'flex', flexDirection: 'column',
               transition: 'opacity 0.5s ease',
               opacity: fadingOut ? 0 : 1,
             }}>
@@ -669,23 +670,42 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                     )}
                   </div>
                 </div>
-              ) : currentAd?.mimeType.startsWith('video/') ? (
-                <video
-                  ref={videoRef}
-                  autoPlay muted playsInline
-                  loop={ads.length === 1 && (!lbEnabled || !leaderboard)}
-                  style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
-                  onEnded={() => advanceAd(ads.length)}
-                >
-                  <source src={`/api/queue-ads/stream/${currentAd.id}`} type={currentAd.mimeType} />
-                </video>
               ) : currentAd ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={`/api/queue-ads/stream/${currentAd.id}`}
-                  alt="Clinic ad"
-                  style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
-                />
+                /* Centered square — preserves 1:1 uploads without stretching or bars */
+                <div style={{
+                  flex: 1,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: '100%', height: '100%',
+                  position: 'absolute', inset: 0,
+                }}>
+                  <div style={{
+                    width: 'min(100%, 100vh)',
+                    height: 'min(100%, 100vh)',
+                    aspectRatio: '1 / 1',
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    overflow: 'hidden',
+                  }}>
+                    {currentAd.mimeType.startsWith('video/') ? (
+                      <video
+                        ref={videoRef}
+                        autoPlay muted playsInline
+                        loop={ads.length === 1 && (!lbEnabled || !leaderboard)}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                        onEnded={() => advanceAd(ads.length)}
+                      >
+                        <source src={`/api/queue-ads/stream/${currentAd.id}`} type={currentAd.mimeType} />
+                      </video>
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={`/api/queue-ads/stream/${currentAd.id}`}
+                        alt="Clinic ad"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                      />
+                    )}
+                  </div>
+                </div>
               ) : null}
             </div>
           )}
