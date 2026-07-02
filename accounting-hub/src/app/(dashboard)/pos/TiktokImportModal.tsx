@@ -132,13 +132,13 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
           if (!item) return null
           const perBefore = qty > 0 ? numAt(r, 'SKU Subtotal Before Discount') / qty : 0
           const perAfter = qty > 0 ? numAt(r, 'SKU Subtotal After Discount') / qty : 0
-          // Declared as sale (gross) + refund deduction: sold units carry revenue; returned
-          // units are recorded as refundAmount (grossed up into revenue + shown under 7160).
+          // Declared as sale (full gross) + refund deduction. Full qty carries revenue; the
+          // returned units are booked as refundAmount (7160). Inventory deducts qty − returned.
           return {
             inventoryItemId: item.id, name: item.name, unitPrice: numAt(r, 'SKU Unit Original Price'),
-            quantity: sold,                    // net units sold (0 = fully returned, no stock move)
-            lineTotal: perBefore * sold,       // gross-before-discount for sold units
-            _after: perAfter * sold,           // after-discount for sold units (for net)
+            quantity: qty,                     // full ordered units
+            lineTotal: perBefore * qty,        // full gross-before-discount
+            _after: perAfter * qty,            // full after-discount
             returnedQuantity: ret,
             refundAmount: perAfter * ret,      // after-discount refund for returned units
           }
@@ -146,8 +146,10 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
         if (its.some(x => x === null)) { skipped++; continue }       // unmatched SKU
         const lines = its.filter((x): x is { inventoryItemId: string; name: string; quantity: number; unitPrice: number; lineTotal: number; _after: number; returnedQuantity: number; refundAmount: number } => !!x && !('skip' in x))
         if (lines.length === 0) { skipped++; continue }              // all products classified as Skip
-        const subtotal = lines.reduce((s, l) => s + l.lineTotal, 0)   // sold gross (before discount)
-        const net = lines.reduce((s, l) => s + l._after, 0)          // sold net (after discount)
+        const subtotal = lines.reduce((s, l) => s + l.lineTotal, 0)      // full gross (before discount)
+        const fullAfter = lines.reduce((s, l) => s + l._after, 0)        // full after discount
+        const totalRefund = lines.reduce((s, l) => s + l.refundAmount, 0)
+        const net = fullAfter - totalRefund                              // actually collected (after discount, less refunds)
         const txnDate = toYmd(rs[0]['Paid Time'] || rs[0]['Created Time']) || new Date().toISOString().slice(0, 10)
         const orderItemIds = [...new Set(lines.map(l => l.inventoryItemId))].sort()
         const orderNames = [...new Set(lines.map(l => norm(l.name)))].sort()
@@ -166,12 +168,12 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
           usedLegacy.add(match.id)
           try { const v = await fetch(`/api/pos/orders/${match.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'void' }) }); if (v.ok) replaced++ } catch { /* ignore */ }
         }
-        const disc = Math.max(0, +(subtotal - net).toFixed(2))
+        const disc = Math.max(0, +(subtotal - fullAfter).toFixed(2))   // discount on full order (before − after)
         const body = {
           orderType: 'PRODUCT', branch: BRANCH, platform: 'Tiktok', transactionDate: txnDate,
           discountType: disc > 0.005 ? 'CUSTOM' : 'NONE', discountAmount: disc, discountLabel: disc > 0.005 ? 'TikTok seller discount' : null,
           referenceNumber: id, notes: anyReturn ? 'Includes returned/refunded item(s)' : null,
-          // handler computes subtotal = sum(item.lineTotal) (gross-before-discount); netAmount = gross - discount
+          // handler: subtotal = sum(item.lineTotal) (gross); netAmount = gross − discount − refunds
           items: lines.map(l => ({ inventoryItemId: l.inventoryItemId, name: l.name, quantity: l.quantity, unitPrice: l.unitPrice, lineTotal: l.lineTotal, returnedQuantity: l.returnedQuantity, refundAmount: l.refundAmount })),
           payments: net > 0 ? [{ method: 'TIKTOK', amount: net, paymentModeId: modeId, reference: id }] : [],
         }

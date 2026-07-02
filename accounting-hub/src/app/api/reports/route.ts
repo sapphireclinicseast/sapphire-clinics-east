@@ -436,9 +436,9 @@ export async function GET(req: Request) {
           if (itemRevenueAcctType !== 'LIABILITY') {
             const acctKey = resolveItemAccount(item)
             const refund = Number(item.refundAmount || 0)
-            // Gross up revenue by the refunded portion, then book the same amount as a
-            // Refund deduction (7160) — net stays the same, but refunds become visible.
-            m.revenueByAccount[acctKey] = (m.revenueByAccount[acctKey] || 0) + lineAmt + refund
+            // lineTotal is the full gross sale (incl. returned units). Revenue = lineTotal;
+            // the refunded portion is booked as a Refund deduction (7160). Net = gross − refund.
+            m.revenueByAccount[acctKey] = (m.revenueByAccount[acctKey] || 0) + lineAmt
             if (refund > 0 && refundsAcctKey) {
               m.revenueByAccount[refundsAcctKey] = (m.revenueByAccount[refundsAcctKey] || 0) + refund
               m.deductionsByAccount[refundsAcctKey] = (m.deductionsByAccount[refundsAcctKey] || 0) + refund

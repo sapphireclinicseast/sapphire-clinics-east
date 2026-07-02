@@ -65,6 +65,29 @@ export async function PUT(
       return NextResponse.json({ error: 'Order not found' }, { status: 404 })
     }
 
+    // Refund: keep the sale on the books but record it as fully refunded — each product line's
+    // still-sold units are added back to inventory, returnedQuantity/refundAmount are set (so it
+    // shows under 7160 Refunds + the products-analysis refund rate), and net collected → 0.
+    if (body.action === 'refund') {
+      const order = await prisma.order.findUnique({ where: { id }, include: { items: true } })
+      if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+      for (const oi of order.items) {
+        if (oi.inventoryItemId) {
+          const soldUnits = oi.quantity - (oi.returnedQuantity || 0)   // units still deducted from stock
+          if (soldUnits > 0) {
+            await restoreFifoLots(prisma, oi.inventoryItemId, soldUnits)
+            await prisma.inventoryItem.update({ where: { id: oi.inventoryItemId }, data: { quantity: { increment: soldUnits } } })
+            if (oi.variantId) await prisma.inventoryVariant.update({ where: { id: oi.variantId }, data: { quantity: { increment: soldUnits } } })
+            const nc = await recalcWeightedUnitCost(prisma, oi.inventoryItemId)
+            if (nc > 0) await prisma.inventoryItem.update({ where: { id: oi.inventoryItemId }, data: { unitCost: nc } })
+          }
+        }
+        await prisma.orderItem.update({ where: { id: oi.id }, data: { returnedQuantity: oi.quantity, refundAmount: oi.lineTotal } })
+      }
+      await prisma.order.update({ where: { id }, data: { status: 'COMPLETED', returnedByBuyer: true, netAmount: 0 } })
+      return NextResponse.json({ ok: true, refunded: true })
+    }
+
     // Handle status change actions (reopen / void / returnByBuyer)
     if (body.action === 'reopen' || body.action === 'void' || body.action === 'returnByBuyer') {
       const isReturn = body.action === 'returnByBuyer'

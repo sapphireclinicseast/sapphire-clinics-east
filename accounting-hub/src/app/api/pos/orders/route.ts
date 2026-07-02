@@ -173,8 +173,13 @@ export async function POST(req: Request) {
       (sum: number, item: { lineTotal: number }) => sum + Number(item.lineTotal),
       0
     )
+    // Refunds (returned portion) reduce the net collected: net = gross − discount − refunds.
+    const totalRefund = items.reduce(
+      (sum: number, item: { refundAmount?: number }) => sum + (Number(item.refundAmount) || 0),
+      0
+    )
 
-    const netAmount = subtotal - Number(discountAmount)
+    const netAmount = subtotal - Number(discountAmount) - totalRefund
 
     // Payments required only when there's something to pay (e.g., 100% discount → net 0 is allowed with no payments)
     if (netAmount > 0 && !payments?.length) {
@@ -265,14 +270,15 @@ export async function POST(req: Request) {
     if (orderType === 'PRODUCT') {
       for (const item of items) {
         if (!item.inventoryItemId) continue
-        // Fully-returned lines (quantity 0) don't move stock — the product went out and came back.
-        if (typeof item.quantity === 'number' && item.quantity <= 0) continue
+        // Deduct net of returns: a returned unit was delivered then came back (net 0 stock).
+        const netQty = (typeof item.quantity === 'number' ? item.quantity : 1) - (Number(item.returnedQuantity) || 0)
+        if (netQty <= 0) continue
         const invItem = await prisma.inventoryItem.findUnique({
           where: { id: item.inventoryItemId },
           include: { bundleComponents: true },
         })
         if (!invItem) continue
-        const orderQty = item.quantity || 1
+        const orderQty = netQty
         const isFreeSample = !!item.isFreeSample
 
         // Find the created OrderItem to record COGS / free sample

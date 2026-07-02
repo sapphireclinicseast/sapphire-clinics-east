@@ -73,15 +73,14 @@ export async function GET(req: Request) {
           continue
         }
 
+        // lineTotal = full gross sale (incl. returned units); refundAmount = returned portion.
         const itemGross = Number(item.lineTotal)
-        const itemNet = itemGross - itemGross * discountRatio
+        const ref = Number(item.refundAmount || 0)
+        const itemNet = itemGross - itemGross * discountRatio - ref   // net of discount AND refund
         const s = sold.get(id) || { id, name: item.name, units: 0, gross: 0, net: 0 }
         s.units += qty; s.gross += itemGross; s.net += itemNet; s.name = item.name
         sold.set(id, s)
 
-        // Refunds: line lineTotal is the sold (net-of-return) amount; refundAmount is the
-        // returned portion. Gross product sales = lineTotal + refundAmount.
-        const ref = Number(item.refundAmount || 0)
         if (ref > 0 || (item.returnedQuantity || 0) > 0) {
           const rf = refunded.get(id) || { name: item.name, units: 0, amount: 0 }
           rf.units += item.returnedQuantity || 0; rf.amount += ref; rf.name = item.name
@@ -115,8 +114,9 @@ export async function GET(req: Request) {
     const refundList = [...refunded.values()]
     const totalRefundAmount = refundList.reduce((a, r) => a + r.amount, 0)
     const totalReturnedUnits = refundList.reduce((a, r) => a + r.units, 0)
-    const grossWithReturns = totalGross + totalRefundAmount
-    const grossUnitsWithReturns = unitsSold + totalReturnedUnits
+    // lineTotal/quantity already include returned units → totals are gross-of-returns.
+    const grossWithReturns = totalGross
+    const grossUnitsWithReturns = unitsSold
 
     // Active product catalog (branch-scoped; include ALL-branch items) → for "no purchase" + canonical names.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -134,6 +134,8 @@ export async function GET(req: Request) {
 
     const fastMoving = [...soldList].sort((a, b) => b.units - a.units || b.gross - a.gross).slice(0, 10).map(withSku)
     const slowMoving = [...soldList].sort((a, b) => a.units - b.units || a.gross - b.gross).slice(0, 10).map(withSku)
+    const topByGross = [...soldList].sort((a, b) => b.gross - a.gross).slice(0, 10).map(withSku)
+    const topByNet = [...soldList].sort((a, b) => b.net - a.net).slice(0, 10).map(withSku)
 
     // No-purchase list: one row per distinct product NAME (a product can have multiple catalog
     // rows — e.g. per branch/variant — which previously showed as duplicates). Exclude any name
@@ -171,6 +173,8 @@ export async function GET(req: Request) {
       },
       fastMoving,
       slowMoving,
+      topByGross,
+      topByNet,
       noPurchase,
       topPlatforms,
       freeSamples: [...freeSamples.values()].sort((a, b) => b.qty - a.qty),

@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react'
 import {
   ShoppingCart, Search, Plus, X, Trash2, ChevronDown, ChevronUp,
   CreditCard, Wallet, FileText, Download, Printer,
-  RefreshCw, Ban, Star, Filter, Undo2,
+  RefreshCw, Ban, Star, Filter, Undo2, RotateCcw,
   Loader2, AlertCircle, ScanLine, UserPlus,
   Pencil, PlusCircle, ToggleLeft, ToggleRight, Eye, CheckCircle, Gift,
   Globe, Truck, Phone, MapPin, Package, Clock, Upload,
@@ -2540,8 +2540,15 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
 
   useEffect(() => { fetchOrders() }, [fetchOrders])
 
-  const handleAction = async (id: string, action: 'reopen' | 'void' | 'returnByBuyer') => {
-    if (action === 'void') {
+  const handleAction = async (id: string, action: 'reopen' | 'void' | 'returnByBuyer' | 'refund') => {
+    if (action === 'refund') {
+      if (!window.confirm('Mark this order as REFUNDED?\n\nThe product(s) are added back to inventory and the sale is recorded as fully refunded (shows under 7160 Refunds + the product refund rate). Net collected becomes 0.')) return
+      await fetch(`/api/pos/orders/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      })
+    } else if (action === 'void') {
       const reason = window.prompt('Reason for voiding this order:')
       if (!reason) return
       await fetch(`/api/pos/orders/${id}`, {
@@ -2843,6 +2850,11 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                             {o.orderType === 'PRODUCT' && (
                               <button onClick={() => handleAction(o.id, 'returnByBuyer')} className="p-1.5 rounded-lg hover:bg-emerald-50" title="Returned by Buyer (restock)">
                                 <Undo2 size={13} className="text-emerald-600" />
+                              </button>
+                            )}
+                            {o.orderType === 'PRODUCT' && (
+                              <button onClick={() => handleAction(o.id, 'refund')} className="p-1.5 rounded-lg hover:bg-purple-50" title="Refunded (add stock back + record refund)">
+                                <RotateCcw size={13} className="text-purple-600" />
                               </button>
                             )}
                             <button onClick={() => handleAction(o.id, 'void')} className="p-1.5 rounded-lg hover:bg-red-50" title="Void">

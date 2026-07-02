@@ -33,6 +33,8 @@ interface AnalysisData {
   }
   fastMoving: ProductRow[]
   slowMoving: ProductRow[]
+  topByGross: ProductRow[]
+  topByNet: ProductRow[]
   noPurchase: { name: string; sku: string }[]
   freeSamples: NamedQty[]
   rewardPoints: NamedQty[]
@@ -222,6 +224,56 @@ export default function ProductsAnalysisPage() {
                 </table>
               </div>
             )}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+            {/* Top 10 by ₱ Gross Sales */}
+            <Section icon={<BarChart3 size={16} />} title="Top 10 Products by ₱ Gross Sales" count={data.topByGross.length}>
+              {data.topByGross.length === 0 ? <Empty text="No product sales in this period." /> : (
+                <table className="w-full text-sm">
+                  <thead><tr style={{ color: 'var(--mid-gray)' }}>
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase">#</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Product</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Units</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Gross ₱</th>
+                  </tr></thead>
+                  <tbody>
+                    {data.topByGross.map((p, i) => (
+                      <tr key={i} style={{ borderTop: '1px solid var(--light-gray)' }}>
+                        <td className="px-3 py-2 font-mono text-xs" style={{ color: 'var(--mid-gray)' }}>{i + 1}</td>
+                        <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{p.name}{p.sku && <span className="ml-1 text-[10px]" style={{ color: 'var(--mid-gray)' }}>{p.sku}</span>}</td>
+                        <td className="px-3 py-2 text-right" style={{ color: 'var(--mid-gray)' }}>{p.units.toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right font-bold" style={{ color: 'var(--charcoal)' }}>{formatCurrency(p.gross)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </Section>
+
+            {/* Top 10 by ₱ Net Sales */}
+            <Section icon={<BarChart3 size={16} />} title="Top 10 Products by ₱ Net Sales" count={data.topByNet.length}>
+              {data.topByNet.length === 0 ? <Empty text="No product sales in this period." /> : (
+                <table className="w-full text-sm">
+                  <thead><tr style={{ color: 'var(--mid-gray)' }}>
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase">#</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Product</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Units</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase">Net ₱</th>
+                  </tr></thead>
+                  <tbody>
+                    {data.topByNet.map((p, i) => (
+                      <tr key={i} style={{ borderTop: '1px solid var(--light-gray)' }}>
+                        <td className="px-3 py-2 font-mono text-xs" style={{ color: 'var(--mid-gray)' }}>{i + 1}</td>
+                        <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{p.name}{p.sku && <span className="ml-1 text-[10px]" style={{ color: 'var(--mid-gray)' }}>{p.sku}</span>}</td>
+                        <td className="px-3 py-2 text-right" style={{ color: 'var(--mid-gray)' }}>{p.units.toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right font-bold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(p.net)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </Section>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
