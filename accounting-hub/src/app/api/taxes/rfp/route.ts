@@ -39,7 +39,7 @@ export async function GET(req: Request) {
     where,
     select: {
       id: true, refNumber: true, grossTotal: true, status: true, paidAt: true, paymentMethod: true,
-      checkNumber: true, transferRef: true, debitAccount: true, proofUrl: true, meta: true, createdAt: true,
+      checkNumber: true, transferRef: true, debitAccount: true, proofUrl: true, payableTo: true, meta: true, createdAt: true,
     },
     orderBy: { createdAt: 'desc' },
   })
@@ -158,6 +158,10 @@ export async function PATCH(req: Request) {
         where: { id },
         data: { status: 'PENDING', paidAt: null, paymentMethod: null, checkNumber: null, transferRef: null, debitAccount: null, proofUrl: null },
       })
+      return NextResponse.json({ success: true })
+    }
+    if (action === 'set-payable') {
+      await prisma.reimbursementReport.update({ where: { id }, data: { payableTo: (body.payableTo ?? '').trim() || null } })
       return NextResponse.json({ success: true })
     }
     await prisma.reimbursementReport.update({ where: { id }, data: { pdfData: body.pdfData || null } })

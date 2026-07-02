@@ -45,7 +45,7 @@ export async function GET(req: Request) {
     where: { branch, module: { in: ['EXPENSE', 'PAYROLL_SALARY', 'PAYROLL_BENEFIT'] } },
     select: {
       id: true, refNumber: true, grossTotal: true, status: true, kind: true, module: true, meta: true, paidAt: true, paymentMethod: true,
-      checkNumber: true, debitAccount: true, creditCardId: true, proofUrl: true, createdAt: true,
+      checkNumber: true, debitAccount: true, creditCardId: true, proofUrl: true, payableTo: true, createdAt: true,
       _count: { select: { entries: true } },
       entries: { select: { vatable: true, grossAmount: true, hasEwt: true, ewtRate: true } },
     },
@@ -84,7 +84,7 @@ export async function POST(req: Request) {
     const report = await prisma.$transaction(async (tx) => {
       const entries = await tx.pettyCashEntry.findMany({
         where: {
-          id: { in: entryIds }, branch, reimbursementId: null, audited: true,
+          id: { in: entryIds }, branch, reimbursementId: null, soaId: null, audited: true,
           recordType: { in: ['ONE_TIME', 'RECURRING'] },
           validity: k === 'VALID' ? 'Valid' : 'Invalid',
         },
@@ -152,7 +152,17 @@ export async function PATCH(req: Request) {
             payrollAccount: body.payrollAccount || null,
           },
         })
+        // If this RFP was created from a Credit Card SOA, mark the SOA paid → it surfaces in the Credit Card Report.
+        await tx.creditCardSOA.updateMany({
+          where: { reimbursementId: id },
+          data: { status: 'PAID', paymentRoute: 'RFP', paidAt },
+        })
       })
+      return NextResponse.json({ success: true })
+    }
+
+    if (action === 'set-payable') {
+      await prisma.reimbursementReport.update({ where: { id }, data: { payableTo: (body.payableTo ?? '').trim() || null } })
       return NextResponse.json({ success: true })
     }
 
@@ -182,6 +192,8 @@ export async function PATCH(req: Request) {
           where: { reimbursementId: id },
           data: { paidAt: null, paymentMethod: null, checkNumber: null, paymentBankAccount: null, creditCard: null, creditCardId: null, payrollAccount: null },
         })
+        // A Credit Card SOA behind this RFP returns to IN_RFP (payment reversed).
+        await tx.creditCardSOA.updateMany({ where: { reimbursementId: id }, data: { status: 'IN_RFP', paymentRoute: null, paidAt: null } })
       })
       return NextResponse.json({ success: true })
     }
@@ -221,6 +233,8 @@ export async function DELETE(req: Request) {
       where: { reimbursementId: id },
       data: { paidAt: null, paymentMethod: null, checkNumber: null, paymentBankAccount: null, creditCard: null, creditCardId: null, payrollAccount: null },
     })
+    // A Credit Card SOA behind this RFP returns to OPEN so it can be re-requested; its entries stay tagged to the SOA.
+    await prisma.creditCardSOA.updateMany({ where: { reimbursementId: id }, data: { status: 'OPEN', reimbursementId: null, paymentRoute: null, paidAt: null } })
     await prisma.reimbursementReport.delete({ where: { id } })
     return NextResponse.json({ success: true })
   } catch (e) {

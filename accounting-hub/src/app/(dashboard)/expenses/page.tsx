@@ -17,7 +17,10 @@ const BRANCHES = [
 const DEPARTMENTS = ['ADMIN', 'PT', 'OT', 'SLP', 'SPED', 'PSYCH', 'MD', 'ORTHOSIS']
 const VATABLE = ['VAT', 'Non-VAT']
 const VALIDITY = ['Valid', 'Invalid', 'Cancelled']
-const PAYMENT_METHODS = ['Check deposit', 'Check encashment to deposit as cash', 'Credit card', "Deposit to admin officer's bank account"]
+// Credit card is intentionally NOT a payment method here — credit-card expenses now
+// flow through the Credit Card SOA pipeline, and the RFP that settles an SOA is paid
+// to the bank via check / cash / transfer.
+const PAYMENT_METHODS = ['Check deposit', 'Check encashment to deposit as cash', "Deposit to admin officer's bank account"]
 const RECUR_FREQ = [
   { v: 'MONTHLY', label: 'Monthly' },
   { v: 'QUARTERLY', label: 'Quarterly' },
@@ -29,6 +32,7 @@ const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_AD
 const TABS = [
   { key: 'recurring', label: 'Recurring expense', recordType: 'RECURRING', group: 'Expense Recording' },
   { key: 'onetime', label: 'One-time expense', recordType: 'ONE_TIME', group: 'Expense Recording' },
+  { key: 'cc-soa', label: 'Credit Card SOA', recordType: '', group: 'Expense Recording' },
   { key: 'rfp', label: 'RFP', recordType: '', group: 'Expense Recording' },
   { key: 'cc-report', label: 'Credit Card Report', recordType: '', group: 'Expense Reports' },
   { key: 'expense-report', label: 'Expense Report', recordType: '', group: 'Expense Reports' },
@@ -67,6 +71,7 @@ interface Entry {
   finalized: boolean
   audited: boolean
   reimbursementId: string | null
+  soaId: string | null
   reimbursement: { refNumber: string } | null
   recurFrequency: string | null
   recurDeadlineDay: number | null
@@ -84,7 +89,7 @@ interface Rfp {
   id: string; refNumber: string; grossTotal: string | number; payableTotal: string | number; status: string; kind: string | null
   module?: string; meta?: { source?: string; payableType?: string; idKind?: string; ids?: string[]; cutoffPeriod?: string; netTotal?: number; paymentId?: string } | null
   paidAt: string | null; paymentMethod: string | null; checkNumber: string | null; debitAccount: string | null
-  creditCardId: string | null; proofUrl: string | null; createdAt: string; _count: { entries: number }
+  creditCardId: string | null; proofUrl: string | null; payableTo: string | null; createdAt: string; _count: { entries: number }
 }
 
 // ── Computed helpers ───────────────────────────────────────────
@@ -172,6 +177,9 @@ export default function ExpensesPage() {
   const [expanded, setExpanded] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [rfpMode, setRfpMode] = useState<'VALID' | 'INVALID' | null>(null)
+  const [ccMode, setCcMode] = useState(false)          // credit-card SOA tagging selection
+  const [showCcPick, setShowCcPick] = useState(false)  // card-picker modal for the new SOA
+  const [creatingSoa, setCreatingSoa] = useState(false)
   const [showRfpModal, setShowRfpModal] = useState(false)
   const [rfpManualSeq, setRfpManualSeq] = useState('')
   const [generatingRfp, setGeneratingRfp] = useState(false)
@@ -184,6 +192,7 @@ export default function ExpensesPage() {
     { key: 'refNumber', label: 'Reference Number' },
     { key: 'date', label: 'Date' },
     { key: 'kind', label: 'Kind' },
+    { key: 'payableTo', label: 'Payable to' },
     { key: 'entries', label: 'Entries' },
     { key: 'grossTotal', label: 'Gross Total' },
     { key: 'payableTotal', label: 'Amount Payable' },
@@ -192,6 +201,7 @@ export default function ExpensesPage() {
   const rfpGet = (r: Rfp, k: string): string | number =>
     k === 'refNumber' ? r.refNumber
       : k === 'date' ? new Date(r.createdAt).toISOString().slice(0, 10)
+      : k === 'payableTo' ? (r.payableTo || '')
       : k === 'kind' ? (r.module === 'PAYROLL_SALARY' ? 'Salaries' : r.module === 'PAYROLL_BENEFIT' ? 'Benefits' : r.kind === 'INVALID' ? 'Invalid' : 'Valid')
       : k === 'entries' ? (r.module && r.module.startsWith('PAYROLL') ? (r.meta?.ids?.length || 0) : r._count.entries)
       : k === 'grossTotal' ? num(r.grossTotal)
@@ -401,13 +411,31 @@ export default function ExpensesPage() {
 
   // ── RFP (replaces the old per-entry "For Payment") ──
   const rfpValidity = rfpMode === 'VALID' ? 'Valid' : rfpMode === 'INVALID' ? 'Invalid' : null
-  const isSelectable = (e: Entry) => !e.reimbursementId && !!e.audited && rfpValidity != null && e.validity === rfpValidity
+  const isSelectable = (e: Entry) => ccMode
+    ? (!e.reimbursementId && !e.soaId && !e.paidAt && e.recordType === 'ONE_TIME')
+    : (!e.reimbursementId && !e.soaId && !!e.audited && rfpValidity != null && e.validity === rfpValidity)
   const setAudited = async (id: string, audited: boolean) => {
     patchLocal(id, { audited })
     try { await fetch('/api/petty-cash/audited', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, audited }) }) } catch { /* ignore */ }
   }
-  const startRfp = (mode: 'VALID' | 'INVALID') => { setRfpMode(mode); setSelected(new Set()) }
+  const startRfp = (mode: 'VALID' | 'INVALID') => { setRfpMode(mode); setCcMode(false); setSelected(new Set()) }
   const cancelRfp = () => { setRfpMode(null); setSelected(new Set()) }
+  const startCc = () => { setCcMode(true); setRfpMode(null); setSelected(new Set()) }
+  const cancelCc = () => { setCcMode(false); setSelected(new Set()) }
+  const createSoa = async (cardId: string) => {
+    setCreatingSoa(true)
+    try {
+      const res = await fetch('/api/expenses/soa', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch, cardId, entryIds: [...selected] }),
+      })
+      if (!res.ok) { alert((await res.json()).error || 'Failed to create SOA'); setCreatingSoa(false); return }
+      setShowCcPick(false); setCcMode(false); setSelected(new Set())
+      await loadEntries(branch, 'ONE_TIME')
+      setTab('cc-soa')
+    } catch { alert('Failed to create SOA') }
+    setCreatingSoa(false)
+  }
 
   const generateRfp = async (manualSeq?: string) => {
     setGeneratingRfp(true)
@@ -443,6 +471,14 @@ export default function ExpensesPage() {
       await loadRfps(branch); await loadEntries(branch, recordType)
     } catch { alert('Failed to record payment') }
     setPaying(false)
+  }
+
+  // Inline "Payable to" edit — optimistic, persists on blur.
+  const savePayableRfp = async (rfp: Rfp, value: string) => {
+    const v = value.trim()
+    if ((rfp.payableTo || '') === v) return
+    setRfps(prev => prev.map(r => r.id === rfp.id ? { ...r, payableTo: v || null } : r))
+    try { await fetch('/api/expenses/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: rfp.id, action: 'set-payable', payableTo: v }) }) } catch { /* ignore */ }
   }
 
   const openBillingVoucher = async (rfp: Rfp) => {
@@ -563,7 +599,7 @@ export default function ExpensesPage() {
   const [gridFilters, setGridFilters] = useState<Record<string, string>>({})
   const gridToggleSort = (k: string) => setGridSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
   // Recurring entries are setups (no payment), so a stale paidAt shouldn't lock them.
-  const locked = (e: Entry) => !!e.reimbursementId || (e.recordType !== 'RECURRING' && !!e.paidAt) || !!e.finalized || !canWrite
+  const locked = (e: Entry) => !!e.reimbursementId || !!e.soaId || (e.recordType !== 'RECURRING' && !!e.paidAt) || !!e.finalized || !canWrite
   const vatEditable = (e: Entry) => e.vatable === 'VAT' || e.vatable === 'Non-VAT' || e.vatable === 'NV'
 
   const q = search.trim().toLowerCase()
@@ -684,7 +720,16 @@ export default function ExpensesPage() {
         </div>
         {recordType === 'ONE_TIME' && canWrite && (
           <div className="flex items-center gap-2 flex-wrap">
-            {rfpMode === null ? (
+            {ccMode ? (
+              <>
+                <span className="text-xs font-bold" style={{ color: '#7c3aed' }}>Select entries paid by credit card</span>
+                <button onClick={() => setShowCcPick(true)} disabled={selected.size === 0}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40" style={{ background: '#7c3aed' }}>
+                  <CreditCard size={15} /> Paid by Credit Card{selected.size > 0 ? ` · ${selected.size}` : ''}
+                </button>
+                <button onClick={cancelCc} className="px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+              </>
+            ) : rfpMode === null ? (
               <>
                 <button onClick={() => startRfp('VALID')}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>
@@ -693,6 +738,10 @@ export default function ExpensesPage() {
                 <button onClick={() => startRfp('INVALID')}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
                   <CreditCard size={15} /> RFP (Invalid)
+                </button>
+                <button onClick={startCc}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: '#7c3aed' }}>
+                  <CreditCard size={15} /> Paid by Credit Card
                 </button>
               </>
             ) : (
@@ -806,7 +855,7 @@ export default function ExpensesPage() {
                     const lk = locked(e)
                     const ve = vatEditable(e)
                     return (
-                      <tr key={e.id} style={{ background: e.paidAt ? '#dcfce7' : e.reimbursementId ? '#ffedd5' : e.finalized ? '#fef9c3' : '#fff' }}>
+                      <tr key={e.id} style={{ background: e.paidAt ? '#dcfce7' : e.reimbursementId ? '#ffedd5' : e.soaId ? '#f3e8ff' : e.finalized ? '#fef9c3' : '#fff' }}>
                         <td className="border-r border-b text-center" style={{ borderColor: 'var(--light-gray)' }}>
                           <input type="checkbox" checked={selected.has(e.id)} disabled={!isSelectable(e)}
                             onChange={() => toggleOne(e.id)} title={e.paidAt ? 'Locked (paid)' : ''} />
@@ -1009,6 +1058,8 @@ export default function ExpensesPage() {
                             </div>
                           ) : e.reimbursementId ? (
                             <span className="px-2 py-1.5 block text-[11px]" style={{ color: '#92400e', minWidth: 160 }}>In RFP — for payment</span>
+                          ) : e.soaId ? (
+                            <span className="px-2 py-1.5 block text-[11px] font-semibold" style={{ color: '#7c3aed', minWidth: 160 }}>In SOA (credit card)</span>
                           ) : (
                             <span className="px-2 py-1.5 block text-[11px]" style={{ color: 'var(--mid-gray)', minWidth: 160 }}>Not yet in RFP</span>
                           )}
@@ -1096,8 +1147,12 @@ export default function ExpensesPage() {
         </>
       )}
 
+      {tab === 'cc-soa' && (
+        <CreditCardSoaTab branch={branch} canWrite={canWrite} onChanged={() => { loadRfps(branch); loadEntries(branch, 'ONE_TIME') }} />
+      )}
+
       {tab === 'cc-report' && (
-        <CcReportTab branch={branch} cards={cards} canWrite={canWrite} canEdit={canAudit} />
+        <CcReportTab branch={branch} canWrite={canWrite} />
       )}
 
       {tab === 'rfp' && (
@@ -1111,6 +1166,12 @@ export default function ExpensesPage() {
                   <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{r.refNumber}</td>
                   <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{new Date(r.createdAt).toLocaleDateString('en-PH')}</td>
                   <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.module === 'PAYROLL_SALARY' ? 'Salaries' : r.module === 'PAYROLL_BENEFIT' ? 'Benefits' : r.kind === 'INVALID' ? 'Invalid' : 'Valid'}</td>
+                  <td className="px-4 py-2.5">
+                    {canWrite ? (
+                      <input defaultValue={r.payableTo || ''} placeholder="Payable to…" onBlur={e => savePayableRfp(r, e.target.value)}
+                        className="w-36 px-2 py-1 rounded border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+                    ) : <span className="text-xs" style={{ color: 'var(--charcoal)' }}>{r.payableTo || '—'}</span>}
+                  </td>
                   <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.module && r.module.startsWith('PAYROLL') ? (r.meta?.ids?.length || 0) : r._count.entries}</td>
                   <td className="px-4 py-2.5 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>₱{peso(num(r.grossTotal))}</td>
                   <td className="px-4 py-2.5 text-right font-semibold" style={{ color: 'var(--deep-teal)' }}>₱{peso(num(r.payableTotal))}</td>
@@ -1167,7 +1228,7 @@ export default function ExpensesPage() {
                 </tr>
               ))}
               {shownRfps.length === 0 && (
-                <tr><td colSpan={8} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>
+                <tr><td colSpan={9} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>
                   {rfps.length === 0 ? 'No RFPs yet. In Recurring/One-time expense, click "RFP (Valid)" or "RFP (Invalid)", select entries, then Generate RFP.' : 'No RFPs match the current filters.'}
                 </td></tr>
               )}
@@ -1228,6 +1289,25 @@ export default function ExpensesPage() {
               </div>
             ))}
           </div>
+
+          <h3 className="text-sm font-bold mb-3 mt-8" style={{ color: '#7c3aed' }}>Paid by Credit Card (SOA)</h3>
+          <div className="flex flex-col items-center">
+            {([
+              { n: 1, title: 'Tag one-time expenses', desc: 'In One-time expense, select the entries paid on a card and click “Paid by Credit Card”, then pick the card. They group into one SOA.' },
+              { n: 2, title: 'Credit Card SOA tab', desc: 'The SOA appears here. Click “Upload SOA” to attach the bank statement of account.' },
+              { n: 3, title: 'Choose how to settle', desc: 'Either “Request for RFP” (settle via the RFP flow) OR “Pay through petty cash” (creates a petty-cash entry for the SOA total, with the system SOA as its proof).' },
+              { n: 4, title: 'RFP paid', desc: 'If via RFP: record the RFP as Paid (check / cash / transfer to the bank). Credit card is no longer an RFP payment method.' },
+              { n: 5, title: 'Credit Card Report', desc: 'Once paid (via RFP or petty cash), the SOA appears in the Credit Card Report — petty-cash ones tagged “Paid through Petty Cash”. Toggle For Filing / Filed there.' },
+            ] as const).map((s, i, arr) => (
+              <div key={s.n} className="w-full max-w-xl flex flex-col items-center">
+                <div className="w-full rounded-2xl border p-4 flex items-start gap-3" style={{ borderColor: '#e9d5ff', background: '#faf5ff' }}>
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{ background: '#7c3aed' }}>{s.n}</div>
+                  <div className="min-w-0"><p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>{s.title}</p><p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{s.desc}</p></div>
+                </div>
+                {i < arr.length - 1 && <div className="text-xl leading-none my-1" style={{ color: '#7c3aed' }}>↓</div>}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -1265,6 +1345,37 @@ export default function ExpensesPage() {
               <button onClick={() => generateRfp(rfpManualSeq)} disabled={generatingRfp || sel.length === 0}
                 className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>
                 {generatingRfp ? <Loader2 size={15} className="animate-spin" /> : <CreditCard size={15} />} {generatingRfp ? 'Generating…' : 'Generate RFP'}
+              </button>
+            </div>
+          </div>
+        )
+      })()}
+
+      {showCcPick && (() => {
+        const sel = entries.filter(e => selected.has(e.id))
+        const tG = sel.reduce((s, e) => s + num(e.grossAmount), 0)
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowCcPick(false)}>
+            <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={ev => ev.stopPropagation()}>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Paid by Credit Card — new SOA</h2>
+                <button onClick={() => setShowCcPick(false)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+              </div>
+              <p className="text-sm mb-4" style={{ color: 'var(--mid-gray)' }}>
+                {sel.length} entr{sel.length === 1 ? 'y' : 'ies'} will be grouped into one Statement of Account and locked. Total <strong style={{ color: 'var(--charcoal)' }}>₱{peso(tG)}</strong>. Manage it in the <strong>Credit Card SOA</strong> tab.
+              </p>
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Credit Card</label>
+              {cards.length === 0 ? (
+                <p className="text-xs mb-4" style={{ color: '#b45309' }}>No credit cards yet. Add one in Settings → Credit Cards first.</p>
+              ) : (
+                <select id="cc-soa-pick" className="w-full px-3 py-2 rounded-xl border text-sm mb-4" style={{ borderColor: 'var(--light-gray)' }} defaultValue={cards[0]?.id}>
+                  {cards.map(c => <option key={c.id} value={c.id}>{`${c.bank} •••• ${c.cardNumber.slice(-4)} (${c.bankCode})`}</option>)}
+                </select>
+              )}
+              <button onClick={() => { const el = document.getElementById('cc-soa-pick') as HTMLSelectElement | null; if (el?.value) createSoa(el.value) }}
+                disabled={creatingSoa || sel.length === 0 || cards.length === 0}
+                className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: '#7c3aed' }}>
+                {creatingSoa ? <Loader2 size={15} className="animate-spin" /> : <CreditCard size={15} />} {creatingSoa ? 'Creating SOA…' : 'Create SOA'}
               </button>
             </div>
           </div>
@@ -1496,392 +1607,220 @@ function CreditCardSettings({ branch, cards, canWrite, bankOptions, prepaidAccou
 }
 
 // ── Credit Card Report tab ─────────────────────────────────────
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-
-interface CcReport {
-  id: string; branch: string; cardId: string; bankCode: string; refNumber: string
-  periodMonth: number; periodYear: number; statementUrl: string | null; status: string; createdAt: string
-  paidAt: string | null; paymentForm: string | null; paymentRef: string | null
-}
-interface CcTxn {
-  id: string; pcvNumber: string; requestor: string | null; date: string | null
-  description: string | null; accountTitle: string | null; grossAmount: string | number; paidAt: string | null
+interface SoaRow {
+  id: string; refNumber: string; status: string; paymentRoute: string | null
+  cardId: string; cardLabel: string; statementUrl: string | null; soaDocUrl: string | null
+  filingStatus: string; reimbursementId: string | null; rfpRefNumber: string
+  entryCount: number; total: number; paidAt: string | null; createdAt: string
 }
 
-function CcReportTab({ branch, cards, canWrite, canEdit }: { branch: string; cards: Card[]; canWrite: boolean; canEdit: boolean }) {
-  const now = new Date()
-  const [cardId, setCardId] = useState('')
-  const [month, setMonth] = useState(now.getMonth() + 1)
-  const [year, setYear] = useState(now.getFullYear())
-  const [reports, setReports] = useState<CcReport[]>([])
-  const [txns, setTxns] = useState<CcTxn[]>([])
-  const [loadingTxns, setLoadingTxns] = useState(false)
-  const [creating, setCreating] = useState(false)
-  const [uploadingStmt, setUploadingStmt] = useState('')
-  const [txnRefresh, setTxnRefresh] = useState(0)
-  const [editRow, setEditRow] = useState<{ id: string; date: string; accountTitle: string; description: string; gross: number } | null>(null)
-  const [payCcTarget, setPayCcTarget] = useState<CcReport | null>(null)
-  const [txnSort, setTxnSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'date', dir: 'asc' })
-  const [txnFilters, setTxnFilters] = useState<Record<string, string>>({})
-  const txnToggleSort = (k: string) => setTxnSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
-  const txnCols = [
-    { key: 'pcvNumber', label: 'Reference Number' }, { key: 'requestor', label: 'Payee' }, { key: 'date', label: 'Expense Date' },
-    { key: 'description', label: 'Description' }, { key: 'accountTitle', label: 'Account Title' }, { key: 'paidAt', label: 'Charged On' }, { key: 'amount', label: 'Amount' },
-  ]
-  const txnGet = (t: CcTxn, k: string): string | number =>
-    k === 'pcvNumber' ? t.pcvNumber : k === 'requestor' ? (t.requestor || '') : k === 'date' ? (t.date ? String(t.date).slice(0, 10) : '')
-      : k === 'description' ? (t.description || '') : k === 'accountTitle' ? (t.accountTitle || '') : k === 'paidAt' ? (t.paidAt ? String(t.paidAt).slice(0, 10) : '')
-      : k === 'amount' ? num(t.grossAmount) : ''
-  const deleteTxn = async (id: string) => {
-    if (!confirm('Delete this entry? It will be removed from the report and any RFP it was in.')) return
-    setTxns(prev => prev.filter(t => t.id !== id))
-    try { await fetch(`/api/expenses/report-entry?id=${id}`, { method: 'DELETE' }) } catch { /* ignore */ }
-  }
+// Credit Card SOA subtab — SOAs still in progress (OPEN / IN_RFP).
+function CreditCardSoaTab({ branch, canWrite, onChanged }: { branch: string; canWrite: boolean; onChanged: () => void }) {
+  const [rows, setRows] = useState<SoaRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState('')
 
-  const loadReports = useCallback(async () => {
-    try { const r = await fetch(`/api/expenses/cc-reports?branch=${branch}`); setReports(r.ok ? await r.json() : []) }
-    catch { setReports([]) }
+  const load = useCallback(async () => {
+    setLoading(true)
+    try { const r = await fetch(`/api/expenses/soa?branch=${branch}&status=active`); setRows(r.ok ? await r.json() : []) }
+    catch { setRows([]) } finally { setLoading(false) }
   }, [branch])
-  useEffect(() => { loadReports() }, [loadReports])
+  useEffect(() => { load() }, [load])
 
-  useEffect(() => {
-    if (!cardId) { setTxns([]); return }
-    let alive = true
-    setLoadingTxns(true)
-    fetch(`/api/expenses/cc-transactions?branch=${branch}&cardId=${cardId}&month=${month}&year=${year}`)
-      .then(r => (r.ok ? r.json() : []))
-      .then(d => { if (alive) setTxns(d) })
-      .catch(() => { if (alive) setTxns([]) })
-      .finally(() => { if (alive) setLoadingTxns(false) })
-    return () => { alive = false }
-  }, [branch, cardId, month, year, txnRefresh])
-
-  const report = reports.find(r => r.cardId === cardId && r.periodMonth === month && r.periodYear === year) || null
-  const total = txns.reduce((s, t) => s + num(t.grossAmount), 0)
-  const shownTxns = applySortFilter(txns, txnGet, txnSort.key, txnSort.dir, txnFilters)
-  const cardOf = (id: string) => cards.find(c => c.id === id)
-
-  const createReport = async () => {
-    if (!cardId) { alert('Choose a credit card.'); return }
-    setCreating(true)
-    try {
-      const r = await fetch('/api/expenses/cc-reports', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ branch, cardId, periodMonth: month, periodYear: year }),
-      })
-      if (r.ok) { const rep = await r.json(); setReports(prev => (prev.some(x => x.id === rep.id) ? prev : [rep, ...prev])) }
-      else alert((await r.json()).error || 'Failed to create report')
-    } catch { alert('Failed to create report') }
-    setCreating(false)
-  }
-  const setStatus = async (id: string, status: string) => {
-    setReports(prev => prev.map(r => (r.id === id ? { ...r, status } : r)))
-    try { await fetch('/api/expenses/cc-reports', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, status }) }) } catch { /* ignore */ }
-  }
-  const markPaid = async (id: string, p: { datePaid: string; paymentForm: string; paymentRef: string }) => {
-    const r = await fetch('/api/expenses/cc-reports', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, action: 'pay', ...p }) })
-    if (r.ok) { const rep = await r.json(); setReports(prev => prev.map(x => (x.id === id ? { ...x, ...rep } : x))) }
-    else alert((await r.json()).error || 'Failed to record payment')
-  }
-  const unpay = async (id: string) => {
-    const r = await fetch('/api/expenses/cc-reports', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, action: 'unpay' }) })
-    if (r.ok) { const rep = await r.json(); setReports(prev => prev.map(x => (x.id === id ? { ...x, ...rep } : x))) }
-  }
-  const uploadStatement = async (id: string, file: File | null) => {
+  const uploadStatement = async (row: SoaRow, file: File | null) => {
     if (!file) return
-    setUploadingStmt(id)
+    setBusy(row.id)
     try {
       const fd = new FormData(); fd.append('file', file)
       const up = await fetch('/api/upload', { method: 'POST', body: fd })
       if (up.ok) {
         const url = (await up.json()).url
-        setReports(prev => prev.map(r => (r.id === id ? { ...r, statementUrl: url } : r)))
-        await fetch('/api/expenses/cc-reports', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, statementUrl: url }) })
-      } else alert((await up.json()).error || 'Upload failed')
+        await fetch('/api/expenses/soa', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: row.id, action: 'upload-statement', statementUrl: url }) })
+        await load()
+      } else alert('Upload failed')
     } catch { alert('Upload failed') }
-    setUploadingStmt('')
-  }
-  const deleteReport = async (id: string) => {
-    if (!confirm('Delete this CC report? Its one-time expenses are released back to One-time expense as editable entries (payment cleared).')) return
-    setReports(prev => prev.filter(r => r.id !== id))
-    try { await fetch(`/api/expenses/cc-reports?id=${id}`, { method: 'DELETE' }) } catch { /* ignore */ }
+    setBusy('')
   }
 
-  const CC_COLS = ['Reference Number', 'Payee', 'Expense Date', 'Description', 'Account Title', 'Charged On', 'Amount']
-  const ccCells = (t: CcTxn) => [t.pcvNumber, t.requestor || '', t.date ? String(t.date).slice(0, 10) : '', t.description || '', t.accountTitle || '', t.paidAt ? String(t.paidAt).slice(0, 10) : '', num(t.grossAmount).toFixed(2)]
-  const ccTitle = () => `${cardOf(cardId) ? cardLabel(cardOf(cardId)!) : ''} · ${MONTHS[month - 1]} ${year}${report ? ` · ${report.refNumber}` : ''}`
-  const exportCcExcel = async () => {
-    const XLSX = await import('xlsx')
-    const aoa = [[ccTitle()], CC_COLS, ...txns.map(ccCells), ['', '', '', '', '', 'TOTAL', total.toFixed(2)]]
-    const ws = XLSX.utils.aoa_to_sheet(aoa)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'CC Report')
-    XLSX.writeFile(wb, `${report ? report.refNumber : 'cc-report'}.xlsx`)
+  const requestRfp = async (row: SoaRow) => {
+    if (!confirm(`Request an RFP for ${row.refNumber} (₱${peso(row.total)})? Its entries move into a new RFP for payment.`)) return
+    setBusy(row.id)
+    try {
+      const r = await fetch('/api/expenses/soa', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: row.id, action: 'request-rfp' }) })
+      if (!r.ok) { alert((await r.json()).error || 'Failed to request RFP') } else { await load(); onChanged() }
+    } catch { alert('Failed to request RFP') }
+    setBusy('')
   }
-  const exportCcPdf = async () => {
+
+  const buildSoaPdf = async (row: SoaRow): Promise<string> => {
     const { jsPDF } = await import('jspdf')
     const autoTable = (await import('jspdf-autotable')).default
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
-    doc.setFont('helvetica', 'bold').setFontSize(13).text('Credit Card Report', 14, 14)
-    doc.setFont('helvetica', 'normal').setFontSize(9).text(ccTitle(), 14, 20)
+    let items: { date: string; payee: string; description: string; accountTitle: string; gross: number }[] = []
+    try { const r = await fetch(`/api/expenses/soa?id=${row.id}&items=1`); if (r.ok) items = (await r.json()).items || [] } catch { /* best effort */ }
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+    doc.setFont('helvetica', 'bold').setFontSize(13).text('Credit Card — Statement of Account', 14, 15)
+    doc.setFont('helvetica', 'normal').setFontSize(9).text(`${row.refNumber} · ${row.cardLabel}`, 14, 21)
     autoTable(doc, {
-      startY: 24, head: [CC_COLS], body: txns.map(ccCells),
-      foot: [['', '', '', '', '', 'TOTAL', total.toFixed(2)]],
-      styles: { fontSize: 7.5, cellPadding: 1.5 }, headStyles: { fillColor: [36, 73, 82], textColor: 255 },
-      footStyles: { fillColor: [237, 243, 217], textColor: [30, 30, 30], fontStyle: 'bold' },
-      columnStyles: { 6: { halign: 'right' } }, margin: { left: 10, right: 10 },
+      startY: 26, head: [['Date', 'Payee', 'Description', 'Account Title', 'Amount']],
+      body: items.map(i => [i.date, i.payee, i.description, i.accountTitle, i.gross.toFixed(2)]),
+      foot: [['', '', '', 'TOTAL', row.total.toFixed(2)]],
+      styles: { fontSize: 8, cellPadding: 1.5 }, headStyles: { fillColor: [124, 58, 237], textColor: 255 },
     })
-    doc.save(`${report ? report.refNumber : 'cc-report'}.pdf`)
+    return doc.output('datauristring')
   }
 
-  const years: number[] = []
-  for (let y = now.getFullYear() + 1; y >= now.getFullYear() - 4; y--) years.push(y)
+  const payPettyCash = async (row: SoaRow) => {
+    if (!confirm(`Pay ${row.refNumber} (₱${peso(row.total)}) through petty cash? A petty-cash entry is created with the SOA as its proof.`)) return
+    setBusy(row.id)
+    try {
+      const dataUri = await buildSoaPdf(row)
+      const blob = await (await fetch(dataUri)).blob()
+      const fd = new FormData(); fd.append('file', new File([blob], `${row.refNumber}.pdf`, { type: 'application/pdf' }))
+      const up = await fetch('/api/upload', { method: 'POST', body: fd })
+      const soaDocUrl = up.ok ? (await up.json()).url : null
+      const r = await fetch('/api/expenses/soa', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: row.id, action: 'pay-petty-cash', soaDocUrl }) })
+      if (!r.ok) { alert((await r.json()).error || 'Failed to pay via petty cash') } else { await load(); onChanged() }
+    } catch { alert('Failed to pay via petty cash') }
+    setBusy('')
+  }
 
-  if (cards.length === 0) {
-    return (
-      <div className="rounded-2xl border bg-white py-16 text-center" style={{ borderColor: 'var(--light-gray)' }}>
-        <CreditCard size={28} className="mx-auto mb-2" style={{ color: 'var(--mid-gray)' }} />
-        <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>No credit cards set up yet</p>
-        <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Add a credit card in Settings first (with its bank code), then charge one-time expenses to it.</p>
-      </div>
-    )
+  const deleteSoa = async (row: SoaRow) => {
+    if (!confirm(`Delete ${row.refNumber}? Its entries are released back to One-time expense.`)) return
+    setBusy(row.id)
+    try { await fetch(`/api/expenses/soa?id=${row.id}`, { method: 'DELETE' }); await load(); onChanged() } catch { /* ignore */ }
+    setBusy('')
   }
 
   return (
-    <div className="space-y-4">
-      {/* Filters */}
-      <div className="flex items-end gap-3 flex-wrap">
-        <div>
-          <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Credit Card</label>
-          <select value={cardId} onChange={e => setCardId(e.target.value)}
-            className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)', minWidth: 230 }}>
-            <option value="">Select card…</option>
-            {cards.map(c => <option key={c.id} value={c.id}>{cardLabel(c)}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Month</label>
-          <select value={month} onChange={e => setMonth(Number(e.target.value))}
-            className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
-            {MONTHS.map((mLabel, i) => <option key={i} value={i + 1}>{mLabel}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Year</label>
-          <select value={year} onChange={e => setYear(Number(e.target.value))}
-            className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
-            {years.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </div>
-      </div>
+    <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+      <table className="w-full text-sm">
+        <thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+          <th className="px-3 py-2.5 font-semibold">SOA Ref</th><th className="px-3 py-2.5 font-semibold">Card</th>
+          <th className="px-3 py-2.5 font-semibold text-right">Entries</th><th className="px-3 py-2.5 font-semibold text-right">Total</th>
+          <th className="px-3 py-2.5 font-semibold">Status</th><th className="px-3 py-2.5 font-semibold">Statement</th>
+          {canWrite && <th className="px-3 py-2.5 font-semibold text-right">Actions</th>}
+        </tr></thead>
+        <tbody>
+          {loading ? (
+            <tr><td colSpan={7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+          ) : rows.map(r => (
+            <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: r.status === 'IN_RFP' ? '#ffedd5' : '#f3e8ff' }}>
+              <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{r.refNumber}</td>
+              <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.cardLabel}</td>
+              <td className="px-3 py-2.5 text-right" style={{ color: 'var(--mid-gray)' }}>{r.entryCount}</td>
+              <td className="px-3 py-2.5 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>₱{peso(r.total)}</td>
+              <td className="px-3 py-2.5">
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={r.status === 'IN_RFP' ? { background: '#fed7aa', color: '#9a3412' } : { background: '#e9d5ff', color: '#6b21a8' }}>
+                  {r.status === 'IN_RFP' ? `In RFP${r.rfpRefNumber ? ` · ${r.rfpRefNumber}` : ''}` : 'Open'}
+                </span>
+              </td>
+              <td className="px-3 py-2.5">
+                {r.statementUrl
+                  ? <a href={r.statementUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs" style={{ color: 'var(--teal)' }}><Eye size={13} /> View</a>
+                  : <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>—</span>}
+              </td>
+              {canWrite && (
+                <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                  <label className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border mr-1 cursor-pointer" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                    <Upload size={12} /> {r.statementUrl ? 'Replace SOA' : 'Upload SOA'}
+                    <input type="file" className="hidden" accept="image/*,.pdf" onChange={e => { uploadStatement(r, e.target.files?.[0] || null); e.target.value = '' }} />
+                  </label>
+                  {r.status === 'OPEN' && (
+                    <>
+                      <button onClick={() => requestRfp(r)} disabled={busy === r.id} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-white mr-1 disabled:opacity-50" style={{ background: 'var(--teal)' }}><FileText size={12} /> Request for RFP</button>
+                      <button onClick={() => payPettyCash(r)} disabled={busy === r.id} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-white mr-1 disabled:opacity-50" style={{ background: '#0f766e' }}><CreditCard size={12} /> Pay through petty cash</button>
+                      <button onClick={() => deleteSoa(r)} disabled={busy === r.id} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border disabled:opacity-50" style={{ borderColor: '#fecaca', color: '#dc2626' }}><Trash2 size={12} /></button>
+                    </>
+                  )}
+                  {busy === r.id && <Loader2 size={13} className="inline animate-spin ml-1" style={{ color: 'var(--mid-gray)' }} />}
+                </td>
+              )}
+            </tr>
+          ))}
+          {!loading && rows.length === 0 && (
+            <tr><td colSpan={7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>No open SOAs. In One-time expense, select entries and click &quot;Paid by Credit Card&quot;.</td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  )
+}
 
-      {cardId && (
-        <>
-          {/* Report header / actions */}
-          <div className="rounded-2xl border bg-white p-4 flex items-center justify-between flex-wrap gap-3" style={{ borderColor: 'var(--light-gray)' }}>
-            <div>
-              <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{cardOf(cardId) ? cardLabel(cardOf(cardId)!) : ''} · {MONTHS[month - 1]} {year}</p>
-              {report ? (
-                <p className="text-lg font-bold font-mono" style={{ color: 'var(--charcoal)' }}>{report.refNumber}</p>
-              ) : (
-                <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>No CC report generated for this card &amp; month yet.</p>
-              )}
-              <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{txns.length} transaction(s) · Total <strong style={{ color: 'var(--charcoal)' }}>₱{peso(total)}</strong></p>
-              {report && !report.paidAt && (
-                <p className="text-[11px] mt-1" style={{ color: '#92400e' }}>These charges appear in the Expense Report only after the card bill is marked paid.</p>
-              )}
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <button onClick={exportCcPdf} disabled={txns.length === 0} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border disabled:opacity-40" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
-                <Download size={14} /> PDF
-              </button>
-              <button onClick={exportCcExcel} disabled={txns.length === 0} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border disabled:opacity-40" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
-                <Download size={14} /> Excel
-              </button>
-              {!report && canWrite && (
-                <button onClick={createReport} disabled={creating}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
-                  {creating ? <Loader2 size={14} className="animate-spin" /> : <CreditCard size={14} />} Create CC Report
-                </button>
-              )}
-              {report && (
-                <>
-                  <select value={report.status} disabled={!canWrite} onChange={e => setStatus(report.id, e.target.value)}
-                    className="px-3 py-2 rounded-xl border text-sm font-semibold" style={{ borderColor: 'var(--light-gray)', color: report.status === 'FILED' ? '#166534' : '#92400e' }}>
-                    <option value="FOR_FILING">For Filing</option>
-                    <option value="FILED">Filed</option>
-                  </select>
-                  {report.statementUrl && (
-                    <a href={report.statementUrl} target="_blank" rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 px-3 py-2 rounded-xl text-sm font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
-                      <Eye size={14} /> Statement
-                    </a>
-                  )}
-                  {canWrite && (
-                    <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold text-white cursor-pointer" style={{ background: 'var(--teal)' }}>
-                      {uploadingStmt === report.id ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                      {report.statementUrl ? 'Replace statement' : 'Upload statement'}
-                      <input type="file" className="hidden" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv"
-                        onChange={ev => { uploadStatement(report.id, ev.target.files?.[0] || null); ev.target.value = '' }} />
-                    </label>
-                  )}
-                  {report.paidAt ? (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold" style={{ background: '#dcfce7', color: '#166534' }}>
-                      <CheckCircle2 size={14} /> Paid {String(report.paidAt).slice(0, 10)}{report.paymentForm ? ` · ${report.paymentForm}` : ''}{report.paymentRef ? ` · ${report.paymentRef}` : ''}
-                      {canWrite && <button onClick={() => setPayCcTarget(report)} title="Edit / unpay" className="ml-1"><Pencil size={12} /></button>}
-                    </span>
-                  ) : canWrite ? (
-                    <button onClick={() => setPayCcTarget(report)}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: '#c44b00' }}>
-                      <CheckCircle2 size={14} /> Mark Card Bill Paid
-                    </button>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold" style={{ background: '#fef3c7', color: '#92400e' }}>Card bill unpaid</span>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
+// Credit Card Report — PAID SOAs only, with a filing toggle.
+function CcReportTab({ branch, canWrite }: { branch: string; canWrite: boolean }) {
+  const [rows, setRows] = useState<SoaRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'paidAt', dir: 'desc' })
+  const [filters, setFilters] = useState<Record<string, string>>({})
+  const toggleSort = (k: string) => setSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
+  const cols = [
+    { key: 'refNumber', label: 'SOA Ref' }, { key: 'cardLabel', label: 'Card' }, { key: 'paidAt', label: 'Paid Date' },
+    { key: 'paidVia', label: 'Paid Via' }, { key: 'total', label: 'Total' }, { key: 'status', label: 'Filing' },
+  ]
+  const get = (r: SoaRow, k: string): string | number =>
+    k === 'refNumber' ? r.refNumber : k === 'cardLabel' ? r.cardLabel
+      : k === 'paidAt' ? (r.paidAt ? String(r.paidAt).slice(0, 10) : '')
+      : k === 'paidVia' ? (r.paymentRoute === 'PETTY_CASH' ? 'Paid through Petty Cash' : (r.rfpRefNumber || 'RFP'))
+      : k === 'total' ? r.total : k === 'status' ? (r.filingStatus === 'FILED' ? 'Filed' : 'For Filing') : ''
+  const shown = applySortFilter(rows, get, sort.key, sort.dir, filters)
+  const total = shown.reduce((s, r) => s + r.total, 0)
 
-          {/* Transactions */}
-          <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)', maxHeight: '50vh' }}>
-            {loadingTxns ? (
-              <div className="flex items-center justify-center py-12"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} /></div>
-            ) : (
-              <table className="w-full text-xs">
-                <SortFilterHead cols={txnCols} sortKey={txnSort.key} sortDir={txnSort.dir} filters={txnFilters}
-                  onToggleSort={txnToggleSort} onFilter={(k, v) => setTxnFilters(f => ({ ...f, [k]: v }))} trailing={canEdit} />
-                <tbody>
-                  {shownTxns.map(t => (
-                    <tr key={t.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                      <td className="px-3 py-2 font-mono whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{t.pcvNumber}</td>
-                      <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{t.requestor || ''}</td>
-                      <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{t.date ? String(t.date).slice(0, 10) : ''}</td>
-                      <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{t.description || ''}</td>
-                      <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{t.accountTitle || ''}</td>
-                      <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{t.paidAt ? String(t.paidAt).slice(0, 10) : ''}</td>
-                      <td className="px-3 py-2 text-right font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(num(t.grossAmount))}</td>
-                      {canEdit && (
-                        <td className="px-3 py-2 text-right whitespace-nowrap">
-                          <button onClick={() => setEditRow({ id: t.id, date: t.date ? String(t.date).slice(0, 10) : '', accountTitle: t.accountTitle || '', description: t.description || '', gross: num(t.grossAmount) })}
-                            title="Edit" className="p-1 rounded hover:bg-teal-50 mr-1"><Pencil size={13} style={{ color: 'var(--teal)' }} /></button>
-                          <button onClick={() => deleteTxn(t.id)} title="Delete" className="p-1 rounded hover:bg-red-50"><Trash2 size={13} style={{ color: '#dc2626' }} /></button>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                  {shownTxns.length === 0 && (
-                    <tr><td colSpan={canEdit ? 8 : 7} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>{txns.length === 0 ? `No credit-card charges for this card in ${MONTHS[month - 1]} ${year}.` : 'No charges match the current filters.'}</td></tr>
-                  )}
-                  {shownTxns.length > 0 && (
-                    <tr className="border-t-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-                      <td colSpan={6} className="px-3 py-2 text-right font-bold" style={{ color: 'var(--charcoal)' }}>TOTAL</td>
-                      <td className="px-3 py-2 text-right font-bold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(total)}</td>
-                      {canEdit && <td />}
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </>
-      )}
+  const load = useCallback(async () => {
+    setLoading(true)
+    try { const r = await fetch(`/api/expenses/soa?branch=${branch}&status=PAID`); setRows(r.ok ? await r.json() : []) }
+    catch { setRows([]) } finally { setLoading(false) }
+  }, [branch])
+  useEffect(() => { load() }, [load])
 
-      {/* All saved CC reports */}
-      <div>
-        <h3 className="text-sm font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Saved CC Reports</h3>
-        <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-          <table className="w-full text-xs">
-            <thead>
-              <tr style={{ background: 'var(--off-white)' }}>
-                {['Reference', 'Card', 'Period', 'Status', 'Statement', ''].map((h, i) => (
-                  <th key={i} className="px-3 py-2 text-left font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{h}</th>
-                ))}
+  const setFiling = async (id: string, filingStatus: string) => {
+    setRows(prev => prev.map(r => r.id === id ? { ...r, filingStatus } : r))
+    try { await fetch('/api/expenses/soa', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, action: 'set-filing', filingStatus }) }) } catch { /* ignore */ }
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Paid Credit Card SOAs. {shown.length} SOA(s) · Total ₱{peso(total)}</p>
+      <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+        <table className="w-full text-sm">
+          <SortFilterHead cols={cols} sortKey={sort.key} sortDir={sort.dir} filters={filters} onToggleSort={toggleSort} onFilter={(k, v) => setFilters(f => ({ ...f, [k]: v }))} trailing />
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+            ) : shown.map(r => (
+              <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{r.refNumber}</td>
+                <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.cardLabel}</td>
+                <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{r.paidAt ? new Date(r.paidAt).toLocaleDateString('en-PH') : ''}</td>
+                <td className="px-3 py-2.5 text-xs">
+                  {r.paymentRoute === 'PETTY_CASH'
+                    ? <span className="px-2 py-0.5 rounded-full text-[11px] font-medium" style={{ background: '#ccfbf1', color: '#0f766e' }}>Paid through Petty Cash</span>
+                    : <span className="font-mono" style={{ color: 'var(--charcoal)' }}>{r.rfpRefNumber || 'RFP'}</span>}
+                </td>
+                <td className="px-3 py-2.5 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>₱{peso(r.total)}</td>
+                <td className="px-3 py-2.5">
+                  {canWrite ? (
+                    <select value={r.filingStatus} onChange={e => setFiling(r.id, e.target.value)} className="px-2 py-1 rounded-lg border text-[11px] font-semibold" style={{ borderColor: 'var(--light-gray)', color: r.filingStatus === 'FILED' ? '#166534' : '#92400e' }}>
+                      <option value="FOR_FILING">For Filing</option>
+                      <option value="FILED">Filed</option>
+                    </select>
+                  ) : <span className="text-[11px]" style={{ color: r.filingStatus === 'FILED' ? '#166534' : '#92400e' }}>{r.filingStatus === 'FILED' ? 'Filed' : 'For Filing'}</span>}
+                </td>
+                <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                  {r.statementUrl && <a href={r.statementUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Eye size={12} /> Statement</a>}
+                  {r.soaDocUrl && <a href={r.soaDocUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><FileText size={12} /> SOA</a>}
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {reports.map(r => {
-                const c = cardOf(r.cardId)
-                return (
-                  <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                    <td className="px-3 py-2 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{r.refNumber}</td>
-                    <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{c ? cardLabel(c) : r.bankCode}</td>
-                    <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{MONTHS[r.periodMonth - 1]} {r.periodYear}</td>
-                    <td className="px-3 py-2">
-                      <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold"
-                        style={r.status === 'FILED' ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>
-                        {r.status === 'FILED' ? 'Filed' : 'For Filing'}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2">
-                      {r.statementUrl
-                        ? <a href={r.statementUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline" style={{ color: 'var(--teal)' }}><Eye size={12} /> View</a>
-                        : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      {canWrite && (
-                        <button onClick={() => deleteReport(r.id)} title="Delete report" className="p-1 rounded hover:bg-red-50">
-                          <Trash2 size={13} style={{ color: '#dc2626' }} />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-              {reports.length === 0 && (
-                <tr><td colSpan={6} className="text-center py-8" style={{ color: 'var(--mid-gray)' }}>No CC reports yet.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {editRow && (
-        <ReportEntryEditModal row={editRow} onClose={() => setEditRow(null)} onSaved={() => { setEditRow(null); setTxnRefresh(x => x + 1) }} />
-      )}
-      {payCcTarget && (
-        <CcPaidModal report={payCcTarget} onClose={() => setPayCcTarget(null)}
-          onPay={async p => { await markPaid(payCcTarget.id, p); setPayCcTarget(null) }}
-          onUnpay={async () => { await unpay(payCcTarget.id); setPayCcTarget(null) }} />
-      )}
-    </div>
-  )
-}
-
-// Record settlement of the credit-card bill (date + form of payment).
-function CcPaidModal({ report, onClose, onPay, onUnpay }: {
-  report: CcReport; onClose: () => void
-  onPay: (p: { datePaid: string; paymentForm: string; paymentRef: string }) => Promise<void>; onUnpay: () => Promise<void>
-}) {
-  const [datePaid, setDatePaid] = useState(report.paidAt ? String(report.paidAt).slice(0, 10) : new Date().toISOString().slice(0, 10))
-  const [form, setForm] = useState(report.paymentForm || 'Check Deposit')
-  const [ref, setRef] = useState(report.paymentRef || '')
-  const [busy, setBusy] = useState(false)
-  const refLabel = form === 'Online Fund Transfer' ? 'Transfer reference number' : form === 'Cash Deposit' ? 'Deposit slip / reference (optional)' : 'Check number'
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3"><h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Mark Credit Card Bill Paid</h2><button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button></div>
-        <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>{report.refNumber} — settle how the card bill was paid. Its charged expenses then appear in the Expense Report.</p>
-        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Date of payment</label>
-        <input type="date" value={datePaid} onChange={e => setDatePaid(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
-        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Form of payment</label>
-        <select value={form} onChange={e => setForm(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }}>
-          <option>Check Deposit</option><option>Cash Deposit</option><option>Online Fund Transfer</option>
-        </select>
-        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>{refLabel}</label>
-        <input value={ref} onChange={e => setRef(e.target.value)} placeholder="Leading zeros preserved" className="w-full px-3 py-2 rounded-xl border text-sm font-mono mb-4" style={{ borderColor: 'var(--light-gray)' }} />
-        <div className="flex gap-2">
-          <button onClick={async () => { setBusy(true); try { await onPay({ datePaid, paymentForm: form, paymentRef: ref }) } finally { setBusy(false) } }} disabled={busy}
-            className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : 'Save payment'}</button>
-          {report.paidAt && <button onClick={async () => { setBusy(true); try { await onUnpay() } finally { setBusy(false) } }} disabled={busy} className="px-4 py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: '#fca5a5', color: '#b91c1c' }}>Unpay</button>}
-        </div>
+            ))}
+            {!loading && shown.length === 0 && (
+              <tr><td colSpan={7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>No paid SOAs yet. A SOA appears here once its RFP is paid, or it&apos;s paid through petty cash.</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   )
 }
 
-// ── Expense Report tab ─────────────────────────────────────────
 interface ErRow {
   id: string; source: string; reimbursementId: string | null; refNumber: string; payee: string; paymentAccount: string; paymentDate: string
   paymentMethod: string; pcvNumber: string; accountTitle: string; description: string

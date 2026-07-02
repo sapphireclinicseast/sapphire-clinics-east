@@ -1672,6 +1672,7 @@ model PettyCashEntry {
   paymentBankAccount String?
   reimbursementId   String?
   reimbursement     ReimbursementReport? @relation(fields: [reimbursementId], references: [id], onDelete: SetNull)
+  soaId             String?   // links a one-time entry tagged "Paid by Credit Card" to its CreditCardSOA
   createdById       String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -1696,6 +1697,7 @@ model ReimbursementReport {
   transferRef    String?
   kind           String?
   module         String   @default("PETTY_CASH")
+  payableTo      String?  // who the payment is payable to → surfaces as Payee in the Expense Report
   meta           Json?    // tax RFPs: { taxType, period, payrollBranch, items:[{id,name,gross,tax}] }
   creditCardId   String?
   debitAccount   String?
@@ -1749,6 +1751,33 @@ model CreditCardReport {
   createdAt    DateTime @default(now())
 
   @@unique([branch, cardId, periodMonth, periodYear])
+  @@index([branch])
+}
+
+// Credit Card SOA — one Statement of Account per batch of one-time expenses
+// tagged "Paid by Credit Card" for a chosen card. Flows: OPEN → IN_RFP (Request
+// for RFP) → PAID (RFP recorded paid), or OPEN → PAID via petty cash. Paid SOAs
+// surface in the Credit Card Report.
+model CreditCardSOA {
+  id               String   @id @default(cuid())
+  branch           String
+  cardId           String
+  bankCode         String
+  refNumber        String
+  refSeq           Int
+  status           String   @default("OPEN")      // OPEN | IN_RFP | PAID
+  paymentRoute     String?                          // RFP | PETTY_CASH
+  statementUrl     String?                          // uploaded bank statement of account
+  soaDocUrl        String?                          // system-generated SOA PDF (petty-cash proof)
+  reimbursementId  String?                          // RFP created via Request for RFP
+  pettyCashEntryId String?                          // settlement entry if paid through petty cash
+  filingStatus     String   @default("FOR_FILING") // FOR_FILING | FILED
+  paidAt           DateTime?
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([branch, refNumber])
   @@index([branch])
 }
 

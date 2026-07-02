@@ -13,7 +13,7 @@ const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2
 const num = (v: string | number) => (typeof v === 'number' ? v : parseFloat(v) || 0)
 const TYPE_LABEL: Record<string, string> = { WC: 'Withholding — Compensation', EWT: 'Expanded Withholding (EWT)', VAT: 'Value-Added Tax' }
 
-interface TaxRfp { id: string; refNumber: string; grossTotal: string | number; status: string; paidAt: string | null; paymentMethod: string | null; checkNumber: string | null; transferRef: string | null; proofUrl: string | null; meta: { taxType?: string; payrollBranch?: string } | null; createdAt: string }
+interface TaxRfp { id: string; refNumber: string; grossTotal: string | number; status: string; paidAt: string | null; paymentMethod: string | null; checkNumber: string | null; transferRef: string | null; proofUrl: string | null; payableTo: string | null; meta: { taxType?: string; payrollBranch?: string } | null; createdAt: string }
 
 const typeOf = (r: TaxRfp) => r.meta?.taxType || (r.refNumber.endsWith('-WC') ? 'WC' : r.refNumber.endsWith('-EWT') ? 'EWT' : r.refNumber.endsWith('-VAT') ? 'VAT' : '')
 
@@ -30,16 +30,23 @@ export default function TaxesRfp() {
   const toggleSort = (k: string) => setSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
   const cols = [
     { key: 'refNumber', label: 'Reference Number' }, { key: 'type', label: 'Tax Type' }, { key: 'date', label: 'Date' },
-    { key: 'grossTotal', label: 'Amount' }, { key: 'status', label: 'Status' },
+    { key: 'payableTo', label: 'Payable to' }, { key: 'grossTotal', label: 'Amount' }, { key: 'status', label: 'Status' },
   ]
   const get = (r: TaxRfp, k: string): string | number =>
     k === 'refNumber' ? r.refNumber : k === 'type' ? (TYPE_LABEL[typeOf(r)] || typeOf(r)) : k === 'date' ? new Date(r.createdAt).toISOString().slice(0, 10)
-      : k === 'grossTotal' ? num(r.grossTotal) : k === 'status' ? (r.status === 'PAID' ? 'Paid' : 'For Payment') : ''
+      : k === 'payableTo' ? (r.payableTo || '') : k === 'grossTotal' ? num(r.grossTotal) : k === 'status' ? (r.status === 'PAID' ? 'Paid' : 'For Payment') : ''
   const shown = applySortFilter(rfps, get, sort.key, sort.dir, filters)
 
   const fetchRfps = useCallback(async () => {
     try { const res = await fetch(`/api/taxes/rfp?all=1${branch ? `&payrollBranch=${branch}` : ''}`); setRfps(res.ok ? await res.json() : []) } catch { setRfps([]) }
   }, [branch])
+
+  const savePayable = async (rfp: TaxRfp, value: string) => {
+    const v = value.trim()
+    if ((rfp.payableTo || '') === v) return
+    setRfps(prev => prev.map(x => x.id === rfp.id ? { ...x, payableTo: v || null } : x))
+    try { await fetch('/api/taxes/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: rfp.id, action: 'set-payable', payableTo: v }) }) } catch { /* ignore */ }
+  }
   useEffect(() => { fetchRfps() }, [fetchRfps])
 
   const downloadPdf = async (r: TaxRfp) => {
@@ -65,6 +72,12 @@ export default function TaxesRfp() {
                 <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{r.refNumber}</td>
                 <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--charcoal)' }}>{TYPE_LABEL[typeOf(r)] || typeOf(r)}</td>
                 <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{new Date(r.createdAt).toLocaleDateString('en-PH')}</td>
+                <td className="px-4 py-2.5">
+                  {canWrite ? (
+                    <input defaultValue={r.payableTo || ''} placeholder="Payable to…" onBlur={e => savePayable(r, e.target.value)}
+                      className="w-36 px-2 py-1 rounded border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+                  ) : <span className="text-xs" style={{ color: 'var(--charcoal)' }}>{r.payableTo || '—'}</span>}
+                </td>
                 <td className="px-4 py-2.5 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>₱{peso(num(r.grossTotal))}</td>
                 <td className="px-4 py-2.5"><span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={r.status === 'PAID' ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>{r.status === 'PAID' ? 'Paid' : 'For Payment'}</span>{r.status === 'PAID' && r.paidAt && <div className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>{new Date(r.paidAt).toLocaleDateString('en-PH')}{r.paymentMethod ? ` · ${r.paymentMethod}` : ''}</div>}</td>
                 <td className="px-4 py-2.5 text-right whitespace-nowrap">
@@ -77,7 +90,7 @@ export default function TaxesRfp() {
                 </td>
               </tr>
             ))}
-            {shown.length === 0 && <tr><td colSpan={6} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>{rfps.length === 0 ? 'No tax RFPs yet.' : 'No RFPs match the current filters.'}</td></tr>}
+            {shown.length === 0 && <tr><td colSpan={7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>{rfps.length === 0 ? 'No tax RFPs yet.' : 'No RFPs match the current filters.'}</td></tr>}
           </tbody>
         </table>
       </div>

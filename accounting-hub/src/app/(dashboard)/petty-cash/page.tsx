@@ -63,6 +63,7 @@ interface Reimb {
   debitAccount: string | null
   depositAccount: string | null
   proofUrl: string | null
+  payableTo: string | null
   createdAt: string
   _count: { entries: number }
 }
@@ -136,6 +137,7 @@ export default function PettyCashPage() {
   const rfpCols = [
     { key: 'refNumber', label: 'Reference Number' },
     { key: 'date', label: 'Date' },
+    { key: 'payableTo', label: 'Payable to' },
     { key: 'entries', label: 'Entries' },
     { key: 'grossTotal', label: 'Gross Total' },
     { key: 'payableTotal', label: 'Amount Payable' },
@@ -144,6 +146,7 @@ export default function PettyCashPage() {
   const rfpGet = (r: Reimb, k: string): string | number =>
     k === 'refNumber' ? r.refNumber
       : k === 'date' ? new Date(r.createdAt).toISOString().slice(0, 10)
+      : k === 'payableTo' ? (r.payableTo || '')
       : k === 'entries' ? r._count.entries
       : k === 'grossTotal' ? num(r.grossTotal)
       : k === 'payableTotal' ? num(r.payableTotal)
@@ -195,6 +198,14 @@ export default function PettyCashPage() {
       setReimbursements(r.ok ? await r.json() : [])
     } catch { setReimbursements([]) }
   }, [])
+
+  // Inline "Payable to" edit on an RFP — optimistic, persists on blur.
+  const savePayableReimb = async (rfp: Reimb, value: string) => {
+    const v = value.trim()
+    if ((rfp.payableTo || '') === v) return
+    setReimbursements(prev => prev.map(x => x.id === rfp.id ? { ...x, payableTo: v || null } : x))
+    try { await fetch('/api/petty-cash/reimbursements', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: rfp.id, action: 'set-payable', payableTo: v }) }) } catch { /* ignore */ }
+  }
 
   useEffect(() => {
     setSelected(new Set())
@@ -960,6 +971,12 @@ export default function PettyCashPage() {
                 <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                   <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{r.refNumber}</td>
                   <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{new Date(r.createdAt).toLocaleDateString('en-PH')}</td>
+                  <td className="px-4 py-2.5">
+                    {canWrite ? (
+                      <input defaultValue={r.payableTo || ''} placeholder="Payable to…" onBlur={e => savePayableReimb(r, e.target.value)}
+                        className="w-36 px-2 py-1 rounded border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+                    ) : <span className="text-xs" style={{ color: 'var(--charcoal)' }}>{r.payableTo || '—'}</span>}
+                  </td>
                   <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{r._count.entries}</td>
                   <td className="px-4 py-2.5 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>₱{peso(num(r.grossTotal))}</td>
                   <td className="px-4 py-2.5 text-right font-semibold" style={{ color: 'var(--deep-teal)' }}>₱{peso(num(r.payableTotal))}</td>
@@ -1019,7 +1036,7 @@ export default function PettyCashPage() {
                 </tr>
               ))}
               {shownReimb.length === 0 && (
-                <tr><td colSpan={7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>
+                <tr><td colSpan={8} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>
                   {reimbursements.length === 0 ? 'No RFPs yet. Click "RFP (Valid)" or "RFP (Invalid)", then select entries.' : 'No RFPs match the current filters.'}
                 </td></tr>
               )}

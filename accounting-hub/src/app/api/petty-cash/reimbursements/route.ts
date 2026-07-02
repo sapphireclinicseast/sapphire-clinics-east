@@ -28,7 +28,7 @@ export async function GET(req: Request) {
     where: { branch, module: 'PETTY_CASH' },
     select: {
       id: true, refNumber: true, grossTotal: true, status: true, kind: true, paidAt: true, paymentMethod: true, checkNumber: true, transferRef: true,
-      debitAccount: true, depositAccount: true, proofUrl: true, createdAt: true,
+      debitAccount: true, depositAccount: true, proofUrl: true, payableTo: true, createdAt: true,
       _count: { select: { entries: true } },
       entries: { select: { vatable: true, grossAmount: true, hasEwt: true, ewtRate: true } },
     },
@@ -136,6 +136,10 @@ export async function PATCH(req: Request) {
         data: { status: 'PENDING', paidAt: null, paymentMethod: null, checkNumber: null, transferRef: null, debitAccount: null, depositAccount: null, proofUrl: null },
       })
       await prisma.pettyCashEntry.updateMany({ where: { reimbursementId: id }, data: { pcfStatus: 'For Replenishment' } })
+      return NextResponse.json({ success: true })
+    }
+    if (action === 'set-payable') {
+      await prisma.reimbursementReport.update({ where: { id }, data: { payableTo: (body.payableTo ?? '').trim() || null } })
       return NextResponse.json({ success: true })
     }
     await prisma.reimbursementReport.update({ where: { id }, data: { pdfData: body.pdfData || null } })
