@@ -30,6 +30,7 @@ interface AnalysisData {
     refundRateAmount: number
     refundRateUnits: number
     topRefunded: { name: string; sku: string; units: number; amount: number }[]
+    byPlatform: { platform: string; grossProductSales: number; refundedAmount: number; returnedUnits: number; refundRateAmount: number; refundRateUnits: number }[]
   }
   fastMoving: ProductRow[]
   slowMoving: ProductRow[]
@@ -218,6 +219,31 @@ export default function ProductsAnalysisPage() {
                         <td className="py-1.5 pr-3 font-mono text-xs" style={{ color: 'var(--mid-gray)' }}>{r.sku}</td>
                         <td className="py-1.5 pr-3 text-right" style={{ color: 'var(--charcoal)' }}>{r.units}</td>
                         <td className="py-1.5 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>{formatCurrency(r.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {data.refunds.byPlatform.length > 0 && (
+              <div className="mt-4 overflow-auto">
+                <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--mid-gray)' }}>Refund Rate by Platform</p>
+                <table className="w-full text-sm">
+                  <thead><tr className="text-left" style={{ color: 'var(--mid-gray)' }}>
+                    <th className="py-1.5 pr-3 font-semibold">Platform</th>
+                    <th className="py-1.5 pr-3 font-semibold text-right">Gross Sales</th>
+                    <th className="py-1.5 pr-3 font-semibold text-right">Refunded</th>
+                    <th className="py-1.5 pr-3 font-semibold text-right">Rate (by ₱)</th>
+                    <th className="py-1.5 font-semibold text-right">Rate (by units)</th>
+                  </tr></thead>
+                  <tbody>
+                    {data.refunds.byPlatform.map((p, i) => (
+                      <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className="py-1.5 pr-3 font-medium" style={{ color: 'var(--charcoal)' }}>{p.platform}</td>
+                        <td className="py-1.5 pr-3 text-right" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(p.grossProductSales)}</td>
+                        <td className="py-1.5 pr-3 text-right" style={{ color: 'var(--charcoal)' }}>{formatCurrency(p.refundedAmount)}</td>
+                        <td className="py-1.5 pr-3 text-right font-semibold" style={{ color: p.refundRateAmount > 0 ? '#dc2626' : 'var(--mid-gray)' }}>{p.refundRateAmount}%</td>
+                        <td className="py-1.5 text-right font-semibold" style={{ color: p.refundRateUnits > 0 ? '#dc2626' : 'var(--mid-gray)' }}>{p.refundRateUnits}%</td>
                       </tr>
                     ))}
                   </tbody>

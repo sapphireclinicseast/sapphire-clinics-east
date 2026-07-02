@@ -54,6 +54,7 @@ export async function GET(req: Request) {
     const payModes = new Map<string, { amount: number; count: number }>()
     const platformUnits = new Map<string, number>()   // product units purchased per sales channel
     const refunded = new Map<string, { name: string; units: number; amount: number }>()  // per-product refunds
+    const platformRefund = new Map<string, { gross: number; grossUnits: number; refund: number; returnedUnits: number }>()  // refund rate per channel
 
     for (const order of orders) {
       const orderGross = Number(order.subtotal)
@@ -87,6 +88,10 @@ export async function GET(req: Request) {
           refunded.set(id, rf)
         }
         platformUnits.set(platformKey, (platformUnits.get(platformKey) || 0) + qty)
+
+        const pr = platformRefund.get(platformKey) || { gross: 0, grossUnits: 0, refund: 0, returnedUnits: 0 }
+        pr.gross += itemGross; pr.grossUnits += qty; pr.refund += ref; pr.returnedUnits += (item.returnedQuantity || 0)
+        platformRefund.set(platformKey, pr)
 
         if (usesRewardPoints) {
           const r = rewardBuys.get(id) || { name: item.name, qty: 0 }
@@ -170,6 +175,14 @@ export async function GET(req: Request) {
         refundRateAmount: grossWithReturns > 0 ? round2((totalRefundAmount / grossWithReturns) * 100) : 0,
         refundRateUnits: grossUnitsWithReturns > 0 ? round2((totalReturnedUnits / grossUnitsWithReturns) * 100) : 0,
         topRefunded: [...refunded.entries()].map(([id, r]) => ({ name: r.name, sku: skuById.get(id) || '', units: r.units, amount: round2(r.amount) })).sort((a, b) => b.amount - a.amount).slice(0, 10),
+        byPlatform: [...platformRefund.entries()].map(([platform, v]) => ({
+          platform,
+          grossProductSales: round2(v.gross),
+          refundedAmount: round2(v.refund),
+          returnedUnits: v.returnedUnits,
+          refundRateAmount: v.gross > 0 ? round2((v.refund / v.gross) * 100) : 0,
+          refundRateUnits: v.grossUnits > 0 ? round2((v.returnedUnits / v.grossUnits) * 100) : 0,
+        })).sort((a, b) => b.grossProductSales - a.grossProductSales),
       },
       fastMoving,
       slowMoving,
