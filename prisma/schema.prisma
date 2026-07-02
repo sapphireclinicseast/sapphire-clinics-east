@@ -533,6 +533,7 @@ model SurveySettings {
   weightSatisfaction    Int      @default(50)  // % weight for avg satisfaction score
   showLeaderboard       Boolean  @default(false) // Show leaderboard on TV queue display
   showComplaintForm     Boolean  @default(false) // Show patient complaint form QR on TV display
+  adSlideDuration       Int      @default(12)    // Seconds each static/image ad is shown on the TV
   updatedAt             DateTime @updatedAt
 }
 

@@ -6,8 +6,9 @@ import { prisma } from '@/lib/prisma'
 export async function GET() {
   const settings = await prisma.surveySettings.findUnique({ where: { id: 'default' } })
   return NextResponse.json({
-    showLeaderboard: settings?.showLeaderboard ?? false,
+    showLeaderboard:  settings?.showLeaderboard  ?? false,
     showComplaintForm: settings?.showComplaintForm ?? false,
+    adSlideDuration:  settings?.adSlideDuration  ?? 12,
   })
 }
 
@@ -17,18 +18,22 @@ export async function PATCH(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const data: Record<string, boolean> = {}
-  if (typeof body.showLeaderboard === 'boolean') data.showLeaderboard = body.showLeaderboard
+  const data: Record<string, boolean | number> = {}
+  if (typeof body.showLeaderboard  === 'boolean') data.showLeaderboard  = body.showLeaderboard
   if (typeof body.showComplaintForm === 'boolean') data.showComplaintForm = body.showComplaintForm
+  if (typeof body.adSlideDuration  === 'number' && body.adSlideDuration >= 5 && body.adSlideDuration <= 120) {
+    data.adSlideDuration = Math.round(body.adSlideDuration)
+  }
 
   const settings = await prisma.surveySettings.upsert({
-    where: { id: 'default' },
+    where:  { id: 'default' },
     update: data,
     create: { id: 'default', ...data },
   })
 
   return NextResponse.json({
-    showLeaderboard: settings.showLeaderboard,
+    showLeaderboard:   settings.showLeaderboard,
     showComplaintForm: settings.showComplaintForm,
+    adSlideDuration:   settings.adSlideDuration,
   })
 }

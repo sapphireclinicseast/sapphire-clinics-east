@@ -98,6 +98,8 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
   // Complaint form QR state
   const [cfEnabled, setCfEnabled] = useState(false)
   const [showComplaintQR, setShowComplaintQR] = useState(false)
+  // Configurable image slide duration (seconds), set in Ads Manager
+  const [adSlideDuration, setAdSlideDuration] = useState(12)
 
   const COMPLAINT_FORM_URL = 'https://hr.sapphireclinicseast.org/patient-complaint-form.html'
   // QR colour matches brand Narra so the code reads as "official"
@@ -148,6 +150,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
         const settings = await settingsRes.json()
         setLbEnabled(settings.showLeaderboard ?? false)
         setCfEnabled(settings.showComplaintForm ?? false)
+        setAdSlideDuration(settings.adSlideDuration ?? 12)
         if (!settings.showLeaderboard) {
           setLeaderboard(null)
           setShowLeaderboard(false)
@@ -236,9 +239,9 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
       return () => clearTimeout(id)
     }
     if (!isImage || ads.length === 0) return
-    const id = setTimeout(() => advanceAd(ads.length), 12_000)
+    const id = setTimeout(() => advanceAd(ads.length), adSlideDuration * 1_000)
     return () => clearTimeout(id)
-  }, [adIdx, isImage, ads.length, advanceAd, showLeaderboard, showComplaintQR])
+  }, [adIdx, isImage, ads.length, advanceAd, showLeaderboard, showComplaintQR, adSlideDuration])
 
   // ── Group items by hour ─────────────────────────────────────────────────────
   const byHour: Record<number, QueueItem[]> = {}

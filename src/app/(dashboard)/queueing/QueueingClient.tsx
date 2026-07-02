@@ -423,6 +423,9 @@ function AdsManager({ role }: { role: string }) {
   const [togglingLb, setTogglingLb] = useState(false)
   const [showComplaintForm, setShowComplaintForm] = useState(false)
   const [togglingCf, setTogglingCf] = useState(false)
+  const [adSlideDuration, setAdSlideDuration] = useState(12)
+  const [savingDuration, setSavingDuration] = useState(false)
+  const durationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   // Branch-restricted accounts can only manage ads for their own branch
@@ -445,6 +448,7 @@ function AdsManager({ role }: { role: string }) {
       const data = await res.json()
       setShowLeaderboard(data.showLeaderboard ?? false)
       setShowComplaintForm(data.showComplaintForm ?? false)
+      setAdSlideDuration(data.adSlideDuration ?? 12)
     }
   }, [])
 
@@ -470,6 +474,21 @@ function AdsManager({ role }: { role: string }) {
       body: JSON.stringify({ showComplaintForm: checked }),
     })
     setTogglingCf(false)
+  }
+
+  function handleSlideDurationChange(val: number) {
+    const clamped = Math.min(120, Math.max(5, val))
+    setAdSlideDuration(clamped)
+    if (durationTimerRef.current) clearTimeout(durationTimerRef.current)
+    durationTimerRef.current = setTimeout(async () => {
+      setSavingDuration(true)
+      await fetch('/api/queue-ads/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adSlideDuration: clamped }),
+      })
+      setSavingDuration(false)
+    }, 600)
   }
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -751,6 +770,55 @@ function AdsManager({ role }: { role: string }) {
             }} />
           </div>
         </label>
+      </div>
+
+      {/* Image slide duration */}
+      <div className="rounded-xl px-4 py-3"
+        style={{ border: '1px solid var(--light-gray)', background: '#fff' }}>
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+            style={{ background: 'var(--pale-teal)' }}>
+            <span style={{ fontSize: '1rem' }}>⏱</span>
+          </div>
+          <div>
+            <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
+              Image Slide Duration
+            </p>
+            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+              How many seconds each static image ad stays on screen before advancing to the next.
+            </p>
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <input
+            type="range"
+            min={5} max={60} step={1}
+            value={adSlideDuration}
+            onChange={e => handleSlideDurationChange(Number(e.target.value))}
+            style={{ flex: 1, accentColor: 'var(--teal)' }}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
+            <input
+              type="number"
+              min={5} max={120}
+              value={adSlideDuration}
+              onChange={e => handleSlideDurationChange(Number(e.target.value))}
+              style={{
+                width: '4rem', textAlign: 'center', fontWeight: 700,
+                border: '1.5px solid rgba(25,72,80,0.25)', borderRadius: '0.5rem',
+                padding: '0.3rem 0.4rem', fontSize: '0.9rem', color: 'var(--charcoal)',
+              }}
+            />
+            <span className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>sec</span>
+            {savingDuration && (
+              <span className="text-xs" style={{ color: 'var(--teal)' }}>Saving…</span>
+            )}
+          </div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.25rem' }}>
+          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>5s</span>
+          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>60s</span>
+        </div>
       </div>
     </div>
   )
