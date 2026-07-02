@@ -5,6 +5,8 @@ import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
 import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Download, Upload, FileDown, FileText, CheckCircle2, Paperclip, Eye, Pencil } from 'lucide-react'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
+import { DownloadBar } from '@/components/DownloadBar'
+import { downloadXlsx, downloadPdf, inDateRange, type ExportFormat } from '@/lib/export'
 
 // ── Constants ──────────────────────────────────────────────────
 const BRANCHES = [
@@ -130,6 +132,7 @@ export default function PettyCashPage() {
   const [tab, setTab] = useState<'entries' | 'reimbursements' | 'flowchart'>('entries')
   const [entries, setEntries] = useState<Entry[]>([])
   const [reimbursements, setReimbursements] = useState<Reimb[]>([])
+  const [dlFrom, setDlFrom] = useState(''); const [dlTo, setDlTo] = useState('')  // download date range
   // RFP list sort/filter
   const [rfpSort, setRfpSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'date', dir: 'desc' })
   const [rfpFilters, setRfpFilters] = useState<Record<string, string>>({})
@@ -205,6 +208,23 @@ export default function PettyCashPage() {
     if ((rfp.payableTo || '') === v) return
     setReimbursements(prev => prev.map(x => x.id === rfp.id ? { ...x, payableTo: v || null } : x))
     try { await fetch('/api/petty-cash/reimbursements', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: rfp.id, action: 'set-payable', payableTo: v }) }) } catch { /* ignore */ }
+  }
+
+  // ── Downloads (Excel / PDF) with the From/To range ──
+  const brName = BRANCHES.find(b => b.value === branch)?.label || branch
+  const exportEntries = (fmt: ExportFormat) => {
+    const rows = entries.filter(e => inDateRange(e.date, dlFrom, dlTo))
+    const headers = ['PCV Number', 'Requestor', 'Department', 'Date', 'Description', 'Vatable', 'SI Number', 'TIN', 'Registered Name', 'Account Title', 'Validity', 'PCF Status', 'Gross Amount']
+    const body = rows.map(e => [e.pcvNumber, e.requestor || '', e.department || '', e.date ? String(e.date).slice(0, 10) : '', e.description || '', e.vatable || '', e.siNumber || '', e.tinNumber || '', e.registeredName || '', e.accountTitle || '', e.validity || '', e.pcfStatus || '', num(e.grossAmount).toFixed(2)])
+    if (fmt === 'xlsx') downloadXlsx(`petty-cash-entries-${branch}`, [{ name: 'Petty Cash', headers, rows: body }])
+    else downloadPdf({ title: `Petty Cash Entries — ${brName}`, subtitle: `Range: ${dlFrom || 'start'} → ${dlTo || 'end'} · ${body.length} entr${body.length === 1 ? 'y' : 'ies'}`, headers, rows: body, landscape: true })
+  }
+  const exportReimb = (fmt: ExportFormat) => {
+    const rows = shownReimb.filter(r => inDateRange(r.createdAt, dlFrom, dlTo))
+    const headers = ['Reference Number', 'Date', 'Payable to', 'Entries', 'Gross Total', 'Amount Payable', 'Status']
+    const body = rows.map(r => [r.refNumber, new Date(r.createdAt).toISOString().slice(0, 10), r.payableTo || '', r._count.entries, num(r.grossTotal).toFixed(2), num(r.payableTotal).toFixed(2), r.status === 'PAID' ? 'Paid' : 'Pending'])
+    if (fmt === 'xlsx') downloadXlsx(`petty-cash-rfp-${branch}`, [{ name: 'RFP', headers, rows: body }])
+    else downloadPdf({ title: `Petty Cash RFP — ${brName}`, subtitle: `Range: ${dlFrom || 'start'} → ${dlTo || 'end'} · ${body.length} RFP(s)`, headers, rows: body, landscape: true })
   }
 
   useEffect(() => {
@@ -677,6 +697,8 @@ export default function PettyCashPage() {
 
       {tab === 'entries' && (
         <>
+          <DownloadBar from={dlFrom} to={dlTo} onFrom={setDlFrom} onTo={setDlTo} onExport={exportEntries}
+            dateLabel="Entry date" note={`${entries.filter(e => inDateRange(e.date, dlFrom, dlTo)).length} in range`} />
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {([
               ['Unliquidated Total', entries.filter(e => e.pcfStatus === 'Unliquidated').reduce((s, e) => s + num(e.grossAmount), 0)],
@@ -962,6 +984,9 @@ export default function PettyCashPage() {
       )}
 
       {tab === 'reimbursements' && (
+        <>
+        <DownloadBar from={dlFrom} to={dlTo} onFrom={setDlFrom} onTo={setDlTo} onExport={exportReimb}
+          dateLabel="RFP date" note={`${shownReimb.filter(r => inDateRange(r.createdAt, dlFrom, dlTo)).length} in range`} />
         <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
           <table className="w-full text-sm">
             <SortFilterHead cols={rfpCols} sortKey={rfpSort.key} sortDir={rfpSort.dir} filters={rfpFilters}
@@ -1043,6 +1068,7 @@ export default function PettyCashPage() {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {tab === 'flowchart' && (

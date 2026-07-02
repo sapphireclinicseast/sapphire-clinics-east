@@ -125,3 +125,13 @@ export function downloadPdf(config: PdfTableConfig) {
 // ── Combined download button component helper ───────────────
 
 export type ExportFormat = 'xlsx' | 'pdf'
+
+// Inclusive [from, to] filter on a YYYY-MM-DD-ish date value. Blank bound = open.
+export function inDateRange(dateVal: string | Date | null | undefined, from: string, to: string): boolean {
+  if (!from && !to) return true
+  if (!dateVal) return false
+  const d = String(typeof dateVal === 'string' ? dateVal : dateVal.toISOString()).slice(0, 10)
+  if (from && d < from) return false
+  if (to && d > to) return false
+  return true
+}

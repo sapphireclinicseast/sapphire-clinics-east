@@ -6,6 +6,8 @@ import { userBranchScope } from '@/lib/branch-scope'
 import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Search, ArrowUp, ArrowDown, Upload, Download, Eye, Wallet, CreditCard, CheckCircle2, Pencil, FileText } from 'lucide-react'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 import { BillingVoucherModal } from '@/components/BillingVoucherModal'
+import { DownloadBar } from '@/components/DownloadBar'
+import { downloadXlsx, downloadPdf, inDateRange, type ExportFormat } from '@/lib/export'
 import type { BVLine } from '@/lib/billing-voucher'
 
 // ── Constants ──────────────────────────────────────────────────
@@ -180,6 +182,9 @@ export default function ExpensesPage() {
   const [ccMode, setCcMode] = useState(false)          // credit-card SOA tagging selection
   const [showCcPick, setShowCcPick] = useState(false)  // card-picker modal for the new SOA
   const [creatingSoa, setCreatingSoa] = useState(false)
+  // Download (From/To + Excel/PDF) for the entries + RFP lists.
+  const [dlFrom, setDlFrom] = useState('')
+  const [dlTo, setDlTo] = useState('')
   const [showRfpModal, setShowRfpModal] = useState(false)
   const [rfpManualSeq, setRfpManualSeq] = useState('')
   const [generatingRfp, setGeneratingRfp] = useState(false)
@@ -479,6 +484,36 @@ export default function ExpensesPage() {
     if ((rfp.payableTo || '') === v) return
     setRfps(prev => prev.map(r => r.id === rfp.id ? { ...r, payableTo: v || null } : r))
     try { await fetch('/api/expenses/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: rfp.id, action: 'set-payable', payableTo: v }) }) } catch { /* ignore */ }
+  }
+
+  // ── Downloads (Excel / PDF) with the From/To range ──
+  const brLabel = BRANCHES.find(b => b.value === branch)?.label || branch
+  const rangeNote = `${dlFrom || 'start'} → ${dlTo || 'end'}`
+  const exportEntries = (fmt: ExportFormat) => {
+    const isRecurring = recordType === 'RECURRING'
+    const rows = entries.filter(e => inDateRange(e.date, dlFrom, dlTo))
+    const headers = isRecurring
+      ? ['Reference', 'Payee', 'Department', 'Description', 'Account Title', 'Frequency', 'Vatable', 'Gross Amount']
+      : ['Reference', 'Payee', 'Department', 'Date', 'Description', 'Account Title', 'Vatable', 'Validity', 'Audited', 'Gross Amount', 'Payment']
+    const body = rows.map(e => isRecurring
+      ? [e.reimbursement?.refNumber || e.pcvNumber, e.requestor || '', e.department || '', e.description || '', e.accountTitle || '', e.recurFrequency || '', e.vatable || '', num(e.grossAmount).toFixed(2)]
+      : [e.reimbursement?.refNumber || e.pcvNumber, e.requestor || '', e.department || '', e.date ? String(e.date).slice(0, 10) : '', e.description || '', e.accountTitle || '', e.vatable || '', e.validity || '', e.audited ? 'Yes' : 'No', num(e.grossAmount).toFixed(2), e.paidAt ? `Paid ${String(e.paidAt).slice(0, 10)}` : (e.reimbursementId ? 'In RFP' : e.soaId ? 'In SOA' : '')])
+    const title = `${isRecurring ? 'Recurring' : 'One-time'} Expenses — ${brLabel}`
+    const fname = `${isRecurring ? 'recurring-expenses' : 'one-time-expenses'}-${branch}`
+    if (fmt === 'xlsx') downloadXlsx(fname, [{ name: isRecurring ? 'Recurring' : 'One-time', headers, rows: body }])
+    else downloadPdf({ title, subtitle: `Range: ${rangeNote} · ${body.length} entr${body.length === 1 ? 'y' : 'ies'}`, headers, rows: body, landscape: true })
+  }
+  const exportRfps = (fmt: ExportFormat) => {
+    const rows = shownRfps.filter(r => inDateRange(r.createdAt, dlFrom, dlTo))
+    const headers = ['Reference Number', 'Date', 'Kind', 'Payable to', 'Entries', 'Gross Total', 'Amount Payable', 'Status']
+    const body = rows.map(r => [
+      r.refNumber, new Date(r.createdAt).toISOString().slice(0, 10),
+      r.module === 'PAYROLL_SALARY' ? 'Salaries' : r.module === 'PAYROLL_BENEFIT' ? 'Benefits' : r.kind === 'INVALID' ? 'Invalid' : 'Valid',
+      r.payableTo || '', r.module && r.module.startsWith('PAYROLL') ? (r.meta?.ids?.length || 0) : r._count.entries,
+      num(r.grossTotal).toFixed(2), num(r.payableTotal).toFixed(2), r.status === 'PAID' ? 'Paid' : 'For Payment',
+    ])
+    if (fmt === 'xlsx') downloadXlsx(`rfp-${branch}`, [{ name: 'RFP', headers, rows: body }])
+    else downloadPdf({ title: `Request for Payment (RFP) — ${brLabel}`, subtitle: `Range: ${rangeNote} · ${body.length} RFP(s)`, headers, rows: body, landscape: true })
   }
 
   const openBillingVoucher = async (rfp: Rfp) => {
@@ -795,6 +830,8 @@ export default function ExpensesPage() {
 
       {isRecording && (
         <>
+          <DownloadBar from={dlFrom} to={dlTo} onFrom={setDlFrom} onTo={setDlTo} onExport={exportEntries}
+            dateLabel="Expense date" note={`${entries.filter(e => inDateRange(e.date, dlFrom, dlTo)).length} in range`} />
           {/* Search + scroll controls */}
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="relative flex-1 min-w-[240px] max-w-md">
@@ -1156,6 +1193,9 @@ export default function ExpensesPage() {
       )}
 
       {tab === 'rfp' && (
+        <>
+        <DownloadBar from={dlFrom} to={dlTo} onFrom={setDlFrom} onTo={setDlTo} onExport={exportRfps}
+          dateLabel="RFP date" note={`${shownRfps.filter(r => inDateRange(r.createdAt, dlFrom, dlTo)).length} in range`} />
         <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
           <table className="w-full text-sm">
             <SortFilterHead cols={rfpCols} sortKey={rfpSort.key} sortDir={rfpSort.dir} filters={rfpFilters}
@@ -1235,6 +1275,7 @@ export default function ExpensesPage() {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {tab === 'expense-report' && (
@@ -1750,6 +1791,7 @@ function CreditCardSoaTab({ branch, canWrite, onChanged }: { branch: string; can
 function CcReportTab({ branch, canWrite }: { branch: string; canWrite: boolean }) {
   const [rows, setRows] = useState<SoaRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [dlFrom, setDlFrom] = useState(''); const [dlTo, setDlTo] = useState('')
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'paidAt', dir: 'desc' })
   const [filters, setFilters] = useState<Record<string, string>>({})
   const toggleSort = (k: string) => setSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
@@ -1762,7 +1804,7 @@ function CcReportTab({ branch, canWrite }: { branch: string; canWrite: boolean }
       : k === 'paidAt' ? (r.paidAt ? String(r.paidAt).slice(0, 10) : '')
       : k === 'paidVia' ? (r.paymentRoute === 'PETTY_CASH' ? 'Paid through Petty Cash' : (r.rfpRefNumber || 'RFP'))
       : k === 'total' ? r.total : k === 'status' ? (r.filingStatus === 'FILED' ? 'Filed' : 'For Filing') : ''
-  const shown = applySortFilter(rows, get, sort.key, sort.dir, filters)
+  const shown = applySortFilter(rows, get, sort.key, sort.dir, filters).filter(r => inDateRange(r.paidAt, dlFrom, dlTo))
   const total = shown.reduce((s, r) => s + r.total, 0)
 
   const load = useCallback(async () => {
@@ -1772,6 +1814,14 @@ function CcReportTab({ branch, canWrite }: { branch: string; canWrite: boolean }
   }, [branch])
   useEffect(() => { load() }, [load])
 
+  const exportReport = (fmt: ExportFormat) => {
+    const headers = ['SOA Ref', 'Card', 'Paid Date', 'Paid Via', 'Total', 'Filing']
+    const body = shown.map(r => [r.refNumber, r.cardLabel, r.paidAt ? String(r.paidAt).slice(0, 10) : '',
+      r.paymentRoute === 'PETTY_CASH' ? 'Paid through Petty Cash' : (r.rfpRefNumber || 'RFP'), r.total.toFixed(2), r.filingStatus === 'FILED' ? 'Filed' : 'For Filing'])
+    if (fmt === 'xlsx') downloadXlsx(`credit-card-report-${branch}`, [{ name: 'Credit Card Report', headers, rows: body }])
+    else downloadPdf({ title: 'Credit Card Report', subtitle: `Range: ${dlFrom || 'start'} → ${dlTo || 'end'} · ${body.length} paid SOA(s)`, headers, rows: body, landscape: true })
+  }
+
   const setFiling = async (id: string, filingStatus: string) => {
     setRows(prev => prev.map(r => r.id === id ? { ...r, filingStatus } : r))
     try { await fetch('/api/expenses/soa', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, action: 'set-filing', filingStatus }) }) } catch { /* ignore */ }
@@ -1779,7 +1829,7 @@ function CcReportTab({ branch, canWrite }: { branch: string; canWrite: boolean }
 
   return (
     <div className="space-y-2">
-      <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Paid Credit Card SOAs. {shown.length} SOA(s) · Total ₱{peso(total)}</p>
+      <DownloadBar from={dlFrom} to={dlTo} onFrom={setDlFrom} onTo={setDlTo} onExport={exportReport} dateLabel="Paid date" note={`${shown.length} paid SOA(s) · ₱${peso(total)}`} />
       <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
         <table className="w-full text-sm">
           <SortFilterHead cols={cols} sortKey={sort.key} sortDir={sort.dir} filters={filters} onToggleSort={toggleSort} onFilter={(k, v) => setFilters(f => ({ ...f, [k]: v }))} trailing />
@@ -2174,6 +2224,13 @@ function SuppliersTab({ branch, canWrite }: { branch: string; canWrite: boolean 
     { key: 'registeredName', label: 'Registered Name' }, { key: 'registeredAddress', label: 'Registered Address' },
   ]
 
+  const exportSuppliers = (fmt: ExportFormat) => {
+    const headers = ['Registered Name', 'TIN', 'Branch', 'Registered Address', 'First Appeared']
+    const body = shown.map(s => [s.registeredName, s.tin || '', s.branchLabel || '', s.registeredAddress || '', s.firstAppeared ? String(s.firstAppeared).slice(0, 10) : ''])
+    if (fmt === 'xlsx') downloadXlsx(`suppliers-${branch}`, [{ name: 'Suppliers', headers, rows: body }])
+    else downloadPdf({ title: 'Suppliers', subtitle: `${seeAll ? 'All' : `${from || 'start'} → ${to || 'end'}`} · ${body.length} supplier(s)`, headers, rows: body })
+  }
+
   return (
     <div className="space-y-4">
       {/* Toolbar */}
@@ -2188,6 +2245,8 @@ function SuppliersTab({ branch, canWrite }: { branch: string; canWrite: boolean 
           <button onClick={downloadTemplate} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
             <Download size={14} /> Template
           </button>
+          <button onClick={() => exportSuppliers('xlsx')} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white" style={{ background: '#166534' }}><Download size={14} /> Excel</button>
+          <button onClick={() => exportSuppliers('pdf')} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white" style={{ background: '#b91c1c' }}><Download size={14} /> PDF</button>
           {canWrite && (
             <button onClick={() => fileRef.current?.click()} disabled={importing} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
               {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} Import CSV/Excel
