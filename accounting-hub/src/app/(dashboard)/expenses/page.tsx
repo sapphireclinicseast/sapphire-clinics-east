@@ -2410,6 +2410,7 @@ function RecordPayrollPaymentModal({ rfp, onClose, onDone }: { rfp: Rfp; onClose
   const total = typeof rfp.grossTotal === 'number' ? rfp.grossTotal : parseFloat(rfp.grossTotal)
   const count = rfp.meta?.ids?.length || 0
   const [assets, setAssets] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
+  const [expenseAccts, setExpenseAccts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
   const [q, setQ] = useState('')
   const [feeQ, setFeeQ] = useState('')
   const [datePaid, setDatePaid] = useState(new Date().toISOString().slice(0, 10))
@@ -2422,10 +2423,17 @@ function RecordPayrollPaymentModal({ rfp, onClose, onDone }: { rfp: Rfp; onClose
   const [feeExpenseAccountId, setFeeExpenseAccountId] = useState('')
   const [busy, setBusy] = useState(false)
 
-  useEffect(() => { fetch('/api/chart-of-accounts?pageSize=1000').then(r => r.ok ? r.json() : { data: [] }).then(d => setAssets((d.data || []).filter((a: { accountType: string }) => a.accountType === 'ASSET').map((a: { id: string; accountNumber: string; accountTitle: string }) => ({ id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle })))).catch(() => {}) }, [])
-  const allAccts = assets
-  const filtered = allAccts.filter(a => !q || `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(q.toLowerCase()))
-  const feeFiltered = allAccts.filter(a => !feeQ || `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(feeQ.toLowerCase()))
+  useEffect(() => {
+    fetch('/api/chart-of-accounts?pageSize=1000').then(r => r.ok ? r.json() : { data: [] }).then(d => {
+      const rows = (d.data || []) as { id: string; accountNumber: string; accountTitle: string; accountType: string }[]
+      const pick = (a: typeof rows[0]) => ({ id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle })
+      setAssets(rows.filter(a => a.accountType === 'ASSET').map(pick))
+      setExpenseAccts(rows.filter(a => a.accountType === 'EXPENSE').map(pick))
+    }).catch(() => {})
+  }, [])
+  // Pay-from source is a cash/bank (ASSET) account; the fee DEBIT is an EXPENSE account.
+  const filtered = assets.filter(a => !q || `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(q.toLowerCase()))
+  const feeFiltered = expenseAccts.filter(a => !feeQ || `${a.accountNumber} ${a.accountTitle}`.toLowerCase().includes(feeQ.toLowerCase()))
 
   const upload = async (file: File | null) => {
     if (!file) return

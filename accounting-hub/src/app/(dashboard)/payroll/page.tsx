@@ -4910,7 +4910,7 @@ export default function PayrollPage() {
                 </thead>
                 <tbody>
                   {activePayables.map(p => (
-                    <tr key={p.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                    <tr key={p.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: p.salariesRemitted ? '#f0fdf4' : p.salaryRfpId ? '#fff7ed' : undefined }}>
                       <td className="px-3 py-2.5">
                         {!p.salariesRemitted && !p.salaryRfpId && (
                           <input type="checkbox"
@@ -5075,7 +5075,7 @@ export default function PayrollPage() {
                 </thead>
                 <tbody>
                   {benefitsPayables.map(p => (
-                    <tr key={p.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                    <tr key={p.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: p.benefitsRemitted ? '#f0fdf4' : p.benefitRfpId ? '#fff7ed' : undefined }}>
                       <td className="px-3 py-2.5">
                         {!p.benefitsRemitted && !p.benefitRfpId && (
                           <input type="checkbox"
