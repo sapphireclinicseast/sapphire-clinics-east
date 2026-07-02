@@ -2044,8 +2044,9 @@ function ExpenseReportTab({ branch, canWrite, canEdit }: { branch: string; canWr
             <tbody>
               {shown.map(r => {
                 const pc = r.source === 'PETTY_CASH'
+                const payroll = r.source === 'SALARY_PAYMENT' || r.source === 'BENEFIT_PAYMENT'
                 return (
-                  <tr key={r.id} style={{ background: pc ? '#dbeafe' : '#fff' }}>
+                  <tr key={r.id} style={{ background: pc ? '#dbeafe' : payroll ? '#f3e8ff' : '#fff' }}>
                     <td className="border-r border-b px-3 py-2 whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', color: pc ? '#1e40af' : 'var(--charcoal)', fontWeight: pc ? 600 : 400 }}>{r.payee}</td>
                     <td className="border-r border-b px-3 py-2" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>{r.paymentAccount}</td>
                     <td className="border-r border-b px-3 py-2 whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>{r.paymentDate}</td>

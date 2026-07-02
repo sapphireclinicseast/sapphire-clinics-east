@@ -47,7 +47,41 @@ export async function GET(req: Request) {
     orderBy: { date: 'asc' },
   })
 
+  // Paid payroll (salaries + benefits) — not PettyCashEntry, so queried separately.
+  const payDateWhere = (from || to) ? { paymentDate: dateFilter } : {}
+  const [salPayments, benPayments, payrollRfps] = await Promise.all([
+    prisma.salaryPayment.findMany({ where: { branch, status: 'COMPLETED', ...payDateWhere }, select: { id: true, paymentDate: true, totalAmount: true, cutoffPeriod: true, paymentType: true, fromAccount: { select: { accountTitle: true } } } }),
+    prisma.benefitPayment.findMany({ where: { branch, status: 'COMPLETED', ...payDateWhere }, select: { id: true, paymentDate: true, totalAmount: true, cutoffPeriod: true, fromAccount: { select: { accountTitle: true } } } }),
+    prisma.reimbursementReport.findMany({ where: { branch, module: { in: ['PAYROLL_SALARY', 'PAYROLL_BENEFIT'] } }, select: { refNumber: true, payableTo: true, meta: true } }),
+  ])
+  // Map a payment id → its RFP (refNumber + payableTo) via meta.paymentId.
+  const rfpByPayment = new Map<string, { refNumber: string; payableTo: string | null }>()
+  for (const r of payrollRfps) {
+    const pid = (r.meta as { paymentId?: string } | null)?.paymentId
+    if (pid) rfpByPayment.set(pid, { refNumber: r.refNumber, payableTo: r.payableTo })
+  }
+
   const rows = [
+    ...salPayments.map(p => {
+      const amt = Number(p.totalAmount); const rfp = rfpByPayment.get(p.id)
+      return {
+        id: p.id, source: 'SALARY_PAYMENT', reimbursementId: null, refNumber: rfp?.refNumber || '',
+        payee: rfp?.payableTo || (p.paymentType === 'CONSULTANT' ? 'Consultants — Salaries' : 'Employees — Salaries'),
+        paymentAccount: p.fromAccount?.accountTitle || '', paymentDate: p.paymentDate.toISOString().slice(0, 10),
+        paymentMethod: 'Payroll', pcvNumber: rfp?.refNumber || '', accountTitle: 'Salaries Payable',
+        description: p.cutoffPeriod || '', netOfVat: amt, gross: amt, checkInfo: '', validity: 'Valid', filingStatus: 'FOR_FILING',
+      }
+    }),
+    ...benPayments.map(p => {
+      const amt = Number(p.totalAmount); const rfp = rfpByPayment.get(p.id)
+      return {
+        id: p.id, source: 'BENEFIT_PAYMENT', reimbursementId: null, refNumber: rfp?.refNumber || '',
+        payee: rfp?.payableTo || 'Employees — Benefits (SSS/PHIC/HDMF)',
+        paymentAccount: p.fromAccount?.accountTitle || '', paymentDate: p.paymentDate.toISOString().slice(0, 10),
+        paymentMethod: 'Payroll', pcvNumber: rfp?.refNumber || '', accountTitle: 'Benefits Payable',
+        description: p.cutoffPeriod || '', netOfVat: amt, gross: amt, checkInfo: '', validity: 'Valid', filingStatus: 'FOR_FILING',
+      }
+    }),
     ...expVisible.map(e => {
       const gross = Number(e.grossAmount)
       const acct = e.paymentBankAccount || e.creditCard || (e.payrollAccount ? `Acct ${e.payrollAccount}` : '')
