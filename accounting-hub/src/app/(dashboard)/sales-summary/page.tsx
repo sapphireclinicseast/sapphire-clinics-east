@@ -271,16 +271,6 @@ export default function SalesSummaryPage() {
   const [fetched, setFetched] = useState(false)
   const [error, setError] = useState('')
 
-  const allowed = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
-  if (!session?.user || !allowed.includes((session.user as { role?: string }).role || '')) {
-    return (
-      <div className="p-8 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>
-        You do not have permission to view this page.
-      </div>
-    )
-  }
-
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   const fetchData = useCallback(async () => {
     if (!showWithInvoice && !showWithoutInvoice) {
       setError('Please select at least one report type.')
@@ -306,6 +296,16 @@ export default function SalesSummaryPage() {
       setLoading(false)
     }
   }, [branch, dateFrom, dateTo, showWithInvoice, showWithoutInvoice])
+
+  // Permission guard — AFTER all hooks so hook order never changes between renders (fixes React #310).
+  const allowed = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN']
+  if (!session?.user || !allowed.includes((session.user as { role?: string }).role || '')) {
+    return (
+      <div className="p-8 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>
+        You do not have permission to view this page.
+      </div>
+    )
+  }
 
   /* ── Split rows ── */
   const invoicedRows = allRows.filter(r => r.issuedOfficialInvoice)
