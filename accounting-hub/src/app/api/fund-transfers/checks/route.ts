@@ -18,11 +18,18 @@ export async function GET(req: Request) {
 
   const accountId = new URL(req.url).searchParams.get('accountId') || 'all'
 
-  const checking = await prisma.account.findMany({
-    where: { isCheckingAccount: true, ...(accountId !== 'all' ? { id: accountId } : {}) },
+  // The dropdown must always list ALL checking accounts. Only the check ROWS are
+  // scoped to the selected account — filtering the account list itself made the
+  // other accounts vanish once one was picked.
+  const allChecking = await prisma.account.findMany({
+    where: { isCheckingAccount: true },
     select: { id: true, accountNumber: true, accountTitle: true },
   })
-  if (checking.length === 0) return NextResponse.json({ checks: [], accounts: [] })
+  const accountsList = allChecking.map(a => ({ id: a.id, label: `${a.accountNumber} ${a.accountTitle}` }))
+  if (allChecking.length === 0) return NextResponse.json({ checks: [], accounts: [] })
+
+  const checking = accountId !== 'all' ? allChecking.filter(a => a.id === accountId) : allChecking
+  if (checking.length === 0) return NextResponse.json({ checks: [], accounts: accountsList })
 
   const idSet = new Set(checking.map(a => a.id))
   // Petty cash / RFP store the bank as the "<accountNumber> <accountTitle>" string.
@@ -96,5 +103,5 @@ export async function GET(req: Request) {
     return na !== nb ? na - nb : a.checkNumber.localeCompare(b.checkNumber)
   })
 
-  return NextResponse.json({ checks: rows, accounts: checking.map(a => ({ id: a.id, label: `${a.accountNumber} ${a.accountTitle}` })) })
+  return NextResponse.json({ checks: rows, accounts: accountsList })
 }
