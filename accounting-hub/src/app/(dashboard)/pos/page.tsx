@@ -11,6 +11,7 @@ import {
   Globe, Truck, Phone, MapPin, Package, Clock, Upload,
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { normalizeSI } from '@/lib/sales-invoice'
 import { TiktokImportModal } from './TiktokImportModal'
 import Pagination from '@/components/ui/Pagination'
 
@@ -1432,7 +1433,7 @@ function OrderFormModal({
         revenueType: effectiveRevenueType,
         referrerId: referrerId || null,
         issuedOfficialInvoice,
-        salesInvoiceNumber: issuedOfficialInvoice ? salesInvoiceNumber.trim() : null,
+        salesInvoiceNumber: issuedOfficialInvoice ? normalizeSI(salesInvoiceNumber) : null,
         referenceNumber: referenceNumber.trim() || null,
         notes: orderNotes.trim() || null,
       }
@@ -2263,8 +2264,8 @@ function OrderFormModal({
                 <input
                   type="text"
                   value={salesInvoiceNumber}
-                  onChange={e => setSalesInvoiceNumber(e.target.value)}
-                  placeholder="e.g. SI-2026-001234"
+                  onChange={e => setSalesInvoiceNumber(e.target.value.replace(/\D/g, ""))}
+                  placeholder="e.g. 0001"
                   className="w-full px-3 py-2 rounded-xl border text-sm outline-none"
                   style={{ borderColor: 'var(--light-gray)' }}
                 />
@@ -2668,7 +2669,7 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
           reference: p.reference || null,
         })),
         issuedOfficialInvoice: editIssuedOfficialInvoice,
-        salesInvoiceNumber: editIssuedOfficialInvoice ? editSalesInvoiceNumber.trim() : null,
+        salesInvoiceNumber: editIssuedOfficialInvoice ? normalizeSI(editSalesInvoiceNumber) : null,
         referenceNumber: editReferenceNumber.trim() || null,
         notes: editNotes.trim() || null,
       }
@@ -3483,8 +3484,8 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                     <input
                       type="text"
                       value={editSalesInvoiceNumber}
-                      onChange={e => setEditSalesInvoiceNumber(e.target.value)}
-                      placeholder="e.g. SI-2026-001234"
+                      onChange={e => setEditSalesInvoiceNumber(e.target.value.replace(/\D/g, ""))}
+                      placeholder="e.g. 0001"
                       className="w-full px-3 py-2 rounded-xl border text-sm outline-none"
                       style={{ borderColor: 'var(--light-gray)' }}
                     />
@@ -6722,7 +6723,7 @@ function ProductsSection({
         discountAmount,
         discountLabel: discountLabel || null,
         issuedOfficialInvoice: prodIssuedInvoice,
-        salesInvoiceNumber: prodIssuedInvoice ? prodInvoiceNumber.trim() : null,
+        salesInvoiceNumber: prodIssuedInvoice ? normalizeSI(prodInvoiceNumber) : null,
         referenceNumber: prodReferenceNumber.trim() || null,
         notes: prodNotes.trim() || null,
       }
@@ -7192,8 +7193,8 @@ function ProductsSection({
             </label>
             {prodIssuedInvoice && (
               <div className="mt-2">
-                <input type="text" value={prodInvoiceNumber} onChange={e => setProdInvoiceNumber(e.target.value)}
-                  placeholder="Sales Invoice Number" className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                <input type="text" value={prodInvoiceNumber} onChange={e => setProdInvoiceNumber(e.target.value.replace(/\D/g, ""))}
+                  placeholder="e.g. 0001" className="w-full px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
               </div>
             )}
           </div>
