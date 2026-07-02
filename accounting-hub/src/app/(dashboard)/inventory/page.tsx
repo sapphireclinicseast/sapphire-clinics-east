@@ -673,6 +673,7 @@ export default function InventoryPage() {
   const [adjModalOpen, setAdjModalOpen] = useState(false)
   // Bulk upload state
   const [bulkModalOpen, setBulkModalOpen] = useState(false)
+  const [bulkShrinkOpen, setBulkShrinkOpen] = useState(false)
   const [bulkStep, setBulkStep] = useState<'upload' | 'review' | 'result'>('upload')
   const [bulkCsvData, setBulkCsvData] = useState<{ sku: string; quantity: number; foreignCostPerUnit: number; currency: string }[]>([])
   const [bulkLocalPayment, setBulkLocalPayment] = useState('')
@@ -3070,6 +3071,11 @@ setTimeout(()=>window.print(),500);
                   style={{ borderColor: 'var(--light-gray)', color: '#dc2626' }}>
                   <TrendingDown size={14} /> Shrinkage
                 </button>
+                <button onClick={() => setBulkShrinkOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-medium border"
+                  style={{ borderColor: '#dc2626', color: '#dc2626', background: '#fef2f2' }}>
+                  <TrendingDown size={14} /> Bulk Count
+                </button>
                 <button onClick={openFbModal}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
                   style={{ background: 'var(--teal)' }}>
@@ -3315,6 +3321,14 @@ setTimeout(()=>window.print(),500);
                 </form>
               </div>
             </div>
+          )}
+
+          {bulkShrinkOpen && (
+            <BulkShrinkageCountModal
+              items={allItems}
+              onClose={() => setBulkShrinkOpen(false)}
+              onDone={() => { setBulkShrinkOpen(false); fetchAdjustments(); fetchItems(); fetchAllItems() }}
+            />
           )}
 
           {/* Bulk Upload Modal */}
@@ -4555,6 +4569,157 @@ setTimeout(()=>window.print(),500);
           )}
         </>
       )}
+    </div>
+  )
+}
+
+/* ── Bulk physical-count shrinkage (add rows, auditor + e-signature) ── */
+function BulkShrinkageCountModal({ items, onClose, onDone }: {
+  items: { id: string; name: string; sku: string; quantity: number }[]
+  onClose: () => void
+  onDone: () => void
+}) {
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [auditor, setAuditor] = useState('')
+  const [rows, setRows] = useState<{ itemId: string; search: string; counted: string; open: boolean }[]>([{ itemId: '', search: '', counted: '', open: false }])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const drawing = useRef(false)
+  const [hasSig, setHasSig] = useState(false)
+
+  const itemById = useMemo(() => new Map(items.map(i => [i.id, i])), [items])
+  const setRow = (i: number, patch: Partial<{ itemId: string; search: string; counted: string; open: boolean }>) => setRows(rs => rs.map((r, idx) => idx === i ? { ...r, ...patch } : r))
+  const addRow = () => setRows(rs => [...rs, { itemId: '', search: '', counted: '', open: false }])
+  const removeRow = (i: number) => setRows(rs => rs.length > 1 ? rs.filter((_, idx) => idx !== i) : rs)
+
+  const posOf = (e: React.MouseEvent | React.TouchEvent) => {
+    const c = canvasRef.current!; const r = c.getBoundingClientRect()
+    const cx = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX
+    const cy = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY
+    return { x: cx - r.left, y: cy - r.top }
+  }
+  const start = (e: React.MouseEvent | React.TouchEvent) => { drawing.current = true; const ctx = canvasRef.current!.getContext('2d')!; const p = posOf(e); ctx.beginPath(); ctx.moveTo(p.x, p.y) }
+  const move = (e: React.MouseEvent | React.TouchEvent) => { if (!drawing.current) return; const ctx = canvasRef.current!.getContext('2d')!; const p = posOf(e); ctx.lineTo(p.x, p.y); ctx.strokeStyle = '#1a1a2e'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.stroke(); setHasSig(true) }
+  const end = () => { drawing.current = false }
+  const clearSig = () => { const c = canvasRef.current; if (c) c.getContext('2d')!.clearRect(0, 0, c.width, c.height); setHasSig(false) }
+  const uploadSig = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]; if (!f) return
+    const rd = new FileReader()
+    rd.onload = () => { const img = new window.Image(); img.onload = () => { const c = canvasRef.current!; const ctx = c.getContext('2d')!; ctx.clearRect(0, 0, c.width, c.height); const s = Math.min(c.width / img.width, c.height / img.height); ctx.drawImage(img, 0, 0, img.width * s, img.height * s); setHasSig(true) }; img.src = rd.result as string }
+    rd.readAsDataURL(f)
+  }
+
+  const submit = async () => {
+    setError('')
+    if (!auditor.trim()) { setError('Enter the name of the auditor.'); return }
+    const payloadRows = rows.filter(r => r.itemId && r.counted !== '').map(r => ({ itemId: r.itemId, countedQuantity: Number(r.counted) }))
+    if (!payloadRows.length) { setError('Add at least one item with a counted quantity.'); return }
+    const signature = hasSig && canvasRef.current ? canvasRef.current.toDataURL('image/png') : null
+    setBusy(true)
+    try {
+      const res = await fetch('/api/inventory/adjustments/shrinkage-count', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adjustmentDate: date, auditorName: auditor.trim(), auditorSignature: signature, rows: payloadRows }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setError(d.error || 'Failed to record shrinkage.'); setBusy(false); return }
+      onDone()
+    } catch { setError('Network error. Please try again.'); setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-8 overflow-y-auto p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 max-w-3xl w-full shadow-xl mb-8 relative" onClick={e => e.stopPropagation()}>
+        <button onClick={onClose} className="absolute top-4 right-4 p-1 hover:bg-gray-100 rounded-lg"><X size={20} style={{ color: 'var(--mid-gray)' }} /></button>
+        <h2 className="text-lg font-bold mb-1" style={{ color: 'var(--charcoal)' }}>Physical Count — Bulk Shrinkage</h2>
+        <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>Enter the counted stock per item; shrinkage is computed automatically and deducted (overages are added back).</p>
+
+        {error && <div className="mb-3 p-2.5 rounded-lg text-sm bg-red-50 text-red-600">{error}</div>}
+
+        <div className="mb-3">
+          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Date of Adjustment</label>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} />
+        </div>
+
+        <div className="rounded-xl border overflow-visible mb-2" style={{ borderColor: 'var(--light-gray)' }}>
+          <table className="w-full text-sm">
+            <thead><tr style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+              <th className="px-3 py-2 text-left text-xs font-semibold">Item</th>
+              <th className="px-3 py-2 text-right text-xs font-semibold">In System</th>
+              <th className="px-3 py-2 text-right text-xs font-semibold">Counted</th>
+              <th className="px-3 py-2 text-right text-xs font-semibold">Shrinkage</th>
+              <th className="px-2 py-2"></th>
+            </tr></thead>
+            <tbody>
+              {rows.map((r, i) => {
+                const sys = r.itemId ? (itemById.get(r.itemId)?.quantity ?? 0) : null
+                const shrink = sys !== null && r.counted !== '' ? sys - Number(r.counted) : null
+                const matches = r.search && !r.itemId ? items.filter(it => `${it.name} ${it.sku}`.toLowerCase().includes(r.search.toLowerCase())).slice(0, 8) : []
+                return (
+                  <tr key={i} className="border-t align-top" style={{ borderColor: 'var(--light-gray)' }}>
+                    <td className="px-3 py-2 relative" style={{ minWidth: 240 }}>
+                      <input value={r.search} placeholder="Type item name or SKU…"
+                        onChange={e => setRow(i, { search: e.target.value, itemId: '', open: true })}
+                        onFocus={() => setRow(i, { open: true })}
+                        className="w-full px-2 py-1.5 rounded-lg border text-sm" style={{ borderColor: r.itemId ? 'var(--teal)' : 'var(--light-gray)' }} />
+                      {r.open && matches.length > 0 && (
+                        <div className="absolute z-10 mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-auto w-full" style={{ borderColor: 'var(--light-gray)' }}>
+                          {matches.map(m => (
+                            <button key={m.id} type="button" onClick={() => setRow(i, { itemId: m.id, search: `${m.name} (${m.sku})`, open: false })}
+                              className="block w-full text-left px-2 py-1.5 text-xs hover:bg-gray-50" style={{ color: 'var(--charcoal)' }}>
+                              <strong>{m.name}</strong> <span style={{ color: 'var(--mid-gray)' }}>{m.sku} · stock {m.quantity}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right" style={{ color: 'var(--mid-gray)' }}>{sys ?? '—'}</td>
+                    <td className="px-3 py-2 text-right">
+                      <input type="number" value={r.counted} onChange={e => setRow(i, { counted: e.target.value })}
+                        className="w-20 px-2 py-1.5 rounded-lg border text-sm text-right" style={{ borderColor: 'var(--light-gray)' }} />
+                    </td>
+                    <td className="px-3 py-2 text-right font-semibold" style={{ color: shrink === null ? 'var(--mid-gray)' : shrink > 0 ? '#dc2626' : shrink < 0 ? '#166534' : 'var(--charcoal)' }}>
+                      {shrink === null ? '—' : (shrink > 0 ? `-${shrink}` : shrink < 0 ? `+${-shrink}` : '0')}
+                    </td>
+                    <td className="px-2 py-2 text-right"><button onClick={() => removeRow(i)} className="p-1 rounded hover:bg-red-50"><X size={13} style={{ color: '#dc2626' }} /></button></td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+        <button onClick={addRow} className="text-sm font-medium mb-4" style={{ color: 'var(--teal)' }}>+ Add Row</button>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Name of Auditor</label>
+            <input value={auditor} onChange={e => setAuditor(e.target.value)} placeholder="Full name" className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>Auditor Signature</label>
+            <div className="rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
+              <canvas ref={canvasRef} width={340} height={90} className="w-full touch-none rounded-t-xl"
+                onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end}
+                onTouchStart={start} onTouchMove={move} onTouchEnd={end} style={{ background: '#fff', cursor: 'crosshair' }} />
+              <div className="flex items-center justify-between px-2 py-1 border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                <label className="text-[11px] cursor-pointer" style={{ color: 'var(--teal)' }}>
+                  Upload e-sig<input type="file" accept="image/*" className="hidden" onChange={uploadSig} />
+                </label>
+                <button type="button" onClick={clearSig} className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Clear</button>
+              </div>
+            </div>
+            <p className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>Sign above or upload an image.</p>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 mt-5">
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+          <button onClick={submit} disabled={busy} className="px-5 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#dc2626' }}>
+            {busy ? 'Recording…' : 'Record Shrinkage'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

@@ -399,6 +399,9 @@ model InventoryAdjustment {
   localCost         Decimal?       // Cost per unit in PHP (after exchange)
   freightAllocation Decimal?       // Pro-rated freight cost allocated to this item
   totalLandedCost   Decimal?       // localCost * qty + freightAllocation
+  countedQuantity   Int?           // physical-count shrinkage: the counted amount
+  auditorName       String?        // physical-count shrinkage: name of auditor
+  auditorSignature  String?        // physical-count shrinkage: auditor e-signature (URL/data-URL)
   adjustedById      String
   adjustedBy        User           @relation("AdjustmentBy", fields: [adjustedById], references: [id], onDelete: Restrict)
   createdAt         DateTime       @default(now())
