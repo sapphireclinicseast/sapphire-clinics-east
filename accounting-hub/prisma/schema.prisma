@@ -1785,6 +1785,52 @@ model CreditCardSOA {
   @@index([branch])
 }
 
+// Cash Advance (event float): cash released to a staff up front, liquidated later,
+// unspent balance returned. Release/return/reimburse post bank JEs (bank rec);
+// liquidation lines post expense JEs (income statement). See src/app/api/cash-advances.
+model CashAdvance {
+  id              String   @id @default(cuid())
+  branch          String
+  refNumber       String   // e.g. AHEA-CA26-0001
+  refSeq          Int
+  accountableName String   // staff accountable for the float (HR Hub)
+  purpose         String
+  dateReleased    DateTime
+  amount          Decimal  // amount released
+  sourceAccountId String?  // bank account the float was released from
+  status          String   @default("OPEN") // OPEN | CLOSED
+  createdById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  lines           CashAdvanceLine[]
+
+  @@unique([branch, refNumber])
+  @@index([branch])
+}
+
+model CashAdvanceLine {
+  id             String      @id @default(cuid())
+  advanceId      String
+  advance        CashAdvance @relation(fields: [advanceId], references: [id], onDelete: Cascade)
+  kind           String      // LIQUIDATION | RETURN | REIMBURSE
+  date           DateTime
+  accountTitle   String?     // LIQUIDATION: the expense account
+  description    String?
+  vatable        String?     // VAT | NV
+  amount         Decimal     // gross
+  siNumber       String?     // SI / OR number
+  registeredName String?     // supplier
+  proofUrl       String?
+  proofUrls      Json?
+  bankAccountId  String?     // RETURN / REIMBURSE bank account
+  journalEntryId String?
+  createdById    String?
+  createdAt      DateTime    @default(now())
+
+  @@index([advanceId])
+}
+
 model ExpenseSupplier {
   id                String   @id @default(cuid())
   branch            String

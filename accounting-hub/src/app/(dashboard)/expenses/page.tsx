@@ -1895,6 +1895,12 @@ interface ErRow {
   netOfVat: number; gross: number; checkInfo: string; validity: string; filingStatus: string
 }
 
+// Where each Expense Report row originated.
+const SOURCE_LABEL: Record<string, string> = {
+  ONE_TIME: 'One-time expense', RECURRING: 'Recurring expense', PETTY_CASH: 'Petty Cash',
+  SALARY_PAYMENT: 'Salaries', BENEFIT_PAYMENT: 'Benefits', CASH_ADVANCE: 'Cash Advance',
+}
+
 function ExpenseReportTab({ branch, canWrite, canEdit }: { branch: string; canWrite: boolean; canEdit: boolean }) {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
@@ -1939,12 +1945,14 @@ function ExpenseReportTab({ branch, canWrite, canEdit }: { branch: string; canWr
   const [erFilters, setErFilters] = useState<Record<string, string>>({})
   const erToggleSort = (k: string) => setErSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
   const erCols = [
+    { key: 'source', label: 'Source' },
     { key: 'payee', label: 'Payee' }, { key: 'paymentAccount', label: 'Payment Account' }, { key: 'paymentDate', label: 'Payment Date' },
     { key: 'paymentMethod', label: 'Payment Method' }, { key: 'pcvNumber', label: 'Reference Number' }, { key: 'accountTitle', label: 'Account Title' },
     { key: 'description', label: 'Description' }, { key: 'netOfVat', label: 'Amount Net of VAT' }, { key: 'checkInfo', label: 'Check Number / Online Transfer Ref. No.' }, { key: 'status', label: 'Status' },
   ]
   const erGet = (r: ErRow, k: string): string | number =>
     k === 'netOfVat' ? r.netOfVat : k === 'status' ? (r.filingStatus === 'FILED' ? 'Filed' : 'For Filing')
+      : k === 'source' ? (SOURCE_LABEL[r.source] || r.source)
       : (r[k as keyof ErRow] as string | number) ?? ''
   const shown = applySortFilter(base, erGet, erSort.key, erSort.dir, erFilters)
   const shownTotal = shown.reduce((s, r) => s + r.netOfVat, 0)
@@ -1954,8 +1962,8 @@ function ExpenseReportTab({ branch, canWrite, canEdit }: { branch: string; canWr
     try { await fetch('/api/expenses/filing-status', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, filingStatus }) }) } catch { /* ignore */ }
   }
 
-  const COLS_ER = ['Payee', 'Payment Account', 'Payment Date', 'Payment Method', 'Reference Number', 'Account Title', 'Description', 'Net of VAT', 'Check Number / Online Transfer Ref. No.', 'Status']
-  const rowCells = (r: ErRow) => [r.payee, r.paymentAccount, r.paymentDate, r.paymentMethod, r.pcvNumber, r.accountTitle, r.description, r.netOfVat.toFixed(2), r.checkInfo, r.filingStatus === 'FILED' ? 'Filed' : 'For Filing']
+  const COLS_ER = ['Source', 'Payee', 'Payment Account', 'Payment Date', 'Payment Method', 'Reference Number', 'Account Title', 'Description', 'Net of VAT', 'Check Number / Online Transfer Ref. No.', 'Status']
+  const rowCells = (r: ErRow) => [SOURCE_LABEL[r.source] || r.source, r.payee, r.paymentAccount, r.paymentDate, r.paymentMethod, r.pcvNumber, r.accountTitle, r.description, r.netOfVat.toFixed(2), r.checkInfo, r.filingStatus === 'FILED' ? 'Filed' : 'For Filing']
   const exportExcel = async () => {
     const XLSX = await import('xlsx')
     const total = view === 'Valid' ? totalValid : totalInvalid
@@ -2046,7 +2054,8 @@ function ExpenseReportTab({ branch, canWrite, canEdit }: { branch: string; canWr
                 const pc = r.source === 'PETTY_CASH'
                 const payroll = r.source === 'SALARY_PAYMENT' || r.source === 'BENEFIT_PAYMENT'
                 return (
-                  <tr key={r.id} style={{ background: pc ? '#dbeafe' : payroll ? '#f3e8ff' : '#fff' }}>
+                  <tr key={r.id} style={{ background: pc ? '#dbeafe' : payroll ? '#f3e8ff' : r.source === 'CASH_ADVANCE' ? '#fef9c3' : '#fff' }}>
+                    <td className="border-r border-b px-3 py-2 whitespace-nowrap text-[11px] font-medium" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>{SOURCE_LABEL[r.source] || r.source}</td>
                     <td className="border-r border-b px-3 py-2 whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', color: pc ? '#1e40af' : 'var(--charcoal)', fontWeight: pc ? 600 : 400 }}>{r.payee}</td>
                     <td className="border-r border-b px-3 py-2" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>{r.paymentAccount}</td>
                     <td className="border-r border-b px-3 py-2 whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>{r.paymentDate}</td>
@@ -2074,11 +2083,11 @@ function ExpenseReportTab({ branch, canWrite, canEdit }: { branch: string; canWr
                 )
               })}
               {shown.length === 0 && (
-                <tr><td colSpan={canEdit ? 11 : 10} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>{base.length === 0 ? `No ${view.toLowerCase()} paid expenses${(from || to) ? ' in this date range' : ''}.` : 'No rows match the current filters.'}</td></tr>
+                <tr><td colSpan={canEdit ? 12 : 11} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>{base.length === 0 ? `No ${view.toLowerCase()} paid expenses${(from || to) ? ' in this date range' : ''}.` : 'No rows match the current filters.'}</td></tr>
               )}
               {shown.length > 0 && (
                 <tr style={{ background: 'var(--off-white)' }}>
-                  <td colSpan={7} className="border-r border-b px-3 py-2 text-right font-bold" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>TOTAL {view}</td>
+                  <td colSpan={8} className="border-r border-b px-3 py-2 text-right font-bold" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>TOTAL {view}</td>
                   <td className="border-r border-b px-3 py-2 text-right font-bold whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>₱{peso(shownTotal)}</td>
                   <td className="border-r border-b" style={{ borderColor: 'var(--light-gray)' }} colSpan={canEdit ? 3 : 2}></td>
                 </tr>

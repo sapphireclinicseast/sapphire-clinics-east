@@ -64,7 +64,24 @@ export async function GET(req: Request) {
     if (pid) rfpByPayment.set(pid, { refNumber: r.refNumber, payableTo: r.payableTo })
   }
 
+  // Cash-advance liquidation lines (the actual expenses of an event float).
+  const caLines = await prisma.cashAdvanceLine.findMany({
+    where: { kind: 'LIQUIDATION', advance: { is: { branch } }, ...(from || to ? { date: dateFilter } : {}) },
+    select: { id: true, date: true, accountTitle: true, description: true, vatable: true, amount: true, siNumber: true, advance: { select: { refNumber: true, accountableName: true } } },
+    orderBy: { date: 'asc' },
+  })
+
   const rows = [
+    ...caLines.map(l => {
+      const gross = Number(l.amount)
+      return {
+        id: l.id, source: 'CASH_ADVANCE', reimbursementId: null, refNumber: l.advance?.refNumber || '',
+        payee: l.advance?.accountableName || 'Cash Advance', paymentAccount: '', paymentDate: l.date.toISOString().slice(0, 10),
+        paymentMethod: 'Cash Advance', pcvNumber: l.advance?.refNumber || '', accountTitle: l.accountTitle || '',
+        description: l.description || '', netOfVat: netOf(l.vatable, gross), gross,
+        checkInfo: l.siNumber ? `SI/OR ${l.siNumber}` : '', validity: 'Valid', filingStatus: 'FOR_FILING',
+      }
+    }),
     ...salPayments.map(p => {
       const amt = Number(p.totalAmount); const rfp = rfpByPayment.get(p.id)
       return {
