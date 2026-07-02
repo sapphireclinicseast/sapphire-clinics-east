@@ -48,10 +48,13 @@ export async function GET(req: Request) {
   })
 
   // Paid payroll (salaries + benefits) — not PettyCashEntry, so queried separately.
+  // SalaryPayment/BenefitPayment store the short payroll branch code (SBEA/SBGH/VERDANA).
+  const PC_TO_PAYROLL: Record<string, string> = { SANDBOX_EAST: 'SBEA', SANDBOX_GREENHILLS: 'SBGH', VERDANA_STORE: 'VERDANA' }
+  const payrollBranch = PC_TO_PAYROLL[branch] || branch
   const payDateWhere = (from || to) ? { paymentDate: dateFilter } : {}
   const [salPayments, benPayments, payrollRfps] = await Promise.all([
-    prisma.salaryPayment.findMany({ where: { branch, status: 'COMPLETED', ...payDateWhere }, select: { id: true, paymentDate: true, totalAmount: true, cutoffPeriod: true, paymentType: true, fromAccount: { select: { accountTitle: true } } } }),
-    prisma.benefitPayment.findMany({ where: { branch, status: 'COMPLETED', ...payDateWhere }, select: { id: true, paymentDate: true, totalAmount: true, cutoffPeriod: true, fromAccount: { select: { accountTitle: true } } } }),
+    prisma.salaryPayment.findMany({ where: { branch: payrollBranch, status: 'COMPLETED', ...payDateWhere }, select: { id: true, paymentDate: true, totalAmount: true, cutoffPeriod: true, paymentType: true, fromAccount: { select: { accountTitle: true } } } }),
+    prisma.benefitPayment.findMany({ where: { branch: payrollBranch, status: 'COMPLETED', ...payDateWhere }, select: { id: true, paymentDate: true, totalAmount: true, cutoffPeriod: true, fromAccount: { select: { accountTitle: true } } } }),
     prisma.reimbursementReport.findMany({ where: { branch, module: { in: ['PAYROLL_SALARY', 'PAYROLL_BENEFIT'] } }, select: { refNumber: true, payableTo: true, meta: true } }),
   ])
   // Map a payment id → its RFP (refNumber + payableTo) via meta.paymentId.
