@@ -52,6 +52,7 @@ model User {
   passwordHash     String
   role             Role      @default(VIEWER)
   branch           Branch?
+  disabled         Boolean   @default(false)  // soft-deleted/deactivated — blocked from login
   avatar           String?
   resetToken       String?
   resetTokenExpiry DateTime?

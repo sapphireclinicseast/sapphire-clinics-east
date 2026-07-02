@@ -28,6 +28,7 @@ export async function GET(req: Request) {
         email: true,
         role: true,
         branch: true,
+        disabled: true,
         lastLoginAt: true,
         createdAt: true,
       },
@@ -104,8 +105,9 @@ export async function POST(req: Request) {
     })
 
     return NextResponse.json(user, { status: 201 })
-  } catch {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  } catch (e) {
+    console.error('[users]', e)
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Internal server error' }, { status: 500 })
   }
 }
 
@@ -117,7 +119,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, name, email, password, role, branch } = await req.json()
+    const { id, name, email, password, role, branch, disabled } = await req.json()
 
     if (!id) {
       return NextResponse.json({ error: 'User ID is required' }, { status: 400 })
@@ -136,6 +138,7 @@ export async function PUT(req: Request) {
     if (email) updateData.email = email
     if (role) updateData.role = role
     if (branch !== undefined) updateData.branch = branch || null
+    if (typeof disabled === 'boolean') updateData.disabled = disabled
     if (password) {
       if (password.length < 8) {
         return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 })
@@ -167,8 +170,9 @@ export async function PUT(req: Request) {
     })
 
     return NextResponse.json(user)
-  } catch {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  } catch (e) {
+    console.error('[users]', e)
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Internal server error' }, { status: 500 })
   }
 }
 
@@ -191,6 +195,11 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: 'Cannot delete your own account' }, { status: 400 })
     }
 
+    // Soft-delete: a user who created records (orders, journals, payroll, …) can't
+    // be hard-deleted without breaking FK integrity + the audit trail. Deactivate
+    // instead — blocked from login, hidden/badged in the list, reactivatable.
+    await prisma.user.update({ where: { id }, data: { disabled: true } })
+
     await prisma.auditLog.create({
       data: {
         userId: session.user.id,
@@ -200,10 +209,9 @@ export async function DELETE(req: Request) {
       },
     })
 
-    await prisma.user.delete({ where: { id } })
-
-    return NextResponse.json({ message: 'User deleted' })
-  } catch {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ message: 'User deactivated' })
+  } catch (e) {
+    console.error('[users] DELETE', e)
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Internal server error' }, { status: 500 })
   }
 }

@@ -20,6 +20,7 @@ interface User {
   email: string
   role: string
   branch: string | null
+  disabled?: boolean
   lastLoginAt: string | null
   createdAt: string
 }
@@ -188,6 +189,14 @@ export default function UsersPage() {
     }
   }
 
+  async function handleReactivate(id: string) {
+    try {
+      const res = await fetch('/api/users', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, disabled: false }) })
+      if (!res.ok) { const data = await res.json(); setError(data.error || 'Failed to reactivate'); return }
+      fetchUsers()
+    } catch { setError('Network error') }
+  }
+
   const filteredUsers = users.filter(
     (u) =>
       u.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -277,6 +286,7 @@ export default function UsersPage() {
                   >
                     <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>
                       {user.name}
+                      {user.disabled && <span className="ml-2 px-2 py-0.5 rounded-md text-[10px] font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }}>Deactivated</span>}
                     </td>
                     <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>
                       {user.email}
@@ -309,13 +319,24 @@ export default function UsersPage() {
                           <Pencil size={15} style={{ color: 'var(--teal)' }} />
                         </button>
                         {user.id !== session?.user?.id && (
-                          <button
-                            onClick={() => setDeleteConfirm(user.id)}
-                            className="p-2 rounded-lg hover:bg-red-50 transition-colors"
-                            title="Delete"
-                          >
-                            <Trash2 size={15} className="text-red-500" />
-                          </button>
+                          user.disabled ? (
+                            <button
+                              onClick={() => handleReactivate(user.id)}
+                              className="px-2 py-1 rounded-lg hover:bg-green-50 transition-colors text-xs font-semibold"
+                              style={{ color: '#166534' }}
+                              title="Reactivate"
+                            >
+                              Reactivate
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => setDeleteConfirm(user.id)}
+                              className="p-2 rounded-lg hover:bg-red-50 transition-colors"
+                              title="Deactivate"
+                            >
+                              <Trash2 size={15} className="text-red-500" />
+                            </button>
+                          )
                         )}
                       </div>
                     </td>
@@ -336,10 +357,10 @@ export default function UsersPage() {
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl">
             <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--charcoal)' }}>
-              Delete User
+              Deactivate User
             </h3>
             <p className="text-sm mb-6" style={{ color: 'var(--mid-gray)' }}>
-              Are you sure you want to delete this user? This action cannot be undone.
+              This deactivates the account — the user can no longer log in, but their records and audit trail are preserved. You can reactivate them later.
             </p>
             <div className="flex gap-3 justify-end">
               <button
@@ -353,7 +374,7 @@ export default function UsersPage() {
                 onClick={() => handleDelete(deleteConfirm)}
                 className="px-4 py-2 rounded-lg text-sm text-white bg-red-500 hover:bg-red-600"
               >
-                Delete
+                Deactivate
               </button>
             </div>
           </div>

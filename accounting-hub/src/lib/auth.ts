@@ -48,6 +48,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
           console.log('[auth] User found:', !!user)
           if (!user) return null
+          if (user.disabled) { console.log('[auth] User disabled — login blocked'); return null }
 
           const valid = await bcrypt.compare(
             credentials.password as string,
