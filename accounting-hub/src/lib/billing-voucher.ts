@@ -1,7 +1,7 @@
 // Billing Voucher PDF (A4 portrait) — mirrors the SCEI Expense Voucher layout:
 // branch-specific company header + 3 logos (SCEI · Aura · Verdana), BILL TO,
-// ref/date, line table (Gross · VAT · Net of VAT · Net of EWT), grey Memo, and
-// BALANCE DUE. Used by Expenses + Taxes RFPs.
+// ref/date, line table (Gross · VAT · Net of VAT · EWT · Net of EWT), grey Memo,
+// and BALANCE DUE. Used by Expenses + Taxes RFPs.
 import type { jsPDF as JsPDF } from 'jspdf'
 
 export interface BVLine { account: string; description: string; gross: number; vat: number; netVat: number; netEwt: number }
@@ -88,15 +88,21 @@ export async function buildBillingVoucher(opts: BillingVoucherOpts): Promise<JsP
   doc.text(opts.date, 162, 71)
 
   const tot = (k: keyof BVLine) => opts.lines.reduce((s, l) => s + (l[k] as number), 0)
+  const ewtOf = (l: BVLine) => Math.max(0, l.netVat - l.netEwt)   // EWT withheld = Net of VAT − Net of EWT (0 if none)
+  const totEwt = opts.lines.reduce((s, l) => s + ewtOf(l), 0)
+  const NUMERIC_COLS = [2, 3, 4, 5, 6]
   autoTable(doc, {
     startY: Math.max(by + 4, 84),
-    head: [['Account/Item', 'Description', 'Gross Amount', 'VAT', 'Net of VAT', 'Net of EWT']],
-    body: opts.lines.map(l => [l.account, l.description, peso(l.gross), peso(l.vat), peso(l.netVat), peso(l.netEwt)]),
-    foot: [['', 'TOTAL', peso(tot('gross')), peso(tot('vat')), peso(tot('netVat')), peso(tot('netEwt'))]],
-    styles: { fontSize: 8, cellPadding: 2, textColor: [30, 30, 30] },
+    head: [['Account/Item', 'Description', 'Gross Amount', 'VAT', 'Net of VAT', 'EWT', 'Net of EWT']],
+    body: opts.lines.map(l => [l.account, l.description, peso(l.gross), peso(l.vat), peso(l.netVat), peso(ewtOf(l)), peso(l.netEwt)]),
+    foot: [['', 'TOTAL', peso(tot('gross')), peso(tot('vat')), peso(tot('netVat')), peso(totEwt), peso(tot('netEwt'))]],
+    styles: { fontSize: 7.5, cellPadding: 1.5, textColor: [30, 30, 30] },
     headStyles: { fillColor: [252, 228, 214], textColor: [120, 60, 20], fontStyle: 'bold' },
     footStyles: { fillColor: [248, 240, 234], textColor: [30, 30, 30], fontStyle: 'bold' },
-    columnStyles: { 0: { cellWidth: 38 }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' } },
+    columnStyles: { 0: { cellWidth: 30 }, 2: { cellWidth: 22 }, 3: { cellWidth: 15 }, 4: { cellWidth: 22 }, 5: { cellWidth: 18 }, 6: { cellWidth: 22 } },
+    // Right-align the numeric columns in EVERY section so the headers line up
+    // with the amounts below them (headers were previously centered).
+    didParseCell: (data) => { if (NUMERIC_COLS.includes(data.column.index)) data.cell.styles.halign = 'right' },
     margin: { left, right: 14 },
   })
 
