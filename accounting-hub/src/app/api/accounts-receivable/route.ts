@@ -168,6 +168,7 @@ export async function GET(req: Request) {
         discount: true,
         proofUrl: true,
         notes: true,
+        salesInvoiceNumber: true,
         branch: true,
         cashAccountId: true,
         cashAccount: { select: { accountNumber: true, accountTitle: true } },

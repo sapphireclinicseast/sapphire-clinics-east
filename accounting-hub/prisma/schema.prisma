@@ -805,6 +805,7 @@ model ARPayment {
   cashAccount       Account?      @relation("ARPaymentCashAccount", fields: [cashAccountId], references: [id], onDelete: SetNull)
   proofUrl          String?       // URL or file path to payment proof
   notes             String?
+  salesInvoiceNumber String?      // SI issued for this HMO/GL collection → Sales Summary (With SI)
   branch            String?
   createdById       String
   createdBy         User          @relation("ARPaymentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)

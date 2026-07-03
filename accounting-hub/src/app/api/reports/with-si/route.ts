@@ -27,19 +27,42 @@ export async function GET(req: Request) {
       where, orderBy: { transactionDate: 'asc' },
       select: { id: true, orderNumber: true, orderType: true, transactionDate: true, patientName: true, netAmount: true, salesInvoiceNumber: true },
     })
-    const rows = orders
-      .map(o => {
-        const n = siInt(o.salesInvoiceNumber)
-        const amt = Number(o.netAmount)
-        const isProduct = o.orderType === 'PRODUCT'
-        return {
-          id: o.id, orderNumber: o.orderNumber, siNumber: o.salesInvoiceNumber || '', siInt: n,
-          date: new Date(o.transactionDate).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }),
-          patientName: o.patientName || '—',
-          vat: isProduct ? amt : 0, nonVat: isProduct ? 0 : amt, amount: amt,
-          orderType: o.orderType,
-        }
-      })
+    const orderRows = orders.map(o => {
+      const n = siInt(o.salesInvoiceNumber)
+      const amt = Number(o.netAmount)
+      const isProduct = o.orderType === 'PRODUCT'
+      return {
+        id: o.id, orderNumber: o.orderNumber, siNumber: o.salesInvoiceNumber || '', siInt: n,
+        date: new Date(o.transactionDate).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }),
+        patientName: o.patientName || '—',
+        vat: isProduct ? amt : 0, nonVat: isProduct ? 0 : amt, amount: amt,
+        orderType: o.orderType,
+      }
+    })
+
+    // HMO/GL collections that were issued a Sales Invoice on payment (Accounts
+    // Receivable → Record Payment). Same SI series, so they join the sequence for
+    // VAT/Non-VAT totals and gap/duplicate detection. Services → Non-VAT.
+    const arPayments = await prisma.aRPayment.findMany({
+      where: {
+        branch, salesInvoiceNumber: { not: null },
+        ...(dateFrom || dateTo ? { paymentDate: { ...(dateFrom ? { gte: new Date(`${dateFrom}T00:00:00+08:00`) } : {}), ...(dateTo ? { lte: new Date(`${dateTo}T23:59:59.999+08:00`) } : {}) } } : {}),
+      },
+      orderBy: { paymentDate: 'asc' },
+      select: { id: true, salesInvoiceNumber: true, paymentDate: true, amount: true, discount: true, wallet: { select: { patientName: true, walletType: true } } },
+    })
+    const arRows = arPayments.map(p => {
+      const amt = Number(p.amount) + Number(p.discount)
+      return {
+        id: p.id, orderNumber: `AR-${p.wallet?.walletType || ''}`, siNumber: p.salesInvoiceNumber || '', siInt: siInt(p.salesInvoiceNumber),
+        date: new Date(p.paymentDate).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }),
+        patientName: `${p.wallet?.patientName || '—'} (${p.wallet?.walletType || 'AR'})`,
+        vat: 0, nonVat: amt, amount: amt,
+        orderType: `AR_${p.wallet?.walletType || ''}`,
+      }
+    })
+
+    const rows = [...orderRows, ...arRows]
       .filter(r => r.siInt !== null)
       .sort((a, b) => (a.siInt! - b.siInt!))
 

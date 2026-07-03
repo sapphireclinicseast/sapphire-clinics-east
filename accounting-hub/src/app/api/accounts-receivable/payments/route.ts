@@ -12,7 +12,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { walletId, walletIds, paymentDate, amount, discount, discountAccountId, cashAccountId, orderIds, proofUrl, notes, branch } = await req.json()
+    const { walletId, walletIds, paymentDate, amount, discount, discountAccountId, cashAccountId, orderIds, proofUrl, notes, branch, salesInvoiceNumber } = await req.json()
 
     // Support multi-wallet GL payments: walletIds is an array of wallet IDs
     const effectiveWalletIds: string[] = walletIds?.length ? walletIds : walletId ? [walletId] : []
@@ -60,6 +60,7 @@ export async function POST(req: Request) {
           notes: effectiveWalletIds.length > 1
             ? `${notes?.trim() || ''} [Bulk payment across ${effectiveWalletIds.length} GL wallets]`.trim()
             : (notes?.trim() || null),
+          salesInvoiceNumber: salesInvoiceNumber?.trim() || null,
           branch: branch || null,
           createdById: session.user.id,
           items: walletOrderIds.length ? {
@@ -143,7 +144,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, walletId, paymentDate, amount, discount, discountAccountId, cashAccountId, orderIds, proofUrl, notes, branch } = await req.json()
+    const { id, walletId, paymentDate, amount, discount, discountAccountId, cashAccountId, orderIds, proofUrl, notes, branch, salesInvoiceNumber } = await req.json()
 
     if (!id) return NextResponse.json({ error: 'Payment ID is required' }, { status: 400 })
     if (!walletId || !paymentDate || amount == null) {
@@ -178,6 +179,7 @@ export async function PUT(req: Request) {
         cashAccountId: cashAccountId || null,
         proofUrl: proofUrl || null,
         notes: notes?.trim() || null,
+        salesInvoiceNumber: salesInvoiceNumber?.trim() || null,
         branch: branch || null,
         items: orderIds?.length ? {
           create: orderIds.map((orderId: string) => ({ orderId })),

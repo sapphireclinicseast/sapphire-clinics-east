@@ -251,6 +251,9 @@ END$$;
 -- Cutoff 1 resignation toggle: compute monthly withholding tax on cutoff 1 instead of waiting for cutoff 2
 ALTER TABLE "EmployeePayslip" ADD COLUMN IF NOT EXISTS "computeTaxNow" BOOLEAN NOT NULL DEFAULT false;
 
+-- AR payment: Sales Invoice number issued for an HMO/GL collection
+ALTER TABLE "ARPayment" ADD COLUMN IF NOT EXISTS "salesInvoiceNumber" TEXT;
+
 -- Cash Advances (event floats): release → liquidate → return → reimburse
 CREATE TABLE IF NOT EXISTS "CashAdvance" (
   "id" TEXT NOT NULL,

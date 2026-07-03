@@ -61,6 +61,7 @@ interface ARPaymentRecord {
   discount: number | string
   proofUrl?: string | null
   notes?: string | null
+  salesInvoiceNumber?: string | null
   branch?: string | null
   cashAccountId?: string | null
   cashAccount?: { accountNumber: string; accountTitle: string } | null
@@ -385,6 +386,7 @@ export default function AccountsReceivablePage() {
   const [payDiscountAccountId, setPayDiscountAccountId] = useState('')
   const [payDiscountSearch, setPayDiscountSearch] = useState('')
   const [payNotes, setPayNotes] = useState('')
+  const [paySalesInvoice, setPaySalesInvoice] = useState('')
   const [payProofUrls, setPayProofUrls] = useState<string[]>([])
   const [payProofUploading, setPayProofUploading] = useState(false)
   const [paySelectedOrders, setPaySelectedOrders] = useState<string[]>([])
@@ -532,6 +534,7 @@ export default function AccountsReceivablePage() {
     setPayCashAccountId('')
     setPayCashAccountSearch('')
     setPayNotes('')
+    setPaySalesInvoice('')
     setPayProofUrls([])
     setPaySelectedOrders([])
     setPayError('')
@@ -550,6 +553,7 @@ export default function AccountsReceivablePage() {
     setPayCashAccountId(p.cashAccountId || '')
     setPayCashAccountSearch(p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : '')
     setPayNotes(p.notes || '')
+    setPaySalesInvoice(p.salesInvoiceNumber || '')
     setPayProofUrls(parseProofUrls(p.proofUrl))
     setPaySelectedOrders(p.items.map(i => i.orderId))
     setPayError('')
@@ -581,6 +585,7 @@ export default function AccountsReceivablePage() {
           orderIds: paySelectedOrders,
           proofUrl: payProofUrls.length > 0 ? JSON.stringify(payProofUrls) : null,
           notes: payNotes || null,
+          salesInvoiceNumber: paySalesInvoice || null,
           branch: branch || null,
         }),
       })
@@ -1403,7 +1408,7 @@ export default function AccountsReceivablePage() {
             <table className="w-full text-xs">
               <thead>
                 <tr className="sticky top-0 z-10" style={{ background: 'var(--off-white)' }}>
-                  {['Date', 'Provider/Agency', 'Amount', 'Discount', 'Debit Account', 'Orders', 'Notes', 'Proof', 'Recorded By', ''].map(h => (
+                  {['Date', 'SI Number', 'Provider/Agency', 'Amount', 'Discount', 'Debit Account', 'Orders', 'Notes', 'Proof', 'Recorded By', ''].map(h => (
                     <th key={h} className="text-left px-3 py-2 font-semibold" style={{ color: 'var(--mid-gray)' }}>{h}</th>
                   ))}
                 </tr>
@@ -1415,6 +1420,7 @@ export default function AccountsReceivablePage() {
                   return (
                     <tr key={p.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                       <td className="px-3 py-2">{formatDate(p.paymentDate)}</td>
+                      <td className="px-3 py-2 font-mono" style={{ color: 'var(--charcoal)' }}>{p.salesInvoiceNumber || '—'}</td>
                       <td className="px-3 py-2">{wallet?.patientName || '—'}</td>
                       <td className="px-3 py-2 font-medium" style={{ color: '#166534' }}>{formatCurrency(toNum(p.amount))}</td>
                       <td className="px-3 py-2">{toNum(p.discount) > 0 ? formatCurrency(toNum(p.discount)) : '—'}</td>
@@ -1989,11 +1995,19 @@ export default function AccountsReceivablePage() {
                 </div>
               )}
 
-              {/* Payment Date */}
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Payment Date</label>
-                <input type="date" value={payDate} onChange={e => setPayDate(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+              {/* Payment Date + Sales Invoice Number */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Payment Date</label>
+                  <input type="date" value={payDate} onChange={e => setPayDate(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Sales Invoice Number</label>
+                  <input type="text" value={paySalesInvoice} onChange={e => setPaySalesInvoice(e.target.value)}
+                    placeholder="SI issued for this collection"
+                    className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                </div>
               </div>
 
               {/* Amount */}
