@@ -40,7 +40,7 @@ export async function GET(req: Request) {
   const strKeys = [...strMap.keys()]
   const labelFor = (s: string | null) => (s && strMap.has(s) ? strMap.get(s)!.label : s || '')
 
-  type Row = { id?: string; source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string }
+  type Row = { id?: string; source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string; proofUrls?: string[] }
   const rows: Row[] = []
 
   // 1. Petty Cash + Expenses
@@ -99,7 +99,7 @@ export async function GET(req: Request) {
   // 4. Manually-recorded cancelled checks
   const cancelled = await prisma.cancelledCheck.findMany({
     where: { accountId: { in: [...idSet] } },
-    select: { id: true, checkNumber: true, date: true, amount: true, reason: true, payee: true, accountId: true },
+    select: { id: true, checkNumber: true, date: true, amount: true, reason: true, payee: true, accountId: true, proofUrls: true },
   })
   for (const cc of cancelled) {
     rows.push({
@@ -111,6 +111,7 @@ export async function GET(req: Request) {
       reference: cc.reason || '',
       payee: cc.payee || '',
       bankAccount: acctById.get(cc.accountId) || '',
+      proofUrls: Array.isArray(cc.proofUrls) ? (cc.proofUrls as string[]) : [],
     })
   }
 
@@ -133,7 +134,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { accountId, checkNumber, date, reason, payee, amount } = await req.json()
+    const { accountId, checkNumber, date, reason, payee, amount, proofUrls } = await req.json()
     if (!accountId || !checkNumber?.trim() || !date) {
       return NextResponse.json({ error: 'Checking account, check number and date are required' }, { status: 400 })
     }
@@ -147,6 +148,7 @@ export async function POST(req: Request) {
         reason: reason?.trim() || null,
         payee: payee?.trim() || null,
         amount: Number(amount) || 0,
+        proofUrls: Array.isArray(proofUrls) && proofUrls.length ? proofUrls : undefined,
         createdById: session.user.id as string,
       },
     })

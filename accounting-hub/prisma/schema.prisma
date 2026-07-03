@@ -1918,6 +1918,7 @@ model CancelledCheck {
   reason      String?
   payee       String?
   amount      Decimal  @default(0)
+  proofUrls   Json?    // scanned image(s) of the cancelled check
   createdById String?
   createdAt   DateTime @default(now())
 

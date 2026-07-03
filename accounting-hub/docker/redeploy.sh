@@ -254,6 +254,9 @@ ALTER TABLE "EmployeePayslip" ADD COLUMN IF NOT EXISTS "computeTaxNow" BOOLEAN N
 -- AR payment: Sales Invoice number issued for an HMO/GL collection
 ALTER TABLE "ARPayment" ADD COLUMN IF NOT EXISTS "salesInvoiceNumber" TEXT;
 
+-- Cancelled check: scanned image(s)
+ALTER TABLE "CancelledCheck" ADD COLUMN IF NOT EXISTS "proofUrls" JSONB;
+
 -- Cash Advances (event floats): release → liquidate → return → reimburse
 CREATE TABLE IF NOT EXISTS "CashAdvance" (
   "id" TEXT NOT NULL,

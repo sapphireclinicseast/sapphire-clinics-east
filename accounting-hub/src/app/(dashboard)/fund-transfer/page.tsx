@@ -125,7 +125,7 @@ export default function FundTransferPage() {
   )
 }
 
-interface CheckRow { id?: string; source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string }
+interface CheckRow { id?: string; source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string; proofUrls?: string[] }
 
 function CheckReleaseMonitoring({ canWrite }: { canWrite: boolean }) {
   const [accounts, setAccounts] = useState<{ id: string; label: string }[]>([])
@@ -201,7 +201,16 @@ function CheckReleaseMonitoring({ canWrite }: { canWrite: boolean }) {
                 <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{c.date || ''}</td>
                 <td className="px-3 py-2.5 text-xs whitespace-nowrap"><span className="px-2 py-0.5 rounded-full text-[11px] font-medium" style={{ background: (srcColor[c.source] || '#64748b') + '1a', color: srcColor[c.source] || '#64748b' }}>{c.source}</span></td>
                 <td className="px-3 py-2.5 text-xs font-mono" style={{ color: 'var(--charcoal)' }}>{c.reference}</td>
-                <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--charcoal)' }}>{c.payee}</td>
+                <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--charcoal)' }}>
+                  {c.payee}
+                  {c.proofUrls && c.proofUrls.length > 0 && (
+                    <span className="inline-flex flex-wrap gap-1.5 ml-1 align-middle">
+                      {c.proofUrls.map((u, k) => (
+                        <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5" style={{ color: 'var(--teal)' }} title="View scanned check"><Eye size={11} /> {c.proofUrls!.length > 1 ? k + 1 : ''}</a>
+                      ))}
+                    </span>
+                  )}
+                </td>
                 <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{c.bankAccount}</td>
                 <td className="px-3 py-2.5 text-right font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(c.amount)}</td>
                 {canWrite && <td className="px-3 py-2.5 text-right whitespace-nowrap">{isCancelled && c.id && <button onClick={() => removeCancelled(c.id!)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} style={{ color: '#dc2626' }} /></button>}</td>}
@@ -224,15 +233,28 @@ function CancelledCheckModal({ accounts, defaultAccountId, onClose, onSaved }: {
   const [payee, setPayee] = useState('')
   const [reason, setReason] = useState('')
   const [amount, setAmount] = useState('')
+  const [proofUrls, setProofUrls] = useState<string[]>([])
+  const [uploading, setUploading] = useState(false)
   const [busy, setBusy] = useState(false)
 
+  const uploadProofs = async (files: FileList | null) => {
+    if (!files || !files.length) return
+    setUploading(true)
+    try {
+      for (const file of Array.from(files)) {
+        const fd = new FormData(); fd.append('file', file)
+        const r = await fetch('/api/upload', { method: 'POST', body: fd })
+        if (r.ok) { const u = (await r.json()).url; if (u) setProofUrls(prev => [...prev, u]) }
+      }
+    } catch { /* ignore */ } finally { setUploading(false) }
+  }
   const save = async () => {
     if (!accountId || !checkNumber.trim() || !date) { alert('Checking account, check number and date are required.'); return }
     setBusy(true)
     try {
       const res = await fetch('/api/fund-transfers/checks', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId, checkNumber, date, payee, reason, amount: Number(amount) || 0 }),
+        body: JSON.stringify({ accountId, checkNumber, date, payee, reason, amount: Number(amount) || 0, proofUrls }),
       })
       if (!res.ok) { alert((await res.json()).error || 'Failed'); return }
       onSaved()
@@ -255,7 +277,20 @@ function CancelledCheckModal({ accounts, defaultAccountId, onClose, onSaved }: {
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Reason (optional)</label>
         <input value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. spoiled, wrong amount, reissued" className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Amount (optional)</label>
-        <input value={amount} onChange={e => setAmount(e.target.value)} inputMode="decimal" placeholder="0.00" className="w-full px-3 py-2 rounded-xl border text-sm font-mono mb-4" style={{ borderColor: 'var(--light-gray)' }} />
+        <input value={amount} onChange={e => setAmount(e.target.value)} inputMode="decimal" placeholder="0.00" className="w-full px-3 py-2 rounded-xl border text-sm font-mono mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Scanned check <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(you can add more than one)</span></label>
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          {proofUrls.map((u, i) => (
+            <span key={u} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+              <a href={u} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> Scan {i + 1}</a>
+              <button onClick={() => setProofUrls(p => p.filter(x => x !== u))}><X size={12} style={{ color: '#dc2626' }} /></button>
+            </span>
+          ))}
+          <label className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs border cursor-pointer" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+            {uploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />} Add scan
+            <input type="file" multiple className="hidden" accept="image/*,.pdf" onChange={e => { uploadProofs(e.target.files); e.target.value = '' }} />
+          </label>
+        </div>
         <button onClick={save} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#dc2626' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : 'Record cancelled check'}</button>
       </div>
     </div>
