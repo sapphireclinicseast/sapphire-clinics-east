@@ -538,6 +538,18 @@ export default function AssetManagementPage() {
       return 0
     })
 
+  // Download the current (filtered/sorted) asset list — a print guide for naming.
+  const exportAssets = (fmt: 'xlsx' | 'pdf') => {
+    const headers = ['Control No.', 'Asset Name', 'Classification', 'Branch', 'Accountable', 'Departments', 'Condition']
+    const rows = displayedAssets.map((a) => [
+      a.controlNumber || '', a.name, classificationLabel(a.classification), branchLabel(a.branch),
+      a.accountableName || '', (a.departments as string[]).join(', '), a.isDefective ? 'Defective' : 'OK',
+    ])
+    const scope = branchFilter ? branchLabel(branchFilter) : 'All branches'
+    if (fmt === 'xlsx') downloadXlsx(`asset-list-${branchFilter || 'all'}`, [{ name: 'Assets', headers, rows }])
+    else downloadPdf({ title: 'Asset List — Naming Guide', subtitle: `${scope} · ${displayedAssets.length} asset(s)`, headers, rows, landscape: true })
+  }
+
   // ── Render ────────────────────────────────────────────────────
   return (
     <div className="p-6 max-w-screen-xl mx-auto space-y-6">
@@ -547,8 +559,22 @@ export default function AssetManagementPage() {
           <Building2 size={24} className="text-teal-600" />
           <h1 className="text-2xl font-semibold text-gray-900">Asset Management</h1>
         </div>
-        {canWrite && tab === 'assets' && (
+        {tab === 'assets' && (
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => exportAssets('xlsx')}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50"
+              title="Download the current list as Excel"
+            >
+              <FileDown size={16} /> Excel
+            </button>
+            <button
+              onClick={() => exportAssets('pdf')}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50"
+              title="Download the current list as PDF (print as naming guide)"
+            >
+              <Printer size={16} /> PDF
+            </button>
             {canManage && (
             <button
               onClick={openDepSettings}
@@ -558,6 +584,7 @@ export default function AssetManagementPage() {
               Depreciation Settings
             </button>
             )}
+            {canWrite && (
             <button
               onClick={openAdd}
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white"
@@ -566,6 +593,7 @@ export default function AssetManagementPage() {
               <Plus size={16} />
               Add Asset
             </button>
+            )}
           </div>
         )}
       </div>
