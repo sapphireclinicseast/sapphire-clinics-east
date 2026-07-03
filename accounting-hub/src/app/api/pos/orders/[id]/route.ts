@@ -88,6 +88,33 @@ export async function PUT(
       return NextResponse.json({ ok: true, refunded: true })
     }
 
+    // Record payment on a previously-Unpaid order. The session stays on its
+    // original transactionDate; the cash is stamped with paymentDate (collection
+    // day) so the POS Sales Summary reconciles the drawer on the day it's received.
+    if (body.action === 'recordPayment') {
+      if (existing.paymentStatus !== 'UNPAID') {
+        return NextResponse.json({ error: 'This order is already paid' }, { status: 400 })
+      }
+      const pays: { method: string; amount: number; walletId?: string; reference?: string; paymentModeId?: string }[] = body.payments || []
+      const total = pays.reduce((s, p) => s + Number(p.amount || 0), 0)
+      if (!(total > 0)) return NextResponse.json({ error: 'Enter the payment collected' }, { status: 400 })
+      const payDate = body.paymentDate ? new Date(`${body.paymentDate}T08:00:00+08:00`) : new Date()
+      await prisma.$transaction(async (tx) => {
+        await tx.orderPayment.createMany({
+          data: pays.map(p => ({ orderId: id, method: p.method as never, amount: Number(p.amount), walletId: p.walletId || null, reference: p.reference || null, paymentModeId: p.paymentModeId || null })),
+        })
+        await tx.order.update({
+          where: { id },
+          data: {
+            paymentStatus: 'PAID', paymentDate: payDate, status: 'COMPLETED',
+            ...(body.issuedOfficialInvoice ? { issuedOfficialInvoice: true, salesInvoiceNumber: body.salesInvoiceNumber?.trim() || null } : {}),
+          },
+        })
+      })
+      try { await postOrderJournal(prisma, id, session.user.id) } catch (e) { console.error('[GL] recordPayment posting threw:', e) }
+      return NextResponse.json({ ok: true, paid: true })
+    }
+
     // Handle status change actions (reopen / void / returnByBuyer)
     if (body.action === 'reopen' || body.action === 'void' || body.action === 'returnByBuyer') {
       const isReturn = body.action === 'returnByBuyer'

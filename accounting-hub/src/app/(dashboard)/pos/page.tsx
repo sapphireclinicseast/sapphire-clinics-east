@@ -8,7 +8,7 @@ import {
   RefreshCw, Ban, Star, Filter, Undo2, RotateCcw,
   Loader2, AlertCircle, ScanLine, UserPlus,
   Pencil, PlusCircle, ToggleLeft, ToggleRight, Eye, CheckCircle, Gift,
-  Globe, Truck, Phone, MapPin, Package, Clock, Upload,
+  Globe, Truck, Phone, MapPin, Package, Clock, Upload, DollarSign,
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { normalizeSI } from '@/lib/sales-invoice'
@@ -90,6 +90,8 @@ interface Order {
   notes?: string | null
   status: string
   returnedByBuyer?: boolean
+  paymentStatus?: string
+  paymentDate?: string | null
   items: { id: string; name: string; quantity: number; unitPrice: string | number; lineTotal: string | number; serviceId?: string; inventoryItemId?: string; service?: { department?: string; revenueType?: string } | null }[]
   payments: { id: string; method: string; amount: string | number; walletId?: string; reference?: string }[]
   arPaymentItems?: { paymentId: string }[]
@@ -1316,9 +1318,9 @@ function OrderFormModal({
   const effectiveRevenueType = isAdvancePayment || hasUnearnedItems ? 'UNEARNED' : 'EARNED'
 
   // Submit order
-  const handleSubmit = async () => {
+  const handleSubmit = async (asUnpaid = false) => {
     if (items.length === 0) { setError('Add at least one item'); return }
-    if (servicePaymentShort) { setError('Payments do not cover the net amount'); return }
+    if (!asUnpaid && servicePaymentShort) { setError('Payments do not cover the net amount'); return }
     if ((effectiveRevenueType === 'UNEARNED' || isAdvancePayment) && !patientName.trim()) {
       setError('Patient name is required for unearned revenue / advance payment orders')
       return
@@ -1436,6 +1438,7 @@ function OrderFormModal({
         salesInvoiceNumber: issuedOfficialInvoice ? normalizeSI(salesInvoiceNumber) : null,
         referenceNumber: referenceNumber.trim() || null,
         notes: orderNotes.trim() || null,
+        unpaid: asUnpaid,
       }
       const res = await fetch('/api/pos/orders', {
         method: 'POST',
@@ -2321,13 +2324,22 @@ function OrderFormModal({
 
           {/* Submit */}
           <button
-            onClick={handleSubmit}
+            onClick={() => handleSubmit(false)}
             disabled={submitting || items.length === 0 || servicePaymentShort}
             className="w-full py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2"
             style={{ background: 'var(--teal)' }}
           >
             {submitting && <Loader2 className="animate-spin" size={16} />}
             Complete Order
+          </button>
+          <button
+            onClick={() => handleSubmit(true)}
+            disabled={submitting || items.length === 0}
+            title="Record the session now with its correct date; collect payment later. It will show as Unpaid in Orders."
+            className="w-full mt-2 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2 border"
+            style={{ borderColor: '#f59e0b', color: '#b45309', background: '#fffbeb' }}
+          >
+            Save as Unpaid (collect later)
           </button>
         </div>
 
@@ -2379,6 +2391,7 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
   const [showVoided, setShowVoided] = useState(false)
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(false)
+  const [payUnpaidOrder, setPayUnpaidOrder] = useState<Order | null>(null)
   const [ordPage, setOrdPage] = useState(1)
   const [ordPageSize, setOrdPageSize] = useState(25)
   const [orderSearch, setOrderSearch] = useState('')
@@ -2822,12 +2835,18 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
                       <span className="px-2 py-1 rounded-full text-xs font-semibold" style={{ background: o.returnedByBuyer ? '#d1fae5' : badge.bg, color: o.returnedByBuyer ? '#065f46' : badge.color }}>
                         {o.returnedByBuyer ? 'RETURNED' : o.status}
                       </span>
+                      {o.paymentStatus === 'UNPAID' && <span className="ml-1 px-2 py-1 rounded-full text-xs font-semibold" style={{ background: '#fef3c7', color: '#b45309' }}>UNPAID</span>}
                     </td>
                     <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                       <div className="flex gap-1">
                         <button onClick={() => setViewOrder(o)} className="p-1.5 rounded-lg hover:bg-gray-100" title="View Details">
                           <Eye size={13} style={{ color: 'var(--mid-gray)' }} />
                         </button>
+                        {o.paymentStatus === 'UNPAID' && o.status !== 'VOIDED' && (
+                          <button onClick={() => setPayUnpaidOrder(o)} className="p-1.5 rounded-lg hover:bg-amber-50" title="Record Payment">
+                            <DollarSign size={13} className="text-amber-600" />
+                          </button>
+                        )}
                         {(o.status === 'COMPLETED' || o.status === 'REOPENED') && (
                           <button onClick={() => printThermalReceipt(o)} className="p-1.5 rounded-lg hover:bg-gray-100" title="Print Receipt">
                             <Printer size={13} style={{ color: 'var(--teal)' }} />
@@ -2877,6 +2896,11 @@ function OrdersPanel({ branch, canSelectBranch }: { branch: string; canSelectBra
             onPageChange={setOrdPage} onPageSizeChange={setOrdPageSize} />
         )}
       </div>
+
+      {/* Record payment on an Unpaid order */}
+      {payUnpaidOrder && (
+        <RecordUnpaidPaymentModal order={payUnpaidOrder} onClose={() => setPayUnpaidOrder(null)} onSaved={() => { setPayUnpaidOrder(null); fetchOrders() }} />
+      )}
 
       {/* View Order Detail Modal */}
       {viewOrder && (
@@ -7513,7 +7537,9 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
   const byDate = new Map<string, Map<string, number>>()
 
   for (const o of activeOrders) {
-    const day = new Date(String(o.transactionDate || o.createdAt)).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+    // Cash reconciles on the day it was collected: use paymentDate when a payment
+    // was recorded later than the session (Unpaid → paid), else the session date.
+    const day = new Date(String(o.paymentDate || o.transactionDate || o.createdAt)).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
     if (!byDate.has(day)) byDate.set(day, new Map())
     const methods = byDate.get(day)!
     for (const p of o.payments) {
@@ -8739,6 +8765,68 @@ function PaymentModeSettingsPanel() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// Collect payment on an Unpaid order — cash is stamped with the collection date
+// so it reconciles in the Sales Summary on the day received; session date is kept.
+function RecordUnpaidPaymentModal({ order, onClose, onSaved }: { order: Order; onClose: () => void; onSaved: () => void }) {
+  const net = toNum(order.netAmount)
+  const [payDate, setPayDate] = useState(today())
+  const [method, setMethod] = useState('CASH')
+  const [amount, setAmount] = useState(String(net))
+  const [issueSI, setIssueSI] = useState(!!order.issuedOfficialInvoice)
+  const [si, setSi] = useState(order.salesInvoiceNumber || '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const save = async () => {
+    if (!(toNum(amount) > 0)) { setErr('Enter the amount collected'); return }
+    setBusy(true); setErr('')
+    try {
+      const r = await fetch(`/api/pos/orders/${order.id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'recordPayment', paymentDate: payDate, payments: [{ method, amount: toNum(amount) }], issuedOfficialInvoice: issueSI, salesInvoiceNumber: issueSI ? si.trim() : null }),
+      })
+      if (!r.ok) { setErr((await r.json()).error || 'Failed'); return }
+      onSaved()
+    } catch { setErr('Network error') } finally { setBusy(false) }
+  }
+  return (
+    <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: 'var(--charcoal)' }}><DollarSign size={18} className="text-amber-600" /> Record Payment</h2>
+          <button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+        </div>
+        <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
+          Order #{order.orderNumber} · {order.patientName || '—'} · session {formatDate(order.transactionDate)}. The session date stays as recorded; the payment counts in the Sales Summary on the collection date below.
+        </p>
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Payment date</label>
+            <input type="date" value={payDate} onChange={e => setPayDate(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Amount</label>
+            <input value={amount} onChange={e => setAmount(e.target.value)} inputMode="decimal" className="w-full px-3 py-2 rounded-xl border text-sm font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+          </div>
+        </div>
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Payment method</label>
+        <select value={method} onChange={e => setMethod(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }}>
+          {PAYMENT_METHODS_SERVICE.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+        </select>
+        <label className="inline-flex items-center gap-2 text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
+          <input type="checkbox" checked={issueSI} onChange={e => setIssueSI(e.target.checked)} /> Issue Sales Invoice
+        </label>
+        {issueSI && <input value={si} onChange={e => setSi(e.target.value)} placeholder="SI number" className="w-full px-3 py-2 rounded-xl border text-sm font-mono mb-2" style={{ borderColor: 'var(--light-gray)' }} />}
+        {err && <p className="text-xs mb-2" style={{ color: '#dc2626' }}>{err}</p>}
+        <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>Net due: <strong style={{ color: 'var(--charcoal)' }}>{formatCurrency(net)}</strong></p>
+        <button onClick={save} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>
+          {busy && <Loader2 size={15} className="animate-spin" />} Record payment
+        </button>
+      </div>
     </div>
   )
 }

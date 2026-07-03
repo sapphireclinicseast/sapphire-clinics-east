@@ -159,6 +159,7 @@ export async function POST(req: Request) {
       salesInvoiceNumber,
       referenceNumber,
       platform,
+      unpaid,
     } = body
 
     if (!orderType || !branch || !items?.length) {
@@ -181,13 +182,18 @@ export async function POST(req: Request) {
 
     const netAmount = subtotal - Number(discountAmount) - totalRefund
 
-    // Payments required only when there's something to pay (e.g., 100% discount → net 0 is allowed with no payments)
-    if (netAmount > 0 && !payments?.length) {
+    // Unpaid: the session is recorded now (correct transactionDate) but no cash is
+    // collected yet — payment (and its collection date) come later via recordPayment.
+    const isUnpaid = !!unpaid
+    // Payments required only when there's something to pay (e.g., 100% discount → net 0
+    // is allowed with no payments) and the order isn't explicitly saved as Unpaid.
+    if (!isUnpaid && netAmount > 0 && !payments?.length) {
       return NextResponse.json(
         { error: 'payments are required when net amount is greater than 0' },
         { status: 400 }
       )
     }
+    const payLines = isUnpaid ? [] : (payments || [])
 
     const order = await prisma.order.create({
       data: {
@@ -210,6 +216,7 @@ export async function POST(req: Request) {
         issuedOfficialInvoice: issuedOfficialInvoice || false,
         salesInvoiceNumber: (issuedOfficialInvoice && salesInvoiceNumber) ? salesInvoiceNumber.trim() : null,
         referenceNumber: referenceNumber?.trim() || null,
+        paymentStatus: isUnpaid ? 'UNPAID' : 'PAID',
         createdById: session.user.id,
         items: {
           createMany: {
@@ -243,7 +250,7 @@ export async function POST(req: Request) {
         },
         payments: {
           createMany: {
-            data: payments.map((p: {
+            data: payLines.map((p: {
               method: string
               amount: number
               walletId?: string
@@ -370,12 +377,14 @@ export async function POST(req: Request) {
     // Tier 3 Step 3: Auto-post the order to the General Ledger.
     // Gated by ENABLE_GL_POSTING=true. Non-fatal — order succeeds even if the
     // JE can't be built (e.g. accounts not yet configured); we log and move on.
+    // Unpaid orders are not posted here — the JE is created when payment is
+    // recorded (recordPayment), so cash is recognised on its collection date.
     let postingResult: Awaited<ReturnType<typeof postOrderJournal>> | null = null
     try {
-      postingResult = await postOrderJournal(prisma, order.id, session.user.id)
-      if (postingResult.posted) {
+      if (!isUnpaid) postingResult = await postOrderJournal(prisma, order.id, session.user.id)
+      if (postingResult?.posted) {
         console.log(`[GL] Posted JE ${postingResult.journalEntryId} for order ${order.orderNumber}`)
-      } else if (process.env.ENABLE_GL_POSTING === 'true') {
+      } else if (postingResult && process.env.ENABLE_GL_POSTING === 'true') {
         console.warn(`[GL] Skipped posting for order ${order.orderNumber}: ${postingResult.reason}`)
       }
     } catch (postErr) {

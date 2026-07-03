@@ -260,6 +260,10 @@ ALTER TABLE "CancelledCheck" ADD COLUMN IF NOT EXISTS "proofUrls" JSONB;
 -- Sales-invoice flag: tag a missing SI number to an existing order
 ALTER TABLE "SalesInvoiceFlag" ADD COLUMN IF NOT EXISTS "orderId" TEXT;
 
+-- Unpaid orders: session recorded now, cash collected later on paymentDate
+ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "paymentStatus" TEXT NOT NULL DEFAULT 'PAID';
+ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "paymentDate" TIMESTAMP(3);
+
 -- QR phone-upload sessions
 CREATE TABLE IF NOT EXISTS "UploadSession" (
   "id" TEXT NOT NULL,
