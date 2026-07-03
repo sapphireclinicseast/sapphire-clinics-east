@@ -176,8 +176,11 @@ export default function AssetManagementPage() {
   useEffect(() => {
     if (!showModal) return
     const b = form.branch === 'SANDBOX_EAST' ? 'SBEA' : form.branch === 'SANDBOX_GREENHILLS' ? 'SBGH' : form.branch === 'VERDANA_STORE' ? 'VERDANA' : ''
-    fetch(`/api/pos/staff${b ? `?branch=${b}` : ''}`).then(r => r.ok ? r.json() : { staff: [] })
-      .then(d => setStaffNames([...new Set(((d.staff || []) as { name: string }[]).map(s => s.name).filter(Boolean))]))
+    fetch(`/api/pos/staff${b ? `?branch=${b}` : ''}`).then(r => r.ok ? r.json() : [])
+      .then((d: unknown) => {
+        const list = (Array.isArray(d) ? d : ((d as { staff?: unknown[] })?.staff ?? [])) as { name?: string }[]
+        setStaffNames([...new Set(list.map(s => s.name || '').filter(Boolean))])
+      })
       .catch(() => setStaffNames([]))
   }, [showModal, form.branch])
 

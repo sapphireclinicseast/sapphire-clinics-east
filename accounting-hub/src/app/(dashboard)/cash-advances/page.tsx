@@ -175,8 +175,11 @@ function ReleaseModal({ branch, banks, onClose, onSaved }: { branch: string; ban
   const [busy, setBusy] = useState(false)
   useEffect(() => {
     const sh = BRANCHES.find(b => b.value === branch)?.short || ''
-    fetch(`/api/pos/staff${sh ? `?branch=${sh}` : ''}`).then(r => r.ok ? r.json() : { staff: [] })
-      .then(d => setStaff([...new Set(((d.staff || []) as { name: string }[]).map(s => s.name).filter(Boolean))])).catch(() => setStaff([]))
+    fetch(`/api/pos/staff${sh ? `?branch=${sh}` : ''}`).then(r => r.ok ? r.json() : [])
+      .then((d: unknown) => {
+        const list = (Array.isArray(d) ? d : ((d as { staff?: unknown[] })?.staff ?? [])) as { name?: string }[]
+        setStaff([...new Set(list.map(s => s.name || '').filter(Boolean))])
+      }).catch(() => setStaff([]))
   }, [branch])
   const uploadProofs = async (files: FileList | null) => {
     if (!files || !files.length) return
