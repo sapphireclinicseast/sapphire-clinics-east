@@ -24,7 +24,11 @@ export async function GET(req: Request) {
   if (id) {
     const a = await prisma.assetAudit.findUnique({ where: { id }, include: { items: { orderBy: { controlNumber: 'asc' } } } })
     if (!a) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    return NextResponse.json(a)
+    // Attach each asset's current main photo (live lookup, so it works for older
+    // audits too) to make the classification grid easier to fill out.
+    const assets = await prisma.asset.findMany({ where: { id: { in: a.items.map(i => i.assetId) } }, select: { id: true, photoUrl: true, photoUrls: true } })
+    const photoBy = new Map(assets.map(x => [x.id, (Array.isArray(x.photoUrls) && x.photoUrls.length ? (x.photoUrls as string[])[0] : x.photoUrl) || null]))
+    return NextResponse.json({ ...a, items: a.items.map(i => ({ ...i, photoUrl: photoBy.get(i.assetId) || null })) })
   }
   const audits = await prisma.assetAudit.findMany({ orderBy: { createdAt: 'desc' }, include: { items: { select: { needsReplacement: true, usable: true } } } })
   return NextResponse.json(audits.map(a => ({

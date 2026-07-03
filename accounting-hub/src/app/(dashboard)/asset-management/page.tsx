@@ -1355,7 +1355,7 @@ export default function AssetManagementPage() {
 
 // ── Asset Audit tab ───────────────────────────────────────────
 interface AuditRow { id: string; refNumber: string; dateFrom: string; dateTo: string; auditorName: string; branch: string; departments: string[]; status: string; finalizedAt: string | null; createdAt: string; itemCount: number; replacementCount: number; assessedCount: number }
-interface AuditItem { id: string; assetId: string; assetName: string; controlNumber: string | null; classification: string | null; accountableName: string | null; usable: boolean | null; needsReplacement: boolean; remarks: string | null }
+interface AuditItem { id: string; assetId: string; assetName: string; controlNumber: string | null; classification: string | null; accountableName: string | null; usable: boolean | null; needsReplacement: boolean; remarks: string | null; photoUrl?: string | null }
 interface AuditDetail { id: string; refNumber: string; dateFrom: string; dateTo: string; auditorName: string; branch: string; departments: string[]; status: string; proofUrls: string[] | null; finalizedAt: string | null; items: AuditItem[] }
 
 const dISO = (s: string) => String(s).slice(0, 10)
@@ -1487,6 +1487,7 @@ function AuditDetailModal({ id, canWrite, onClose, onChanged }: { id: string; ca
   const [items, setItems] = useState<AuditItem[]>([])
   const [proofUrls, setProofUrls] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
+  const [img, setImg] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const r = await fetch(`/api/assets/audits?id=${id}`)
@@ -1549,11 +1550,23 @@ function AuditDetailModal({ id, canWrite, onClose, onChanged }: { id: string; ca
           <div className="rounded-xl border overflow-auto mb-3" style={{ borderColor: 'var(--light-gray)', maxHeight: '46vh' }}>
             <table className="w-full text-xs">
               <thead className="sticky top-0" style={{ background: 'var(--off-white)' }}><tr className="text-left text-gray-500">
-                {['Control No.', 'Asset', 'Classification', 'Accountable', 'Condition', 'Replace?', 'Remarks'].map(h => <th key={h} className="px-2 py-2 font-semibold">{h}</th>)}
+                {['Photo', 'Control No.', 'Asset', 'Classification', 'Accountable', 'Condition', 'Replace?', 'Remarks'].map(h => <th key={h} className="px-2 py-2 font-semibold">{h}</th>)}
               </tr></thead>
               <tbody>
                 {items.map(i => (
                   <tr key={i.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: i.needsReplacement ? '#fef2f2' : undefined }}>
+                    <td className="px-2 py-1.5">
+                      {i.photoUrl ? (
+                        /\.(jpg|jpeg|png|webp)$/i.test(i.photoUrl) ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={i.photoUrl} alt="" className="w-10 h-10 rounded object-cover border border-gray-200 cursor-pointer hover:opacity-80" onClick={() => setImg(i.photoUrl!)} />
+                        ) : (
+                          <button onClick={() => window.open(i.photoUrl!, '_blank')} className="w-10 h-10 rounded border border-gray-200 flex items-center justify-center text-gray-400"><FileText size={14} /></button>
+                        )
+                      ) : (
+                        <div className="w-10 h-10 rounded border border-dashed border-gray-200 flex items-center justify-center text-gray-300"><ImageIcon size={13} /></div>
+                      )}
+                    </td>
                     <td className="px-2 py-1.5 font-mono">{i.controlNumber || '—'}</td>
                     <td className="px-2 py-1.5 text-gray-800">{i.assetName}</td>
                     <td className="px-2 py-1.5 text-gray-500">{classificationLabel(i.classification || '')}</td>
@@ -1593,6 +1606,12 @@ function AuditDetailModal({ id, canWrite, onClose, onChanged }: { id: string; ca
           {replacements.length > 0 && <p className="text-[11px] mt-2" style={{ color: '#b91c1c' }}>{replacements.length} asset(s) flagged for replacement.</p>}
         </>)}
       </div>
+      {img && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 p-6" onClick={() => setImg(null)}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={img} alt="" className="max-w-full max-h-full rounded-lg" />
+        </div>
+      )}
     </div>
   )
 }
