@@ -260,6 +260,19 @@ ALTER TABLE "CancelledCheck" ADD COLUMN IF NOT EXISTS "proofUrls" JSONB;
 -- Sales-invoice flag: tag a missing SI number to an existing order
 ALTER TABLE "SalesInvoiceFlag" ADD COLUMN IF NOT EXISTS "orderId" TEXT;
 
+-- QR phone-upload sessions
+CREATE TABLE IF NOT EXISTS "UploadSession" (
+  "id" TEXT NOT NULL,
+  "prefix" TEXT NOT NULL,
+  "section" TEXT NOT NULL,
+  "urls" JSONB NOT NULL DEFAULT '[]',
+  "createdById" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "expiresAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "UploadSession_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "UploadSession_expiresAt_idx" ON "UploadSession"("expiresAt");
+
 -- Cash Advances (event floats): release → liquidate → return → reimburse
 CREATE TABLE IF NOT EXISTS "CashAdvance" (
   "id" TEXT NOT NULL,

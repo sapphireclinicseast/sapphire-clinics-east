@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
 import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Download, Upload, FileDown, FileText, CheckCircle2, Paperclip, Eye, Pencil } from 'lucide-react'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
+import { ScanUpload } from '@/components/ScanUpload'
 import { DownloadBar } from '@/components/DownloadBar'
 import { downloadXlsx, downloadPdf, inDateRange, type ExportFormat } from '@/lib/export'
 
@@ -102,22 +103,6 @@ const fetchDataUrl = async (url: string): Promise<string | null> => {
   } catch { return null }
 }
 
-// Upload via XHR so we can report upload progress (0–100%).
-function uploadWithProgress(file: File, onProgress: (pct: number) => void): Promise<{ ok: boolean; url?: string; error?: string }> {
-  return new Promise(resolve => {
-    const xhr = new XMLHttpRequest()
-    xhr.open('POST', '/api/upload')
-    xhr.upload.onprogress = ev => { if (ev.lengthComputable) onProgress(Math.round((ev.loaded / ev.total) * 100)) }
-    xhr.onload = () => {
-      try { const d = JSON.parse(xhr.responseText || '{}'); resolve({ ...d, ok: xhr.status >= 200 && xhr.status < 300 }) }
-      catch { resolve({ ok: false, error: 'Upload failed' }) }
-    }
-    xhr.onerror = () => resolve({ ok: false, error: 'Upload failed' })
-    const fd = new FormData(); fd.append('file', file)
-    xhr.send(fd)
-  })
-}
-
 export default function PettyCashPage() {
   const { data: session } = useSession()
   const role = (session?.user as { role?: string })?.role || ''
@@ -173,8 +158,6 @@ export default function PettyCashPage() {
   const [generating, setGenerating] = useState(false)
   const [bankOptions, setBankOptions] = useState<string[]>([])
   const [payTarget, setPayTarget] = useState<Reimb | null>(null)
-  const [uploadingProof, setUploadingProof] = useState('')
-  const [uploadPct, setUploadPct] = useState<Record<string, number>>({})
   const [supplierNames, setSupplierNames] = useState<Set<string>>(new Set())
   const [suppliers, setSuppliers] = useState<{ registeredName: string; registeredAddress: string; tin: string }[]>([])
   const [newSupplierPrompt, setNewSupplierPrompt] = useState<{ registeredName: string; registeredAddress: string; tin: string } | null>(null)
@@ -412,21 +395,18 @@ export default function PettyCashPage() {
     if (arr.length) return arr
     return e.proofUrl ? [e.proofUrl] : []
   }
-  const uploadProof = async (id: string, file: File | null) => {
-    if (!file) return
-    const e0 = entries.find(x => x.id === id)
-    const cur = e0 ? proofsOf(e0) : []
-    setUploadingProof(id)
-    setUploadPct(p => ({ ...p, [id]: 0 }))
-    const res = await uploadWithProgress(file, pct => setUploadPct(p => ({ ...p, [id]: pct })))
-    if (res.ok && res.url) { const next = [...cur, res.url]; saveField(id, { proofUrls: next, proofUrl: next[0] }, false) }
-    else alert(res.error || 'Upload failed')
-    setUploadingProof('')
-    setUploadPct(p => { const n = { ...p }; delete n[id]; return n })
-  }
   const removeProof = (e: Entry, url: string) => {
     const next = proofsOf(e).filter(u => u !== url)
     saveField(e.id, { proofUrls: next, proofUrl: next[0] ?? null }, false)
+  }
+  // Race-safe append (ScanUpload may deliver several photos in quick succession).
+  const entriesRef = useRef(entries)
+  useEffect(() => { entriesRef.current = entries }, [entries])
+  const appendProof = (id: string, url: string) => {
+    const e = entriesRef.current.find(x => x.id === id); if (!e) return
+    const cur = proofsOf(e); const next = [...cur, url]
+    entriesRef.current = entriesRef.current.map(x => x.id === id ? { ...x, proofUrls: next, proofUrl: next[0] } : x)
+    saveField(id, { proofUrls: next, proofUrl: next[0] }, false)
   }
 
   const deleteRow = async (id: string) => {
@@ -943,12 +923,10 @@ export default function PettyCashPage() {
                               </div>
                             ))}
                             {!lk && (
-                              <label className="inline-flex items-center justify-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] font-medium text-white cursor-pointer" style={{ background: 'var(--teal)' }}>
-                                {uploadingProof === e.id ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                                {uploadingProof === e.id ? `${uploadPct[e.id] ?? 0}%` : (proofsOf(e).length ? 'Add proof' : 'Upload')}
-                                <input type="file" className="hidden" disabled={uploadingProof === e.id} accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv"
-                                  onChange={ev => { uploadProof(e.id, ev.target.files?.[0] || null); ev.target.value = '' }} />
-                              </label>
+                              <ScanUpload compact section="petty-cash" prefix={e.pcvNumber}
+                                existingCount={proofsOf(e).length}
+                                label={proofsOf(e).length ? 'Add' : 'Upload'}
+                                onUploaded={url => appendProof(e.id, url)} />
                             )}
                           </div>
                         </td>

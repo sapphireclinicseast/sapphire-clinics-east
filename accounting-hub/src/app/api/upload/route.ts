@@ -45,7 +45,17 @@ export async function POST(req: Request) {
     await mkdir(uploadsDir, { recursive: true })
 
     const ext = file.name.split('.').pop() || 'bin'
-    const filename = `upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+    // Optional section-appropriate renaming: <prefix>-<NN>.<ext> (e.g. AHEA-PCV26-000077-01).
+    const prefixRaw = (formData.get('prefix') as string | null)?.trim() || ''
+    const seqRaw = parseInt((formData.get('seq') as string | null) || '', 10)
+    let filename: string
+    if (prefixRaw) {
+      const prefix = prefixRaw.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80)
+      const seq = Number.isFinite(seqRaw) && seqRaw > 0 ? seqRaw : 1
+      filename = `${prefix}-${String(seq).padStart(2, '0')}-${Math.random().toString(36).slice(2, 6)}.${ext}`
+    } else {
+      filename = `upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+    }
     const filepath = join(uploadsDir, filename)
 
     await writeFile(filepath, buffer)

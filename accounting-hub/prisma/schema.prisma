@@ -1926,6 +1926,21 @@ model CancelledCheck {
   @@index([accountId])
 }
 
+// Ephemeral session backing the "Scan QR" phone-upload flow. The desktop creates
+// one (with the section's naming prefix), shows a QR to the token URL, the phone
+// uploads photos into it, and the desktop polls `urls` until done.
+model UploadSession {
+  id          String   @id @default(cuid()) // the token embedded in the QR
+  prefix      String   // filename prefix, e.g. AHEA-PCV26-000077
+  section     String   // petty-cash | expenses | taxes | cash-advance | ar | fund-transfer | asset
+  urls        Json     @default("[]")
+  createdById String?
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+
+  @@index([expiresAt])
+}
+
 model BankTransaction {
   id                String   @id @default(cuid())
   bankAccountId     String   // Account.id (a Chart-of-Accounts bank account)

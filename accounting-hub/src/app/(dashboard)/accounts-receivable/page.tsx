@@ -10,6 +10,7 @@ import {
   Download, Filter, FileText, Settings,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { ScanUpload } from '@/components/ScanUpload'
 import SoaReport from './SoaReport'
 
 interface ARWallet {
@@ -388,7 +389,6 @@ export default function AccountsReceivablePage() {
   const [payNotes, setPayNotes] = useState('')
   const [paySalesInvoice, setPaySalesInvoice] = useState('')
   const [payProofUrls, setPayProofUrls] = useState<string[]>([])
-  const [payProofUploading, setPayProofUploading] = useState(false)
   const [paySelectedOrders, setPaySelectedOrders] = useState<string[]>([])
   const [payError, setPayError] = useState('')
   const [paySaving, setPaySaving] = useState(false)
@@ -2128,25 +2128,9 @@ export default function AccountsReceivablePage() {
                       </button>
                     </div>
                   ))}
-                  <label className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border-2 border-dashed text-xs cursor-pointer hover:bg-gray-50 transition-colors"
-                    style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
-                    <Upload size={14} />
-                    {payProofUploading ? 'Uploading...' : payProofUrls.length === 0 ? 'Upload file (JPG, PNG, PDF — max 10MB)' : 'Add another file'}
-                    <input type="file" accept="image/*,.pdf" className="hidden" onChange={async (e) => {
-                      const file = e.target.files?.[0]
-                      if (!file) return
-                      setPayProofUploading(true)
-                      try {
-                        const formData = new FormData()
-                        formData.append('file', file)
-                        const res = await fetch('/api/upload', { method: 'POST', body: formData })
-                        const data = await res.json()
-                        if (res.ok && data.url) setPayProofUrls(prev => [...prev, data.url])
-                        else setPayError(data.error || 'Upload failed')
-                      } catch { setPayError('Upload failed') }
-                      finally { setPayProofUploading(false); e.target.value = '' }
-                    }} />
-                  </label>
+                  <ScanUpload section="ar" prefix={`AR-${paySalesInvoice || payDate}`} existingCount={payProofUrls.length}
+                    label={payProofUrls.length === 0 ? 'Upload file' : 'Add another file'}
+                    onUploaded={url => setPayProofUrls(prev => [...prev, url])} />
                 </div>
               </div>
 

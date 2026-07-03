@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
+import { ScanUpload } from '@/components/ScanUpload'
 import {
   Plus,
   Pencil,
@@ -18,6 +19,7 @@ import {
   ChevronDown,
   ChevronsUpDown,
   Filter,
+  Image as ImageIcon,
 } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────
@@ -643,6 +645,9 @@ export default function AssetManagementPage() {
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
 
+                  {/* ── Photo ── */}
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Photo</th>
+
                   {/* ── Asset Name ── */}
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                     <div className="flex items-center gap-1">
@@ -787,36 +792,38 @@ export default function AssetManagementPage() {
               <tbody className="divide-y divide-gray-100">
                 {displayedAssets.length === 0 ? (
                   <tr>
-                    <td colSpan={canWrite ? 10 : 9} className="text-center py-10 text-gray-400 text-sm">
+                    <td colSpan={canWrite ? 11 : 10} className="text-center py-10 text-gray-400 text-sm">
                       No assets match your search or filters.
                     </td>
                   </tr>
                 ) : displayedAssets.map((asset) => (
                   <tr key={asset.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 font-medium text-gray-900">
-                      <div className="flex items-center gap-2">
-                        {asset.photoUrl && (
-                          /\.(jpg|jpeg|png|webp)$/i.test(asset.photoUrl) ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={asset.photoUrl}
-                              alt=""
-                              className="w-8 h-8 rounded object-cover border border-gray-200 cursor-pointer hover:opacity-80 transition-opacity"
-                              onClick={(e) => { e.stopPropagation(); setLightboxUrl(asset.photoUrl) }}
-                            />
-                          ) : (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); window.open(asset.photoUrl!, '_blank') }}
-                              className="text-gray-400 hover:text-teal-600 transition-colors"
-                              title="View PDF"
-                            >
-                              <FileText size={16} />
-                            </button>
-                          )
-                        )}
-                        {asset.name}
-                      </div>
+                    <td className="px-4 py-3">
+                      {asset.photoUrl ? (
+                        /\.(jpg|jpeg|png|webp)$/i.test(asset.photoUrl) ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={asset.photoUrl}
+                            alt=""
+                            className="w-12 h-12 rounded-lg object-cover border border-gray-200 cursor-pointer hover:opacity-80 transition-opacity"
+                            onClick={(e) => { e.stopPropagation(); setLightboxUrl(asset.photoUrl) }}
+                          />
+                        ) : (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); window.open(asset.photoUrl!, '_blank') }}
+                            className="w-12 h-12 rounded-lg border border-gray-200 flex items-center justify-center text-gray-400 hover:text-teal-600 transition-colors"
+                            title="View PDF"
+                          >
+                            <FileText size={18} />
+                          </button>
+                        )
+                      ) : (
+                        <div className="w-12 h-12 rounded-lg border border-dashed border-gray-200 flex items-center justify-center text-gray-300">
+                          <ImageIcon size={16} />
+                        </div>
+                      )}
                     </td>
+                    <td className="px-4 py-3 font-medium text-gray-900">{asset.name}</td>
                     <td className="px-4 py-3 text-gray-600">{classificationLabel(asset.classification)}</td>
                     <td className="px-4 py-3 text-gray-600">{branchLabel(asset.branch)}</td>
                     <td className="px-4 py-3 text-right text-gray-900 font-medium">{formatCurrency(asset.totalAmount)}</td>
@@ -1059,18 +1066,17 @@ export default function AssetManagementPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Photo of Asset</label>
                 <div className="flex items-start gap-4">
-                  <label className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-sm cursor-pointer hover:bg-gray-50 transition-colors">
-                    {uploading ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                    {uploading ? 'Uploading…' : 'Upload file'}
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,application/pdf"
-                      className="hidden"
-                      key={form.photoUrl || 'empty'}
-                      onChange={handlePhotoUpload}
-                      disabled={uploading}
-                    />
-                  </label>
+                  <ScanUpload
+                    prefix={form.controlNumber || form.name || 'ASSET'}
+                    section="asset"
+                    label="Upload file"
+                    onUploaded={(url) => {
+                      setForm((f) => ({ ...f, photoUrl: url }))
+                      const isImage = /\.(jpg|jpeg|png|webp)$/i.test(url)
+                      setPhotoPreview(isImage ? url : null)
+                      setPhotoFilename(url.split('/').pop() ?? '')
+                    }}
+                  />
                   {form.photoUrl && (
                     <div className="flex items-center gap-2">
                       {photoPreview ? (

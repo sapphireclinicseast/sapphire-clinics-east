@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Repeat, Plus, Settings, Loader2, X, Eye, Upload, Pencil, Trash2, ListChecks, Info } from 'lucide-react'
+import { Repeat, Plus, Settings, Loader2, X, Eye, Pencil, Trash2, ListChecks, Info } from 'lucide-react'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
+import { ScanUpload } from '@/components/ScanUpload'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -234,20 +235,7 @@ function CancelledCheckModal({ accounts, defaultAccountId, onClose, onSaved }: {
   const [reason, setReason] = useState('')
   const [amount, setAmount] = useState('')
   const [proofUrls, setProofUrls] = useState<string[]>([])
-  const [uploading, setUploading] = useState(false)
   const [busy, setBusy] = useState(false)
-
-  const uploadProofs = async (files: FileList | null) => {
-    if (!files || !files.length) return
-    setUploading(true)
-    try {
-      for (const file of Array.from(files)) {
-        const fd = new FormData(); fd.append('file', file)
-        const r = await fetch('/api/upload', { method: 'POST', body: fd })
-        if (r.ok) { const u = (await r.json()).url; if (u) setProofUrls(prev => [...prev, u]) }
-      }
-    } catch { /* ignore */ } finally { setUploading(false) }
-  }
   const save = async () => {
     if (!accountId || !checkNumber.trim() || !date) { alert('Checking account, check number and date are required.'); return }
     setBusy(true)
@@ -286,10 +274,8 @@ function CancelledCheckModal({ accounts, defaultAccountId, onClose, onSaved }: {
               <button onClick={() => setProofUrls(p => p.filter(x => x !== u))}><X size={12} style={{ color: '#dc2626' }} /></button>
             </span>
           ))}
-          <label className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs border cursor-pointer" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
-            {uploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />} Add scan
-            <input type="file" multiple className="hidden" accept="image/*,.pdf" onChange={e => { uploadProofs(e.target.files); e.target.value = '' }} />
-          </label>
+          <ScanUpload compact section="fund-transfer" prefix={`CANCELLED-${checkNumber || 'check'}`}
+            existingCount={proofUrls.length} label="Add scan" onUploaded={url => setProofUrls(p => [...p, url])} />
         </div>
         <button onClick={save} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#dc2626' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : 'Record cancelled check'}</button>
       </div>
@@ -305,14 +291,7 @@ function TransferForm({ banks, editing, onClose, onSaved }: { banks: Bank[]; edi
   const [checkNumber, setCheckNumber] = useState(editing?.checkNumber || '')
   const [description, setDescription] = useState(editing?.description || '')
   const [proofUrls, setProofUrls] = useState<string[]>(editing?.proofUrls?.length ? editing.proofUrls : (editing?.proofUrl ? [editing.proofUrl] : []))
-  const [uploading, setUploading] = useState(false)
   const [busy, setBusy] = useState(false)
-
-  const upload = async (file: File | null) => {
-    if (!file) return
-    setUploading(true)
-    try { const fd = new FormData(); fd.append('file', file); const r = await fetch('/api/upload', { method: 'POST', body: fd }); if (r.ok) { const u = (await r.json()).url; if (u) setProofUrls(prev => [...prev, u]) } else alert('Upload failed') } catch { alert('Upload failed') } finally { setUploading(false) }
-  }
   const save = async () => {
     if (!date || !fromAccountId || !toAccountId) { alert('Date, From and To are required.'); return }
     if (fromAccountId === toAccountId) { alert('From and To must differ.'); return }
@@ -357,10 +336,8 @@ function TransferForm({ banks, editing, onClose, onSaved }: { banks: Bank[]; edi
           ))}
         </div>
         <div className="flex items-center gap-2 mb-4">
-          <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white cursor-pointer" style={{ background: 'var(--teal)' }}>
-            {uploading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />} {proofUrls.length ? 'Add another' : 'Upload'}
-            <input type="file" className="hidden" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv" onChange={e => { upload(e.target.files?.[0] || null); e.target.value = '' }} />
-          </label>
+          <ScanUpload section="fund-transfer" prefix={`FT-${checkNumber || date}`} existingCount={proofUrls.length}
+            label={proofUrls.length ? 'Add another' : 'Upload'} onUploaded={url => setProofUrls(prev => [...prev, url])} />
         </div>
         <button onClick={save} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : (editing ? 'Save changes' : 'Save transfer')}</button>
       </div>

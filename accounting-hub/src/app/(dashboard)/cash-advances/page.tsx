@@ -1,8 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { HandCoins, Plus, Loader2, X, Trash2, Eye, Upload } from 'lucide-react'
+import { HandCoins, Plus, Loader2, X, Trash2, Eye } from 'lucide-react'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
+import { ScanUpload } from '@/components/ScanUpload'
 import { DownloadBar } from '@/components/DownloadBar'
 import { downloadXlsx, downloadPdf, inDateRange, type ExportFormat } from '@/lib/export'
 
@@ -171,7 +172,6 @@ function ReleaseModal({ branch, banks, onClose, onSaved }: { branch: string; ban
   const [sourceAccountId, setSource] = useState('')
   const [staff, setStaff] = useState<string[]>([])
   const [proofUrls, setProofUrls] = useState<string[]>([])
-  const [uploading, setUploading] = useState(false)
   const [busy, setBusy] = useState(false)
   useEffect(() => {
     const sh = BRANCHES.find(b => b.value === branch)?.short || ''
@@ -181,17 +181,6 @@ function ReleaseModal({ branch, banks, onClose, onSaved }: { branch: string; ban
         setStaff([...new Set(list.map(s => s.name || '').filter(Boolean))])
       }).catch(() => setStaff([]))
   }, [branch])
-  const uploadProofs = async (files: FileList | null) => {
-    if (!files || !files.length) return
-    setUploading(true)
-    try {
-      for (const file of Array.from(files)) {
-        const fd = new FormData(); fd.append('file', file)
-        const r = await fetch('/api/upload', { method: 'POST', body: fd })
-        if (r.ok) { const u = (await r.json()).url; setProofUrls(p => [...p, u]) }
-      }
-    } catch { /* ignore */ } finally { setUploading(false) }
-  }
   const save = async () => {
     if (!accountableName.trim() || !purpose.trim() || !(num(amount) > 0) || !sourceAccountId) { alert('Fill accountable staff, purpose, a valid amount, and the source bank.'); return }
     setBusy(true)
@@ -226,10 +215,8 @@ function ReleaseModal({ branch, banks, onClose, onSaved }: { branch: string; ban
               <button onClick={() => setProofUrls(p => p.filter(x => x !== u))}><X size={12} style={{ color: '#dc2626' }} /></button>
             </span>
           ))}
-          <label className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs border cursor-pointer" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
-            {uploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />} Add proof
-            <input type="file" multiple className="hidden" accept="image/*,.pdf" onChange={e => { uploadProofs(e.target.files); e.target.value = '' }} />
-          </label>
+          <ScanUpload compact section="cash-advance" prefix={`CA-${dateReleased}-${accountableName || 'release'}`}
+            existingCount={proofUrls.length} label="Add proof" onUploaded={url => setProofUrls(p => [...p, url])} />
         </div>
         <button onClick={save} disabled={busy} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : 'Release advance'}</button>
       </div>
@@ -245,7 +232,6 @@ function DetailModal({ id, banks, branch, onClose, onChanged }: { id: string; ba
   const [expAccts, setExpAccts] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [form, setForm] = useState({ kind: 'LIQUIDATION', date: new Date().toISOString().slice(0, 10), accountTitle: '', description: '', vatable: 'Non-VAT', amount: '', siNumber: '', requestor: '', department: '', validity: 'Valid', tinNumber: '', registeredName: '', registeredAddress: '', hasEwt: false, ewtRate: '', bankAccountId: '', proofUrl: '' })
-  const [uploading, setUploading] = useState(false)
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [newSupplierPrompt, setNewSupplierPrompt] = useState<{ registeredName: string; registeredAddress: string; tin: string } | null>(null)
 
@@ -260,10 +246,6 @@ function DetailModal({ id, banks, branch, onClose, onChanged }: { id: string; ba
     setNewSupplierPrompt(null)
   }
 
-  const upload = async (file: File | null) => {
-    if (!file) return; setUploading(true)
-    try { const fd = new FormData(); fd.append('file', file); const r = await fetch('/api/upload', { method: 'POST', body: fd }); if (r.ok) { const u = (await r.json()).url; setForm(f => ({ ...f, proofUrl: u })) } } catch { /* ignore */ } finally { setUploading(false) }
-  }
   const addLine = async () => {
     if (!(num(form.amount) > 0)) { alert('Enter a valid amount.'); return }
     if (form.kind === 'LIQUIDATION' && !form.accountTitle) { alert('Choose an expense account.'); return }
@@ -371,7 +353,8 @@ function DetailModal({ id, banks, branch, onClose, onChanged }: { id: string; ba
               </div>
             )}
             <div className="flex items-center gap-2 mt-2">
-              <label className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs border cursor-pointer" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>{uploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />} {form.proofUrl ? 'Proof ✓' : 'Proof'}<input type="file" className="hidden" accept="image/*,.pdf" onChange={e => { upload(e.target.files?.[0] || null); e.target.value = '' }} /></label>
+              <ScanUpload compact section="cash-advance" prefix={`${d.refNumber}-LIQ`} label={form.proofUrl ? 'Proof ✓' : 'Proof'}
+                onUploaded={url => setForm(f => ({ ...f, proofUrl: url }))} />
               <button onClick={addLine} disabled={busy} className="ml-auto px-4 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? 'Saving…' : `Add ${form.kind === 'LIQUIDATION' ? 'liquidation' : form.kind === 'RETURN' ? 'return' : 'reimbursement'}`}</button>
             </div>
           </div>
