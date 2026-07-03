@@ -270,6 +270,8 @@ export default function SalesSummaryPage() {
   const [allRows, setAllRows] = useState<SalesSummaryRow[]>([])
   const [fetched, setFetched] = useState(false)
   const [error, setError] = useState('')
+  const [view, setView] = useState<'summary' | 'with-si' | 'target'>('summary')
+  const role = (session?.user as { role?: string })?.role || ''
 
   const fetchData = useCallback(async () => {
     if (!showWithInvoice && !showWithoutInvoice) {
@@ -349,6 +351,18 @@ export default function SalesSummaryPage() {
         </div>
       </div>
 
+      {/* ── Subtabs ── */}
+      <div className="flex items-center gap-1 border-b mb-6 print:hidden" style={{ borderColor: 'var(--light-gray)' }}>
+        {([['summary', 'Summary'], ['with-si', 'With SI'], ['target', 'Sales Target']] as const).map(([v, label]) => (
+          <button key={v} onClick={() => setView(v)} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors"
+            style={{ borderColor: view === v ? 'var(--teal)' : 'transparent', color: view === v ? 'var(--teal)' : 'var(--mid-gray)' }}>{label}</button>
+        ))}
+      </div>
+
+      {view === 'with-si' && <WithSiTab branch={branch !== 'ALL' ? branch : (scope.enum || 'SANDBOX_EAST')} scopeEnum={scope.enum} />}
+      {view === 'target' && <SalesTargetTab branch={branch !== 'ALL' ? branch : (scope.enum || 'SANDBOX_EAST')} scopeEnum={scope.enum} canEditTarget={['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER'].includes(role)} />}
+
+      {view === 'summary' && (<>
       {/* ── Filters ── */}
       <div className="rounded-2xl border p-4 mb-6 print:hidden" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
         <div className="flex items-center gap-2 mb-3">
@@ -503,6 +517,177 @@ export default function SalesSummaryPage() {
         <div className="text-center py-20" style={{ color: 'var(--mid-gray)' }}>
           <Receipt size={40} className="mx-auto mb-3 opacity-30" />
           <p className="text-sm">Set your filters, choose report types, and click <strong>Generate Report</strong>.</p>
+        </div>
+      )}
+      </>)}
+    </div>
+  )
+}
+
+const WITHSI_BRANCHES = [
+  { value: 'SANDBOX_EAST', label: 'East Branch' },
+  { value: 'SANDBOX_GREENHILLS', label: 'Greenhills Branch' },
+  { value: 'VERDANA_STORE', label: 'Verdana Store' },
+]
+const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+interface SiRow { id: string; orderNumber: number; siNumber: string; date: string; patientName: string; vat: number; nonVat: number; amount: number; orderType: string }
+interface Flag { siNumber: string; count?: number; flag: { status: string; remarks: string | null } | null }
+
+function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scopeEnum: string | null }) {
+  const [branch, setBranch] = useState(initialBranch)
+  const [from, setFrom] = useState(''); const [to, setTo] = useState('')
+  const [data, setData] = useState<{ rows: SiRow[]; totals: { vat: number; nonVat: number; count: number }; gaps: Flag[]; duplicates: Flag[] } | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try { const r = await fetch(`/api/reports/with-si?branch=${branch}${from ? `&dateFrom=${from}` : ''}${to ? `&dateTo=${to}` : ''}`); setData(r.ok ? await r.json() : null) }
+    catch { setData(null) } finally { setLoading(false) }
+  }, [branch, from, to])
+  useEffect(() => { load() }, [load])
+
+  const saveFlag = async (siNumber: string, status: string, remarks: string) => {
+    await fetch('/api/reports/with-si', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ branch, siNumber, status, remarks }) })
+    await load()
+  }
+  const clearFlag = async (siNumber: string) => { await fetch(`/api/reports/with-si?branch=${branch}&siNumber=${siNumber}`, { method: 'DELETE' }); await load() }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2 flex-wrap">
+        {!scopeEnum && (
+          <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
+            {WITHSI_BRANCHES.map(b => <button key={b.value} onClick={() => setBranch(b.value)} className="px-4 py-2 text-xs font-semibold" style={branch === b.value ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>{b.label}</button>)}
+          </div>
+        )}
+        <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>From <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="ml-1 px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} /></label>
+        <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>To <input type="date" value={to} onChange={e => setTo(e.target.value)} className="ml-1 px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} /></label>
+      </div>
+
+      {loading ? <div className="py-10 text-center"><Loader2 size={18} className="inline animate-spin" style={{ color: 'var(--teal)' }} /></div> : data && (<>
+        {(data.gaps.length > 0 || data.duplicates.length > 0) && (
+          <div className="rounded-2xl border p-4" style={{ borderColor: '#fde68a', background: '#fffbeb' }}>
+            <p className="text-sm font-bold mb-2" style={{ color: '#92400e' }}>Flagged Sales Invoices</p>
+            <div className="space-y-1.5">
+              {data.gaps.map(g => <FlagRow key={`g${g.siNumber}`} label={`Missing #${g.siNumber}`} item={g} onSave={saveFlag} onClear={clearFlag} />)}
+              {data.duplicates.map(d => <FlagRow key={`d${d.siNumber}`} label={`Duplicate #${d.siNumber} (×${d.count})`} item={d} onSave={saveFlag} onClear={clearFlag} />)}
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-3 gap-3">
+          <div className="rounded-2xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}><p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>VAT (Products)</p><p className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(data.totals.vat)}</p></div>
+          <div className="rounded-2xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}><p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Non-VAT (Services)</p><p className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(data.totals.nonVat)}</p></div>
+          <div className="rounded-2xl border p-3" style={{ borderColor: 'var(--deep-teal)', background: 'var(--pale-teal)' }}><p className="text-[11px]" style={{ color: 'var(--deep-teal)' }}>{data.totals.count} SI order(s)</p><p className="text-lg font-bold" style={{ color: 'var(--deep-teal)' }}>₱{peso(data.totals.vat + data.totals.nonVat)}</p></div>
+        </div>
+
+        <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+          <table className="w-full text-sm">
+            <thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+              <th className="px-3 py-2.5 font-semibold">SI No.</th><th className="px-3 py-2.5 font-semibold">Order #</th><th className="px-3 py-2.5 font-semibold">Date</th>
+              <th className="px-3 py-2.5 font-semibold">Patient / Customer</th><th className="px-3 py-2.5 font-semibold text-right">VAT</th><th className="px-3 py-2.5 font-semibold text-right">Non-VAT</th>
+            </tr></thead>
+            <tbody>
+              {data.rows.map(r => (
+                <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                  <td className="px-3 py-2 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{r.siNumber}</td>
+                  <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.orderNumber}</td>
+                  <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.date}</td>
+                  <td className="px-3 py-2 text-xs" style={{ color: 'var(--charcoal)' }}>{r.patientName}</td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap" style={{ color: r.vat ? 'var(--charcoal)' : 'var(--light-gray)' }}>{r.vat ? `₱${peso(r.vat)}` : '—'}</td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap" style={{ color: r.nonVat ? 'var(--charcoal)' : 'var(--light-gray)' }}>{r.nonVat ? `₱${peso(r.nonVat)}` : '—'}</td>
+                </tr>
+              ))}
+              {data.rows.length === 0 && <tr><td colSpan={6} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>No orders with a Sales Invoice in this branch/range.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </>)}
+    </div>
+  )
+}
+
+function FlagRow({ label, item, onSave, onClear }: { label: string; item: Flag; onSave: (si: string, status: string, remarks: string) => void; onClear: (si: string) => void }) {
+  const [status, setStatus] = useState(item.flag?.status || 'CANCELLED')
+  const [remarks, setRemarks] = useState(item.flag?.remarks || '')
+  const resolved = !!item.flag
+  return (
+    <div className="flex items-center gap-2 flex-wrap text-xs">
+      <span className="font-semibold w-40" style={{ color: '#92400e' }}>{label}</span>
+      {resolved ? (
+        <>
+          <span className="px-2 py-0.5 rounded-full font-semibold" style={item.flag!.status === 'CANCELLED' ? { background: '#fee2e2', color: '#b91c1c' } : { background: '#e0e7ff', color: '#3730a3' }}>{item.flag!.status === 'CANCELLED' ? 'Cancelled SI' : 'Remarks'}</span>
+          {item.flag!.remarks && <span style={{ color: 'var(--mid-gray)' }}>{item.flag!.remarks}</span>}
+          <button onClick={() => onClear(item.siNumber)} className="underline" style={{ color: 'var(--mid-gray)' }}>edit</button>
+        </>
+      ) : (
+        <>
+          <select value={status} onChange={e => setStatus(e.target.value)} className="px-2 py-1 rounded border" style={{ borderColor: 'var(--light-gray)' }}><option value="CANCELLED">Declare Cancelled SI</option><option value="REMARKS">Add Remarks</option></select>
+          {status === 'REMARKS' && <input value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Reason…" className="px-2 py-1 rounded border" style={{ borderColor: 'var(--light-gray)' }} />}
+          <button onClick={() => onSave(item.siNumber, status, remarks)} className="px-2 py-1 rounded text-white font-semibold flex items-center gap-1" style={{ background: 'var(--teal)' }}><CheckCircle2 size={12} /> Save</button>
+        </>
+      )}
+    </div>
+  )
+}
+
+function SalesTargetTab({ branch: initialBranch, scopeEnum, canEditTarget }: { branch: string; scopeEnum: string | null; canEditTarget: boolean }) {
+  const now = new Date()
+  const [branch, setBranch] = useState(initialBranch)
+  const [month, setMonth] = useState(now.getMonth() + 1)
+  const [year, setYear] = useState(now.getFullYear())
+  const [d, setD] = useState<{ salesWithSI: number; target: number; difference: number } | null>(null)
+  const [targetInput, setTargetInput] = useState('')
+  const [busy, setBusy] = useState(false)
+  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+  const load = useCallback(async () => {
+    const r = await fetch(`/api/reports/sales-target?branch=${branch}&month=${month}&year=${year}`)
+    if (r.ok) { const j = await r.json(); setD(j); setTargetInput(j.target ? String(j.target) : '') }
+  }, [branch, month, year])
+  useEffect(() => { load() }, [load])
+
+  const save = async () => {
+    setBusy(true)
+    try { await fetch('/api/reports/sales-target', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ branch, month, year, target: Number(targetInput) || 0 }) }); await load() }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2 flex-wrap">
+        {!scopeEnum && (
+          <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
+            {WITHSI_BRANCHES.map(b => <button key={b.value} onClick={() => setBranch(b.value)} className="px-4 py-2 text-xs font-semibold" style={branch === b.value ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>{b.label}</button>)}
+          </div>
+        )}
+        <select value={month} onChange={e => setMonth(parseInt(e.target.value))} className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>{MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}</select>
+        <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>{[0, 1, 2, 3, 4].map(i => now.getFullYear() - i).map(y => <option key={y} value={y}>{y}</option>)}</select>
+      </div>
+
+      {d && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+            <p className="text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Sales with SI</p>
+            <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(d.salesWithSI)}</p>
+            <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Totaled from orders with a Sales Invoice</p>
+          </div>
+          <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+            <p className="text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Target sales with SI</p>
+            {canEditTarget ? (
+              <div className="flex items-center gap-2">
+                <input value={targetInput} onChange={e => setTargetInput(e.target.value)} inputMode="decimal" placeholder="0.00" className="w-32 px-2 py-1.5 rounded-lg border text-lg font-bold font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+                <button onClick={save} disabled={busy} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? '…' : 'Save'}</button>
+              </div>
+            ) : <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(d.target)}</p>}
+            <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>{canEditTarget ? 'Encode the monthly target' : 'Set by Admin/Accountant/Bookkeeper'}</p>
+          </div>
+          <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--deep-teal)', background: 'var(--pale-teal)' }}>
+            <p className="text-xs mb-1" style={{ color: 'var(--deep-teal)' }}>Difference (Target − Sales)</p>
+            <p className="text-2xl font-bold" style={{ color: d.difference > 0 ? '#b45309' : '#166534' }}>₱{peso(d.difference)}</p>
+            <p className="text-[11px] mt-1" style={{ color: 'var(--deep-teal)' }}>{d.difference > 0 ? 'Below target' : 'Target met'} — updates as SI orders are added/edited</p>
+          </div>
         </div>
       )}
     </div>

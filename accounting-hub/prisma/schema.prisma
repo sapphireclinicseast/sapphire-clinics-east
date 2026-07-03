@@ -1831,6 +1831,36 @@ model CashAdvanceLine {
   @@index([advanceId])
 }
 
+// Resolution for a flagged Sales Invoice number (a gap in the continuous sequence,
+// or a duplicate): either declared CANCELLED, or acknowledged with REMARKS.
+model SalesInvoiceFlag {
+  id          String   @id @default(cuid())
+  branch      String
+  siNumber    String
+  status      String   // CANCELLED | REMARKS
+  remarks     String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([branch, siNumber])
+  @@index([branch])
+}
+
+// Monthly sales target (with-SI) per branch — encoded by admin/accountant/bookkeeper.
+model SalesTarget {
+  id          String   @id @default(cuid())
+  branch      String
+  periodMonth Int
+  periodYear  Int
+  target      Decimal  @default(0)
+  createdById String?
+  updatedAt   DateTime @updatedAt @default(now())
+
+  @@unique([branch, periodMonth, periodYear])
+  @@index([branch])
+}
+
 model ExpenseSupplier {
   id                String   @id @default(cuid())
   branch            String

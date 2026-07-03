@@ -1,0 +1,111 @@
+import { NextResponse } from 'next/server'
+import { auth } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+
+const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE']
+const siInt = (s: string | null) => { const d = String(s || '').replace(/\D/g, ''); return d ? parseInt(d, 10) : null }
+const pad4 = (n: number) => String(n).padStart(4, '0')
+
+// GET ?branch=&dateFrom=&dateTo= — SI orders for a branch with VAT/Non-VAT class,
+// plus gaps (missing numbers) and duplicates in the continuous SI sequence.
+export async function GET(req: Request) {
+  const session = await auth()
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const sp = new URL(req.url).searchParams
+  const branch = sp.get('branch') || ''
+  if (!VALID_BRANCHES.includes(branch)) return NextResponse.json({ error: 'Select a branch' }, { status: 400 })
+  const dateFrom = sp.get('dateFrom') || ''
+  const dateTo = sp.get('dateTo') || ''
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const where: any = { branch, status: { in: ['COMPLETED', 'REOPENED'] }, issuedOfficialInvoice: true, salesInvoiceNumber: { not: null } }
+  if (dateFrom) where.transactionDate = { ...where.transactionDate, gte: new Date(`${dateFrom}T00:00:00+08:00`) }
+  if (dateTo) where.transactionDate = { ...where.transactionDate, lte: new Date(`${dateTo}T23:59:59.999+08:00`) }
+
+  try {
+    const orders = await prisma.order.findMany({
+      where, orderBy: { transactionDate: 'asc' },
+      select: { id: true, orderNumber: true, orderType: true, transactionDate: true, patientName: true, netAmount: true, salesInvoiceNumber: true },
+    })
+    const rows = orders
+      .map(o => {
+        const n = siInt(o.salesInvoiceNumber)
+        const amt = Number(o.netAmount)
+        const isProduct = o.orderType === 'PRODUCT'
+        return {
+          id: o.id, orderNumber: o.orderNumber, siNumber: o.salesInvoiceNumber || '', siInt: n,
+          date: new Date(o.transactionDate).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }),
+          patientName: o.patientName || '—',
+          vat: isProduct ? amt : 0, nonVat: isProduct ? 0 : amt, amount: amt,
+          orderType: o.orderType,
+        }
+      })
+      .filter(r => r.siInt !== null)
+      .sort((a, b) => (a.siInt! - b.siInt!))
+
+    // Duplicates: same SI number on >1 order.
+    const countByInt = new Map<number, number>()
+    for (const r of rows) countByInt.set(r.siInt!, (countByInt.get(r.siInt!) || 0) + 1)
+    const duplicates = [...countByInt.entries()].filter(([, c]) => c > 1).map(([n, c]) => ({ siNumber: pad4(n), count: c }))
+
+    // Gaps: missing integers between min and max of the sequence.
+    const gaps: { siNumber: string }[] = []
+    if (rows.length > 1) {
+      const present = new Set(rows.map(r => r.siInt!))
+      const min = rows[0].siInt!, max = rows[rows.length - 1].siInt!
+      for (let i = min + 1; i < max; i++) if (!present.has(i)) gaps.push({ siNumber: pad4(i) })
+    }
+
+    // Existing flag resolutions.
+    const flagNums = [...new Set([...gaps.map(g => g.siNumber), ...duplicates.map(d => d.siNumber)])]
+    const flags = flagNums.length ? await prisma.salesInvoiceFlag.findMany({ where: { branch, siNumber: { in: flagNums } } }) : []
+    const flagBy = new Map(flags.map(f => [f.siNumber, { status: f.status, remarks: f.remarks }]))
+
+    return NextResponse.json({
+      rows,
+      totals: { vat: rows.reduce((s, r) => s + r.vat, 0), nonVat: rows.reduce((s, r) => s + r.nonVat, 0), count: rows.length },
+      gaps: gaps.map(g => ({ ...g, flag: flagBy.get(g.siNumber) || null })),
+      duplicates: duplicates.map(d => ({ ...d, flag: flagBy.get(d.siNumber) || null })),
+    })
+  } catch (err) {
+    console.error('With-SI error:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+// POST { branch, siNumber, status: 'CANCELLED'|'REMARKS', remarks } — save a flag resolution.
+const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'SBEA_ADMIN', 'SBGH_ADMIN', 'VERDANA_ADMIN', 'SBEA_FRONTDESK', 'SBGH_FRONTDESK']
+export async function POST(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes((session.user as { role?: string }).role || '')) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+  try {
+    const { branch, siNumber, status, remarks } = await req.json()
+    if (!VALID_BRANCHES.includes(branch) || !siNumber || !['CANCELLED', 'REMARKS'].includes(status)) {
+      return NextResponse.json({ error: 'branch, siNumber and a valid status are required' }, { status: 400 })
+    }
+    await prisma.salesInvoiceFlag.upsert({
+      where: { branch_siNumber: { branch, siNumber: String(siNumber) } },
+      update: { status, remarks: remarks?.trim() || null },
+      create: { branch, siNumber: String(siNumber), status, remarks: remarks?.trim() || null, createdById: session.user.id as string },
+    })
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    console.error('SI flag save error:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+// DELETE ?branch=&siNumber= — clear a resolution (re-flag the number).
+export async function DELETE(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes((session.user as { role?: string }).role || '')) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+  const sp = new URL(req.url).searchParams
+  const branch = sp.get('branch') || '', siNumber = sp.get('siNumber') || ''
+  if (!branch || !siNumber) return NextResponse.json({ error: 'branch and siNumber required' }, { status: 400 })
+  await prisma.salesInvoiceFlag.deleteMany({ where: { branch, siNumber } })
+  return NextResponse.json({ success: true })
+}
