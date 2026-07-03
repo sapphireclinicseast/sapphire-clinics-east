@@ -73,7 +73,12 @@ export async function POST(req: Request) {
         const agg = await tx.pettyCashEntry.aggregate({ where: { branch, recordType, pcvSeq: baseSeq }, _max: { pcvSub: true } })
         sub = (agg._max.pcvSub || 0) + 1
       } else {
-        baseSeq = settings.nextPcvSeq
+        // Continuous per branch: derive the next number from the actual highest
+        // sequence in use, so deleting the most-recent (e.g. blank) rows reclaims
+        // their numbers instead of leaving a permanent gap. The stored counter is
+        // kept in sync but never allowed to run ahead of reality.
+        const maxAgg = await tx.pettyCashEntry.aggregate({ where: { branch }, _max: { pcvSeq: true } })
+        baseSeq = (maxAgg._max.pcvSeq || 0) + 1
         await tx.pettyCashSettings.update({ where: { branch }, data: { nextPcvSeq: baseSeq + 1 } })
         sub = 1
       }
@@ -115,6 +120,22 @@ export async function PUT(req: Request) {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = {}
+
+    // Overhaul / force the PCV reference number to match the physical hard copy.
+    // Must stay unique within the branch; keep pcvSeq aligned with the forced
+    // number so list order and future auto-numbering follow it.
+    if ('pcvNumber' in body) {
+      const newNum = String(body.pcvNumber ?? '').trim()
+      if (!newNum) return NextResponse.json({ error: 'Reference number cannot be blank' }, { status: 400 })
+      if (newNum !== existing.pcvNumber) {
+        const dup = await prisma.pettyCashEntry.findFirst({ where: { branch: existing.branch, pcvNumber: newNum, id: { not: id } } })
+        if (dup) return NextResponse.json({ error: `Reference "${newNum}" is already used in this branch` }, { status: 409 })
+        data.pcvNumber = newNum
+        const m = newNum.match(/(\d{3,})(?:-\d{1,2})?$/)
+        if (m) data.pcvSeq = parseInt(m[1], 10)
+      }
+    }
+
     for (const f of EDITABLE) {
       if (f in body) {
         if (f === 'grossAmount') data.grossAmount = Number(body.grossAmount) || 0

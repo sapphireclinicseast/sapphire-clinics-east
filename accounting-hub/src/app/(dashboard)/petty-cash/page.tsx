@@ -47,6 +47,7 @@ interface Entry {
   proofUrls: string[] | null
   branchAllocations: { branch: string; amount: number }[] | null
   reimbursementId: string | null
+  paidAt: string | null
   finalized: boolean
   audited: boolean
 }
@@ -285,6 +286,22 @@ export default function PettyCashPage() {
     if (saveTimers.current[id]) clearTimeout(saveTimers.current[id])
     if (debounce) saveTimers.current[id] = setTimeout(doSave, 500)
     else doSave()
+  }
+
+  // Overhaul / force the PCV reference number (to match a physical hard copy).
+  const savePcv = async (e: Entry, raw: string) => {
+    const val = raw.trim()
+    if (!val || val === e.pcvNumber) { patchLocal(e.id, { pcvNumber: e.pcvNumber }); return }
+    const prev = e.pcvNumber
+    patchLocal(e.id, { pcvNumber: val })
+    try {
+      const r = await fetch('/api/petty-cash/entries', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: e.id, pcvNumber: val }),
+      })
+      if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || 'Could not change the reference number.'); patchLocal(e.id, { pcvNumber: prev }) }
+      else { const u = await r.json(); patchLocal(e.id, { pcvNumber: u.pcvNumber, pcvSeq: u.pcvSeq }) }
+    } catch { patchLocal(e.id, { pcvNumber: prev }) }
   }
 
   const downloadTemplate = async () => {
@@ -758,7 +775,14 @@ export default function PettyCashPage() {
                             title={e.reimbursementId ? 'Locked (in an RFP)' : rfpMode === null ? 'Click RFP (Valid) or RFP (Invalid) first' : e.validity !== rfpValidity ? `Only ${rfpMode === 'VALID' ? 'valid' : 'invalid'} entries can be selected` : !e.audited ? 'Entry must be Audited = Yes first' : ''} />
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--charcoal)' }}>{refOf(e)}</span>
+                          <div className="flex items-center whitespace-nowrap">
+                            <input key={e.pcvNumber} defaultValue={e.pcvNumber} disabled={!!e.reimbursementId || !!e.paidAt || !canWrite}
+                              className={`${cellCls} font-mono`} style={{ minWidth: 150 }}
+                              title="Reference number — edit to match your physical hard copy"
+                              onBlur={ev => savePcv(e, ev.target.value)}
+                              onKeyDown={ev => { if (ev.key === 'Enter') (ev.target as HTMLInputElement).blur() }} />
+                            {(e.validity === 'Valid' || e.validity === 'Invalid') && <span className="text-[10px] pr-1 font-mono" style={{ color: 'var(--mid-gray)' }}>{e.validity === 'Valid' ? '-VAL' : '-INV'}</span>}
+                          </div>
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
                           <select className={cellCls} value={e.requestor || ''} disabled={lk}
